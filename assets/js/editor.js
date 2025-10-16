@@ -14,9 +14,30 @@ document.addEventListener('DOMContentLoaded', () => {
     // Track if annotations have been applied to prevent re-application
     let annotationsApplied = false;
 
+    // Fix HTML entities in TOC
+    function fixTocHtmlEntities() {
+        const toc = document.querySelector('.toc');
+        if (toc) {
+            const tocItems = toc.querySelectorAll('.toc-item a');
+            tocItems.forEach(item => {
+                const text = item.textContent;
+                const decoded = text
+                    .replace(/&lt;/g, '<')
+                    .replace(/&gt;/g, '>')
+                    .replace(/&amp;/g, '&')
+                    .replace(/&quot;/g, '"')
+                    .replace(/&#39;/g, "'");
+                if (text !== decoded) {
+                    item.textContent = decoded;
+                }
+            });
+        }
+    }
+
     // Apply annotations once after a short delay to ensure content is loaded
     setTimeout(() => {
         if (!annotationsApplied) {
+            fixTocHtmlEntities();
             applyAnnotations();
             setupNoteClickHandlers();
             annotationsApplied = true;
@@ -25,6 +46,28 @@ document.addEventListener('DOMContentLoaded', () => {
 
 
     let currentSelection = null;
+    let currentHighlightedElement = null;
+
+    // Update popover content based on whether selection is highlighted
+    function updatePopover(popover, highlightedElement) {
+        currentHighlightedElement = highlightedElement;
+
+        if (highlightedElement) {
+            // Show unhighlight button for already highlighted text
+            popover.innerHTML = '<button data-action="unhighlight">Unhighlight</button>';
+        } else {
+            // Show normal annotation buttons
+            popover.innerHTML = `
+                <button data-action="highlight-orange">Orange</button>
+                <button data-action="highlight-green">Green</button>
+                <button data-action="highlight-yellow">Yellow</button>
+                <span class="popover-separator">|</span>
+                <button data-action="strikethrough">Strike</button>
+                <span class="popover-separator">|</span>
+                <button data-action="add-note">Note</button>
+            `;
+        }
+    }
 
     document.addEventListener('mouseup', (e) => {
         if (popover.contains(e.target)) return;
@@ -52,6 +95,12 @@ document.addEventListener('DOMContentLoaded', () => {
 
             currentSelection = range.cloneRange();
             const rect = range.getBoundingClientRect();
+
+            // Check if selection is already highlighted
+            const isHighlighted = element.closest('.highlight-orange, .highlight-green, .highlight-yellow, .strikethrough, .has-note');
+
+            // Update popover content based on highlight status
+            updatePopover(popover, isHighlighted);
 
             // Show popover first (with visibility hidden) to get accurate dimensions
             popover.style.visibility = 'hidden';
@@ -94,6 +143,7 @@ document.addEventListener('DOMContentLoaded', () => {
             if (action.startsWith('highlight-')) applyStyle(action, 'span');
             else if (action === 'strikethrough') applyStyle('strikethrough', 's');
             else if (action === 'add-note') addNote();
+            else if (action === 'unhighlight') removeHighlight();
             popover.style.display = 'none';
         });
         return popover;
@@ -583,7 +633,7 @@ document.addEventListener('DOMContentLoaded', () => {
             noteCard.style.position = 'absolute';
 
             document.body.appendChild(noteCard);
-            console.log(`[renderNotesMargin] Note card appended to body`);
+            console.log('[renderNotesMargin] Note card appended to body');
 
             noteCardsData.push({
                 element: noteCard,
@@ -622,7 +672,6 @@ document.addEventListener('DOMContentLoaded', () => {
         document.body.offsetHeight;
 
         // Calculate horizontal position (right-aligned, matching TOC width)
-        const bodyRect = markdownBody.getBoundingClientRect();
         const scrollY = window.scrollY || window.pageYOffset;
 
         // Get TOC width for symmetry
@@ -798,7 +847,22 @@ document.addEventListener('DOMContentLoaded', () => {
         }, 150); // 150ms debounce for smooth transition
     });
 
-    function deleteNote(annotationId) {
+    function removeHighlight() {
+        if (!currentHighlightedElement) return;
+
+        const annotationId = currentHighlightedElement.dataset.annotationId;
+        if (!annotationId) return;
+
+        // Remove annotation
+        deleteAnnotation(annotationId);
+
+        // Clear selection and state
+        window.getSelection().removeAllRanges();
+        currentHighlightedElement = null;
+        currentSelection = null;
+    }
+
+    function deleteAnnotation(annotationId) {
         // Remove from localStorage
         let annotations = JSON.parse(localStorage.getItem(storageKey) || '[]');
         annotations = annotations.filter(a => a.id !== annotationId);
@@ -815,7 +879,7 @@ document.addEventListener('DOMContentLoaded', () => {
             parent.normalize(); // Merge adjacent text nodes
         }
 
-        // Remove note card from DOM
+        // Remove note card from DOM if exists
         const noteCard = document.querySelector(`.note-card-margin[data-annotation-id="${annotationId}"]`);
         if (noteCard) {
             noteCard.remove();
@@ -824,7 +888,12 @@ document.addEventListener('DOMContentLoaded', () => {
         // Update noteCardsData
         noteCardsData = noteCardsData.filter(n => n.highlightId !== annotationId);
 
-        console.log(`[deleteNote] Deleted note ${annotationId}`);
+        console.log(`[deleteAnnotation] Deleted annotation ${annotationId}`);
+    }
+
+    function deleteNote(annotationId) {
+        // Wrapper for backward compatibility
+        deleteAnnotation(annotationId);
     }
 
     function setupNoteClickHandlers() {

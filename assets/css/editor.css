@@ -31,13 +31,25 @@
     user-select: none;
 }
 
-/* Keep link colors consistent - override visited/active states */
+/* Keep link colors consistent - override all pseudo-class states */
+.markdown-body a:link {
+    color: #0969da !important;
+}
+
 .markdown-body a:visited {
-    color: inherit !important;
+    color: #0969da !important;
+}
+
+.markdown-body a:hover {
+    color: #0969da !important;
 }
 
 .markdown-body a:active {
-    color: inherit !important;
+    color: #0969da !important;
+}
+
+.markdown-body a:focus {
+    color: #0969da !important;
 }
 
 .highlight-orange {
