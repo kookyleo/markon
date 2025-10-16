@@ -4,7 +4,6 @@ document.addEventListener('DOMContentLoaded', () => {
 
     const filePath = filePathMeta.getAttribute('content');
     const storageKey = `markon-annotations-${filePath}`;
-    const sidebar = document.getElementById('notes-sidebar');
     const markdownBody = document.querySelector('.markdown-body');
 
     if (!markdownBody) return;
@@ -28,7 +27,7 @@ document.addEventListener('DOMContentLoaded', () => {
     let currentSelection = null;
 
     document.addEventListener('mouseup', (e) => {
-        if (popover.contains(e.target) || (sidebar && sidebar.contains(e.target))) return;
+        if (popover.contains(e.target)) return;
 
         const selection = window.getSelection();
         if (selection.toString().trim().length > 0) {
@@ -44,11 +43,6 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     });
 
-    document.addEventListener('click', (e) => {
-        if (sidebar && !sidebar.contains(e.target) && !e.target.classList.contains('has-note')) {
-            sidebar.classList.remove('visible');
-        }
-    });
 
     function createPopover() {
         const popover = document.createElement('div');
@@ -62,6 +56,8 @@ document.addEventListener('DOMContentLoaded', () => {
         `;
         popover.addEventListener('click', (e) => {
             const action = e.target.dataset.action;
+            if (!action) return; // Clicked on popover background, not a button
+
             if (action.startsWith('highlight-')) applyStyle(action, 'span');
             else if (action === 'strikethrough') applyStyle('strikethrough', 's');
             else if (action === 'add-note') addNote();
@@ -75,8 +71,8 @@ document.addEventListener('DOMContentLoaded', () => {
         let current = node;
 
         // Elements to skip when calculating XPath (dynamic UI elements)
-        const skipIds = new Set(['notes-sidebar', 'toc']);
-        const skipClasses = new Set(['back-link', 'toc', 'selection-popover']);
+        const skipIds = new Set(['toc']);
+        const skipClasses = new Set(['back-link', 'toc', 'selection-popover', 'note-card-margin', 'note-popup']);
 
         const shouldSkip = (element) => {
             if (element.nodeType !== 1) return false; // Only check element nodes
@@ -235,7 +231,6 @@ document.addEventListener('DOMContentLoaded', () => {
             const noteText = textarea.value.trim();
             if (noteText) {
                 applyStyle('has-note', 'span', noteText);
-                updateSidebar();
                 renderNotesMargin();
             }
             modal.remove();
@@ -272,8 +267,8 @@ document.addEventListener('DOMContentLoaded', () => {
 
     function getNodeByXPath(path) {
         // Elements to skip when resolving XPath (dynamic UI elements)
-        const skipIds = new Set(['notes-sidebar']);
-        const skipClasses = new Set(['back-link', 'toc', 'selection-popover']);
+        const skipIds = new Set(['toc']);
+        const skipClasses = new Set(['back-link', 'toc', 'selection-popover', 'note-card-margin', 'note-popup']);
 
         const shouldSkip = (element) => {
             if (element.nodeType !== 1) return false;
@@ -410,59 +405,46 @@ document.addEventListener('DOMContentLoaded', () => {
                 }
             }
         });
-        updateSidebar();
         renderNotesMargin();
     }
 
-    function updateSidebar() {
-        // Keep old sidebar for small screens (< 1400px)
-        if (!sidebar) return;
-        sidebar.innerHTML = '';
-        const annotations = JSON.parse(localStorage.getItem(storageKey) || '[]');
-        const notes = annotations.filter(anno => anno.note);
-
-        if (notes.length > 0) {
-            notes.forEach(note => {
-                const card = document.createElement('div');
-                card.className = 'note-card';
-                card.dataset.annotationId = note.id;
-
-                const quote = document.createElement('p');
-                quote.textContent = `"${note.text}"`;
-
-                const noteText = document.createElement('p');
-                noteText.className = 'note-text';
-                noteText.textContent = note.note;
-
-                card.appendChild(quote);
-                card.appendChild(noteText);
-                sidebar.appendChild(card);
-            });
-        } else {
-            sidebar.innerHTML = '<p>No notes for this document yet.</p>';
-        }
-    }
 
     // Store note card data for scroll updates
     let noteCardsData = [];
 
     function renderNotesMargin() {
+        console.log('[renderNotesMargin] Starting...');
+
         // Remove existing margin notes
         document.querySelectorAll('.note-card-margin').forEach(el => el.remove());
 
-        const annotations = JSON.parse(localStorage.getItem(storageKey) || '[]');
-        const notes = annotations.filter(anno => anno.note);
+        // CRITICAL: Get highlight elements directly from DOM to preserve DOM order!
+        const highlightElements = markdownBody.querySelectorAll('.has-note[data-annotation-id]');
+        console.log('[renderNotesMargin] Found highlight elements in DOM:', highlightElements.length);
 
-        if (notes.length === 0) {
+        if (highlightElements.length === 0) {
             noteCardsData = [];
+            console.log('[renderNotesMargin] No highlight elements found, exiting');
             return;
         }
 
+        // Load annotations for getting note content
+        const annotations = JSON.parse(localStorage.getItem(storageKey) || '[]');
+        const annotationsMap = new Map(annotations.map(a => [a.id, a]));
+
         noteCardsData = [];
 
-        notes.forEach(anno => {
-            const highlightElement = document.querySelector(`[data-annotation-id="${anno.id}"]`);
-            if (!highlightElement) return;
+        // Iterate in DOM order!
+        highlightElements.forEach((highlightElement, index) => {
+            const annoId = highlightElement.dataset.annotationId;
+            const anno = annotationsMap.get(annoId);
+
+            console.log(`[renderNotesMargin] Processing DOM element ${index + 1}, ID:`, annoId);
+
+            if (!anno || !anno.note) {
+                console.log(`[renderNotesMargin] No note data for ${annoId}, skipping`);
+                return;
+            }
 
             const noteCard = document.createElement('div');
             noteCard.className = 'note-card-margin';
@@ -473,10 +455,11 @@ document.addEventListener('DOMContentLoaded', () => {
                 <div class="note-content">${anno.note}</div>
             `;
 
-            // Use fixed position for viewport-relative positioning
-            noteCard.style.position = 'fixed';
+            // Use absolute position - will be positioned relative to document
+            noteCard.style.position = 'absolute';
 
             document.body.appendChild(noteCard);
+            console.log(`[renderNotesMargin] Note card appended to body`);
 
             noteCardsData.push({
                 element: noteCard,
@@ -487,85 +470,161 @@ document.addEventListener('DOMContentLoaded', () => {
             });
         });
 
-        // Initialize positions
-        updateNotePositions();
-    }
+        console.log('[renderNotesMargin] Total note cards created:', noteCardsData.length);
 
-    function updateNotePositions() {
-        if (noteCardsData.length === 0) return;
-
-        const bodyRect = markdownBody.getBoundingClientRect();
-        const rightEdge = bodyRect.right + 20;
-
-        // Collect visible notes
-        const visibleNotes = [];
-
-        noteCardsData.forEach(noteData => {
-            const highlightRect = noteData.highlightElement.getBoundingClientRect();
-
-            // Check if highlight is visible in viewport
-            const isVisible = highlightRect.top < window.innerHeight - 50 && highlightRect.bottom > 0;
-
-            if (isVisible) {
-                noteData.element.style.display = 'block';
-                noteData.element.style.left = `${rightEdge}px`;
-                noteData.element.style.top = `${highlightRect.top}px`;
-
-                visibleNotes.push({
-                    element: noteData.element,
-                    originalTop: highlightRect.top,
-                    highlightId: noteData.highlightId,
-                    highlightElement: noteData.highlightElement
-                });
-            } else {
+        // Check screen width for responsive behavior
+        if (window.innerWidth > 1400) {
+            console.log('[renderNotesMargin] Wide screen - showing margin notes');
+            // Layout notes with physics simulation for wide screens
+            layoutNotesWithPhysics();
+        } else {
+            console.log('[renderNotesMargin] Narrow screen - hiding margin notes, will show on click');
+            // Hide all note cards on small screens
+            noteCardsData.forEach(noteData => {
                 noteData.element.style.display = 'none';
-            }
-        });
-
-        // Adjust positions to avoid collisions
-        adjustNotePositionsFixed(visibleNotes);
+            });
+        }
     }
 
-    function adjustNotePositionsFixed(visibleNotes) {
-        // Sort by original top position
-        visibleNotes.sort((a, b) => a.originalTop - b.originalTop);
+    function layoutNotesWithPhysics() {
+        console.log('[layoutNotesWithPhysics] Starting physics simulation...');
 
-        let lastBottom = 0;
-        const spacing = 10; // 10px spacing between notes
+        if (noteCardsData.length === 0) {
+            console.log('[layoutNotesWithPhysics] No note cards, exiting');
+            return;
+        }
 
-        visibleNotes.forEach(noteData => {
-            let top = noteData.originalTop;
+        // Force browser reflow to ensure offsetHeight is calculated
+        document.body.offsetHeight;
+
+        // Calculate horizontal position (constant for all notes)
+        const bodyRect = markdownBody.getBoundingClientRect();
+        const scrollY = window.scrollY || window.pageYOffset;
+        const rightEdge = bodyRect.left + bodyRect.width + 20;
+
+        // Prepare note objects with ideal positions
+        const notes = noteCardsData.map((noteData, index) => {
+            const highlightRect = noteData.highlightElement.getBoundingClientRect();
+            const idealTop = highlightRect.top + scrollY;
+
+            // CRITICAL: Ensure we get the actual height
             const height = noteData.element.offsetHeight;
-
-            // If overlapping with previous note, push down
-            if (top < lastBottom + spacing) {
-                top = lastBottom + spacing;
+            if (height === 0) {
+                console.warn(`[layoutNotesWithPhysics] Note ${index + 1} has zero height! Using fallback.`);
             }
+            const actualHeight = height > 0 ? height : 80;
 
-            // Ensure note doesn't go beyond viewport bottom
-            if (top + height > window.innerHeight - 10) {
-                top = Math.max(0, window.innerHeight - height - 10);
-            }
-
-            noteData.element.style.top = `${top}px`;
-            lastBottom = top + height;
+            return {
+                element: noteData.element,
+                idealTop: idealTop,
+                currentTop: idealTop, // Start at ideal position
+                height: actualHeight,
+                index: index
+            };
         });
+
+        console.log('[layoutNotesWithPhysics] Initial note positions:', notes.map(n => ({
+            index: n.index,
+            idealTop: n.idealTop,
+            height: n.height
+        })));
+
+        // Physics simulation parameters
+        const minSpacing = 10; // Minimum spacing between notes
+        const springConstant = 0.2; // How strongly notes return to ideal position
+        const repulsionStrength = 1.0; // How strongly notes push each other away
+        const maxIterations = 100; // Maximum simulation steps
+        const convergenceThreshold = 0.1; // Stop when movement is less than this
+
+        // Run physics simulation
+        for (let iteration = 0; iteration < maxIterations; iteration++) {
+            let maxMovement = 0;
+
+            // Sort notes by current position for easier overlap detection
+            const sortedNotes = [...notes].sort((a, b) => a.currentTop - b.currentTop);
+
+            // Calculate forces for each note
+            notes.forEach((note, i) => {
+                let force = 0;
+
+                // Spring force: pull toward ideal position
+                const displacement = note.idealTop - note.currentTop;
+                force += displacement * springConstant;
+
+                // Repulsion force: check all other notes
+                sortedNotes.forEach((other) => {
+                    if (note.index === other.index) return;
+
+                    // Calculate positions
+                    const noteBottom = note.currentTop + note.height;
+                    const otherBottom = other.currentTop + other.height;
+
+                    // Calculate gap: positive means separated, negative means overlapping
+                    let gap;
+                    if (note.currentTop < other.currentTop) {
+                        // Note is above other
+                        gap = other.currentTop - noteBottom;
+                    } else {
+                        // Note is below other
+                        gap = note.currentTop - otherBottom;
+                    }
+
+                    // If gap < minSpacing, apply repulsion force
+                    if (gap < minSpacing) {
+                        const penetration = minSpacing - gap;
+
+                        if (note.currentTop < other.currentTop) {
+                            // Note is above, push it up
+                            force -= penetration * repulsionStrength;
+                        } else {
+                            // Note is below, push it down
+                            force += penetration * repulsionStrength;
+                        }
+
+                        if (iteration === 0 || penetration > 1) {
+                            console.log(`[layoutNotesWithPhysics] Iteration ${iteration + 1}: Note ${note.index + 1} too close to Note ${other.index + 1}, gap=${gap.toFixed(1)}px, needed=${minSpacing}px, penetration=${penetration.toFixed(1)}`);
+                        }
+                    }
+                });
+
+                // Update position
+                const movement = force;
+                note.currentTop += movement;
+                maxMovement = Math.max(maxMovement, Math.abs(movement));
+            });
+
+            // Check convergence
+            if (maxMovement < convergenceThreshold) {
+                console.log(`[layoutNotesWithPhysics] Converged at iteration ${iteration + 1}, maxMovement=${maxMovement.toFixed(2)}`);
+                break;
+            }
+
+            if (iteration === maxIterations - 1) {
+                console.log(`[layoutNotesWithPhysics] Reached max iterations (${maxIterations}), maxMovement=${maxMovement.toFixed(2)}`);
+            }
+        }
+
+        // Apply final positions
+        notes.forEach((note, i) => {
+            note.element.style.left = `${rightEdge}px`;
+            note.element.style.top = `${note.currentTop}px`;
+            note.element.style.display = 'block';
+
+            console.log(`[layoutNotesWithPhysics] Note ${i + 1} final position: ideal=${note.idealTop.toFixed(0)}, actual=${note.currentTop.toFixed(0)}, offset=${(note.currentTop - note.idealTop).toFixed(1)}`);
+        });
+
+        console.log('[layoutNotesWithPhysics] Physics simulation complete');
     }
 
-    // Scroll event listener with throttling for performance
-    let scrollTimeout;
-    window.addEventListener('scroll', () => {
-        clearTimeout(scrollTimeout);
-        scrollTimeout = setTimeout(updateNotePositions, 16); // ~60fps
-    }, { passive: true });
-
-    // Window resize listener
+    // Window resize listener - recalculate positions when window size changes
     window.addEventListener('resize', () => {
-        updateNotePositions();
-    }, { passive: true });
+        if (noteCardsData.length > 0) {
+            layoutNotesWithPhysics();
+        }
+    });
 
     function setupNoteClickHandlers() {
-        // Click on highlight text -> highlight corresponding note
+        // Click on highlight text -> show note
         document.body.addEventListener('click', (e) => {
             let target = e.target;
 
@@ -584,34 +643,27 @@ document.addEventListener('DOMContentLoaded', () => {
                 // Highlight the clicked element
                 target.classList.add('highlight-active');
 
-                // Highlight corresponding note card
-                const noteCard = document.querySelector(`.note-card-margin[data-annotation-id="${annotationId}"]`);
-                if (noteCard) {
-                    noteCard.classList.add('highlight-active');
+                if (window.innerWidth > 1400) {
+                    // Wide screen: highlight corresponding note card
+                    const noteCard = document.querySelector(`.note-card-margin[data-annotation-id="${annotationId}"]`);
+                    if (noteCard) {
+                        noteCard.classList.add('highlight-active');
 
-                    // Scroll note into view if needed
-                    const noteRect = noteCard.getBoundingClientRect();
-                    if (noteRect.top < 0 || noteRect.bottom > window.innerHeight) {
-                        noteCard.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                        // Scroll note into view if needed
+                        const noteRect = noteCard.getBoundingClientRect();
+                        if (noteRect.top < 0 || noteRect.bottom > window.innerHeight) {
+                            noteCard.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                        }
                     }
-                }
-
-                // For small screens, show old sidebar
-                if (window.innerWidth <= 1400 && sidebar) {
-                    sidebar.classList.add('visible');
-                    const allCards = sidebar.querySelectorAll('.note-card');
-                    allCards.forEach(c => c.style.backgroundColor = 'white');
-                    const card = sidebar.querySelector(`[data-annotation-id="${annotationId}"]`);
-                    if (card) {
-                        card.style.backgroundColor = '#e7f5ff';
-                        card.scrollIntoView({ behavior: 'smooth', block: 'center' });
-                    }
+                } else {
+                    // Small screen: show floating popup
+                    showNotePopup(target, annotationId);
                 }
 
                 e.stopPropagation();
             }
 
-            // Handle clicks on note cards
+            // Handle clicks on note cards (wide screen only)
             if (target.closest('.note-card-margin')) {
                 const noteCard = target.closest('.note-card-margin');
                 const annotationId = noteCard.dataset.annotationId;
@@ -639,8 +691,8 @@ document.addEventListener('DOMContentLoaded', () => {
                 e.stopPropagation();
             }
 
-            // Click outside - clear all highlights
-            if (!target.classList.contains('has-note') && !target.closest('.note-card-margin')) {
+            // Click outside - clear all highlights and close popup
+            if (!target.classList.contains('has-note') && !target.closest('.note-card-margin') && !target.closest('.note-popup')) {
                 document.querySelectorAll('.has-note.highlight-active').forEach(el => {
                     el.classList.remove('highlight-active');
                 });
@@ -648,11 +700,56 @@ document.addEventListener('DOMContentLoaded', () => {
                     el.classList.remove('highlight-active');
                 });
 
-                // Hide old sidebar for small screens
-                if (sidebar && !sidebar.contains(target) && !target.classList.contains('has-note')) {
-                    sidebar.classList.remove('visible');
+                // Close any open popup
+                const existingPopup = document.querySelector('.note-popup');
+                if (existingPopup) {
+                    existingPopup.remove();
                 }
             }
         });
+    }
+
+    function showNotePopup(highlightElement, annotationId) {
+        // Remove any existing popup
+        const existingPopup = document.querySelector('.note-popup');
+        if (existingPopup) existingPopup.remove();
+
+        // Find note data
+        const noteData = noteCardsData.find(n => n.highlightId === annotationId);
+        if (!noteData) return;
+
+        // Create popup
+        const popup = document.createElement('div');
+        popup.className = 'note-popup';
+        popup.innerHTML = `
+            <div class="note-quote">"${noteData.text}"</div>
+            <div class="note-content">${noteData.note}</div>
+        `;
+
+        // Position near the highlight element
+        const rect = highlightElement.getBoundingClientRect();
+        popup.style.position = 'fixed';
+        popup.style.left = `${rect.left}px`;
+        popup.style.top = `${rect.bottom + 10}px`;
+        popup.style.maxWidth = '300px';
+        popup.style.background = '#f6f8fa';
+        popup.style.border = '1px solid #0969da';
+        popup.style.borderRadius = '6px';
+        popup.style.padding = '12px 16px';
+        popup.style.boxShadow = '0 4px 12px rgba(0, 0, 0, 0.15)';
+        popup.style.zIndex = '9999';
+        popup.style.fontSize = '13px';
+        popup.style.lineHeight = '1.6';
+
+        document.body.appendChild(popup);
+
+        // Adjust position if popup goes off screen
+        const popupRect = popup.getBoundingClientRect();
+        if (popupRect.right > window.innerWidth) {
+            popup.style.left = `${window.innerWidth - popupRect.width - 10}px`;
+        }
+        if (popupRect.bottom > window.innerHeight) {
+            popup.style.top = `${rect.top - popupRect.height - 10}px`;
+        }
     }
 });
