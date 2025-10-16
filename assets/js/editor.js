@@ -187,11 +187,81 @@ document.addEventListener('DOMContentLoaded', () => {
 
     function addNote() {
         if (!currentSelection) return;
-        const noteText = prompt("Enter your note:");
-        if (noteText) {
-            applyStyle('has-note', 'span', noteText);
-            updateSidebar();
-        }
+
+        // Remove any existing modal
+        const existingModal = document.querySelector('.note-input-modal');
+        if (existingModal) existingModal.remove();
+
+        // Get selection position
+        const range = currentSelection;
+        const rect = range.getBoundingClientRect();
+
+        // Create modal
+        const modal = document.createElement('div');
+        modal.className = 'note-input-modal';
+
+        // Position modal below selection
+        const modalLeft = rect.left + window.scrollX;
+        const modalTop = rect.bottom + window.scrollY + 10;
+
+        modal.style.left = `${modalLeft}px`;
+        modal.style.top = `${modalTop}px`;
+
+        modal.innerHTML = `
+            <label>请输入备注：</label>
+            <textarea class="note-textarea" placeholder="输入你的想法..." autofocus></textarea>
+            <div class="note-input-actions">
+                <button class="note-cancel">取消</button>
+                <button class="note-save">保存</button>
+            </div>
+        `;
+
+        document.body.appendChild(modal);
+
+        const textarea = modal.querySelector('.note-textarea');
+        const cancelBtn = modal.querySelector('.note-cancel');
+        const saveBtn = modal.querySelector('.note-save');
+
+        // Focus textarea
+        setTimeout(() => textarea.focus(), 0);
+
+        // Cancel handler
+        cancelBtn.addEventListener('click', () => {
+            modal.remove();
+            currentSelection = null;
+        });
+
+        // Save handler
+        const saveNote = () => {
+            const noteText = textarea.value.trim();
+            if (noteText) {
+                applyStyle('has-note', 'span', noteText);
+                updateSidebar();
+                renderNotesMargin();
+            }
+            modal.remove();
+            currentSelection = null;
+        };
+
+        saveBtn.addEventListener('click', saveNote);
+
+        // Enter to save (Ctrl+Enter for newline)
+        textarea.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter' && !e.shiftKey && !e.ctrlKey) {
+                e.preventDefault();
+                saveNote();
+            }
+        });
+
+        // Click outside to close
+        setTimeout(() => {
+            document.addEventListener('click', function closeModal(e) {
+                if (!modal.contains(e.target)) {
+                    modal.remove();
+                    document.removeEventListener('click', closeModal);
+                }
+            });
+        }, 100);
     }
 
     function saveAnnotation(annotation) {
@@ -342,9 +412,11 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         });
         updateSidebar();
+        renderNotesMargin();
     }
 
     function updateSidebar() {
+        // Keep old sidebar for small screens (< 1400px)
         if (!sidebar) return;
         sidebar.innerHTML = '';
         const annotations = JSON.parse(localStorage.getItem(storageKey) || '[]');
@@ -372,16 +444,157 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
 
+    function renderNotesMargin() {
+        // Remove existing margin notes
+        document.querySelectorAll('.note-card-margin').forEach(el => el.remove());
+
+        const annotations = JSON.parse(localStorage.getItem(storageKey) || '[]');
+        const notes = annotations.filter(anno => anno.note);
+
+        if (notes.length === 0) return;
+
+        // Create note cards positioned next to their highlights
+        const noteCards = [];
+
+        notes.forEach(anno => {
+            const highlightElement = document.querySelector(`[data-annotation-id="${anno.id}"]`);
+            if (!highlightElement) return;
+
+            const rect = highlightElement.getBoundingClientRect();
+            const scrollTop = window.pageYOffset || document.documentElement.scrollTop;
+
+            const noteCard = document.createElement('div');
+            noteCard.className = 'note-card-margin';
+            noteCard.dataset.annotationId = anno.id;
+
+            noteCard.innerHTML = `
+                <div class="note-quote">"${anno.text}"</div>
+                <div class="note-content">${anno.note}</div>
+            `;
+
+            // Initial position (same line as highlight)
+            noteCard.style.top = `${rect.top + scrollTop}px`;
+
+            markdownBody.appendChild(noteCard);
+            noteCards.push({
+                element: noteCard,
+                originalTop: rect.top + scrollTop,
+                highlightId: anno.id
+            });
+        });
+
+        // Adjust positions to avoid collisions
+        adjustNotePositions(noteCards);
+    }
+
+    function adjustNotePositions(noteCards) {
+        // Sort by original top position
+        noteCards.sort((a, b) => a.originalTop - b.originalTop);
+
+        let lastBottom = 0;
+        const spacing = 10; // 10px spacing between notes
+
+        noteCards.forEach(noteCard => {
+            let top = noteCard.originalTop;
+            const height = noteCard.element.offsetHeight;
+
+            // If overlapping with previous note, push down
+            if (top < lastBottom + spacing) {
+                top = lastBottom + spacing;
+            }
+
+            noteCard.element.style.top = `${top}px`;
+            lastBottom = top + height;
+        });
+    }
+
     function setupNoteClickHandlers() {
+        // Click on highlight text -> highlight corresponding note
         document.body.addEventListener('click', (e) => {
-            if (e.target.classList.contains('has-note')) {
-                sidebar.classList.add('visible');
-                const allCards = sidebar.querySelectorAll('.note-card');
-                allCards.forEach(c => c.style.backgroundColor = 'white');
-                const card = sidebar.querySelector(`[data-annotation-id="${e.target.dataset.annotationId}"]`);
-                if (card) {
-                    card.style.backgroundColor = '#e7f5ff';
-                    card.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            let target = e.target;
+
+            // Handle clicks on has-note elements
+            if (target.classList.contains('has-note')) {
+                const annotationId = target.dataset.annotationId;
+
+                // Clear previous highlights
+                document.querySelectorAll('.has-note.highlight-active').forEach(el => {
+                    el.classList.remove('highlight-active');
+                });
+                document.querySelectorAll('.note-card-margin.highlight-active').forEach(el => {
+                    el.classList.remove('highlight-active');
+                });
+
+                // Highlight the clicked element
+                target.classList.add('highlight-active');
+
+                // Highlight corresponding note card
+                const noteCard = document.querySelector(`.note-card-margin[data-annotation-id="${annotationId}"]`);
+                if (noteCard) {
+                    noteCard.classList.add('highlight-active');
+
+                    // Scroll note into view if needed
+                    const noteRect = noteCard.getBoundingClientRect();
+                    if (noteRect.top < 0 || noteRect.bottom > window.innerHeight) {
+                        noteCard.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                    }
+                }
+
+                // For small screens, show old sidebar
+                if (window.innerWidth <= 1400 && sidebar) {
+                    sidebar.classList.add('visible');
+                    const allCards = sidebar.querySelectorAll('.note-card');
+                    allCards.forEach(c => c.style.backgroundColor = 'white');
+                    const card = sidebar.querySelector(`[data-annotation-id="${annotationId}"]`);
+                    if (card) {
+                        card.style.backgroundColor = '#e7f5ff';
+                        card.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                    }
+                }
+
+                e.stopPropagation();
+            }
+
+            // Handle clicks on note cards
+            if (target.closest('.note-card-margin')) {
+                const noteCard = target.closest('.note-card-margin');
+                const annotationId = noteCard.dataset.annotationId;
+
+                // Clear previous highlights
+                document.querySelectorAll('.has-note.highlight-active').forEach(el => {
+                    el.classList.remove('highlight-active');
+                });
+                document.querySelectorAll('.note-card-margin.highlight-active').forEach(el => {
+                    el.classList.remove('highlight-active');
+                });
+
+                // Highlight clicked note card
+                noteCard.classList.add('highlight-active');
+
+                // Find and highlight corresponding text
+                const highlightElement = document.querySelector(`.has-note[data-annotation-id="${annotationId}"]`);
+                if (highlightElement) {
+                    highlightElement.classList.add('highlight-active');
+
+                    // Scroll text into view
+                    highlightElement.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                }
+
+                e.stopPropagation();
+            }
+
+            // Click outside - clear all highlights
+            if (!target.classList.contains('has-note') && !target.closest('.note-card-margin')) {
+                document.querySelectorAll('.has-note.highlight-active').forEach(el => {
+                    el.classList.remove('highlight-active');
+                });
+                document.querySelectorAll('.note-card-margin.highlight-active').forEach(el => {
+                    el.classList.remove('highlight-active');
+                });
+
+                // Hide old sidebar for small screens
+                if (sidebar && !sidebar.contains(target) && !target.classList.contains('has-note')) {
+                    sidebar.classList.remove('visible');
                 }
             }
         });
