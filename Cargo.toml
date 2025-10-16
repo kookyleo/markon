@@ -1,9 +1,9 @@
 [package]
 name = "markon"
-version = "0.1.0"
+version = "0.2.0"
 edition = "2021"
 authors = ["kookyleo"]
-description = "A GitHub-styled Markdown previewer with live rendering, TOC support, and mermaid diagrams"
+description = "A lightweight Markdown renderer with GitHub styling and Medium-like annotations"
 license = "Apache-2.0"
 repository = "https://github.com/kookyleo/markon"
 homepage = "https://github.com/kookyleo/markon"
