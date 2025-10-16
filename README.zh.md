@@ -42,13 +42,19 @@ Markon 让你可以便捷地以精美的 HTML 格式阅读、打印和批注 Mar
 
 ## 安装
 
-从源代码安装：
+### 从 crates.io 安装
+
+```bash
+cargo install markon
+```
+
+### 从源代码安装
 
 ```bash
 cargo install --path .
 ```
 
-或者直接运行：
+### 直接运行（无需安装）
 
 ```bash
 cargo run -- [OPTIONS] [FILE]

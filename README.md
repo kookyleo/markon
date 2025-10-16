@@ -42,13 +42,19 @@ Simply run `markon` in any directory to browse and render Markdown files with a 
 
 ## Installation
 
-Install from source:
+### From crates.io
+
+```bash
+cargo install markon
+```
+
+### From source
 
 ```bash
 cargo install --path .
 ```
 
-Or run directly:
+### Run directly without installing
 
 ```bash
 cargo run -- [OPTIONS] [FILE]
