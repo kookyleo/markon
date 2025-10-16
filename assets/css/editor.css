@@ -86,18 +86,9 @@
     background: white;
     border: 1px solid #d0d7de;
     border-radius: 8px;
-    padding: 16px;
+    padding: 12px;
     box-shadow: 0 8px 24px rgba(140, 149, 159, 0.2);
-    min-width: 320px;
-    max-width: 400px;
-}
-
-.note-input-modal label {
-    display: block;
-    margin-bottom: 8px;
-    font-size: 14px;
-    font-weight: 500;
-    color: #1f2328;
+    width: 360px;
 }
 
 .note-textarea {
@@ -110,6 +101,7 @@
     resize: vertical;
     min-height: 80px;
     margin-bottom: 12px;
+    box-sizing: border-box;
 }
 
 .note-textarea:focus {
@@ -163,6 +155,7 @@
     transition: all 0.2s;
     cursor: pointer;
     box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+    z-index: 10;
 }
 
 .note-card-margin:hover {

@@ -208,7 +208,6 @@ document.addEventListener('DOMContentLoaded', () => {
         modal.style.top = `${modalTop}px`;
 
         modal.innerHTML = `
-            <label>请输入备注：</label>
             <textarea class="note-textarea" placeholder="输入你的想法..." autofocus></textarea>
             <div class="note-input-actions">
                 <button class="note-cancel">取消</button>
@@ -461,11 +460,11 @@ document.addEventListener('DOMContentLoaded', () => {
             if (!highlightElement) return;
 
             const rect = highlightElement.getBoundingClientRect();
-            const scrollTop = window.pageYOffset || document.documentElement.scrollTop;
+            const scrollY = window.scrollY || window.pageYOffset;
 
             // Calculate position relative to markdown body
             const bodyRect = markdownBody.getBoundingClientRect();
-            const bodyLeft = bodyRect.left + window.scrollX;
+            const bodyLeft = bodyRect.left;
             const bodyWidth = bodyRect.width;
 
             const noteCard = document.createElement('div');
@@ -478,16 +477,18 @@ document.addEventListener('DOMContentLoaded', () => {
             `;
 
             // Position note to the right of the content
-            // Left position: body left + body width + 20px margin
+            // Use absolute position relative to document
+            noteCard.style.position = 'absolute';
             noteCard.style.left = `${bodyLeft + bodyWidth + 20}px`;
-            noteCard.style.top = `${rect.top + scrollTop}px`;
+            noteCard.style.top = `${rect.top + scrollY}px`;
 
-            document.body.appendChild(noteCard); // Append to body instead of markdownBody
+            document.body.appendChild(noteCard);
 
             noteCards.push({
                 element: noteCard,
-                originalTop: rect.top + scrollTop,
-                highlightId: anno.id
+                originalTop: rect.top + scrollY,
+                highlightId: anno.id,
+                highlightElement: highlightElement
             });
         });
 
