@@ -463,6 +463,11 @@ document.addEventListener('DOMContentLoaded', () => {
             const rect = highlightElement.getBoundingClientRect();
             const scrollTop = window.pageYOffset || document.documentElement.scrollTop;
 
+            // Calculate position relative to markdown body
+            const bodyRect = markdownBody.getBoundingClientRect();
+            const bodyLeft = bodyRect.left + window.scrollX;
+            const bodyWidth = bodyRect.width;
+
             const noteCard = document.createElement('div');
             noteCard.className = 'note-card-margin';
             noteCard.dataset.annotationId = anno.id;
@@ -472,10 +477,13 @@ document.addEventListener('DOMContentLoaded', () => {
                 <div class="note-content">${anno.note}</div>
             `;
 
-            // Initial position (same line as highlight)
+            // Position note to the right of the content
+            // Left position: body left + body width + 20px margin
+            noteCard.style.left = `${bodyLeft + bodyWidth + 20}px`;
             noteCard.style.top = `${rect.top + scrollTop}px`;
 
-            markdownBody.appendChild(noteCard);
+            document.body.appendChild(noteCard); // Append to body instead of markdownBody
+
             noteCards.push({
                 element: noteCard,
                 originalTop: rect.top + scrollTop,
