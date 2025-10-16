@@ -153,6 +153,16 @@ document.addEventListener('DOMContentLoaded', () => {
 
     function applyAnnotations() {
         const annotations = JSON.parse(localStorage.getItem(storageKey) || '[]');
+
+        // Sort annotations by startOffset in descending order to apply from back to front
+        // This prevents offset shifts when multiple annotations are in the same element
+        annotations.sort((a, b) => {
+            if (a.startPath !== b.startPath) {
+                return a.startPath.localeCompare(b.startPath);
+            }
+            return b.startOffset - a.startOffset;
+        });
+
         annotations.forEach(anno => {
             const startNode = getNodeByXPath(anno.startPath);
             const endNode = getNodeByXPath(anno.endPath);
