@@ -74,11 +74,30 @@ document.addEventListener('DOMContentLoaded', () => {
         const parts = [];
         let current = node;
 
+        // Elements to skip when calculating XPath (dynamic UI elements)
+        const skipIds = new Set(['notes-sidebar', 'toc']);
+        const skipClasses = new Set(['back-link', 'toc', 'selection-popover']);
+
+        const shouldSkip = (element) => {
+            if (element.nodeType !== 1) return false; // Only check element nodes
+            if (element.id && skipIds.has(element.id)) return true;
+            if (element.className) {
+                const classes = element.className.split(' ');
+                for (let cls of classes) {
+                    if (skipClasses.has(cls)) return true;
+                }
+            }
+            return false;
+        };
+
         // Walk up the tree until we reach ARTICLE
         while (current && current.nodeName !== 'ARTICLE') {
             let index = 1;
             for (let sibling = current.previousSibling; sibling; sibling = sibling.previousSibling) {
-                if (sibling.nodeName === current.nodeName) index++;
+                // Skip dynamic UI elements when counting
+                if (sibling.nodeName === current.nodeName && !shouldSkip(sibling)) {
+                    index++;
+                }
             }
             parts.unshift(`${current.nodeName}[${index}]`);
             current = current.parentNode;
@@ -106,14 +125,49 @@ document.addEventListener('DOMContentLoaded', () => {
             return container;
         };
 
+        // Calculate absolute offset relative to the target element's full text content
+        const getAbsoluteOffset = (container, offset) => {
+            const targetElement = getPathNode(container);
+            let absoluteOffset = 0;
+
+            // If container is a text node, calculate its position within the parent element
+            if (container.nodeType === 3) {
+                // Walk through all child nodes before this one
+                let node = targetElement.firstChild;
+                while (node) {
+                    if (node === container) {
+                        // Found the container, add the offset within it
+                        absoluteOffset += offset;
+                        break;
+                    }
+                    if (node.nodeType === 3) {
+                        // Text node: add its length
+                        absoluteOffset += node.length;
+                    } else if (node.nodeType === 1) {
+                        // Element node: add its text content length
+                        absoluteOffset += node.textContent.length;
+                    }
+                    node = node.nextSibling;
+                }
+            } else {
+                // Container is an element, offset is relative to it
+                absoluteOffset = offset;
+            }
+
+            return absoluteOffset;
+        };
+
+        const startPath = getSimpleXPath(getPathNode(range.startContainer));
+        const endPath = getSimpleXPath(getPathNode(range.endContainer));
+
         const annotation = {
             id: `anno-${Date.now()}`,
             type: className,
             tagName: tagName,
-            startPath: getSimpleXPath(getPathNode(range.startContainer)),
-            startOffset: range.startOffset,
-            endPath: getSimpleXPath(getPathNode(range.endContainer)),
-            endOffset: range.endOffset,
+            startPath: startPath,
+            startOffset: getAbsoluteOffset(range.startContainer, range.startOffset),
+            endPath: endPath,
+            endOffset: getAbsoluteOffset(range.endContainer, range.endOffset),
             text: range.toString(),
             note: note
         };
@@ -148,7 +202,58 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     function getNodeByXPath(path) {
-        return document.evaluate(path, document, null, XPathResult.FIRST_ORDERED_NODE_TYPE, null).singleNodeValue;
+        // Elements to skip when resolving XPath (dynamic UI elements)
+        const skipIds = new Set(['notes-sidebar']);
+        const skipClasses = new Set(['back-link', 'toc', 'selection-popover']);
+
+        const shouldSkip = (element) => {
+            if (element.nodeType !== 1) return false;
+            if (element.id && skipIds.has(element.id)) return true;
+            if (element.className && typeof element.className === 'string') {
+                const classes = element.className.split(' ');
+                for (let cls of classes) {
+                    if (skipClasses.has(cls)) return true;
+                }
+            }
+            return false;
+        };
+
+        // Parse simple XPath like //article[1]/P[3]/SPAN[2]
+        const match = path.match(/^\/\/article\[1\](?:\/(.+))?$/);
+        if (!match) return null;
+
+        let current = document.querySelector('article.markdown-body');
+        if (!current) return null;
+
+        if (!match[1]) return current; // Just //article[1]
+
+        const segments = match[1].split('/');
+        for (let segment of segments) {
+            const tagMatch = segment.match(/^([A-Z]+)\[(\d+)\]$/);
+            if (!tagMatch) return null;
+
+            const tagName = tagMatch[1];
+            let targetIndex = parseInt(tagMatch[2]);
+
+            // Find the nth child of tagName, skipping dynamic elements
+            let found = null;
+            let count = 0;
+
+            for (let child of current.children) {
+                if (child.tagName === tagName && !shouldSkip(child)) {
+                    count++;
+                    if (count === targetIndex) {
+                        found = child;
+                        break;
+                    }
+                }
+            }
+
+            if (!found) return null;
+            current = found;
+        }
+
+        return current;
     }
 
     function applyAnnotations() {
@@ -163,27 +268,63 @@ document.addEventListener('DOMContentLoaded', () => {
             return b.startOffset - a.startOffset;
         });
 
+        // Helper function to find the text node and relative offset from absolute offset
+        const findNodeAndOffset = (element, absoluteOffset) => {
+            let currentOffset = 0;
+            let targetNode = null;
+            let relativeOffset = 0;
+
+            const walk = (node) => {
+                if (targetNode) return; // Already found
+
+                if (node.nodeType === 3) {
+                    // Text node
+                    if (currentOffset + node.length >= absoluteOffset) {
+                        targetNode = node;
+                        relativeOffset = absoluteOffset - currentOffset;
+                    } else {
+                        currentOffset += node.length;
+                    }
+                } else if (node.nodeType === 1) {
+                    // Element node: walk through its children
+                    for (let child = node.firstChild; child; child = child.nextSibling) {
+                        walk(child);
+                        if (targetNode) break;
+                    }
+                }
+            };
+
+            walk(element);
+            return { node: targetNode, offset: relativeOffset };
+        };
+
         annotations.forEach(anno => {
             const startNode = getNodeByXPath(anno.startPath);
             const endNode = getNodeByXPath(anno.endPath);
 
             if (startNode && endNode) {
                 try {
-                    const startTarget = startNode.firstChild || startNode;
-                    const endTarget = endNode.firstChild || endNode;
+                    // Validate total length
+                    const startTotalLength = startNode.textContent.length;
+                    const endTotalLength = endNode.textContent.length;
 
-                    // Validate offsets before creating range
-                    const startLength = startTarget.nodeType === 3 ? startTarget.length : startTarget.textContent.length;
-                    const endLength = endTarget.nodeType === 3 ? endTarget.length : endTarget.textContent.length;
-
-                    if (anno.startOffset > startLength || anno.endOffset > endLength) {
+                    if (anno.startOffset > startTotalLength || anno.endOffset > endTotalLength) {
                         console.warn('Skipping annotation due to invalid offset:', anno);
                         return;
                     }
 
+                    // Find the actual text nodes and offsets
+                    const start = findNodeAndOffset(startNode, anno.startOffset);
+                    const end = findNodeAndOffset(endNode, anno.endOffset);
+
+                    if (!start.node || !end.node) {
+                        console.warn('Skipping annotation: could not find text node:', anno);
+                        return;
+                    }
+
                     const range = document.createRange();
-                    range.setStart(startTarget, anno.startOffset);
-                    range.setEnd(endTarget, anno.endOffset);
+                    range.setStart(start.node, start.offset);
+                    range.setEnd(end.node, end.offset);
 
                     if (range.toString().trim() === anno.text.trim()) {
                         const element = document.createElement(anno.tagName);
