@@ -443,29 +443,27 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
 
-    function renderNotesMargin() {
-        // Get or create the fixed notes container
-        let container = document.querySelector('.notes-margin-container');
-        if (!container) {
-            container = document.createElement('div');
-            container.className = 'notes-margin-container';
-            document.body.appendChild(container);
-        }
+    // Store note card data for scroll updates
+    let noteCardsData = [];
 
-        // Clear existing notes
-        container.innerHTML = '';
+    function renderNotesMargin() {
+        // Remove existing margin notes
+        document.querySelectorAll('.note-card-margin').forEach(el => el.remove());
 
         const annotations = JSON.parse(localStorage.getItem(storageKey) || '[]');
         const notes = annotations.filter(anno => anno.note);
 
         if (notes.length === 0) {
-            // Remove container if no notes
-            container.remove();
+            noteCardsData = [];
             return;
         }
 
-        // Create note cards in DOM order
+        noteCardsData = [];
+
         notes.forEach(anno => {
+            const highlightElement = document.querySelector(`[data-annotation-id="${anno.id}"]`);
+            if (!highlightElement) return;
+
             const noteCard = document.createElement('div');
             noteCard.className = 'note-card-margin';
             noteCard.dataset.annotationId = anno.id;
@@ -475,9 +473,96 @@ document.addEventListener('DOMContentLoaded', () => {
                 <div class="note-content">${anno.note}</div>
             `;
 
-            container.appendChild(noteCard);
+            // Use fixed position for viewport-relative positioning
+            noteCard.style.position = 'fixed';
+
+            document.body.appendChild(noteCard);
+
+            noteCardsData.push({
+                element: noteCard,
+                highlightId: anno.id,
+                highlightElement: highlightElement,
+                text: anno.text,
+                note: anno.note
+            });
+        });
+
+        // Initialize positions
+        updateNotePositions();
+    }
+
+    function updateNotePositions() {
+        if (noteCardsData.length === 0) return;
+
+        const bodyRect = markdownBody.getBoundingClientRect();
+        const rightEdge = bodyRect.right + 20;
+
+        // Collect visible notes
+        const visibleNotes = [];
+
+        noteCardsData.forEach(noteData => {
+            const highlightRect = noteData.highlightElement.getBoundingClientRect();
+
+            // Check if highlight is visible in viewport
+            const isVisible = highlightRect.top < window.innerHeight - 50 && highlightRect.bottom > 0;
+
+            if (isVisible) {
+                noteData.element.style.display = 'block';
+                noteData.element.style.left = `${rightEdge}px`;
+                noteData.element.style.top = `${highlightRect.top}px`;
+
+                visibleNotes.push({
+                    element: noteData.element,
+                    originalTop: highlightRect.top,
+                    highlightId: noteData.highlightId,
+                    highlightElement: noteData.highlightElement
+                });
+            } else {
+                noteData.element.style.display = 'none';
+            }
+        });
+
+        // Adjust positions to avoid collisions
+        adjustNotePositionsFixed(visibleNotes);
+    }
+
+    function adjustNotePositionsFixed(visibleNotes) {
+        // Sort by original top position
+        visibleNotes.sort((a, b) => a.originalTop - b.originalTop);
+
+        let lastBottom = 0;
+        const spacing = 10; // 10px spacing between notes
+
+        visibleNotes.forEach(noteData => {
+            let top = noteData.originalTop;
+            const height = noteData.element.offsetHeight;
+
+            // If overlapping with previous note, push down
+            if (top < lastBottom + spacing) {
+                top = lastBottom + spacing;
+            }
+
+            // Ensure note doesn't go beyond viewport bottom
+            if (top + height > window.innerHeight - 10) {
+                top = Math.max(0, window.innerHeight - height - 10);
+            }
+
+            noteData.element.style.top = `${top}px`;
+            lastBottom = top + height;
         });
     }
+
+    // Scroll event listener with throttling for performance
+    let scrollTimeout;
+    window.addEventListener('scroll', () => {
+        clearTimeout(scrollTimeout);
+        scrollTimeout = setTimeout(updateNotePositions, 16); // ~60fps
+    }, { passive: true });
+
+    // Window resize listener
+    window.addEventListener('resize', () => {
+        updateNotePositions();
+    }, { passive: true });
 
     function setupNoteClickHandlers() {
         // Click on highlight text -> highlight corresponding note
@@ -499,26 +584,15 @@ document.addEventListener('DOMContentLoaded', () => {
                 // Highlight the clicked element
                 target.classList.add('highlight-active');
 
-                // Highlight corresponding note card and auto-scroll
+                // Highlight corresponding note card
                 const noteCard = document.querySelector(`.note-card-margin[data-annotation-id="${annotationId}"]`);
                 if (noteCard) {
                     noteCard.classList.add('highlight-active');
 
-                    // Auto-scroll the notes container to align note with highlight
-                    const container = document.querySelector('.notes-margin-container');
-                    if (container) {
-                        const highlightRect = target.getBoundingClientRect();
-                        const containerRect = container.getBoundingClientRect();
-                        const noteOffsetTop = noteCard.offsetTop;
-
-                        // Calculate scroll position to align note with highlight's Y position
-                        // Target: noteCard should appear at the same Y position as the highlight
-                        const targetScrollTop = noteOffsetTop - (highlightRect.top - containerRect.top);
-
-                        container.scrollTo({
-                            top: targetScrollTop,
-                            behavior: 'smooth'
-                        });
+                    // Scroll note into view if needed
+                    const noteRect = noteCard.getBoundingClientRect();
+                    if (noteRect.top < 0 || noteRect.bottom > window.innerHeight) {
+                        noteCard.scrollIntoView({ behavior: 'smooth', block: 'center' });
                     }
                 }
 
