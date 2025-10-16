@@ -444,29 +444,28 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     function renderNotesMargin() {
-        // Remove existing margin notes
-        document.querySelectorAll('.note-card-margin').forEach(el => el.remove());
+        // Get or create the fixed notes container
+        let container = document.querySelector('.notes-margin-container');
+        if (!container) {
+            container = document.createElement('div');
+            container.className = 'notes-margin-container';
+            document.body.appendChild(container);
+        }
+
+        // Clear existing notes
+        container.innerHTML = '';
 
         const annotations = JSON.parse(localStorage.getItem(storageKey) || '[]');
         const notes = annotations.filter(anno => anno.note);
 
-        if (notes.length === 0) return;
+        if (notes.length === 0) {
+            // Remove container if no notes
+            container.remove();
+            return;
+        }
 
-        // Create note cards positioned next to their highlights
-        const noteCards = [];
-
+        // Create note cards in DOM order
         notes.forEach(anno => {
-            const highlightElement = document.querySelector(`[data-annotation-id="${anno.id}"]`);
-            if (!highlightElement) return;
-
-            const rect = highlightElement.getBoundingClientRect();
-            const scrollY = window.scrollY || window.pageYOffset;
-
-            // Calculate position relative to markdown body
-            const bodyRect = markdownBody.getBoundingClientRect();
-            const bodyLeft = bodyRect.left;
-            const bodyWidth = bodyRect.width;
-
             const noteCard = document.createElement('div');
             noteCard.className = 'note-card-margin';
             noteCard.dataset.annotationId = anno.id;
@@ -476,44 +475,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 <div class="note-content">${anno.note}</div>
             `;
 
-            // Position note to the right of the content
-            // Use absolute position relative to document
-            noteCard.style.position = 'absolute';
-            noteCard.style.left = `${bodyLeft + bodyWidth + 20}px`;
-            noteCard.style.top = `${rect.top + scrollY}px`;
-
-            document.body.appendChild(noteCard);
-
-            noteCards.push({
-                element: noteCard,
-                originalTop: rect.top + scrollY,
-                highlightId: anno.id,
-                highlightElement: highlightElement
-            });
-        });
-
-        // Adjust positions to avoid collisions
-        adjustNotePositions(noteCards);
-    }
-
-    function adjustNotePositions(noteCards) {
-        // Sort by original top position
-        noteCards.sort((a, b) => a.originalTop - b.originalTop);
-
-        let lastBottom = 0;
-        const spacing = 10; // 10px spacing between notes
-
-        noteCards.forEach(noteCard => {
-            let top = noteCard.originalTop;
-            const height = noteCard.element.offsetHeight;
-
-            // If overlapping with previous note, push down
-            if (top < lastBottom + spacing) {
-                top = lastBottom + spacing;
-            }
-
-            noteCard.element.style.top = `${top}px`;
-            lastBottom = top + height;
+            container.appendChild(noteCard);
         });
     }
 
@@ -537,15 +499,26 @@ document.addEventListener('DOMContentLoaded', () => {
                 // Highlight the clicked element
                 target.classList.add('highlight-active');
 
-                // Highlight corresponding note card
+                // Highlight corresponding note card and auto-scroll
                 const noteCard = document.querySelector(`.note-card-margin[data-annotation-id="${annotationId}"]`);
                 if (noteCard) {
                     noteCard.classList.add('highlight-active');
 
-                    // Scroll note into view if needed
-                    const noteRect = noteCard.getBoundingClientRect();
-                    if (noteRect.top < 0 || noteRect.bottom > window.innerHeight) {
-                        noteCard.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                    // Auto-scroll the notes container to align note with highlight
+                    const container = document.querySelector('.notes-margin-container');
+                    if (container) {
+                        const highlightRect = target.getBoundingClientRect();
+                        const containerRect = container.getBoundingClientRect();
+                        const noteOffsetTop = noteCard.offsetTop;
+
+                        // Calculate scroll position to align note with highlight's Y position
+                        // Target: noteCard should appear at the same Y position as the highlight
+                        const targetScrollTop = noteOffsetTop - (highlightRect.top - containerRect.top);
+
+                        container.scrollTo({
+                            top: targetScrollTop,
+                            behavior: 'smooth'
+                        });
                     }
                 }
 
