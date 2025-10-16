@@ -645,11 +645,33 @@ document.addEventListener('DOMContentLoaded', () => {
         console.log('[layoutNotesWithPhysics] Physics simulation complete');
     }
 
-    // Window resize listener - recalculate positions when window size changes
+    // Window resize listener with debounce for smooth transitions
+    let resizeTimeout;
     window.addEventListener('resize', () => {
-        if (noteCardsData.length > 0) {
-            layoutNotesWithPhysics();
-        }
+        clearTimeout(resizeTimeout);
+        resizeTimeout = setTimeout(() => {
+            if (noteCardsData.length > 0) {
+                // Check if crossing the 1400px threshold
+                if (window.innerWidth > 1400) {
+                    // Wide screen: show margin notes with physics layout
+                    noteCardsData.forEach(noteData => {
+                        noteData.element.style.display = 'block';
+                    });
+                    layoutNotesWithPhysics();
+
+                    // Close any open popup
+                    const existingPopup = document.querySelector('.note-popup');
+                    if (existingPopup) {
+                        existingPopup.remove();
+                    }
+                } else {
+                    // Narrow screen: hide all margin notes, will show popup on click
+                    noteCardsData.forEach(noteData => {
+                        noteData.element.style.display = 'none';
+                    });
+                }
+            }
+        }, 150); // 150ms debounce for smooth transition
     });
 
     function deleteNote(annotationId) {
@@ -789,7 +811,9 @@ document.addEventListener('DOMContentLoaded', () => {
         // Create popup
         const popup = document.createElement('div');
         popup.className = 'note-popup';
+        popup.dataset.annotationId = annotationId;
         popup.innerHTML = `
+            <button class="note-delete" data-annotation-id="${annotationId}" title="删除笔记">×</button>
             <div class="note-content">${noteData.note}</div>
         `;
 
@@ -807,6 +831,7 @@ document.addEventListener('DOMContentLoaded', () => {
         popup.style.zIndex = '9999';
         popup.style.fontSize = '13px';
         popup.style.lineHeight = '1.6';
+        popup.style.cursor = 'move';
 
         document.body.appendChild(popup);
 
@@ -818,5 +843,48 @@ document.addEventListener('DOMContentLoaded', () => {
         if (popupRect.bottom > window.innerHeight) {
             popup.style.top = `${rect.top - popupRect.height - 10}px`;
         }
+
+        // Make popup draggable
+        makeDraggable(popup);
+    }
+
+    function makeDraggable(element) {
+        let isDragging = false;
+        let startX, startY, initialLeft, initialTop;
+
+        element.addEventListener('mousedown', (e) => {
+            // Don't drag if clicking on delete button
+            if (e.target.classList.contains('note-delete')) {
+                return;
+            }
+
+            isDragging = true;
+            startX = e.clientX;
+            startY = e.clientY;
+
+            const rect = element.getBoundingClientRect();
+            initialLeft = rect.left;
+            initialTop = rect.top;
+
+            element.style.cursor = 'grabbing';
+            e.preventDefault();
+        });
+
+        document.addEventListener('mousemove', (e) => {
+            if (!isDragging) return;
+
+            const dx = e.clientX - startX;
+            const dy = e.clientY - startY;
+
+            element.style.left = `${initialLeft + dx}px`;
+            element.style.top = `${initialTop + dy}px`;
+        });
+
+        document.addEventListener('mouseup', () => {
+            if (isDragging) {
+                isDragging = false;
+                element.style.cursor = 'move';
+            }
+        });
     }
 });

@@ -113,7 +113,7 @@
     width: 250px; /* Match TOC width */
     padding: 12px 16px;
     background: #f6f8fa;
-    border-right: 3px solid #0969da; /* Right border for symmetry */
+    border-left: 3px solid #0969da; /* Left border for symmetry with TOC */
     border-radius: 6px;
     font-size: 13px;
     line-height: 1.6;
@@ -125,13 +125,13 @@
 
 .note-card-margin:hover {
     background: #e7f5ff;
-    border-right-color: #0550ae;
+    border-left-color: #0550ae;
     box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
 }
 
 .note-card-margin.highlight-active {
     border: 2px solid #0969da;
-    border-right: 3px solid #0969da;
+    border-left: 3px solid #0969da;
     box-shadow: 0 0 0 3px rgba(9, 105, 218, 0.15);
 }
 
