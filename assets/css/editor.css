@@ -1,0 +1,272 @@
+.selection-popover {
+    position: absolute;
+    background-color: #2c2c2c;
+    border-radius: 4px;
+    padding: 3px 6px;
+    display: none;
+    z-index: 1000;
+    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.2);
+    color: white;
+}
+
+.selection-popover button {
+    background: none;
+    border: none;
+    color: white;
+    padding: 5px 8px;
+    cursor: pointer;
+    font-size: 12px;
+    transition: background-color 0.2s;
+}
+
+.selection-popover button:hover {
+    background-color: #4a4a4a;
+    border-radius: 3px;
+}
+
+.popover-separator {
+    color: #666;
+    margin: 0 4px;
+    font-size: 12px;
+    user-select: none;
+}
+
+/* Keep link colors consistent - override all pseudo-class states */
+.markdown-body a:link {
+    color: #0969da !important;
+}
+
+.markdown-body a:visited {
+    color: #0969da !important;
+}
+
+.markdown-body a:hover {
+    color: #0969da !important;
+}
+
+.markdown-body a:active {
+    color: #0969da !important;
+}
+
+.markdown-body a:focus {
+    color: #0969da !important;
+}
+
+.highlight-orange {
+    background-color: rgba(255, 165, 0, 0.5);
+}
+
+.highlight-green {
+    background-color: rgba(144, 238, 144, 0.6);
+}
+
+.highlight-yellow {
+    background-color: rgba(255, 255, 0, 0.5);
+}
+
+.strikethrough {
+    text-decoration: line-through;
+}
+
+.has-note {
+    background-color: rgba(255, 99, 71, 0.2); /* Light tomato background */
+    cursor: pointer;
+}
+
+
+/* Note input modal */
+.note-input-modal {
+    position: absolute;
+    z-index: 1001;
+    background: white;
+    border: 1px solid #d0d7de;
+    border-radius: 8px;
+    padding: 12px;
+    box-shadow: 0 8px 24px rgba(140, 149, 159, 0.2);
+    width: 360px;
+}
+
+.note-textarea {
+    width: 100%;
+    padding: 8px 12px;
+    border: 1px solid #d0d7de;
+    border-radius: 6px;
+    font-size: 14px;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Noto Sans", Helvetica, Arial, sans-serif;
+    resize: vertical;
+    min-height: 80px;
+    margin-bottom: 12px;
+    box-sizing: border-box;
+}
+
+.note-textarea:focus {
+    outline: none;
+    border-color: #0969da;
+    box-shadow: 0 0 0 3px rgba(9, 105, 218, 0.1);
+}
+
+.note-input-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 8px;
+}
+
+.note-input-actions button {
+    padding: 6px 16px;
+    border-radius: 6px;
+    font-size: 14px;
+    font-weight: 500;
+    cursor: pointer;
+    border: 1px solid #d0d7de;
+    background: white;
+    color: #1f2328;
+    transition: all 0.1s;
+}
+
+.note-input-actions button:hover {
+    background: #f3f4f6;
+}
+
+.note-save {
+    background: #2da44e !important;
+    color: white !important;
+    border-color: #2da44e !important;
+}
+
+.note-save:hover {
+    background: #2c974b !important;
+}
+
+/* Note margin cards (显示在正文右侧，右对齐) */
+.note-card-margin {
+    position: absolute;
+    width: 250px; /* Match TOC width */
+    padding: 12px 16px;
+    background: #f6f8fa;
+    border-left: 3px solid #0969da; /* Left border for symmetry with TOC */
+    border-radius: 6px;
+    font-size: 13px;
+    line-height: 1.6;
+    cursor: pointer;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+    z-index: 10;
+    box-sizing: border-box;
+}
+
+.note-card-margin:hover {
+    background: #e7f5ff;
+    border-left-color: #0550ae;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+}
+
+.note-card-margin.highlight-active {
+    border: 2px solid #0969da;
+    border-left: 3px solid #0969da;
+    box-shadow: 0 0 0 3px rgba(9, 105, 218, 0.15);
+}
+
+/* Delete button */
+.note-delete {
+    position: absolute;
+    top: 8px;
+    right: 8px;
+    width: 20px;
+    height: 20px;
+    border: none;
+    background: #dc3545;
+    color: white;
+    border-radius: 50%;
+    font-size: 16px;
+    line-height: 1;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    opacity: 0.7;
+    transition: opacity 0.2s, transform 0.2s;
+    padding: 0;
+}
+
+.note-delete:hover {
+    opacity: 1;
+    transform: scale(1.1);
+}
+
+.note-content {
+    color: #1f2328;
+    white-space: pre-wrap;
+    word-wrap: break-word;
+    padding-right: 24px; /* Make room for delete button */
+}
+
+/* Confirm dialog - small popup near trigger */
+.confirm-dialog {
+    position: fixed;
+    background: white;
+    border: 1px solid #d0d7de;
+    border-radius: 6px;
+    padding: 10px 12px;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+    z-index: 10000;
+    min-width: 180px;
+    max-width: 250px;
+}
+
+.confirm-message {
+    margin: 0 0 10px 0;
+    font-size: 13px;
+    color: #1f2328;
+    line-height: 1.4;
+}
+
+.confirm-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 6px;
+}
+
+.confirm-actions button {
+    padding: 4px 12px;
+    border-radius: 4px;
+    font-size: 12px;
+    font-weight: 500;
+    cursor: pointer;
+    border: 1px solid #d0d7de;
+    background: white;
+    color: #1f2328;
+    transition: all 0.1s;
+}
+
+.confirm-actions button:hover {
+    background: #f3f4f6;
+}
+
+.confirm-ok {
+    background: #dc3545 !important;
+    color: white !important;
+    border-color: #dc3545 !important;
+}
+
+.confirm-ok:hover {
+    background: #c82333 !important;
+}
+
+/* 正文中的 has-note 高亮交互 */
+.has-note {
+    background-color: rgba(255, 99, 71, 0.2);
+    cursor: pointer;
+    border-bottom: 2px dotted rgba(255, 99, 71, 0.5);
+    transition: all 0.2s;
+}
+
+.has-note:hover {
+    background-color: rgba(255, 99, 71, 0.35);
+    border-bottom-color: rgba(255, 99, 71, 0.8);
+}
+
+.has-note.highlight-active {
+    background-color: rgba(9, 105, 218, 0.2);
+    border-bottom: 2px solid #0969da;
+    box-shadow: 0 0 0 2px rgba(9, 105, 218, 0.1);
+}
+
