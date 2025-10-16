@@ -2,6 +2,14 @@
 name = "markon"
 version = "0.1.0"
 edition = "2021"
+authors = ["kookyleo"]
+description = "A GitHub-styled Markdown previewer with live rendering, TOC support, and mermaid diagrams"
+license = "Apache-2.0"
+repository = "https://github.com/kookyleo/markon"
+homepage = "https://github.com/kookyleo/markon"
+keywords = ["markdown", "preview", "github", "mermaid", "toc"]
+categories = ["command-line-utilities", "text-processing", "web-programming"]
+readme = "README.md"
 
 [dependencies]
 clap = { version = "4.5.11", features = ["derive"] }
