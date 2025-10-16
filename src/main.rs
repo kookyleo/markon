@@ -1,3 +1,4 @@
+mod assets;
 mod markdown;
 mod server;
 
@@ -23,13 +24,9 @@ struct Cli {
     #[arg(short = 'r', long, action = clap::ArgAction::SetTrue, conflicts_with = "file")]
     file_tree: bool,
 
-    /// Use dark mode.
-    #[arg(short = 'd', long, action = clap::ArgAction::SetTrue)]
-    dark: bool,
-
-    /// Disable live reload.
-    #[arg(long, action = clap::ArgAction::SetTrue)]
-    no_reload: bool,
+    /// Theme selection (light, dark, auto).
+    #[arg(short = 't', long, default_value = "auto")]
+    theme: String,
 }
 
 #[tokio::main]
@@ -41,11 +38,24 @@ async fn main() {
         return;
     }
 
-    let file_to_render = cli.file.as_deref().unwrap_or("README.md").to_string();
-    if !Path::new(&file_to_render).exists() {
-        eprintln!("Error: File '{}' not found.", file_to_render);
-        return;
-    }
+    // Validate theme parameter
+    let theme = match cli.theme.as_str() {
+        "light" | "dark" | "auto" => cli.theme.clone(),
+        _ => {
+            eprintln!("Invalid theme '{}'. Use: light, dark, or auto", cli.theme);
+            return;
+        }
+    };
 
-    server::start(cli.port, file_to_render).await;
+    let file_to_render = if let Some(file) = cli.file {
+        if !Path::new(&file).exists() {
+            eprintln!("Error: File '{}' not found.", file);
+            return;
+        }
+        Some(file)
+    } else {
+        None
+    };
+
+    server::start(cli.port, file_to_render, theme).await;
 }

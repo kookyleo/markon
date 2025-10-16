@@ -1,0 +1,260 @@
+<!DOCTYPE html>
+<html lang="en" dir="auto">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{ title }}</title>
+    {% if theme == "auto" %}
+    <link rel="stylesheet" href="/static/css/github-markdown-light.css" media="(prefers-color-scheme: light)">
+    <link rel="stylesheet" href="/static/css/github-markdown-dark.css" media="(prefers-color-scheme: dark)">
+    {% else %}
+    <link rel="stylesheet" href="/static/css/github-markdown-{{ theme }}.css">
+    {% endif %}
+    <link rel="stylesheet" href="/static/css/github-print.css" media="print">
+    <style>
+        body {
+            box-sizing: border-box;
+            min-width: 200px;
+            max-width: 980px;
+            margin: 0 auto;
+            padding: 45px;
+        }
+
+        a:visited {
+            color: inherit;
+        }
+
+        {% if theme == "dark" or theme == "auto" %}
+        @media (prefers-color-scheme: dark) {
+            body {
+                background-color: #0d1117;
+                color: #f0f6fc;
+            }
+        }
+        {% endif %}
+
+        {% if theme == "light" or theme == "auto" %}
+        @media (prefers-color-scheme: light) {
+            body {
+                background-color: #ffffff;
+                color: #1f2328;
+            }
+        }
+        {% endif %}
+
+        .back-link {
+            margin-bottom: 20px;
+            display: block;
+        }
+
+        .back-link a {
+            color: #0969da;
+            text-decoration: none;
+        }
+
+        .back-link a:hover {
+            text-decoration: underline;
+        }
+
+        {% if theme == "dark" %}
+        .back-link a {
+            color: #4493f8;
+        }
+        {% endif %}
+
+        .footer {
+            margin-top: 10px;
+            padding-top: 20px;
+            font-size: 0.9rem;
+            text-align: left;
+            margin-left: -1px;
+        }
+
+        .footer a {
+            text-decoration: none;
+            color: #8b949e;
+        }
+
+        .footer a:visited {
+            color: #8b949e;
+        }
+
+        .footer a:hover {
+            text-decoration: underline;
+        }
+
+        {% if theme == "dark" or theme == "auto" %}
+        @media (prefers-color-scheme: dark) {
+            .footer {
+                color: #8b949e;
+            }
+            .footer a,
+            .footer a:visited {
+                color: #8b949e;
+            }
+        }
+        {% endif %}
+
+        {% if theme == "light" or theme == "auto" %}
+        @media (prefers-color-scheme: light) {
+            .footer {
+                color: #656d76;
+            }
+            .footer a,
+            .footer a:visited {
+                color: #656d76;
+            }
+        }
+        {% endif %}
+
+        @media print {
+            .back-link {
+                display: none;
+            }
+            .toc {
+                display: none;
+            }
+        }
+
+        /* Table of Contents Styles */
+        .toc {
+            padding: 15px;
+            border-radius: 6px;
+            font-size: 0.85rem;
+            opacity: 0.9;
+        }
+
+        .toc-title {
+            font-weight: 600;
+            margin-bottom: 10px;
+            font-size: 0.9rem;
+        }
+
+        .toc-list {
+            list-style: none;
+            padding: 0;
+            margin: 0;
+        }
+
+        .toc-item {
+            margin: 4px 0;
+        }
+
+        .toc-item a {
+            text-decoration: none;
+            display: block;
+            padding: 2px 0;
+            transition: all 0.2s;
+        }
+
+        .toc-item a:hover {
+            text-decoration: underline;
+        }
+
+        /* Indent based on heading level */
+        .toc-level-1 { padding-left: 0; }
+        .toc-level-2 { padding-left: 12px; }
+        .toc-level-3 { padding-left: 24px; }
+        .toc-level-4 { padding-left: 36px; }
+        .toc-level-5 { padding-left: 48px; }
+        .toc-level-6 { padding-left: 60px; }
+
+        /* Desktop: Fixed left sidebar */
+        @media (min-width: 1281px) {
+            .toc {
+                position: fixed;
+                left: 20px;
+                top: 20px;
+                max-width: 250px;
+                max-height: calc(100vh - 40px);
+                overflow-y: auto;
+            }
+        }
+
+        /* Mobile/Tablet: Top of page */
+        @media (max-width: 1280px) {
+            .toc {
+                position: relative;
+                margin-bottom: 30px;
+                max-width: 100%;
+            }
+        }
+
+        {% if theme == "dark" or theme == "auto" %}
+        @media (prefers-color-scheme: dark) {
+            .toc {
+                background-color: rgba(22, 27, 34, 0.95);
+                border: 1px solid #30363d;
+            }
+            .toc-title {
+                color: #f0f6fc;
+            }
+            .toc-item a {
+                color: #8b949e;
+            }
+            .toc-item a:hover {
+                color: #58a6ff;
+            }
+        }
+        {% endif %}
+
+        {% if theme == "light" or theme == "auto" %}
+        @media (prefers-color-scheme: light) {
+            .toc {
+                background-color: rgba(255, 255, 255, 0.95);
+                border: 1px solid #d0d7de;
+            }
+            .toc-title {
+                color: #1f2328;
+            }
+            .toc-item a {
+                color: #656d76;
+            }
+            .toc-item a:hover {
+                color: #0969da;
+            }
+        }
+        {% endif %}
+    </style>
+</head>
+<body>
+    <article class="markdown-body">
+        {% if show_back_link %}
+        <div class="back-link">
+            <a href="/">← Back to file list</a>
+        </div>
+        {% endif %}
+        {% if toc and toc | length > 0 %}
+        <nav class="toc">
+            <div class="toc-title">Table of Contents</div>
+            <ul class="toc-list">
+                {% for item in toc %}
+                <li class="toc-item toc-level-{{ item.level }}">
+                    <a href="#{{ item.id }}">{{ item.text }}</a>
+                </li>
+                {% endfor %}
+            </ul>
+        </nav>
+        {% endif %}
+        {{ content | safe }}
+    </article>
+    <footer class="container footer"><a href="https://github.com/kookyleo/markon">(L) Generated by AI, Gently approved by kookyleo 👀</a></footer>
+    {% if has_mermaid %}
+    <script src="/static/js/mermaid.min.js"></script>
+    <script>
+        {% if theme == "dark" %}
+        mermaid.initialize({ startOnLoad: true, theme: 'dark' });
+        {% elif theme == "light" %}
+        mermaid.initialize({ startOnLoad: true, theme: 'default' });
+        {% else %}
+        // Auto theme
+        if (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches) {
+            mermaid.initialize({ startOnLoad: true, theme: 'dark' });
+        } else {
+            mermaid.initialize({ startOnLoad: true, theme: 'default' });
+        }
+        {% endif %}
+    </script>
+    {% endif %}
+</body>
+</html>
