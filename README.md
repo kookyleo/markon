@@ -4,6 +4,18 @@ A lightweight Markdown renderer with GitHub styling and Medium-like annotation f
 
 English | [简体中文](README.zh.md)
 
+## Use Cases
+
+Markon makes it easy to read, print, and annotate Markdown files in beautiful HTML format. Whether you're:
+
+- **Reading documentation** on remote servers without a GUI
+- **Reviewing and annotating** technical documents with highlights and notes
+- **Printing** Markdown files with professional formatting
+- **Presenting** Markdown content with GitHub-style rendering
+- **Collaborating** by sharing annotated views of documentation
+
+Simply run `markon` in any directory to browse and render Markdown files with a clean, distraction-free interface.
+
 ## Features
 
 ### Core Features
