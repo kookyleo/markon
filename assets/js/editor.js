@@ -451,7 +451,7 @@ document.addEventListener('DOMContentLoaded', () => {
             noteCard.dataset.annotationId = anno.id;
 
             noteCard.innerHTML = `
-                <div class="note-quote">"${anno.text}"</div>
+                <button class="note-delete" data-annotation-id="${anno.id}" title="删除笔记">×</button>
                 <div class="note-content">${anno.note}</div>
             `;
 
@@ -497,10 +497,16 @@ document.addEventListener('DOMContentLoaded', () => {
         // Force browser reflow to ensure offsetHeight is calculated
         document.body.offsetHeight;
 
-        // Calculate horizontal position (constant for all notes)
+        // Calculate horizontal position (right-aligned, matching TOC width)
         const bodyRect = markdownBody.getBoundingClientRect();
         const scrollY = window.scrollY || window.pageYOffset;
-        const rightEdge = bodyRect.left + bodyRect.width + 20;
+
+        // Get TOC width for symmetry
+        const toc = document.querySelector('.toc');
+        const tocWidth = toc ? toc.offsetWidth : 250; // Fallback to 250px if no TOC
+
+        // Position notes to the right of content, right-aligned to window edge
+        const rightEdge = window.innerWidth - tocWidth;
 
         // Prepare note objects with ideal positions
         const notes = noteCardsData.map((noteData, index) => {
@@ -540,8 +546,8 @@ document.addEventListener('DOMContentLoaded', () => {
         for (let iteration = 0; iteration < maxIterations; iteration++) {
             let maxMovement = 0;
 
-            // Sort notes by current position for easier overlap detection
-            const sortedNotes = [...notes].sort((a, b) => a.currentTop - b.currentTop);
+            // CRITICAL: Calculate all forces first, then update positions together
+            const forces = new Array(notes.length).fill(0);
 
             // Calculate forces for each note
             notes.forEach((note, i) => {
@@ -552,8 +558,8 @@ document.addEventListener('DOMContentLoaded', () => {
                 force += displacement * springConstant;
 
                 // Repulsion force: check all other notes
-                sortedNotes.forEach((other) => {
-                    if (note.index === other.index) return;
+                notes.forEach((other, j) => {
+                    if (i === j) return;
 
                     // Calculate positions
                     const noteBottom = note.currentTop + note.height;
@@ -581,14 +587,18 @@ document.addEventListener('DOMContentLoaded', () => {
                             force += penetration * repulsionStrength;
                         }
 
-                        if (iteration === 0 || penetration > 1) {
-                            console.log(`[layoutNotesWithPhysics] Iteration ${iteration + 1}: Note ${note.index + 1} too close to Note ${other.index + 1}, gap=${gap.toFixed(1)}px, needed=${minSpacing}px, penetration=${penetration.toFixed(1)}`);
+                        if (iteration === 0 || penetration > 5) {
+                            console.log(`[layoutNotesWithPhysics] Iteration ${iteration + 1}: Note ${note.index + 1} (top=${note.currentTop.toFixed(0)}) too close to Note ${other.index + 1} (top=${other.currentTop.toFixed(0)}), gap=${gap.toFixed(1)}px, penetration=${penetration.toFixed(1)}`);
                         }
                     }
                 });
 
-                // Update position
-                const movement = force;
+                forces[i] = force;
+            });
+
+            // Now update all positions together
+            notes.forEach((note, i) => {
+                const movement = forces[i];
                 note.currentTop += movement;
                 maxMovement = Math.max(maxMovement, Math.abs(movement));
             });
@@ -601,6 +611,25 @@ document.addEventListener('DOMContentLoaded', () => {
 
             if (iteration === maxIterations - 1) {
                 console.log(`[layoutNotesWithPhysics] Reached max iterations (${maxIterations}), maxMovement=${maxMovement.toFixed(2)}`);
+            }
+        }
+
+        // Post-process: Force minimum spacing while preserving DOM order
+        console.log('[layoutNotesWithPhysics] Post-processing to ensure minimum spacing (preserving DOM order)...');
+
+        // Process notes in DOM order (by index), adjusting positions downward as needed
+        for (let i = 1; i < notes.length; i++) {
+            const prev = notes[i - 1];
+            const curr = notes[i];
+
+            // Calculate minimum allowed position for current note
+            const minAllowedTop = prev.currentTop + prev.height + minSpacing;
+
+            // If current note is too high (would break DOM order), push it down
+            if (curr.currentTop < minAllowedTop) {
+                const adjustment = minAllowedTop - curr.currentTop;
+                console.log(`[layoutNotesWithPhysics] Post-process: Note ${curr.index + 1} would break order or spacing, adjusting down by ${adjustment.toFixed(1)}px (from ${curr.currentTop.toFixed(0)} to ${minAllowedTop.toFixed(0)})`);
+                curr.currentTop = minAllowedTop;
             }
         }
 
@@ -623,10 +652,49 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     });
 
+    function deleteNote(annotationId) {
+        // Remove from localStorage
+        let annotations = JSON.parse(localStorage.getItem(storageKey) || '[]');
+        annotations = annotations.filter(a => a.id !== annotationId);
+        localStorage.setItem(storageKey, JSON.stringify(annotations));
+
+        // Remove highlight from DOM
+        const highlightElement = markdownBody.querySelector(`[data-annotation-id="${annotationId}"]`);
+        if (highlightElement) {
+            const parent = highlightElement.parentNode;
+            while (highlightElement.firstChild) {
+                parent.insertBefore(highlightElement.firstChild, highlightElement);
+            }
+            parent.removeChild(highlightElement);
+            parent.normalize(); // Merge adjacent text nodes
+        }
+
+        // Remove note card from DOM
+        const noteCard = document.querySelector(`.note-card-margin[data-annotation-id="${annotationId}"]`);
+        if (noteCard) {
+            noteCard.remove();
+        }
+
+        // Update noteCardsData
+        noteCardsData = noteCardsData.filter(n => n.highlightId !== annotationId);
+
+        console.log(`[deleteNote] Deleted note ${annotationId}`);
+    }
+
     function setupNoteClickHandlers() {
         // Click on highlight text -> show note
         document.body.addEventListener('click', (e) => {
             let target = e.target;
+
+            // Handle delete button clicks
+            if (target.classList.contains('note-delete')) {
+                const annotationId = target.dataset.annotationId;
+                if (confirm('确定要删除这条笔记吗？')) {
+                    deleteNote(annotationId);
+                }
+                e.stopPropagation();
+                return;
+            }
 
             // Handle clicks on has-note elements
             if (target.classList.contains('has-note')) {
@@ -722,7 +790,6 @@ document.addEventListener('DOMContentLoaded', () => {
         const popup = document.createElement('div');
         popup.className = 'note-popup';
         popup.innerHTML = `
-            <div class="note-quote">"${noteData.text}"</div>
             <div class="note-content">${noteData.note}</div>
         `;
 
