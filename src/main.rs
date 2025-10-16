@@ -49,7 +49,7 @@ async fn main() {
 
     let file_to_render = if let Some(file) = cli.file {
         if !Path::new(&file).exists() {
-            eprintln!("Error: File '{}' not found.", file);
+            eprintln!("Error: File '{file}' not found.");
             return;
         }
         Some(file)

@@ -32,12 +32,12 @@ pub async fn start(port: u16, file_path: Option<String>, theme: String) {
             match std::str::from_utf8(&file.data) {
                 Ok(content) => {
                     if let Err(e) = tera.add_raw_template(&file_name, content) {
-                        eprintln!("Failed to add template '{}': {}", file_name, e);
+                        eprintln!("Failed to add template '{file_name}': {e}");
                         std::process::exit(1);
                     }
                 }
                 Err(e) => {
-                    eprintln!("Failed to read template '{}': {}", file_name, e);
+                    eprintln!("Failed to read template '{file_name}': {e}");
                     std::process::exit(1);
                 }
             }
@@ -64,14 +64,14 @@ pub async fn start(port: u16, file_path: Option<String>, theme: String) {
     let listener = match TcpListener::bind(&addr).await {
         Ok(listener) => listener,
         Err(e) => {
-            eprintln!("Failed to bind to {}: {}", addr, e);
+            eprintln!("Failed to bind to {addr}: {e}");
             std::process::exit(1);
         }
     };
-    println!("listening on http://{}", addr);
+    println!("listening on http://{addr}");
 
     if let Err(e) = axum::serve(listener, app.into_make_service()).await {
-        eprintln!("Server error: {}", e);
+        eprintln!("Server error: {e}");
         std::process::exit(1);
     }
 }
@@ -103,7 +103,7 @@ async fn handle_path(
         Err(_) => {
             return (
                 StatusCode::NOT_FOUND,
-                format!("Path not found: {}", decoded_path),
+                format!("Path not found: {decoded_path}"),
             )
                 .into_response();
         }
@@ -123,11 +123,15 @@ async fn handle_path(
         // Check if it's a markdown file
         if canonical_path
             .extension()
-            .map_or(false, |ext| ext.to_string_lossy().to_lowercase() == "md")
+            .is_some_and(|ext| ext.to_string_lossy().to_lowercase() == "md")
         {
             render_markdown_file(&decoded_path, &state)
         } else {
-            (StatusCode::BAD_REQUEST, "Only Markdown files can be rendered").into_response()
+            (
+                StatusCode::BAD_REQUEST,
+                "Only Markdown files can be rendered",
+            )
+                .into_response()
         }
     } else if canonical_path.is_dir() {
         // Show directory listing
@@ -144,7 +148,7 @@ fn render_markdown_file(file_path: &str, state: &AppState) -> Response {
             let (html_content, has_mermaid, toc) = renderer.render(&markdown_input);
 
             let mut context = tera::Context::new();
-            context.insert("title", &format!("markon - {}", file_path));
+            context.insert("title", &format!("markon - {file_path}"));
             context.insert("theme", state.theme.as_str());
             context.insert("content", &html_content);
             context.insert("show_back_link", &true);
@@ -155,7 +159,7 @@ fn render_markdown_file(file_path: &str, state: &AppState) -> Response {
                 Ok(html) => Html(html).into_response(),
                 Err(e) => (
                     StatusCode::INTERNAL_SERVER_ERROR,
-                    format!("Template error: {}", e),
+                    format!("Template error: {e}"),
                 )
                     .into_response(),
             }
@@ -167,9 +171,8 @@ fn render_markdown_file(file_path: &str, state: &AppState) -> Response {
             context.insert(
                 "content",
                 &format!(
-                    r#"<p style="color: red;">Error reading file '{}': {}</p>
-                       <a href="/">← Back to file list</a>"#,
-                    file_path, e
+                    r#"<p style="color: red;">Error reading file '{file_path}': {e}</p>
+                       <a href="/">← Back to file list</a>"#
                 ),
             );
             context.insert("show_back_link", &false);
@@ -179,7 +182,7 @@ fn render_markdown_file(file_path: &str, state: &AppState) -> Response {
                 Ok(html) => Html(html).into_response(),
                 Err(e) => (
                     StatusCode::INTERNAL_SERVER_ERROR,
-                    format!("Template error: {}", e),
+                    format!("Template error: {e}"),
                 )
                     .into_response(),
             }
@@ -207,11 +210,7 @@ fn render_directory_listing(state: &AppState, dir_param: Option<&str>) -> Respon
     let current_dir = match current_dir.canonicalize() {
         Ok(path) => path,
         Err(e) => {
-            return (
-                StatusCode::BAD_REQUEST,
-                format!("Invalid directory: {}", e),
-            )
-                .into_response();
+            return (StatusCode::BAD_REQUEST, format!("Invalid directory: {e}")).into_response();
         }
     };
 
@@ -238,31 +237,33 @@ fn render_directory_listing(state: &AppState, dir_param: Option<&str>) -> Respon
 
                 if is_dir {
                     // Calculate relative path from start_dir for the link
-                    let relative_path = path.strip_prefix(&*state.start_dir)
+                    let relative_path = path
+                        .strip_prefix(&*state.start_dir)
                         .unwrap_or(&path)
                         .to_string_lossy()
                         .to_string();
                     Some(Entry {
                         name,
                         is_dir: true,
-                        link: format!("/{}", relative_path),
+                        link: format!("/{relative_path}"),
                     })
                 } else {
                     // Only show Markdown files (case insensitive)
                     let is_markdown = path
                         .extension()
-                        .map_or(false, |ext| ext.to_string_lossy().to_lowercase() == "md");
+                        .is_some_and(|ext| ext.to_string_lossy().to_lowercase() == "md");
 
                     if is_markdown {
                         // Calculate relative path from start_dir for the link
-                        let relative_path = path.strip_prefix(&*state.start_dir)
+                        let relative_path = path
+                            .strip_prefix(&*state.start_dir)
                             .unwrap_or(&path)
                             .to_string_lossy()
                             .to_string();
                         Some(Entry {
                             name,
                             is_dir: false,
-                            link: format!("/{}", relative_path),
+                            link: format!("/{relative_path}"),
                         })
                     } else {
                         None
@@ -273,33 +274,32 @@ fn render_directory_listing(state: &AppState, dir_param: Option<&str>) -> Respon
         Err(e) => {
             return (
                 StatusCode::INTERNAL_SERVER_ERROR,
-                format!("Error reading directory: {}", e),
+                format!("Error reading directory: {e}"),
             )
                 .into_response();
         }
     };
 
     // Sort: directories first, then files, both alphabetically
-    entries.sort_by(|a, b| {
-        match (a.is_dir, b.is_dir) {
-            (true, false) => std::cmp::Ordering::Less,
-            (false, true) => std::cmp::Ordering::Greater,
-            _ => a.name.cmp(&b.name),
-        }
+    entries.sort_by(|a, b| match (a.is_dir, b.is_dir) {
+        (true, false) => std::cmp::Ordering::Less,
+        (false, true) => std::cmp::Ordering::Greater,
+        _ => a.name.cmp(&b.name),
     });
 
     // Check if we can show parent directory link
     let show_parent = current_dir != *state.start_dir;
     let parent_link = if show_parent {
         if let Some(parent) = current_dir.parent() {
-            let relative_path = parent.strip_prefix(&*state.start_dir)
+            let relative_path = parent
+                .strip_prefix(&*state.start_dir)
                 .map(|p| p.to_string_lossy().to_string())
                 .unwrap_or_else(|_| String::new());
 
             if relative_path.is_empty() {
                 Some("/".to_string())
             } else {
-                Some(format!("/{}", relative_path))
+                Some(format!("/{relative_path}"))
             }
         } else {
             None
@@ -319,7 +319,7 @@ fn render_directory_listing(state: &AppState, dir_param: Option<&str>) -> Respon
         Ok(html) => Html(html).into_response(),
         Err(e) => (
             StatusCode::INTERNAL_SERVER_ERROR,
-            format!("Template error: {}", e),
+            format!("Template error: {e}"),
         )
             .into_response(),
     }
@@ -333,11 +333,7 @@ async fn serve_js(AxumPath(filename): AxumPath<String>) -> impl IntoResponse {
     serve_static_file(&filename, JsAssets::get, "application/javascript")
 }
 
-fn serve_static_file<F>(
-    filename: &str,
-    getter: F,
-    content_type: &str,
-) -> Response
+fn serve_static_file<F>(filename: &str, getter: F, content_type: &str) -> Response
 where
     F: FnOnce(&str) -> Option<rust_embed::EmbeddedFile>,
 {
