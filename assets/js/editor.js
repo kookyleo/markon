@@ -12,19 +12,17 @@ document.addEventListener('DOMContentLoaded', () => {
     const popover = createPopover();
     document.body.appendChild(popover);
 
-    // Use MutationObserver to wait for content to be loaded
-    const observer = new MutationObserver((mutationsList, observer) => {
-        // We only need to run this once
-        for(const mutation of mutationsList) {
-            if (mutation.type === 'childList' && mutation.addedNodes.length > 0) {
-                applyAnnotations();
-                setupNoteClickHandlers();
-                observer.disconnect(); // Stop observing after we've applied annotations
-                break;
-            }
+    // Track if annotations have been applied to prevent re-application
+    let annotationsApplied = false;
+
+    // Apply annotations once after a short delay to ensure content is loaded
+    setTimeout(() => {
+        if (!annotationsApplied) {
+            applyAnnotations();
+            setupNoteClickHandlers();
+            annotationsApplied = true;
         }
-    });
-    observer.observe(markdownBody, { childList: true, subtree: true });
+    }, 100);
 
 
     let currentSelection = null;
@@ -37,7 +35,7 @@ document.addEventListener('DOMContentLoaded', () => {
             currentSelection = selection.getRangeAt(0).cloneRange();
             const rect = selection.getRangeAt(0).getBoundingClientRect();
             popover.style.left = `${rect.left + window.scrollX + rect.width / 2 - popover.offsetWidth / 2}px`;
-            popover.style.top = `${rect.top + window.scrollY - popover.offsetHeight - 10}px`;
+            popover.style.top = `${rect.top + window.scrollY - popover.offsetHeight - 20}px`;
             popover.style.display = 'block';
         } else {
             if (!popover.contains(e.target)) {
@@ -74,14 +72,23 @@ document.addEventListener('DOMContentLoaded', () => {
 
     function getSimpleXPath(node) {
         const parts = [];
-        while (node && node.nodeName !== 'ARTICLE') {
+        let current = node;
+
+        // Walk up the tree until we reach ARTICLE
+        while (current && current.nodeName !== 'ARTICLE') {
             let index = 1;
-            for (let sibling = node.previousSibling; sibling; sibling = sibling.previousSibling) {
-                if (sibling.nodeName === node.nodeName) index++;
+            for (let sibling = current.previousSibling; sibling; sibling = sibling.previousSibling) {
+                if (sibling.nodeName === current.nodeName) index++;
             }
-            parts.unshift(`${node.nodeName}[${index}]`);
-            node = node.parentNode;
+            parts.unshift(`${current.nodeName}[${index}]`);
+            current = current.parentNode;
         }
+
+        // If parts is empty, we're at the article level
+        if (parts.length === 0) {
+            return '//article[1]';
+        }
+
         return `//article[1]/${parts.join('/')}`;
     }
 
@@ -89,13 +96,23 @@ document.addEventListener('DOMContentLoaded', () => {
         if (!currentSelection) return;
         const range = currentSelection;
 
+        // Get the actual node to use for XPath (text node or element)
+        const getPathNode = (container) => {
+            // If container is a text node, use its parent
+            if (container.nodeType === 3) {
+                return container.parentNode;
+            }
+            // If container is an element and we're at the start/end, use the text node if it exists
+            return container;
+        };
+
         const annotation = {
             id: `anno-${Date.now()}`,
             type: className,
             tagName: tagName,
-            startPath: getSimpleXPath(range.startContainer.parentNode),
+            startPath: getSimpleXPath(getPathNode(range.startContainer)),
             startOffset: range.startOffset,
-            endPath: getSimpleXPath(range.endContainer.parentNode),
+            endPath: getSimpleXPath(getPathNode(range.endContainer)),
             endOffset: range.endOffset,
             text: range.toString(),
             note: note
@@ -142,9 +159,21 @@ document.addEventListener('DOMContentLoaded', () => {
 
             if (startNode && endNode) {
                 try {
+                    const startTarget = startNode.firstChild || startNode;
+                    const endTarget = endNode.firstChild || endNode;
+
+                    // Validate offsets before creating range
+                    const startLength = startTarget.nodeType === 3 ? startTarget.length : startTarget.textContent.length;
+                    const endLength = endTarget.nodeType === 3 ? endTarget.length : endTarget.textContent.length;
+
+                    if (anno.startOffset > startLength || anno.endOffset > endLength) {
+                        console.warn('Skipping annotation due to invalid offset:', anno);
+                        return;
+                    }
+
                     const range = document.createRange();
-                    range.setStart(startNode.firstChild || startNode, anno.startOffset);
-                    range.setEnd(endNode.firstChild || endNode, anno.endOffset);
+                    range.setStart(startTarget, anno.startOffset);
+                    range.setEnd(endTarget, anno.endOffset);
 
                     if (range.toString().trim() === anno.text.trim()) {
                         const element = document.createElement(anno.tagName);
@@ -157,7 +186,7 @@ document.addEventListener('DOMContentLoaded', () => {
                         range.insertNode(element);
                     }
                 } catch (e) {
-                    console.error('Failed to apply annotation:', anno, e);
+                    console.warn('Skipping annotation due to error:', anno, e.message);
                 }
             }
         });
