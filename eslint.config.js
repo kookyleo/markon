@@ -10,7 +10,8 @@ export default [
                 console: "readonly",
                 setTimeout: "readonly",
                 clearTimeout: "readonly",
-                localStorage: "readonly"
+                localStorage: "readonly",
+                location: "readonly"
             }
         },
         rules: {

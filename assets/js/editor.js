@@ -1,3 +1,87 @@
+// Global function to show confirm dialog
+function showConfirmDialog(message, onConfirm, triggerElement, confirmText = 'OK') {
+    // Remove existing dialog if any
+    const existingDialog = document.querySelector('.confirm-dialog');
+    if (existingDialog) existingDialog.remove();
+
+    // Create small dialog
+    const dialog = document.createElement('div');
+    dialog.className = 'confirm-dialog';
+    dialog.innerHTML = `
+        <p class="confirm-message">${message}</p>
+        <div class="confirm-actions">
+            <button class="confirm-cancel">Cancel</button>
+            <button class="confirm-ok">${confirmText}</button>
+        </div>
+    `;
+
+    document.body.appendChild(dialog);
+
+    // Position near trigger element
+    if (triggerElement) {
+        const rect = triggerElement.getBoundingClientRect();
+        dialog.style.position = 'fixed';
+        dialog.style.left = `${rect.left}px`;
+        dialog.style.top = `${rect.bottom + 5}px`;
+
+        // Adjust if goes off screen
+        setTimeout(() => {
+            const dialogRect = dialog.getBoundingClientRect();
+            if (dialogRect.right > window.innerWidth) {
+                dialog.style.left = `${window.innerWidth - dialogRect.width - 10}px`;
+            }
+            if (dialogRect.bottom > window.innerHeight) {
+                dialog.style.top = `${rect.top - dialogRect.height - 5}px`;
+            }
+        }, 0);
+    }
+
+    const cancelBtn = dialog.querySelector('.confirm-cancel');
+    const okBtn = dialog.querySelector('.confirm-ok');
+
+    cancelBtn.addEventListener('click', () => {
+        dialog.remove();
+    });
+
+    okBtn.addEventListener('click', () => {
+        dialog.remove();
+        onConfirm();
+    });
+
+    // Close on outside click
+    setTimeout(() => {
+        const closeHandler = (e) => {
+            if (!dialog.contains(e.target)) {
+                dialog.remove();
+                document.removeEventListener('click', closeHandler);
+            }
+        };
+        document.addEventListener('click', closeHandler);
+    }, 0);
+
+    // Focus OK button
+    setTimeout(() => okBtn.focus(), 0);
+}
+
+// Global function to clear annotations for current page
+// eslint-disable-next-line no-unused-vars
+function clearPageAnnotations(event) {
+    const filePathMeta = document.querySelector('meta[name="file-path"]');
+    if (!filePathMeta) return;
+
+    const filePath = filePathMeta.getAttribute('content');
+    const storageKey = `markon-annotations-${filePath}`;
+
+    // Get trigger element for positioning
+    const triggerElement = event ? event.target : null;
+
+    showConfirmDialog('Clear all annotations for this page?', () => {
+        localStorage.removeItem(storageKey);
+        console.log(`[clearPageAnnotations] Cleared annotations for: ${filePath}`);
+        location.reload();
+    }, triggerElement, 'Clear');
+}
+
 document.addEventListener('DOMContentLoaded', () => {
     const filePathMeta = document.querySelector('meta[name="file-path"]');
     if (!filePathMeta) return;
@@ -147,71 +231,6 @@ document.addEventListener('DOMContentLoaded', () => {
             popover.style.display = 'none';
         });
         return popover;
-    }
-
-    // Custom confirmation dialog - appears near the trigger element
-    function showConfirmDialog(message, onConfirm, triggerElement) {
-        // Remove existing dialog if any
-        const existingDialog = document.querySelector('.confirm-dialog');
-        if (existingDialog) existingDialog.remove();
-
-        // Create small dialog
-        const dialog = document.createElement('div');
-        dialog.className = 'confirm-dialog';
-        dialog.innerHTML = `
-            <p class="confirm-message">${message}</p>
-            <div class="confirm-actions">
-                <button class="confirm-cancel">Cancel</button>
-                <button class="confirm-ok">Delete</button>
-            </div>
-        `;
-
-        document.body.appendChild(dialog);
-
-        // Position near trigger element
-        if (triggerElement) {
-            const rect = triggerElement.getBoundingClientRect();
-            dialog.style.position = 'fixed';
-            dialog.style.left = `${rect.left}px`;
-            dialog.style.top = `${rect.bottom + 5}px`;
-
-            // Adjust if goes off screen
-            setTimeout(() => {
-                const dialogRect = dialog.getBoundingClientRect();
-                if (dialogRect.right > window.innerWidth) {
-                    dialog.style.left = `${window.innerWidth - dialogRect.width - 10}px`;
-                }
-                if (dialogRect.bottom > window.innerHeight) {
-                    dialog.style.top = `${rect.top - dialogRect.height - 5}px`;
-                }
-            }, 0);
-        }
-
-        const cancelBtn = dialog.querySelector('.confirm-cancel');
-        const okBtn = dialog.querySelector('.confirm-ok');
-
-        cancelBtn.addEventListener('click', () => {
-            dialog.remove();
-        });
-
-        okBtn.addEventListener('click', () => {
-            dialog.remove();
-            onConfirm();
-        });
-
-        // Close on outside click
-        setTimeout(() => {
-            const closeHandler = (e) => {
-                if (!dialog.contains(e.target)) {
-                    dialog.remove();
-                    document.removeEventListener('click', closeHandler);
-                }
-            };
-            document.addEventListener('click', closeHandler);
-        }, 0);
-
-        // Focus OK button
-        setTimeout(() => okBtn.focus(), 0);
     }
 
     function getSimpleXPath(node) {
@@ -573,6 +592,13 @@ document.addEventListener('DOMContentLoaded', () => {
                         }
                         element.appendChild(range.extractContents());
                         range.insertNode(element);
+                    } else {
+                        console.warn('[applyAnnotations] Skipping annotation due to text mismatch:', {
+                            annotationId: anno.id,
+                            storedText: anno.text,
+                            currentText: range.toString(),
+                            reason: 'Content may have changed since annotation was created'
+                        });
                     }
                 } catch (e) {
                     console.warn('Skipping annotation due to error:', anno, e.message);
@@ -906,7 +932,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 const annotationId = target.dataset.annotationId;
                 showConfirmDialog('Delete this note?', () => {
                     deleteNote(annotationId);
-                }, target);
+                }, target, 'Delete');
                 e.stopPropagation();
                 return;
             }
