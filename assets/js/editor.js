@@ -294,13 +294,6 @@ document.addEventListener('DOMContentLoaded', () => {
         const modal = document.createElement('div');
         modal.className = 'note-input-modal';
 
-        // Position modal below selection
-        const modalLeft = rect.left + window.scrollX;
-        const modalTop = rect.bottom + window.scrollY + 10;
-
-        modal.style.left = `${modalLeft}px`;
-        modal.style.top = `${modalTop}px`;
-
         modal.innerHTML = `
             <textarea class="note-textarea" placeholder="Enter your note..." autofocus></textarea>
             <div class="note-input-actions">
@@ -309,7 +302,40 @@ document.addEventListener('DOMContentLoaded', () => {
             </div>
         `;
 
+        // Append to body first to get dimensions
         document.body.appendChild(modal);
+
+        // Force reflow to calculate modal dimensions
+        const modalWidth = modal.offsetWidth;
+        const modalHeight = modal.offsetHeight;
+
+        // Calculate initial position (below selection)
+        let modalLeft = rect.left + window.scrollX;
+        let modalTop = rect.bottom + window.scrollY + 10;
+
+        // Adjust horizontal position if goes off right edge
+        if (modalLeft + modalWidth > window.innerWidth + window.scrollX) {
+            modalLeft = window.innerWidth + window.scrollX - modalWidth - 10;
+        }
+
+        // Adjust horizontal position if goes off left edge
+        if (modalLeft < window.scrollX) {
+            modalLeft = window.scrollX + 10;
+        }
+
+        // Adjust vertical position if goes off bottom edge
+        if (rect.bottom + modalHeight + 10 > window.innerHeight) {
+            // Try to place above selection instead
+            if (rect.top - modalHeight - 10 > 0) {
+                modalTop = rect.top + window.scrollY - modalHeight - 10;
+            } else {
+                // If doesn't fit above either, place at top of viewport
+                modalTop = window.scrollY + 10;
+            }
+        }
+
+        modal.style.left = `${modalLeft}px`;
+        modal.style.top = `${modalTop}px`;
 
         const textarea = modal.querySelector('.note-textarea');
         const cancelBtn = modal.querySelector('.note-cancel');
