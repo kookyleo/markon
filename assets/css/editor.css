@@ -187,46 +187,36 @@
     padding-right: 24px; /* Make room for delete button */
 }
 
-/* Confirm dialog */
+/* Confirm dialog - small popup near trigger */
 .confirm-dialog {
     position: fixed;
-    top: 0;
-    left: 0;
-    right: 0;
-    bottom: 0;
-    background: rgba(0, 0, 0, 0.5);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    z-index: 10000;
-}
-
-.confirm-dialog-content {
     background: white;
-    border-radius: 8px;
-    padding: 20px 24px;
-    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.2);
-    min-width: 300px;
-    max-width: 400px;
+    border: 1px solid #d0d7de;
+    border-radius: 6px;
+    padding: 10px 12px;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+    z-index: 10000;
+    min-width: 180px;
+    max-width: 250px;
 }
 
 .confirm-message {
-    margin: 0 0 16px 0;
-    font-size: 14px;
+    margin: 0 0 10px 0;
+    font-size: 13px;
     color: #1f2328;
-    line-height: 1.5;
+    line-height: 1.4;
 }
 
 .confirm-actions {
     display: flex;
     justify-content: flex-end;
-    gap: 8px;
+    gap: 6px;
 }
 
 .confirm-actions button {
-    padding: 6px 16px;
-    border-radius: 6px;
-    font-size: 14px;
+    padding: 4px 12px;
+    border-radius: 4px;
+    font-size: 12px;
     font-weight: 500;
     cursor: pointer;
     border: 1px solid #d0d7de;

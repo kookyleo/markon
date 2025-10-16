@@ -31,8 +31,27 @@ document.addEventListener('DOMContentLoaded', () => {
 
         const selection = window.getSelection();
         if (selection.toString().trim().length > 0) {
-            currentSelection = selection.getRangeAt(0).cloneRange();
-            const rect = selection.getRangeAt(0).getBoundingClientRect();
+            // Check if selection is within markdown body
+            const range = selection.getRangeAt(0);
+            const container = range.commonAncestorContainer;
+            const element = container.nodeType === 3 ? container.parentElement : container;
+
+            // Only show popover if selection is within markdown-body
+            if (!markdownBody.contains(element)) {
+                return;
+            }
+
+            // Skip if selection is within UI elements
+            if (element.closest('.selection-popover') ||
+                element.closest('.note-input-modal') ||
+                element.closest('.note-card-margin') ||
+                element.closest('.note-popup') ||
+                element.closest('.confirm-dialog')) {
+                return;
+            }
+
+            currentSelection = range.cloneRange();
+            const rect = range.getBoundingClientRect();
 
             // Show popover first (with visibility hidden) to get accurate dimensions
             popover.style.visibility = 'hidden';
@@ -80,26 +99,43 @@ document.addEventListener('DOMContentLoaded', () => {
         return popover;
     }
 
-    // Custom confirmation dialog
-    function showConfirmDialog(message, onConfirm) {
+    // Custom confirmation dialog - appears near the trigger element
+    function showConfirmDialog(message, onConfirm, triggerElement) {
         // Remove existing dialog if any
         const existingDialog = document.querySelector('.confirm-dialog');
         if (existingDialog) existingDialog.remove();
 
-        // Create dialog
+        // Create small dialog
         const dialog = document.createElement('div');
         dialog.className = 'confirm-dialog';
         dialog.innerHTML = `
-            <div class="confirm-dialog-content">
-                <p class="confirm-message">${message}</p>
-                <div class="confirm-actions">
-                    <button class="confirm-cancel">Cancel</button>
-                    <button class="confirm-ok">Delete</button>
-                </div>
+            <p class="confirm-message">${message}</p>
+            <div class="confirm-actions">
+                <button class="confirm-cancel">Cancel</button>
+                <button class="confirm-ok">Delete</button>
             </div>
         `;
 
         document.body.appendChild(dialog);
+
+        // Position near trigger element
+        if (triggerElement) {
+            const rect = triggerElement.getBoundingClientRect();
+            dialog.style.position = 'fixed';
+            dialog.style.left = `${rect.left}px`;
+            dialog.style.top = `${rect.bottom + 5}px`;
+
+            // Adjust if goes off screen
+            setTimeout(() => {
+                const dialogRect = dialog.getBoundingClientRect();
+                if (dialogRect.right > window.innerWidth) {
+                    dialog.style.left = `${window.innerWidth - dialogRect.width - 10}px`;
+                }
+                if (dialogRect.bottom > window.innerHeight) {
+                    dialog.style.top = `${rect.top - dialogRect.height - 5}px`;
+                }
+            }, 0);
+        }
 
         const cancelBtn = dialog.querySelector('.confirm-cancel');
         const okBtn = dialog.querySelector('.confirm-ok');
@@ -114,11 +150,15 @@ document.addEventListener('DOMContentLoaded', () => {
         });
 
         // Close on outside click
-        dialog.addEventListener('click', (e) => {
-            if (e.target === dialog) {
-                dialog.remove();
-            }
-        });
+        setTimeout(() => {
+            const closeHandler = (e) => {
+                if (!dialog.contains(e.target)) {
+                    dialog.remove();
+                    document.removeEventListener('click', closeHandler);
+                }
+            };
+            document.addEventListener('click', closeHandler);
+        }, 0);
 
         // Focus OK button
         setTimeout(() => okBtn.focus(), 0);
@@ -771,7 +811,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 const annotationId = target.dataset.annotationId;
                 showConfirmDialog('Delete this note?', () => {
                     deleteNote(annotationId);
-                });
+                }, target);
                 e.stopPropagation();
                 return;
             }
