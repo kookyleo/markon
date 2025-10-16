@@ -3,6 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="file-path" content="{{ file_path }}">
     <title>{{ title }}</title>
     {% if theme == "auto" %}
     <link rel="stylesheet" href="/static/css/github-markdown-light.css" media="(prefers-color-scheme: light)">
@@ -11,6 +12,7 @@
     <link rel="stylesheet" href="/static/css/github-markdown-{{ theme }}.css">
     {% endif %}
     <link rel="stylesheet" href="/static/css/github-print.css" media="print">
+    <link rel="stylesheet" href="/static/css/editor.css">
     <style>
         body {
             box-sizing: border-box;
@@ -224,6 +226,7 @@
             <a href="/">← Back to file list</a>
         </div>
         {% endif %}
+        <div id="notes-sidebar"></div>
         {% if toc and toc | length > 0 %}
         <nav class="toc">
             <div class="toc-title">Table of Contents</div>
@@ -256,5 +259,6 @@
         {% endif %}
     </script>
     {% endif %}
+    <script src="/static/js/editor.js"></script>
 </body>
 </html>

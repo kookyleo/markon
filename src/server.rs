@@ -149,6 +149,7 @@ fn render_markdown_file(file_path: &str, state: &AppState) -> Response {
 
             let mut context = tera::Context::new();
             context.insert("title", &format!("markon - {file_path}"));
+            context.insert("file_path", file_path);
             context.insert("theme", state.theme.as_str());
             context.insert("content", &html_content);
             context.insert("show_back_link", &true);
