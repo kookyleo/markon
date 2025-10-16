@@ -137,7 +137,7 @@
     background: #2c974b !important;
 }
 
-/* Note margin cards (显示在正文右侧，右对齐) */
+/* Note margin cards (displayed on the right side of content, right-aligned) */
 .note-card-margin {
     position: absolute;
     width: 250px; /* Match TOC width */
@@ -251,7 +251,7 @@
     background: #c82333 !important;
 }
 
-/* 正文中的 has-note 高亮交互 */
+/* Highlight interactions for has-note elements in content */
 .has-note {
     background-color: rgba(255, 99, 71, 0.2);
     cursor: pointer;
