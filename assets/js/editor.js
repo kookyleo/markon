@@ -34,7 +34,7 @@ document.addEventListener('DOMContentLoaded', () => {
             currentSelection = selection.getRangeAt(0).cloneRange();
             const rect = selection.getRangeAt(0).getBoundingClientRect();
             popover.style.left = `${rect.left + window.scrollX + rect.width / 2 - popover.offsetWidth / 2}px`;
-            popover.style.top = `${rect.top + window.scrollY - popover.offsetHeight - 20}px`;
+            popover.style.top = `${rect.top + window.scrollY - popover.offsetHeight - 10}px`;
             popover.style.display = 'block';
         } else {
             if (!popover.contains(e.target)) {
@@ -51,7 +51,9 @@ document.addEventListener('DOMContentLoaded', () => {
             <button data-action="highlight-orange">Orange</button>
             <button data-action="highlight-green">Green</button>
             <button data-action="highlight-yellow">Yellow</button>
-            <button data-action="strikethrough">Strikethrough</button>
+            <span class="popover-separator">|</span>
+            <button data-action="strikethrough">Strike</button>
+            <span class="popover-separator">|</span>
             <button data-action="add-note">Note</button>
         `;
         popover.addEventListener('click', (e) => {
@@ -64,6 +66,50 @@ document.addEventListener('DOMContentLoaded', () => {
             popover.style.display = 'none';
         });
         return popover;
+    }
+
+    // Custom confirmation dialog
+    function showConfirmDialog(message, onConfirm) {
+        // Remove existing dialog if any
+        const existingDialog = document.querySelector('.confirm-dialog');
+        if (existingDialog) existingDialog.remove();
+
+        // Create dialog
+        const dialog = document.createElement('div');
+        dialog.className = 'confirm-dialog';
+        dialog.innerHTML = `
+            <div class="confirm-dialog-content">
+                <p class="confirm-message">${message}</p>
+                <div class="confirm-actions">
+                    <button class="confirm-cancel">Cancel</button>
+                    <button class="confirm-ok">Delete</button>
+                </div>
+            </div>
+        `;
+
+        document.body.appendChild(dialog);
+
+        const cancelBtn = dialog.querySelector('.confirm-cancel');
+        const okBtn = dialog.querySelector('.confirm-ok');
+
+        cancelBtn.addEventListener('click', () => {
+            dialog.remove();
+        });
+
+        okBtn.addEventListener('click', () => {
+            dialog.remove();
+            onConfirm();
+        });
+
+        // Close on outside click
+        dialog.addEventListener('click', (e) => {
+            if (e.target === dialog) {
+                dialog.remove();
+            }
+        });
+
+        // Focus OK button
+        setTimeout(() => okBtn.focus(), 0);
     }
 
     function getSimpleXPath(node) {
@@ -204,10 +250,10 @@ document.addEventListener('DOMContentLoaded', () => {
         modal.style.top = `${modalTop}px`;
 
         modal.innerHTML = `
-            <textarea class="note-textarea" placeholder="输入你的想法..." autofocus></textarea>
+            <textarea class="note-textarea" placeholder="Enter your note..." autofocus></textarea>
             <div class="note-input-actions">
-                <button class="note-cancel">取消</button>
-                <button class="note-save">保存</button>
+                <button class="note-cancel">Cancel</button>
+                <button class="note-save">Save</button>
             </div>
         `;
 
@@ -451,7 +497,7 @@ document.addEventListener('DOMContentLoaded', () => {
             noteCard.dataset.annotationId = anno.id;
 
             noteCard.innerHTML = `
-                <button class="note-delete" data-annotation-id="${anno.id}" title="删除笔记">×</button>
+                <button class="note-delete" data-annotation-id="${anno.id}" title="Delete note">×</button>
                 <div class="note-content">${anno.note}</div>
             `;
 
@@ -711,9 +757,9 @@ document.addEventListener('DOMContentLoaded', () => {
             // Handle delete button clicks
             if (target.classList.contains('note-delete')) {
                 const annotationId = target.dataset.annotationId;
-                if (confirm('确定要删除这条笔记吗？')) {
+                showConfirmDialog('Delete this note?', () => {
                     deleteNote(annotationId);
-                }
+                });
                 e.stopPropagation();
                 return;
             }
@@ -813,7 +859,7 @@ document.addEventListener('DOMContentLoaded', () => {
         popup.className = 'note-popup';
         popup.dataset.annotationId = annotationId;
         popup.innerHTML = `
-            <button class="note-delete" data-annotation-id="${annotationId}" title="删除笔记">×</button>
+            <button class="note-delete" data-annotation-id="${annotationId}" title="Delete note">×</button>
             <div class="note-content">${noteData.note}</div>
         `;
 
