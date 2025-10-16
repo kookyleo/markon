@@ -1,0 +1,15 @@
+{
+  "name": "markon",
+  "version": "1.0.0",
+  "description": "A lightweight Markdown renderer with GitHub styling, written in Rust.",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "devDependencies": {
+    "eslint": "^9.37.0"
+  }
+}
