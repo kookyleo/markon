@@ -33,9 +33,21 @@ document.addEventListener('DOMContentLoaded', () => {
         if (selection.toString().trim().length > 0) {
             currentSelection = selection.getRangeAt(0).cloneRange();
             const rect = selection.getRangeAt(0).getBoundingClientRect();
-            popover.style.left = `${rect.left + window.scrollX + rect.width / 2 - popover.offsetWidth / 2}px`;
-            popover.style.top = `${rect.top + window.scrollY - popover.offsetHeight - 10}px`;
+
+            // Show popover first (with visibility hidden) to get accurate dimensions
+            popover.style.visibility = 'hidden';
             popover.style.display = 'block';
+
+            // Force browser reflow to calculate dimensions
+            const popoverHeight = popover.offsetHeight;
+            const popoverWidth = popover.offsetWidth;
+
+            // Calculate position (above the selection)
+            popover.style.left = `${rect.left + window.scrollX + rect.width / 2 - popoverWidth / 2}px`;
+            popover.style.top = `${rect.top + window.scrollY - popoverHeight - 10}px`;
+
+            // Now make it visible
+            popover.style.visibility = 'visible';
         } else {
             if (!popover.contains(e.target)) {
                 popover.style.display = 'none';
