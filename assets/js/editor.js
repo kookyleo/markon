@@ -780,7 +780,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
         // CRITICAL FIX: Use Union-Find clustering algorithm for grouping notes
         // This ensures transitivity: if A and B are close, B and C are close, then A, B, C are all in same group
-        const clusterThreshold = 30; // If notes are within 30px, they should be grouped
+        const clusterThreshold = 50; // If notes are within 50px, they should be grouped (increased from 30)
 
         // Union-Find data structure
         class UnionFind {
@@ -839,6 +839,20 @@ document.addEventListener('DOMContentLoaded', () => {
                 clusters.set(root, []);
             }
             clusters.get(root).push(idx);
+        });
+
+        // DEBUG: Log ALL note positions and clustering results
+        console.log(`[layoutNotesWithPhysics] Total notes: ${notes.length}, Clusters: ${clusters.size}`);
+        console.log('All notes idealTop positions:');
+        notes.forEach((note, i) => {
+            console.log(`  Note ${i} (${note.id}): idealTop = ${note.idealTop.toFixed(2)}px`);
+        });
+
+        console.log('Clustering results:');
+        clusters.forEach((indices, root) => {
+            const tops = indices.map(i => notes[i].idealTop.toFixed(2));
+            const ids = indices.map(i => notes[i].id);
+            console.log(`  Cluster ${root}: ${indices.length} note(s), IDs: [${ids.join(', ')}], idealTops: [${tops.join(', ')}]px`);
         });
 
         // Pre-position notes: stack notes in same cluster vertically
