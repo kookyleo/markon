@@ -2,6 +2,8 @@
 
 A lightweight Markdown renderer with GitHub styling and Medium-like annotation features, written in Rust.
 
+![Markon Banner](banner.png)
+
 English | [简体中文](README.zh.md)
 
 ## Use Cases
@@ -12,7 +14,6 @@ Markon makes it easy to read, print, and annotate Markdown files in beautiful HT
 - **Reviewing and annotating** technical documents with highlights and notes
 - **Printing** Markdown files with professional formatting
 - **Presenting** Markdown content with GitHub-style rendering
-- **Collaborating** by sharing annotated views of documentation
 
 Simply run `markon` in any directory to browse and render Markdown files with a clean, distraction-free interface.
 
@@ -90,7 +91,6 @@ markon -t auto README.md
 Options:
   [FILE]                    Markdown file to render (optional)
   -p, --port <PORT>         Server port [default: 6419]
-  -b, --no-browser          Don't automatically open browser
   -t, --theme <THEME>       Theme: light, dark, auto [default: auto]
   -h, --help                Show help information
   -V, --version             Show version information
@@ -104,6 +104,8 @@ Options:
 4. Notes will appear on the right side of the page
 5. Click highlighted text to view associated notes
 6. Select highlighted text again to unhighlight
+
+**Note**: Annotation features are designed for local reading convenience only. All annotation data (highlights, notes, strikethroughs) is stored in your browser's local storage and is never uploaded or shared. You can clear all annotations for the current page using the "Clear Annotations" button at the bottom of the page.
 
 ## Supported Markdown Features
 

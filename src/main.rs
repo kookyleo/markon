@@ -16,14 +16,6 @@ struct Cli {
     #[arg(short, long, default_value_t = 6419)]
     port: u16,
 
-    /// Do not open the browser automatically.
-    #[arg(short = 'b', long, action = clap::ArgAction::SetTrue)]
-    no_browser: bool,
-
-    /// Render a file tree of the current directory.
-    #[arg(short = 'r', long, action = clap::ArgAction::SetTrue, conflicts_with = "file")]
-    file_tree: bool,
-
     /// Theme selection (light, dark, auto).
     #[arg(short = 't', long, default_value = "auto")]
     theme: String,
@@ -32,11 +24,6 @@ struct Cli {
 #[tokio::main]
 async fn main() {
     let cli = Cli::parse();
-
-    if cli.file_tree {
-        println!("File tree mode for current directory");
-        return;
-    }
 
     // Validate theme parameter
     let theme = match cli.theme.as_str() {

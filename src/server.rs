@@ -127,11 +127,8 @@ async fn handle_path(
         {
             render_markdown_file(&decoded_path, &state)
         } else {
-            (
-                StatusCode::BAD_REQUEST,
-                "Only Markdown files can be rendered",
-            )
-                .into_response()
+            // Serve other files (images, videos, etc.) as static content
+            serve_file(&canonical_path)
         }
     } else if canonical_path.is_dir() {
         // Show directory listing
@@ -346,5 +343,67 @@ where
         )
             .into_response(),
         None => (StatusCode::NOT_FOUND, "File not found").into_response(),
+    }
+}
+
+fn serve_file(path: &std::path::Path) -> Response {
+    match fs::read(path) {
+        Ok(content) => {
+            // Detect MIME type based on file extension
+            let mime_type = path
+                .extension()
+                .and_then(|ext| ext.to_str())
+                .and_then(get_mime_type)
+                .unwrap_or("application/octet-stream");
+
+            (StatusCode::OK, [(header::CONTENT_TYPE, mime_type)], content).into_response()
+        }
+        Err(e) => (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            format!("Error reading file: {e}"),
+        )
+            .into_response(),
+    }
+}
+
+fn get_mime_type(ext: &str) -> Option<&'static str> {
+    match ext.to_lowercase().as_str() {
+        // Images
+        "png" => Some("image/png"),
+        "jpg" | "jpeg" => Some("image/jpeg"),
+        "gif" => Some("image/gif"),
+        "webp" => Some("image/webp"),
+        "svg" => Some("image/svg+xml"),
+        "ico" => Some("image/x-icon"),
+        "bmp" => Some("image/bmp"),
+
+        // Audio
+        "mp3" => Some("audio/mpeg"),
+        "wav" => Some("audio/wav"),
+        "ogg" => Some("audio/ogg"),
+        "m4a" => Some("audio/mp4"),
+        "flac" => Some("audio/flac"),
+
+        // Video
+        "mp4" => Some("video/mp4"),
+        "webm" => Some("video/webm"),
+        "ogv" => Some("video/ogg"),
+        "avi" => Some("video/x-msvideo"),
+        "mov" => Some("video/quicktime"),
+        "mkv" => Some("video/x-matroska"),
+
+        // Documents
+        "pdf" => Some("application/pdf"),
+        "txt" => Some("text/plain"),
+        "json" => Some("application/json"),
+        "xml" => Some("application/xml"),
+
+        // Archives
+        "zip" => Some("application/zip"),
+        "tar" => Some("application/x-tar"),
+        "gz" => Some("application/gzip"),
+        "7z" => Some("application/x-7z-compressed"),
+
+        _ => None,
     }
 }

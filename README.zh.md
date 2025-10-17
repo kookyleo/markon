@@ -2,6 +2,8 @@
 
 一个轻量级的 Markdown 渲染工具，使用 Rust 编写，提供 GitHub 风格的样式和 Medium 风格的标注功能。
 
+![Markon Banner](banner.png)
+
 [English](README.md) | 简体中文
 
 ## 使用场景
@@ -12,7 +14,6 @@ Markon 让你可以便捷地以精美的 HTML 格式阅读、打印和批注 Mar
 - **审阅批注** - 使用高亮和笔记功能标注技术文档
 - **打印输出** - 以专业的排版格式打印 Markdown 文件
 - **演示展示** - 以 GitHub 风格渲染 Markdown 内容进行展示
-- **协作分享** - 分享带有批注的文档视图进行协作
 
 只需在任意目录运行 `markon`，即可浏览并渲染 Markdown 文件，享受简洁无干扰的阅读体验。
 
@@ -90,7 +91,6 @@ markon -t auto README.md
 选项:
   [FILE]                    要渲染的 Markdown 文件（可选）
   -p, --port <PORT>         服务器端口 [默认: 6419]
-  -b, --no-browser          不自动打开浏览器
   -t, --theme <THEME>       主题选择: light, dark, auto [默认: auto]
   -h, --help                显示帮助信息
   -V, --version             显示版本信息
@@ -104,6 +104,8 @@ markon -t auto README.md
 4. 笔记会显示在页面右侧
 5. 点击高亮文本可查看对应笔记
 6. 选中已高亮的文本可取消高亮
+
+**注意**：标注功能纯粹为本地阅读便利而设计。所有标注数据（高亮、笔记、删除线）均存储在浏览器本地存储中，不会上传或分享。您可以使用页面底部的"清除标注"按钮清除当前页面的所有标注。
 
 ## 支持的 Markdown 特性
 
