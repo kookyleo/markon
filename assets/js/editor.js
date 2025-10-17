@@ -778,51 +778,29 @@ document.addEventListener('DOMContentLoaded', () => {
         const maxIterations = 100; // Maximum simulation steps
         const convergenceThreshold = 0.1; // Stop when movement is less than this
 
-        // CRITICAL FIX: Group notes by position and pre-arrange overlapping ones
-        // Use a more robust clustering approach: group by similar idealTop
-        const positionTolerance = 20; // Notes within 20px are considered at "same" position
-        const notesByPosition = notes.map((note, i) => ({ ...note, originalIndex: i }))
-            .sort((a, b) => a.idealTop - b.idealTop);
+        // CRITICAL FIX: Simple and robust approach
+        // Group ALL notes with same idealTop into same cluster
+        const positionMap = new Map(); // idealTop -> note indices
 
-        const clusters = [];
-        if (notesByPosition.length > 0) {
-            let currentCluster = [notesByPosition[0]];
-            let clusterBaseTop = notesByPosition[0].idealTop;
+        notes.forEach((note, i) => {
+            // Round to nearest pixel to group
+            const roundedTop = Math.round(note.idealTop);
 
-            for (let i = 1; i < notesByPosition.length; i++) {
-                const curr = notesByPosition[i];
-
-                // Check if current note is close to cluster base position
-                if (Math.abs(curr.idealTop - clusterBaseTop) <= positionTolerance) {
-                    // Same position group
-                    currentCluster.push(curr);
-                } else {
-                    // Different position - check if would overlap with cluster
-                    const clusterBottom = clusterBaseTop + currentCluster.length * (80 + minSpacing);
-                    if (curr.idealTop < clusterBottom) {
-                        // Would overlap - add to cluster
-                        currentCluster.push(curr);
-                    } else {
-                        // No overlap - start new cluster
-                        clusters.push(currentCluster);
-                        currentCluster = [curr];
-                        clusterBaseTop = curr.idealTop;
-                    }
-                }
+            if (!positionMap.has(roundedTop)) {
+                positionMap.set(roundedTop, []);
             }
-            clusters.push(currentCluster);
-        }
+            positionMap.get(roundedTop).push(i);
+        });
 
-        // Pre-position notes in each cluster
-        clusters.forEach(cluster => {
-            if (cluster.length > 1) {
-                // Multiple notes - stack them starting from the first note's position
-                const firstIdealTop = cluster[0].idealTop;
-                let currentTop = firstIdealTop;
+        // Pre-position notes: stack notes at same position vertically
+        positionMap.forEach((indices, position) => {
+            if (indices.length > 1) {
+                // Multiple notes at exact same position - stack them
+                let currentTop = position;
 
-                cluster.forEach(note => {
-                    notes[note.originalIndex].currentTop = currentTop;
-                    currentTop += note.height + minSpacing;
+                indices.forEach(noteIndex => {
+                    notes[noteIndex].currentTop = currentTop;
+                    currentTop += notes[noteIndex].height + minSpacing;
                 });
             }
         });
