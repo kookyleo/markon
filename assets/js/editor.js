@@ -761,18 +761,36 @@ document.addEventListener('DOMContentLoaded', () => {
             }
             const actualHeight = height > 0 ? height : 80;
 
-            // CRITICAL FIX: Add progressive offset for overlapping notes
-            // Group notes by their ideal position and assign staggered offsets
-            const initialOffset = index * 0.5; // Progressive offset based on creation order
-
             return {
                 element: noteData.element,
                 idealTop: idealTop,
-                currentTop: idealTop + initialOffset,
+                currentTop: idealTop, // Start at ideal position, will add offset for grouped notes
                 height: actualHeight,
                 index: index,
                 id: noteData.highlightId
             };
+        });
+
+        // CRITICAL FIX: Group notes by position and add small offsets within groups
+        // This prevents symmetry issues while avoiding excessive spacing
+        const positionGroups = new Map(); // idealTop -> [note indices]
+        notes.forEach((note, i) => {
+            // Round to nearest 5px to group notes at "same" position
+            const roundedTop = Math.round(note.idealTop / 5) * 5;
+            if (!positionGroups.has(roundedTop)) {
+                positionGroups.set(roundedTop, []);
+            }
+            positionGroups.get(roundedTop).push(i);
+        });
+
+        // Add small staggered offsets within each group
+        positionGroups.forEach(indices => {
+            if (indices.length > 1) {
+                // Multiple notes at same position - add tiny progressive offsets
+                indices.forEach((noteIndex, groupIndex) => {
+                    notes[noteIndex].currentTop += groupIndex * 0.5; // 0.5px per note in group
+                });
+            }
         });
 
         // Physics simulation parameters
