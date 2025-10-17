@@ -11,7 +11,8 @@ export default [
                 setTimeout: "readonly",
                 clearTimeout: "readonly",
                 localStorage: "readonly",
-                location: "readonly"
+                location: "readonly",
+                history: "readonly"
             }
         },
         rules: {

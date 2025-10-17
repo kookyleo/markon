@@ -444,26 +444,7 @@ document.addEventListener('DOMContentLoaded', () => {
             currentSelection = null;
         };
 
-        saveBtn.addEventListener('click', () => {
-            saveNote();
-
-            // DEBUG: Log all has-note elements after save
-            const allNotes = markdownBody.querySelectorAll('.has-note');
-            allNotes.forEach((el, i) => {
-                // Check if nested
-                let parent = el.parentElement;
-                let isNested = false;
-                while (parent && parent !== markdownBody) {
-                    if (parent.classList && parent.classList.contains('has-note')) {
-                        isNested = true;
-                        break;
-                    }
-                    parent = parent.parentElement;
-                }
-                if (!isNested) {
-                }
-            });
-        });
+        saveBtn.addEventListener('click', saveNote);
 
         // Enter to save (Ctrl+Enter for newline)
         textarea.addEventListener('keydown', (e) => {
@@ -659,10 +640,6 @@ document.addEventListener('DOMContentLoaded', () => {
         // CRITICAL: Get highlight elements directly from DOM to preserve DOM order!
         const allHighlightElements = markdownBody.querySelectorAll('.has-note[data-annotation-id]');
 
-        // Log each element found
-        Array.from(allHighlightElements).forEach((el, i) => {
-        });
-
         // CRITICAL: For each .has-note element, use only the outermost one
         // Create a Map: annotationId -> outermost element
         const outermostMap = new Map();
@@ -706,10 +683,9 @@ document.addEventListener('DOMContentLoaded', () => {
         noteCardsData = [];
 
         // Iterate in DOM order!
-        highlightElements.forEach((highlightElement, index) => {
+        highlightElements.forEach((highlightElement) => {
             const annoId = highlightElement.dataset.annotationId;
             const anno = annotationsMap.get(annoId);
-
 
             if (!anno || !anno.note) {
                 return;
@@ -893,7 +869,6 @@ document.addEventListener('DOMContentLoaded', () => {
                 const minAllowedTop = prev.currentTop + prev.height + minSpacing;
 
                 if (curr.currentTop < minAllowedTop) {
-                    const adjustment = minAllowedTop - curr.currentTop;
                     curr.currentTop = minAllowedTop;
                 }
             } else {
@@ -902,11 +877,10 @@ document.addEventListener('DOMContentLoaded', () => {
         }
 
         // Apply final positions
-        notes.forEach((note, i) => {
+        notes.forEach((note) => {
             note.element.style.left = `${rightEdge}px`;
             note.element.style.top = `${note.currentTop}px`;
             note.element.style.display = 'block';
-
         });
 
     }
@@ -965,23 +939,15 @@ document.addEventListener('DOMContentLoaded', () => {
         // Remove highlight from DOM - CRITICAL: Find the exact element, not nested ones
         const highlightElements = markdownBody.querySelectorAll(`[data-annotation-id="${annotationId}"]`);
 
-        highlightElements.forEach((highlightElement, i) => {
-
-            // Log children before removal
-            const childNotes = Array.from(highlightElement.querySelectorAll('.has-note')).map(el => el.dataset.annotationId);
-            if (childNotes.length > 0) {
-            }
-
+        highlightElements.forEach((highlightElement) => {
             // Only remove if this is the direct element with this annotation ID
             // (not a parent element that happens to contain nested annotations)
             if (highlightElement.dataset.annotationId === annotationId) {
                 const parent = highlightElement.parentNode;
 
                 // Move all children out of the element, preserving nested annotations
-                let childCount = 0;
                 while (highlightElement.firstChild) {
                     parent.insertBefore(highlightElement.firstChild, highlightElement);
-                    childCount++;
                 }
 
                 // Remove the now-empty highlight element
