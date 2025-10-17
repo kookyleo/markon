@@ -194,8 +194,8 @@ document.addEventListener('DOMContentLoaded', () => {
             currentSelection = range.cloneRange();
             const rect = range.getBoundingClientRect();
 
-            // Check if selection is already highlighted
-            const isHighlighted = element.closest('.highlight-orange, .highlight-green, .highlight-yellow, .strikethrough, .has-note');
+            // Check if selection is already highlighted (excluding has-note, which has its own management)
+            const isHighlighted = element.closest('.highlight-orange, .highlight-green, .highlight-yellow, .strikethrough');
 
             // Update popover content based on highlight status
             updatePopover(popover, isHighlighted);
