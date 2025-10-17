@@ -65,18 +65,18 @@
     background-color: rgba(255, 255, 0, 0.5);
 }
 
-/* Dark mode highlights - vibrant colors with reduced transparency for better visibility */
+/* Dark mode highlights - strong vibrant colors for clear visibility */
 @media (prefers-color-scheme: dark) {
     .highlight-orange {
-        background-color: rgba(255, 100, 40, 0.25); /* Vivid orange-red */
+        background-color: rgba(255, 80, 20, 0.45); /* Deep orange-red */
     }
 
     .highlight-green {
-        background-color: rgba(50, 230, 90, 0.25); /* Electric green */
+        background-color: rgba(40, 255, 80, 0.45); /* Neon green */
     }
 
     .highlight-yellow {
-        background-color: rgba(255, 190, 0, 0.25); /* Golden yellow */
+        background-color: rgba(255, 180, 0, 0.45); /* Bright amber */
     }
 }
 
