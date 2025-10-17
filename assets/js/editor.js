@@ -873,74 +873,9 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         });
 
-        // Run physics simulation
-        for (let iteration = 0; iteration < maxIterations; iteration++) {
-            let maxMovement = 0;
-
-            // CRITICAL: Calculate all forces first, then update positions together
-            const forces = new Array(notes.length).fill(0);
-
-            // Calculate forces for each note
-            notes.forEach((note, i) => {
-                let force = 0;
-
-                // Spring force: pull toward ideal position
-                const displacement = note.idealTop - note.currentTop;
-                force += displacement * springConstant;
-
-                // Repulsion force: check all other notes
-                notes.forEach((other, j) => {
-                    if (i === j) return;
-
-                    // Calculate positions
-                    const noteBottom = note.currentTop + note.height;
-                    const otherBottom = other.currentTop + other.height;
-
-                    // Calculate gap: positive means separated, negative means overlapping
-                    let gap;
-                    if (note.currentTop < other.currentTop) {
-                        // Note is above other
-                        gap = other.currentTop - noteBottom;
-                    } else {
-                        // Note is below other
-                        gap = note.currentTop - otherBottom;
-                    }
-
-                    // If gap < minSpacing, apply repulsion force
-                    if (gap < minSpacing) {
-                        const penetration = minSpacing - gap;
-
-                        if (note.currentTop < other.currentTop) {
-                            // Note is above, push it up
-                            force -= penetration * repulsionStrength;
-                        } else {
-                            // Note is below, push it down
-                            force += penetration * repulsionStrength;
-                        }
-
-                        if (iteration === 0 || penetration > 5) {
-                        }
-                    }
-                });
-
-                forces[i] = force;
-            });
-
-            // Now update all positions together
-            notes.forEach((note, i) => {
-                const movement = forces[i];
-                note.currentTop += movement;
-                maxMovement = Math.max(maxMovement, Math.abs(movement));
-            });
-
-            // Check convergence
-            if (maxMovement < convergenceThreshold) {
-                break;
-            }
-
-            if (iteration === maxIterations - 1) {
-            }
-        }
+        // DISABLED: Physics simulation - relying purely on clustering-based pre-positioning
+        // The physics simulation was causing clustered notes to spread apart
+        // Now we only use the Union-Find clustering to stack notes vertically
 
         // Post-process: Ensure minimum spacing for ALL notes
         // For notes with similar ideal positions (within threshold), enforce vertical stacking
