@@ -288,3 +288,18 @@
     box-shadow: 0 0 0 2px rgba(9, 105, 218, 0.1);
 }
 
+/* Note popup (for small screens) */
+.note-popup {
+    position: fixed;
+    max-width: 300px;
+    background: #f6f8fa;
+    border: 1px solid #0969da;
+    border-radius: 6px;
+    padding: 12px 16px;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+    z-index: 9999;
+    font-size: 13px;
+    line-height: 1.6;
+    cursor: move;
+}
+

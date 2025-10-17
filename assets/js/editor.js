@@ -1203,16 +1203,6 @@ document.addEventListener('DOMContentLoaded', () => {
         popup.style.position = 'fixed';
         popup.style.left = `${rect.left}px`;
         popup.style.top = `${rect.bottom + 10}px`;
-        popup.style.maxWidth = '300px';
-        popup.style.background = '#f6f8fa';
-        popup.style.border = '1px solid #0969da';
-        popup.style.borderRadius = '6px';
-        popup.style.padding = '12px 16px';
-        popup.style.boxShadow = '0 4px 12px rgba(0, 0, 0, 0.15)';
-        popup.style.zIndex = '9999';
-        popup.style.fontSize = '13px';
-        popup.style.lineHeight = '1.6';
-        popup.style.cursor = 'move';
 
         document.body.appendChild(popup);
 
