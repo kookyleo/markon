@@ -296,9 +296,9 @@
         }
         {% endif %}
 
-        /* Dark mode support for all panels */
+        /* Theme-specific panel styles */
         {% if theme == "dark" %}
-        /* Selection popover */
+        /* Dark theme - Selection popover */
         .selection-popover {
             background-color: #21262d;
             color: #f0f6fc;
@@ -425,7 +425,12 @@
             color: #58a6ff !important;
         }
 
+        {% elif theme == "light" %}
+        /* Light theme - keep editor.css default light colors */
+        /* No overrides needed, editor.css already has light theme styles */
+
         {% else %}
+        /* Auto theme - respond to system preference */
         @media (prefers-color-scheme: dark) {
             /* Selection popover */
             .selection-popover {
