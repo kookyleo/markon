@@ -424,8 +424,14 @@ document.addEventListener('DOMContentLoaded', () => {
         const cancelBtn = modal.querySelector('.note-cancel');
         const saveBtn = modal.querySelector('.note-save');
 
-        // Focus textarea
-        setTimeout(() => textarea.focus(), 0);
+        // Focus textarea and restore text selection for visual feedback
+        setTimeout(() => {
+            textarea.focus();
+            // Restore the original text selection so user can see what they selected
+            const selection = window.getSelection();
+            selection.removeAllRanges();
+            selection.addRange(currentSelection.cloneRange());
+        }, 0);
 
         // Cancel handler
         cancelBtn.addEventListener('click', () => {
