@@ -52,7 +52,7 @@ impl MarkdownRenderer {
 
         // 根据主题选择代码高亮样式
         let theme_name = match self.theme.as_str() {
-            "light" => "InspiredGitHub",
+            "light" => "Solarized (light)",
             "dark" => "base16-ocean.dark",
             _ => "base16-ocean.dark", // auto 默认深色
         };

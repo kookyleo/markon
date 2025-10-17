@@ -723,7 +723,7 @@
   margin: 0;
   font-size: 85%;
   white-space: break-spaces;
-  background-color: #656c7633;
+  background-color: rgba(110, 118, 129, 0.4);
   border-radius: 6px;
 }
 

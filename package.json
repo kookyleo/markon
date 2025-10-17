@@ -1,6 +1,7 @@
 {
   "name": "markon",
   "version": "1.0.0",
+  "type": "module",
   "description": "A lightweight Markdown renderer with GitHub styling, written in Rust.",
   "main": "index.js",
   "scripts": {

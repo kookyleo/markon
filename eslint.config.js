@@ -1,6 +1,7 @@
 export default [
     {
         files: ["**/*.js"],
+        ignores: ["**/*.min.js", "node_modules/**"],
         languageOptions: {
             ecmaVersion: 2022,
             sourceType: "script",
