@@ -928,22 +928,32 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         }
 
-        // Post-process: Force minimum spacing while preserving DOM order
-        console.log('[layoutNotesWithPhysics] Post-processing to ensure minimum spacing (preserving DOM order)...');
+        // Post-process: ONLY enforce spacing if their ideal positions indicate they should be separated
+        // Do NOT force separation for notes that have similar ideal positions (overlapping notes)
+        console.log('[layoutNotesWithPhysics] Post-processing to ensure minimum spacing (only when ideal positions are separated)...');
 
-        // Process notes in DOM order (by index), adjusting positions downward as needed
+        const idealPositionThreshold = 50; // If ideal positions are within 50px, allow them to overlap
+
+        // Process notes in DOM order (by index), adjusting positions downward only when necessary
         for (let i = 1; i < notes.length; i++) {
             const prev = notes[i - 1];
             const curr = notes[i];
 
-            // Calculate minimum allowed position for current note
-            const minAllowedTop = prev.currentTop + prev.height + minSpacing;
+            // Check if their IDEAL positions are significantly different
+            const idealGap = curr.idealTop - prev.idealTop;
 
-            // If current note is too high (would break DOM order), push it down
-            if (curr.currentTop < minAllowedTop) {
-                const adjustment = minAllowedTop - curr.currentTop;
-                console.log(`[layoutNotesWithPhysics] Post-process: Note ${curr.index + 1} would break order or spacing, adjusting down by ${adjustment.toFixed(1)}px (from ${curr.currentTop.toFixed(0)} to ${minAllowedTop.toFixed(0)})`);
-                curr.currentTop = minAllowedTop;
+            if (idealGap > idealPositionThreshold) {
+                // Their ideal positions are separated, so enforce spacing
+                const minAllowedTop = prev.currentTop + prev.height + minSpacing;
+
+                if (curr.currentTop < minAllowedTop) {
+                    const adjustment = minAllowedTop - curr.currentTop;
+                    console.log(`[layoutNotesWithPhysics] Post-process: Note ${curr.index + 1} would break spacing (idealGap=${idealGap.toFixed(0)}px), adjusting down by ${adjustment.toFixed(1)}px (from ${curr.currentTop.toFixed(0)} to ${minAllowedTop.toFixed(0)})`);
+                    curr.currentTop = minAllowedTop;
+                }
+            } else {
+                // Their ideal positions are close/overlapping, allow physics simulation result
+                console.log(`[layoutNotesWithPhysics] Post-process: Note ${curr.index + 1} has similar ideal position to Note ${prev.index + 1} (idealGap=${idealGap.toFixed(0)}px), allowing overlap`);
             }
         }
 
