@@ -832,10 +832,14 @@ document.addEventListener('DOMContentLoaded', () => {
             }
             const actualHeight = height > 0 ? height : 80;
 
+            // CRITICAL FIX: Add small random offset to break symmetry for overlapping notes
+            // Without this, notes at exactly the same position will drift together
+            const initialOffset = (Math.random() - 0.5) * 4; // ±2px random offset
+
             return {
                 element: noteData.element,
                 idealTop: idealTop,
-                currentTop: idealTop, // Start at ideal position
+                currentTop: idealTop + initialOffset, // Start with small random offset
                 height: actualHeight,
                 index: index,
                 id: noteData.highlightId
