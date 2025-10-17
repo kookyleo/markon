@@ -761,14 +761,14 @@ document.addEventListener('DOMContentLoaded', () => {
             }
             const actualHeight = height > 0 ? height : 80;
 
-            // CRITICAL FIX: Add small random offset to break symmetry for overlapping notes
-            // Without this, notes at exactly the same position will drift together
-            const initialOffset = (Math.random() - 0.5) * 4; // ±2px random offset
+            // CRITICAL FIX: Add progressive offset for overlapping notes
+            // Group notes by their ideal position and assign staggered offsets
+            const initialOffset = index * 0.5; // Progressive offset based on creation order
 
             return {
                 element: noteData.element,
                 idealTop: idealTop,
-                currentTop: idealTop + initialOffset, // Start with small random offset
+                currentTop: idealTop + initialOffset,
                 height: actualHeight,
                 index: index,
                 id: noteData.highlightId
@@ -777,8 +777,8 @@ document.addEventListener('DOMContentLoaded', () => {
 
         // Physics simulation parameters
         const minSpacing = 10; // Minimum spacing between notes
-        const springConstant = 0.2; // How strongly notes return to ideal position
-        const repulsionStrength = 1.0; // How strongly notes push each other away
+        const springConstant = 0.15; // How strongly notes return to ideal position (reduced for more flexibility)
+        const repulsionStrength = 2.0; // How strongly notes push each other away (increased)
         const maxIterations = 100; // Maximum simulation steps
         const convergenceThreshold = 0.1; // Stop when movement is less than this
 
@@ -851,28 +851,31 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         }
 
-        // Post-process: ONLY enforce spacing if their ideal positions indicate they should be separated
-        // Do NOT force separation for notes that have similar ideal positions (overlapping notes)
+        // Post-process: Ensure minimum spacing for ALL notes
+        // For notes with similar ideal positions (within threshold), enforce vertical stacking
+        const idealPositionThreshold = 50; // If ideal positions are within 50px, they are "grouped"
 
-        const idealPositionThreshold = 50; // If ideal positions are within 50px, allow them to overlap
-
-        // Process notes in DOM order (by index), adjusting positions downward only when necessary
+        // Process notes in DOM order (by index)
         for (let i = 1; i < notes.length; i++) {
             const prev = notes[i - 1];
             const curr = notes[i];
 
             // Check if their IDEAL positions are significantly different
-            const idealGap = curr.idealTop - prev.idealTop;
+            const idealGap = Math.abs(curr.idealTop - prev.idealTop);
 
-            if (idealGap > idealPositionThreshold) {
-                // Their ideal positions are separated, so enforce spacing
+            if (idealGap <= idealPositionThreshold) {
+                // Notes are in the same "group" (same/similar position)
+                // Enforce strict vertical stacking with minimum spacing
                 const minAllowedTop = prev.currentTop + prev.height + minSpacing;
-
                 if (curr.currentTop < minAllowedTop) {
                     curr.currentTop = minAllowedTop;
                 }
             } else {
-                // Their ideal positions are close/overlapping, allow physics simulation result
+                // Notes are separated, but still enforce minimum spacing
+                const minAllowedTop = prev.currentTop + prev.height + minSpacing;
+                if (curr.currentTop < minAllowedTop) {
+                    curr.currentTop = minAllowedTop;
+                }
             }
         }
 
