@@ -114,6 +114,20 @@ document.addEventListener('DOMContentLoaded', () => {
                 if (text !== decoded) {
                     item.textContent = decoded;
                 }
+
+                // Add history.pushState on click
+                item.addEventListener('click', (e) => {
+                    e.preventDefault();
+                    const href = item.getAttribute('href');
+                    history.pushState(null, '', href);
+
+                    // Manually scroll to the element
+                    const targetId = href.substring(1);
+                    const targetElement = document.getElementById(targetId);
+                    if (targetElement) {
+                        targetElement.scrollIntoView({ behavior: 'smooth' });
+                    }
+                });
             });
         }
     }
