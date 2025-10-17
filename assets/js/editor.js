@@ -640,8 +640,25 @@ document.addEventListener('DOMContentLoaded', () => {
         document.querySelectorAll('.note-card-margin').forEach(el => el.remove());
 
         // CRITICAL: Get highlight elements directly from DOM to preserve DOM order!
-        const highlightElements = markdownBody.querySelectorAll('.has-note[data-annotation-id]');
-        console.log('[renderNotesMargin] Found highlight elements in DOM:', highlightElements.length);
+        const allHighlightElements = markdownBody.querySelectorAll('.has-note[data-annotation-id]');
+        console.log('[renderNotesMargin] Found total highlight elements in DOM:', allHighlightElements.length);
+
+        // CRITICAL: Filter to only top-level (non-nested) highlight elements
+        // If a .has-note element is nested inside another .has-note, skip it
+        const highlightElements = Array.from(allHighlightElements).filter(element => {
+            // Check if any parent element is also a .has-note
+            let parent = element.parentElement;
+            while (parent && parent !== markdownBody) {
+                if (parent.classList && parent.classList.contains('has-note')) {
+                    console.log(`[renderNotesMargin] Skipping nested element ${element.dataset.annotationId} (inside ${parent.dataset.annotationId})`);
+                    return false; // This is nested, skip it
+                }
+                parent = parent.parentElement;
+            }
+            return true; // This is top-level
+        });
+
+        console.log('[renderNotesMargin] After filtering nested elements:', highlightElements.length);
 
         if (highlightElements.length === 0) {
             noteCardsData = [];
@@ -948,6 +965,10 @@ document.addEventListener('DOMContentLoaded', () => {
         noteCardsData = noteCardsData.filter(n => n.highlightId !== annotationId);
 
         console.log(`[deleteAnnotation] Deleted annotation ${annotationId}`);
+
+        // CRITICAL: Re-render note cards after deletion to update remaining notes
+        // This is especially important for nested annotations
+        renderNotesMargin();
     }
 
     function editNote(annotationId) {
