@@ -292,6 +292,9 @@ document.addEventListener('DOMContentLoaded', () => {
         if (!currentSelection) return;
         const range = currentSelection;
 
+        console.log(`[applyStyle] Creating ${className} annotation, note:`, note ? `"${note}"` : 'none');
+        console.log(`[applyStyle] Selection text: "${range.toString()}"`);
+
         // Get the actual node to use for XPath (text node or element)
         const getPathNode = (container) => {
             // If container is a text node, use its parent
@@ -357,6 +360,21 @@ document.addEventListener('DOMContentLoaded', () => {
         }
         element.appendChild(range.extractContents());
         range.insertNode(element);
+
+        console.log(`[applyStyle] Created element with ID: ${annotation.id}`);
+        console.log(`[applyStyle] Element parent chain:`, (() => {
+            let chain = [];
+            let parent = element.parentElement;
+            while (parent && parent !== document.body) {
+                if (parent.classList && parent.classList.contains('has-note')) {
+                    chain.push(`has-note(${parent.dataset.annotationId})`);
+                } else {
+                    chain.push(parent.tagName.toLowerCase());
+                }
+                parent = parent.parentElement;
+            }
+            return chain.join(' > ');
+        })());
 
         saveAnnotation(annotation);
         window.getSelection().removeAllRanges();
@@ -444,7 +462,30 @@ document.addEventListener('DOMContentLoaded', () => {
             currentSelection = null;
         };
 
-        saveBtn.addEventListener('click', saveNote);
+        saveBtn.addEventListener('click', () => {
+            saveNote();
+
+            // DEBUG: Log all has-note elements after save
+            console.log('[addNote] After saving note, DOM state:');
+            const allNotes = markdownBody.querySelectorAll('.has-note');
+            allNotes.forEach((el, i) => {
+                console.log(`  Note ${i + 1}: ID=${el.dataset.annotationId}, text="${el.textContent.substring(0, 30)}..."`);
+                // Check if nested
+                let parent = el.parentElement;
+                let isNested = false;
+                while (parent && parent !== markdownBody) {
+                    if (parent.classList && parent.classList.contains('has-note')) {
+                        console.log(`    -> Nested inside: ${parent.dataset.annotationId}`);
+                        isNested = true;
+                        break;
+                    }
+                    parent = parent.parentElement;
+                }
+                if (!isNested) {
+                    console.log(`    -> Top-level`);
+                }
+            });
+        });
 
         // Enter to save (Ctrl+Enter for newline)
         textarea.addEventListener('keydown', (e) => {
@@ -643,6 +684,11 @@ document.addEventListener('DOMContentLoaded', () => {
         const allHighlightElements = markdownBody.querySelectorAll('.has-note[data-annotation-id]');
         console.log('[renderNotesMargin] Found total highlight elements in DOM:', allHighlightElements.length);
 
+        // Log each element found
+        Array.from(allHighlightElements).forEach((el, i) => {
+            console.log(`[renderNotesMargin] Element ${i + 1}: ID=${el.dataset.annotationId}, text="${el.textContent.substring(0, 30)}..."`);
+        });
+
         // CRITICAL: Filter to only top-level (non-nested) highlight elements
         // If a .has-note element is nested inside another .has-note, skip it
         const highlightElements = Array.from(allHighlightElements).filter(element => {
@@ -655,6 +701,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 }
                 parent = parent.parentElement;
             }
+            console.log(`[renderNotesMargin] Including top-level element ${element.dataset.annotationId}`);
             return true; // This is top-level
         });
 
@@ -753,6 +800,13 @@ document.addEventListener('DOMContentLoaded', () => {
             const highlightRect = noteData.highlightElement.getBoundingClientRect();
             const idealTop = highlightRect.top + scrollY;
 
+            console.log(`[layoutNotesWithPhysics] Note ${index + 1} (${noteData.highlightId}):`, {
+                highlightElement: noteData.highlightElement.textContent.substring(0, 30),
+                rect: { top: highlightRect.top, bottom: highlightRect.bottom, height: highlightRect.height },
+                scrollY: scrollY,
+                idealTop: idealTop
+            });
+
             // CRITICAL: Ensure we get the actual height
             const height = noteData.element.offsetHeight;
             if (height === 0) {
@@ -765,12 +819,14 @@ document.addEventListener('DOMContentLoaded', () => {
                 idealTop: idealTop,
                 currentTop: idealTop, // Start at ideal position
                 height: actualHeight,
-                index: index
+                index: index,
+                id: noteData.highlightId
             };
         });
 
         console.log('[layoutNotesWithPhysics] Initial note positions:', notes.map(n => ({
             index: n.index,
+            id: n.id,
             idealTop: n.idealTop,
             height: n.height
         })));
@@ -930,24 +986,41 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     function deleteAnnotation(annotationId) {
+        console.log(`[deleteAnnotation] Deleting annotation: ${annotationId}`);
+
         // Remove from localStorage
         let annotations = JSON.parse(localStorage.getItem(storageKey) || '[]');
+        console.log(`[deleteAnnotation] Total annotations in storage: ${annotations.length}`);
         annotations = annotations.filter(a => a.id !== annotationId);
         localStorage.setItem(storageKey, JSON.stringify(annotations));
+        console.log(`[deleteAnnotation] Annotations after deletion: ${annotations.length}`);
 
         // Remove highlight from DOM - CRITICAL: Find the exact element, not nested ones
         const highlightElements = markdownBody.querySelectorAll(`[data-annotation-id="${annotationId}"]`);
+        console.log(`[deleteAnnotation] Found ${highlightElements.length} elements with ID ${annotationId}`);
 
-        highlightElements.forEach(highlightElement => {
+        highlightElements.forEach((highlightElement, i) => {
+            console.log(`[deleteAnnotation] Processing element ${i + 1}: ID=${highlightElement.dataset.annotationId}`);
+
+            // Log children before removal
+            const childNotes = Array.from(highlightElement.querySelectorAll('.has-note')).map(el => el.dataset.annotationId);
+            if (childNotes.length > 0) {
+                console.log(`[deleteAnnotation] Found child notes: ${childNotes.join(', ')}`);
+            }
+
             // Only remove if this is the direct element with this annotation ID
             // (not a parent element that happens to contain nested annotations)
             if (highlightElement.dataset.annotationId === annotationId) {
                 const parent = highlightElement.parentNode;
+                console.log(`[deleteAnnotation] Removing element from parent: ${parent.tagName}`);
 
                 // Move all children out of the element, preserving nested annotations
+                let childCount = 0;
                 while (highlightElement.firstChild) {
                     parent.insertBefore(highlightElement.firstChild, highlightElement);
+                    childCount++;
                 }
+                console.log(`[deleteAnnotation] Moved ${childCount} child nodes out`);
 
                 // Remove the now-empty highlight element
                 parent.removeChild(highlightElement);
