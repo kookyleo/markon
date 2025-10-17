@@ -77,7 +77,6 @@ function clearPageAnnotations(event) {
 
     showConfirmDialog('Clear all annotations for this page?', () => {
         localStorage.removeItem(storageKey);
-        console.log(`[clearPageAnnotations] Cleared annotations for: ${filePath}`);
         location.reload();
     }, triggerElement, 'Clear');
 }
@@ -292,8 +291,6 @@ document.addEventListener('DOMContentLoaded', () => {
         if (!currentSelection) return;
         const range = currentSelection;
 
-        console.log(`[applyStyle] Creating ${className} annotation, note:`, note ? `"${note}"` : 'none');
-        console.log(`[applyStyle] Selection text: "${range.toString()}"`);
 
         // Get the actual node to use for XPath (text node or element)
         const getPathNode = (container) => {
@@ -361,8 +358,6 @@ document.addEventListener('DOMContentLoaded', () => {
         element.appendChild(range.extractContents());
         range.insertNode(element);
 
-        console.log(`[applyStyle] Created element with ID: ${annotation.id}`);
-        console.log(`[applyStyle] Element parent chain:`, (() => {
             let chain = [];
             let parent = element.parentElement;
             while (parent && parent !== document.body) {
@@ -466,23 +461,19 @@ document.addEventListener('DOMContentLoaded', () => {
             saveNote();
 
             // DEBUG: Log all has-note elements after save
-            console.log('[addNote] After saving note, DOM state:');
             const allNotes = markdownBody.querySelectorAll('.has-note');
             allNotes.forEach((el, i) => {
-                console.log(`  Note ${i + 1}: ID=${el.dataset.annotationId}, text="${el.textContent.substring(0, 30)}..."`);
                 // Check if nested
                 let parent = el.parentElement;
                 let isNested = false;
                 while (parent && parent !== markdownBody) {
                     if (parent.classList && parent.classList.contains('has-note')) {
-                        console.log(`    -> Nested inside: ${parent.dataset.annotationId}`);
                         isNested = true;
                         break;
                     }
                     parent = parent.parentElement;
                 }
                 if (!isNested) {
-                    console.log(`    -> Top-level`);
                 }
             });
         });
@@ -614,7 +605,6 @@ document.addEventListener('DOMContentLoaded', () => {
             // CRITICAL: Check if this annotation already exists in DOM to prevent duplicates
             const existingElement = markdownBody.querySelector(`[data-annotation-id="${anno.id}"]`);
             if (existingElement) {
-                console.log(`[applyAnnotations] Annotation ${anno.id} already exists in DOM, skipping`);
                 return;
             }
 
@@ -675,18 +665,15 @@ document.addEventListener('DOMContentLoaded', () => {
     let noteCardsData = [];
 
     function renderNotesMargin() {
-        console.log('[renderNotesMargin] Starting...');
 
         // Remove existing margin notes
         document.querySelectorAll('.note-card-margin').forEach(el => el.remove());
 
         // CRITICAL: Get highlight elements directly from DOM to preserve DOM order!
         const allHighlightElements = markdownBody.querySelectorAll('.has-note[data-annotation-id]');
-        console.log('[renderNotesMargin] Found total highlight elements in DOM:', allHighlightElements.length);
 
         // Log each element found
         Array.from(allHighlightElements).forEach((el, i) => {
-            console.log(`[renderNotesMargin] Element ${i + 1}: ID=${el.dataset.annotationId}, text="${el.textContent.substring(0, 30)}..."`);
         });
 
         // CRITICAL: For each .has-note element, use only the outermost one
@@ -701,7 +688,6 @@ document.addEventListener('DOMContentLoaded', () => {
             let parent = element.parentElement;
             while (parent && parent !== markdownBody) {
                 if (parent.classList && parent.classList.contains('has-note')) {
-                    console.log(`[renderNotesMargin] Element ${annoId} is nested inside ${parent.dataset.annotationId}`);
                     isNested = true;
                     break;
                 }
@@ -711,23 +697,18 @@ document.addEventListener('DOMContentLoaded', () => {
             // If not nested, or if we haven't seen this annotation yet, record it
             if (!outermostMap.has(annoId)) {
                 outermostMap.set(annoId, element);
-                console.log(`[renderNotesMargin] Recorded ${annoId} as ${isNested ? 'nested but first seen' : 'top-level'}`);
             } else if (!isNested) {
                 // If we've seen it before but this one is NOT nested, prefer this one
                 outermostMap.set(annoId, element);
-                console.log(`[renderNotesMargin] Updated ${annoId} to use non-nested element`);
             }
         });
 
         // Convert map values to array
         const highlightElements = Array.from(outermostMap.values());
-        console.log(`[renderNotesMargin] Using ${highlightElements.length} unique annotations (from ${allHighlightElements.length} DOM elements)`);
 
-        console.log('[renderNotesMargin] After filtering nested elements:', highlightElements.length);
 
         if (highlightElements.length === 0) {
             noteCardsData = [];
-            console.log('[renderNotesMargin] No highlight elements found, exiting');
             return;
         }
 
@@ -742,10 +723,8 @@ document.addEventListener('DOMContentLoaded', () => {
             const annoId = highlightElement.dataset.annotationId;
             const anno = annotationsMap.get(annoId);
 
-            console.log(`[renderNotesMargin] Processing DOM element ${index + 1}, ID:`, annoId);
 
             if (!anno || !anno.note) {
-                console.log(`[renderNotesMargin] No note data for ${annoId}, skipping`);
                 return;
             }
 
@@ -765,7 +744,6 @@ document.addEventListener('DOMContentLoaded', () => {
             noteCard.style.position = 'absolute';
 
             document.body.appendChild(noteCard);
-            console.log('[renderNotesMargin] Note card appended to body');
 
             noteCardsData.push({
                 element: noteCard,
@@ -776,15 +754,12 @@ document.addEventListener('DOMContentLoaded', () => {
             });
         });
 
-        console.log('[renderNotesMargin] Total note cards created:', noteCardsData.length);
 
         // Check screen width for responsive behavior
         if (window.innerWidth > 1400) {
-            console.log('[renderNotesMargin] Wide screen - showing margin notes');
             // Layout notes with physics simulation for wide screens
             layoutNotesWithPhysics();
         } else {
-            console.log('[renderNotesMargin] Narrow screen - hiding margin notes, will show on click');
             // Hide all note cards on small screens
             noteCardsData.forEach(noteData => {
                 noteData.element.style.display = 'none';
@@ -793,10 +768,8 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     function layoutNotesWithPhysics() {
-        console.log('[layoutNotesWithPhysics] Starting physics simulation...');
 
         if (noteCardsData.length === 0) {
-            console.log('[layoutNotesWithPhysics] No note cards, exiting');
             return;
         }
 
@@ -818,7 +791,6 @@ document.addEventListener('DOMContentLoaded', () => {
             const highlightRect = noteData.highlightElement.getBoundingClientRect();
             const idealTop = highlightRect.top + scrollY;
 
-            console.log(`[layoutNotesWithPhysics] Note ${index + 1} (${noteData.highlightId}):`, {
                 highlightElement: noteData.highlightElement.textContent.substring(0, 30),
                 rect: { top: highlightRect.top, bottom: highlightRect.bottom, height: highlightRect.height },
                 scrollY: scrollY,
@@ -846,7 +818,6 @@ document.addEventListener('DOMContentLoaded', () => {
             };
         });
 
-        console.log('[layoutNotesWithPhysics] Initial note positions:', notes.map(n => ({
             index: n.index,
             id: n.id,
             idealTop: n.idealTop,
@@ -906,7 +877,6 @@ document.addEventListener('DOMContentLoaded', () => {
                         }
 
                         if (iteration === 0 || penetration > 5) {
-                            console.log(`[layoutNotesWithPhysics] Iteration ${iteration + 1}: Note ${note.index + 1} (top=${note.currentTop.toFixed(0)}) too close to Note ${other.index + 1} (top=${other.currentTop.toFixed(0)}), gap=${gap.toFixed(1)}px, penetration=${penetration.toFixed(1)}`);
                         }
                     }
                 });
@@ -923,18 +893,15 @@ document.addEventListener('DOMContentLoaded', () => {
 
             // Check convergence
             if (maxMovement < convergenceThreshold) {
-                console.log(`[layoutNotesWithPhysics] Converged at iteration ${iteration + 1}, maxMovement=${maxMovement.toFixed(2)}`);
                 break;
             }
 
             if (iteration === maxIterations - 1) {
-                console.log(`[layoutNotesWithPhysics] Reached max iterations (${maxIterations}), maxMovement=${maxMovement.toFixed(2)}`);
             }
         }
 
         // Post-process: ONLY enforce spacing if their ideal positions indicate they should be separated
         // Do NOT force separation for notes that have similar ideal positions (overlapping notes)
-        console.log('[layoutNotesWithPhysics] Post-processing to ensure minimum spacing (only when ideal positions are separated)...');
 
         const idealPositionThreshold = 50; // If ideal positions are within 50px, allow them to overlap
 
@@ -952,12 +919,10 @@ document.addEventListener('DOMContentLoaded', () => {
 
                 if (curr.currentTop < minAllowedTop) {
                     const adjustment = minAllowedTop - curr.currentTop;
-                    console.log(`[layoutNotesWithPhysics] Post-process: Note ${curr.index + 1} would break spacing (idealGap=${idealGap.toFixed(0)}px), adjusting down by ${adjustment.toFixed(1)}px (from ${curr.currentTop.toFixed(0)} to ${minAllowedTop.toFixed(0)})`);
                     curr.currentTop = minAllowedTop;
                 }
             } else {
                 // Their ideal positions are close/overlapping, allow physics simulation result
-                console.log(`[layoutNotesWithPhysics] Post-process: Note ${curr.index + 1} has similar ideal position to Note ${prev.index + 1} (idealGap=${idealGap.toFixed(0)}px), allowing overlap`);
             }
         }
 
@@ -967,10 +932,8 @@ document.addEventListener('DOMContentLoaded', () => {
             note.element.style.top = `${note.currentTop}px`;
             note.element.style.display = 'block';
 
-            console.log(`[layoutNotesWithPhysics] Note ${i + 1} final position: ideal=${note.idealTop.toFixed(0)}, actual=${note.currentTop.toFixed(0)}, offset=${(note.currentTop - note.idealTop).toFixed(1)}`);
         });
 
-        console.log('[layoutNotesWithPhysics] Physics simulation complete');
     }
 
     // Window resize listener with debounce for smooth transitions
@@ -1018,33 +981,26 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     function deleteAnnotation(annotationId) {
-        console.log(`[deleteAnnotation] Deleting annotation: ${annotationId}`);
 
         // Remove from localStorage
         let annotations = JSON.parse(localStorage.getItem(storageKey) || '[]');
-        console.log(`[deleteAnnotation] Total annotations in storage: ${annotations.length}`);
         annotations = annotations.filter(a => a.id !== annotationId);
         localStorage.setItem(storageKey, JSON.stringify(annotations));
-        console.log(`[deleteAnnotation] Annotations after deletion: ${annotations.length}`);
 
         // Remove highlight from DOM - CRITICAL: Find the exact element, not nested ones
         const highlightElements = markdownBody.querySelectorAll(`[data-annotation-id="${annotationId}"]`);
-        console.log(`[deleteAnnotation] Found ${highlightElements.length} elements with ID ${annotationId}`);
 
         highlightElements.forEach((highlightElement, i) => {
-            console.log(`[deleteAnnotation] Processing element ${i + 1}: ID=${highlightElement.dataset.annotationId}`);
 
             // Log children before removal
             const childNotes = Array.from(highlightElement.querySelectorAll('.has-note')).map(el => el.dataset.annotationId);
             if (childNotes.length > 0) {
-                console.log(`[deleteAnnotation] Found child notes: ${childNotes.join(', ')}`);
             }
 
             // Only remove if this is the direct element with this annotation ID
             // (not a parent element that happens to contain nested annotations)
             if (highlightElement.dataset.annotationId === annotationId) {
                 const parent = highlightElement.parentNode;
-                console.log(`[deleteAnnotation] Removing element from parent: ${parent.tagName}`);
 
                 // Move all children out of the element, preserving nested annotations
                 let childCount = 0;
@@ -1052,7 +1008,6 @@ document.addEventListener('DOMContentLoaded', () => {
                     parent.insertBefore(highlightElement.firstChild, highlightElement);
                     childCount++;
                 }
-                console.log(`[deleteAnnotation] Moved ${childCount} child nodes out`);
 
                 // Remove the now-empty highlight element
                 parent.removeChild(highlightElement);
@@ -1069,7 +1024,6 @@ document.addEventListener('DOMContentLoaded', () => {
         // Update noteCardsData
         noteCardsData = noteCardsData.filter(n => n.highlightId !== annotationId);
 
-        console.log(`[deleteAnnotation] Deleted annotation ${annotationId}`);
 
         // CRITICAL: Re-render note cards after deletion to update remaining notes
         // This is especially important for nested annotations
@@ -1181,7 +1135,6 @@ document.addEventListener('DOMContentLoaded', () => {
                 // Re-render note cards to show updated content
                 renderNotesMargin();
 
-                console.log('[editNote] Note updated:', annotationId);
             } else {
                 // If note is empty, delete the annotation
                 deleteAnnotation(annotationId);
