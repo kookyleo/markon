@@ -778,50 +778,50 @@ document.addEventListener('DOMContentLoaded', () => {
         const maxIterations = 100; // Maximum simulation steps
         const convergenceThreshold = 0.1; // Stop when movement is less than this
 
-        // CRITICAL FIX: Pre-position overlapping notes to avoid clustering issues
-        // Sort notes by ideal position
+        // CRITICAL FIX: Group notes by position and pre-arrange overlapping ones
+        // Use a more robust clustering approach: group by similar idealTop
+        const positionTolerance = 20; // Notes within 20px are considered at "same" position
         const notesByPosition = notes.map((note, i) => ({ ...note, originalIndex: i }))
             .sort((a, b) => a.idealTop - b.idealTop);
 
-        // Group notes into clusters (notes that would overlap)
         const clusters = [];
         if (notesByPosition.length > 0) {
             let currentCluster = [notesByPosition[0]];
+            let clusterBaseTop = notesByPosition[0].idealTop;
 
             for (let i = 1; i < notesByPosition.length; i++) {
-                const prev = notesByPosition[i - 1];
                 const curr = notesByPosition[i];
 
-                // Check if current note would overlap with previous
-                const prevBottom = prev.idealTop + prev.height;
-                if (curr.idealTop < prevBottom + minSpacing) {
-                    // Overlapping - add to current cluster
+                // Check if current note is close to cluster base position
+                if (Math.abs(curr.idealTop - clusterBaseTop) <= positionTolerance) {
+                    // Same position group
                     currentCluster.push(curr);
                 } else {
-                    // Not overlapping - start new cluster
-                    clusters.push(currentCluster);
-                    currentCluster = [curr];
+                    // Different position - check if would overlap with cluster
+                    const clusterBottom = clusterBaseTop + currentCluster.length * (80 + minSpacing);
+                    if (curr.idealTop < clusterBottom) {
+                        // Would overlap - add to cluster
+                        currentCluster.push(curr);
+                    } else {
+                        // No overlap - start new cluster
+                        clusters.push(currentCluster);
+                        currentCluster = [curr];
+                        clusterBaseTop = curr.idealTop;
+                    }
                 }
             }
             clusters.push(currentCluster);
         }
 
-        // Position notes within each cluster
+        // Pre-position notes in each cluster
         clusters.forEach(cluster => {
             if (cluster.length > 1) {
-                // Multiple notes in cluster - stack them vertically
-                // Calculate total height needed
-                const totalHeight = cluster.reduce((sum, note) => sum + note.height, 0);
-                const totalSpacing = (cluster.length - 1) * minSpacing;
-                const totalNeeded = totalHeight + totalSpacing;
+                // Multiple notes - stack them starting from the first note's position
+                const firstIdealTop = cluster[0].idealTop;
+                let currentTop = firstIdealTop;
 
-                // Center cluster around average ideal position
-                const avgIdeal = cluster.reduce((sum, note) => sum + note.idealTop, 0) / cluster.length;
-                let currentTop = avgIdeal - totalNeeded / 2;
-
-                // Stack notes vertically
                 cluster.forEach(note => {
-                    notes[note.originalIndex].currentTop = Math.max(0, currentTop);
+                    notes[note.originalIndex].currentTop = currentTop;
                     currentTop += note.height + minSpacing;
                 });
             }
