@@ -934,7 +934,7 @@ document.addEventListener('DOMContentLoaded', () => {
         console.log(`[deleteAnnotation] Deleted annotation ${annotationId}`);
     }
 
-    function editNote(annotationId, triggerEvent = null) {
+    function editNote(annotationId) {
         // Load annotation from storage
         const annotations = JSON.parse(localStorage.getItem(storageKey) || '[]');
         const annotation = annotations.find(a => a.id === annotationId);
@@ -954,6 +954,9 @@ document.addEventListener('DOMContentLoaded', () => {
         // Remove any existing modal
         const existingModal = document.querySelector('.note-input-modal');
         if (existingModal) existingModal.remove();
+
+        // Get highlight element position
+        const rect = highlightElement.getBoundingClientRect();
 
         // Create modal
         const modal = document.createElement('div');
@@ -978,19 +981,9 @@ document.addEventListener('DOMContentLoaded', () => {
         const modalWidth = modal.offsetWidth;
         const modalHeight = modal.offsetHeight;
 
-        // Calculate initial position
-        let modalLeft, modalTop;
-
-        if (triggerEvent) {
-            // Use mouse position from trigger event
-            modalLeft = triggerEvent.clientX + window.scrollX;
-            modalTop = triggerEvent.clientY + window.scrollY + 10;
-        } else {
-            // Fallback to highlight element position
-            const rect = highlightElement.getBoundingClientRect();
-            modalLeft = rect.left + window.scrollX;
-            modalTop = rect.bottom + window.scrollY + 10;
-        }
+        // Calculate initial position (below highlight)
+        let modalLeft = rect.left + window.scrollX;
+        let modalTop = rect.bottom + window.scrollY + 10;
 
         // Adjust horizontal position if goes off right edge
         if (modalLeft + modalWidth > window.innerWidth + window.scrollX) {
@@ -1088,7 +1081,7 @@ document.addEventListener('DOMContentLoaded', () => {
             // Handle edit button clicks
             if (target.classList.contains('note-edit')) {
                 const annotationId = target.dataset.annotationId;
-                editNote(annotationId, e);
+                editNote(annotationId);
                 e.stopPropagation();
                 return;
             }
@@ -1184,18 +1177,6 @@ document.addEventListener('DOMContentLoaded', () => {
                 const existingPopup = document.querySelector('.note-popup');
                 if (existingPopup) {
                     existingPopup.remove();
-                }
-            }
-        });
-
-        // Handle double-click on note cards to edit
-        document.body.addEventListener('dblclick', (e) => {
-            const noteCard = e.target.closest('.note-card-margin');
-            if (noteCard) {
-                const annotationId = noteCard.dataset.annotationId;
-                if (annotationId) {
-                    editNote(annotationId, e);
-                    e.stopPropagation();
                 }
             }
         });
