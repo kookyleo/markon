@@ -26,16 +26,23 @@
             color: inherit;
         }
 
-        {% if theme == "dark" or theme == "auto" %}
+        {% if theme == "dark" %}
+        body {
+            background-color: #0d1117;
+            color: #f0f6fc;
+        }
+        {% elif theme == "light" %}
+        body {
+            background-color: #ffffff;
+            color: #1f2328;
+        }
+        {% else %}
         @media (prefers-color-scheme: dark) {
             body {
                 background-color: #0d1117;
                 color: #f0f6fc;
             }
         }
-        {% endif %}
-
-        {% if theme == "light" or theme == "auto" %}
         @media (prefers-color-scheme: light) {
             body {
                 background-color: #ffffff;
@@ -106,7 +113,23 @@
             text-decoration: underline;
         }
 
-        {% if theme == "dark" or theme == "auto" %}
+        {% if theme == "dark" %}
+        .footer {
+            color: #8b949e;
+        }
+        .footer a,
+        .footer a:visited {
+            color: #8b949e;
+        }
+        {% elif theme == "light" %}
+        .footer {
+            color: #656d76;
+        }
+        .footer a,
+        .footer a:visited {
+            color: #656d76;
+        }
+        {% else %}
         @media (prefers-color-scheme: dark) {
             .footer {
                 color: #8b949e;
@@ -116,9 +139,6 @@
                 color: #8b949e;
             }
         }
-        {% endif %}
-
-        {% if theme == "light" or theme == "auto" %}
         @media (prefers-color-scheme: light) {
             .footer {
                 color: #656d76;
@@ -203,7 +223,35 @@
             }
         }
 
-        {% if theme == "dark" or theme == "auto" %}
+        {% if theme == "dark" %}
+        .toc {
+            background-color: rgba(22, 27, 34, 0.95);
+            border: 1px solid #30363d;
+        }
+        .toc-title {
+            color: #f0f6fc;
+        }
+        .toc-item a {
+            color: #8b949e;
+        }
+        .toc-item a:hover {
+            color: #58a6ff;
+        }
+        {% elif theme == "light" %}
+        .toc {
+            background-color: rgba(255, 255, 255, 0.95);
+            border: 1px solid #d0d7de;
+        }
+        .toc-title {
+            color: #1f2328;
+        }
+        .toc-item a {
+            color: #656d76;
+        }
+        .toc-item a:hover {
+            color: #0969da;
+        }
+        {% else %}
         @media (prefers-color-scheme: dark) {
             .toc {
                 background-color: rgba(22, 27, 34, 0.95);
@@ -219,9 +267,6 @@
                 color: #58a6ff;
             }
         }
-        {% endif %}
-
-        {% if theme == "light" or theme == "auto" %}
         @media (prefers-color-scheme: light) {
             .toc {
                 background-color: rgba(255, 255, 255, 0.95);
