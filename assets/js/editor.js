@@ -689,21 +689,39 @@ document.addEventListener('DOMContentLoaded', () => {
             console.log(`[renderNotesMargin] Element ${i + 1}: ID=${el.dataset.annotationId}, text="${el.textContent.substring(0, 30)}..."`);
         });
 
-        // CRITICAL: Filter to only top-level (non-nested) highlight elements
-        // If a .has-note element is nested inside another .has-note, skip it
-        const highlightElements = Array.from(allHighlightElements).filter(element => {
-            // Check if any parent element is also a .has-note
+        // CRITICAL: For each .has-note element, use only the outermost one
+        // Create a Map: annotationId -> outermost element
+        const outermostMap = new Map();
+
+        allHighlightElements.forEach(element => {
+            const annoId = element.dataset.annotationId;
+
+            // Check if this element is nested inside another .has-note
+            let isNested = false;
             let parent = element.parentElement;
             while (parent && parent !== markdownBody) {
                 if (parent.classList && parent.classList.contains('has-note')) {
-                    console.log(`[renderNotesMargin] Skipping nested element ${element.dataset.annotationId} (inside ${parent.dataset.annotationId})`);
-                    return false; // This is nested, skip it
+                    console.log(`[renderNotesMargin] Element ${annoId} is nested inside ${parent.dataset.annotationId}`);
+                    isNested = true;
+                    break;
                 }
                 parent = parent.parentElement;
             }
-            console.log(`[renderNotesMargin] Including top-level element ${element.dataset.annotationId}`);
-            return true; // This is top-level
+
+            // If not nested, or if we haven't seen this annotation yet, record it
+            if (!outermostMap.has(annoId)) {
+                outermostMap.set(annoId, element);
+                console.log(`[renderNotesMargin] Recorded ${annoId} as ${isNested ? 'nested but first seen' : 'top-level'}`);
+            } else if (!isNested) {
+                // If we've seen it before but this one is NOT nested, prefer this one
+                outermostMap.set(annoId, element);
+                console.log(`[renderNotesMargin] Updated ${annoId} to use non-nested element`);
+            }
         });
+
+        // Convert map values to array
+        const highlightElements = Array.from(outermostMap.values());
+        console.log(`[renderNotesMargin] Using ${highlightElements.length} unique annotations (from ${allHighlightElements.length} DOM elements)`);
 
         console.log('[renderNotesMargin] After filtering nested elements:', highlightElements.length);
 
