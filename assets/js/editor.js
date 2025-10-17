@@ -424,17 +424,43 @@ document.addEventListener('DOMContentLoaded', () => {
         const cancelBtn = modal.querySelector('.note-cancel');
         const saveBtn = modal.querySelector('.note-save');
 
-        // Focus textarea and restore text selection for visual feedback
-        setTimeout(() => {
-            textarea.focus();
-            // Restore the original text selection so user can see what they selected
-            const selection = window.getSelection();
-            selection.removeAllRanges();
-            selection.addRange(currentSelection.cloneRange());
-        }, 0);
+        // Create a temporary highlight overlay to show selected text
+        // (can't use real selection because it conflicts with textarea focus)
+        const createSelectionOverlay = () => {
+            const rects = currentSelection.getClientRects();
+            const overlays = [];
+
+            for (let i = 0; i < rects.length; i++) {
+                const rect = rects[i];
+                const overlay = document.createElement('div');
+                overlay.className = 'temp-selection-overlay';
+                overlay.style.position = 'absolute';
+                overlay.style.left = `${rect.left + window.scrollX}px`;
+                overlay.style.top = `${rect.top + window.scrollY}px`;
+                overlay.style.width = `${rect.width}px`;
+                overlay.style.height = `${rect.height}px`;
+                overlay.style.backgroundColor = 'rgba(100, 150, 255, 0.3)';
+                overlay.style.pointerEvents = 'none';
+                overlay.style.zIndex = '9998'; // Below modal (9999) but above content
+                document.body.appendChild(overlay);
+                overlays.push(overlay);
+            }
+            return overlays;
+        };
+
+        const selectionOverlays = createSelectionOverlay();
+
+        // Focus textarea
+        setTimeout(() => textarea.focus(), 0);
+
+        // Clean up overlays when modal is removed
+        const cleanupOverlays = () => {
+            selectionOverlays.forEach(overlay => overlay.remove());
+        };
 
         // Cancel handler
         cancelBtn.addEventListener('click', () => {
+            cleanupOverlays();
             modal.remove();
             currentSelection = null;
         });
@@ -446,6 +472,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 applyStyle('has-note', 'span', noteText);
                 renderNotesMargin();
             }
+            cleanupOverlays();
             modal.remove();
             currentSelection = null;
         };
@@ -464,6 +491,7 @@ document.addEventListener('DOMContentLoaded', () => {
         setTimeout(() => {
             document.addEventListener('click', function closeModal(e) {
                 if (!modal.contains(e.target)) {
+                    cleanupOverlays();
                     modal.remove();
                     document.removeEventListener('click', closeModal);
                 }
