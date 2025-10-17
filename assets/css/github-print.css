@@ -371,4 +371,47 @@
   .print-hide {
     display: none !important;
   }
+
+  /* ========== ANNOTATION HIGHLIGHTS ========== */
+  /* Orange highlight */
+  .highlight-orange {
+    background-color: rgba(255, 165, 0, 0.3) !important;
+    border-bottom: 1pt solid rgba(255, 140, 0, 0.6) !important;
+  }
+
+  /* Green highlight */
+  .highlight-green {
+    background-color: rgba(144, 238, 144, 0.4) !important;
+    border-bottom: 1pt solid rgba(60, 179, 113, 0.6) !important;
+  }
+
+  /* Yellow highlight */
+  .highlight-yellow {
+    background-color: rgba(255, 255, 0, 0.3) !important;
+    border-bottom: 1pt solid rgba(218, 165, 32, 0.6) !important;
+  }
+
+  /* Strikethrough */
+  .strikethrough {
+    text-decoration: line-through !important;
+    color: #666 !important;
+  }
+
+  /* Note highlights - shown with distinct visual marker */
+  .has-note {
+    background-color: rgba(255, 99, 71, 0.15) !important;
+    border-bottom: 2pt dotted rgba(255, 99, 71, 0.5) !important;
+  }
+
+  /* Hide interactive UI elements but keep highlights */
+  .selection-popover,
+  .note-input-modal,
+  .note-card-margin,
+  .note-popup,
+  .confirm-dialog,
+  .note-actions,
+  .note-edit,
+  .note-delete {
+    display: none !important;
+  }
 }
