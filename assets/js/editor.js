@@ -771,12 +771,8 @@ document.addEventListener('DOMContentLoaded', () => {
             };
         });
 
-        // Physics simulation parameters (define early for use in clustering)
+        // Spacing between notes
         const minSpacing = 10; // Minimum spacing between notes
-        const springConstant = 0.15; // How strongly notes return to ideal position (reduced for more flexibility)
-        const repulsionStrength = 2.0; // How strongly notes push each other away (increased)
-        const maxIterations = 100; // Maximum simulation steps
-        const convergenceThreshold = 0.1; // Stop when movement is less than this
 
         // CRITICAL FIX: Use Union-Find clustering algorithm for grouping notes
         // This ensures transitivity: if A and B are close, B and C are close, then A, B, C are all in same group
@@ -841,19 +837,6 @@ document.addEventListener('DOMContentLoaded', () => {
             clusters.get(root).push(idx);
         });
 
-        // DEBUG: Log ALL note positions and clustering results
-        console.log(`[layoutNotesWithPhysics] Total notes: ${notes.length}, Clusters: ${clusters.size}`);
-        console.log('All notes idealTop positions:');
-        notes.forEach((note, i) => {
-            console.log(`  Note ${i} (${note.id}): idealTop = ${note.idealTop.toFixed(2)}px`);
-        });
-
-        console.log('Clustering results:');
-        clusters.forEach((indices, root) => {
-            const tops = indices.map(i => notes[i].idealTop.toFixed(2));
-            const ids = indices.map(i => notes[i].id);
-            console.log(`  Cluster ${root}: ${indices.length} note(s), IDs: [${ids.join(', ')}], idealTops: [${tops.join(', ')}]px`);
-        });
 
         // Pre-position notes: stack notes in same cluster vertically
         clusters.forEach((indices) => {
