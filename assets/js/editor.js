@@ -665,7 +665,10 @@ document.addEventListener('DOMContentLoaded', () => {
             noteCard.dataset.annotationId = anno.id;
 
             noteCard.innerHTML = `
-                <button class="note-delete" data-annotation-id="${anno.id}" title="Delete note">×</button>
+                <div class="note-actions">
+                    <button class="note-edit" data-annotation-id="${anno.id}" title="Edit note">✎</button>
+                    <button class="note-delete" data-annotation-id="${anno.id}" title="Delete note">×</button>
+                </div>
                 <div class="note-content">${anno.note}</div>
             `;
 
@@ -711,15 +714,15 @@ document.addEventListener('DOMContentLoaded', () => {
         // Force browser reflow to ensure offsetHeight is calculated
         document.body.offsetHeight;
 
-        // Calculate horizontal position (right-aligned, matching TOC width)
+        // Calculate horizontal position (right-aligned)
         const scrollY = window.scrollY || window.pageYOffset;
 
-        // Get TOC width for symmetry
-        const toc = document.querySelector('.toc');
-        const tocWidth = toc ? toc.offsetWidth : 250; // Fallback to 250px if no TOC
+        // Note card width is 250px (defined in CSS)
+        const noteCardWidth = 250;
+        const rightMargin = 20; // 20px margin from window edge
 
-        // Position notes to the right of content, right-aligned to window edge
-        const rightEdge = window.innerWidth - tocWidth;
+        // Position note card: left edge = window width - card width - margin
+        const rightEdge = window.innerWidth - noteCardWidth - rightMargin;
 
         // Prepare note objects with ideal positions
         const notes = noteCardsData.map((noteData, index) => {
@@ -931,6 +934,140 @@ document.addEventListener('DOMContentLoaded', () => {
         console.log(`[deleteAnnotation] Deleted annotation ${annotationId}`);
     }
 
+    function editNote(annotationId) {
+        // Load annotation from storage
+        const annotations = JSON.parse(localStorage.getItem(storageKey) || '[]');
+        const annotation = annotations.find(a => a.id === annotationId);
+
+        if (!annotation || !annotation.note) {
+            console.warn('[editNote] Note not found for annotation:', annotationId);
+            return;
+        }
+
+        // Find the highlight element to position modal near it
+        const highlightElement = markdownBody.querySelector(`[data-annotation-id="${annotationId}"]`);
+        if (!highlightElement) {
+            console.warn('[editNote] Highlight element not found for annotation:', annotationId);
+            return;
+        }
+
+        // Remove any existing modal
+        const existingModal = document.querySelector('.note-input-modal');
+        if (existingModal) existingModal.remove();
+
+        // Get highlight element position
+        const rect = highlightElement.getBoundingClientRect();
+
+        // Create modal
+        const modal = document.createElement('div');
+        modal.className = 'note-input-modal';
+
+        modal.innerHTML = `
+            <textarea class="note-textarea" placeholder="Enter your note..." autofocus></textarea>
+            <div class="note-input-actions">
+                <button class="note-cancel">Cancel</button>
+                <button class="note-save">Save</button>
+            </div>
+        `;
+
+        // Append to body first to get dimensions
+        document.body.appendChild(modal);
+
+        // Pre-fill textarea with existing note content
+        const textarea = modal.querySelector('.note-textarea');
+        textarea.value = annotation.note;
+
+        // Force reflow to calculate modal dimensions
+        const modalWidth = modal.offsetWidth;
+        const modalHeight = modal.offsetHeight;
+
+        // Calculate initial position (below highlight)
+        let modalLeft = rect.left + window.scrollX;
+        let modalTop = rect.bottom + window.scrollY + 10;
+
+        // Adjust horizontal position if goes off right edge
+        if (modalLeft + modalWidth > window.innerWidth + window.scrollX) {
+            modalLeft = window.innerWidth + window.scrollX - modalWidth - 10;
+        }
+
+        // Adjust horizontal position if goes off left edge
+        if (modalLeft < window.scrollX) {
+            modalLeft = window.scrollX + 10;
+        }
+
+        // Adjust vertical position if goes off bottom edge
+        if (rect.bottom + modalHeight + 10 > window.innerHeight) {
+            // Try to place above highlight instead
+            if (rect.top - modalHeight - 10 > 0) {
+                modalTop = rect.top + window.scrollY - modalHeight - 10;
+            } else {
+                // If doesn't fit above either, place at top of viewport
+                modalTop = window.scrollY + 10;
+            }
+        }
+
+        modal.style.left = `${modalLeft}px`;
+        modal.style.top = `${modalTop}px`;
+
+        const cancelBtn = modal.querySelector('.note-cancel');
+        const saveBtn = modal.querySelector('.note-save');
+
+        // Focus textarea and select all text for easy editing
+        setTimeout(() => {
+            textarea.focus();
+            textarea.select();
+        }, 0);
+
+        // Cancel handler
+        cancelBtn.addEventListener('click', () => {
+            modal.remove();
+        });
+
+        // Save handler
+        const saveNote = () => {
+            const noteText = textarea.value.trim();
+            if (noteText) {
+                // Update annotation in storage
+                annotation.note = noteText;
+                saveAnnotation(annotation);
+
+                // Update DOM element's data attribute
+                if (highlightElement) {
+                    highlightElement.dataset.note = noteText;
+                }
+
+                // Re-render note cards to show updated content
+                renderNotesMargin();
+
+                console.log('[editNote] Note updated:', annotationId);
+            } else {
+                // If note is empty, delete the annotation
+                deleteAnnotation(annotationId);
+            }
+            modal.remove();
+        };
+
+        saveBtn.addEventListener('click', saveNote);
+
+        // Enter to save (Ctrl+Enter for newline)
+        textarea.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter' && !e.shiftKey && !e.ctrlKey) {
+                e.preventDefault();
+                saveNote();
+            }
+        });
+
+        // Click outside to close
+        setTimeout(() => {
+            document.addEventListener('click', function closeModal(e) {
+                if (!modal.contains(e.target)) {
+                    modal.remove();
+                    document.removeEventListener('click', closeModal);
+                }
+            });
+        }, 100);
+    }
+
     function deleteNote(annotationId) {
         // Wrapper for backward compatibility
         deleteAnnotation(annotationId);
@@ -940,6 +1077,14 @@ document.addEventListener('DOMContentLoaded', () => {
         // Click on highlight text -> show note
         document.body.addEventListener('click', (e) => {
             let target = e.target;
+
+            // Handle edit button clicks
+            if (target.classList.contains('note-edit')) {
+                const annotationId = target.dataset.annotationId;
+                editNote(annotationId);
+                e.stopPropagation();
+                return;
+            }
 
             // Handle delete button clicks
             if (target.classList.contains('note-delete')) {
@@ -1046,7 +1191,10 @@ document.addEventListener('DOMContentLoaded', () => {
         popup.className = 'note-popup';
         popup.dataset.annotationId = annotationId;
         popup.innerHTML = `
-            <button class="note-delete" data-annotation-id="${annotationId}" title="Delete note">×</button>
+            <div class="note-actions">
+                <button class="note-edit" data-annotation-id="${annotationId}" title="Edit note">✎</button>
+                <button class="note-delete" data-annotation-id="${annotationId}" title="Delete note">×</button>
+            </div>
             <div class="note-content">${noteData.note}</div>
         `;
 

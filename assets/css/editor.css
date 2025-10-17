@@ -165,18 +165,23 @@
     box-shadow: 0 0 0 3px rgba(9, 105, 218, 0.15);
 }
 
-/* Delete button */
-.note-delete {
+/* Note action buttons */
+.note-actions {
     position: absolute;
     top: 8px;
     right: 8px;
+    display: flex;
+    gap: 4px;
+}
+
+.note-edit,
+.note-delete {
     width: 20px;
     height: 20px;
     border: none;
-    background: #dc3545;
     color: white;
     border-radius: 50%;
-    font-size: 16px;
+    font-size: 14px;
     line-height: 1;
     cursor: pointer;
     display: flex;
@@ -185,6 +190,19 @@
     opacity: 0.7;
     transition: opacity 0.2s, transform 0.2s;
     padding: 0;
+}
+
+.note-edit {
+    background: #0969da;
+}
+
+.note-edit:hover {
+    opacity: 1;
+    transform: scale(1.1);
+}
+
+.note-delete {
+    background: #dc3545;
 }
 
 .note-delete:hover {
@@ -196,7 +214,7 @@
     color: #1f2328;
     white-space: pre-wrap;
     word-wrap: break-word;
-    padding-right: 24px; /* Make room for delete button */
+    padding-right: 52px; /* Make room for edit and delete buttons */
 }
 
 /* Confirm dialog - small popup near trigger */

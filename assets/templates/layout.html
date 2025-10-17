@@ -67,7 +67,7 @@
 
         {% if theme == "dark" %}
         .back-link a {
-            color: #4493f8;
+            color: #58a6ff;
         }
         {% endif %}
 
@@ -194,6 +194,10 @@
             text-decoration: underline;
         }
 
+        .toc-item a.active {
+            font-weight: 600;
+        }
+
         /* Indent based on heading level */
         .toc-level-1 { padding-left: 0; }
         .toc-level-2 { padding-left: 12px; }
@@ -226,7 +230,6 @@
         {% if theme == "dark" %}
         .toc {
             background-color: rgba(22, 27, 34, 0.95);
-            border: 1px solid #30363d;
         }
         .toc-title {
             color: #f0f6fc;
@@ -237,10 +240,15 @@
         .toc-item a:hover {
             color: #58a6ff;
         }
+        .toc-item a.active {
+            color: #58a6ff;
+            background-color: rgba(88, 166, 255, 0.15);
+            border-radius: 4px;
+            padding: 2px 6px;
+        }
         {% elif theme == "light" %}
         .toc {
             background-color: rgba(255, 255, 255, 0.95);
-            border: 1px solid #d0d7de;
         }
         .toc-title {
             color: #1f2328;
@@ -251,11 +259,16 @@
         .toc-item a:hover {
             color: #0969da;
         }
+        .toc-item a.active {
+            color: #0969da;
+            background-color: rgba(9, 105, 218, 0.1);
+            border-radius: 4px;
+            padding: 2px 6px;
+        }
         {% else %}
         @media (prefers-color-scheme: dark) {
             .toc {
                 background-color: rgba(22, 27, 34, 0.95);
-                border: 1px solid #30363d;
             }
             .toc-title {
                 color: #f0f6fc;
@@ -266,11 +279,16 @@
             .toc-item a:hover {
                 color: #58a6ff;
             }
+            .toc-item a.active {
+                color: #58a6ff;
+                background-color: rgba(88, 166, 255, 0.15);
+                border-radius: 4px;
+                padding: 2px 6px;
+            }
         }
         @media (prefers-color-scheme: light) {
             .toc {
                 background-color: rgba(255, 255, 255, 0.95);
-                border: 1px solid #d0d7de;
             }
             .toc-title {
                 color: #1f2328;
@@ -280,6 +298,12 @@
             }
             .toc-item a:hover {
                 color: #0969da;
+            }
+            .toc-item a.active {
+                color: #0969da;
+                background-color: rgba(9, 105, 218, 0.1);
+                border-radius: 4px;
+                padding: 2px 6px;
             }
         }
         {% endif %}
@@ -330,5 +354,121 @@
     </script>
     {% endif %}
     <script src="/static/js/editor.js"></script>
+    <script>
+        // TOC active item tracking with Intersection Observer
+        (function() {
+            const toc = document.querySelector('.toc');
+            if (!toc) return;
+
+            const tocLinks = toc.querySelectorAll('.toc-item a');
+            if (tocLinks.length === 0) return;
+
+            // Get all heading elements that have IDs
+            const headings = Array.from(document.querySelectorAll('h1[id], h2[id], h3[id], h4[id], h5[id], h6[id]'));
+            if (headings.length === 0) return;
+
+            // Track visible headings
+            const visibleHeadings = new Set();
+            let isUserClicking = false;
+            let clickedTargetId = null;
+
+            // Helper to update active state
+            function setActiveLink(targetId) {
+                tocLinks.forEach(link => {
+                    const href = link.getAttribute('href');
+                    if (href === '#' + targetId) {
+                        link.classList.add('active');
+                    } else {
+                        link.classList.remove('active');
+                    }
+                });
+            }
+
+            // Intersection Observer to detect visible headings
+            const observer = new IntersectionObserver((entries) => {
+                // During click, ignore observer updates
+                if (isUserClicking) return;
+
+                entries.forEach(entry => {
+                    if (entry.isIntersecting) {
+                        visibleHeadings.add(entry.target);
+                    } else {
+                        visibleHeadings.delete(entry.target);
+                    }
+                });
+
+                // Find the first visible heading (topmost)
+                let activeHeading = null;
+                for (const heading of headings) {
+                    if (visibleHeadings.has(heading)) {
+                        activeHeading = heading;
+                        break;
+                    }
+                }
+
+                // Update active class
+                if (activeHeading) {
+                    setActiveLink(activeHeading.id);
+                }
+            }, {
+                rootMargin: '0px 0px -85% 0px',
+                threshold: [0, 0.25, 0.5, 0.75, 1.0]
+            });
+
+            // Observe all headings
+            headings.forEach(heading => observer.observe(heading));
+
+            // Ensure TOC clicks are instant (no smooth scroll)
+            tocLinks.forEach(link => {
+                link.addEventListener('click', (e) => {
+                    const href = link.getAttribute('href');
+                    if (href && href.startsWith('#')) {
+                        e.preventDefault();
+                        const targetId = href.substring(1);
+                        const targetElement = document.getElementById(targetId);
+                        if (targetElement) {
+                            // Lock observer updates
+                            isUserClicking = true;
+                            clickedTargetId = targetId;
+
+                            // Clear visible headings to prevent stale state
+                            visibleHeadings.clear();
+
+                            // Immediately update active state
+                            setActiveLink(targetId);
+
+                            // Direct jump, no animation
+                            window.scrollTo({
+                                top: targetElement.offsetTop - 20,
+                                behavior: 'auto'
+                            });
+                            history.pushState(null, '', href);
+
+                            // After scroll, manually update visible headings and unlock
+                            requestAnimationFrame(() => {
+                                requestAnimationFrame(() => {
+                                    // Double RAF to ensure layout is complete
+                                    // Manually check which headings are now visible
+                                    const viewportTop = window.scrollY;
+                                    const viewportBottom = viewportTop + window.innerHeight * 0.15;
+
+                                    headings.forEach(heading => {
+                                        const headingTop = heading.offsetTop;
+                                        if (headingTop >= viewportTop && headingTop <= viewportBottom) {
+                                            visibleHeadings.add(heading);
+                                        }
+                                    });
+
+                                    // Unlock observer
+                                    isUserClicking = false;
+                                    clickedTargetId = null;
+                                });
+                            });
+                        }
+                    }
+                });
+            });
+        })();
+    </script>
 </body>
 </html>
