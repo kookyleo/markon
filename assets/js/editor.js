@@ -778,25 +778,79 @@ document.addEventListener('DOMContentLoaded', () => {
         const maxIterations = 100; // Maximum simulation steps
         const convergenceThreshold = 0.1; // Stop when movement is less than this
 
-        // CRITICAL FIX: Simple and robust approach
-        // Group ALL notes with same idealTop into same cluster
-        const positionMap = new Map(); // idealTop -> note indices
+        // CRITICAL FIX: Use Union-Find clustering algorithm for grouping notes
+        // This ensures transitivity: if A and B are close, B and C are close, then A, B, C are all in same group
+        const clusterThreshold = 30; // If notes are within 30px, they should be grouped
 
-        notes.forEach((note, i) => {
-            // Round to nearest pixel to group
-            const roundedTop = Math.round(note.idealTop);
-
-            if (!positionMap.has(roundedTop)) {
-                positionMap.set(roundedTop, []);
+        // Union-Find data structure
+        class UnionFind {
+            constructor(size) {
+                this.parent = Array.from({ length: size }, (_, i) => i);
+                this.rank = Array(size).fill(0);
             }
-            positionMap.get(roundedTop).push(i);
+
+            find(x) {
+                if (this.parent[x] !== x) {
+                    this.parent[x] = this.find(this.parent[x]); // Path compression
+                }
+                return this.parent[x];
+            }
+
+            union(x, y) {
+                const rootX = this.find(x);
+                const rootY = this.find(y);
+
+                if (rootX === rootY) return;
+
+                // Union by rank
+                if (this.rank[rootX] < this.rank[rootY]) {
+                    this.parent[rootX] = rootY;
+                } else if (this.rank[rootX] > this.rank[rootY]) {
+                    this.parent[rootY] = rootX;
+                } else {
+                    this.parent[rootY] = rootX;
+                    this.rank[rootX]++;
+                }
+            }
+        }
+
+        // Create a copy for sorting without modifying original array
+        const sortedIndices = notes.map((note, idx) => ({ idx, idealTop: note.idealTop }))
+            .sort((a, b) => a.idealTop - b.idealTop);
+
+        // Initialize Union-Find
+        const uf = new UnionFind(notes.length);
+
+        // Merge adjacent notes if they are within threshold
+        for (let i = 0; i < sortedIndices.length - 1; i++) {
+            const curr = sortedIndices[i];
+            const next = sortedIndices[i + 1];
+
+            if (Math.abs(next.idealTop - curr.idealTop) <= clusterThreshold) {
+                uf.union(curr.idx, next.idx);
+            }
+        }
+
+        // Group notes by cluster (root of Union-Find tree)
+        const clusters = new Map();
+        notes.forEach((note, idx) => {
+            const root = uf.find(idx);
+            if (!clusters.has(root)) {
+                clusters.set(root, []);
+            }
+            clusters.get(root).push(idx);
         });
 
-        // Pre-position notes: stack notes at same position vertically
-        positionMap.forEach((indices, position) => {
+        // Pre-position notes: stack notes in same cluster vertically
+        clusters.forEach((indices) => {
             if (indices.length > 1) {
-                // Multiple notes at exact same position - stack them
-                let currentTop = position;
+                // Multiple notes in same cluster - stack them
+                // Start from the minimum idealTop in this cluster
+                const minIdealTop = Math.min(...indices.map(idx => notes[idx].idealTop));
+                let currentTop = minIdealTop;
+
+                // Sort indices by original order to maintain consistency
+                indices.sort((a, b) => a - b);
 
                 indices.forEach(noteIndex => {
                     notes[noteIndex].currentTop = currentTop;
