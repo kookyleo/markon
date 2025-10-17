@@ -52,6 +52,7 @@
     color: #0969da !important;
 }
 
+/* Light mode highlights */
 .highlight-orange {
     background-color: rgba(255, 165, 0, 0.5);
 }
@@ -62,6 +63,21 @@
 
 .highlight-yellow {
     background-color: rgba(255, 255, 0, 0.5);
+}
+
+/* Dark mode highlights - more saturated and distinct colors */
+@media (prefers-color-scheme: dark) {
+    .highlight-orange {
+        background-color: rgba(255, 140, 60, 0.4); /* Warm orange-red */
+    }
+
+    .highlight-green {
+        background-color: rgba(80, 200, 120, 0.4); /* Bright green */
+    }
+
+    .highlight-yellow {
+        background-color: rgba(255, 220, 100, 0.4); /* Warm yellow */
+    }
 }
 
 .strikethrough {
