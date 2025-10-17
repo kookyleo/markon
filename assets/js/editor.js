@@ -570,6 +570,13 @@ document.addEventListener('DOMContentLoaded', () => {
         };
 
         annotations.forEach(anno => {
+            // CRITICAL: Check if this annotation already exists in DOM to prevent duplicates
+            const existingElement = markdownBody.querySelector(`[data-annotation-id="${anno.id}"]`);
+            if (existingElement) {
+                console.log(`[applyAnnotations] Annotation ${anno.id} already exists in DOM, skipping`);
+                return;
+            }
+
             const startNode = getNodeByXPath(anno.startPath);
             const endNode = getNodeByXPath(anno.endPath);
 
@@ -911,16 +918,25 @@ document.addEventListener('DOMContentLoaded', () => {
         annotations = annotations.filter(a => a.id !== annotationId);
         localStorage.setItem(storageKey, JSON.stringify(annotations));
 
-        // Remove highlight from DOM
-        const highlightElement = markdownBody.querySelector(`[data-annotation-id="${annotationId}"]`);
-        if (highlightElement) {
-            const parent = highlightElement.parentNode;
-            while (highlightElement.firstChild) {
-                parent.insertBefore(highlightElement.firstChild, highlightElement);
+        // Remove highlight from DOM - CRITICAL: Find the exact element, not nested ones
+        const highlightElements = markdownBody.querySelectorAll(`[data-annotation-id="${annotationId}"]`);
+
+        highlightElements.forEach(highlightElement => {
+            // Only remove if this is the direct element with this annotation ID
+            // (not a parent element that happens to contain nested annotations)
+            if (highlightElement.dataset.annotationId === annotationId) {
+                const parent = highlightElement.parentNode;
+
+                // Move all children out of the element, preserving nested annotations
+                while (highlightElement.firstChild) {
+                    parent.insertBefore(highlightElement.firstChild, highlightElement);
+                }
+
+                // Remove the now-empty highlight element
+                parent.removeChild(highlightElement);
+                parent.normalize(); // Merge adjacent text nodes
             }
-            parent.removeChild(highlightElement);
-            parent.normalize(); // Merge adjacent text nodes
-        }
+        });
 
         // Remove note card from DOM if exists
         const noteCard = document.querySelector(`.note-card-margin[data-annotation-id="${annotationId}"]`);
