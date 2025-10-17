@@ -358,19 +358,6 @@ document.addEventListener('DOMContentLoaded', () => {
         element.appendChild(range.extractContents());
         range.insertNode(element);
 
-            let chain = [];
-            let parent = element.parentElement;
-            while (parent && parent !== document.body) {
-                if (parent.classList && parent.classList.contains('has-note')) {
-                    chain.push(`has-note(${parent.dataset.annotationId})`);
-                } else {
-                    chain.push(parent.tagName.toLowerCase());
-                }
-                parent = parent.parentElement;
-            }
-            return chain.join(' > ');
-        })());
-
         saveAnnotation(annotation);
         window.getSelection().removeAllRanges();
     }
@@ -791,12 +778,6 @@ document.addEventListener('DOMContentLoaded', () => {
             const highlightRect = noteData.highlightElement.getBoundingClientRect();
             const idealTop = highlightRect.top + scrollY;
 
-                highlightElement: noteData.highlightElement.textContent.substring(0, 30),
-                rect: { top: highlightRect.top, bottom: highlightRect.bottom, height: highlightRect.height },
-                scrollY: scrollY,
-                idealTop: idealTop
-            });
-
             // CRITICAL: Ensure we get the actual height
             const height = noteData.element.offsetHeight;
             if (height === 0) {
@@ -817,12 +798,6 @@ document.addEventListener('DOMContentLoaded', () => {
                 id: noteData.highlightId
             };
         });
-
-            index: n.index,
-            id: n.id,
-            idealTop: n.idealTop,
-            height: n.height
-        })));
 
         // Physics simulation parameters
         const minSpacing = 10; // Minimum spacing between notes
