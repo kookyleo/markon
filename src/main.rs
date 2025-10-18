@@ -29,6 +29,10 @@ struct Cli {
     /// Optionally specify a base URL (e.g., http://example.com:8080) to override the default local address.
     #[arg(short = 'b', long, value_name = "BASE_URL", action = clap::ArgAction::Set, num_args = 0..=1, default_missing_value = "local")]
     open_browser: Option<String>,
+
+    /// Enable shared annotations.
+    #[arg(long, action = clap::ArgAction::SetTrue)]
+    shared_annotation: bool,
 }
 
 #[tokio::main]
@@ -54,5 +58,13 @@ async fn main() {
         None
     };
 
-    server::start(cli.port, file_to_render, theme, cli.qr, cli.open_browser).await;
+    server::start(
+        cli.port,
+        file_to_render,
+        theme,
+        cli.qr,
+        cli.open_browser,
+        cli.shared_annotation,
+    )
+    .await;
 }

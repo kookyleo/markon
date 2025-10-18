@@ -65,25 +65,83 @@ function showConfirmDialog(message, onConfirm, triggerElement, confirmText = 'OK
 
 // Global function to clear annotations for current page
 // eslint-disable-next-line no-unused-vars
-function clearPageAnnotations(event) {
+function clearPageAnnotations(event, ws, isSharedAnnotationMode) {
     const filePathMeta = document.querySelector('meta[name="file-path"]');
     if (!filePathMeta) return;
 
-    const filePath = filePathMeta.getAttribute('content');
-    const storageKey = `markon-annotations-${filePath}`;
-
-    // Get trigger element for positioning
     const triggerElement = event ? event.target : null;
 
     showConfirmDialog('Clear all annotations for this page?', () => {
-        localStorage.removeItem(storageKey);
-        location.reload();
+        if (isSharedAnnotationMode) {
+            if (ws && ws.readyState === WebSocket.OPEN) {
+                ws.send(JSON.stringify({ type: 'clear_annotations' }));
+            }
+        } else {
+            const filePath = filePathMeta.getAttribute('content');
+            const storageKey = `markon-annotations-${filePath}`;
+            localStorage.removeItem(storageKey);
+            location.reload();
+        }
     }, triggerElement, 'Clear');
 }
 
 document.addEventListener('DOMContentLoaded', () => {
     const filePathMeta = document.querySelector('meta[name="file-path"]');
     if (!filePathMeta) return;
+
+    const sharedAnnotationMeta = document.querySelector('meta[name="shared-annotation"]');
+    window.isSharedAnnotationMode = sharedAnnotationMeta && sharedAnnotationMeta.getAttribute('content') === 'true';
+    window.ws = null;
+
+    if (window.isSharedAnnotationMode) {
+        function connect() {
+            window.ws = new WebSocket(`ws://${window.location.host}/ws`);
+
+            window.ws.onopen = () => {
+                console.log('WebSocket connected');
+            };
+
+            window.ws.onmessage = (event) => {
+                const msg = JSON.parse(event.data);
+                switch (msg.type) {
+                    case 'all_annotations':
+                        // Clear existing annotations before applying new ones
+                        clearAllAnnotationsFromDOM();
+                        // This will be our local copy of annotations
+                        window.annotations = msg.annotations;
+                        applyAnnotations(window.annotations);
+                        break;
+                    case 'new_annotation':
+                        // Remove old version if it exists, then add new one
+                        removeAnnotationFromDOM(msg.annotation.id);
+                        window.annotations = window.annotations.filter(a => a.id !== msg.annotation.id);
+                        window.annotations.push(msg.annotation);
+                        applyAnnotations([msg.annotation]);
+                        break;
+                    case 'delete_annotation':
+                        window.annotations = window.annotations.filter(a => a.id !== msg.id);
+                        removeAnnotationFromDOM(msg.id);
+                        renderNotesMargin();
+                        break;
+                    case 'clear_annotations':
+                        window.annotations = [];
+                        clearAllAnnotationsFromDOM();
+                        break;
+                }
+            };
+
+            window.ws.onclose = () => {
+                console.log('WebSocket disconnected, attempting to reconnect...');
+                setTimeout(connect, 1000);
+            };
+
+            window.ws.onerror = (err) => {
+                console.error('WebSocket error:', err);
+                window.ws.close();
+            };
+        }
+        connect();
+    }
 
     const filePath = filePathMeta.getAttribute('content');
     const storageKey = `markon-annotations-${filePath}`;
@@ -152,6 +210,11 @@ document.addEventListener('DOMContentLoaded', () => {
     // Make the main selection popover draggable
     makePopoverDraggable(popover, 'markon-popover-offset');
 
+    // Update clear annotations button text
+    const clearButton = document.querySelector('.footer-clear-link');
+    if (clearButton) {
+        clearButton.textContent = `Clear Annotations (${window.isSharedAnnotationMode ? 'shared' : 'local'})`;
+    }
 
     let currentSelection = null;
     let currentHighlightedElement = null;
@@ -263,6 +326,16 @@ document.addEventListener('DOMContentLoaded', () => {
 
     document.addEventListener('mouseup', handleSelection);
     document.addEventListener('touchend', handleSelection);
+    document.addEventListener('click', (e) => {
+        const isHighlighted = e.target.closest('.highlight-orange, .highlight-green, .highlight-yellow, .strikethrough');
+        if (isHighlighted) {
+            updatePopover(popover, isHighlighted);
+            const rect = isHighlighted.getBoundingClientRect();
+            popover.style.left = `${rect.left + window.scrollX + rect.width / 2 - popover.offsetWidth / 2}px`;
+            popover.style.top = `${rect.top + window.scrollY - popover.offsetHeight - 10}px`;
+            popover.style.display = 'block';
+        }
+    });
 
     // Hide popover when clicking/touching outside
     const hidePopoverOnOutsideClick = (e) => {
@@ -398,8 +471,12 @@ document.addEventListener('DOMContentLoaded', () => {
                     node = node.nextSibling;
                 }
             } else {
-                // Container is an element, offset is relative to it
-                absoluteOffset = offset;
+                // Container is an element, offset is an index of child nodes
+                absoluteOffset = 0;
+                for (let i = 0; i < offset && i < container.childNodes.length; i++) {
+                    const child = container.childNodes[i];
+                    absoluteOffset += child.textContent.length;
+                }
             }
 
             return absoluteOffset;
@@ -571,10 +648,19 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     function saveAnnotation(annotation) {
-        let annotations = JSON.parse(localStorage.getItem(storageKey) || '[]');
-        annotations = annotations.filter(a => a.id !== annotation.id);
-        annotations.push(annotation);
-        localStorage.setItem(storageKey, JSON.stringify(annotations));
+        if (window.isSharedAnnotationMode) {
+            if (window.ws && window.ws.readyState === WebSocket.OPEN) {
+                window.ws.send(JSON.stringify({
+                    type: 'new_annotation',
+                    annotation: annotation
+                }));
+            }
+        } else {
+            let annotations = JSON.parse(localStorage.getItem(storageKey) || '[]');
+            annotations = annotations.filter(a => a.id !== annotation.id);
+            annotations.push(annotation);
+            localStorage.setItem(storageKey, JSON.stringify(annotations));
+        }
     }
 
     function getNodeByXPath(path) {
@@ -605,7 +691,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
         const segments = match[1].split('/');
         for (let segment of segments) {
-            const tagMatch = segment.match(/^([A-Z]+)\[(\d+)\]$/);
+            const tagMatch = segment.match(/^([A-Z0-9]+)\[(\d+)\]$/);
             if (!tagMatch) return null;
 
             const tagName = tagMatch[1];
@@ -615,8 +701,8 @@ document.addEventListener('DOMContentLoaded', () => {
             let found = null;
             let count = 0;
 
-            for (let child of current.children) {
-                if (child.tagName === tagName && !shouldSkip(child)) {
+            for (let child of current.childNodes) {
+                if (child.nodeName === tagName && !shouldSkip(child)) {
                     count++;
                     if (count === targetIndex) {
                         found = child;
@@ -632,8 +718,21 @@ document.addEventListener('DOMContentLoaded', () => {
         return current;
     }
 
-    function applyAnnotations() {
-        const annotations = JSON.parse(localStorage.getItem(storageKey) || '[]');
+    function clearAllAnnotationsFromDOM() {
+        markdownBody.querySelectorAll('[data-annotation-id]').forEach(el => {
+            const parent = el.parentNode;
+            while (el.firstChild) {
+                parent.insertBefore(el.firstChild, el);
+            }
+            parent.removeChild(el);
+            parent.normalize();
+        });
+        document.querySelectorAll('.note-card-margin').forEach(el => el.remove());
+        noteCardsData = [];
+    }
+
+    function applyAnnotations(annotationsToApply) {
+        const annotations = annotationsToApply || JSON.parse(localStorage.getItem(storageKey) || '[]');
 
         // Sort annotations by startOffset in descending order to apply from back to front
         // This prevents offset shifts when multiple annotations are in the same element
@@ -782,7 +881,7 @@ document.addEventListener('DOMContentLoaded', () => {
         }
 
         // Load annotations for getting note content
-        const annotations = JSON.parse(localStorage.getItem(storageKey) || '[]');
+        const annotations = window.isSharedAnnotationMode ? (window.annotations || []) : JSON.parse(localStorage.getItem(storageKey) || '[]');
         const annotationsMap = new Map(annotations.map(a => [a.id, a]));
 
         noteCardsData = [];
@@ -1048,12 +1147,26 @@ document.addEventListener('DOMContentLoaded', () => {
 
     function deleteAnnotation(annotationId) {
 
-        // Remove from localStorage
-        let annotations = JSON.parse(localStorage.getItem(storageKey) || '[]');
-        annotations = annotations.filter(a => a.id !== annotationId);
-        localStorage.setItem(storageKey, JSON.stringify(annotations));
+        if (window.isSharedAnnotationMode) {
+            if (window.ws && window.ws.readyState === WebSocket.OPEN) {
+                window.ws.send(JSON.stringify({
+                    type: 'delete_annotation',
+                    id: annotationId
+                }));
+            }
+        } else {
+            // Remove from localStorage
+            let annotations = JSON.parse(localStorage.getItem(storageKey) || '[]');
+            annotations = annotations.filter(a => a.id !== annotationId);
+            localStorage.setItem(storageKey, JSON.stringify(annotations));
+            removeAnnotationFromDOM(annotationId);
+            renderNotesMargin();
+        }
+    }
 
-        // Remove highlight from DOM - CRITICAL: Find the exact element, not nested ones
+    // Function to remove annotation elements from the DOM
+    function removeAnnotationFromDOM(annotationId) {
+        // Remove highlight from DOM
         const highlightElements = markdownBody.querySelectorAll(`[data-annotation-id="${annotationId}"]`);
 
         highlightElements.forEach((highlightElement) => {
@@ -1090,7 +1203,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     function editNote(annotationId) {
         // Load annotation from storage
-        const annotations = JSON.parse(localStorage.getItem(storageKey) || '[]');
+        const annotations = window.isSharedAnnotationMode ? (window.annotations || []) : JSON.parse(localStorage.getItem(storageKey) || '[]');
         const annotation = annotations.find(a => a.id === annotationId);
 
         if (!annotation || !annotation.note) {
@@ -1409,7 +1522,7 @@ document.addEventListener('DOMContentLoaded', () => {
             element.style.top = `${initialTop + dy}px`;
         };
 
-        const dragEnd = () => {
+        const dragEnd = () => {.
             if (isDragging) {
                 isDragging = false;
                 element.style.cursor = 'grab';
