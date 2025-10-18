@@ -230,8 +230,27 @@ document.addEventListener('DOMContentLoaded', () => {
             const offsetX = savedOffset.dx || 0;
             const offsetY = savedOffset.dy || 0;
 
-            popover.style.left = `${originalLeft + offsetX}px`;
-            popover.style.top = `${originalTop + offsetY}px`;
+            let finalLeft = originalLeft + offsetX;
+            let finalTop = originalTop + offsetY;
+
+            // Adjust position to stay within viewport
+            // Check left boundary
+            if (finalLeft < 10) {
+                finalLeft = 10;
+            }
+
+            // Check right boundary
+            if (finalLeft + popoverWidth > window.innerWidth - 10) {
+                finalLeft = window.innerWidth - popoverWidth - 10;
+            }
+
+            // Check top boundary. If it's off-screen, try to place it below the selection.
+            if (finalTop < 10) {
+                finalTop = rect.bottom + window.scrollY + 10;
+            }
+
+            popover.style.left = `${finalLeft}px`;
+            popover.style.top = `${finalTop}px`;
 
             // Now make it visible
             popover.style.visibility = 'visible';
