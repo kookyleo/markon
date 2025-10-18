@@ -41,34 +41,6 @@ Markon 让你可以便捷地以精美的 HTML 格式阅读、打印和批注 Mar
 - ✅ **取消高亮**: 选中已高亮的文本可取消高亮
 - ✅ **持久化存储**: 标注数据保存在浏览器本地存储
 
-## 重要说明
-
-### 系统路径前缀
-
-Markon 使用 `/_/` 作为所有系统资源（CSS、JavaScript、WebSocket、favicon）的保留路径前缀，确保系统文件与用户内容完全分离：
-
-- **保留路径**：`/_/`（仅此特定前缀）
-- **这意味着什么**：请勿在工作目录根目录创建名为 `_`（单下划线）的目录
-- **您可以做什么**：
-  - ✅ 创建 `_build/`、`__pycache__/`、`_test/`、`_cache/` 等目录（与 `_` 不同）
-  - ✅ 创建 `ws/`、`static/`、`css/`、`js/` 等目录（不会冲突！）
-  - ✅ 使用任何不以 `_/` 开头的文件或目录名
-
-**示例**：
-```bash
-# ❌ 这会与系统路径冲突
-mkdir _              # 不要创建单下划线目录
-markon               # 系统使用 /_/css/*、/_/js/* 等
-
-# ✅ 以下都可以正常使用
-mkdir _build         # URL: /_build/* (不是 /_/*)
-mkdir __pycache__    # URL: /__pycache__/* (不是 /_/*)
-mkdir ws             # URL: /ws/* (与 /_/ws 不同！)
-mkdir static         # URL: /static/* (不是 /_/*)
-```
-
-**使用反向代理时**：请确保配置代理转发 `/_/` 路径。详细的 Nginx、Caddy、Apache、Traefik 配置示例请参考 [REVERSE_PROXY.zh.md](REVERSE_PROXY.zh.md) ([English](REVERSE_PROXY.md))。
-
 ## 安装
 
 ### 从 crates.io 安装
@@ -126,6 +98,7 @@ markon -t auto README.md
   -t, --theme <THEME>              主题选择（light, dark, auto）[默认: auto]
       --qr [<BASE_URL>]            生成服务器地址的二维码。可选指定基础 URL（如 http://192.168.1.100:6419）以覆盖默认的本地地址
   -b, --open-browser [<BASE_URL>]  服务启动后自动打开浏览器。可选指定基础 URL（如 http://example.com:8080）以覆盖默认的本地地址
+      --shared-annotation          启用共享标注模式。标注数据存储在 SQLite 数据库，多客户端通过 WebSocket 实时同步
   -h, --help                       显示帮助信息
   -V, --version                    显示版本信息
 ```
@@ -151,6 +124,9 @@ markon --qr -b -t dark README.md
 
 # 完整示例：自定义端口、公网 IP 二维码、自动打开本地浏览器
 markon -p 8080 --qr http://203.0.113.1:8080 -b
+
+# 启用共享标注模式，多用户实时协作
+markon --shared-annotation README.md
 ```
 
 **理解 URL 参数**：
@@ -182,7 +158,59 @@ markon -p 8080 --qr http://203.0.113.1:8080 -b
 5. 点击高亮文本可查看对应笔记
 6. 选中已高亮的文本可取消高亮
 
-**注意**：标注功能纯粹为本地阅读便利而设计。所有标注数据（高亮、笔记、删除线）均存储在浏览器本地存储中，不会上传或分享。您可以使用页面底部的"清除标注"按钮清除当前页面的所有标注。
+#### 两种标注模式
+
+**本地模式（默认）**：
+- 标注数据存储在浏览器的 LocalStorage 中
+- 仅限单个浏览器使用，不同浏览器或设备间不共享
+- 适合个人阅读和批注
+- 无需额外配置
+
+**共享模式（`--shared-annotation`）**：
+- 标注数据存储在 SQLite 数据库中（默认路径：`~/.markon/annotation.sqlite`）
+- 支持多客户端通过 WebSocket 实时同步标注
+- 适合多种协作场景：
+  - 单人多终端：在手机、平板、电脑等不同设备间同步标注
+  - 团队协作：多用户同时查看和编辑同一文档的标注
+- 可通过环境变量 `MARKON_SQLITE_PATH` 自定义数据库路径
+
+```bash
+# 使用共享标注模式
+markon --shared-annotation README.md
+
+# 自定义数据库位置
+MARKON_SQLITE_PATH=/path/to/annotations.db markon --shared-annotation README.md
+```
+
+两种模式下都可以使用页面底部的"清除标注"按钮清除当前页面的所有标注。
+
+## 重要说明
+
+### 系统路径前缀
+
+Markon 使用 `/_/` 作为所有系统资源（CSS、JavaScript、WebSocket、favicon）的保留路径前缀，确保系统文件与用户内容完全分离：
+
+- **保留路径**：`/_/`（仅此特定前缀）
+- **这意味着什么**：请勿在工作目录根目录创建名为 `_`（单下划线）的目录
+- **您可以做什么**：
+  - ✅ 创建 `_build/`、`__pycache__/`、`_test/`、`_cache/` 等目录（与 `_` 不同）
+  - ✅ 创建 `ws/`、`static/`、`css/`、`js/` 等目录（不会冲突！）
+  - ✅ 使用任何不以 `_/` 开头的文件或目录名
+
+**示例**：
+```bash
+# ❌ 这会与系统路径冲突
+mkdir _              # 不要创建单下划线目录
+markon               # 系统使用 /_/css/*、/_/js/* 等
+
+# ✅ 以下都可以正常使用
+mkdir _build         # URL: /_build/* (不是 /_/*)
+mkdir __pycache__    # URL: /__pycache__/* (不是 /_/*)
+mkdir ws             # URL: /ws/* (与 /_/ws 不同！)
+mkdir static         # URL: /static/* (不是 /_/*)
+```
+
+**使用反向代理时**：请确保配置代理转发 `/_/` 路径。详细的 Nginx、Caddy、Apache、Traefik 配置示例请参考 [REVERSE_PROXY.zh.md](REVERSE_PROXY.zh.md) ([English](REVERSE_PROXY.md))。
 
 ## 支持的 Markdown 特性
 

@@ -41,34 +41,6 @@ Simply run `markon` in any directory to browse and render Markdown files with a 
 - ✅ **Unhighlight**: Remove highlights from selected text
 - ✅ **Persistent Storage**: Annotation data saved in browser local storage
 
-## Important Notes
-
-### System Path Prefix
-
-Markon uses `/_/` as a reserved path prefix for all system resources (CSS, JavaScript, WebSocket, favicon). This ensures complete separation between system files and your content:
-
-- **Reserved path**: `/_/` (only this specific prefix)
-- **What this means**: Do NOT create a directory named `_` (single underscore) in your working directory root
-- **What you CAN do**:
-  - ✅ Create directories like `_build/`, `__pycache__/`, `_test/`, `_cache/` (different from `_`)
-  - ✅ Create directories like `ws/`, `static/`, `css/`, `js/` (no conflict!)
-  - ✅ Use any file or directory names that don't start with exactly `_/`
-
-**Examples**:
-```bash
-# ❌ This will conflict with system paths
-mkdir _              # Don't create a single-underscore directory
-markon               # System uses /_/css/*, /_/js/*, etc.
-
-# ✅ All of these are perfectly fine
-mkdir _build         # URL: /_build/* (not /_/*)
-mkdir __pycache__    # URL: /__pycache__/* (not /_/*)
-mkdir ws             # URL: /ws/* (not /_/ws - different!)
-mkdir static         # URL: /static/* (not /_/*)
-```
-
-**When using reverse proxy**: Make sure to configure your proxy to forward the `/_/` path. See [REVERSE_PROXY.md](REVERSE_PROXY.md) ([中文版](REVERSE_PROXY.zh.md)) for detailed configuration examples for Nginx, Caddy, Apache, and Traefik.
-
 ## Installation
 
 ### From crates.io
@@ -126,6 +98,7 @@ Options:
   -t, --theme <THEME>              Theme selection (light, dark, auto) [default: auto]
       --qr [<BASE_URL>]            Generate QR code for server address. Optionally specify a base URL (e.g., http://192.168.1.100:6419) to override the default local address
   -b, --open-browser [<BASE_URL>]  Automatically open browser after starting the server. Optionally specify a base URL (e.g., http://example.com:8080) to override the default local address
+      --shared-annotation          Enable shared annotation mode. Annotations are stored in SQLite and synced across clients via WebSocket
   -h, --help                       Print help
   -V, --version                    Print version
 ```
@@ -151,6 +124,9 @@ markon --qr -b -t dark README.md
 
 # Complete example: Custom port, QR for public IP, auto-open local browser
 markon -p 8080 --qr http://203.0.113.1:8080 -b
+
+# Enable shared annotation mode for real-time collaboration
+markon --shared-annotation README.md
 ```
 
 **Understanding URL Parameters**:
@@ -182,7 +158,59 @@ Both `--qr` and `-b` options accept optional URL arguments:
 5. Click highlighted text to view associated notes
 6. Select highlighted text again to unhighlight
 
-**Note**: Annotation features are designed for local reading convenience only. All annotation data (highlights, notes, strikethroughs) is stored in your browser's local storage and is never uploaded or shared. You can clear all annotations for the current page using the "Clear Annotations" button at the bottom of the page.
+#### Two Annotation Modes
+
+**Local Mode (Default)**:
+- Annotation data is stored in browser's LocalStorage
+- Limited to a single browser, not shared across browsers or devices
+- Suitable for personal reading and annotation
+- No additional configuration needed
+
+**Shared Mode (`--shared-annotation`)**:
+- Annotation data is stored in a SQLite database (default path: `~/.markon/annotation.sqlite`)
+- Supports real-time synchronization across multiple clients via WebSocket
+- Suitable for various collaboration scenarios:
+  - Single-user multi-device: Sync annotations across phone, tablet, desktop, etc.
+  - Team collaboration: Multiple users can simultaneously view and edit annotations on the same document
+- Custom database path can be set via `MARKON_SQLITE_PATH` environment variable
+
+```bash
+# Use shared annotation mode
+markon --shared-annotation README.md
+
+# Customize database location
+MARKON_SQLITE_PATH=/path/to/annotations.db markon --shared-annotation README.md
+```
+
+In both modes, you can use the "Clear Annotations" button at the bottom of the page to clear all annotations for the current page.
+
+## Important Notes
+
+### System Path Prefix
+
+Markon uses `/_/` as a reserved path prefix for all system resources (CSS, JavaScript, WebSocket, favicon). This ensures complete separation between system files and your content:
+
+- **Reserved path**: `/_/` (only this specific prefix)
+- **What this means**: Do NOT create a directory named `_` (single underscore) in your working directory root
+- **What you CAN do**:
+  - ✅ Create directories like `_build/`, `__pycache__/`, `_test/`, `_cache/` (different from `_`)
+  - ✅ Create directories like `ws/`, `static/`, `css/`, `js/` (no conflict!)
+  - ✅ Use any file or directory names that don't start with exactly `_/`
+
+**Examples**:
+```bash
+# ❌ This will conflict with system paths
+mkdir _              # Don't create a single-underscore directory
+markon               # System uses /_/css/*, /_/js/*, etc.
+
+# ✅ All of these are perfectly fine
+mkdir _build         # URL: /_build/* (not /_/*)
+mkdir __pycache__    # URL: /__pycache__/* (not /_/*)
+mkdir ws             # URL: /ws/* (not /_/ws - different!)
+mkdir static         # URL: /static/* (not /_/*)
+```
+
+**When using reverse proxy**: Make sure to configure your proxy to forward the `/_/` path. See [REVERSE_PROXY.md](REVERSE_PROXY.md) ([中文版](REVERSE_PROXY.zh.md)) for detailed configuration examples for Nginx, Caddy, Apache, and Traefik.
 
 ## Supported Markdown Features
 
