@@ -2,7 +2,6 @@
 
 A lightweight Markdown renderer with GitHub styling and Medium-like annotation features, written in Rust.
 
-# Table of Contents
 ![Markon Banner](banner.png)
 
 English | [简体中文](README.zh.md)
