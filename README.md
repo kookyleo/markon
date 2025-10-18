@@ -108,7 +108,7 @@ Options:
 # Generate QR code for easy mobile access (uses local address)
 markon --qr
 
-# Generate QR code with custom a base URL (e.g., when using port forwarding or public IP)
+# Generate QR code with a custom base URL (e.g., when using port forwarding or public IP)
 markon --qr http://192.168.1.100:6419
 
 # Auto-open browser after starting (opens local address)

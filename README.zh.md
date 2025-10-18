@@ -88,13 +88,62 @@ markon -t auto README.md
 ### 命令行参数
 
 ```
+用法: markon [OPTIONS] [FILE]
+
+参数:
+  [FILE]  要渲染的 Markdown 文件
+
 选项:
-  [FILE]                    要渲染的 Markdown 文件（可选）
-  -p, --port <PORT>         服务器端口 [默认: 6419]
-  -t, --theme <THEME>       主题选择: light, dark, auto [默认: auto]
-  -h, --help                显示帮助信息
-  -V, --version             显示版本信息
+  -p, --port <PORT>                服务器端口 [默认: 6419]
+  -t, --theme <THEME>              主题选择（light, dark, auto）[默认: auto]
+      --qr [<BASE_URL>]            生成服务器地址的二维码。可选指定基础 URL（如 http://192.168.1.100:6419）以覆盖默认的本地地址
+  -b, --open-browser [<BASE_URL>]  服务启动后自动打开浏览器。可选指定基础 URL（如 http://example.com:8080）以覆盖默认的本地地址
+  -h, --help                       显示帮助信息
+  -V, --version                    显示版本信息
 ```
+
+### 高级用法示例
+
+```bash
+# 生成二维码以便手机访问（使用本地地址）
+markon --qr
+
+# 使用自定义基础 URL 生成二维码（如使用端口转发或公网 IP）
+markon --qr http://192.168.1.100:6419
+
+# 启动后自动打开浏览器（打开本地地址）
+markon -b
+
+# 使用自定义基础 URL 打开浏览器（适用于反向代理场景）
+# 服务监听在 localhost:6419，但通过代理在 example.com 访问
+markon -b http://example.com
+
+# 组合选项：二维码 + 自动打开浏览器 + 深色主题
+markon --qr -b -t dark README.md
+
+# 完整示例：自定义端口、公网 IP 二维码、自动打开本地浏览器
+markon -p 8080 --qr http://203.0.113.1:8080 -b
+```
+
+**理解 URL 参数**：
+
+`--qr` 和 `-b` 选项都接受可选的 URL 参数：
+
+**二维码（`--qr` 选项）**：
+- 无参数（`--qr`）：为 `http://127.0.0.1:6419`（本地地址）生成二维码
+- 带基础 URL（`--qr <BASE_URL>`）：为指定的 URL 生成二维码
+- 使用场景：
+  - **端口转发**：`--qr http://192.168.1.100:6419`（局域网 IP）
+  - **公网访问**：`--qr http://example.com/docs`（公网域名）
+  - **移动设备访问**：`--qr http://your-laptop-ip:6419`（同网络手机访问）
+
+**打开浏览器（`-b` 选项）**：
+- 无参数（`-b`）：打开 `http://127.0.0.1:6419`（本地地址）
+- 带基础 URL（`-b <BASE_URL>`）：打开指定的 URL
+- 使用场景：
+  - **反向代理**：服务在 `localhost:6419`，代理在 `https://docs.example.com`
+  - **SSH 隧道**：远程服务器通过隧道映射到 `http://localhost:8080`
+  - **自定义路由**：任何指向运行服务器实例的 URL
 
 ### 使用标注功能
 
@@ -196,7 +245,8 @@ graph TD
 | Emoji | 自定义映射 | Unicode (emojis crate) |
 | Medium 标注 | ❌ | ✅ |
 | 热重载 | ✅ | ❌ |
-| 自动打开浏览器 | ✅ | ❌ |
+| 自动打开浏览器 | ✅ | ✅ |
+| 二维码生成 | ❌ | ✅ |
 | 打印优化 | ✅ | ✅ |
 
 ## 技术栈
