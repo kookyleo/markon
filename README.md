@@ -90,12 +90,60 @@ markon -t auto README.md
 
 ```
 Options:
-  [FILE]                    Markdown file to render (optional)
-  -p, --port <PORT>         Server port [default: 6419]
-  -t, --theme <THEME>       Theme: light, dark, auto [default: auto]
-  -h, --help                Show help information
-  -V, --version             Show version information
+  [FILE]                       Markdown file to render (optional)
+  -p, --port <PORT>            Server port [default: 6419]
+  -t, --theme <THEME>          Theme: light, dark, auto [default: auto]
+      --qr [<URL>]             Generate QR code for server address
+                               Optionally specify a custom URL to encode
+  -b, --open-browser [<BASE_URL>]
+                               Automatically open browser after starting
+                               Optionally specify a base URL (e.g., when using reverse proxy)
+  -h, --help                   Show help information
+  -V, --version                Show version information
 ```
+
+### Advanced Usage Examples
+
+```bash
+# Generate QR code for easy mobile access (uses local address)
+markon --qr
+
+# Generate QR code with custom URL (e.g., when using port forwarding or public IP)
+markon --qr http://192.168.1.100:6419
+
+# Auto-open browser after starting (opens local address)
+markon -b
+
+# Auto-open with custom base URL (useful when behind reverse proxy)
+# Server listens on localhost:6419, but accessible via proxy at example.com
+markon -b http://example.com
+
+# Combine options: QR code + auto-open + dark theme
+markon --qr -b -t dark README.md
+
+# Complete example: Custom port, QR for public IP, auto-open local browser
+markon -p 8080 --qr http://203.0.113.1:8080 -b
+```
+
+**Understanding URL Parameters**:
+
+Both `--qr` and `-b` options accept optional URL arguments:
+
+**QR Code (`--qr` option)**:
+- Without argument (`--qr`): Generates QR code for `http://127.0.0.1:6419` (local address)
+- With base URL (`--qr <BASE_URL>`): Generates QR code for the specified URL
+- Use cases:
+  - **Port forwarding**: `--qr http://192.168.1.100:6419` (LAN IP)
+  - **Public access**: `--qr http://example.com/docs` (public domain)
+  - **Mobile access**: `--qr http://your-laptop-ip:6419` (for phones on same network)
+
+**Open Browser (`-b` option)**:
+- Without argument (`-b`): Opens `http://127.0.0.1:6419` (local address)
+- With base URL (`-b <BASE_URL>`): Opens the specified URL instead
+- Use cases:
+  - **Reverse proxy**: Server on `localhost:6419`, proxy at `https://docs.example.com`
+  - **SSH tunnel**: Remote server tunneled to `http://localhost:8080`
+  - **Custom routing**: Any URL that points to your running server instance
 
 ### Using Annotation Features
 
@@ -197,7 +245,8 @@ This project is a Rust port of [go-grip](https://github.com/kookyleo/go-grip) wi
 | Emoji | Custom mapping | Unicode (emojis crate) |
 | Medium Annotations | ❌ | ✅ |
 | Hot Reload | ✅ | ❌ |
-| Auto Browser Open | ✅ | ❌ |
+| Auto Browser Open | ✅ | ✅ |
+| QR Code Generation | ❌ | ✅ |
 | Print Optimization | ✅ | ✅ |
 
 ## Tech Stack

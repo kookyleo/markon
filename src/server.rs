@@ -5,6 +5,8 @@ use axum::{
     routing::get,
     Router,
 };
+use qrcode::render::unicode::Dense1x2;
+use qrcode::{EcLevel, QrCode};
 use std::fs;
 use std::net::SocketAddr;
 use std::sync::Arc;
@@ -14,6 +16,30 @@ use tokio::net::TcpListener;
 use crate::assets::{CssAssets, JsAssets, Templates};
 use crate::markdown::MarkdownRenderer;
 
+/// Print a compact QR code using Unicode half-blocks
+fn print_compact_qr(data: &str) -> Result<(), Box<dyn std::error::Error>> {
+    // Use low error correction level for smaller QR codes
+    let code = QrCode::with_error_correction_level(data.as_bytes(), EcLevel::L)?;
+
+    // Render using Dense1x2 (Unicode half-blocks: ▀▄█) for compact display
+    // Dense1x2 uses 2 vertical pixels per character (half-block characters)
+    // This naturally compensates for terminal fonts where character height > width
+    // Note: The aspect ratio depends on the terminal font - it won't be perfect square
+    // on all terminals, but Dense1x2 provides the best balance between size and readability
+    let string = code
+        .render::<Dense1x2>()
+        .quiet_zone(false) // No quiet zone to save space
+        .build();
+
+    // Add spacing: 4 spaces on the left, blank line below
+    for line in string.lines() {
+        println!("    {line}"); // 4 spaces on the left
+    }
+    println!(); // Blank line below
+
+    Ok(())
+}
+
 #[derive(Clone)]
 struct AppState {
     file_path: Arc<Option<String>>,
@@ -22,7 +48,13 @@ struct AppState {
     start_dir: Arc<std::path::PathBuf>,
 }
 
-pub async fn start(port: u16, file_path: Option<String>, theme: String, qr: Option<String>) {
+pub async fn start(
+    port: u16,
+    file_path: Option<String>,
+    theme: String,
+    qr: Option<String>,
+    open_browser: Option<String>,
+) {
     // Initialize Tera template engine
     let mut tera = Tera::default();
 
@@ -61,14 +93,6 @@ pub async fn start(port: u16, file_path: Option<String>, theme: String, qr: Opti
         .with_state(state);
 
     let addr = SocketAddr::from(([127, 0, 0, 1], port));
-    if let Some(qr_option) = qr {
-        let qr_url = if qr_option == "missing" {
-            format!("http://{}", addr)
-        } else {
-            qr_option
-        };
-        qr2term::print_qr(&qr_url).unwrap();
-    }
     let listener = match TcpListener::bind(&addr).await {
         Ok(listener) => listener,
         Err(e) => {
@@ -77,6 +101,31 @@ pub async fn start(port: u16, file_path: Option<String>, theme: String, qr: Opti
         }
     };
     println!("listening on http://{addr}");
+
+    // Generate QR code after successful bind
+    if let Some(qr_option) = qr {
+        println!(); // Blank line before QR code
+        let qr_url = if qr_option == "missing" {
+            format!("http://{addr}")
+        } else {
+            qr_option
+        };
+        if let Err(e) = print_compact_qr(&qr_url) {
+            eprintln!("Failed to generate QR code: {e}");
+        }
+    }
+
+    // Open browser if requested
+    if let Some(base_url_option) = open_browser {
+        let url = if base_url_option == "local" {
+            format!("http://{addr}")
+        } else {
+            base_url_option
+        };
+        if let Err(e) = open::that(&url) {
+            eprintln!("Failed to open browser: {e}");
+        }
+    }
 
     if let Err(e) = axum::serve(listener, app.into_make_service()).await {
         eprintln!("Server error: {e}");

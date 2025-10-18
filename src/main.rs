@@ -20,9 +20,15 @@ struct Cli {
     #[arg(short = 't', long, default_value = "auto")]
     theme: String,
 
-    /// Output the QR code of the server address.
-    #[arg(long, value_name = "URL", action = clap::ArgAction::Set, num_args = 0..=1, default_missing_value = "missing")]
+    /// Generate QR code for server address.
+    /// Optionally specify a base URL (e.g., http://192.168.1.100:6419) to override the default local address.
+    #[arg(long, value_name = "BASE_URL", action = clap::ArgAction::Set, num_args = 0..=1, default_missing_value = "missing")]
     qr: Option<String>,
+
+    /// Automatically open browser after starting the server.
+    /// Optionally specify a base URL (e.g., http://example.com:8080) to override the default local address.
+    #[arg(short = 'b', long, value_name = "BASE_URL", action = clap::ArgAction::Set, num_args = 0..=1, default_missing_value = "local")]
+    open_browser: Option<String>,
 }
 
 #[tokio::main]
@@ -48,5 +54,5 @@ async fn main() {
         None
     };
 
-    server::start(cli.port, file_to_render, theme, cli.qr).await;
+    server::start(cli.port, file_to_render, theme, cli.qr, cli.open_browser).await;
 }
