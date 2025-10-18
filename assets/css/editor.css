@@ -1,12 +1,53 @@
+/* ============================================================
+   SELECTION POPOVER
+   Floating toolbar for text annotation actions
+   ============================================================ */
+
 .selection-popover {
     position: absolute;
     background-color: #2c2c2c;
     border-radius: 4px;
     padding: 3px 6px;
+    padding-left: 12px; /* Add space for drag handle */
     display: none;
     z-index: 1000;
     box-shadow: 0 2px 10px rgba(0, 0, 0, 0.2);
     color: white;
+    cursor: grab;
+}
+
+.selection-popover:active {
+    cursor: grabbing;
+}
+
+/* Drag handle - vertical dots on the left */
+.selection-popover::before {
+    content: '';
+    position: absolute;
+    left: 4px;
+    top: 50%;
+    transform: translateY(-50%);
+    width: 3px;
+    height: 18px;
+    background: linear-gradient(
+        to bottom,
+        transparent 0%,
+        transparent 25%,
+        #666 25%,
+        #666 30%,
+        transparent 30%,
+        transparent 45%,
+        #666 45%,
+        #666 50%,
+        transparent 50%,
+        transparent 70%,
+        #666 70%,
+        #666 75%,
+        transparent 75%,
+        transparent 100%
+    );
+    border-radius: 1px;
+    pointer-events: none;
 }
 
 .selection-popover button {
@@ -31,7 +72,11 @@
     user-select: none;
 }
 
-/* Keep link colors consistent - override all pseudo-class states */
+/* ============================================================
+   LINK COLORS IN MARKDOWN BODY
+   Override all states for consistency
+   ============================================================ */
+
 .markdown-body a:link {
     color: #0969da !important;
 }
@@ -51,6 +96,11 @@
 .markdown-body a:focus {
     color: #0969da !important;
 }
+
+/* ============================================================
+   TEXT HIGHLIGHTS
+   Color-coded text highlighting with theme support
+   ============================================================ */
 
 /* Light mode highlights */
 .highlight-orange {
@@ -89,8 +139,11 @@
     cursor: pointer;
 }
 
+/* ============================================================
+   NOTE INPUT MODAL
+   Popup dialog for entering/editing note text
+   ============================================================ */
 
-/* Note input modal */
 .note-input-modal {
     position: absolute;
     z-index: 1001;
@@ -153,7 +206,11 @@
     background: #2c974b !important;
 }
 
-/* Note margin cards (displayed on the right side of content, right-aligned) */
+/* ============================================================
+   NOTE MARGIN CARDS
+   Sidebar notes displayed on the right side of content
+   ============================================================ */
+
 .note-card-margin {
     position: absolute;
     width: 250px; /* Match TOC width */
@@ -181,7 +238,11 @@
     box-shadow: 0 0 0 3px rgba(9, 105, 218, 0.15);
 }
 
-/* Note action buttons */
+/* ============================================================
+   NOTE ACTION BUTTONS
+   Edit and delete buttons for note cards
+   ============================================================ */
+
 .note-actions {
     position: absolute;
     top: 8px;
@@ -233,7 +294,11 @@
     padding-right: 52px; /* Make room for edit and delete buttons */
 }
 
-/* Confirm dialog - small popup near trigger */
+/* ============================================================
+   CONFIRM DIALOG
+   Small confirmation popup for destructive actions
+   ============================================================ */
+
 .confirm-dialog {
     position: fixed;
     background: white;
@@ -285,7 +350,11 @@
     background: #c82333 !important;
 }
 
-/* Highlight interactions for has-note elements in content */
+/* ============================================================
+   HAS-NOTE HIGHLIGHT INTERACTIONS
+   Styling for text elements with attached notes
+   ============================================================ */
+
 .has-note {
     background-color: rgba(255, 99, 71, 0.2);
     cursor: pointer;
@@ -304,7 +373,11 @@
     box-shadow: 0 0 0 2px rgba(9, 105, 218, 0.1);
 }
 
-/* Note popup (for small screens) */
+/* ============================================================
+   NOTE POPUP (Mobile)
+   Floating note display for narrow screens
+   ============================================================ */
+
 .note-popup {
     position: fixed;
     max-width: 300px;
@@ -319,11 +392,22 @@
     cursor: move;
 }
 
+/* ============================================================
+   TABLE OF CONTENTS (Mobile)
+   Floating TOC button and menu for narrow screens
+   ============================================================ */
+
 #toc-container {
     position: fixed;
     top: 20px;
     right: 20px;
     z-index: 10000;
+}
+
+@media (max-width: 768px) {
+    #toc-container {
+        right: 10px;
+    }
 }
 
 #toc-icon {
@@ -348,6 +432,7 @@
     margin: 2px 0;
 }
 
+/* Mobile TOC styles */
 @media (max-width: 1400px) {
     #toc-icon {
         display: flex;
@@ -356,13 +441,16 @@
     .toc {
         display: none;
         position: absolute;
-        top: 50px;
+        top: 0; /* Align with icon top instead of below it */
         right: 0;
         width: 250px;
+        max-height: calc(100vh - 40px); /* Limit height to viewport minus some padding */
+        overflow-y: auto; /* Enable vertical scrolling when content overflows */
         background-color: #fff;
         border: 1px solid #d0d7de;
         border-radius: 6px;
         box-shadow: 0 8px 24px rgba(140, 149, 159, 0.2);
+        overscroll-behavior: contain; /* Prevent scroll chaining to page */
     }
 
     #toc-container.active .toc {
@@ -373,3 +461,6 @@
         display: none;
     }
 }
+
+/* TOC styles are now fully controlled by layout.html template based on --theme parameter.
+   Do not add @media (prefers-color-scheme) rules here as they would override --theme light/dark. */

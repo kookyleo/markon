@@ -117,6 +117,8 @@ document.addEventListener('DOMContentLoaded', () => {
                 // Add history.pushState on click
                 item.addEventListener('click', (e) => {
                     e.preventDefault();
+                    e.stopPropagation();
+
                     const href = item.getAttribute('href');
                     history.pushState(null, '', href);
 
@@ -125,6 +127,12 @@ document.addEventListener('DOMContentLoaded', () => {
                     const targetElement = document.getElementById(targetId);
                     if (targetElement) {
                         targetElement.scrollIntoView({ behavior: 'smooth' });
+                    }
+
+                    // Close TOC menu on mobile after clicking
+                    const tocContainer = document.getElementById('toc-container');
+                    if (tocContainer && window.innerWidth <= 1400) {
+                        tocContainer.classList.remove('active');
                     }
                 });
             });
@@ -236,6 +244,34 @@ document.addEventListener('DOMContentLoaded', () => {
 
     document.addEventListener('mouseup', handleSelection);
     document.addEventListener('touchend', handleSelection);
+
+    // Hide popover when clicking/touching outside
+    const hidePopoverOnOutsideClick = (e) => {
+        // Don't hide if clicking on popover itself
+        if (popover.contains(e.target)) {
+            return;
+        }
+
+        // Don't hide if clicking on UI elements (TOC, notes, etc.)
+        if (e.target.closest('.toc-container') ||
+            e.target.closest('.note-card-margin') ||
+            e.target.closest('.note-popup') ||
+            e.target.closest('.note-input-modal')) {
+            return;
+        }
+
+        // Hide popover and clear selection
+        if (popover.style.display !== 'none') {
+            popover.style.display = 'none';
+            currentSelection = null;
+            currentHighlightedElement = null;
+            // Clear text selection
+            window.getSelection().removeAllRanges();
+        }
+    };
+
+    document.addEventListener('mousedown', hidePopoverOnOutsideClick);
+    document.addEventListener('touchstart', hidePopoverOnOutsideClick, { passive: true });
 
 
     function createPopover() {
@@ -1427,84 +1463,66 @@ document.addEventListener('DOMContentLoaded', () => {
     const tocContainer = document.getElementById('toc-container');
     const tocIcon = document.getElementById('toc-icon');
 
-    function makeDraggableWithPositionSave(element, storageKey) {
-        const savedPosition = JSON.parse(localStorage.getItem(storageKey) || '{}');
-        if (savedPosition.top && savedPosition.right) {
-            element.style.top = savedPosition.top;
-            element.style.right = savedPosition.right;
+    if (tocContainer && tocIcon) {
+        const tocMenu = tocContainer.querySelector('.toc');
+
+        // Prevent scroll propagation from TOC menu to page
+        if (tocMenu) {
+            // Prevent wheel events from propagating
+            tocMenu.addEventListener('wheel', (e) => {
+                const isScrollable = tocMenu.scrollHeight > tocMenu.clientHeight;
+                if (!isScrollable) return;
+
+                const atTop = tocMenu.scrollTop === 0;
+                const atBottom = tocMenu.scrollTop + tocMenu.clientHeight >= tocMenu.scrollHeight;
+
+                // Prevent propagation if scrolling within bounds
+                if ((e.deltaY < 0 && !atTop) || (e.deltaY > 0 && !atBottom)) {
+                    e.stopPropagation();
+                }
+            }, { passive: false });
+
+            // Prevent touch scroll from propagating
+            let touchStartY = 0;
+            tocMenu.addEventListener('touchstart', (e) => {
+                touchStartY = e.touches[0].clientY;
+            }, { passive: true });
+
+            tocMenu.addEventListener('touchmove', (e) => {
+                const isScrollable = tocMenu.scrollHeight > tocMenu.clientHeight;
+                if (!isScrollable) return;
+
+                const touchY = e.touches[0].clientY;
+                const deltaY = touchStartY - touchY;
+
+                const atTop = tocMenu.scrollTop === 0;
+                const atBottom = tocMenu.scrollTop + tocMenu.clientHeight >= tocMenu.scrollHeight;
+
+                // Prevent propagation if scrolling within bounds
+                if ((deltaY < 0 && !atTop) || (deltaY > 0 && !atBottom)) {
+                    e.stopPropagation();
+                }
+            }, { passive: false });
         }
 
-        let isDragging = false;
-        let startX, startY, initialRight, initialTop;
-
-        const getCoords = (e) => e.type.startsWith('touch') ? e.touches[0] : e;
-
-        const dragStart = (e) => {
-            const tocNav = element.querySelector('.toc');
-            if (tocNav && tocNav.contains(e.target)) {
-                return;
-            }
-
-            isDragging = true;
-            const coords = getCoords(e);
-            startX = coords.pageX;
-            startY = coords.pageY;
-
-            const style = window.getComputedStyle(element);
-            initialRight = parseFloat(style.right);
-            initialTop = parseFloat(style.top);
-
-            document.body.style.cursor = 'grabbing';
-            document.body.style.userSelect = 'none';
+        // Toggle TOC on click/tap - handle both mouse and touch events
+        const toggleToc = (e) => {
+            tocContainer.classList.toggle('active');
+            e.stopPropagation();
             e.preventDefault();
         };
 
-        const dragMove = (e) => {
-            if (!isDragging) return;
+        tocIcon.addEventListener('click', toggleToc);
+        tocIcon.addEventListener('touchend', toggleToc);
 
-            const coords = getCoords(e);
-            const dx = coords.pageX - startX;
-            const dy = coords.pageY - startY;
-
-            element.style.right = `${initialRight - dx}px`;
-            element.style.top = `${initialTop + dy}px`;
-        };
-
-        const dragEnd = () => {
-            if (isDragging) {
-                isDragging = false;
-                document.body.style.cursor = '';
-                document.body.style.userSelect = '';
-
-                const finalPosition = {
-                    top: element.style.top,
-                    right: element.style.right,
-                };
-                localStorage.setItem(storageKey, JSON.stringify(finalPosition));
-            }
-        };
-
-        element.addEventListener('mousedown', dragStart);
-        document.addEventListener('mousemove', dragMove);
-        document.addEventListener('mouseup', dragEnd);
-
-        element.addEventListener('touchstart', dragStart, { passive: false });
-        document.addEventListener('touchmove', dragMove, { passive: false });
-        document.addEventListener('touchend', dragEnd);
-    }
-
-    if (tocContainer && tocIcon) {
-        makeDraggableWithPositionSave(tocContainer, 'markon-toc-position');
-
-        tocIcon.addEventListener('click', (e) => {
-            tocContainer.classList.toggle('active');
-            e.stopPropagation();
-        });
-
-        document.addEventListener('click', (e) => {
+        // Close TOC when clicking outside
+        const closeToc = (e) => {
             if (tocContainer.classList.contains('active') && !tocContainer.contains(e.target)) {
                 tocContainer.classList.remove('active');
             }
-        });
+        };
+
+        document.addEventListener('click', closeToc);
+        document.addEventListener('touchend', closeToc);
     }
 });
