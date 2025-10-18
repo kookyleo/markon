@@ -107,6 +107,16 @@ document.addEventListener('DOMContentLoaded', () => {
 
             window.ws.onopen = () => {
                 console.log('[WebSocket] Connected successfully');
+
+                // Send file path as first message to the server
+                const filePath = filePathMeta.getAttribute('content');
+                if (filePath) {
+                    window.ws.send(filePath);
+                    console.log(`[WebSocket] Sent file path: ${filePath}`);
+                } else {
+                    console.error('[WebSocket] No file path found in meta tag');
+                }
+
                 // Reset counter only after connection is stable for 5 seconds
                 clearTimeout(resetTimer);
                 resetTimer = setTimeout(() => {

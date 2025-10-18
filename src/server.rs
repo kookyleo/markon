@@ -214,12 +214,14 @@ async fn handle_socket(socket: WebSocket, state: AppState) {
     // Subscribe to the broadcast channel
     let mut rx = state.tx.as_ref().unwrap().subscribe();
 
-    // Get the file path for the current session
-    let file_path = match state.file_path.as_ref() {
-        Some(path) => path.clone(),
-        None => {
-            // Handle case where no file is specified if necessary
-            // For now, we assume shared annotations are only for specific files
+    // Wait for the first message from client to get the file path
+    let file_path = match receiver.next().await {
+        Some(Ok(Message::Text(text))) => {
+            // Expect first message to be file path
+            text
+        }
+        _ => {
+            eprintln!("[WebSocket] Failed to receive file path from client");
             return;
         }
     };
