@@ -100,7 +100,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
         function connect() {
             const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-            const wsUrl = `${wsProtocol}//${window.location.host}/ws`;
+            const wsUrl = `${wsProtocol}//${window.location.host}/_/ws`;
 
             console.log(`[WebSocket] Page protocol: ${window.location.protocol}, WS URL: ${wsUrl}`);
             window.ws = new WebSocket(wsUrl);

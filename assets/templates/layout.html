@@ -6,16 +6,16 @@
     <meta name="file-path" content="{{ file_path }}">
     <meta name="shared-annotation" content="{{ shared_annotation }}">
     <title>{{ title }}</title>
-    <link rel="icon" type="image/svg+xml" href="/favicon.svg">
-    <link rel="alternate icon" href="/favicon.ico">
+    <link rel="icon" type="image/svg+xml" href="/_/favicon.svg">
+    <link rel="alternate icon" href="/_/favicon.ico">
     {% if theme == "auto" %}
-    <link rel="stylesheet" href="/static/css/github-markdown-light.css" media="(prefers-color-scheme: light)">
-    <link rel="stylesheet" href="/static/css/github-markdown-dark.css" media="(prefers-color-scheme: dark)">
+    <link rel="stylesheet" href="/_/css/github-markdown-light.css" media="(prefers-color-scheme: light)">
+    <link rel="stylesheet" href="/_/css/github-markdown-dark.css" media="(prefers-color-scheme: dark)">
     {% else %}
-    <link rel="stylesheet" href="/static/css/github-markdown-{{ theme }}.css">
+    <link rel="stylesheet" href="/_/css/github-markdown-{{ theme }}.css">
     {% endif %}
-    <link rel="stylesheet" href="/static/css/github-print.css" media="print">
-    <link rel="stylesheet" href="/static/css/editor.css">
+    <link rel="stylesheet" href="/_/css/github-print.css" media="print">
+    <link rel="stylesheet" href="/_/css/editor.css">
     <style>
         /* ========================================
            BASE LAYOUT
@@ -697,7 +697,7 @@
         <a href="#" class="footer-clear-link" onclick="clearPageAnnotations(event, window.ws, window.isSharedAnnotationMode); return false;">Clear Annotations</a>
     </footer>
     {% if has_mermaid %}
-    <script src="/static/js/mermaid.min.js"></script>
+    <script src="/_/js/mermaid.min.js"></script>
     <script>
         {% if theme == "dark" %}
         mermaid.initialize({ startOnLoad: true, theme: 'dark' });
@@ -713,7 +713,7 @@
         {% endif %}
     </script>
     {% endif %}
-    <script src="/static/js/editor.js"></script>
+    <script src="/_/js/editor.js"></script>
     <script>
         // TOC active item tracking with Intersection Observer
         (function() {
