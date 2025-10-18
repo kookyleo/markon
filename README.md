@@ -88,17 +88,18 @@ markon -t auto README.md
 ### Command Line Options
 
 ```
+Usage: markon [OPTIONS] [FILE]
+
+Arguments:
+  [FILE]  The markdown file to render
+
 Options:
-  [FILE]                       Markdown file to render (optional)
-  -p, --port <PORT>            Server port [default: 6419]
-  -t, --theme <THEME>          Theme: light, dark, auto [default: auto]
-      --qr [<URL>]             Generate QR code for server address
-                               Optionally specify a custom URL to encode
-  -b, --open-browser [<BASE_URL>]
-                               Automatically open browser after starting
-                               Optionally specify a base URL (e.g., when using reverse proxy)
-  -h, --help                   Show help information
-  -V, --version                Show version information
+  -p, --port <PORT>                The port to use for the server [default: 6419]
+  -t, --theme <THEME>              Theme selection (light, dark, auto) [default: auto]
+      --qr [<BASE_URL>]            Generate QR code for server address. Optionally specify a base URL (e.g., http://192.168.1.100:6419) to override the default local address
+  -b, --open-browser [<BASE_URL>]  Automatically open browser after starting the server. Optionally specify a base URL (e.g., http://example.com:8080) to override the default local address
+  -h, --help                       Print help
+  -V, --version                    Print version
 ```
 
 ### Advanced Usage Examples
@@ -107,7 +108,7 @@ Options:
 # Generate QR code for easy mobile access (uses local address)
 markon --qr
 
-# Generate QR code with custom URL (e.g., when using port forwarding or public IP)
+# Generate QR code with custom a base URL (e.g., when using port forwarding or public IP)
 markon --qr http://192.168.1.100:6419
 
 # Auto-open browser after starting (opens local address)
