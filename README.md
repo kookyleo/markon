@@ -43,7 +43,7 @@ Simply run `markon` in any directory to browse and render Markdown files with a 
 
 ## Important Notes
 
-### System Path Prefix (`/_/`)
+### System Path Prefix
 
 Markon uses `/_/` as a reserved path prefix for all system resources (CSS, JavaScript, WebSocket, favicon). This ensures complete separation between system files and your content:
 
