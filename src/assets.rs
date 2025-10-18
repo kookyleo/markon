@@ -11,3 +11,7 @@ pub struct JsAssets;
 #[derive(RustEmbed)]
 #[folder = "assets/templates/"]
 pub struct Templates;
+
+#[derive(RustEmbed)]
+#[folder = "assets/icons/"]
+pub struct IconAssets;
