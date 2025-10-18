@@ -41,6 +41,34 @@ Markon 让你可以便捷地以精美的 HTML 格式阅读、打印和批注 Mar
 - ✅ **取消高亮**: 选中已高亮的文本可取消高亮
 - ✅ **持久化存储**: 标注数据保存在浏览器本地存储
 
+## 重要说明
+
+### 系统路径前缀（`/_/`）
+
+Markon 使用 `/_/` 作为所有系统资源（CSS、JavaScript、WebSocket、favicon）的保留路径前缀，确保系统文件与用户内容完全分离：
+
+- **保留路径**：`/_/`（仅此特定前缀）
+- **这意味着什么**：请勿在工作目录根目录创建名为 `_`（单下划线）的目录
+- **您可以做什么**：
+  - ✅ 创建 `_build/`、`__pycache__/`、`_test/`、`_cache/` 等目录（与 `_` 不同）
+  - ✅ 创建 `ws/`、`static/`、`css/`、`js/` 等目录（不会冲突！）
+  - ✅ 使用任何不以 `_/` 开头的文件或目录名
+
+**示例**：
+```bash
+# ❌ 这会与系统路径冲突
+mkdir _              # 不要创建单下划线目录
+markon               # 系统使用 /_/css/*、/_/js/* 等
+
+# ✅ 以下都可以正常使用
+mkdir _build         # URL: /_build/* (不是 /_/*)
+mkdir __pycache__    # URL: /__pycache__/* (不是 /_/*)
+mkdir ws             # URL: /ws/* (与 /_/ws 不同！)
+mkdir static         # URL: /static/* (不是 /_/*)
+```
+
+**使用反向代理时**：请确保配置代理转发 `/_/` 路径。详细的 Nginx、Caddy、Apache、Traefik 配置示例请参考 [REVERSE_PROXY.md](REVERSE_PROXY.md)。
+
 ## 安装
 
 ### 从 crates.io 安装
