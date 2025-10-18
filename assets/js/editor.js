@@ -96,17 +96,23 @@ document.addEventListener('DOMContentLoaded', () => {
     if (window.isSharedAnnotationMode) {
         let reconnectAttempts = 0;
         const maxReconnectDelay = 30000; // Max 30 seconds between reconnects
+        let resetTimer = null;
 
         function connect() {
             const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
             const wsUrl = `${wsProtocol}//${window.location.host}/ws`;
 
-            console.log(`[WebSocket] Connecting to ${wsUrl}...`);
+            console.log(`[WebSocket] Page protocol: ${window.location.protocol}, WS URL: ${wsUrl}`);
             window.ws = new WebSocket(wsUrl);
 
             window.ws.onopen = () => {
                 console.log('[WebSocket] Connected successfully');
-                reconnectAttempts = 0; // Reset reconnect counter on successful connection
+                // Reset counter only after connection is stable for 5 seconds
+                clearTimeout(resetTimer);
+                resetTimer = setTimeout(() => {
+                    reconnectAttempts = 0;
+                    console.log('[WebSocket] Connection stable, reset reconnect counter');
+                }, 5000);
             };
 
             window.ws.onmessage = (event) => {
@@ -139,6 +145,7 @@ document.addEventListener('DOMContentLoaded', () => {
             };
 
             window.ws.onclose = (event) => {
+                clearTimeout(resetTimer);  // Clear reset timer on disconnect
                 console.log(`[WebSocket] Disconnected (code: ${event.code}, reason: ${event.reason || 'none'})`);
 
                 // Calculate exponential backoff: 1s, 2s, 4s, 8s, ... up to maxReconnectDelay
