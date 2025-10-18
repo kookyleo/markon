@@ -20,7 +20,7 @@ use tera::Tera;
 use tokio::net::TcpListener;
 use tokio::sync::broadcast;
 
-use crate::assets::{CssAssets, JsAssets, Templates};
+use crate::assets::{CssAssets, IconAssets, JsAssets, Templates};
 use crate::markdown::MarkdownRenderer;
 
 /// Print a compact QR code using Unicode half-blocks
@@ -150,6 +150,8 @@ pub async fn start(
 
     let mut app = Router::new()
         .route("/", get(root))
+        .route("/favicon.ico", get(serve_favicon))
+        .route("/favicon.svg", get(serve_favicon_svg))
         .route("/static/css/:filename", get(serve_css))
         .route("/static/js/:filename", get(serve_js))
         .route("/*path", get(handle_path));
@@ -573,6 +575,15 @@ fn render_directory_listing(state: &AppState, dir_param: Option<&str>) -> Respon
         )
             .into_response(),
     }
+}
+
+async fn serve_favicon() -> impl IntoResponse {
+    // Redirect /favicon.ico to /favicon.svg
+    (StatusCode::MOVED_PERMANENTLY, [(header::LOCATION, "/favicon.svg")]).into_response()
+}
+
+async fn serve_favicon_svg() -> impl IntoResponse {
+    serve_static_file("favicon.svg", IconAssets::get, "image/svg+xml")
 }
 
 async fn serve_css(AxumPath(filename): AxumPath<String>) -> impl IntoResponse {
