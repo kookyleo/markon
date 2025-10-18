@@ -41,6 +41,34 @@ Simply run `markon` in any directory to browse and render Markdown files with a 
 - ✅ **Unhighlight**: Remove highlights from selected text
 - ✅ **Persistent Storage**: Annotation data saved in browser local storage
 
+## Important Notes
+
+### System Path Prefix (`/_/`)
+
+Markon uses `/_/` as a reserved path prefix for all system resources (CSS, JavaScript, WebSocket, favicon). This ensures complete separation between system files and your content:
+
+- **Reserved path**: `/_/` (only this specific prefix)
+- **What this means**: Do NOT create a directory named `_` (single underscore) in your working directory root
+- **What you CAN do**:
+  - ✅ Create directories like `_build/`, `__pycache__/`, `_test/`, `_cache/` (different from `_`)
+  - ✅ Create directories like `ws/`, `static/`, `css/`, `js/` (no conflict!)
+  - ✅ Use any file or directory names that don't start with exactly `_/`
+
+**Examples**:
+```bash
+# ❌ This will conflict with system paths
+mkdir _              # Don't create a single-underscore directory
+markon               # System uses /_/css/*, /_/js/*, etc.
+
+# ✅ All of these are perfectly fine
+mkdir _build         # URL: /_build/* (not /_/*)
+mkdir __pycache__    # URL: /__pycache__/* (not /_/*)
+mkdir ws             # URL: /ws/* (not /_/ws - different!)
+mkdir static         # URL: /static/* (not /_/*)
+```
+
+**When using reverse proxy**: Make sure to configure your proxy to forward the `/_/` path. See [REVERSE_PROXY.md](REVERSE_PROXY.md) for detailed configuration examples for Nginx, Caddy, Apache, and Traefik.
+
 ## Installation
 
 ### From crates.io
