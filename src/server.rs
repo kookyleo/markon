@@ -1,17 +1,24 @@
 use axum::{
-    extract::{Path as AxumPath, State},
+    extract::{
+        ws::{Message, WebSocket},
+        Path as AxumPath, State, WebSocketUpgrade,
+    },
     http::{header, StatusCode},
     response::{Html, IntoResponse, Response},
     routing::get,
     Router,
 };
+use futures_util::{stream::StreamExt, SinkExt};
 use qrcode::render::unicode::Dense1x2;
 use qrcode::{EcLevel, QrCode};
+use rusqlite::Connection;
+use serde::{Deserialize, Serialize};
 use std::fs;
 use std::net::SocketAddr;
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 use tera::Tera;
 use tokio::net::TcpListener;
+use tokio::sync::broadcast;
 
 use crate::assets::{CssAssets, JsAssets, Templates};
 use crate::markdown::MarkdownRenderer;
@@ -46,6 +53,30 @@ struct AppState {
     theme: Arc<String>,
     tera: Arc<Tera>,
     start_dir: Arc<std::path::PathBuf>,
+    shared_annotation: bool,
+    db: Option<Arc<Mutex<Connection>>>,
+    tx: Option<broadcast::Sender<String>>,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+struct Annotation {
+    id: String,
+    file_path: String,
+    #[serde(flatten)]
+    data: serde_json::Value,
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+#[serde(tag = "type")]
+enum WebSocketMessage {
+    #[serde(rename = "all_annotations")]
+    AllAnnotations { annotations: Vec<serde_json::Value> },
+    #[serde(rename = "new_annotation")]
+    NewAnnotation { annotation: serde_json::Value },
+    #[serde(rename = "delete_annotation")]
+    DeleteAnnotation { id: String },
+    #[serde(rename = "clear_annotations")]
+    ClearAnnotations,
 }
 
 pub async fn start(
@@ -54,6 +85,7 @@ pub async fn start(
     theme: String,
     qr: Option<String>,
     open_browser: Option<String>,
+    shared_annotation: bool,
 ) {
     // Initialize Tera template engine
     let mut tera = Tera::default();
@@ -78,19 +110,55 @@ pub async fn start(
 
     let start_dir = std::env::current_dir().unwrap_or_else(|_| ".".into());
 
+    let (db, tx) = if shared_annotation {
+        let db_path = std::env::var("MARKON_SQLITE_PATH").unwrap_or_else(|_| {
+            let home = dirs::home_dir().expect("Cannot find home directory");
+            home.join(".markon/annotation.sqlite").to_string_lossy().to_string()
+        });
+
+        let parent_dir = std::path::Path::new(&db_path).parent().unwrap();
+        if !parent_dir.exists() {
+            fs::create_dir_all(parent_dir).expect("Failed to create database directory");
+        }
+
+        let conn = Connection::open(&db_path).expect("Failed to open database");
+        conn.execute(
+            "CREATE TABLE IF NOT EXISTS annotations (
+                id TEXT PRIMARY KEY,
+                file_path TEXT NOT NULL,
+                data TEXT NOT NULL
+            )",
+            [],
+        )
+        .expect("Failed to create table");
+        let db = Arc::new(Mutex::new(conn));
+        let tx = broadcast::channel(100).0;
+        (Some(db), Some(tx))
+    } else {
+        (None, None)
+    };
+
     let state = AppState {
         file_path: Arc::new(file_path),
         theme: Arc::new(theme),
         tera: Arc::new(tera),
         start_dir: Arc::new(start_dir),
+        shared_annotation,
+        db,
+        tx,
     };
 
-    let app = Router::new()
+    let mut app = Router::new()
         .route("/", get(root))
         .route("/static/css/:filename", get(serve_css))
         .route("/static/js/:filename", get(serve_js))
-        .route("/*path", get(handle_path))
-        .with_state(state);
+        .route("/*path", get(handle_path));
+
+    if shared_annotation {
+        app = app.route("/ws", get(ws_handler));
+    }
+
+    let app = app.with_state(state);
 
     let addr = SocketAddr::from(([127, 0, 0, 1], port));
     let listener = match TcpListener::bind(&addr).await {
@@ -131,6 +199,130 @@ pub async fn start(
         eprintln!("Server error: {e}");
         std::process::exit(1);
     }
+}
+
+async fn ws_handler(
+    ws: WebSocketUpgrade,
+    State(state): State<AppState>,
+) -> impl IntoResponse {
+    ws.on_upgrade(|socket| handle_socket(socket, state))
+}
+
+async fn handle_socket(socket: WebSocket, state: AppState) {
+    let (mut sender, mut receiver) = socket.split();
+
+    // Subscribe to the broadcast channel
+    let mut rx = state.tx.as_ref().unwrap().subscribe();
+
+    // Get the file path for the current session
+    let file_path = match state.file_path.as_ref() {
+        Some(path) => path.clone(),
+        None => {
+            // Handle case where no file is specified if necessary
+            // For now, we assume shared annotations are only for specific files
+            return;
+        }
+    };
+
+    // Send all existing annotations to the new client
+    let annotations = {
+        let db = state.db.as_ref().unwrap().lock().unwrap();
+        let mut stmt = db
+            .prepare("SELECT data FROM annotations WHERE file_path = ?1")
+            .unwrap();
+        let rows = stmt
+            .query_map([&file_path], |row| row.get::<_, String>(0))
+            .unwrap();
+        let mut annotations = Vec::new();
+        for row in rows {
+            let data: serde_json::Value = serde_json::from_str(&row.unwrap()).unwrap();
+            annotations.push(data);
+        }
+        annotations
+    };
+
+    let initial_msg = WebSocketMessage::AllAnnotations { annotations };
+    if sender
+        .send(Message::Text(serde_json::to_string(&initial_msg).unwrap()))
+        .await
+        .is_err()
+    {
+        return;
+    }
+
+    // Task to forward broadcast messages to the client
+    let mut send_task = tokio::spawn(async move {
+        while let Ok(msg) = rx.recv().await {
+            if sender.send(Message::Text(msg)).await.is_err() {
+                break;
+            }
+        }
+    });
+
+    // Task to handle incoming messages from the client
+    let mut recv_task = {
+        let state = state.clone();
+        tokio::spawn(async move {
+            while let Some(Ok(Message::Text(text))) = receiver.next().await {
+                let msg: WebSocketMessage = match serde_json::from_str(&text) {
+                    Ok(msg) => msg,
+                    Err(_) => continue,
+                };
+
+                let db = state.db.as_ref().unwrap().lock().unwrap();
+                match msg {
+                    WebSocketMessage::NewAnnotation { annotation } => {
+                        let id = annotation["id"].as_str().unwrap().to_string();
+                        let data = serde_json::to_string(&annotation).unwrap();
+                        db.execute(
+                            "INSERT OR REPLACE INTO annotations (id, file_path, data) VALUES (?1, ?2, ?3)",
+                            &[&id, &file_path, &data],
+                        )
+                        .unwrap();
+                        let broadcast_msg = WebSocketMessage::NewAnnotation { annotation };
+                        state
+                            .tx
+                            .as_ref()
+                            .unwrap()
+                            .send(serde_json::to_string(&broadcast_msg).unwrap())
+                            .unwrap();
+                    }
+                    WebSocketMessage::DeleteAnnotation { id } => {
+                        db.execute(
+                            "DELETE FROM annotations WHERE id = ?1 AND file_path = ?2",
+                            &[&id, &file_path],
+                        )
+                        .unwrap();
+                        let broadcast_msg = WebSocketMessage::DeleteAnnotation { id };
+                        state
+                            .tx
+                            .as_ref()
+                            .unwrap()
+                            .send(serde_json::to_string(&broadcast_msg).unwrap())
+                            .unwrap();
+                    }
+                    WebSocketMessage::ClearAnnotations => {
+                        db.execute("DELETE FROM annotations WHERE file_path = ?1", &[&file_path])
+                            .unwrap();
+                        let broadcast_msg = WebSocketMessage::ClearAnnotations;
+                        state
+                            .tx
+                            .as_ref()
+                            .unwrap()
+                            .send(serde_json::to_string(&broadcast_msg).unwrap())
+                            .unwrap();
+                    }
+                    _ => {}
+                }
+            }
+        })
+    };
+
+    // Wait for either task to complete
+    tokio::select! {
+        _ = (&mut send_task) => recv_task.abort(),
+        _ = (&mut recv_task) => send_task.abort(),
+    };
 }
 
 async fn root(State(state): State<AppState>) -> impl IntoResponse {
@@ -209,6 +401,7 @@ fn render_markdown_file(file_path: &str, state: &AppState) -> Response {
             context.insert("show_back_link", &true);
             context.insert("has_mermaid", &has_mermaid);
             context.insert("toc", &toc);
+            context.insert("shared_annotation", &state.shared_annotation);
 
             match state.tera.render("layout.html", &context) {
                 Ok(html) => Html(html).into_response(),
