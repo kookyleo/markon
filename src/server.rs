@@ -22,7 +22,7 @@ struct AppState {
     start_dir: Arc<std::path::PathBuf>,
 }
 
-pub async fn start(port: u16, file_path: Option<String>, theme: String) {
+pub async fn start(port: u16, file_path: Option<String>, theme: String, qr: Option<String>) {
     // Initialize Tera template engine
     let mut tera = Tera::default();
 
@@ -61,6 +61,14 @@ pub async fn start(port: u16, file_path: Option<String>, theme: String) {
         .with_state(state);
 
     let addr = SocketAddr::from(([127, 0, 0, 1], port));
+    if let Some(qr_option) = qr {
+        let qr_url = if qr_option == "missing" {
+            format!("http://{}", addr)
+        } else {
+            qr_option
+        };
+        qr2term::print_qr(&qr_url).unwrap();
+    }
     let listener = match TcpListener::bind(&addr).await {
         Ok(listener) => listener,
         Err(e) => {

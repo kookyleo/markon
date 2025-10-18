@@ -19,6 +19,10 @@ struct Cli {
     /// Theme selection (light, dark, auto).
     #[arg(short = 't', long, default_value = "auto")]
     theme: String,
+
+    /// Output the QR code of the server address.
+    #[arg(long, value_name = "URL", action = clap::ArgAction::Set, num_args = 0..=1, default_missing_value = "missing")]
+    qr: Option<String>,
 }
 
 #[tokio::main]
@@ -44,5 +48,5 @@ async fn main() {
         None
     };
 
-    server::start(cli.port, file_to_render, theme).await;
+    server::start(cli.port, file_to_render, theme, cli.qr).await;
 }
