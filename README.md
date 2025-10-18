@@ -67,7 +67,7 @@ mkdir ws             # URL: /ws/* (not /_/ws - different!)
 mkdir static         # URL: /static/* (not /_/*)
 ```
 
-**When using reverse proxy**: Make sure to configure your proxy to forward the `/_/` path. See [REVERSE_PROXY.md](REVERSE_PROXY.md) for detailed configuration examples for Nginx, Caddy, Apache, and Traefik.
+**When using reverse proxy**: Make sure to configure your proxy to forward the `/_/` path. See [REVERSE_PROXY.md](REVERSE_PROXY.md) ([中文版](REVERSE_PROXY.zh.md)) for detailed configuration examples for Nginx, Caddy, Apache, and Traefik.
 
 ## Installation
 

@@ -1,100 +1,51 @@
-# 反向代理配置指南
+# Reverse Proxy Configuration Guide
 
-当使用 `--shared-annotation` 模式时，需要确保反向代理正确支持 WebSocket 连接。
+When using `--shared-annotation` mode, ensure your reverse proxy correctly supports WebSocket connections.
 
-## 系统路径说明
+## System Path Overview
 
-Markon 使用 `/_/` 作为系统资源的统一前缀，避免与用户文件路径冲突：
+Markon uses `/_/` as a unified prefix for all system resources to avoid conflicts with user file paths:
 
-- `/_/ws` - WebSocket 连接端点（仅 shared-annotation 模式）
-- `/_/css/*` - CSS 样式文件
-- `/_/js/*` - JavaScript 脚本文件
-- `/_/favicon.svg` - 网站图标（SVG 格式）
-- `/_/favicon.ico` - 网站图标（ICO 格式，重定向到 SVG）
+- `/_/ws` - WebSocket endpoint (shared-annotation mode only)
+- `/_/css/*` - CSS stylesheets
+- `/_/js/*` - JavaScript files
+- `/_/favicon.svg` - Favicon (SVG format)
+- `/_/favicon.ico` - Favicon (ICO format, redirects to SVG)
 
-**重要：** 用户可以创建任何文件或目录（包括 `ws/`、`static/` 等），不会与系统路径冲突。
+**Important:** Users can create any files or directories (including `ws/`, `static/`, etc.) without conflicts.
 
 ---
 
-## Nginx 配置
+## Nginx Configuration
 
-### 方案 1：统一代理所有系统资源（推荐）
-
-最简单的配置方式，一次性代理所有 `/_/` 下的系统资源：
+The simplest approach is to proxy all system resources under `/_/` at once:
 
 ```nginx
 server {
     listen 80;
     server_name md.example.com;
 
-    # 系统资源（包括 WebSocket、CSS、JS、Favicon）
+    # System resources (WebSocket, CSS, JS, Favicon)
     location /_/ {
         proxy_pass http://127.0.0.1:6419;
         proxy_http_version 1.1;
 
-        # WebSocket 支持
+        # WebSocket support
         proxy_set_header Upgrade $http_upgrade;
         proxy_set_header Connection "upgrade";
 
-        # 通用头部
+        # General headers
         proxy_set_header Host $host;
         proxy_set_header X-Real-IP $remote_addr;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
         proxy_set_header X-Forwarded-Proto $scheme;
 
-        # WebSocket 超时设置（对静态资源无影响）
+        # WebSocket timeout (no effect on static resources)
         proxy_read_timeout 3600s;
         proxy_send_timeout 3600s;
     }
 
-    # 用户文件（Markdown、目录等）
-    location / {
-        proxy_pass http://127.0.0.1:6419;
-        proxy_http_version 1.1;
-        proxy_set_header Host $host;
-        proxy_set_header X-Real-IP $remote_addr;
-        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto $scheme;
-    }
-}
-```
-
-### 方案 2：分别配置（更细粒度控制）
-
-如果需要对不同资源使用不同配置：
-
-```nginx
-server {
-    listen 80;
-    server_name md.example.com;
-
-    # WebSocket 连接（仅 shared-annotation 模式需要）
-    location /_/ws {
-        proxy_pass http://127.0.0.1:6419/_/ws;
-        proxy_http_version 1.1;
-        proxy_set_header Upgrade $http_upgrade;
-        proxy_set_header Connection "upgrade";
-        proxy_set_header Host $host;
-        proxy_set_header X-Real-IP $remote_addr;
-        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-
-        # WebSocket 超时设置
-        proxy_read_timeout 3600s;
-        proxy_send_timeout 3600s;
-    }
-
-    # 静态资源（CSS、JS、Favicon）
-    location /_/ {
-        proxy_pass http://127.0.0.1:6419;
-        proxy_http_version 1.1;
-        proxy_set_header Host $host;
-
-        # 可选：启用缓存
-        proxy_cache_valid 200 1h;
-        expires 1h;
-    }
-
-    # 用户文件
+    # User files (Markdown, directories, etc.)
     location / {
         proxy_pass http://127.0.0.1:6419;
         proxy_http_version 1.1;
@@ -108,9 +59,9 @@ server {
 
 ---
 
-## Caddy 配置
+## Caddy Configuration
 
-Caddy 会自动处理 WebSocket 升级和所有路径，配置非常简单：
+Caddy automatically handles WebSocket upgrades and all paths with a simple configuration:
 
 ```caddy
 md.example.com {
@@ -118,44 +69,44 @@ md.example.com {
 }
 ```
 
-**说明：** Caddy 自动处理：
-- WebSocket 升级（无需额外配置）
-- HTTPS 证书（自动申请和续期）
-- 所有路径代理（包括 `/_/` 系统路径）
+**Note:** Caddy automatically handles:
+- WebSocket upgrades (no extra configuration needed)
+- HTTPS certificates (automatic issuance and renewal)
+- All path proxying (including `/_/` system paths)
 
 ---
 
-## Apache 配置
+## Apache Configuration
 
-### 完整配置
+### Complete Configuration
 
 ```apache
 <VirtualHost *:80>
     ServerName md.example.com
 
-    # 启用代理
+    # Enable proxy
     ProxyPreserveHost On
     ProxyRequests Off
 
-    # WebSocket 支持
+    # WebSocket support
     RewriteEngine on
     RewriteCond %{HTTP:Upgrade} websocket [NC]
     RewriteCond %{HTTP:Connection} upgrade [NC]
     RewriteRule ^/_/ws$ "ws://127.0.0.1:6419/_/ws" [P,L]
 
-    # WebSocket 连接
+    # WebSocket connection
     <Location "/_/ws">
         ProxyPass ws://127.0.0.1:6419/_/ws
         ProxyPassReverse ws://127.0.0.1:6419/_/ws
     </Location>
 
-    # 系统资源（CSS、JS、Favicon）
+    # System resources (CSS, JS, Favicon)
     <Location "/_/">
         ProxyPass http://127.0.0.1:6419/_/
         ProxyPassReverse http://127.0.0.1:6419/_/
     </Location>
 
-    # 用户文件（根路径）
+    # User files (root path)
     <Location "/">
         ProxyPass http://127.0.0.1:6419/
         ProxyPassReverse http://127.0.0.1:6419/
@@ -163,7 +114,7 @@ md.example.com {
 </VirtualHost>
 ```
 
-### 需要启用的模块
+### Required Modules
 
 ```bash
 a2enmod proxy proxy_http proxy_wstunnel rewrite
@@ -172,7 +123,7 @@ systemctl restart apache2
 
 ---
 
-## Traefik 配置
+## Traefik Configuration
 
 ```yaml
 http:
@@ -188,15 +139,15 @@ http:
           - url: "http://127.0.0.1:6419"
 ```
 
-**说明：** Traefik 自动处理：
-- WebSocket 升级
-- 所有路径代理（包括 `/_/` 系统路径）
+**Note:** Traefik automatically handles:
+- WebSocket upgrades
+- All path proxying (including `/_/` system paths)
 
 ---
 
-## HTTPS/SSL 配置
+## HTTPS/SSL Configuration
 
-### Nginx HTTPS 配置
+### Nginx HTTPS Configuration
 
 ```nginx
 server {
@@ -206,27 +157,27 @@ server {
     ssl_certificate /path/to/cert.pem;
     ssl_certificate_key /path/to/key.pem;
 
-    # 系统资源（包括 WebSocket）
+    # System resources (including WebSocket)
     location /_/ {
         proxy_pass http://127.0.0.1:6419;
         proxy_http_version 1.1;
 
-        # WebSocket 支持
+        # WebSocket support
         proxy_set_header Upgrade $http_upgrade;
         proxy_set_header Connection "upgrade";
 
-        # 通用头部
+        # General headers
         proxy_set_header Host $host;
         proxy_set_header X-Real-IP $remote_addr;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
         proxy_set_header X-Forwarded-Proto $scheme;
 
-        # WebSocket 超时
+        # WebSocket timeout
         proxy_read_timeout 3600s;
         proxy_send_timeout 3600s;
     }
 
-    # 用户文件
+    # User files
     location / {
         proxy_pass http://127.0.0.1:6419;
         proxy_http_version 1.1;
@@ -237,7 +188,7 @@ server {
     }
 }
 
-# HTTP 重定向到 HTTPS
+# HTTP to HTTPS redirect
 server {
     listen 80;
     server_name md.example.com;
@@ -245,53 +196,53 @@ server {
 }
 ```
 
-**重要：**
-1. Markon 会自动检测 HTTPS 并使用 `wss://` 协议连接 WebSocket
-2. 确保 SSL 证书有效，WebSocket 连接使用相同的证书
+**Important:**
+1. Markon automatically detects HTTPS and uses `wss://` protocol for WebSocket
+2. Ensure SSL certificate is valid; WebSocket uses the same certificate
 
 ---
 
-## 故障排查
+## Troubleshooting
 
-### 错误码 1006 - 连接异常关闭
+### Error 1006 - Connection Closed Abnormally
 
-如果 WebSocket 连接成功但立即断开（错误码 1006），通常是反向代理配置问题：
+If WebSocket connects but immediately disconnects (error 1006), it's usually a reverse proxy configuration issue:
 
-#### 1. 检查 WebSocket 升级头
+#### 1. Check WebSocket Upgrade Headers
 
 ```bash
-# 测试 WebSocket 握手
+# Test WebSocket handshake
 curl -i -N -H "Connection: Upgrade" -H "Upgrade: websocket" \
      -H "Sec-WebSocket-Version: 13" \
      -H "Sec-WebSocket-Key: test" \
      http://md.example.com/_/ws
 ```
 
-应该看到 `101 Switching Protocols` 响应。
+Should see `101 Switching Protocols` response.
 
-#### 2. 检查系统资源是否正常
+#### 2. Check System Resources
 
 ```bash
-# 测试 CSS 加载
+# Test CSS loading
 curl -I http://md.example.com/_/css/editor.css
 
-# 测试 JS 加载
+# Test JS loading
 curl -I http://md.example.com/_/js/editor.js
 
-# 测试 Favicon
+# Test Favicon
 curl -I http://md.example.com/_/favicon.svg
 ```
 
-都应该返回 `200 OK`。
+All should return `200 OK`.
 
-#### 3. 检查代理超时设置
+#### 3. Check Proxy Timeout Settings
 
-确保 WebSocket 连接不会因为超时而断开：
+Ensure WebSocket connections don't disconnect due to timeouts:
 - Nginx: `proxy_read_timeout 3600s;`
-- Apache: 默认超时通常够用
-- Caddy/Traefik: 自动处理
+- Apache: Default timeout usually sufficient
+- Caddy/Traefik: Automatically handled
 
-#### 4. 查看代理日志
+#### 4. Check Proxy Logs
 
 ```bash
 # Nginx
@@ -304,103 +255,103 @@ tail -f /var/log/apache2/error.log
 journalctl -u caddy -f
 ```
 
-### 调试 WebSocket 连接
+### Debugging WebSocket Connections
 
-#### 浏览器开发者工具
+#### Browser Developer Tools
 
-1. 打开 **Network** 标签
-2. 切换到 **WS** (WebSocket) 子标签
-3. 查看 WebSocket 连接的状态和消息
+1. Open **Network** tab
+2. Switch to **WS** (WebSocket) sub-tab
+3. View WebSocket connection status and messages
 
-#### 浏览器控制台日志
+#### Browser Console Logs
 
-查看详细的 WebSocket 日志：
-- `[WebSocket] Page protocol: https:, WS URL: wss://.../_/ws` - 协议自动检测
-- `[WebSocket] Sent file path: README.md` - 发送文件路径
-- `[WebSocket] Connected successfully` - 连接成功
-- `[WebSocket] Connection stable, reset reconnect counter` - 连接稳定
-- `[WebSocket] Disconnected (code: ...)` - 断开原因
+Check detailed WebSocket logs:
+- `[WebSocket] Page protocol: https:, WS URL: wss://.../_/ws` - Protocol auto-detection
+- `[WebSocket] Sent file path: README.md` - Sending file path
+- `[WebSocket] Connected successfully` - Connection successful
+- `[WebSocket] Connection stable, reset reconnect counter` - Connection stable
+- `[WebSocket] Disconnected (code: ...)` - Disconnect reason
 
-### 常见问题
+### Common Issues
 
-#### 静态资源 404
+#### Static Resources 404
 
-如果 CSS/JS 无法加载，检查：
-1. 反向代理是否正确配置了 `/_/` 路径
-2. `proxy_pass` URL 是否正确（注意尾部斜杠）
+If CSS/JS fail to load, check:
+1. Is reverse proxy correctly configured for `/_/` path?
+2. Is `proxy_pass` URL correct? (Note trailing slash)
 
 ```nginx
-# 正确
+# Correct
 location /_/ {
     proxy_pass http://127.0.0.1:6419;
 }
 
-# 错误（会导致路径拼接问题）
+# Wrong (causes path concatenation issues)
 location /_/ {
     proxy_pass http://127.0.0.1:6419/;
 }
 ```
 
-#### WebSocket 协议不匹配
+#### WebSocket Protocol Mismatch
 
-如果看到 "Mixed Content" 错误：
-- HTTPS 页面必须使用 `wss://` 协议
-- Markon 已自动处理，无需手动配置
-- 确保反向代理正确传递 `X-Forwarded-Proto` 头
+If you see "Mixed Content" errors:
+- HTTPS pages must use `wss://` protocol
+- Markon handles this automatically
+- Ensure reverse proxy correctly passes `X-Forwarded-Proto` header
 
 ---
 
-## 本地测试
+## Local Testing
 
-不使用反向代理时，直接访问：
+Without reverse proxy, access directly:
 
 ```bash
-# 本地模式（无 WebSocket）
+# Local mode (no WebSocket)
 markon README.md
-# 访问 http://localhost:6419
+# Visit http://localhost:6419
 
-# 共享注释模式（启用 WebSocket）
+# Shared annotation mode (WebSocket enabled)
 markon README.md --shared-annotation
 # WebSocket URL: ws://localhost:6419/_/ws
 ```
 
-### 验证系统资源
+### Verify System Resources
 
-在浏览器中访问：
-- `http://localhost:6419/_/css/editor.css` - CSS 文件
-- `http://localhost:6419/_/js/editor.js` - JS 文件
+Access in browser:
+- `http://localhost:6419/_/css/editor.css` - CSS file
+- `http://localhost:6419/_/js/editor.js` - JS file
 - `http://localhost:6419/_/favicon.svg` - Favicon
-- `http://localhost:6419/_/ws` - WebSocket（仅 shared-annotation 模式）
+- `http://localhost:6419/_/ws` - WebSocket (shared-annotation mode only)
 
-### 验证用户文件无冲突
+### Verify No User File Conflicts
 
-创建测试目录和文件：
+Create test directories and files:
 ```bash
 mkdir -p ws static css js
 echo "# Test" > ws/test.md
 echo "# Static" > static/readme.md
 ```
 
-访问：
-- `http://localhost:6419/ws/test.md` ✅ 用户文件
-- `http://localhost:6419/static/readme.md` ✅ 用户文件
-- `http://localhost:6419/_/ws` ✅ 系统 WebSocket（不冲突！）
+Access:
+- `http://localhost:6419/ws/test.md` ✅ User file
+- `http://localhost:6419/static/readme.md` ✅ User file
+- `http://localhost:6419/_/ws` ✅ System WebSocket (no conflict!)
 
 ---
 
-## 总结
+## Summary
 
-### 推荐配置
+### Recommended Configuration
 
-- **Nginx**: 使用方案 1（统一 `location /_/`）
-- **Caddy**: 默认配置即可
-- **Apache**: 按示例配置 `/_/` 路径
-- **Traefik**: 默认配置即可
+- **Nginx**: Proxy all system resources under `location /_/`
+- **Caddy**: Default configuration works
+- **Apache**: Configure `/_/` path as shown in examples
+- **Traefik**: Default configuration works
 
-### 关键要点
+### Key Points
 
-1. ✅ **系统路径**：所有系统资源都在 `/_/` 下
-2. ✅ **无冲突**：用户可以创建任何文件/目录
-3. ✅ **WebSocket**：共享注释模式需要 `/_/ws` 支持
-4. ✅ **HTTPS**：自动使用 `wss://` 协议
-5. ✅ **简单配置**：大多数反向代理只需要一个 `location /_/` 规则
+1. ✅ **System paths**: All system resources under `/_/`
+2. ✅ **No conflicts**: Users can create any files/directories
+3. ✅ **WebSocket**: Shared annotation mode requires `/_/ws` support
+4. ✅ **HTTPS**: Automatically uses `wss://` protocol
+5. ✅ **Simple config**: Most proxies only need one `location /_/` rule
