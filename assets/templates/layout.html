@@ -571,16 +571,23 @@
         {% endif %}
         <div id="notes-sidebar"></div>
         {% if toc and toc | length > 0 %}
-        <nav class="toc">
-            <div class="toc-title">Table of Contents</div>
-            <ul class="toc-list">
-                {% for item in toc %}
-                <li class="toc-item toc-level-{{ item.level }}">
-                    <a href="#{{ item.id }}">{{ item.text }}</a>
-                </li>
-                {% endfor %}
-            </ul>
-        </nav>
+        <div id="toc-container">
+            <div id="toc-icon">
+                <span></span>
+                <span></span>
+                <span></span>
+            </div>
+            <nav class="toc">
+                <div class="toc-title">Table of Contents</div>
+                <ul class="toc-list">
+                    {% for item in toc %}
+                    <li class="toc-item toc-level-{{ item.level }}">
+                        <a href="#{{ item.id }}">{{ item.text }}</a>
+                    </li>
+                    {% endfor %}
+                </ul>
+            </nav>
+        </div>
         {% endif %}
         {{ content | safe }}
     </article>

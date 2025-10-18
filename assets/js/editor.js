@@ -141,6 +141,9 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }, 100);
 
+    // Make the main selection popover draggable
+    makePopoverDraggable(popover, 'markon-popover-offset');
+
 
     let currentSelection = null;
     let currentHighlightedElement = null;
@@ -165,7 +168,7 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
 
-    document.addEventListener('mouseup', (e) => {
+    const handleSelection = (e) => {
         if (popover.contains(e.target)) return;
 
         const selection = window.getSelection();
@@ -207,8 +210,20 @@ document.addEventListener('DOMContentLoaded', () => {
             const popoverWidth = popover.offsetWidth;
 
             // Calculate position (above the selection)
-            popover.style.left = `${rect.left + window.scrollX + rect.width / 2 - popoverWidth / 2}px`;
-            popover.style.top = `${rect.top + window.scrollY - popoverHeight - 10}px`;
+            const originalLeft = rect.left + window.scrollX + rect.width / 2 - popoverWidth / 2;
+            const originalTop = rect.top + window.scrollY - popoverHeight - 10;
+
+            // Store original position for calculating drag offset
+            popover.dataset.originalLeft = originalLeft;
+            popover.dataset.originalTop = originalTop;
+
+            // Apply stored offset if it exists
+            const savedOffset = JSON.parse(localStorage.getItem('markon-popover-offset') || '{}');
+            const offsetX = savedOffset.dx || 0;
+            const offsetY = savedOffset.dy || 0;
+
+            popover.style.left = `${originalLeft + offsetX}px`;
+            popover.style.top = `${originalTop + offsetY}px`;
 
             // Now make it visible
             popover.style.visibility = 'visible';
@@ -217,7 +232,10 @@ document.addEventListener('DOMContentLoaded', () => {
                 popover.style.display = 'none';
             }
         }
-    });
+    };
+
+    document.addEventListener('mouseup', handleSelection);
+    document.addEventListener('touchend', handleSelection);
 
 
     function createPopover() {
@@ -1304,6 +1322,68 @@ document.addEventListener('DOMContentLoaded', () => {
         makeDraggable(popup);
     }
 
+    function makePopoverDraggable(element, storageKey) {
+        let isDragging = false;
+        let startX, startY, initialLeft, initialTop;
+
+        const dragStart = (e) => {
+            if (e.target.tagName === 'BUTTON') return;
+
+            isDragging = true;
+
+            const { pageX, pageY } = e.type === 'touchstart' ? e.touches[0] : e;
+            startX = pageX;
+            startY = pageY;
+
+            initialLeft = element.offsetLeft;
+            initialTop = element.offsetTop;
+
+            element.style.cursor = 'grabbing';
+            document.body.style.userSelect = 'none';
+            e.preventDefault();
+        };
+
+        const dragMove = (e) => {
+            if (!isDragging) return;
+
+            const { pageX, pageY } = e.type === 'touchmove' ? e.touches[0] : e;
+            const dx = pageX - startX;
+            const dy = pageY - startY;
+
+            element.style.left = `${initialLeft + dx}px`;
+            element.style.top = `${initialTop + dy}px`;
+        };
+
+        const dragEnd = () => {
+            if (isDragging) {
+                isDragging = false;
+                element.style.cursor = 'grab';
+                document.body.style.userSelect = '';
+
+                const finalLeft = element.offsetLeft;
+                const finalTop = element.offsetTop;
+                const originalLeft = parseFloat(element.dataset.originalLeft);
+                const originalTop = parseFloat(element.dataset.originalTop);
+
+                if (!isNaN(originalLeft) && !isNaN(originalTop)) {
+                    const offset = {
+                        dx: finalLeft - originalLeft,
+                        dy: finalTop - originalTop,
+                    };
+                    localStorage.setItem(storageKey, JSON.stringify(offset));
+                }
+            }
+        };
+
+        element.addEventListener('mousedown', dragStart);
+        document.addEventListener('mousemove', dragMove);
+        document.addEventListener('mouseup', dragEnd);
+
+        element.addEventListener('touchstart', dragStart, { passive: false });
+        document.addEventListener('touchmove', dragMove, { passive: false });
+        document.addEventListener('touchend', dragEnd);
+    }
+
     function makeDraggable(element) {
         let isDragging = false;
         let startX, startY, initialLeft, initialTop;
@@ -1340,6 +1420,90 @@ document.addEventListener('DOMContentLoaded', () => {
             if (isDragging) {
                 isDragging = false;
                 element.style.cursor = 'move';
+            }
+        });
+    }
+
+    const tocContainer = document.getElementById('toc-container');
+    const tocIcon = document.getElementById('toc-icon');
+
+    function makeDraggableWithPositionSave(element, storageKey) {
+        const savedPosition = JSON.parse(localStorage.getItem(storageKey) || '{}');
+        if (savedPosition.top && savedPosition.right) {
+            element.style.top = savedPosition.top;
+            element.style.right = savedPosition.right;
+        }
+
+        let isDragging = false;
+        let startX, startY, initialRight, initialTop;
+
+        const getCoords = (e) => e.type.startsWith('touch') ? e.touches[0] : e;
+
+        const dragStart = (e) => {
+            const tocNav = element.querySelector('.toc');
+            if (tocNav && tocNav.contains(e.target)) {
+                return;
+            }
+
+            isDragging = true;
+            const coords = getCoords(e);
+            startX = coords.pageX;
+            startY = coords.pageY;
+
+            const style = window.getComputedStyle(element);
+            initialRight = parseFloat(style.right);
+            initialTop = parseFloat(style.top);
+
+            document.body.style.cursor = 'grabbing';
+            document.body.style.userSelect = 'none';
+            e.preventDefault();
+        };
+
+        const dragMove = (e) => {
+            if (!isDragging) return;
+
+            const coords = getCoords(e);
+            const dx = coords.pageX - startX;
+            const dy = coords.pageY - startY;
+
+            element.style.right = `${initialRight - dx}px`;
+            element.style.top = `${initialTop + dy}px`;
+        };
+
+        const dragEnd = () => {
+            if (isDragging) {
+                isDragging = false;
+                document.body.style.cursor = '';
+                document.body.style.userSelect = '';
+
+                const finalPosition = {
+                    top: element.style.top,
+                    right: element.style.right,
+                };
+                localStorage.setItem(storageKey, JSON.stringify(finalPosition));
+            }
+        };
+
+        element.addEventListener('mousedown', dragStart);
+        document.addEventListener('mousemove', dragMove);
+        document.addEventListener('mouseup', dragEnd);
+
+        element.addEventListener('touchstart', dragStart, { passive: false });
+        document.addEventListener('touchmove', dragMove, { passive: false });
+        document.addEventListener('touchend', dragEnd);
+    }
+
+    if (tocContainer && tocIcon) {
+        makeDraggableWithPositionSave(tocContainer, 'markon-toc-position');
+
+        tocIcon.addEventListener('click', (e) => {
+            tocContainer.classList.toggle('active');
+            e.stopPropagation();
+        });
+
+        document.addEventListener('click', (e) => {
+            if (tocContainer.classList.contains('active') && !tocContainer.contains(e.target)) {
+                tocContainer.classList.remove('active');
             }
         });
     }
