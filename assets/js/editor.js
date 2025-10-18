@@ -104,29 +104,29 @@ document.addEventListener('DOMContentLoaded', () => {
             window.ws.onmessage = (event) => {
                 const msg = JSON.parse(event.data);
                 switch (msg.type) {
-                    case 'all_annotations':
-                        // Clear existing annotations before applying new ones
-                        clearAllAnnotationsFromDOM();
-                        // This will be our local copy of annotations
-                        window.annotations = msg.annotations;
-                        applyAnnotations(window.annotations);
-                        break;
-                    case 'new_annotation':
-                        // Remove old version if it exists, then add new one
-                        removeAnnotationFromDOM(msg.annotation.id);
-                        window.annotations = window.annotations.filter(a => a.id !== msg.annotation.id);
-                        window.annotations.push(msg.annotation);
-                        applyAnnotations([msg.annotation]);
-                        break;
-                    case 'delete_annotation':
-                        window.annotations = window.annotations.filter(a => a.id !== msg.id);
-                        removeAnnotationFromDOM(msg.id);
-                        renderNotesMargin();
-                        break;
-                    case 'clear_annotations':
-                        window.annotations = [];
-                        clearAllAnnotationsFromDOM();
-                        break;
+                case 'all_annotations':
+                    // Clear existing annotations before applying new ones
+                    clearAllAnnotationsFromDOM();
+                    // This will be our local copy of annotations
+                    window.annotations = msg.annotations;
+                    applyAnnotations(window.annotations);
+                    break;
+                case 'new_annotation':
+                    // Remove old version if it exists, then add new one
+                    removeAnnotationFromDOM(msg.annotation.id);
+                    window.annotations = window.annotations.filter(a => a.id !== msg.annotation.id);
+                    window.annotations.push(msg.annotation);
+                    applyAnnotations([msg.annotation]);
+                    break;
+                case 'delete_annotation':
+                    window.annotations = window.annotations.filter(a => a.id !== msg.id);
+                    removeAnnotationFromDOM(msg.id);
+                    renderNotesMargin();
+                    break;
+                case 'clear_annotations':
+                    window.annotations = [];
+                    clearAllAnnotationsFromDOM();
+                    break;
                 }
             };
 
@@ -1522,7 +1522,7 @@ document.addEventListener('DOMContentLoaded', () => {
             element.style.top = `${initialTop + dy}px`;
         };
 
-        const dragEnd = () => {.
+        const dragEnd = () => {
             if (isDragging) {
                 isDragging = false;
                 element.style.cursor = 'grab';

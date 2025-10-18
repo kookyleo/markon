@@ -13,7 +13,8 @@ export default [
                 clearTimeout: "readonly",
                 localStorage: "readonly",
                 location: "readonly",
-                history: "readonly"
+                history: "readonly",
+                WebSocket: "readonly"
             }
         },
         rules: {
