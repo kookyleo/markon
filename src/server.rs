@@ -150,14 +150,14 @@ pub async fn start(
 
     let mut app = Router::new()
         .route("/", get(root))
-        .route("/favicon.ico", get(serve_favicon))
-        .route("/favicon.svg", get(serve_favicon_svg))
-        .route("/static/css/:filename", get(serve_css))
-        .route("/static/js/:filename", get(serve_js))
+        .route("/_/favicon.ico", get(serve_favicon))
+        .route("/_/favicon.svg", get(serve_favicon_svg))
+        .route("/_/css/:filename", get(serve_css))
+        .route("/_/js/:filename", get(serve_js))
         .route("/*path", get(handle_path));
 
     if shared_annotation {
-        app = app.route("/ws", get(ws_handler));
+        app = app.route("/_/ws", get(ws_handler));
     }
 
     let app = app.with_state(state);
@@ -578,8 +578,8 @@ fn render_directory_listing(state: &AppState, dir_param: Option<&str>) -> Respon
 }
 
 async fn serve_favicon() -> impl IntoResponse {
-    // Redirect /favicon.ico to /favicon.svg
-    (StatusCode::MOVED_PERMANENTLY, [(header::LOCATION, "/favicon.svg")]).into_response()
+    // Redirect /_/favicon.ico to /_/favicon.svg
+    (StatusCode::MOVED_PERMANENTLY, [(header::LOCATION, "/_/favicon.svg")]).into_response()
 }
 
 async fn serve_favicon_svg() -> impl IntoResponse {
