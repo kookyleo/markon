@@ -67,7 +67,7 @@ mkdir ws             # URL: /ws/* (与 /_/ws 不同！)
 mkdir static         # URL: /static/* (不是 /_/*)
 ```
 
-**使用反向代理时**：请确保配置代理转发 `/_/` 路径。详细的 Nginx、Caddy、Apache、Traefik 配置示例请参考 [REVERSE_PROXY.md](REVERSE_PROXY.md)。
+**使用反向代理时**：请确保配置代理转发 `/_/` 路径。详细的 Nginx、Caddy、Apache、Traefik 配置示例请参考 [REVERSE_PROXY.zh.md](REVERSE_PROXY.zh.md) ([English](REVERSE_PROXY.md))。
 
 ## 安装
 

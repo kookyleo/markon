@@ -113,7 +113,9 @@ pub async fn start(
     let (db, tx) = if shared_annotation {
         let db_path = std::env::var("MARKON_SQLITE_PATH").unwrap_or_else(|_| {
             let home = dirs::home_dir().expect("Cannot find home directory");
-            home.join(".markon/annotation.sqlite").to_string_lossy().to_string()
+            home.join(".markon/annotation.sqlite")
+                .to_string_lossy()
+                .to_string()
         });
 
         let parent_dir = std::path::Path::new(&db_path).parent().unwrap();
@@ -203,10 +205,7 @@ pub async fn start(
     }
 }
 
-async fn ws_handler(
-    ws: WebSocketUpgrade,
-    State(state): State<AppState>,
-) -> impl IntoResponse {
+async fn ws_handler(ws: WebSocketUpgrade, State(state): State<AppState>) -> impl IntoResponse {
     ws.on_upgrade(|socket| handle_socket(socket, state))
 }
 
@@ -306,8 +305,11 @@ async fn handle_socket(socket: WebSocket, state: AppState) {
                             .unwrap();
                     }
                     WebSocketMessage::ClearAnnotations => {
-                        db.execute("DELETE FROM annotations WHERE file_path = ?1", &[&file_path])
-                            .unwrap();
+                        db.execute(
+                            "DELETE FROM annotations WHERE file_path = ?1",
+                            &[&file_path],
+                        )
+                        .unwrap();
                         let broadcast_msg = WebSocketMessage::ClearAnnotations;
                         state
                             .tx
@@ -579,7 +581,11 @@ fn render_directory_listing(state: &AppState, dir_param: Option<&str>) -> Respon
 
 async fn serve_favicon() -> impl IntoResponse {
     // Redirect /_/favicon.ico to /_/favicon.svg
-    (StatusCode::MOVED_PERMANENTLY, [(header::LOCATION, "/_/favicon.svg")]).into_response()
+    (
+        StatusCode::MOVED_PERMANENTLY,
+        [(header::LOCATION, "/_/favicon.svg")],
+    )
+        .into_response()
 }
 
 async fn serve_favicon_svg() -> impl IntoResponse {
