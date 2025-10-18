@@ -279,7 +279,7 @@ async fn handle_socket(socket: WebSocket, state: AppState) {
                         let data = serde_json::to_string(&annotation).unwrap();
                         db.execute(
                             "INSERT OR REPLACE INTO annotations (id, file_path, data) VALUES (?1, ?2, ?3)",
-                            &[&id, &file_path, &data],
+                            [&id, &file_path, &data],
                         )
                         .unwrap();
                         let broadcast_msg = WebSocketMessage::NewAnnotation { annotation };
@@ -293,7 +293,7 @@ async fn handle_socket(socket: WebSocket, state: AppState) {
                     WebSocketMessage::DeleteAnnotation { id } => {
                         db.execute(
                             "DELETE FROM annotations WHERE id = ?1 AND file_path = ?2",
-                            &[&id, &file_path],
+                            [&id, &file_path],
                         )
                         .unwrap();
                         let broadcast_msg = WebSocketMessage::DeleteAnnotation { id };
@@ -305,11 +305,8 @@ async fn handle_socket(socket: WebSocket, state: AppState) {
                             .unwrap();
                     }
                     WebSocketMessage::ClearAnnotations => {
-                        db.execute(
-                            "DELETE FROM annotations WHERE file_path = ?1",
-                            &[&file_path],
-                        )
-                        .unwrap();
+                        db.execute("DELETE FROM annotations WHERE file_path = ?1", [&file_path])
+                            .unwrap();
                         let broadcast_msg = WebSocketMessage::ClearAnnotations;
                         state
                             .tx
