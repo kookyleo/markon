@@ -58,14 +58,6 @@ struct AppState {
     tx: Option<broadcast::Sender<String>>,
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone)]
-struct Annotation {
-    id: String,
-    file_path: String,
-    #[serde(flatten)]
-    data: serde_json::Value,
-}
-
 #[derive(Serialize, Deserialize, Debug)]
 #[serde(tag = "type")]
 enum WebSocketMessage {
