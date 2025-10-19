@@ -31,6 +31,7 @@ Markon 让你可以便捷地以精美的 HTML 格式阅读、打印和批注 Mar
 - ✅ **打印优化**: 专业的打印样式和多语言字体支持
 - ✅ **目录生成**: 自动生成文章目录（TOC）
 - ✅ **目录浏览**: 自动列出当前目录的 Markdown 文件
+- ✅ **移动端友好**: 响应式设计，支持二维码生成便捷访问
 - ✅ **零依赖部署**: 所有资源嵌入到单一二进制文件
 
 ### Medium 风格标注功能
@@ -182,7 +183,7 @@ markon --shared-annotation README.md
 MARKON_SQLITE_PATH=/path/to/annotations.db markon --shared-annotation README.md
 ```
 
-两种模式下都可以使用页面底部的"清除标注"按钮清除当前页面的所有标注。
+两种模式下都可以使用页面底部的"清除本页"按钮清除当前页面的所有标注。
 
 ## 重要说明
 

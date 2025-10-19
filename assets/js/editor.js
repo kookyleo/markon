@@ -241,10 +241,10 @@ document.addEventListener('DOMContentLoaded', () => {
     // Make the main selection popover draggable
     makePopoverDraggable(popover, 'markon-popover-offset');
 
-    // Update clear annotations button text
+    // Update clear button text to show mode
     const clearButton = document.querySelector('.footer-clear-link');
     if (clearButton) {
-        clearButton.textContent = `Clear Annotations (${window.isSharedAnnotationMode ? 'shared' : 'local'})`;
+        clearButton.textContent = `Clear This Page (${window.isSharedAnnotationMode ? 'shared' : 'local'})`;
     }
 
     let currentSelection = null;

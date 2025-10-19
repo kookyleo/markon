@@ -31,6 +31,7 @@ Simply run `markon` in any directory to browse and render Markdown files with a 
 - ✅ **Print Optimization**: Professional print styles with multilingual font support
 - ✅ **Table of Contents**: Auto-generated TOC
 - ✅ **Directory Browsing**: Auto-list Markdown files in current directory
+- ✅ **Mobile Friendly**: Responsive design with QR code generation for easy mobile access
 - ✅ **Zero Dependencies**: All resources embedded in a single binary
 
 ### Medium-Style Annotation Features
@@ -182,7 +183,7 @@ markon --shared-annotation README.md
 MARKON_SQLITE_PATH=/path/to/annotations.db markon --shared-annotation README.md
 ```
 
-In both modes, you can use the "Clear Annotations" button at the bottom of the page to clear all annotations for the current page.
+In both modes, you can use the "Clear This Page" button at the bottom of the page to clear all annotations for the current page.
 
 ## Important Notes
 
