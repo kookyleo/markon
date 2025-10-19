@@ -279,12 +279,11 @@ class SectionViewedManager {
         const toolbar = document.createElement('div');
         toolbar.className = 'viewed-toolbar';
         toolbar.innerHTML = `
-            <span class="viewed-toolbar-label">Viewed:</span>
-            <a class="btn-jump-next">Jump to Next</a>
+            <a class="btn-jump-next">Next</a>
             <span class="viewed-toolbar-separator">|</span>
-            <a class="btn-mark-all-viewed">Mark All Viewed</a>
+            <a class="btn-mark-all-viewed">Done</a>
             <span class="viewed-toolbar-separator">|</span>
-            <a class="btn-mark-all-unviewed">Mark All Unviewed</a>
+            <a class="btn-mark-all-unviewed">Clear</a>
         `;
 
         // Insert after H1
