@@ -70,6 +70,10 @@ enum WebSocketMessage {
     DeleteAnnotation { id: String },
     #[serde(rename = "clear_annotations")]
     ClearAnnotations,
+    #[serde(rename = "viewed_state")]
+    ViewedState { state: serde_json::Value },
+    #[serde(rename = "update_viewed_state")]
+    UpdateViewedState { state: serde_json::Value },
 }
 
 pub async fn start(
@@ -126,7 +130,19 @@ pub async fn start(
             )",
             [],
         )
-        .expect("Failed to create table");
+        .expect("Failed to create annotations table");
+
+        // Create viewed state table for section viewed feature
+        conn.execute(
+            "CREATE TABLE IF NOT EXISTS viewed_state (
+                file_path TEXT PRIMARY KEY,
+                state TEXT NOT NULL,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )",
+            [],
+        )
+        .expect("Failed to create viewed_state table");
+
         let db = Arc::new(Mutex::new(conn));
         let tx = broadcast::channel(100).0;
         (Some(db), Some(tx))
@@ -273,6 +289,28 @@ async fn handle_socket(socket: WebSocket, state: AppState) {
         return;
     }
 
+    // Send existing viewed state to the new client
+    let viewed_state = {
+        let db = state.db.as_ref().unwrap().lock().unwrap();
+        let state_json = db
+            .query_row(
+                "SELECT state FROM viewed_state WHERE file_path = ?1",
+                [&file_path],
+                |row| row.get::<_, String>(0),
+            )
+            .unwrap_or_else(|_| "{}".to_string());
+        serde_json::from_str(&state_json).unwrap_or(serde_json::json!({}))
+    };
+
+    let viewed_msg = WebSocketMessage::ViewedState { state: viewed_state };
+    if sender
+        .send(Message::Text(serde_json::to_string(&viewed_msg).unwrap()))
+        .await
+        .is_err()
+    {
+        return;
+    }
+
     // Task to forward broadcast messages to the client
     let mut send_task = tokio::spawn(async move {
         while let Ok(msg) = rx.recv().await {
@@ -328,6 +366,23 @@ async fn handle_socket(socket: WebSocket, state: AppState) {
                         db.execute("DELETE FROM annotations WHERE file_path = ?1", [&file_path])
                             .unwrap();
                         let broadcast_msg = WebSocketMessage::ClearAnnotations;
+                        state
+                            .tx
+                            .as_ref()
+                            .unwrap()
+                            .send(serde_json::to_string(&broadcast_msg).unwrap())
+                            .unwrap();
+                    }
+                    WebSocketMessage::UpdateViewedState { state: viewed_state } => {
+                        let state_json = serde_json::to_string(&viewed_state).unwrap();
+                        db.execute(
+                            "INSERT OR REPLACE INTO viewed_state (file_path, state, updated_at) VALUES (?1, ?2, CURRENT_TIMESTAMP)",
+                            [&file_path, &state_json],
+                        )
+                        .unwrap();
+
+                        // Broadcast to other clients
+                        let broadcast_msg = WebSocketMessage::ViewedState { state: viewed_state };
                         state
                             .tx
                             .as_ref()

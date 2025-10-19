@@ -223,10 +223,11 @@ MARKON_SQLITE_PATH=/path/to/annotations.db markon --shared-annotation README.md
 
 **功能特性**：
 
-- ✅ **状态持久化**：已读状态按文件保存在浏览器 LocalStorage
+- ✅ **状态持久化**：已读状态保存在 LocalStorage（本地模式）或 SQLite（共享模式）
 - ✅ **智能折叠**：只折叠当前章节，不影响其他分支的子章节
 - ✅ **视觉反馈**：折叠的章节略微变暗并显示展开提示
 - ✅ **键盘友好**：支持标准复选框键盘导航
+- ✅ **实时同步**：配合 `--shared-annotation` 使用时，已读状态跨设备/浏览器同步
 
 **使用场景**：
 
@@ -247,6 +248,37 @@ markon --enable-viewed API_DOCS.md
 # 4. 稍后返回 → 之前已读的章节仍然是折叠状态
 # 5. 需要参考"身份认证" → 点击标题临时展开
 ```
+
+**存储模式**：
+
+已读标记功能支持两种存储模式，取决于是否启用了 `--shared-annotation`：
+
+**本地模式**（默认）：
+- 已读状态存储在浏览器 LocalStorage
+- 单浏览器存储（不跨设备共享）
+- 适合个人阅读会话
+- 无需数据库
+
+```bash
+markon --enable-viewed README.md
+```
+
+**共享模式**（配合 `--shared-annotation`）：
+- 已读状态存储在 SQLite 数据库
+- 通过 WebSocket 实时同步所有连接的客户端
+- 跨设备共享进度（手机、平板、电脑）
+- 团队协作：所有人看到相同的已读标记
+- 与标注功能使用同一个数据库（`~/.markon/annotation.sqlite`）
+
+```bash
+# 同时启用标注和已读标记共享
+markon --enable-viewed --shared-annotation README.md
+
+# 自定义数据库位置
+MARKON_SQLITE_PATH=/path/to/data.db markon --enable-viewed --shared-annotation README.md
+```
+
+**重要提示**：已读状态与标注数据分别存储。本地模式的已读状态（LocalStorage）不会与共享模式（SQLite）混淆。
 
 ## 重要说明
 

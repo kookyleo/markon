@@ -2,20 +2,28 @@
  * Section Viewed Feature
  * Adds GitHub PR-style "Viewed" checkboxes to section headings
  * - Collapse/expand sections
- * - Persist state to LocalStorage
+ * - Persist state to LocalStorage (local mode) or SQLite (shared mode)
  * - Click collapsed heading to expand
  */
 
 class SectionViewedManager {
-    constructor() {
+    constructor(isSharedMode, ws) {
+        this.isSharedMode = isSharedMode;
+        this.ws = ws;
         this.filePath = window.location.pathname;
         this.viewedState = {};
+        this.stateLoaded = false;
+
+        if (this.isSharedMode && this.ws) {
+            this.setupWebSocketListeners();
+        }
+
         this.init();
     }
 
     async init() {
-        // 1. Load saved state
-        this.loadState();
+        // 1. Load saved state (async for shared mode)
+        await this.loadState();
 
         // 2. Inject checkboxes to all headings (h2-h6)
         this.injectCheckboxes();
@@ -25,6 +33,39 @@ class SectionViewedManager {
 
         // 4. Setup event listeners
         this.setupEventListeners();
+    }
+
+    setupWebSocketListeners() {
+        if (!this.ws) return;
+
+        // Listen for viewed state updates from other clients
+        this.ws.addEventListener('message', (event) => {
+            try {
+                const data = JSON.parse(event.data);
+
+                if (data.type === 'viewed_state') {
+                    // Received viewed state from server (initial load or update from other client)
+                    this.viewedState = data.state || {};
+                    this.stateLoaded = true;
+
+                    // If checkboxes are already injected, update their state
+                    if (document.querySelector('.viewed-checkbox')) {
+                        this.updateCheckboxes();
+                        this.applyViewedState();
+                    }
+                }
+            } catch (e) {
+                // Not a viewed message, ignore
+            }
+        });
+    }
+
+    updateCheckboxes() {
+        // Update checkbox states based on viewedState
+        document.querySelectorAll('.viewed-checkbox').forEach(checkbox => {
+            const headingId = checkbox.dataset.headingId;
+            checkbox.checked = !!this.viewedState[headingId];
+        });
     }
 
     injectCheckboxes() {
@@ -120,15 +161,53 @@ class SectionViewedManager {
         this.saveState();
     }
 
-    loadState() {
-        const key = `markon-viewed-${this.filePath}`;
-        const saved = localStorage.getItem(key);
-        this.viewedState = saved ? JSON.parse(saved) : {};
+    async loadState() {
+        if (this.isSharedMode) {
+            // In shared mode, state will be received via WebSocket
+            // Wait a bit for the initial state message
+            return new Promise((resolve) => {
+                if (this.stateLoaded) {
+                    resolve();
+                    return;
+                }
+
+                const timeout = setTimeout(() => {
+                    // If no state received after 500ms, use empty state
+                    this.viewedState = {};
+                    this.stateLoaded = true;
+                    resolve();
+                }, 500);
+
+                // Listen for state to be loaded
+                const checkInterval = setInterval(() => {
+                    if (this.stateLoaded) {
+                        clearTimeout(timeout);
+                        clearInterval(checkInterval);
+                        resolve();
+                    }
+                }, 50);
+            });
+        } else {
+            // Local mode: use LocalStorage
+            const key = `markon-viewed-${this.filePath}`;
+            const saved = localStorage.getItem(key);
+            this.viewedState = saved ? JSON.parse(saved) : {};
+            this.stateLoaded = true;
+        }
     }
 
     saveState() {
-        const key = `markon-viewed-${this.filePath}`;
-        localStorage.setItem(key, JSON.stringify(this.viewedState));
+        if (this.isSharedMode && this.ws && this.ws.readyState === WebSocket.OPEN) {
+            // Shared mode: send to server via WebSocket
+            this.ws.send(JSON.stringify({
+                type: 'update_viewed_state',
+                state: this.viewedState
+            }));
+        } else if (!this.isSharedMode) {
+            // Local mode: save to LocalStorage
+            const key = `markon-viewed-${this.filePath}`;
+            localStorage.setItem(key, JSON.stringify(this.viewedState));
+        }
     }
 
     applyViewedState() {
@@ -173,8 +252,12 @@ class SectionViewedManager {
 function initViewedFeature() {
     // Only initialize if we're viewing a markdown file (not directory listing)
     if (document.querySelector('.markdown-body')) {
+        // Check if we're in shared annotation mode
+        const isSharedMode = window.isSharedAnnotationMode || false;
+        const ws = window.ws || null;
+
         // eslint-disable-next-line no-new
-        new SectionViewedManager();
+        new SectionViewedManager(isSharedMode, ws);
     }
 }
 

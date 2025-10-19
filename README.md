@@ -223,10 +223,11 @@ The Section Viewed feature adds GitHub PR-style "Viewed" checkboxes to help you 
 
 **Features**:
 
-- ✅ **Persistent State**: Your viewed status is saved in browser LocalStorage per file
+- ✅ **Persistent State**: Viewed status saved in LocalStorage (local mode) or SQLite (shared mode)
 - ✅ **Smart Collapse**: Only collapses the current section, not subsections from other branches
 - ✅ **Visual Feedback**: Collapsed sections are slightly dimmed and show expand hint
 - ✅ **Keyboard Friendly**: Works with standard checkbox keyboard navigation
+- ✅ **Real-time Sync**: When used with `--shared-annotation`, viewed states sync across devices/browsers
 
 **Use Cases**:
 
@@ -247,6 +248,37 @@ markon --enable-viewed API_DOCS.md
 # 4. Come back later → Previously viewed sections are still collapsed
 # 5. Need to reference "Authentication" → Click to expand temporarily
 ```
+
+**Storage Modes**:
+
+The viewed feature supports two storage modes, depending on whether `--shared-annotation` is enabled:
+
+**Local Mode** (default):
+- Viewed states stored in browser LocalStorage
+- Per-browser storage (not shared across devices)
+- Perfect for personal reading sessions
+- No database required
+
+```bash
+markon --enable-viewed README.md
+```
+
+**Shared Mode** (with `--shared-annotation`):
+- Viewed states stored in SQLite database
+- Real-time synchronization across all connected clients via WebSocket
+- Share progress across devices (phone, tablet, desktop)
+- Team collaboration: everyone sees the same sections marked as viewed
+- Uses the same database as annotations (`~/.markon/annotation.sqlite`)
+
+```bash
+# Enable both annotations and viewed with sharing
+markon --enable-viewed --shared-annotation README.md
+
+# Customize database location
+MARKON_SQLITE_PATH=/path/to/data.db markon --enable-viewed --shared-annotation README.md
+```
+
+**Important**: Viewed states are stored separately from annotations. Local mode viewed states (LocalStorage) do not interfere with shared mode (SQLite).
 
 ## Important Notes
 
