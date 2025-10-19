@@ -70,16 +70,31 @@ function clearPageAnnotations(event, ws, isSharedAnnotationMode) {
     if (!filePathMeta) return;
 
     const triggerElement = event ? event.target : null;
+    const enableViewed = document.querySelector('meta[name="enable-viewed"]')?.getAttribute('content') === 'true';
 
     showConfirmDialog('Clear all annotations for this page?', () => {
         if (isSharedAnnotationMode) {
             if (ws && ws.readyState === WebSocket.OPEN) {
                 ws.send(JSON.stringify({ type: 'clear_annotations' }));
+                // Also clear viewed state if enabled
+                if (enableViewed) {
+                    ws.send(JSON.stringify({
+                        type: 'update_viewed_state',
+                        state: {}
+                    }));
+                }
             }
         } else {
             const filePath = filePathMeta.getAttribute('content');
             const storageKey = `markon-annotations-${filePath}`;
             localStorage.removeItem(storageKey);
+
+            // Also clear viewed state if enabled
+            if (enableViewed) {
+                const viewedKey = `markon-viewed-${filePath}`;
+                localStorage.removeItem(viewedKey);
+            }
+
             location.reload();
         }
     }, triggerElement, 'Clear');

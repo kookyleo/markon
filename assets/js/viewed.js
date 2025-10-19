@@ -211,9 +211,16 @@ class SectionViewedManager {
     }
 
     applyViewedState() {
-        Object.keys(this.viewedState).forEach(headingId => {
+        // Get all headings that have checkboxes
+        const allHeadingIds = Array.from(document.querySelectorAll('.viewed-checkbox')).map(
+            cb => cb.dataset.headingId
+        );
+
+        allHeadingIds.forEach(headingId => {
             if (this.viewedState[headingId]) {
                 this.collapseSection(headingId);
+            } else {
+                this.expandSection(headingId);
             }
         });
     }
