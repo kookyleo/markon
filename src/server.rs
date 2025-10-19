@@ -132,6 +132,9 @@ pub async fn start(
         (None, None)
     };
 
+    // Clone file_path for later use in URL display
+    let file_path_for_display = file_path.clone();
+
     let state = AppState {
         file_path: Arc::new(file_path),
         theme: Arc::new(theme),
@@ -165,6 +168,27 @@ pub async fn start(
         }
     };
     println!("listening on http://{addr}");
+
+    // Display custom base URL if provided (via --qr or --open-browser)
+    let custom_base_url = qr.as_ref()
+        .filter(|url| url.as_str() != "missing")
+        .or_else(|| open_browser.as_ref().filter(|url| url.as_str() != "local"));
+
+    if let Some(base_url) = custom_base_url {
+        // Append file path or directory indicator to the base URL
+        let full_url = if let Some(file) = &file_path_for_display {
+            // If a file is specified, append the file path
+            format!("{}/{}", base_url.trim_end_matches('/'), file)
+        } else {
+            // If no file (directory browsing mode), append trailing slash
+            if base_url.ends_with('/') {
+                base_url.to_string()
+            } else {
+                format!("{}/", base_url)
+            }
+        };
+        println!("accessible at {full_url}");
+    }
 
     // Generate QR code after successful bind
     if let Some(qr_option) = qr {
