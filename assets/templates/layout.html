@@ -514,6 +514,15 @@
             color: #58a6ff !important;
         }
 
+        /* Viewed toolbar - dark theme */
+        .viewed-toolbar {
+            border-color: #30363d;
+            color: #8b949e;
+        }
+        .viewed-toolbar a {
+            color: #58a6ff;
+        }
+
         {% elif theme == "light" %}
         /* Light Theme: Uses default styles from editor.css */
         /* No color overrides needed */
@@ -646,6 +655,15 @@
             .markdown-body a:active,
             .markdown-body a:focus {
                 color: #58a6ff !important;
+            }
+
+            /* Viewed toolbar - dark theme (auto mode) */
+            .viewed-toolbar {
+                border-color: #30363d;
+                color: #8b949e;
+            }
+            .viewed-toolbar a {
+                color: #58a6ff;
             }
         }
         {% endif %}

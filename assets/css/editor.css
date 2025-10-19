@@ -536,110 +536,38 @@
 
 /* ============================================================
    VIEWED TOOLBAR
-   Batch operations for viewed sections
+   Lightweight text-based controls for viewed sections
    ============================================================ */
 
 .viewed-toolbar {
-    background: #f6f8fa;
-    border: 1px solid #d0d7de;
-    border-radius: 6px;
-    padding: 10px 16px;
-    margin: 20px 0;
-    display: flex;
-    align-items: center;
-    gap: 12px;
-    flex-wrap: wrap;
+    margin: 15px 0;
+    padding: 8px 0;
+    border-top: 1px solid #d0d7de;
+    border-bottom: 1px solid #d0d7de;
+    font-size: 0.85rem;
+    color: #656d76;
 }
 
 .viewed-toolbar-label {
-    font-size: 13px;
-    font-weight: 600;
-    color: #656d76;
-    margin-right: 4px;
-}
-
-.viewed-toolbar button {
-    padding: 5px 12px;
-    border-radius: 6px;
-    font-size: 13px;
     font-weight: 500;
+    margin-right: 8px;
+}
+
+.viewed-toolbar a {
+    color: #0969da;
+    text-decoration: none;
     cursor: pointer;
-    border: 1px solid #d0d7de;
-    background: white;
-    color: #1f2328;
-    transition: all 0.1s;
+    padding: 2px 4px;
+    transition: color 0.2s;
 }
 
-.viewed-toolbar button:hover {
-    background: #f3f4f6;
-    border-color: #1f2328;
+.viewed-toolbar a:hover {
+    text-decoration: underline;
 }
 
-.viewed-toolbar button:active {
-    background: #e1e4e8;
-    transform: scale(0.98);
-}
-
-.viewed-toolbar .btn-primary {
-    background: #2da44e;
-    color: white;
-    border-color: #2da44e;
-}
-
-.viewed-toolbar .btn-primary:hover {
-    background: #2c974b;
-    border-color: #2c974b;
-}
-
-.viewed-toolbar .btn-danger {
-    background: #dc3545;
-    color: white;
-    border-color: #dc3545;
-}
-
-.viewed-toolbar .btn-danger:hover {
-    background: #c82333;
-    border-color: #c82333;
-}
-
-/* Dark theme adjustments for toolbar */
-@media (prefers-color-scheme: dark) {
-    .viewed-toolbar {
-        background: #161b22;
-        border-color: #30363d;
-    }
-
-    .viewed-toolbar-label {
-        color: #8b949e;
-    }
-
-    .viewed-toolbar button {
-        background: #21262d;
-        border-color: #30363d;
-        color: #f0f6fc;
-    }
-
-    .viewed-toolbar button:hover {
-        background: #30363d;
-        border-color: #484f58;
-    }
-
-    .viewed-toolbar button:active {
-        background: #262c36;
-    }
-}
-
-/* Responsive design for mobile */
-@media (max-width: 768px) {
-    .viewed-toolbar {
-        padding: 8px 12px;
-        gap: 8px;
-    }
-
-    .viewed-toolbar button {
-        padding: 4px 10px;
-        font-size: 12px;
-    }
+.viewed-toolbar-separator {
+    color: #8b949e;
+    margin: 0 6px;
 }
 
 /* ============================================================

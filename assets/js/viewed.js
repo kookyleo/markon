@@ -279,17 +279,20 @@ class SectionViewedManager {
         const toolbar = document.createElement('div');
         toolbar.className = 'viewed-toolbar';
         toolbar.innerHTML = `
-            <span class="viewed-toolbar-label">⚡ Viewed Controls:</span>
-            <button class="btn-jump-next">Jump to Next Unviewed</button>
-            <button class="btn-expand-all">Expand All</button>
-            <button class="btn-collapse-all">Collapse All</button>
-            <button class="btn-clear-viewed btn-danger">Clear Viewed</button>
+            <span class="viewed-toolbar-label">Viewed:</span>
+            <a class="btn-jump-next">Jump to Next</a>
+            <span class="viewed-toolbar-separator">|</span>
+            <a class="btn-expand-all">Expand All</a>
+            <span class="viewed-toolbar-separator">|</span>
+            <a class="btn-collapse-all">Collapse All</a>
+            <span class="viewed-toolbar-separator">|</span>
+            <a class="btn-clear-viewed">Clear</a>
         `;
 
         // Insert after H1
         h1.parentNode.insertBefore(toolbar, h1.nextSibling);
 
-        // Setup toolbar button listeners
+        // Setup toolbar link listeners
         toolbar.querySelector('.btn-jump-next').addEventListener('click', () => this.jumpToNext());
         toolbar.querySelector('.btn-expand-all').addEventListener('click', () => this.expandAll());
         toolbar.querySelector('.btn-collapse-all').addEventListener('click', () => this.collapseAll());
