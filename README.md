@@ -367,6 +367,28 @@ cargo clippy
 npx eslint assets/js/editor.js
 ```
 
+## Contributing
+
+We welcome all forms of contributions! Whether it's reporting bugs, suggesting new features, or submitting code improvements.
+
+### How to Contribute
+
+1. **Report Issues**: Submit bug reports or feature requests in [GitHub Issues](https://github.com/kookyleo/markon/issues)
+2. **Submit PRs**:
+   - Fork the project
+   - Create a feature branch (`git checkout -b feature/amazing-feature`)
+   - Commit your changes (`git commit -m 'Add some amazing feature'`)
+   - Push to the branch (`git push origin feature/amazing-feature`)
+   - Open a Pull Request
+
+### Code Standards
+
+Before submitting a PR, please ensure:
+- ✅ Run `cargo test` to ensure all tests pass
+- ✅ Run `cargo clippy` to ensure code follows Rust best practices
+- ✅ Run `cargo fmt` to format the code
+- ✅ Run `npx eslint assets/js/editor.js` for JavaScript code
+
 ## License
 
 Apache License 2.0

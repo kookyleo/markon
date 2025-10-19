@@ -367,6 +367,28 @@ cargo clippy
 npx eslint assets/js/editor.js
 ```
 
+## 贡献
+
+我们欢迎所有形式的贡献！无论是报告 bug、提出新功能建议，还是提交代码改进。
+
+### 如何贡献
+
+1. **报告问题**：在 [GitHub Issues](https://github.com/kookyleo/markon/issues) 中提交 bug 报告或功能请求
+2. **提交 PR**：
+   - Fork 本项目
+   - 创建特性分支（`git checkout -b feature/amazing-feature`）
+   - 提交更改（`git commit -m 'Add some amazing feature'`）
+   - 推送到分支（`git push origin feature/amazing-feature`）
+   - 开启 Pull Request
+
+### 代码规范
+
+提交 PR 前请确保：
+- ✅ 运行 `cargo test` 确保所有测试通过
+- ✅ 运行 `cargo clippy` 确保代码符合 Rust 最佳实践
+- ✅ 运行 `cargo fmt` 格式化代码
+- ✅ 对 JavaScript 代码运行 `npx eslint assets/js/editor.js`
+
 ## License
 
 Apache License 2.0
