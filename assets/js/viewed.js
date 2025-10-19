@@ -4,6 +4,7 @@
  * - Collapse/expand sections
  * - Persist state to LocalStorage (local mode) or SQLite (shared mode)
  * - Click collapsed heading to expand
+ * - Phase 3: Batch operations, TOC highlighting, smart jump
  */
 
 class SectionViewedManager {
@@ -30,11 +31,17 @@ class SectionViewedManager {
         // 2. Inject checkboxes to all headings (h2-h6)
         this.injectCheckboxes();
 
-        // 3. Apply saved viewed state
+        // 3. Create toolbar for batch operations
+        this.createToolbar();
+
+        // 4. Apply saved viewed state
         this.applyViewedState();
 
-        // 4. Setup event listeners
+        // 5. Setup event listeners
         this.setupEventListeners();
+
+        // 6. Auto-jump to first unviewed section (if any)
+        this.autoJumpToNext();
     }
 
     setupWebSocketListeners() {
@@ -160,6 +167,7 @@ class SectionViewedManager {
             this.expandSection(headingId);
         }
 
+        this.updateTocHighlights();
         this.saveState();
     }
 
@@ -225,6 +233,8 @@ class SectionViewedManager {
                 this.expandSection(headingId);
             }
         });
+
+        this.updateTocHighlights();
     }
 
     setupEventListeners() {
@@ -253,6 +263,148 @@ class SectionViewedManager {
                     }
                 }
             });
+        });
+    }
+
+    // ============================================================
+    // Phase 3: Toolbar and Batch Operations
+    // ============================================================
+
+    createToolbar() {
+        // Find first H1 element in markdown-body
+        const h1 = document.querySelector('.markdown-body h1');
+        if (!h1) return; // No H1, don't create toolbar
+
+        // Create toolbar element
+        const toolbar = document.createElement('div');
+        toolbar.className = 'viewed-toolbar';
+        toolbar.innerHTML = `
+            <span class="viewed-toolbar-label">⚡ Viewed Controls:</span>
+            <button class="btn-jump-next">Jump to Next Unviewed</button>
+            <button class="btn-expand-all">Expand All</button>
+            <button class="btn-collapse-all">Collapse All</button>
+            <button class="btn-clear-viewed btn-danger">Clear Viewed</button>
+        `;
+
+        // Insert after H1
+        h1.parentNode.insertBefore(toolbar, h1.nextSibling);
+
+        // Setup toolbar button listeners
+        toolbar.querySelector('.btn-jump-next').addEventListener('click', () => this.jumpToNext());
+        toolbar.querySelector('.btn-expand-all').addEventListener('click', () => this.expandAll());
+        toolbar.querySelector('.btn-collapse-all').addEventListener('click', () => this.collapseAll());
+        toolbar.querySelector('.btn-clear-viewed').addEventListener('click', () => this.clearViewed());
+    }
+
+    jumpToNext() {
+        // Find first unviewed section
+        const allHeadings = Array.from(
+            document.querySelectorAll('.markdown-body h2, .markdown-body h3, .markdown-body h4, .markdown-body h5, .markdown-body h6')
+        );
+
+        for (const heading of allHeadings) {
+            if (!this.viewedState[heading.id]) {
+                // Found first unviewed section
+                window.scrollTo({
+                    top: heading.offsetTop - 20,
+                    behavior: 'smooth'
+                });
+                heading.style.transition = 'background-color 0.5s';
+                heading.style.backgroundColor = 'rgba(9, 105, 218, 0.15)';
+                setTimeout(() => {
+                    heading.style.backgroundColor = '';
+                }, 1500);
+                return;
+            }
+        }
+
+        // All sections viewed
+        alert('✅ All sections have been viewed!');
+    }
+
+    expandAll() {
+        // Uncheck all checkboxes and expand all sections
+        const allHeadingIds = Array.from(document.querySelectorAll('.viewed-checkbox')).map(
+            cb => cb.dataset.headingId
+        );
+
+        allHeadingIds.forEach(headingId => {
+            this.viewedState[headingId] = false;
+            this.expandSection(headingId);
+        });
+
+        this.updateCheckboxes();
+        this.updateTocHighlights();
+        this.saveState();
+    }
+
+    collapseAll() {
+        // Check all checkboxes and collapse all sections
+        const allHeadingIds = Array.from(document.querySelectorAll('.viewed-checkbox')).map(
+            cb => cb.dataset.headingId
+        );
+
+        allHeadingIds.forEach(headingId => {
+            this.viewedState[headingId] = true;
+            this.collapseSection(headingId);
+        });
+
+        this.updateCheckboxes();
+        this.updateTocHighlights();
+        this.saveState();
+    }
+
+    clearViewed() {
+        if (!confirm('Clear all viewed state for this page?')) {
+            return;
+        }
+
+        // Clear all viewed state
+        this.viewedState = {};
+
+        // Update UI
+        this.updateCheckboxes();
+        this.applyViewedState();
+        this.updateTocHighlights();
+        this.saveState();
+    }
+
+    autoJumpToNext() {
+        // Auto-jump on page load if there are unviewed sections
+        const hasUnviewed = Array.from(
+            document.querySelectorAll('.markdown-body h2, .markdown-body h3, .markdown-body h4, .markdown-body h5, .markdown-body h6')
+        ).some(heading => !this.viewedState[heading.id]);
+
+        if (hasUnviewed) {
+            // Wait a bit for page to settle, then jump
+            setTimeout(() => {
+                this.jumpToNext();
+            }, 300);
+        }
+    }
+
+    // ============================================================
+    // Phase 3: TOC Highlighting
+    // ============================================================
+
+    updateTocHighlights() {
+        // Update TOC items based on viewed state
+        const tocItems = document.querySelectorAll('.toc-item');
+
+        tocItems.forEach(item => {
+            const link = item.querySelector('a');
+            if (!link) return;
+
+            const href = link.getAttribute('href');
+            if (!href || !href.startsWith('#')) return;
+
+            const headingId = href.substring(1);
+
+            if (this.viewedState[headingId]) {
+                item.classList.add('viewed');
+            } else {
+                item.classList.remove('viewed');
+            }
         });
     }
 }

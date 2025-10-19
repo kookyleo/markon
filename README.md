@@ -280,6 +280,20 @@ MARKON_SQLITE_PATH=/path/to/data.db markon --enable-viewed --shared-annotation R
 
 **Important**: Viewed states are stored separately from annotations. Local mode viewed states (LocalStorage) do not interfere with shared mode (SQLite).
 
+**Advanced Features** (Phase 3):
+
+When `--enable-viewed` is active, you get additional productivity tools:
+
+- **Batch Operations Toolbar**: Appears after the H1 heading with quick actions
+  - **Jump to Next Unviewed**: Automatically scroll to the first unread section (also runs on page load)
+  - **Expand All**: Uncheck all sections and expand everything
+  - **Collapse All**: Mark all sections as viewed and collapse them
+  - **Clear Viewed**: Reset all viewed states for the current page
+
+- **Visual Progress Tracking**: TOC (Table of Contents) items turn green when their corresponding sections are marked as viewed
+
+- **Smart Navigation**: Page automatically jumps to the first unviewed section on load, helping you resume where you left off
+
 ## Important Notes
 
 ### System Path Prefix
