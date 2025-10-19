@@ -217,9 +217,15 @@ The Section Viewed feature adds GitHub PR-style "Viewed" checkboxes to help you 
    - Content is hidden until the next same-level or higher-level heading
    - The heading shows "(click to expand)" hint
 
-4. **Click a collapsed heading** to expand it:
+4. **Click "(click to expand)"** to temporarily expand a viewed section:
    - The section content becomes visible again
-   - The "Viewed" checkbox is automatically unchecked
+   - The "Viewed" checkbox remains checked
+   - The hint changes to "(click to collapse)"
+   - Click again to re-collapse while keeping viewed status
+
+5. **Uncheck the box** to fully unmark a section:
+   - The section expands permanently
+   - The "(click to expand/collapse)" hint disappears
 
 **Features**:
 
@@ -285,14 +291,12 @@ MARKON_SQLITE_PATH=/path/to/data.db markon --enable-viewed --shared-annotation R
 When `--enable-viewed` is active, you get additional productivity tools:
 
 - **Batch Operations Toolbar**: Appears after the H1 heading with quick actions
-  - **Jump to Next Unviewed**: Automatically scroll to the first unread section (also runs on page load)
-  - **Expand All**: Uncheck all sections and expand everything
-  - **Collapse All**: Mark all sections as viewed and collapse them
-  - **Clear Viewed**: Reset all viewed states for the current page
+  - **Mark All as Viewed**: Check all sections and collapse them
+  - **Unviewed**: Uncheck all sections and expand everything
 
 - **Visual Progress Tracking**: TOC (Table of Contents) items turn green when their corresponding sections are marked as viewed
 
-- **Smart Navigation**: Page automatically jumps to the first unviewed section on load, helping you resume where you left off
+- **Independent Expand/Collapse**: Temporarily expand viewed sections without changing their viewed status
 
 ## Important Notes
 
