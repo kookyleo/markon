@@ -464,3 +464,72 @@
 
 /* TOC styles are now fully controlled by layout.html template based on --theme parameter.
    Do not add @media (prefers-color-scheme) rules here as they would override --theme light/dark. */
+
+/* ============================================================
+   SECTION VIEWED FEATURE
+   GitHub PR-style "Viewed" checkboxes for sections
+   ============================================================ */
+
+.viewed-checkbox-label {
+    margin-left: 0.75rem;
+    font-size: 0.875rem;
+    font-weight: normal;
+    color: #656d76;
+    cursor: pointer;
+    user-select: none;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.3rem;
+    vertical-align: middle;
+    transition: opacity 0.2s;
+}
+
+.viewed-checkbox-label:hover {
+    opacity: 0.8;
+}
+
+.viewed-checkbox {
+    cursor: pointer;
+    width: 15px;
+    height: 15px;
+    margin: 0;
+    vertical-align: middle;
+}
+
+.viewed-text {
+    font-size: 0.8125rem;
+}
+
+/* Collapsed section styles */
+.section-collapsed {
+    cursor: pointer;
+    opacity: 0.6;
+    transition: opacity 0.2s ease;
+    position: relative;
+}
+
+.section-collapsed:hover {
+    opacity: 0.85;
+}
+
+.section-collapsed::after {
+    content: " (click to expand)";
+    font-size: 0.75rem;
+    color: #656d76;
+    font-weight: normal;
+    margin-left: 0.5rem;
+    font-style: italic;
+}
+
+.section-content-hidden {
+    display: none !important;
+}
+
+/* Dark theme adjustments */
+[data-theme="dark"] .viewed-checkbox-label {
+    color: #8b949e;
+}
+
+[data-theme="dark"] .section-collapsed::after {
+    color: #8b949e;
+}

@@ -5,6 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta name="file-path" content="{{ file_path }}">
     <meta name="shared-annotation" content="{{ shared_annotation }}">
+    <meta name="enable-viewed" content="{{ enable_viewed }}">
     <title>{{ title }}</title>
     <link rel="icon" type="image/svg+xml" href="/_/favicon.svg">
     <link rel="alternate icon" href="/_/favicon.ico">
@@ -714,6 +715,9 @@
     </script>
     {% endif %}
     <script src="/_/js/editor.js"></script>
+    {% if enable_viewed %}
+    <script src="/_/js/viewed.js"></script>
+    {% endif %}
     <script>
         // TOC active item tracking with Intersection Observer
         (function() {

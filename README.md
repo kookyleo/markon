@@ -42,6 +42,13 @@ Simply run `markon` in any directory to browse and render Markdown files with a 
 - ✅ **Unhighlight**: Remove highlights from selected text
 - ✅ **Persistent Storage**: Annotation data saved in browser local storage
 
+### Section Viewed Feature
+- ✅ **GitHub PR-Style Checkboxes**: Mark sections as "Viewed" with checkboxes next to headings
+- ✅ **Auto-Collapse**: Viewed sections automatically collapse to save space
+- ✅ **Click to Expand**: Click collapsed headings to expand and uncheck
+- ✅ **Persistent State**: Viewed states saved in LocalStorage per file
+- ✅ **Smart Folding**: Collapses all content until next same-level or higher-level heading
+
 ## Installation
 
 ### From crates.io
@@ -100,6 +107,7 @@ Options:
       --qr [<BASE_URL>]            Generate QR code for server address. Optionally specify a base URL (e.g., http://192.168.1.100:6419) to override the default local address
   -b, --open-browser [<BASE_URL>]  Automatically open browser after starting the server. Optionally specify a base URL (e.g., http://example.com:8080) to override the default local address
       --shared-annotation          Enable shared annotation mode. Annotations are stored in SQLite and synced across clients via WebSocket
+      --enable-viewed              Enable section viewed checkbox feature (GitHub PR-style)
   -h, --help                       Print help
   -V, --version                    Print version
 ```
@@ -128,6 +136,12 @@ markon -p 8080 --qr http://203.0.113.1:8080 -b
 
 # Enable shared annotation mode for real-time collaboration
 markon --shared-annotation README.md
+
+# Enable section viewed feature (GitHub PR-style collapse)
+markon --enable-viewed README.md
+
+# Combine annotation and viewed features
+markon --shared-annotation --enable-viewed README.md
 ```
 
 **Understanding URL Parameters**:
@@ -184,6 +198,55 @@ MARKON_SQLITE_PATH=/path/to/annotations.db markon --shared-annotation README.md
 ```
 
 In both modes, you can use the "Clear Annotations(mode) in this page" button at the bottom of the page to clear all annotations for the current page.
+
+### Using Section Viewed Feature
+
+The Section Viewed feature adds GitHub PR-style "Viewed" checkboxes to help you track your reading progress through long documents.
+
+**How to Use**:
+
+1. Start markon with `--enable-viewed` flag:
+   ```bash
+   markon --enable-viewed README.md
+   ```
+
+2. Each section heading (H2-H6) will have a "Viewed" checkbox on the right
+
+3. **Check the box** to mark a section as viewed:
+   - The section automatically collapses
+   - Content is hidden until the next same-level or higher-level heading
+   - The heading shows "(click to expand)" hint
+
+4. **Click a collapsed heading** to expand it:
+   - The section content becomes visible again
+   - The "Viewed" checkbox is automatically unchecked
+
+**Features**:
+
+- ✅ **Persistent State**: Your viewed status is saved in browser LocalStorage per file
+- ✅ **Smart Collapse**: Only collapses the current section, not subsections from other branches
+- ✅ **Visual Feedback**: Collapsed sections are slightly dimmed and show expand hint
+- ✅ **Keyboard Friendly**: Works with standard checkbox keyboard navigation
+
+**Use Cases**:
+
+- **Long Documentation**: Collapse sections you've already read
+- **Code Review**: Similar to GitHub PR file review workflow
+- **Study Materials**: Track your progress through tutorials
+- **Technical Specs**: Hide completed sections while working through requirements
+
+**Example Workflow**:
+
+```bash
+# Reading a long API documentation
+markon --enable-viewed API_DOCS.md
+
+# 1. Read "Authentication" section → Check "Viewed"
+# 2. Read "Endpoints" section → Check "Viewed"
+# 3. Working on "Rate Limiting" → Leave unchecked
+# 4. Come back later → Previously viewed sections are still collapsed
+# 5. Need to reference "Authentication" → Click to expand temporarily
+```
 
 ## Important Notes
 

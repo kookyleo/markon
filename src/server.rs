@@ -54,6 +54,7 @@ struct AppState {
     tera: Arc<Tera>,
     start_dir: Arc<std::path::PathBuf>,
     shared_annotation: bool,
+    enable_viewed: bool,
     db: Option<Arc<Mutex<Connection>>>,
     tx: Option<broadcast::Sender<String>>,
 }
@@ -78,6 +79,7 @@ pub async fn start(
     qr: Option<String>,
     open_browser: Option<String>,
     shared_annotation: bool,
+    enable_viewed: bool,
 ) {
     // Initialize Tera template engine
     let mut tera = Tera::default();
@@ -141,6 +143,7 @@ pub async fn start(
         tera: Arc::new(tera),
         start_dir: Arc::new(start_dir),
         shared_annotation,
+        enable_viewed,
         db,
         tx,
     };
@@ -422,6 +425,7 @@ fn render_markdown_file(file_path: &str, state: &AppState) -> Response {
             context.insert("has_mermaid", &has_mermaid);
             context.insert("toc", &toc);
             context.insert("shared_annotation", &state.shared_annotation);
+            context.insert("enable_viewed", &state.enable_viewed);
 
             match state.tera.render("layout.html", &context) {
                 Ok(html) => Html(html).into_response(),

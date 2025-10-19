@@ -33,6 +33,10 @@ struct Cli {
     /// Enable shared annotations.
     #[arg(long, action = clap::ArgAction::SetTrue)]
     shared_annotation: bool,
+
+    /// Enable section viewed checkbox feature.
+    #[arg(long, action = clap::ArgAction::SetTrue)]
+    enable_viewed: bool,
 }
 
 #[tokio::main]
@@ -65,6 +69,7 @@ async fn main() {
         cli.qr,
         cli.open_browser,
         cli.shared_annotation,
+        cli.enable_viewed,
     )
     .await;
 }
