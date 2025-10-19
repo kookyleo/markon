@@ -204,7 +204,7 @@ pub async fn start(
             if base_url.ends_with('/') {
                 base_url.to_string()
             } else {
-                format!("{}/", base_url)
+                format!("{base_url}/")
             }
         };
         println!("accessible at {full_url}");
@@ -302,7 +302,9 @@ async fn handle_socket(socket: WebSocket, state: AppState) {
         serde_json::from_str(&state_json).unwrap_or(serde_json::json!({}))
     };
 
-    let viewed_msg = WebSocketMessage::ViewedState { state: viewed_state };
+    let viewed_msg = WebSocketMessage::ViewedState {
+        state: viewed_state,
+    };
     if sender
         .send(Message::Text(serde_json::to_string(&viewed_msg).unwrap()))
         .await
@@ -373,7 +375,9 @@ async fn handle_socket(socket: WebSocket, state: AppState) {
                             .send(serde_json::to_string(&broadcast_msg).unwrap())
                             .unwrap();
                     }
-                    WebSocketMessage::UpdateViewedState { state: viewed_state } => {
+                    WebSocketMessage::UpdateViewedState {
+                        state: viewed_state,
+                    } => {
                         let state_json = serde_json::to_string(&viewed_state).unwrap();
                         db.execute(
                             "INSERT OR REPLACE INTO viewed_state (file_path, state, updated_at) VALUES (?1, ?2, CURRENT_TIMESTAMP)",
@@ -382,7 +386,9 @@ async fn handle_socket(socket: WebSocket, state: AppState) {
                         .unwrap();
 
                         // Broadcast to other clients
-                        let broadcast_msg = WebSocketMessage::ViewedState { state: viewed_state };
+                        let broadcast_msg = WebSocketMessage::ViewedState {
+                            state: viewed_state,
+                        };
                         state
                             .tx
                             .as_ref()
