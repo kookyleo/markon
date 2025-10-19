@@ -523,9 +523,19 @@
             color: #58a6ff;
         }
 
+        /* Remove H1 bottom margin when followed by viewed toolbar */
+        .markdown-body h1:has(+ .viewed-toolbar) {
+            margin-bottom: 0;
+        }
+
         {% elif theme == "light" %}
         /* Light Theme: Uses default styles from editor.css */
         /* No color overrides needed */
+
+        /* Remove H1 bottom margin when followed by viewed toolbar */
+        .markdown-body h1:has(+ .viewed-toolbar) {
+            margin-bottom: 0;
+        }
 
         {% else %}
         /* Auto Theme: Respond to system preference */
@@ -664,6 +674,11 @@
             }
             .viewed-toolbar a {
                 color: #58a6ff;
+            }
+
+            /* Remove H1 bottom margin when followed by viewed toolbar */
+            .markdown-body h1:has(+ .viewed-toolbar) {
+                margin-bottom: 0;
             }
         }
         {% endif %}

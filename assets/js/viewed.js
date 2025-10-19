@@ -296,7 +296,7 @@ class SectionViewedManager {
         toolbar.querySelector('.btn-jump-next').addEventListener('click', () => this.jumpToNext());
         toolbar.querySelector('.btn-expand-all').addEventListener('click', () => this.expandAll());
         toolbar.querySelector('.btn-collapse-all').addEventListener('click', () => this.collapseAll());
-        toolbar.querySelector('.btn-clear-viewed').addEventListener('click', () => this.clearViewed());
+        toolbar.querySelector('.btn-clear-viewed').addEventListener('click', (e) => this.clearViewed(e));
     }
 
     jumpToNext() {
@@ -357,19 +357,20 @@ class SectionViewedManager {
         this.saveState();
     }
 
-    clearViewed() {
-        if (!confirm('Clear all viewed state for this page?')) {
-            return;
-        }
+    clearViewed(event) {
+        const triggerElement = event.target;
 
-        // Clear all viewed state
-        this.viewedState = {};
+        // Use showConfirmDialog from editor.js for consistency
+        showConfirmDialog('Clear all viewed state for this page?', () => {
+            // Clear all viewed state
+            this.viewedState = {};
 
-        // Update UI
-        this.updateCheckboxes();
-        this.applyViewedState();
-        this.updateTocHighlights();
-        this.saveState();
+            // Update UI
+            this.updateCheckboxes();
+            this.applyViewedState();
+            this.updateTocHighlights();
+            this.saveState();
+        }, triggerElement, 'Clear');
     }
 
     autoJumpToNext() {
