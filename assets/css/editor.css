@@ -479,7 +479,11 @@
     font-weight: normal;
     color: #656d76;
     cursor: pointer;
+    -webkit-user-select: none;
+    -moz-user-select: none;
+    -ms-user-select: none;
     user-select: none;
+    -webkit-touch-callout: none;
     display: inline-flex;
     align-items: center;
     gap: 0.3rem;
@@ -524,7 +528,11 @@
     font-weight: normal;
     margin-left: 0.5rem;
     font-style: italic;
+    -webkit-user-select: none;
+    -moz-user-select: none;
+    -ms-user-select: none;
     user-select: none;
+    -webkit-touch-callout: none;
     cursor: pointer;
     display: none; /* Hidden by default */
 }
@@ -570,7 +578,11 @@
     border-bottom: 1px solid #d0d7de;
     font-size: 0.85rem;
     color: #656d76;
+    -webkit-user-select: none;
+    -moz-user-select: none;
+    -ms-user-select: none;
     user-select: none;
+    -webkit-touch-callout: none;
 }
 
 .viewed-toolbar-label {
