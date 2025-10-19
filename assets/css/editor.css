@@ -433,7 +433,7 @@
 }
 
 /* Mobile TOC styles */
-@media (max-width: 1280px) {
+@media (max-width: 1400px) {
     #toc-icon {
         display: flex;
     }
