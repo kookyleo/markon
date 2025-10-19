@@ -485,6 +485,8 @@
     gap: 0.3rem;
     vertical-align: middle;
     transition: opacity 0.2s;
+    /* Prevent triggering annotation toolbar */
+    pointer-events: auto;
 }
 
 .viewed-checkbox-label:hover {
@@ -515,17 +517,36 @@
     opacity: 0.85;
 }
 
-.section-collapsed::after {
-    content: " (click to expand)";
+/* Expand/collapse toggle button (replaces ::after pseudo-element) */
+.section-expand-toggle {
     font-size: 0.75rem;
     color: #656d76;
     font-weight: normal;
     margin-left: 0.5rem;
     font-style: italic;
+    user-select: none;
+    cursor: pointer;
+    display: none; /* Hidden by default */
 }
 
+/* Show toggle button when section is collapsed */
+.section-collapsed .section-expand-toggle {
+    display: inline;
+}
+
+/* Temporarily expanded section (viewed but expanded) */
+.section-collapsed.section-temp-expanded {
+    opacity: 1;
+}
+
+/* Hide section content when collapsed */
 .section-content-hidden {
     display: none !important;
+}
+
+/* Show content when temporarily expanded (controlled by JS) */
+.section-content-temp-visible {
+    display: block !important;
 }
 
 /* Dark theme adjustments */
@@ -533,7 +554,7 @@
     color: #8b949e;
 }
 
-[data-theme="dark"] .section-collapsed::after {
+[data-theme="dark"] .section-expand-toggle {
     color: #8b949e;
 }
 
@@ -549,6 +570,7 @@
     border-bottom: 1px solid #d0d7de;
     font-size: 0.85rem;
     color: #656d76;
+    user-select: none;
 }
 
 .viewed-toolbar-label {
@@ -609,6 +631,11 @@
         display: none !important;
     }
 
+    /* Hide expand/collapse toggle */
+    .section-expand-toggle {
+        display: none !important;
+    }
+
     /* Hide viewed toolbar */
     .viewed-toolbar {
         display: none !important;
@@ -618,10 +645,6 @@
     .section-collapsed {
         opacity: 1 !important;
         cursor: default !important;
-    }
-
-    .section-collapsed::after {
-        display: none !important;
     }
 
     .section-content-hidden {
