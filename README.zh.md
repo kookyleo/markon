@@ -183,7 +183,7 @@ markon --shared-annotation README.md
 MARKON_SQLITE_PATH=/path/to/annotations.db markon --shared-annotation README.md
 ```
 
-两种模式下都可以使用页面底部的"清除本页"按钮清除当前页面的所有标注。
+两种模式下都可以使用页面底部的"清除本页标注 (模式)"按钮清除当前页面的所有标注。
 
 ## 重要说明
 

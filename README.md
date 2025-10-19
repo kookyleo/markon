@@ -183,7 +183,7 @@ markon --shared-annotation README.md
 MARKON_SQLITE_PATH=/path/to/annotations.db markon --shared-annotation README.md
 ```
 
-In both modes, you can use the "Clear This Page" button at the bottom of the page to clear all annotations for the current page.
+In both modes, you can use the "Clear Annotations(mode) in this page" button at the bottom of the page to clear all annotations for the current page.
 
 ## Important Notes
 

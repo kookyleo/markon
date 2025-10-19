@@ -244,7 +244,7 @@ document.addEventListener('DOMContentLoaded', () => {
     // Update clear button text to show mode
     const clearButton = document.querySelector('.footer-clear-link');
     if (clearButton) {
-        clearButton.textContent = `Clear This Page (${window.isSharedAnnotationMode ? 'shared' : 'local'})`;
+        clearButton.textContent = `Clear Annotations(${window.isSharedAnnotationMode ? 'shared' : 'local'}) in this page`;
     }
 
     let currentSelection = null;
