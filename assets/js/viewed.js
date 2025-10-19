@@ -282,11 +282,9 @@ class SectionViewedManager {
             <span class="viewed-toolbar-label">Viewed:</span>
             <a class="btn-jump-next">Jump to Next</a>
             <span class="viewed-toolbar-separator">|</span>
-            <a class="btn-expand-all">Expand All</a>
+            <a class="btn-mark-all-viewed">Mark All Viewed</a>
             <span class="viewed-toolbar-separator">|</span>
-            <a class="btn-collapse-all">Collapse All</a>
-            <span class="viewed-toolbar-separator">|</span>
-            <a class="btn-clear-viewed">Clear</a>
+            <a class="btn-mark-all-unviewed">Mark All Unviewed</a>
         `;
 
         // Insert after H1
@@ -294,9 +292,8 @@ class SectionViewedManager {
 
         // Setup toolbar link listeners
         toolbar.querySelector('.btn-jump-next').addEventListener('click', () => this.jumpToNext());
-        toolbar.querySelector('.btn-expand-all').addEventListener('click', () => this.expandAll());
-        toolbar.querySelector('.btn-collapse-all').addEventListener('click', () => this.collapseAll());
-        toolbar.querySelector('.btn-clear-viewed').addEventListener('click', (e) => this.clearViewed(e));
+        toolbar.querySelector('.btn-mark-all-viewed').addEventListener('click', () => this.markAllViewed());
+        toolbar.querySelector('.btn-mark-all-unviewed').addEventListener('click', () => this.markAllUnviewed());
     }
 
     jumpToNext() {
@@ -321,27 +318,10 @@ class SectionViewedManager {
             }
         }
 
-        // All sections viewed
-        alert('✅ All sections have been viewed!');
+        // All sections viewed - do nothing (no alert needed)
     }
 
-    expandAll() {
-        // Uncheck all checkboxes and expand all sections
-        const allHeadingIds = Array.from(document.querySelectorAll('.viewed-checkbox')).map(
-            cb => cb.dataset.headingId
-        );
-
-        allHeadingIds.forEach(headingId => {
-            this.viewedState[headingId] = false;
-            this.expandSection(headingId);
-        });
-
-        this.updateCheckboxes();
-        this.updateTocHighlights();
-        this.saveState();
-    }
-
-    collapseAll() {
+    markAllViewed() {
         // Check all checkboxes and collapse all sections
         const allHeadingIds = Array.from(document.querySelectorAll('.viewed-checkbox')).map(
             cb => cb.dataset.headingId
@@ -357,20 +337,15 @@ class SectionViewedManager {
         this.saveState();
     }
 
-    clearViewed(event) {
-        const triggerElement = event.target;
+    markAllUnviewed() {
+        // Clear all viewed state (uncheck all checkboxes and expand all sections)
+        this.viewedState = {};
 
-        // Use showConfirmDialog from editor.js for consistency
-        showConfirmDialog('Clear all viewed state for this page?', () => {
-            // Clear all viewed state
-            this.viewedState = {};
-
-            // Update UI
-            this.updateCheckboxes();
-            this.applyViewedState();
-            this.updateTocHighlights();
-            this.saveState();
-        }, triggerElement, 'Clear');
+        // Update UI
+        this.updateCheckboxes();
+        this.applyViewedState();
+        this.updateTocHighlights();
+        this.saveState();
     }
 
     autoJumpToNext() {
