@@ -444,7 +444,8 @@
         top: 0 !important; /* Align with icon top instead of below it */
         right: 0;
         left: auto !important; /* Override layout.html left positioning */
-        width: 250px;
+        width: 250px !important; /* Override layout.html max-width */
+        max-width: 250px !important; /* Override layout.html max-width: 100% */
         margin-bottom: 0 !important; /* Override layout.html margin */
         max-height: calc(100vh - 40px); /* Limit height to viewport minus some padding */
         overflow-y: auto; /* Enable vertical scrolling when content overflows */
