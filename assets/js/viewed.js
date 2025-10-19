@@ -10,7 +10,9 @@ class SectionViewedManager {
     constructor(isSharedMode, ws) {
         this.isSharedMode = isSharedMode;
         this.ws = ws;
-        this.filePath = window.location.pathname;
+        // Use meta file-path to ensure consistency with editor.js clear function
+        const filePathMeta = document.querySelector('meta[name="file-path"]');
+        this.filePath = filePathMeta ? filePathMeta.getAttribute('content') : window.location.pathname;
         this.viewedState = {};
         this.stateLoaded = false;
 
