@@ -170,7 +170,8 @@ pub async fn start(
     println!("listening on http://{addr}");
 
     // Display custom base URL if provided (via --qr or --open-browser)
-    let custom_base_url = qr.as_ref()
+    let custom_base_url = qr
+        .as_ref()
         .filter(|url| url.as_str() != "missing")
         .or_else(|| open_browser.as_ref().filter(|url| url.as_str() != "local"));
 
