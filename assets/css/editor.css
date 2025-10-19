@@ -597,3 +597,40 @@
         color: #56d364 !important;
     }
 }
+
+/* ============================================================
+   PRINT STYLES
+   Hide viewed UI elements when printing
+   ============================================================ */
+
+@media print {
+    /* Hide viewed checkboxes and labels */
+    .viewed-checkbox-label {
+        display: none !important;
+    }
+
+    /* Hide viewed toolbar */
+    .viewed-toolbar {
+        display: none !important;
+    }
+
+    /* Remove collapsed state - show all content when printing */
+    .section-collapsed {
+        opacity: 1 !important;
+        cursor: default !important;
+    }
+
+    .section-collapsed::after {
+        display: none !important;
+    }
+
+    .section-content-hidden {
+        display: block !important;
+    }
+
+    /* Remove TOC viewed highlighting in print */
+    .toc-item.viewed > a {
+        color: inherit !important;
+        font-weight: normal !important;
+    }
+}

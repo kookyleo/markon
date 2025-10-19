@@ -168,9 +168,9 @@ pub async fn start(
         .route("/", get(root))
         .route("/_/favicon.ico", get(serve_favicon))
         .route("/_/favicon.svg", get(serve_favicon_svg))
-        .route("/_/css/:filename", get(serve_css))
-        .route("/_/js/:filename", get(serve_js))
-        .route("/*path", get(handle_path));
+        .route("/_/css/{filename}", get(serve_css))
+        .route("/_/js/{filename}", get(serve_js))
+        .route("/{*path}", get(handle_path));
 
     if shared_annotation {
         app = app.route("/_/ws", get(ws_handler));
@@ -255,7 +255,8 @@ async fn handle_socket(socket: WebSocket, state: AppState) {
     let file_path = match receiver.next().await {
         Some(Ok(Message::Text(text))) => {
             // Expect first message to be file path
-            text
+            // Convert Utf8Bytes to String
+            text.to_string()
         }
         _ => {
             eprintln!("[WebSocket] Failed to receive file path from client");
@@ -270,7 +271,7 @@ async fn handle_socket(socket: WebSocket, state: AppState) {
             .prepare("SELECT data FROM annotations WHERE file_path = ?1")
             .unwrap();
         let rows = stmt
-            .query_map([&file_path], |row| row.get::<_, String>(0))
+            .query_map([&file_path.as_str()], |row| row.get::<_, String>(0))
             .unwrap();
         let mut annotations = Vec::new();
         for row in rows {
@@ -282,7 +283,9 @@ async fn handle_socket(socket: WebSocket, state: AppState) {
 
     let initial_msg = WebSocketMessage::AllAnnotations { annotations };
     if sender
-        .send(Message::Text(serde_json::to_string(&initial_msg).unwrap()))
+        .send(Message::Text(
+            serde_json::to_string(&initial_msg).unwrap().into(),
+        ))
         .await
         .is_err()
     {
@@ -295,7 +298,7 @@ async fn handle_socket(socket: WebSocket, state: AppState) {
         let state_json = db
             .query_row(
                 "SELECT state FROM viewed_state WHERE file_path = ?1",
-                [&file_path],
+                [&file_path.as_str()],
                 |row| row.get::<_, String>(0),
             )
             .unwrap_or_else(|_| "{}".to_string());
@@ -306,7 +309,9 @@ async fn handle_socket(socket: WebSocket, state: AppState) {
         state: viewed_state,
     };
     if sender
-        .send(Message::Text(serde_json::to_string(&viewed_msg).unwrap()))
+        .send(Message::Text(
+            serde_json::to_string(&viewed_msg).unwrap().into(),
+        ))
         .await
         .is_err()
     {
@@ -316,7 +321,7 @@ async fn handle_socket(socket: WebSocket, state: AppState) {
     // Task to forward broadcast messages to the client
     let mut send_task = tokio::spawn(async move {
         while let Ok(msg) = rx.recv().await {
-            if sender.send(Message::Text(msg)).await.is_err() {
+            if sender.send(Message::Text(msg.into())).await.is_err() {
                 break;
             }
         }
@@ -339,7 +344,7 @@ async fn handle_socket(socket: WebSocket, state: AppState) {
                         let data = serde_json::to_string(&annotation).unwrap();
                         db.execute(
                             "INSERT OR REPLACE INTO annotations (id, file_path, data) VALUES (?1, ?2, ?3)",
-                            [&id, &file_path, &data],
+                            [&id.as_str(), &file_path.as_str(), &data.as_str()],
                         )
                         .unwrap();
                         let broadcast_msg = WebSocketMessage::NewAnnotation { annotation };
@@ -353,7 +358,7 @@ async fn handle_socket(socket: WebSocket, state: AppState) {
                     WebSocketMessage::DeleteAnnotation { id } => {
                         db.execute(
                             "DELETE FROM annotations WHERE id = ?1 AND file_path = ?2",
-                            [&id, &file_path],
+                            [&id.as_str(), &file_path.as_str()],
                         )
                         .unwrap();
                         let broadcast_msg = WebSocketMessage::DeleteAnnotation { id };
@@ -365,8 +370,11 @@ async fn handle_socket(socket: WebSocket, state: AppState) {
                             .unwrap();
                     }
                     WebSocketMessage::ClearAnnotations => {
-                        db.execute("DELETE FROM annotations WHERE file_path = ?1", [&file_path])
-                            .unwrap();
+                        db.execute(
+                            "DELETE FROM annotations WHERE file_path = ?1",
+                            [&file_path.as_str()],
+                        )
+                        .unwrap();
                         let broadcast_msg = WebSocketMessage::ClearAnnotations;
                         state
                             .tx
@@ -381,7 +389,7 @@ async fn handle_socket(socket: WebSocket, state: AppState) {
                         let state_json = serde_json::to_string(&viewed_state).unwrap();
                         db.execute(
                             "INSERT OR REPLACE INTO viewed_state (file_path, state, updated_at) VALUES (?1, ?2, CURRENT_TIMESTAMP)",
-                            [&file_path, &state_json],
+                            [&file_path.as_str(), &state_json.as_str()],
                         )
                         .unwrap();
 

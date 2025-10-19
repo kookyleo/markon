@@ -4,7 +4,7 @@
  * - Collapse/expand sections
  * - Persist state to LocalStorage (local mode) or SQLite (shared mode)
  * - Click collapsed heading to expand
- * - Phase 3: Batch operations, TOC highlighting, smart jump
+ * - Phase 3: Batch operations, TOC highlighting
  */
 
 class SectionViewedManager {
@@ -39,9 +39,6 @@ class SectionViewedManager {
 
         // 5. Setup event listeners
         this.setupEventListeners();
-
-        // 6. Auto-jump to first unviewed section (if any)
-        this.autoJumpToNext();
     }
 
     setupWebSocketListeners() {
@@ -134,6 +131,79 @@ class SectionViewedManager {
         return elements;
     }
 
+    getChildHeadings(headingId) {
+        // Get all child headings (direct children and descendants)
+        const heading = document.getElementById(headingId);
+        if (!heading) return [];
+
+        const level = parseInt(heading.tagName.substring(1));
+        const children = [];
+        let next = heading.nextElementSibling;
+
+        while (next) {
+            if (next.tagName && next.tagName.match(/^H[1-6]$/)) {
+                const nextLevel = parseInt(next.tagName.substring(1));
+                if (nextLevel <= level) {
+                    break; // Stop at same or higher level
+                }
+                // This is a child heading
+                if (next.id) {
+                    children.push(next.id);
+                }
+            }
+            next = next.nextElementSibling;
+        }
+
+        return children;
+    }
+
+    getParentHeading(headingId) {
+        // Get the parent heading (first higher-level heading before this one)
+        const heading = document.getElementById(headingId);
+        if (!heading) return null;
+
+        const level = parseInt(heading.tagName.substring(1));
+        let prev = heading.previousElementSibling;
+
+        while (prev) {
+            if (prev.tagName && prev.tagName.match(/^H[1-6]$/)) {
+                const prevLevel = parseInt(prev.tagName.substring(1));
+                if (prevLevel < level) {
+                    return prev.id; // Found parent
+                }
+            }
+            prev = prev.previousElementSibling;
+        }
+
+        return null; // No parent found
+    }
+
+    getDirectChildHeadings(headingId) {
+        // Get only direct children (next level down, not all descendants)
+        const heading = document.getElementById(headingId);
+        if (!heading) return [];
+
+        const level = parseInt(heading.tagName.substring(1));
+        const directChildren = [];
+        let next = heading.nextElementSibling;
+        const targetLevel = level + 1;
+
+        while (next) {
+            if (next.tagName && next.tagName.match(/^H[1-6]$/)) {
+                const nextLevel = parseInt(next.tagName.substring(1));
+                if (nextLevel <= level) {
+                    break; // Stop at same or higher level
+                }
+                if (nextLevel === targetLevel && next.id) {
+                    directChildren.push(next.id);
+                }
+            }
+            next = next.nextElementSibling;
+        }
+
+        return directChildren;
+    }
+
     collapseSection(headingId) {
         const heading = document.getElementById(headingId);
         if (!heading) return;
@@ -163,12 +233,48 @@ class SectionViewedManager {
 
         if (isViewed) {
             this.collapseSection(headingId);
+
+            // Cascade down: mark all child and descendant headings as viewed
+            const allChildren = this.getChildHeadings(headingId);
+            allChildren.forEach(childId => {
+                this.viewedState[childId] = true;
+                this.collapseSection(childId);
+            });
         } else {
             this.expandSection(headingId);
         }
 
+        // Cascade up: check if parent should be auto-marked as viewed
+        this.updateParentViewedState(headingId);
+
+        this.updateCheckboxes();
         this.updateTocHighlights();
         this.saveState();
+    }
+
+    updateParentViewedState(headingId) {
+        // Check parent heading and auto-mark as viewed if all siblings are viewed
+        const parentId = this.getParentHeading(headingId);
+        if (!parentId) return; // No parent
+
+        const siblings = this.getDirectChildHeadings(parentId);
+        const allSiblingsViewed = siblings.length > 0 && siblings.every(siblingId => this.viewedState[siblingId]);
+
+        if (allSiblingsViewed && !this.viewedState[parentId]) {
+            // All children viewed, auto-mark parent as viewed
+            this.viewedState[parentId] = true;
+            this.collapseSection(parentId);
+
+            // Recursively check grandparent
+            this.updateParentViewedState(parentId);
+        } else if (!allSiblingsViewed && this.viewedState[parentId]) {
+            // At least one child unviewed, unmark parent
+            this.viewedState[parentId] = false;
+            this.expandSection(parentId);
+
+            // Recursively check grandparent
+            this.updateParentViewedState(parentId);
+        }
     }
 
     async loadState() {
@@ -279,46 +385,20 @@ class SectionViewedManager {
         const toolbar = document.createElement('div');
         toolbar.className = 'viewed-toolbar';
         toolbar.innerHTML = `
-            <a class="btn-jump-next">Next Unviewed</a>
+            <span class="viewed-toolbar-label">Viewed:</span>
+            <a class="btn-mark-all-viewed">Mark All as Viewed</a>
             <span class="viewed-toolbar-separator">|</span>
-            <a class="btn-mark-all-viewed">Mark All Viewed</a>
-            <span class="viewed-toolbar-separator">|</span>
-            <a class="btn-mark-all-unviewed">Clear All</a>
+            <a class="btn-mark-all-unviewed">Unviewed</a>
         `;
 
         // Insert after H1
         h1.parentNode.insertBefore(toolbar, h1.nextSibling);
 
         // Setup toolbar link listeners
-        toolbar.querySelector('.btn-jump-next').addEventListener('click', () => this.jumpToNext());
         toolbar.querySelector('.btn-mark-all-viewed').addEventListener('click', () => this.markAllViewed());
         toolbar.querySelector('.btn-mark-all-unviewed').addEventListener('click', () => this.markAllUnviewed());
     }
 
-    jumpToNext() {
-        // Find first unviewed section
-        const allHeadings = Array.from(
-            document.querySelectorAll('.markdown-body h2, .markdown-body h3, .markdown-body h4, .markdown-body h5, .markdown-body h6')
-        );
-
-        for (const heading of allHeadings) {
-            if (!this.viewedState[heading.id]) {
-                // Found first unviewed section
-                window.scrollTo({
-                    top: heading.offsetTop - 20,
-                    behavior: 'smooth'
-                });
-                heading.style.transition = 'background-color 0.5s';
-                heading.style.backgroundColor = 'rgba(9, 105, 218, 0.15)';
-                setTimeout(() => {
-                    heading.style.backgroundColor = '';
-                }, 1500);
-                return;
-            }
-        }
-
-        // All sections viewed - do nothing (no alert needed)
-    }
 
     markAllViewed() {
         // Check all checkboxes and collapse all sections
@@ -347,19 +427,6 @@ class SectionViewedManager {
         this.saveState();
     }
 
-    autoJumpToNext() {
-        // Auto-jump on page load if there are unviewed sections
-        const hasUnviewed = Array.from(
-            document.querySelectorAll('.markdown-body h2, .markdown-body h3, .markdown-body h4, .markdown-body h5, .markdown-body h6')
-        ).some(heading => !this.viewedState[heading.id]);
-
-        if (hasUnviewed) {
-            // Wait a bit for page to settle, then jump
-            setTimeout(() => {
-                this.jumpToNext();
-            }, 300);
-        }
-    }
 
     // ============================================================
     // Phase 3: TOC Highlighting
