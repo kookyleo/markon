@@ -165,6 +165,8 @@ document.addEventListener('DOMContentLoaded', () => {
                 case 'clear_annotations':
                     window.annotations = [];
                     clearAllAnnotationsFromDOM();
+                    // Reload page to ensure clean state
+                    location.reload();
                     break;
                 }
             };

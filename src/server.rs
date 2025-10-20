@@ -278,6 +278,7 @@ async fn handle_socket(socket: WebSocket, state: AppState) {
             let data: serde_json::Value = serde_json::from_str(&row.unwrap()).unwrap();
             annotations.push(data);
         }
+        eprintln!("[WebSocket] Sending {} annotations for file_path: {}", annotations.len(), file_path);
         annotations
     };
 
@@ -370,18 +371,25 @@ async fn handle_socket(socket: WebSocket, state: AppState) {
                             .unwrap();
                     }
                     WebSocketMessage::ClearAnnotations => {
-                        db.execute(
+                        eprintln!("[WebSocket] Clearing annotations for file_path: {}", file_path);
+                        match db.execute(
                             "DELETE FROM annotations WHERE file_path = ?1",
                             [&file_path.as_str()],
-                        )
-                        .unwrap();
-                        let broadcast_msg = WebSocketMessage::ClearAnnotations;
-                        state
-                            .tx
-                            .as_ref()
-                            .unwrap()
-                            .send(serde_json::to_string(&broadcast_msg).unwrap())
-                            .unwrap();
+                        ) {
+                            Ok(affected_rows) => {
+                                eprintln!("[WebSocket] Deleted {} annotation rows for file_path: {}", affected_rows, file_path);
+                                let broadcast_msg = WebSocketMessage::ClearAnnotations;
+                                state
+                                    .tx
+                                    .as_ref()
+                                    .unwrap()
+                                    .send(serde_json::to_string(&broadcast_msg).unwrap())
+                                    .unwrap();
+                            }
+                            Err(e) => {
+                                eprintln!("[WebSocket] Failed to clear annotations: {}", e);
+                            }
+                        }
                     }
                     WebSocketMessage::UpdateViewedState {
                         state: viewed_state,

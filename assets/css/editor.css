@@ -535,6 +535,7 @@
     -webkit-touch-callout: none;
     cursor: pointer;
     display: none; /* Hidden by default */
+    vertical-align: middle;
 }
 
 /* Show toggle button when section is collapsed */
