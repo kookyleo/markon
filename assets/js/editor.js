@@ -339,11 +339,41 @@ document.addEventListener('DOMContentLoaded', () => {
             const startBlock = getBlockParent(range.startContainer);
             const endBlock = getBlockParent(range.endContainer);
 
-            // If selection spans different block elements, don't show popover
-            if (startBlock !== endBlock) {
-                console.warn('Selection spans multiple block elements - annotations not supported');
-                window.getSelection().removeAllRanges();
-                return;
+            // If selection spans different block elements, trim to first block only
+            if (startBlock !== endBlock && startBlock && endBlock) {
+                console.log('Selection spans multiple blocks - auto-trimming to first block');
+
+                // Find the last text node in the start block
+                const findLastTextNode = (element) => {
+                    let lastText = null;
+                    const walk = (node) => {
+                        if (node.nodeType === 3 && node.textContent.trim()) {
+                            lastText = node;
+                        } else if (node.nodeType === 1) {
+                            for (let child of node.childNodes) {
+                                walk(child);
+                            }
+                        }
+                    };
+                    walk(element);
+                    return lastText;
+                };
+
+                const lastTextNode = findLastTextNode(startBlock);
+                if (lastTextNode) {
+                    try {
+                        range.setEnd(lastTextNode, lastTextNode.length);
+                        selection.removeAllRanges();
+                        selection.addRange(range);
+                    } catch (e) {
+                        console.warn('Failed to trim selection:', e);
+                        return;
+                    }
+                } else {
+                    // No text node found, clear selection
+                    selection.removeAllRanges();
+                    return;
+                }
             }
 
             currentSelection = range.cloneRange();
