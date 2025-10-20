@@ -323,6 +323,29 @@ document.addEventListener('DOMContentLoaded', () => {
                 return;
             }
 
+            // Check if selection spans across multiple block-level elements
+            const getBlockParent = (node) => {
+                let current = node.nodeType === 3 ? node.parentElement : node;
+                const blockTags = ['P', 'DIV', 'LI', 'H1', 'H2', 'H3', 'H4', 'H5', 'H6', 'BLOCKQUOTE', 'PRE', 'TD', 'TH'];
+                while (current && current !== markdownBody) {
+                    if (blockTags.includes(current.tagName)) {
+                        return current;
+                    }
+                    current = current.parentElement;
+                }
+                return null;
+            };
+
+            const startBlock = getBlockParent(range.startContainer);
+            const endBlock = getBlockParent(range.endContainer);
+
+            // If selection spans different block elements, don't show popover
+            if (startBlock !== endBlock) {
+                console.warn('Selection spans multiple block elements - annotations not supported');
+                window.getSelection().removeAllRanges();
+                return;
+            }
+
             currentSelection = range.cloneRange();
             const rect = range.getBoundingClientRect();
 
