@@ -376,8 +376,7 @@ async fn handle_socket(socket: WebSocket, state: AppState) {
                     }
                     WebSocketMessage::ClearAnnotations => {
                         eprintln!(
-                            "[WebSocket] Clearing annotations for file_path: {}",
-                            file_path
+                            "[WebSocket] Clearing annotations for file_path: {file_path}"
                         );
                         match db.execute(
                             "DELETE FROM annotations WHERE file_path = ?1",
@@ -385,8 +384,7 @@ async fn handle_socket(socket: WebSocket, state: AppState) {
                         ) {
                             Ok(affected_rows) => {
                                 eprintln!(
-                                    "[WebSocket] Deleted {} annotation rows for file_path: {}",
-                                    affected_rows, file_path
+                                    "[WebSocket] Deleted {affected_rows} annotation rows for file_path: {file_path}"
                                 );
                                 let broadcast_msg = WebSocketMessage::ClearAnnotations;
                                 state
@@ -397,7 +395,7 @@ async fn handle_socket(socket: WebSocket, state: AppState) {
                                     .unwrap();
                             }
                             Err(e) => {
-                                eprintln!("[WebSocket] Failed to clear annotations: {}", e);
+                                eprintln!("[WebSocket] Failed to clear annotations: {e}");
                             }
                         }
                     }

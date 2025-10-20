@@ -861,12 +861,14 @@ document.addEventListener('DOMContentLoaded', () => {
             let currentOffset = 0;
             let targetNode = null;
             let relativeOffset = 0;
+            let lastTextNode = null; // Track the last text node in case we need it
 
             const walk = (node) => {
                 if (targetNode) return; // Already found
 
                 if (node.nodeType === 3) {
                     // Text node
+                    lastTextNode = node;
                     if (currentOffset + node.length >= absoluteOffset) {
                         targetNode = node;
                         relativeOffset = absoluteOffset - currentOffset;
@@ -883,6 +885,14 @@ document.addEventListener('DOMContentLoaded', () => {
             };
 
             walk(element);
+
+            // If no target found but we have a last text node, and absoluteOffset equals total length,
+            // return the last text node at its end position
+            if (!targetNode && lastTextNode && currentOffset === absoluteOffset) {
+                targetNode = lastTextNode;
+                relativeOffset = lastTextNode.length;
+            }
+
             return { node: targetNode, offset: relativeOffset };
         };
 
