@@ -278,7 +278,11 @@ async fn handle_socket(socket: WebSocket, state: AppState) {
             let data: serde_json::Value = serde_json::from_str(&row.unwrap()).unwrap();
             annotations.push(data);
         }
-        eprintln!("[WebSocket] Sending {} annotations for file_path: {}", annotations.len(), file_path);
+        eprintln!(
+            "[WebSocket] Sending {} annotations for file_path: {}",
+            annotations.len(),
+            file_path
+        );
         annotations
     };
 
@@ -371,13 +375,19 @@ async fn handle_socket(socket: WebSocket, state: AppState) {
                             .unwrap();
                     }
                     WebSocketMessage::ClearAnnotations => {
-                        eprintln!("[WebSocket] Clearing annotations for file_path: {}", file_path);
+                        eprintln!(
+                            "[WebSocket] Clearing annotations for file_path: {}",
+                            file_path
+                        );
                         match db.execute(
                             "DELETE FROM annotations WHERE file_path = ?1",
                             [&file_path.as_str()],
                         ) {
                             Ok(affected_rows) => {
-                                eprintln!("[WebSocket] Deleted {} annotation rows for file_path: {}", affected_rows, file_path);
+                                eprintln!(
+                                    "[WebSocket] Deleted {} annotation rows for file_path: {}",
+                                    affected_rows, file_path
+                                );
                                 let broadcast_msg = WebSocketMessage::ClearAnnotations;
                                 state
                                     .tx

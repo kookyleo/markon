@@ -148,7 +148,15 @@ document.addEventListener('DOMContentLoaded', () => {
                     clearAllAnnotationsFromDOM();
                     // This will be our local copy of annotations
                     window.annotations = msg.annotations;
+
+                    // First-time initialization in shared mode
+                    if (!annotationsApplied) {
+                        fixTocHtmlEntities();
+                        annotationsApplied = true;
+                    }
+
                     applyAnnotations(window.annotations);
+                    setupNoteClickHandlers();
                     break;
                 case 'new_annotation':
                     // Remove old version if it exists, then add new one
@@ -246,14 +254,18 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     // Apply annotations once after a short delay to ensure content is loaded
-    setTimeout(() => {
-        if (!annotationsApplied) {
-            fixTocHtmlEntities();
-            applyAnnotations();
-            setupNoteClickHandlers();
-            annotationsApplied = true;
-        }
-    }, 100);
+    // In shared mode, wait for WebSocket to send initial data
+    // In local mode, load from localStorage immediately
+    if (!window.isSharedAnnotationMode) {
+        setTimeout(() => {
+            if (!annotationsApplied) {
+                fixTocHtmlEntities();
+                applyAnnotations();
+                setupNoteClickHandlers();
+                annotationsApplied = true;
+            }
+        }, 100);
+    }
 
     // Make the main selection popover draggable
     makePopoverDraggable(popover, 'markon-popover-offset');
@@ -855,7 +867,12 @@ document.addEventListener('DOMContentLoaded', () => {
                     range.setStart(start.node, start.offset);
                     range.setEnd(end.node, end.offset);
 
-                    if (range.toString().trim() === anno.text.trim()) {
+                    // Normalize whitespace for comparison (collapse multiple spaces, trim)
+                    const normalizeText = (text) => text.replace(/\s+/g, ' ').trim();
+                    const storedTextNormalized = normalizeText(anno.text);
+                    const currentTextNormalized = normalizeText(range.toString());
+
+                    if (currentTextNormalized === storedTextNormalized) {
                         const element = document.createElement(anno.tagName);
                         element.className = anno.type;
                         element.dataset.annotationId = anno.id;
@@ -868,7 +885,9 @@ document.addEventListener('DOMContentLoaded', () => {
                         console.warn('[applyAnnotations] Skipping annotation due to text mismatch:', {
                             annotationId: anno.id,
                             storedText: anno.text,
+                            storedNormalized: storedTextNormalized,
                             currentText: range.toString(),
+                            currentNormalized: currentTextNormalized,
                             reason: 'Content may have changed since annotation was created'
                         });
                     }
