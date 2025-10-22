@@ -1,5 +1,22 @@
+# Rust
 /target
 
 # Node.js
 node_modules/
 package-lock.json
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# SQLite databases (optional - comment out if you want to track them)
+*.db
+*.db-shm
+*.db-wal

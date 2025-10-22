@@ -7,9 +7,9 @@
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1"
   },
-  "keywords": [],
-  "author": "",
-  "license": "ISC",
+  "keywords": ["markdown", "renderer", "github", "annotation"],
+  "author": "kookyleo",
+  "license": "Apache-2.0",
   "devDependencies": {
     "eslint": "^9.37.0"
   }
