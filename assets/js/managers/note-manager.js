@@ -1,6 +1,6 @@
 /**
- * NoteManager - 笔记卡片管理器
- * 负责笔记的渲染、布局、响应式处理
+ * NoteManager - Note card manager
+ * Handles note rendering, layout, and responsive handling
  */
 
 import { CONFIG } from '../core/config.js';
@@ -21,10 +21,10 @@ export class NoteManager {
     }
 
     render() {
-        // 移除现有的边距笔记
+        // 移除现有的边距Note
         this.clear();
 
-        // 获取所有带笔记的高亮元素（仅最外层）
+        // Get所有带Note的HighlightElement（仅最外层）
         const allHighlightElements = this.#markdownBody.querySelectorAll('.has-note[data-annotation-id]');
         const outermostElements = this.#filterOutermost(allHighlightElements);
 
@@ -32,11 +32,11 @@ export class NoteManager {
             return;
         }
 
-        // 获取注解数据
+        // Get注解Data
         const annotations = this.#annotationManager.getAll();
         const annotationsMap = new Map(annotations.map(a => [a.id, a]));
 
-        // 创建笔记卡片
+        // CreateNote卡片
         outermostElements.forEach(highlightElement => {
             const annoId = highlightElement.dataset.annotationId;
             const anno = annotationsMap.get(annoId);
@@ -57,7 +57,7 @@ export class NoteManager {
             });
         });
 
-        // 布局笔记
+        // 布局Note
         this.#layout();
 
         Logger.log('NoteManager', `Rendered ${this.#noteCardsData.length} note cards`);
@@ -80,7 +80,7 @@ export class NoteManager {
             resizeTimeout = setTimeout(() => {
                 this.#layout();
 
-                // 关闭弹出窗口（窄屏模式）
+                // Close弹出Window（窄屏Mode）
                 if (PlatformUtils.isNarrowScreen()) {
                     const existingPopup = document.querySelector('.note-popup');
                     if (existingPopup) {
@@ -99,7 +99,7 @@ export class NoteManager {
         elements.forEach(element => {
             const annoId = element.dataset.annotationId;
 
-            // 检查是否嵌套在另一个 .has-note 中
+            // Check是否嵌套在另一个 .has-note 中
             let isNested = false;
             let parent = element.parentElement;
 
@@ -149,22 +149,22 @@ export class NoteManager {
             // 宽屏：使用物理布局
             this.#layoutWideScreen();
         } else {
-            // 窄屏：隐藏所有笔记卡片（点击显示弹窗）
+            // 窄屏：Hide所有Note卡片（点击ShowModal）
             this.#layoutNarrowScreen();
         }
     }
 
     #layoutWideScreen() {
-        // 强制重排以确保 offsetHeight 计算准确
+        // 强制重排以确保 offsetHeight Calculate准确
         document.body.offsetHeight;
 
-        // 使用物理引擎计算位置
+        // 使用物理引擎Calculate位置
         const notes = this.#layoutEngine.calculate(this.#noteCardsData);
 
-        // 计算水平位置（右对齐）
+        // Calculate水平位置（右对齐）
         const rightEdge = window.innerWidth - CONFIG.DIMENSIONS.NOTE_CARD_WIDTH - CONFIG.DIMENSIONS.NOTE_CARD_RIGHT_MARGIN;
 
-        // 应用位置
+        // Apply位置
         notes.forEach(note => {
             note.element.style.left = `${rightEdge}px`;
             note.element.style.top = `${note.currentTop}px`;
@@ -183,15 +183,15 @@ export class NoteManager {
     }
 
     showNotePopup(highlightElement, annotationId) {
-        // 移除已存在的弹窗
+        // 移除已存在的Modal
         const existingPopup = document.querySelector('.note-popup');
         if (existingPopup) existingPopup.remove();
 
-        // 查找笔记数据
+        // FindNoteData
         const noteData = this.#noteCardsData.find(n => n.highlightId === annotationId);
         if (!noteData) return;
 
-        // 创建弹窗
+        // CreateModal
         const popup = document.createElement('div');
         popup.className = 'note-popup';
         popup.dataset.annotationId = annotationId;

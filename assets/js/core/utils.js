@@ -1,9 +1,9 @@
 /**
- * 工具函数 - 简单通用工具
+ * Utility functions - simple and common utilities
  */
 import { CONFIG } from './config.js';
 
-// 平台检测
+// Platform detection
 export class PlatformUtils {
     static isMac() {
         return navigator.platform.toUpperCase().indexOf('MAC') >= 0;
@@ -27,7 +27,7 @@ export function debounce(func, wait) {
     };
 }
 
-// 日志
+// Log
 export class Logger {
     static #enabled = true;
 

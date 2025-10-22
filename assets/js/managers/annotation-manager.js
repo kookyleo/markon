@@ -1,6 +1,6 @@
 /**
- * AnnotationManager - 核心注解管理器
- * 负责注解的 CRUD 操作、DOM 应用、XPath 处理
+ * AnnotationManager - Core annotation manager
+ * Handles CRUD operations, DOM application, and XPath handling for annotations
  */
 
 import { CONFIG } from '../core/config.js';
@@ -33,23 +33,23 @@ export class AnnotationManager {
     }
 
     async add(annotation, skipSave = false) {
-        // 检查是否已存在
+        // Check是否已存在
         const existingIndex = this.#annotations.findIndex(a => a.id === annotation.id);
 
         if (existingIndex >= 0) {
-            // 更新现有注解
+            // Update现有注解
             this.#annotations[existingIndex] = annotation;
         } else {
             // 添加新注解
             this.#annotations.push(annotation);
         }
 
-        // 保存到存储（除非是从 WebSocket 接收的）
+        // Save到Storage（除非是从 WebSocket 接收的）
         if (!skipSave) {
             await this.#storage.saveAnnotation(annotation);
         }
 
-        // 触发变更回调
+        // Trigger变更Callback
         this.#triggerChange('add', annotation);
 
         Logger.log('AnnotationManager', `Added annotation: ${annotation.id}${skipSave ? ' (from remote)' : ''}`);
@@ -65,12 +65,12 @@ export class AnnotationManager {
         const deleted = this.#annotations[index];
         this.#annotations.splice(index, 1);
 
-        // 从存储中删除（除非是从 WebSocket 接收的）
+        // 从Storage中Delete（除非是从 WebSocket 接收的）
         if (!skipSave) {
             await this.#storage.deleteAnnotation(id);
         }
 
-        // 触发变更回调
+        // Trigger变更Callback
         this.#triggerChange('delete', deleted);
 
         Logger.log('AnnotationManager', `Deleted annotation: ${id}${skipSave ? ' (from remote)' : ''}`);
@@ -97,7 +97,7 @@ export class AnnotationManager {
             return;
         }
 
-        // 按路径和偏移量排序（从后向前应用，避免偏移问题）
+        // 按Path和偏移量Sort（从后向前Apply，避免偏移问题）
         const sorted = [...annotations].sort((a, b) => {
             if (a.startPath !== b.startPath) {
                 return a.startPath.localeCompare(b.startPath);
@@ -130,12 +130,12 @@ export class AnnotationManager {
             if (el.dataset.annotationId === id) {
                 const parent = el.parentNode;
 
-                // 将子元素移出
+                // 将子Element移出
                 while (el.firstChild) {
                     parent.insertBefore(el.firstChild, el);
                 }
 
-                // 移除元素
+                // 移除Element
                 parent.removeChild(el);
                 parent.normalize();
             }
@@ -171,10 +171,10 @@ export class AnnotationManager {
     }
 
     #applyAnnotation(anno) {
-        // 检查是否已存在
+        // Check是否已存在
         const existing = this.#markdownBody.querySelector(`[data-annotation-id="${anno.id}"]`);
         if (existing) {
-            return;  // 已存在，跳过
+            return;  // 已存在，Skip
         }
 
         const startNode = XPath.resolve(anno.startPath);
@@ -186,14 +186,14 @@ export class AnnotationManager {
         }
 
         try {
-            // 验证偏移量
+            // Validate偏移量
             if (anno.startOffset > startNode.textContent.length ||
                 anno.endOffset > endNode.textContent.length) {
                 Logger.warn('AnnotationManager', `Invalid offset for annotation: ${anno.id}`);
                 return;
             }
 
-            // 查找文本节点和偏移量
+            // FindTextNode和偏移量
             const start = XPath.findNode(startNode, anno.startOffset);
             const end = XPath.findNode(endNode, anno.endOffset);
 
@@ -202,12 +202,12 @@ export class AnnotationManager {
                 return;
             }
 
-            // 创建范围
+            // Create范围
             const range = document.createRange();
             range.setStart(start.node, start.offset);
             range.setEnd(end.node, end.offset);
 
-            // 验证文本内容
+            // ValidateTextContent
             const storedText = Text.normalize(anno.text);
             const currentText = Text.normalize(range.toString());
 
@@ -219,7 +219,7 @@ export class AnnotationManager {
                 return;
             }
 
-            // 创建元素
+            // CreateElement
             const element = document.createElement(anno.tagName);
             element.className = anno.type;
             element.dataset.annotationId = anno.id;
@@ -229,7 +229,7 @@ export class AnnotationManager {
                 element.classList.add('has-note');
             }
 
-            // 应用到 DOM
+            // Apply到 DOM
             element.appendChild(range.extractContents());
             range.insertNode(element);
 

@@ -1,13 +1,13 @@
 /**
- * UndoManager - 撤销/重做管理器
- * 支持注解操作的撤销和重做
+ * UndoManager - Undo/Redo manager
+ * Supports undo and redo for annotation operations
  */
 
 import { CONFIG } from '../core/config.js';
 import { Logger } from '../core/utils.js';
 
 /**
- * 撤销管理器类
+ * UndoManagement器类
  */
 export class UndoManager {
     #undoStack = [];
@@ -20,9 +20,9 @@ export class UndoManager {
 
     /**
      * 记录一个操作
-     * @param {Object} operation - 操作对象
-     * @param {string} operation.type - 操作类型（add_annotation、delete_annotation、clear_annotations）
-     * @param {*} operation.data - 操作数据
+     * @param {Object} operation - 操作Object
+     * @param {string} operation.type - 操作Type（add_annotation、delete_annotation、clear_annotations）
+     * @param {*} operation.data - 操作Data
      */
     push(operation) {
         this.#undoStack.push({
@@ -30,20 +30,20 @@ export class UndoManager {
             timestamp: Date.now()
         });
 
-        // 限制栈大小
+        // 限制栈Size
         if (this.#undoStack.length > this.#maxStackSize) {
             this.#undoStack.shift();
         }
 
-        // 清除重做栈（新操作后不能再重做）
+        // ClearRedo栈（新操作后不能再Redo）
         this.#redoStack = [];
 
         Logger.log('UndoManager', `Pushed operation: ${operation.type}`);
     }
 
     /**
-     * 撤销上一个操作
-     * @returns {Object|null} 被撤销的操作
+     * Undo上一个操作
+     * @returns {Object|null} 被Undo的操作
      */
     undo() {
         if (this.#undoStack.length === 0) {
@@ -59,8 +59,8 @@ export class UndoManager {
     }
 
     /**
-     * 重做上一个撤销的操作
-     * @returns {Object|null} 被重做的操作
+     * Redo上一个Undo的操作
+     * @returns {Object|null} 被Redo的操作
      */
     redo() {
         if (this.#redoStack.length === 0) {
@@ -76,7 +76,7 @@ export class UndoManager {
     }
 
     /**
-     * 检查是否可以撤销
+     * Check是否可以Undo
      * @returns {boolean}
      */
     canUndo() {
@@ -84,7 +84,7 @@ export class UndoManager {
     }
 
     /**
-     * 检查是否可以重做
+     * Check是否可以Redo
      * @returns {boolean}
      */
     canRedo() {
@@ -92,7 +92,7 @@ export class UndoManager {
     }
 
     /**
-     * 清除所有栈
+     * Clear所有栈
      */
     clear() {
         this.#undoStack = [];
@@ -101,7 +101,7 @@ export class UndoManager {
     }
 
     /**
-     * 获取撤销栈大小
+     * GetUndo栈Size
      * @returns {number}
      */
     getUndoStackSize() {
@@ -109,7 +109,7 @@ export class UndoManager {
     }
 
     /**
-     * 获取重做栈大小
+     * GetRedo栈Size
      * @returns {number}
      */
     getRedoStackSize() {

@@ -1,6 +1,6 @@
 /**
- * PopoverManager - 选择弹出框管理器
- * 负责注解选择弹出框的显示、定位、内容更新
+ * PopoverManager - Selection popover manager
+ * Handles selection popover display, positioning, and content updates
  */
 
 import { CONFIG } from '../core/config.js';
@@ -10,7 +10,7 @@ import { DraggableManager } from '../components/draggable.js';
 import { Position } from '../services/position.js';
 
 /**
- * 弹出框管理器
+ * 弹出框Management器
  */
 export class PopoverManager {
     #element;
@@ -26,17 +26,17 @@ export class PopoverManager {
     }
 
     show(range, highlightedElement = null) {
-        // 调试：打印选中的内容
+        // Debug：Print选中的Content
         const selectedText = range.toString();
         Logger.log('PopoverManager', `show() called with text: "${selectedText}" (length: ${selectedText.length}, trimmed: ${selectedText.trim().length})`);
 
         this.#currentSelection = range.cloneRange();
         this.#currentHighlightedElement = highlightedElement;
 
-        // 更新内容
+        // UpdateContent
         this.#updateContent(highlightedElement);
 
-        // 先显示以获取尺寸
+        // 先Show以Get尺寸
         this.#element.style.visibility = 'hidden';
         this.#element.style.display = 'block';
 
@@ -44,7 +44,7 @@ export class PopoverManager {
         const popoverHeight = this.#element.offsetHeight;
         const popoverWidth = this.#element.offsetWidth;
 
-        // 获取选区的绝对位置
+        // Get选区的绝对位置
         const rect = range.getBoundingClientRect();
         const scrollX = window.pageXOffset || document.documentElement.scrollLeft;
         const scrollY = window.pageYOffset || document.documentElement.scrollTop;
@@ -54,11 +54,11 @@ export class PopoverManager {
         // 水平居中对齐（绝对坐标）
         let left = rect.left + scrollX + rect.width / 2 - popoverWidth / 2;
 
-        // 默认在下方显示（绝对坐标）
+        // 默认在下方Show（绝对坐标）
         let top = rect.bottom + scrollY + offset;
         let positionBelow = true;
 
-        // 检查下方空间是否足够
+        // Check下方空间是否足够
         const spaceBelow = window.innerHeight - rect.bottom;
         const spaceAbove = rect.top;
 
@@ -88,18 +88,18 @@ export class PopoverManager {
             top = scrollY + viewportHeight - popoverHeight - margin;
         }
 
-        // 保存原始位置（应用偏移之前的位置）用于计算偏移量
+        // Save原始位置（Apply偏移之前的位置）用于Calculate偏移量
         const originalLeft = left;
         const originalTop = top;
 
-        // 应用保存的偏移量
+        // ApplySave的偏移量
         const savedOffset = this.#getSavedOffset();
         if (savedOffset) {
             left += savedOffset.dx;
             top += savedOffset.dy;
             Logger.log('PopoverManager', `Applied saved offset: dx=${savedOffset.dx}, dy=${savedOffset.dy}`);
 
-            // 应用偏移后再次检查边界，防止屏幕变小后工具条超出视口
+            // Apply偏移后再次Check边界，防止屏幕变小后Utility条超出视口
             if (left < scrollX + margin) {
                 left = scrollX + margin;
             }
@@ -115,17 +115,17 @@ export class PopoverManager {
             Logger.log('PopoverManager', `After boundary check: (${Math.round(left)}, ${Math.round(top)})`);
         }
 
-        // 保存原始位置（应用偏移之前）供 DraggableManager 计算偏移量
+        // Save原始位置（Apply偏移之前）供 DraggableManager Calculate偏移量
         this.#element.dataset.originalLeft = originalLeft;
         this.#element.dataset.originalTop = originalTop;
 
         this.#element.style.left = `${left}px`;
         this.#element.style.top = `${top}px`;
 
-        // 显示
+        // Show
         this.#element.style.visibility = 'visible';
 
-        // 初始化拖拽功能
+        // Initialize拖拽功能
         this.#initDraggable();
 
         Logger.log('PopoverManager', `Popover shown at (${Math.round(left)}, ${Math.round(top)}), ${positionBelow ? 'below' : 'above'} selection`);
@@ -162,7 +162,7 @@ export class PopoverManager {
     }
 
     handleSelection(event) {
-        // 忽略弹出框内的点击
+        // Ignore弹出框内的点击
         if (this.#element.contains(event.target)) {
             return;
         }
@@ -170,7 +170,7 @@ export class PopoverManager {
         const selection = window.getSelection();
         const selectedText = selection.toString().trim();
 
-        // 没有选中任何文本内容，隐藏弹出框
+        // 没有选中任何TextContent，Hide弹出框
         if (selectedText.length === 0) {
             if (!this.#element.contains(event.target)) {
                 this.hide();
@@ -178,7 +178,7 @@ export class PopoverManager {
             return;
         }
 
-        // 检查选择是否在 markdown body 内
+        // CheckSelect是否在 markdown body 内
         const range = selection.getRangeAt(0);
         const container = range.commonAncestorContainer;
         const element = container.nodeType === 3 ? container.parentElement : container;
@@ -187,17 +187,17 @@ export class PopoverManager {
             return;
         }
 
-        // 跳过 UI 元素
+        // Skip UI Element
         if (this.#shouldSkipElement(element)) {
             return;
         }
 
-        // 检查是否跨块级元素
+        // Check是否跨块级Element
         if (this.#spansMultipleBlocks(range)) {
             Logger.log('PopoverManager', 'Selection spans multiple blocks, trimming to first block');
             const trimmed = this.#trimToFirstBlock(range);
             if (trimmed) {
-                // 检查 trim 后是否有实际文本内容
+                // Check trim 后是否有实际TextContent
                 const trimmedText = trimmed.toString().trim();
                 if (trimmedText.length === 0) {
                     Logger.log('PopoverManager', 'Trimmed selection has no text content, hiding');
@@ -205,8 +205,8 @@ export class PopoverManager {
                     return;
                 }
 
-                // 检查 trim 后的 range 是否在 UI 元素内
-                // 需要检查 range 的起始节点，而不是 commonAncestorContainer
+                // Check trim 后的 range 是否在 UI Element内
+                // 需要Check range 的起始Node，而不是 commonAncestorContainer
                 const startContainer = trimmed.startContainer;
                 const startElement = startContainer.nodeType === 3 ? startContainer.parentElement : startContainer;
                 Logger.log('PopoverManager', `Trimmed start element: ${startElement.tagName}.${startElement.className}`);
@@ -224,7 +224,7 @@ export class PopoverManager {
             return;
         }
 
-        // 检查是否已高亮
+        // Check是否已Highlight
         const isHighlighted = element.closest(CONFIG.SELECTORS.HIGHLIGHT_CLASSES);
 
         this.show(range, isHighlighted);
@@ -234,7 +234,7 @@ export class PopoverManager {
         this.#currentHighlightedElement = highlightedElement;
         this.#updateContent(highlightedElement);
 
-        // 先显示以获取尺寸
+        // 先Show以Get尺寸
         this.#element.style.visibility = 'hidden';
         this.#element.style.display = 'block';
 
@@ -249,11 +249,11 @@ export class PopoverManager {
         // 水平居中对齐（绝对坐标）
         let left = rect.left + scrollX + rect.width / 2 - popoverWidth / 2;
 
-        // 默认在下方显示（绝对坐标）
+        // 默认在下方Show（绝对坐标）
         let top = rect.bottom + scrollY + offset;
         let positionBelow = true;
 
-        // 检查下方空间是否足够
+        // Check下方空间是否足够
         const spaceBelow = window.innerHeight - rect.bottom;
         const spaceAbove = rect.top;
 
@@ -283,18 +283,18 @@ export class PopoverManager {
             top = scrollY + viewportHeight - popoverHeight - margin;
         }
 
-        // 保存原始位置（应用偏移之前的位置）用于计算偏移量
+        // Save原始位置（Apply偏移之前的位置）用于Calculate偏移量
         const originalLeft = left;
         const originalTop = top;
 
-        // 应用保存的偏移量
+        // ApplySave的偏移量
         const savedOffset = this.#getSavedOffset();
         if (savedOffset) {
             left += savedOffset.dx;
             top += savedOffset.dy;
             Logger.log('PopoverManager', `Applied saved offset: dx=${savedOffset.dx}, dy=${savedOffset.dy}`);
 
-            // 应用偏移后再次检查边界，防止屏幕变小后工具条超出视口
+            // Apply偏移后再次Check边界，防止屏幕变小后Utility条超出视口
             if (left < scrollX + margin) {
                 left = scrollX + margin;
             }
@@ -310,7 +310,7 @@ export class PopoverManager {
             Logger.log('PopoverManager', `After boundary check: (${Math.round(left)}, ${Math.round(top)})`);
         }
 
-        // 保存原始位置（应用偏移之前）供 DraggableManager 计算偏移量
+        // Save原始位置（Apply偏移之前）供 DraggableManager Calculate偏移量
         this.#element.dataset.originalLeft = originalLeft;
         this.#element.dataset.originalTop = originalTop;
 
@@ -318,7 +318,7 @@ export class PopoverManager {
         this.#element.style.top = `${top}px`;
         this.#element.style.visibility = 'visible';
 
-        // 初始化拖拽功能
+        // Initialize拖拽功能
         this.#initDraggable();
 
         Logger.log('PopoverManager', `Popover positioned at (${left}, ${top}), ${positionBelow ? 'below' : 'above'} highlight`);
@@ -331,7 +331,7 @@ export class PopoverManager {
 
         document.body.appendChild(this.#element);
 
-        // 设置点击事件
+        // Settings点击Event
         this.#element.addEventListener('click', (e) => {
             const action = e.target.dataset.action;
             if (!action) return;
@@ -349,10 +349,10 @@ export class PopoverManager {
 
     #updateContent(highlightedElement) {
         if (highlightedElement) {
-            // 已高亮：显示取消高亮按钮
+            // 已Highlight：ShowCancelHighlightButton
             this.#element.innerHTML = '<button data-action="unhighlight">Unhighlight</button>';
         } else {
-            // 未高亮：显示注解按钮
+            // 未Highlight：Show注解Button
             this.#element.innerHTML = `
                 <button data-action="highlight-orange">Orange</button>
                 <button data-action="highlight-green">Green</button>
@@ -405,16 +405,16 @@ export class PopoverManager {
     }
 
     /**
-     * 初始化拖拽功能
+     * Initialize拖拽功能
      * @private
      */
     #initDraggable() {
-        // 如果已存在拖拽实例，先销毁
+        // 如果已存在拖拽Instance，先销毁
         if (this.#draggable) {
             this.#draggable.destroy();
         }
 
-        // 创建新的拖拽实例
+        // Create新的拖拽Instance
         this.#draggable = new DraggableManager(this.#element, {
             storageKey: 'markon-popover-offset',
             saveOffset: true,
@@ -425,9 +425,9 @@ export class PopoverManager {
     }
 
     /**
-     * 获取保存的偏移量
+     * GetSave的偏移量
      * @private
-     * @returns {Object|null} 偏移量对象 {dx, dy} 或 null
+     * @returns {Object|null} 偏移量Object {dx, dy} 或 null
      */
     #getSavedOffset() {
         try {

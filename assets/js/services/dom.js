@@ -1,10 +1,10 @@
 /**
- * DOM 服务 - 纯技术，无业务逻辑
+ * DOM service - pure technical, no business logic
  */
 import { CONFIG } from '../core/config.js';
 
 export const DOM = {
-    // 获取块级父元素
+    // Get block-level parent element
     getBlockParent(node, container) {
         let current = node.nodeType === 3 ? node.parentElement : node;
         while (current && current !== container) {
@@ -14,7 +14,7 @@ export const DOM = {
         return null;
     },
 
-    // 查找最后一个文本节点
+    // Find最后一个TextNode
     findLastTextNode(element) {
         let lastText = null;
         const walk = (node) => {
@@ -28,7 +28,7 @@ export const DOM = {
         return lastText;
     },
 
-    // 检查元素是否应跳过
+    // CheckElement是否应Skip
     shouldSkip(element) {
         if (element.nodeType !== 1) return false;
         if (element.id && CONFIG.SKIP_ELEMENTS.IDS.has(element.id)) return true;
@@ -38,7 +38,7 @@ export const DOM = {
         return false;
     },
 
-    // 安全获取高度
+    // 安全Get高度
     getHeight(element, fallback = 80) {
         const height = element.offsetHeight;
         return height > 0 ? height : fallback;

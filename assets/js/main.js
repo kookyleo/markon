@@ -1,6 +1,6 @@
 /**
- * MarkonApp - 主应用类
- * 整合所有模块，统一初始化和管理
+ * MarkonApp - Main application class
+ * Integrates all modules with unified initialization and management
  */
 
 import { CONFIG } from './core/config.js';
@@ -19,10 +19,10 @@ import { AnnotationNavigator } from './navigators/annotation-navigator.js';
 import { ModalManager, showConfirmDialog } from './components/modal.js';
 
 /**
- * Markon 主应用类
+ * Markon Main application class
  */
 export class MarkonApp {
-    // 管理器实例
+    // Manager instances
     #storage;
     #wsManager;
     #annotationManager;
@@ -33,12 +33,12 @@ export class MarkonApp {
     #tocNavigator;
     #annotationNavigator;
 
-    // DOM 元素
+    // DOM elements
     #markdownBody;
     #filePath;
     #isSharedMode;
 
-    // 滚动控制
+    // Scroll control
     #scrollAnimationId = null;
     #scrollCancelled = false;
 
@@ -59,63 +59,63 @@ export class MarkonApp {
     }
 
     /**
-     * 初始化应用
+     * Initialize application
      */
     async init() {
         if (!this.#markdownBody) return;
 
-        // 1. 初始化存储
+        // 1. Initialize storage
         await this.#initStorage();
 
-        // 2. 初始化管理器
+        // 2. Initialize managers
         this.#initManagers();
 
-        // 3. 加载数据
+        // 3. Load data
         await this.#loadData();
 
-        // 4. 应用到 DOM
+        // 4. Apply to DOM
         this.#applyToDOM();
 
-        // 5. 设置事件监听器
+        // 5. Setup event listeners
         this.#setupEventListeners();
 
-        // 6. 注册快捷键
+        // 6. Register keyboard shortcuts
         this.#registerShortcuts();
 
-        // 7. 修复 TOC HTML 实体
+        // 7. Fix TOC HTML entities
         this.#fixTocHtmlEntities();
 
-        // 8. 更新清除按钮文本
+        // 8. Update clear button text
         this.#updateClearButtonText();
 
         Logger.log('MarkonApp', 'Initialization complete');
     }
 
     /**
-     * 初始化存储
+     * Initialize storage
      * @private
      */
     async #initStorage() {
         if (this.#isSharedMode) {
-            // 共享模式：初始化 WebSocket
+            // Shared mode: initialize WebSocket
             this.#wsManager = new WebSocketManager(this.#filePath);
 
             try {
                 await this.#wsManager.connect();
                 Logger.log('MarkonApp', 'WebSocket connected');
 
-                // 暴露原生 WebSocket 对象给 viewed.js 使用
+                // Expose native WebSocket object for viewed.js
                 window.ws = this.#wsManager.getWebSocket();
                 Logger.log('MarkonApp', 'Exposed WebSocket to window.ws for viewed.js');
 
-                // 如果 viewedManager 已经存在，更新它的配置
+                // If viewedManager already exists, update its configuration
                 if (window.viewedManager) {
-                    // 更新 isSharedMode（可能在初始化时是 false）
+                    // Update isSharedMode (may be false during initialization)
                     if (!window.viewedManager.isSharedMode) {
                         window.viewedManager.isSharedMode = true;
                         Logger.log('MarkonApp', 'Updated viewedManager.isSharedMode to true');
                     }
-                    // 更新 WebSocket 连接
+                    // Update WebSocket connection
                     if (!window.viewedManager.ws) {
                         window.viewedManager.ws = window.ws;
                         window.viewedManager.setupWebSocketListeners();
@@ -126,39 +126,39 @@ export class MarkonApp {
                 Logger.error('MarkonApp', 'WebSocket connection failed:', error);
             }
 
-            // 设置 WebSocket 消息处理器
+            // Setup WebSocket message handlers
             this.#setupWebSocketHandlers();
         }
 
-        // 创建存储管理器（自动选择策略）
+        // Create storage manager (auto-select strategy)
         this.#storage = new StorageManager(this.#filePath, this.#isSharedMode, this.#wsManager);
     }
 
     /**
-     * 初始化管理器
+     * Initialize managers
      * @private
      */
     #initManagers() {
-        // 注解管理器
+        // Annotation manager
         this.#annotationManager = new AnnotationManager(this.#storage, this.#markdownBody);
 
-        // 笔记管理器
+        // Note manager
         this.#noteManager = new NoteManager(this.#annotationManager, this.#markdownBody);
 
-        // 弹出框管理器
+        // Popover manager
         this.#popoverManager = new PopoverManager(this.#markdownBody);
 
-        // 撤销管理器
+        // Undo manager
         this.#undoManager = new UndoManager();
 
-        // 快捷键管理器
+        // Keyboard shortcuts manager
         this.#shortcutsManager = new KeyboardShortcutsManager();
 
-        // 导航器
+        // Navigators
         this.#tocNavigator = new TOCNavigator();
         this.#annotationNavigator = new AnnotationNavigator();
 
-        // 设置弹出框动作回调
+        // Setup popover action callbacks
         this.#popoverManager.onAction((action, data) => {
             this.#handlePopoverAction(action, data);
         });
@@ -167,7 +167,7 @@ export class MarkonApp {
     }
 
     /**
-     * 加载数据
+     * Load data
      * @private
      */
     async #loadData() {
@@ -176,24 +176,24 @@ export class MarkonApp {
     }
 
     /**
-     * 应用到 DOM
+     * Apply to DOM
      * @private
      */
     #applyToDOM() {
-        // 应用注解
+        // Apply annotations
         this.#annotationManager.applyToDOM();
 
-        // 渲染笔记卡片
+        // Render note cards
         this.#noteManager.render();
         this.#noteManager.setupResponsiveLayout();
     }
 
     /**
-     * 设置事件监听器
+     * Setup event listeners
      * @private
      */
     #setupEventListeners() {
-        // 选择事件
+        // SelectEvent
         document.addEventListener('mouseup', (e) => {
             this.#popoverManager.handleSelection(e);
         });
@@ -202,7 +202,7 @@ export class MarkonApp {
             this.#popoverManager.handleSelection(e);
         });
 
-        // 点击高亮元素
+        // Click on highlighted element
         document.addEventListener('click', (e) => {
             const isHighlighted = e.target.closest(CONFIG.SELECTORS.HIGHLIGHT_CLASSES);
             if (isHighlighted) {
@@ -210,26 +210,26 @@ export class MarkonApp {
             }
         });
 
-        // 笔记卡片点击事件
+        // Note card click event
         this.#setupNoteClickHandlers();
 
-        // TOC 相关事件
+        // TOC RelatedEvent
         this.#setupTOCEvents();
 
         // 鼠标点击章节聚焦
         this.#setupHeadingClickFocus();
 
-        // 双击标题切换折叠/展开（viewed 模式启用时）
+        // 双击HeadingToggle折叠/展开（viewed Mode启用时）
         if (document.querySelector('meta[name="enable-viewed"]')) {
             this.#setupHeadingDoubleClick();
         }
 
-        // 全局键盘事件
+        // 全局键盘Event
         document.addEventListener('keydown', (e) => {
             this.#shortcutsManager.handle(e);
         });
 
-        // 外部点击隐藏弹出框
+        // 外部点击Hide弹出框
         this.#setupOutsideClickHandler();
 
         Logger.log('MarkonApp', 'Event listeners setup complete');
@@ -278,7 +278,7 @@ export class MarkonApp {
     }
 
     /**
-     * 注册快捷键
+     * Register keyboard shortcuts
      * @private
      */
     #registerShortcuts() {
@@ -295,7 +295,7 @@ export class MarkonApp {
             this.#toggleTOC();
         });
 
-        // 撤销/重做
+        // Undo/Redo
         this.#shortcutsManager.register('UNDO', () => {
             this.#handleUndo();
         });
@@ -308,7 +308,7 @@ export class MarkonApp {
             this.#handleRedo();
         });
 
-        // 导航
+        // Navigation
         this.#shortcutsManager.register('NEXT_HEADING', () => {
             this.#navigateHeading('next');
         });
@@ -326,7 +326,7 @@ export class MarkonApp {
         });
 
         this.#shortcutsManager.register('SCROLL_HALF_PAGE_DOWN', () => {
-            // 使用自定义滚动，1/3 页，持续时间 500ms
+            // 使用自定义滚动，1/3 页，持续Time 500ms
             this.#smoothScrollBy(window.innerHeight / 3, 500);
         });
 
@@ -345,28 +345,28 @@ export class MarkonApp {
     }
 
     /**
-     * 处理弹出框动作
+     * Handle弹出框动作
      * @private
      */
     async #handlePopoverAction(action, data) {
         const { selection, highlightedElement } = data;
 
         if (action === 'unhighlight') {
-            // 移除高亮
+            // 移除Highlight
             if (highlightedElement) {
                 const annotationId = highlightedElement.dataset.annotationId;
                 await this.#annotationManager.delete(annotationId);
                 this.#annotationManager.removeFromDOM(annotationId);
                 this.#noteManager.render();
 
-                // 记录撤销
+                // 记录Undo
                 this.#undoManager.push({
                     type: 'delete_annotation',
                     annotation: { id: annotationId }
                 });
             }
         } else if (action.startsWith('highlight-')) {
-            // 添加高亮
+            // 添加Highlight
             const annotation = this.#annotationManager.createAnnotation(
                 selection,
                 action,
@@ -375,13 +375,13 @@ export class MarkonApp {
             await this.#annotationManager.add(annotation);
             this.#annotationManager.applyToDOM([annotation]);
 
-            // 记录撤销
+            // 记录Undo
             this.#undoManager.push({
                 type: 'add_annotation',
                 annotation: annotation
             });
         } else if (action === 'strikethrough') {
-            // 添加删除线
+            // 添加Delete线
             const annotation = this.#annotationManager.createAnnotation(
                 selection,
                 CONFIG.ANNOTATION_TYPES.STRIKETHROUGH,
@@ -390,28 +390,28 @@ export class MarkonApp {
             await this.#annotationManager.add(annotation);
             this.#annotationManager.applyToDOM([annotation]);
 
-            // 记录撤销
+            // 记录Undo
             this.#undoManager.push({
                 type: 'add_annotation',
                 annotation: annotation
             });
         } else if (action === 'add-note') {
-            // 添加笔记 - 不清除选择，保持选中状态直到模态框关闭
+            // 添加Note - 不ClearSelect，保持选中State直到模态框Close
             this.#showNoteInputModal(selection);
-            return; // 提前返回，不清除选择
+            return; // 提前Return，不ClearSelect
         }
 
-        // 清除选择（add-note 操作除外）
+        // ClearSelect（add-note 操作除外）
         window.getSelection().removeAllRanges();
     }
 
     /**
-     * 显示笔记输入模态框
+     * ShowNoteInput模态框
      * @private
      */
     #showNoteInputModal(selection, annotation = null) {
-        // 创建临时高亮覆盖层来显示选中的文本
-        // （不能使用真实的 selection 因为会与 textarea 焦点冲突）
+        // Create临时Highlight覆盖层来Show选中的Text
+        // （不能使用真实的 selection 因为会与 textarea 焦点Conflict）
         const createSelectionOverlay = () => {
             const rects = selection.getClientRects();
             const overlays = [];
@@ -427,7 +427,7 @@ export class MarkonApp {
                 overlay.style.height = `${rect.height}px`;
                 overlay.style.backgroundColor = 'rgba(100, 150, 255, 0.3)';
                 overlay.style.pointerEvents = 'none';
-                overlay.style.zIndex = '9998'; // 在 modal (9999) 下方，但在内容上方
+                overlay.style.zIndex = '9998'; // 在 modal (9999) 下方，但在Content上方
                 document.body.appendChild(overlay);
                 overlays.push(overlay);
             }
@@ -441,7 +441,7 @@ export class MarkonApp {
             selectionOverlays.forEach(overlay => overlay.remove());
         };
 
-        // 获取选择位置（用于模态框定位）
+        // GetSelect位置（用于模态框定位）
         const rect = selection.getBoundingClientRect();
         const anchorElement = {
             getBoundingClientRect: () => rect
@@ -453,11 +453,11 @@ export class MarkonApp {
             onSave: async (noteText) => {
                 if (noteText) {
                     if (annotation) {
-                        // 编辑现有笔记
+                        // Edit现有Note
                         annotation.note = noteText;
                         await this.#annotationManager.add(annotation);
                     } else {
-                        // 创建新笔记
+                        // Create新Note
                         const newAnnotation = this.#annotationManager.createAnnotation(
                             selection,
                             CONFIG.ANNOTATION_TYPES.HAS_NOTE,
@@ -467,28 +467,28 @@ export class MarkonApp {
                         await this.#annotationManager.add(newAnnotation);
                         this.#annotationManager.applyToDOM([newAnnotation]);
 
-                        // 记录撤销
+                        // 记录Undo
                         this.#undoManager.push({
                             type: 'add_annotation',
                             annotation: newAnnotation
                         });
                     }
 
-                    // 重新渲染笔记卡片
+                    // 重新Render note cards
                     this.#noteManager.render();
                 } else if (annotation) {
-                    // 删除笔记（如果文本为空）
+                    // DeleteNote（如果Text为空）
                     await this.#annotationManager.delete(annotation.id);
                     this.#annotationManager.removeFromDOM(annotation.id);
                     this.#noteManager.render();
                 }
 
-                // 保存后清理覆盖层和选择
+                // Save后清理覆盖层和Select
                 cleanupOverlays();
                 window.getSelection().removeAllRanges();
             },
             onCancel: () => {
-                // 取消时清理覆盖层和选择
+                // Cancel时清理覆盖层和Select
                 cleanupOverlays();
                 window.getSelection().removeAllRanges();
             }
@@ -496,7 +496,7 @@ export class MarkonApp {
     }
 
     /**
-     * 设置 WebSocket 处理器
+     * Settings WebSocket Handle器
      * @private
      */
     #setupWebSocketHandlers() {
@@ -513,15 +513,15 @@ export class MarkonApp {
         });
 
         this.#wsManager.on(CONFIG.WS_MESSAGE_TYPES.NEW_ANNOTATION, (message) => {
-            // 检查是否已存在（本地刚创建的标注）
+            // Check是否已存在（Local刚Create的标注）
             const existingAnnotation = this.#annotationManager.getById(message.annotation.id);
             if (existingAnnotation) {
-                // 已存在，说明是本地创建的，跳过处理
+                // 已存在，说明是LocalCreate的，SkipHandle
                 Logger.log('WebSocket', `Annotation ${message.annotation.id} already exists locally, skipping`);
                 return;
             }
 
-            // 从远程客户端创建的新标注
+            // 从远程客户端Create的新标注
             this.#annotationManager.add(message.annotation, true); // skipSave=true: from remote
             this.#annotationManager.applyToDOM([message.annotation]);
             this.#noteManager.render();
@@ -543,12 +543,12 @@ export class MarkonApp {
     }
 
     /**
-     * 设置笔记点击处理器
+     * SettingsNote点击Handle器
      * @private
      */
     #setupNoteClickHandlers() {
         document.body.addEventListener('click', async (e) => {
-            // 编辑按钮
+            // EditButton
             if (e.target.classList.contains('note-edit')) {
                 const annotationId = e.target.dataset.annotationId;
                 const annotation = this.#annotationManager.getById(annotationId);
@@ -564,7 +564,7 @@ export class MarkonApp {
                 return;
             }
 
-            // 删除按钮
+            // DeleteButton
             if (e.target.classList.contains('note-delete')) {
                 const annotationId = e.target.dataset.annotationId;
                 showConfirmDialog('Delete this note?', async () => {
@@ -572,11 +572,11 @@ export class MarkonApp {
                     this.#annotationManager.removeFromDOM(annotationId);
                     this.#noteManager.render();
 
-                    // 关闭窄屏模式下的笔记弹窗
+                    // Close窄屏Mode下的NoteModal
                     const popup = document.querySelector('.note-popup');
                     if (popup) popup.remove();
 
-                    // 记录撤销
+                    // 记录Undo
                     this.#undoManager.push({
                         type: 'delete_annotation',
                         annotation: { id: annotationId }
@@ -586,14 +586,14 @@ export class MarkonApp {
                 return;
             }
 
-            // 点击笔记元素
+            // 点击NoteElement
             if (e.target.classList.contains('has-note')) {
                 const annotationId = e.target.dataset.annotationId;
                 e.target.classList.add('highlight-active');
 
-                // 响应式处理
+                // 响应式Handle
                 if (window.innerWidth > CONFIG.BREAKPOINTS.WIDE_SCREEN) {
-                    // 宽屏：高亮笔记卡
+                    // 宽屏：HighlightNote卡
                     const noteCard = document.querySelector(`.note-card-margin[data-annotation-id="${annotationId}"]`);
                     if (noteCard) {
                         noteCard.classList.add('highlight-active');
@@ -603,7 +603,7 @@ export class MarkonApp {
                         }
                     }
                 } else {
-                    // 窄屏：显示弹窗
+                    // 窄屏：ShowModal
                     this.#noteManager.showNotePopup(e.target, annotationId);
                 }
 
@@ -613,7 +613,7 @@ export class MarkonApp {
     }
 
     /**
-     * 设置 TOC 事件
+     * Settings TOC Event
      * @private
      */
     #setupTOCEvents() {
@@ -622,7 +622,7 @@ export class MarkonApp {
 
         if (!tocIcon || !tocContainer) return;
 
-        // 切换 TOC
+        // Toggle TOC
         const toggleToc = (e) => {
             tocContainer.classList.toggle('active');
             e.stopPropagation();
@@ -632,7 +632,7 @@ export class MarkonApp {
         tocIcon.addEventListener('click', toggleToc);
         tocIcon.addEventListener('touchend', toggleToc);
 
-        // 外部点击关闭
+        // 外部点击Close
         const closeToc = (e) => {
             if (tocContainer.classList.contains('active') && !tocContainer.contains(e.target)) {
                 tocContainer.classList.remove('active');
@@ -642,12 +642,12 @@ export class MarkonApp {
         document.addEventListener('click', closeToc);
         document.addEventListener('touchend', closeToc);
 
-        // TOC 链接点击
+        // TOC Link点击
         this.#fixTocLinks();
     }
 
     /**
-     * 修复 TOC 链接
+     * 修复 TOC Link
      * @private
      */
     #fixTocLinks() {
@@ -663,19 +663,19 @@ export class MarkonApp {
                 const targetId = href.substring(1);
                 const targetElement = document.getElementById(targetId);
                 if (targetElement) {
-                    // 移除之前的高亮
+                    // 移除之前的Highlight
                     document.querySelectorAll('.heading-focused').forEach(el => {
                         el.classList.remove('heading-focused');
                     });
 
-                    // 添加高亮
+                    // 添加Highlight
                     targetElement.classList.add('heading-focused');
 
                     // 智能滚动
                     Position.smartScrollToHeading(targetElement);
                 }
 
-                // 移动设备关闭 TOC
+                // move设备Close TOC
                 const tocContainer = document.querySelector(CONFIG.SELECTORS.TOC_CONTAINER);
                 if (tocContainer && window.innerWidth <= CONFIG.BREAKPOINTS.WIDE_SCREEN) {
                     tocContainer.classList.remove('active');
@@ -685,7 +685,7 @@ export class MarkonApp {
     }
 
     /**
-     * 修复 TOC HTML 实体
+     * Fix TOC HTML entities
      * @private
      */
     #fixTocHtmlEntities() {
@@ -703,7 +703,7 @@ export class MarkonApp {
     }
 
     /**
-     * 更新清除按钮文本（显示 local/shared 模式）
+     * Update clear button text（Show local/shared Mode）
      * @private
      */
     #updateClearButtonText() {
@@ -715,7 +715,7 @@ export class MarkonApp {
     }
 
     /**
-     * 设置外部点击处理器
+     * Settings外部点击Handle器
      * @private
      */
     #setupOutsideClickHandler() {
@@ -728,13 +728,13 @@ export class MarkonApp {
                 return;
             }
 
-            // 隐藏选择弹窗
+            // HideSelectModal
             if (this.#popoverManager.isVisible()) {
                 this.#popoverManager.hide();
                 window.getSelection().removeAllRanges();
             }
 
-            // 如果点击在正文区域之外，取消当前焦点章节
+            // 如果点击在正文区域之外，Cancel当前焦点章节
             if (!e.target.closest('.markdown-body')) {
                 const focusedHeadings = document.querySelectorAll('.heading-focused');
                 if (focusedHeadings.length > 0) {
@@ -754,10 +754,10 @@ export class MarkonApp {
      * 可中断的平滑滚动
      * @private
      * @param {number} distance - 滚动距离（像素）
-     * @param {number} duration - 滚动持续时间（毫秒）
+     * @param {number} duration - 滚动持续Time（毫秒）
      */
     #smoothScrollBy(distance, duration = 800) {
-        // 取消之前的滚动
+        // Cancel之前的滚动
         if (this.#scrollAnimationId) {
             cancelAnimationFrame(this.#scrollAnimationId);
             this.#scrollAnimationId = null;
@@ -796,7 +796,7 @@ export class MarkonApp {
     }
 
     /**
-     * 取消滚动动画
+     * Cancel滚动动画
      * @private
      */
     #cancelScroll() {
@@ -810,15 +810,15 @@ export class MarkonApp {
     }
 
     /**
-     * 处理 Escape 键
+     * Handle Escape 键
      * @private
      */
     #handleEscapeKey() {
-        // 取消滚动动画
+        // Cancel滚动动画
         if (this.#cancelScroll()) {
             return;
         }
-        // 关闭帮助面板
+        // CloseHelpPanel
         const helpPanel = document.querySelector('.shortcuts-help-panel');
         if (helpPanel) {
             helpPanel.classList.remove('visible');
@@ -826,26 +826,26 @@ export class MarkonApp {
             return;
         }
 
-        // 关闭 TOC
+        // Close TOC
         const tocContainer = document.querySelector(CONFIG.SELECTORS.TOC_CONTAINER);
         if (tocContainer && tocContainer.classList.contains('active')) {
             tocContainer.classList.remove('active');
             return;
         }
 
-        // 隐藏弹出框
+        // Hide弹出框
         if (this.#popoverManager.isVisible()) {
             this.#popoverManager.hide();
             window.getSelection().removeAllRanges();
             return;
         }
 
-        // 清除选择
+        // ClearSelect
         window.getSelection().removeAllRanges();
     }
 
     /**
-     * 切换 TOC
+     * Toggle TOC
      * @private
      */
     #toggleTOC() {
@@ -870,7 +870,7 @@ export class MarkonApp {
     }
 
     /**
-     * 处理撤销
+     * HandleUndo
      * @private
      */
     async #handleUndo() {
@@ -892,7 +892,7 @@ export class MarkonApp {
     }
 
     /**
-     * 处理重做
+     * HandleRedo
      * @private
      */
     async #handleRedo() {
@@ -914,7 +914,7 @@ export class MarkonApp {
     }
 
     /**
-     * 检查标题是否在折叠的章节内
+     * CheckHeading是否在折叠的章节内
      * @private
      */
     #isHeadingInCollapsedSection(heading, allHeadings) {
@@ -923,14 +923,14 @@ export class MarkonApp {
 
         const currentLevel = parseInt(heading.tagName.substring(1));
 
-        // 向前查找，检查是否在某个折叠的父章节内
+        // 向前Find，Check是否在某个折叠的父章节内
         for (let i = headingIndex - 1; i >= 0; i--) {
             const prevHeading = allHeadings[i];
             const prevLevel = parseInt(prevHeading.tagName.substring(1));
 
-            // 如果遇到更高级别（父级）的标题
+            // 如果遇到更高级别（父级）的Heading
             if (prevLevel < currentLevel) {
-                // 如果这个父级标题折叠了，当前标题不可见
+                // 如果这个父级Heading折叠了，当前Heading不可见
                 if (prevHeading.classList.contains('section-collapsed')) {
                     return true;
                 }
@@ -941,15 +941,15 @@ export class MarkonApp {
     }
 
     /**
-     * 导航标题
+     * NavigationHeading
      * @private
      */
     #navigateHeading(direction) {
         const allHeadings = Array.from(document.querySelectorAll(CONFIG.SELECTORS.HEADINGS));
 
-        // 过滤可见的标题：
-        // 1. 不在折叠章节内的标题
-        // 2. 没有 section-content-hidden 类的标题
+        // Filter可见的Heading：
+        // 1. 不在折叠章节内的Heading
+        // 2. 没有 section-content-hidden 类的Heading
         const headings = allHeadings.filter(h => {
             if (h.classList.contains('section-content-hidden')) {
                 return false;
@@ -983,7 +983,7 @@ export class MarkonApp {
     }
 
     /**
-     * 切换当前章节已读状态
+     * Toggle当前章节已读State
      * @private
      */
     #toggleCurrentSectionViewed() {
@@ -997,7 +997,7 @@ export class MarkonApp {
     }
 
     /**
-     * 切换当前章节折叠/展开状态
+     * Toggle当前章节折叠/展开State
      * @private
      */
     #toggleCurrentSectionCollapse() {
@@ -1008,7 +1008,7 @@ export class MarkonApp {
     }
 
     /**
-     * 切换指定标题的折叠/展开状态
+     * Toggle指定Heading的折叠/展开State
      * @private
      */
     #toggleSectionCollapse(heading) {
@@ -1022,7 +1022,7 @@ export class MarkonApp {
     }
 
     /**
-     * 设置标题双击事件
+     * SettingsHeading双击Event
      * @private
      */
     #setupHeadingDoubleClick() {
@@ -1030,7 +1030,7 @@ export class MarkonApp {
             const heading = e.target.closest(CONFIG.SELECTORS.HEADINGS);
             if (!heading) return;
 
-            // 忽略在 checkbox、按钮等交互元素上的双击
+            // Ignore在 checkbox、Button等交互Element上的双击
             if (e.target.closest('.viewed-checkbox') ||
                 e.target.closest('button') ||
                 e.target.closest('a') ||
@@ -1045,7 +1045,7 @@ export class MarkonApp {
     }
 
     /**
-     * 获取文件路径（从 meta 标签）
+     * GetFilePath（从 meta Tag）
      * @private
      */
     #getFilePathFromMeta() {
@@ -1054,8 +1054,8 @@ export class MarkonApp {
     }
 
     /**
-     * 清除当前页面的所有注解
-     * @param {Event} event - 触发事件（用于定位确认对话框）
+     * Clear当前页面的所有注解
+     * @param {Event} event - TriggerEvent（用于定位Confirm对话框）
      */
     async clearAllAnnotations(event = null) {
         const anchorElement = event ? event.target : null;
@@ -1069,13 +1069,13 @@ export class MarkonApp {
             this.#noteManager.clear();
             Logger.log('MarkonApp', 'Notes cleared');
 
-            // 同时清除已读状态（如果启用）
+            // 同时Clear已读State（如果启用）
             if (document.querySelector('meta[name="enable-viewed"]')) {
                 await this.#storage.clearViewedState();
                 Logger.log('MarkonApp', 'Viewed state cleared from storage');
 
-                // 在共享模式下，需要等待 WebSocket 广播后 viewedManager 会自动更新
-                // 在本地模式下，页面会重新加载
+                // 在SharedMode下，需要Waiting WebSocket Broadcast后 viewedManager 会自动Update
+                // 在LocalMode下，页面会重新Load
                 if (this.#isSharedMode && window.viewedManager) {
                     Logger.log('MarkonApp', 'Shared mode: viewedManager will update via WebSocket broadcast');
                 }
@@ -1091,7 +1091,7 @@ export class MarkonApp {
     }
 
     /**
-     * 获取管理器（用于调试）
+     * GetManagement器（用于Debug）
      */
     getManagers() {
         return {
@@ -1115,16 +1115,16 @@ window.clearPageAnnotations = function(event, ws, isSharedAnnotationMode) {
     }
 };
 
-// 应用入口
+// Apply入口
 document.addEventListener('DOMContentLoaded', () => {
     const filePathMeta = document.querySelector('meta[name="file-path"]');
     const sharedAnnotationMeta = document.querySelector('meta[name="shared-annotation"]');
     const isSharedMode = sharedAnnotationMeta?.getAttribute('content') === 'true';
 
-    // 设置全局变量供 viewed.js 使用
+    // Settings全局变量供 viewed.js 使用
     window.isSharedAnnotationMode = isSharedMode;
 
-    // 拦截 TOC 锚点链接点击，使用平滑滚动
+    // 拦截 TOC 锚点Link点击，使用平滑滚动
     document.addEventListener('click', (e) => {
         const link = e.target.closest('a[href^="#"]');
         if (!link) return;
@@ -1139,7 +1139,7 @@ document.addEventListener('DOMContentLoaded', () => {
             e.preventDefault();
             targetElement.scrollIntoView({ behavior: 'smooth', block: 'start' });
 
-            // 更新 URL hash 而不触发跳转
+            // Update URL hash 而不Trigger跳转
             history.pushState(null, '', href);
         }
     });
@@ -1151,7 +1151,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     app.init();
 
-    // 暴露到全局（用于调试和向后兼容）
+    // 暴露到全局（用于Debug和向后兼容）
     window.markonApp = app;
     window.undoManager = app.getManagers().undoManager;
     window.tocNavigator = app.getManagers().tocNavigator;

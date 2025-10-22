@@ -1,10 +1,10 @@
 /**
- * 位置计算服务 - 纯技术，无业务逻辑
+ * Position calculation service - pure technical, no business logic
  */
 import { CONFIG } from '../core/config.js';
 
 export const Position = {
-    // 获取元素绝对位置
+    // Get element absolute position
     getAbsolute(element) {
         const rect = element.getBoundingClientRect();
         const scrollY = window.scrollY || window.pageYOffset;
@@ -35,7 +35,7 @@ export const Position = {
         return { left: newLeft, top: newTop };
     },
 
-    // 智能滚动到标题
+    // 智能滚动到Heading
     smartScrollToHeading(heading) {
         const section = heading.closest('.heading-section') || heading;
         const sectionHeight = section.offsetHeight;

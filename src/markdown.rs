@@ -50,11 +50,11 @@ impl MarkdownRenderer {
         let ss = SyntaxSet::load_defaults_newlines();
         let ts = ThemeSet::load_defaults();
 
-        // 根据主题选择代码高亮样式
+        // Select syntax highlighting theme based on user preference
         let theme_name = match self.theme.as_str() {
             "light" => "Solarized (light)",
             "dark" => "base16-ocean.dark",
-            _ => "base16-ocean.dark", // auto 默认深色
+            _ => "base16-ocean.dark", // auto defaults to dark
         };
         let theme = &ts.themes[theme_name];
 
@@ -76,7 +76,7 @@ impl MarkdownRenderer {
                 }
                 Event::End(TagEnd::CodeBlock) => {
                     if in_code_block {
-                        // 检查是否是 Mermaid 图表
+                        // Check if this is a Mermaid diagram
                         if code_lang.to_lowercase() == "mermaid" {
                             has_mermaid = true;
                             let mermaid_html = format!(
@@ -85,7 +85,7 @@ impl MarkdownRenderer {
                             );
                             new_events.push(Event::Html(CowStr::from(mermaid_html)));
                         } else {
-                            // 普通代码块，进行语法高亮
+                            // Regular code block with syntax highlighting
                             let syntax = ss
                                 .find_syntax_by_extension(&code_lang)
                                 .unwrap_or_else(|| ss.find_syntax_plain_text());
@@ -113,7 +113,7 @@ impl MarkdownRenderer {
                             new_events.push(Event::Html(CowStr::from(highlighted_html)));
                         }
 
-                        // 重置状态
+                        // Reset state
                         in_code_block = false;
                         code_buffer.clear();
                         code_lang.clear();
@@ -122,7 +122,7 @@ impl MarkdownRenderer {
                     }
                 }
                 Event::Text(text) if !in_code_block => {
-                    // 替换 emoji shortcodes
+                    // Replace emoji shortcodes
                     let processed_text = self.replace_emoji_shortcodes(&text);
                     new_events.push(Event::Text(CowStr::from(processed_text)));
                 }
@@ -137,10 +137,10 @@ impl MarkdownRenderer {
         let mut html_output = String::new();
         html::push_html(&mut html_output, new_events.into_iter());
 
-        // 处理 GitHub Alerts
+        // Process GitHub Alerts
         let html_output = self.process_github_alerts(&html_output);
 
-        // 为标题添加 ID 属性并提取目录
+        // Add heading IDs and extract table of contents
         let (html_output, toc) = self.add_heading_ids_and_extract_toc(&html_output);
 
         (html_output, has_mermaid, toc)
@@ -156,14 +156,14 @@ impl MarkdownRenderer {
                     let first_line = first_line.as_str();
                     let remaining = remaining.as_str();
 
-                    // 组合内容
+                    // Combine content
                     let content = if remaining.trim().is_empty() {
                         first_line.to_string()
                     } else {
                         format!("{first_line}{remaining}")
                     };
 
-                    // 生成对应的 alert HTML
+                    // Generate corresponding alert HTML
                     self.generate_alert_html(alert_type, &content)
                 } else {
                     caps[0].to_string()
@@ -214,11 +214,11 @@ impl MarkdownRenderer {
             .replace_all(text, |caps: &regex::Captures| {
                 let shortcode = &caps[1];
 
-                // 使用 emojis crate 查找 emoji
+                // Look up emoji using emojis crate
                 if let Some(emoji) = emojis::get_by_shortcode(shortcode) {
                     emoji.as_str().to_string()
                 } else {
-                    // 如果找不到，保留原始文本
+                    // If not found, keep original text
                     caps[0].to_string()
                 }
             })

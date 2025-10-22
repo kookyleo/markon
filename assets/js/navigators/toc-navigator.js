@@ -1,13 +1,13 @@
 /**
- * TOCNavigator - 目录导航器
- * 提供键盘导航目录的功能（j/k 上下移动，Enter 跳转，折叠/展开等）
+ * TOCNavigator - TOC navigator
+ * 提供键盘Navigate TOC的功能（j/k 上下move，Enter 跳转，折叠/展开等）
  */
 
 import { CONFIG } from '../core/config.js';
 import { Logger } from '../core/utils.js';
 
 /**
- * TOC 导航器类
+ * TOC Navigation器类
  */
 export class TOCNavigator {
     #active = false;
@@ -17,10 +17,10 @@ export class TOCNavigator {
     #collapsedItems = new Set(); // 按索引跟踪折叠的项
 
     /**
-     * 激活导航器
+     * 激活Navigation器
      */
     activate() {
-        // 获取所有 TOC 链接
+        // Get所有 TOC Link
         const tocContainer = document.querySelector(CONFIG.SELECTORS.TOC_CONTAINER);
         if (!tocContainer) {
             Logger.warn('TOCNavigator', 'TOC container not found');
@@ -33,32 +33,32 @@ export class TOCNavigator {
             return;
         }
 
-        // 恢复之前的焦点位置，或查找当前活动链接，或默认第一个
+        // Resume之前的焦点位置，或Find当前活动Link，或默认第一个
         if (this.#focusedIndex < 0 || this.#focusedIndex >= this.#links.length) {
             const activeLink = tocContainer.querySelector('.toc-item a.active');
             this.#focusedIndex = activeLink ? this.#links.indexOf(activeLink) : 0;
         }
 
-        // 初始化折叠指示器
+        // Initialize折叠指示器
         this.#links.forEach((link, index) => {
             this.#updateCollapseIndicator(index);
         });
 
-        // 设置初始焦点
+        // Settings初始焦点
         this.#setFocus(this.#focusedIndex);
 
-        // 设置键盘处理器
+        // Settings键盘Handle器
         this.#active = true;
         this.#setupKeyboardHandler();
 
-        // 添加视觉边框表示活动导航
+        // 添加视觉边框表示活动Navigation
         tocContainer.classList.add('toc-nav-active');
 
         Logger.log('TOCNavigator', 'Activated');
     }
 
     /**
-     * 停用导航器
+     * 停用Navigation器
      */
     deactivate() {
         this.#active = false;
@@ -75,7 +75,7 @@ export class TOCNavigator {
     }
 
     /**
-     * 检查是否活动
+     * Check是否活动
      * @returns {boolean}
      */
     get active() {
@@ -83,7 +83,7 @@ export class TOCNavigator {
     }
 
     /**
-     * 设置键盘处理器
+     * Settings键盘Handle器
      * @private
      */
     #setupKeyboardHandler() {
@@ -94,7 +94,7 @@ export class TOCNavigator {
         this.#keydownHandler = (e) => {
             if (!this.#active) return;
 
-            // 仅在非输入框时处理按键
+            // 仅在非Input框时Handle按键
             const target = e.target;
             if (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable) {
                 return;
@@ -119,13 +119,13 @@ export class TOCNavigator {
 
             case 'ArrowRight':
                 e.preventDefault();
-                this.#expandOrMoveToChild();
+                this.#expandOrmoveToChild();
                 handled = true;
                 break;
 
             case 'ArrowLeft':
                 e.preventDefault();
-                this.#collapseOrMoveToParent();
+                this.#collapseOrmoveToParent();
                 handled = true;
                 break;
 
@@ -152,7 +152,7 @@ export class TOCNavigator {
     }
 
     /**
-     * 移除键盘处理器
+     * 移除键盘Handle器
      * @private
      */
     #removeKeyboardHandler() {
@@ -163,7 +163,7 @@ export class TOCNavigator {
     }
 
     /**
-     * 设置焦点
+     * Settings焦点
      * @private
      */
     #setFocus(index) {
@@ -171,10 +171,10 @@ export class TOCNavigator {
             return;
         }
 
-        // 清除之前的焦点
+        // Clear之前的焦点
         this.#clearFocus();
 
-        // 设置新焦点
+        // Settings新焦点
         this.#focusedIndex = index;
         const link = this.#links[index];
         link.classList.add('toc-focused');
@@ -184,7 +184,7 @@ export class TOCNavigator {
     }
 
     /**
-     * 清除焦点
+     * Clear焦点
      * @private
      */
     #clearFocus() {
@@ -192,7 +192,7 @@ export class TOCNavigator {
     }
 
     /**
-     * 移动到下一个
+     * move到下一个
      * @private
      */
     #moveNext() {
@@ -205,7 +205,7 @@ export class TOCNavigator {
     }
 
     /**
-     * 移动到上一个
+     * move到上一个
      * @private
      */
     #movePrevious() {
@@ -218,10 +218,10 @@ export class TOCNavigator {
     }
 
     /**
-     * 展开或移动到子项
+     * 展开或move到子项
      * @private
      */
-    #expandOrMoveToChild() {
+    #expandOrmoveToChild() {
         const children = this.#getChildren(this.#focusedIndex);
 
         if (children.length === 0) {
@@ -234,16 +234,16 @@ export class TOCNavigator {
             this.#updateVisibility();
             this.#updateCollapseIndicator(this.#focusedIndex);
         } else {
-            // 已展开，移动到第一个子项
+            // 已展开，move到第一个子项
             this.#setFocus(children[0]);
         }
     }
 
     /**
-     * 折叠或移动到父项
+     * 折叠或move到父项
      * @private
      */
-    #collapseOrMoveToParent() {
+    #collapseOrmoveToParent() {
         const children = this.#getChildren(this.#focusedIndex);
 
         if (children.length > 0 && !this.#collapsedItems.has(this.#focusedIndex)) {
@@ -252,7 +252,7 @@ export class TOCNavigator {
             this.#updateVisibility();
             this.#updateCollapseIndicator(this.#focusedIndex);
         } else {
-            // 已折叠或无子项，移动到父项
+            // 已折叠或无子项，move到父项
             const parentIndex = this.#getParentIndex(this.#focusedIndex);
             if (parentIndex !== -1) {
                 this.#setFocus(parentIndex);
@@ -261,7 +261,7 @@ export class TOCNavigator {
     }
 
     /**
-     * 检查是否有子项
+     * Check是否有子项
      * @private
      */
     #hasChildren(index) {
@@ -269,7 +269,7 @@ export class TOCNavigator {
     }
 
     /**
-     * 获取子项
+     * Get子项
      * @private
      */
     #getChildren(index) {
@@ -294,7 +294,7 @@ export class TOCNavigator {
     }
 
     /**
-     * 获取父项索引
+     * Get父项索引
      * @private
      */
     #getParentIndex(index) {
@@ -315,7 +315,7 @@ export class TOCNavigator {
     }
 
     /**
-     * 获取级别
+     * Get级别
      * @private
      */
     #getLevel(index) {
@@ -330,7 +330,7 @@ export class TOCNavigator {
     }
 
     /**
-     * 检查是否可见
+     * Check是否可见
      * @private
      */
     #isVisible(index) {
@@ -353,7 +353,7 @@ export class TOCNavigator {
     }
 
     /**
-     * 获取所有后代
+     * Get所有后代
      * @private
      */
     #getAllDescendants(index) {
@@ -376,7 +376,7 @@ export class TOCNavigator {
     }
 
     /**
-     * 更新可见性
+     * Update可见性
      * @private
      */
     #updateVisibility() {
@@ -387,7 +387,7 @@ export class TOCNavigator {
     }
 
     /**
-     * 更新折叠指示器
+     * Update折叠指示器
      * @private
      */
     #updateCollapseIndicator(index) {
@@ -407,7 +407,7 @@ export class TOCNavigator {
             return;
         }
 
-        // 添加或更新指示器
+        // 添加或Update指示器
         let indicator = link.querySelector('.toc-collapse-indicator');
         if (!indicator) {
             indicator = document.createElement('span');
@@ -420,7 +420,7 @@ export class TOCNavigator {
     }
 
     /**
-     * 导航到当前焦点项
+     * Navigation到当前焦点项
      * @private
      */
     #navigate() {
@@ -432,7 +432,7 @@ export class TOCNavigator {
     }
 
     /**
-     * 关闭导航器
+     * CloseNavigation器
      * @private
      */
     #close() {

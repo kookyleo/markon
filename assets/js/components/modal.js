@@ -1,13 +1,13 @@
 /**
- * ModalManager - 统一的模态框管理器
- * 消除 addNote、editNote、showConfirmDialog 之间的代码重复
+ * ModalManager - Unified modal manager
+ * Eliminate addNote、editNote、showConfirmDialog betweencode duplication
  */
 
 import { Logger } from '../core/utils.js';
 import { Position } from '../services/position.js';
 
 /**
- * 模态框类型枚举
+ * 模态框Type枚举
  */
 export const ModalType = {
     NOTE_INPUT: 'note_input',
@@ -33,7 +33,7 @@ class BaseModal {
     }
 
     /**
-     * 创建模态框 DOM 元素
+     * Create模态框 DOM Element
      * @returns {HTMLElement}
      */
     create() {
@@ -41,14 +41,14 @@ class BaseModal {
     }
 
     /**
-     * 显示模态框
-     * @param {HTMLElement} anchorElement - 锚点元素（用于定位）
+     * Show模态框
+     * @param {HTMLElement} anchorElement - 锚点Element（用于定位）
      */
     show(anchorElement = null) {
         // 移除已存在的同类模态框
         this.#removeExisting();
 
-        // 创建元素
+        // CreateElement
         this.#element = this.create();
         document.body.appendChild(this.#element);
 
@@ -57,17 +57,17 @@ class BaseModal {
             this.#positionNear(anchorElement);
         }
 
-        // 设置事件监听器
+        // SettingsEventListen器
         this.#setupEventListeners();
 
-        // 聚焦第一个可聚焦元素
+        // 聚焦第一个可聚焦Element
         setTimeout(() => this.#focusFirst(), 0);
 
         Logger.log('Modal', `Showed ${this.#options.className}`);
     }
 
     /**
-     * 关闭模态框
+     * Close模态框
      */
     close() {
         if (this.#element) {
@@ -80,7 +80,7 @@ class BaseModal {
     }
 
     /**
-     * 获取模态框元素
+     * Get模态框Element
      * @returns {HTMLElement|null}
      */
     getElement() {
@@ -99,21 +99,21 @@ class BaseModal {
     }
 
     /**
-     * 在锚点元素附近定位
+     * 在锚点Element附近定位
      * @private
      */
     #positionNear(anchorElement) {
         const rect = anchorElement.getBoundingClientRect();
 
-        // 强制重排以获取准确的尺寸
+        // 强制重排以Get准确的尺寸
         const modalWidth = this.#element.offsetWidth;
         const modalHeight = this.#element.offsetHeight;
 
-        // 检查 Modal 的 position 类型
+        // Check Modal 的 position Type
         const position = getComputedStyle(this.#element).position;
         const isFixed = position === 'fixed';
 
-        // 获取滚动位置（仅在 absolute 定位时需要）
+        // Get滚动位置（仅在 absolute 定位时需要）
         const scrollX = isFixed ? 0 : (window.pageXOffset || document.documentElement.scrollLeft);
         const scrollY = isFixed ? 0 : (window.pageYOffset || document.documentElement.scrollTop);
 
@@ -133,7 +133,7 @@ class BaseModal {
             left = margin;
         }
 
-        // 检查下方空间，如果不够则放在上方
+        // Check下方空间，如果不够则放在上方
         const spaceBelow = viewportHeight - rect.bottom;
         if (spaceBelow < modalHeight + 10) {
             // 放在上方
@@ -150,7 +150,7 @@ class BaseModal {
                 top = viewportHeight - modalHeight - margin;
             }
         } else {
-            // Absolute 定位：使用文档坐标
+            // Absolute 定位：使用Document坐标
             const viewportTop = scrollY;
             const viewportBottom = scrollY + viewportHeight;
 
@@ -169,11 +169,11 @@ class BaseModal {
     }
 
     /**
-     * 设置事件监听器
+     * SettingsEventListen器
      * @private
      */
     #setupEventListeners() {
-        // ESC 键关闭
+        // ESC 键Close
         if (this.#options.closeOnEscape) {
             this.#handlers.keydown = (e) => {
                 if (e.key === 'Escape') {
@@ -184,7 +184,7 @@ class BaseModal {
             document.addEventListener('keydown', this.#handlers.keydown);
         }
 
-        // 点击外部关闭
+        // 点击外部Close
         if (this.#options.closeOnOutsideClick) {
             this.#handlers.click = (e) => {
                 if (!this.#element.contains(e.target)) {
@@ -198,7 +198,7 @@ class BaseModal {
     }
 
     /**
-     * 移除事件监听器
+     * 移除EventListen器
      * @private
      */
     #removeEventListeners() {
@@ -211,7 +211,7 @@ class BaseModal {
     }
 
     /**
-     * 聚焦第一个可聚焦元素
+     * 聚焦第一个可聚焦Element
      * @private
      */
     #focusFirst() {
@@ -226,7 +226,7 @@ class BaseModal {
 }
 
 /**
- * 笔记输入模态框
+ * NoteInput模态框
  */
 export class NoteInputModal extends BaseModal {
     #onSave;
@@ -260,18 +260,18 @@ export class NoteInputModal extends BaseModal {
         const cancelBtn = modal.querySelector('.note-cancel');
         const saveBtn = modal.querySelector('.note-save');
 
-        // 如果有初始值，选中全部文本
+        // 如果有初始值，选中全部Text
         if (this.#initialValue) {
             setTimeout(() => textarea.select(), 0);
         }
 
-        // 取消按钮
+        // CancelButton
         cancelBtn.addEventListener('click', () => {
             this.#onCancel();
             this.close();
         });
 
-        // 保存按钮
+        // SaveButton
         const save = () => {
             const value = textarea.value.trim();
             this.#onSave(value);
@@ -280,7 +280,7 @@ export class NoteInputModal extends BaseModal {
 
         saveBtn.addEventListener('click', save);
 
-        // Enter 保存（Shift+Enter 换行）
+        // Enter Save（Shift+Enter 换行）
         textarea.addEventListener('keydown', (e) => {
             if (e.key === 'Enter' && !e.shiftKey && !e.ctrlKey) {
                 e.preventDefault();
@@ -293,7 +293,7 @@ export class NoteInputModal extends BaseModal {
 }
 
 /**
- * 确认对话框
+ * Confirm对话框
  */
 export class ConfirmModal extends BaseModal {
     #message;
@@ -351,14 +351,14 @@ export class ConfirmModal extends BaseModal {
 }
 
 /**
- * 模态框管理器（静态类）
+ * 模态框Management器（静态类）
  */
 export class ModalManager {
     static #current = null;
 
     /**
-     * 显示笔记输入模态框
-     * @param {Object} options - 配置选项
+     * ShowNoteInput模态框
+     * @param {Object} options - ConfigurationOptions
      * @returns {NoteInputModal}
      */
     static showNoteInput(options = {}) {
@@ -369,8 +369,8 @@ export class ModalManager {
     }
 
     /**
-     * 显示确认对话框
-     * @param {Object} options - 配置选项
+     * ShowConfirm对话框
+     * @param {Object} options - ConfigurationOptions
      * @returns {ConfirmModal}
      */
     static showConfirm(options = {}) {
@@ -381,7 +381,7 @@ export class ModalManager {
     }
 
     /**
-     * 关闭当前模态框
+     * Close当前模态框
      */
     static closeCurrent() {
         if (ModalManager.#current) {
@@ -391,7 +391,7 @@ export class ModalManager {
     }
 
     /**
-     * 获取当前模态框
+     * Get当前模态框
      * @returns {BaseModal|null}
      */
     static getCurrent() {
@@ -400,11 +400,11 @@ export class ModalManager {
 }
 
 /**
- * 便捷函数：显示确认对话框
- * @param {string} message - 消息
- * @param {Function} onConfirm - 确认回调
- * @param {HTMLElement} anchorElement - 锚点元素
- * @param {string} confirmText - 确认按钮文本
+ * 便捷函数：ShowConfirm对话框
+ * @param {string} message - Message
+ * @param {Function} onConfirm - ConfirmCallback
+ * @param {HTMLElement} anchorElement - 锚点Element
+ * @param {string} confirmText - ConfirmButtonText
  * @returns {ConfirmModal}
  */
 export function showConfirmDialog(message, onConfirm, anchorElement = null, confirmText = 'OK') {

@@ -1,5 +1,5 @@
 /**
- * 物理布局引擎 - 纯技术，无业务逻辑
+ * Physical layout engine - pure technical, no business logic
  */
 import { CONFIG } from '../core/config.js';
 import { UnionFind } from './union-find.js';

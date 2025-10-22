@@ -1,5 +1,5 @@
 /**
- * XPath 服务 - 纯技术，无业务逻辑
+ * XPath service - pure technical, no business logic
  */
 import { CONFIG } from '../core/config.js';
 
@@ -13,7 +13,7 @@ const shouldSkip = (el) => {
 };
 
 export const XPath = {
-    // 生成简单XPath
+    // Generate simple XPath
     create(node) {
         const parts = [];
         let current = node;
@@ -28,7 +28,7 @@ export const XPath = {
         return parts.length === 0 ? '//article[1]' : `//article[1]/${parts.join('/')}`;
     },
 
-    // 通过XPath获取节点
+    // 通过XPathGetNode
     resolve(path) {
         const match = path.match(/^\/\/article\[1\](?:\/(.+))?$/);
         if (!match) return null;
@@ -55,7 +55,7 @@ export const XPath = {
         return current;
     },
 
-    // 计算绝对偏移
+    // Calculate绝对偏移
     getAbsoluteOffset(container, offset) {
         const target = container.nodeType === 3 ? container.parentNode : container;
         let absoluteOffset = 0;
@@ -78,7 +78,7 @@ export const XPath = {
         return absoluteOffset;
     },
 
-    // 从绝对偏移查找节点
+    // 从绝对偏移FindNode
     findNode(element, absoluteOffset) {
         let currentOffset = 0, targetNode = null, relativeOffset = 0, lastTextNode = null;
 

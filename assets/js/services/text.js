@@ -1,14 +1,14 @@
 /**
- * 文本服务 - 纯技术，无业务逻辑
+ * Text service - pure technical, no business logic
  */
 
 export const Text = {
-    // 标准化文本（折叠空白）
+    // Normalize text (collapse whitespace)
     normalize(text) {
         return text.replace(/\s+/g, ' ').trim();
     },
 
-    // HTML 实体解码
+    // HTML 实体Decode
     decodeEntities(text) {
         return text
             .replace(/&lt;/g, '<')

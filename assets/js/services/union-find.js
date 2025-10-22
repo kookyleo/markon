@@ -1,5 +1,5 @@
 /**
- * Union-Find 数据结构 - 纯技术，无业务逻辑
+ * Union-Find data structure - pure technical, no business logic
  */
 
 export class UnionFind {

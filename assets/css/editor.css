@@ -15,7 +15,7 @@
     cursor: grab;
 }
 
-/* 拖动手柄标识 - 左侧两条细竖线 */
+/* Drag handle indicator - two thin vertical lines on the left */
 .selection-popover::before {
     content: '';
     position: absolute;

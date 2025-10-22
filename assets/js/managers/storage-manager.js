@@ -1,13 +1,13 @@
 /**
- * StorageManager - 统一的存储抽象层
- * 支持本地模式（localStorage）和共享模式（WebSocket）
+ * StorageManager - Unified storage abstraction layer
+ * Supports local mode (localStorage) and shared mode (WebSocket)
  */
 
 import { CONFIG } from '../core/config.js';
 import { Logger } from '../core/utils.js';
 
 /**
- * 存储策略接口
+ * StorageStrategy接口
  */
 class StorageStrategy {
     async load(key) {
@@ -24,7 +24,7 @@ class StorageStrategy {
 }
 
 /**
- * 本地存储策略（localStorage）
+ * LocalStorageStrategy（localStorage）
  */
 class LocalStorageStrategy extends StorageStrategy {
     async load(key) {
@@ -57,11 +57,11 @@ class LocalStorageStrategy extends StorageStrategy {
 }
 
 /**
- * 共享存储策略（WebSocket）
+ * SharedStorageStrategy（WebSocket）
  */
 class SharedStorageStrategy extends StorageStrategy {
     #wsManager;
-    #cache = new Map();  // 本地缓存，减少网络请求
+    #cache = new Map();  // Local缓存，减少网络请求
 
     constructor(wsManager) {
         super();
@@ -69,18 +69,18 @@ class SharedStorageStrategy extends StorageStrategy {
     }
 
     async load(key) {
-        // 共享模式下，数据通过 WebSocket 消息接收
-        // 这里返回缓存的数据
+        // SharedMode下，Data通过 WebSocket Message接收
+        // 这里Return缓存的Data
         return this.#cache.get(key) || null;
     }
 
     async save(key, data) {
-        // 更新本地缓存
+        // UpdateLocal缓存
         this.#cache.set(key, data);
 
-        // 发送到服务器（仅用于非注解数据，如 viewed state）
+        // 发送到服务器（仅用于非注解Data，如 viewed state）
         if (this.#wsManager && this.#wsManager.isConnected()) {
-            // 根据 key 类型发送不同的消息
+            // 根据 key Type发送不同的Message
             const messageType = this.#getMessageType(key, 'save');
             if (messageType === CONFIG.WS_MESSAGE_TYPES.UPDATE_VIEWED_STATE) {
                 await this.#wsManager.send({
@@ -95,8 +95,8 @@ class SharedStorageStrategy extends StorageStrategy {
     }
 
     /**
-     * 保存单个注解（共享模式专用）
-     * @param {Object} annotation - 注解对象
+     * Save单个注解（SharedMode专用）
+     * @param {Object} annotation - 注解Object
      */
     async saveSingleAnnotation(annotation) {
         if (this.#wsManager && this.#wsManager.isConnected()) {
@@ -111,19 +111,19 @@ class SharedStorageStrategy extends StorageStrategy {
     }
 
     async delete(key) {
-        // 从缓存中删除
+        // 从缓存中Delete
         this.#cache.delete(key);
 
-        // 发送删除请求到服务器
+        // 发送Delete请求到服务器
         if (this.#wsManager && this.#wsManager.isConnected()) {
-            // delete 用于清除所有数据（annotations 或 viewed state）
+            // delete 用于Clear所有Data（annotations 或 viewed state）
             if (key.includes('annotations')) {
                 await this.#wsManager.send({
                     type: CONFIG.WS_MESSAGE_TYPES.CLEAR_ANNOTATIONS
                 });
                 Logger.log('SharedStorage', 'Sent clear annotations via WebSocket');
             }
-            // viewed state 的清除通过更新为空对象实现
+            // viewed state 的Clear通过Update为空Object实现
             else if (key.includes('viewed')) {
                 await this.#wsManager.send({
                     type: CONFIG.WS_MESSAGE_TYPES.UPDATE_VIEWED_STATE,
@@ -135,7 +135,7 @@ class SharedStorageStrategy extends StorageStrategy {
     }
 
     /**
-     * 删除单个注解（共享模式专用）
+     * Delete单个注解（SharedMode专用）
      * @param {string} annotationId - 注解 ID
      */
     async deleteSingleAnnotation(annotationId) {
@@ -151,9 +151,9 @@ class SharedStorageStrategy extends StorageStrategy {
     }
 
     /**
-     * 更新缓存（当从 WebSocket 接收到数据时调用）
+     * Update缓存（当从 WebSocket 接收到Data时调用）
      * @param {string} key - 键名
-     * @param {*} data - 数据
+     * @param {*} data - Data
      */
     updateCache(key, data) {
         this.#cache.set(key, data);
@@ -161,8 +161,8 @@ class SharedStorageStrategy extends StorageStrategy {
     }
 
     /**
-     * 清除缓存
-     * @param {string} key - 键名（可选，不传则清除全部）
+     * Clear缓存
+     * @param {string} key - 键名（可选，不传则Clear全部）
      */
     clearCache(key = null) {
         if (key) {
@@ -173,7 +173,7 @@ class SharedStorageStrategy extends StorageStrategy {
     }
 
     /**
-     * 根据 key 推断消息类型
+     * 根据 key 推断Message types
      * @private
      */
     #getMessageType(key, action) {
@@ -189,8 +189,8 @@ class SharedStorageStrategy extends StorageStrategy {
 }
 
 /**
- * 存储管理器
- * 根据模式自动选择存储策略
+ * StorageManagement器
+ * 根据Mode自动SelectStorageStrategy
  */
 export class StorageManager {
     #strategy;
@@ -201,7 +201,7 @@ export class StorageManager {
         this.#filePath = filePath;
         this.#isSharedMode = isSharedMode;
 
-        // 选择存储策略
+        // SelectStorageStrategy
         if (isSharedMode && wsManager) {
             this.#strategy = new SharedStorageStrategy(wsManager);
             Logger.log('StorageManager', 'Using shared storage strategy');
@@ -212,7 +212,7 @@ export class StorageManager {
     }
 
     /**
-     * 加载注解数据
+     * Load注解Data
      * @returns {Promise<Array>}
      */
     async loadAnnotations() {
@@ -222,8 +222,8 @@ export class StorageManager {
     }
 
     /**
-     * 保存注解数据
-     * @param {Array} annotations - 注解数组
+     * Save注解Data
+     * @param {Array} annotations - 注解数Group
      */
     async saveAnnotations(annotations) {
         const key = CONFIG.STORAGE_KEYS.ANNOTATIONS(this.#filePath);
@@ -231,15 +231,15 @@ export class StorageManager {
     }
 
     /**
-     * 保存单个注解
-     * @param {Object} annotation - 注解对象
+     * Save单个注解
+     * @param {Object} annotation - 注解Object
      */
     async saveAnnotation(annotation) {
-        // 共享模式：直接发送单个注解到服务器
+        // SharedMode：直接发送单个注解到服务器
         if (this.#isSharedMode && this.#strategy instanceof SharedStorageStrategy) {
             await this.#strategy.saveSingleAnnotation(annotation);
         } else {
-            // 本地模式：更新整个数组
+            // LocalMode：Update整个数Group
             const annotations = await this.loadAnnotations();
             const index = annotations.findIndex(a => a.id === annotation.id);
 
@@ -254,15 +254,15 @@ export class StorageManager {
     }
 
     /**
-     * 删除注解
+     * Delete注解
      * @param {string} annotationId - 注解 ID
      */
     async deleteAnnotation(annotationId) {
-        // 共享模式：直接发送删除请求到服务器
+        // SharedMode：直接发送Delete请求到服务器
         if (this.#isSharedMode && this.#strategy instanceof SharedStorageStrategy) {
             await this.#strategy.deleteSingleAnnotation(annotationId);
         } else {
-            // 本地模式：更新整个数组
+            // LocalMode：Update整个数Group
             const annotations = await this.loadAnnotations();
             const filtered = annotations.filter(a => a.id !== annotationId);
             await this.saveAnnotations(filtered);
@@ -270,7 +270,7 @@ export class StorageManager {
     }
 
     /**
-     * 清除所有注解
+     * Clear所有注解
      */
     async clearAnnotations() {
         const key = CONFIG.STORAGE_KEYS.ANNOTATIONS(this.#filePath);
@@ -278,7 +278,7 @@ export class StorageManager {
     }
 
     /**
-     * 加载已读状态
+     * Load已读State
      * @returns {Promise<Object>}
      */
     async loadViewedState() {
@@ -288,8 +288,8 @@ export class StorageManager {
     }
 
     /**
-     * 保存已读状态
-     * @param {Object} viewedState - 已读状态对象
+     * Save已读State
+     * @param {Object} viewedState - 已读StateObject
      */
     async saveViewedState(viewedState) {
         const key = CONFIG.STORAGE_KEYS.VIEWED(this.#filePath);
@@ -297,7 +297,7 @@ export class StorageManager {
     }
 
     /**
-     * 清除已读状态
+     * Clear已读State
      */
     async clearViewedState() {
         const key = CONFIG.STORAGE_KEYS.VIEWED(this.#filePath);
@@ -305,9 +305,9 @@ export class StorageManager {
     }
 
     /**
-     * 更新缓存（仅共享模式有效）
+     * Update缓存（仅SharedMode有效）
      * @param {string} key - 键名
-     * @param {*} data - 数据
+     * @param {*} data - Data
      */
     updateCache(key, data) {
         if (this.#strategy instanceof SharedStorageStrategy) {
@@ -316,7 +316,7 @@ export class StorageManager {
     }
 
     /**
-     * 检查是否为共享模式
+     * Check是否为SharedMode
      * @returns {boolean}
      */
     isSharedMode() {
@@ -324,7 +324,7 @@ export class StorageManager {
     }
 
     /**
-     * 获取文件路径
+     * GetFilePath
      * @returns {string}
      */
     getFilePath() {

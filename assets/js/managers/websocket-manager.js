@@ -1,13 +1,13 @@
 /**
- * WebSocketManager - WebSocket 连接管理器
- * 负责连接、重连、消息发送和接收
+ * WebSocketManager - WebSocket connection manager
+ * Handles connection, reconnection, message sending and receiving
  */
 
 import { CONFIG } from '../core/config.js';
 import { Logger } from '../core/utils.js';
 
 /**
- * WebSocket 状态枚举
+ * WebSocket State枚举
  */
 export const WSState = {
     DISCONNECTED: 'disconnected',
@@ -17,7 +17,7 @@ export const WSState = {
 };
 
 /**
- * WebSocket 管理器
+ * WebSocket Management器
  */
 export class WebSocketManager {
     #ws = null;
@@ -34,7 +34,7 @@ export class WebSocketManager {
     }
 
     /**
-     * 获取原生 WebSocket 对象（用于向后兼容）
+     * Get原生 WebSocket Object（用于向后兼容）
      * @returns {WebSocket|null}
      */
     getWebSocket() {
@@ -42,7 +42,7 @@ export class WebSocketManager {
     }
 
     /**
-     * 连接到 WebSocket 服务器
+     * Connection到 WebSocket 服务器
      * @returns {Promise<void>}
      */
     async connect() {
@@ -65,13 +65,13 @@ export class WebSocketManager {
                     Logger.log('WebSocket', 'Connected successfully');
                     this.#setState(WSState.CONNECTED);
 
-                    // 发送文件路径作为第一条消息
+                    // 发送FilePath作为第一条Message
                     if (this.#filePath) {
                         this.#ws.send(this.#filePath);
                         Logger.log('WebSocket', `Sent file path: ${this.#filePath}`);
                     }
 
-                    // 设置稳定性检测定时器
+                    // Settings稳定性检测定时器
                     this.#setupStabilityTimer();
 
                     resolve();
@@ -99,7 +99,7 @@ export class WebSocketManager {
     }
 
     /**
-     * 断开连接
+     * 断开Connection
      */
     disconnect() {
         this.#clearTimers();
@@ -114,8 +114,8 @@ export class WebSocketManager {
     }
 
     /**
-     * 发送消息
-     * @param {Object} message - 要发送的消息对象
+     * 发送Message
+     * @param {Object} message - 要发送的MessageObject
      * @returns {Promise<void>}
      */
     async send(message) {
@@ -134,9 +134,9 @@ export class WebSocketManager {
     }
 
     /**
-     * 注册消息处理器
-     * @param {string} type - 消息类型
-     * @param {Function} handler - 处理函数
+     * RegisterMessageHandle器
+     * @param {string} type - Message types
+     * @param {Function} handler - Handle函数
      */
     on(type, handler) {
         if (!this.#messageHandlers.has(type)) {
@@ -147,9 +147,9 @@ export class WebSocketManager {
     }
 
     /**
-     * 取消注册消息处理器
-     * @param {string} type - 消息类型
-     * @param {Function} handler - 处理函数
+     * CancelRegisterMessageHandle器
+     * @param {string} type - Message types
+     * @param {Function} handler - Handle函数
      */
     off(type, handler) {
         if (this.#messageHandlers.has(type)) {
@@ -162,15 +162,15 @@ export class WebSocketManager {
     }
 
     /**
-     * 设置状态变化回调
-     * @param {Function} callback - 回调函数
+     * SettingsState变化Callback
+     * @param {Function} callback - Callback函数
      */
     onStateChange(callback) {
         this.#onStateChange = callback;
     }
 
     /**
-     * 检查是否已连接
+     * Check是否已Connection
      * @returns {boolean}
      */
     isConnected() {
@@ -180,7 +180,7 @@ export class WebSocketManager {
     }
 
     /**
-     * 获取当前状态
+     * Get当前State
      * @returns {string}
      */
     getState() {
@@ -188,7 +188,7 @@ export class WebSocketManager {
     }
 
     /**
-     * 处理收到的消息
+     * Handle收到的Message
      * @private
      */
     #handleMessage(event) {
@@ -196,7 +196,7 @@ export class WebSocketManager {
             const message = JSON.parse(event.data);
             Logger.log('WebSocket', `Received message: ${message.type}`);
 
-            // 触发对应的处理器
+            // Trigger对应的Handle器
             if (this.#messageHandlers.has(message.type)) {
                 const handlers = this.#messageHandlers.get(message.type);
                 handlers.forEach(handler => {
@@ -213,17 +213,17 @@ export class WebSocketManager {
     }
 
     /**
-     * 处理连接关闭
+     * HandleConnectionClose
      * @private
      */
     #handleClose(event) {
         this.#clearTimers();
         Logger.log('WebSocket', `Connection closed (code: ${event.code}, reason: ${event.reason || 'none'})`);
 
-        // 设置为重连状态
+        // Settings为重连State
         this.#setState(WSState.RECONNECTING);
 
-        // 计算指数退避延迟
+        // Calculate指数退避延迟
         this.#reconnectAttempts++;
         const delay = Math.min(
             CONFIG.WEBSOCKET.INITIAL_RECONNECT_DELAY * Math.pow(2, this.#reconnectAttempts - 1),
@@ -232,7 +232,7 @@ export class WebSocketManager {
 
         Logger.log('WebSocket', `Reconnecting in ${delay / 1000}s (attempt ${this.#reconnectAttempts})...`);
 
-        // 设置重连定时器
+        // Settings重连定时器
         this.#reconnectTimer = setTimeout(() => {
             this.connect().catch(error => {
                 Logger.error('WebSocket', 'Reconnect failed:', error);
@@ -241,8 +241,8 @@ export class WebSocketManager {
     }
 
     /**
-     * 设置稳定性检测定时器
-     * 如果连接稳定一段时间，重置重连计数器
+     * Settings稳定性检测定时器
+     * 如果Connection稳定一段Time，Reset重连计数器
      * @private
      */
     #setupStabilityTimer() {
@@ -255,7 +255,7 @@ export class WebSocketManager {
     }
 
     /**
-     * 清除所有定时器
+     * Clear所有定时器
      * @private
      */
     #clearTimers() {
@@ -264,7 +264,7 @@ export class WebSocketManager {
     }
 
     /**
-     * 清除重连定时器
+     * Clear重连定时器
      * @private
      */
     #clearReconnectTimer() {
@@ -275,7 +275,7 @@ export class WebSocketManager {
     }
 
     /**
-     * 清除稳定性定时器
+     * Clear稳定性定时器
      * @private
      */
     #clearStabilityTimer() {
@@ -286,7 +286,7 @@ export class WebSocketManager {
     }
 
     /**
-     * 设置状态并触发回调
+     * SettingsState并TriggerCallback
      * @private
      */
     #setState(newState) {
