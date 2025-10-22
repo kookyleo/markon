@@ -227,32 +227,73 @@ impl MarkdownRenderer {
 
     fn add_heading_ids_and_extract_toc(&self, html: &str) -> (String, Vec<TocItem>) {
         let mut toc = Vec::new();
+        let mut headings = Vec::new();
 
-        let result = HEADING_REGEX
-            .replace_all(html, |caps: &regex::Captures| {
-                if let (Some(tag), Some(content)) = (caps.get(1), caps.get(2)) {
-                    let tag = tag.as_str();
-                    let content = content.as_str();
-                    let id = self.generate_slug(content);
+        // First pass: collect all headings with their positions
+        for caps in HEADING_REGEX.captures_iter(html) {
+            if let (Some(tag), Some(content), Some(m)) = (caps.get(1), caps.get(2), caps.get(0)) {
+                let tag = tag.as_str();
+                let content = content.as_str();
+                let level = tag.chars().nth(1).and_then(|c| c.to_digit(10)).unwrap_or(1) as u8;
+                let id = self.generate_slug(content);
+                let text = HTML_TAG_REGEX.replace_all(content, "").to_string();
 
-                    // Extract heading level (h1 -> 1, h2 -> 2, etc.)
-                    let level = tag.chars().nth(1).and_then(|c| c.to_digit(10)).unwrap_or(1) as u8;
+                toc.push(TocItem {
+                    level,
+                    id: id.clone(),
+                    text,
+                });
 
-                    // Remove HTML tags from content for TOC
-                    let text = HTML_TAG_REGEX.replace_all(content, "").to_string();
+                headings.push((
+                    m.start(),
+                    m.end(),
+                    level,
+                    tag.to_string(),
+                    id,
+                    content.to_string(),
+                ));
+            }
+        }
 
-                    toc.push(TocItem {
-                        level,
-                        id: id.clone(),
-                        text,
-                    });
+        // Second pass: build new HTML with section containers
+        let mut result = String::new();
+        let mut last_pos = 0;
+        let mut open_sections: Vec<u8> = Vec::new();
 
-                    format!("<{tag} id=\"{id}\">{content}</{tag}>")
+        for (start, end, level, tag, id, content) in &headings {
+
+            // Add content before this heading
+            result.push_str(&html[last_pos..*start]);
+
+            // Close sections that are same or higher level
+            while let Some(&last_level) = open_sections.last() {
+                if last_level >= *level {
+                    result.push_str("</div>");
+                    open_sections.pop();
                 } else {
-                    caps[0].to_string()
+                    break;
                 }
-            })
-            .to_string();
+            }
+
+            // Open new section
+            result.push_str(&format!(
+                "<div class=\"heading-section\" data-level=\"{level}\">"
+            ));
+            open_sections.push(*level);
+
+            // Add the heading with ID
+            result.push_str(&format!("<{tag} id=\"{id}\">{content}</{tag}>"));
+
+            last_pos = *end;
+        }
+
+        // Add remaining content
+        result.push_str(&html[last_pos..]);
+
+        // Close all remaining sections
+        for _ in open_sections {
+            result.push_str("</div>");
+        }
 
         (result, toc)
     }

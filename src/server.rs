@@ -166,10 +166,11 @@ pub async fn start(
 
     let mut app = Router::new()
         .route("/", get(root))
+        .route("/favicon.ico", get(serve_favicon))
         .route("/_/favicon.ico", get(serve_favicon))
         .route("/_/favicon.svg", get(serve_favicon_svg))
         .route("/_/css/{filename}", get(serve_css))
-        .route("/_/js/{filename}", get(serve_js))
+        .route("/_/js/{*path}", get(serve_js))
         .route("/{*path}", get(handle_path));
 
     if shared_annotation {
@@ -375,9 +376,9 @@ async fn handle_socket(socket: WebSocket, state: AppState) {
                             .unwrap();
                     }
                     WebSocketMessage::ClearAnnotations => {
-                        eprintln!(
-                            "[WebSocket] Clearing annotations for file_path: {file_path}"
-                        );
+                        eprintln!("[WebSocket] Clearing annotations for file_path: {file_path}");
+
+                        // Clear annotations
                         match db.execute(
                             "DELETE FROM annotations WHERE file_path = ?1",
                             [&file_path.as_str()],
@@ -386,18 +387,46 @@ async fn handle_socket(socket: WebSocket, state: AppState) {
                                 eprintln!(
                                     "[WebSocket] Deleted {affected_rows} annotation rows for file_path: {file_path}"
                                 );
-                                let broadcast_msg = WebSocketMessage::ClearAnnotations;
-                                state
-                                    .tx
-                                    .as_ref()
-                                    .unwrap()
-                                    .send(serde_json::to_string(&broadcast_msg).unwrap())
-                                    .unwrap();
                             }
                             Err(e) => {
                                 eprintln!("[WebSocket] Failed to clear annotations: {e}");
                             }
                         }
+
+                        // Also clear viewed state
+                        match db.execute(
+                            "DELETE FROM viewed_state WHERE file_path = ?1",
+                            [&file_path.as_str()],
+                        ) {
+                            Ok(affected_rows) => {
+                                eprintln!(
+                                    "[WebSocket] Deleted {affected_rows} viewed_state rows for file_path: {file_path}"
+                                );
+                            }
+                            Err(e) => {
+                                eprintln!("[WebSocket] Failed to clear viewed_state: {e}");
+                            }
+                        }
+
+                        // Broadcast clear_annotations message
+                        let broadcast_msg = WebSocketMessage::ClearAnnotations;
+                        state
+                            .tx
+                            .as_ref()
+                            .unwrap()
+                            .send(serde_json::to_string(&broadcast_msg).unwrap())
+                            .unwrap();
+
+                        // Broadcast empty viewed_state
+                        let empty_viewed_state = WebSocketMessage::ViewedState {
+                            state: serde_json::Value::Object(serde_json::Map::new()),
+                        };
+                        state
+                            .tx
+                            .as_ref()
+                            .unwrap()
+                            .send(serde_json::to_string(&empty_viewed_state).unwrap())
+                            .unwrap();
                     }
                     WebSocketMessage::UpdateViewedState {
                         state: viewed_state,
@@ -699,8 +728,8 @@ async fn serve_css(AxumPath(filename): AxumPath<String>) -> impl IntoResponse {
     serve_static_file(&filename, CssAssets::get, "text/css")
 }
 
-async fn serve_js(AxumPath(filename): AxumPath<String>) -> impl IntoResponse {
-    serve_static_file(&filename, JsAssets::get, "application/javascript")
+async fn serve_js(AxumPath(path): AxumPath<String>) -> impl IntoResponse {
+    serve_static_file(&path, JsAssets::get, "application/javascript")
 }
 
 fn serve_static_file<F>(filename: &str, getter: F, content_type: &str) -> Response

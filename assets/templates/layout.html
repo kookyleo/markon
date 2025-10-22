@@ -227,9 +227,10 @@
                 position: fixed;
                 left: 20px;
                 top: 20px;
-                max-width: 250px;
+                width: 280px;
                 max-height: calc(100vh - 40px);
                 overflow-y: auto;
+                border: 1px solid transparent; /* Always have border for consistent width */
             }
         }
 
@@ -328,6 +329,15 @@
                 box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
             }
         }
+        /* TOC navigation active on wide screens - same visual style */
+        @media (min-width: 1401px) {
+            #toc-container.toc-nav-active .toc {
+                background-color: #22272e;
+                border: 1px solid #444c56;
+                box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
+                border-radius: 6px;
+            }
+        }
         {% elif theme == "light" %}
         #toc-icon {
             background-color: #f6f8fa;
@@ -342,6 +352,15 @@
                 background-color: #ffffff;
                 border: 1px solid #d0d7de;
                 box-shadow: 0 8px 24px rgba(140, 149, 159, 0.2);
+            }
+        }
+        /* TOC navigation active on wide screens - same visual style */
+        @media (min-width: 1401px) {
+            #toc-container.toc-nav-active .toc {
+                background-color: #ffffff;
+                border: 1px solid #d0d7de;
+                box-shadow: 0 8px 24px rgba(140, 149, 159, 0.2);
+                border-radius: 6px;
             }
         }
         {% else %}
@@ -377,6 +396,23 @@
                 background-color: #ffffff;
                 border: 1px solid #d0d7de;
                 box-shadow: 0 8px 24px rgba(140, 149, 159, 0.2);
+            }
+        }
+        /* TOC navigation active on wide screens - same visual style */
+        @media (prefers-color-scheme: dark) and (min-width: 1401px) {
+            #toc-container.toc-nav-active .toc {
+                background-color: #22272e;
+                border: 1px solid #444c56;
+                box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
+                border-radius: 6px;
+            }
+        }
+        @media (prefers-color-scheme: light) and (min-width: 1401px) {
+            #toc-container.toc-nav-active .toc {
+                background-color: #ffffff;
+                border: 1px solid #d0d7de;
+                box-shadow: 0 8px 24px rgba(140, 149, 159, 0.2);
+                border-radius: 6px;
             }
         }
         {% endif %}
@@ -747,7 +783,7 @@
         {% endif %}
     </script>
     {% endif %}
-    <script src="/_/js/editor.js"></script>
+    <script type="module" src="/_/js/main.js"></script>
     {% if enable_viewed %}
     <script src="/_/js/viewed.js"></script>
     {% endif %}
