@@ -65,8 +65,8 @@ jobs:
         with:
           node-version: '20'
 
-      - name: Install ESLint
-        run: npm install -g eslint
+      - name: Install dependencies
+        run: npm install
 
       - name: Run ESLint
-        run: npx eslint assets/js/editor.js
+        run: npx eslint assets/js/**/*.js

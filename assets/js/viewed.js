@@ -11,7 +11,7 @@ class SectionViewedManager {
     constructor(isSharedMode, ws) {
         this.isSharedMode = isSharedMode;
         this.ws = ws;
-        // Use meta file-path to ensure consistency with editor.js clear function
+        // Use meta file-path to ensure consistency with annotation manager
         const filePathMeta = document.querySelector('meta[name="file-path"]');
         this.filePath = filePathMeta ? filePathMeta.getAttribute('content') : window.location.pathname;
         this.viewedState = {};
@@ -52,13 +52,17 @@ class SectionViewedManager {
 
                 if (data.type === 'viewed_state') {
                     // Received viewed state from server (initial load or update from other client)
+                    console.log('[ViewedManager] Received viewed_state:', JSON.stringify(data.state), 'keys:', Object.keys(data.state || {}).length);
                     this.viewedState = data.state || {};
                     this.stateLoaded = true;
 
                     // If checkboxes are already injected, update their state
                     if (document.querySelector('.viewed-checkbox')) {
+                        console.log('[ViewedManager] Updating checkboxes and applying state');
                         this.updateCheckboxes();
                         this.applyViewedState();
+                    } else {
+                        console.log('[ViewedManager] No checkboxes found yet');
                     }
                 }
             } catch (e) {
@@ -69,10 +73,18 @@ class SectionViewedManager {
 
     updateCheckboxes() {
         // Update checkbox states based on viewedState
-        document.querySelectorAll('.viewed-checkbox').forEach(checkbox => {
+        const checkboxes = document.querySelectorAll('.viewed-checkbox');
+        console.log('[ViewedManager] updateCheckboxes: found', checkboxes.length, 'checkboxes, viewedState keys:', Object.keys(this.viewedState).length);
+
+        let uncheckedCount = 0;
+        checkboxes.forEach(checkbox => {
             const headingId = checkbox.dataset.headingId;
-            checkbox.checked = !!this.viewedState[headingId];
+            const shouldBeChecked = !!this.viewedState[headingId];
+            if (!shouldBeChecked) uncheckedCount++;
+            checkbox.checked = shouldBeChecked;
         });
+
+        console.log('[ViewedManager] updateCheckboxes: unchecked', uncheckedCount, 'checkboxes');
     }
 
     injectCheckboxes() {
@@ -96,6 +108,7 @@ class SectionViewedManager {
             checkbox.type = 'checkbox';
             checkbox.className = 'viewed-checkbox';
             checkbox.dataset.headingId = headingId;
+            checkbox.tabIndex = -1; // Prevent keyboard navigation to checkbox
 
             if (this.viewedState[headingId]) {
                 checkbox.checked = true;
@@ -139,78 +152,6 @@ class SectionViewedManager {
         return elements;
     }
 
-    getChildHeadings(headingId) {
-        // Get all child headings (direct children and descendants)
-        const heading = document.getElementById(headingId);
-        if (!heading) return [];
-
-        const level = parseInt(heading.tagName.substring(1));
-        const children = [];
-        let next = heading.nextElementSibling;
-
-        while (next) {
-            if (next.tagName && next.tagName.match(/^H[1-6]$/)) {
-                const nextLevel = parseInt(next.tagName.substring(1));
-                if (nextLevel <= level) {
-                    break; // Stop at same or higher level
-                }
-                // This is a child heading
-                if (next.id) {
-                    children.push(next.id);
-                }
-            }
-            next = next.nextElementSibling;
-        }
-
-        return children;
-    }
-
-    getParentHeading(headingId) {
-        // Get the parent heading (first higher-level heading before this one)
-        const heading = document.getElementById(headingId);
-        if (!heading) return null;
-
-        const level = parseInt(heading.tagName.substring(1));
-        let prev = heading.previousElementSibling;
-
-        while (prev) {
-            if (prev.tagName && prev.tagName.match(/^H[1-6]$/)) {
-                const prevLevel = parseInt(prev.tagName.substring(1));
-                if (prevLevel < level) {
-                    return prev.id; // Found parent
-                }
-            }
-            prev = prev.previousElementSibling;
-        }
-
-        return null; // No parent found
-    }
-
-    getDirectChildHeadings(headingId) {
-        // Get only direct children (next level down, not all descendants)
-        const heading = document.getElementById(headingId);
-        if (!heading) return [];
-
-        const level = parseInt(heading.tagName.substring(1));
-        const directChildren = [];
-        let next = heading.nextElementSibling;
-        const targetLevel = level + 1;
-
-        while (next) {
-            if (next.tagName && next.tagName.match(/^H[1-6]$/)) {
-                const nextLevel = parseInt(next.tagName.substring(1));
-                if (nextLevel <= level) {
-                    break; // Stop at same or higher level
-                }
-                if (nextLevel === targetLevel && next.id) {
-                    directChildren.push(next.id);
-                }
-            }
-            next = next.nextElementSibling;
-        }
-
-        return directChildren;
-    }
 
     collapseSection(headingId) {
         const heading = document.getElementById(headingId);
@@ -221,6 +162,7 @@ class SectionViewedManager {
         heading.classList.add('section-collapsed');
         content.forEach(el => {
             el.classList.add('section-content-hidden');
+            el.classList.remove('section-content-temp-visible');
         });
     }
 
@@ -231,8 +173,32 @@ class SectionViewedManager {
         const content = this.getSectionContent(heading);
 
         heading.classList.remove('section-collapsed');
+
+        // Ensure elements start in hidden state
         content.forEach(el => {
-            el.classList.remove('section-content-hidden');
+            if (!el.classList.contains('section-content-hidden')) {
+                el.classList.add('section-content-hidden');
+            }
+        });
+
+        // Force reflow
+        content.forEach(el => void el.offsetHeight);
+
+        // Trigger expand animation
+        requestAnimationFrame(() => {
+            content.forEach(el => {
+                el.classList.remove('section-content-hidden');
+                el.classList.add('section-content-temp-visible');
+
+                // Listen for animation end to clean up
+                const cleanup = (e) => {
+                    if (e.target === el && e.propertyName === 'opacity') {
+                        el.classList.remove('section-content-temp-visible');
+                        el.removeEventListener('transitionend', cleanup);
+                    }
+                };
+                el.addEventListener('transitionend', cleanup);
+            });
         });
 
         // Clear temporary expand state when fully expanding
@@ -272,6 +238,31 @@ class SectionViewedManager {
         }
     }
 
+    toggleCollapse(headingId) {
+        // Toggle collapse/expand for any section (regardless of viewed state)
+        const heading = document.getElementById(headingId);
+        if (!heading) return;
+
+        const content = this.getSectionContent(heading);
+        const isCollapsed = heading.classList.contains('section-collapsed');
+
+        if (isCollapsed) {
+            // Currently collapsed -> expand
+            heading.classList.remove('section-collapsed');
+            content.forEach(el => {
+                el.classList.remove('section-content-hidden');
+                el.classList.add('section-content-temp-visible');
+            });
+        } else {
+            // Currently expanded -> collapse
+            heading.classList.add('section-collapsed');
+            content.forEach(el => {
+                el.classList.add('section-content-hidden');
+                el.classList.remove('section-content-temp-visible');
+            });
+        }
+    }
+
     toggleViewed(headingId, isViewed) {
         this.viewedState[headingId] = isViewed;
 
@@ -288,60 +279,35 @@ class SectionViewedManager {
                     el.classList.remove('section-content-temp-visible');
                 });
             }
-
-            // Cascade down: mark all child and descendant headings as viewed
-            const allChildren = this.getChildHeadings(headingId);
-            allChildren.forEach(childId => {
-                this.viewedState[childId] = true;
-                this.collapseSection(childId);
-
-                // Clear temporary expand state for children too
-                delete this.tempExpandedState[childId];
-                const childHeading = document.getElementById(childId);
-                if (childHeading) {
-                    childHeading.classList.remove('section-temp-expanded');
-                    const childContent = this.getSectionContent(childHeading);
-                    childContent.forEach(el => {
-                        el.classList.remove('section-content-temp-visible');
-                    });
-                }
-            });
         } else {
             this.expandSection(headingId);
         }
 
-        // Cascade up: check if parent should be auto-marked as viewed
-        this.updateParentViewedState(headingId);
-
+        // No cascading - only toggle the selected heading
         this.updateCheckboxes();
         this.updateTocHighlights();
         this.saveState();
+
+        // Update "All Viewed" checkbox state
+        this.updateAllViewedCheckbox();
     }
 
-    updateParentViewedState(headingId) {
-        // Check parent heading and auto-mark as viewed if all siblings are viewed
-        const parentId = this.getParentHeading(headingId);
-        if (!parentId) return; // No parent
+    updateAllViewedCheckbox() {
+        // Check if all sections are viewed
+        if (!this.allViewedCheckbox) return;
 
-        const siblings = this.getDirectChildHeadings(parentId);
-        const allSiblingsViewed = siblings.length > 0 && siblings.every(siblingId => this.viewedState[siblingId]);
+        const allHeadingIds = Array.from(document.querySelectorAll('.viewed-checkbox'))
+            .filter(cb => cb.dataset.headingId)
+            .map(cb => cb.dataset.headingId);
 
-        if (allSiblingsViewed && !this.viewedState[parentId]) {
-            // All children viewed, auto-mark parent as viewed
-            this.viewedState[parentId] = true;
-            this.collapseSection(parentId);
+        const allViewed = allHeadingIds.length > 0 && allHeadingIds.every(id => this.viewedState[id]);
 
-            // Recursively check grandparent
-            this.updateParentViewedState(parentId);
-        } else if (!allSiblingsViewed && this.viewedState[parentId]) {
-            // At least one child unviewed, unmark parent
-            this.viewedState[parentId] = false;
-            this.expandSection(parentId);
-
-            // Recursively check grandparent
-            this.updateParentViewedState(parentId);
-        }
+        // Set flag to prevent recursion
+        this.updatingAllViewedCheckbox = true;
+        this.allViewedCheckbox.checked = allViewed;
+        this.updatingAllViewedCheckbox = false;
     }
+
 
     async loadState() {
         if (this.isSharedMode) {
@@ -379,8 +345,16 @@ class SectionViewedManager {
     }
 
     saveState() {
+        console.log('[ViewedManager] saveState called:', {
+            isSharedMode: this.isSharedMode,
+            hasWs: !!this.ws,
+            wsState: this.ws?.readyState,
+            stateKeys: Object.keys(this.viewedState).length
+        });
+
         if (this.isSharedMode && this.ws && this.ws.readyState === WebSocket.OPEN) {
             // Shared mode: send to server via WebSocket
+            console.log('[ViewedManager] Sending viewed state to server:', this.viewedState);
             this.ws.send(JSON.stringify({
                 type: 'update_viewed_state',
                 state: this.viewedState
@@ -389,6 +363,9 @@ class SectionViewedManager {
             // Local mode: save to LocalStorage
             const key = `markon-viewed-${this.filePath}`;
             localStorage.setItem(key, JSON.stringify(this.viewedState));
+            console.log('[ViewedManager] Saved to localStorage:', key);
+        } else {
+            console.warn('[ViewedManager] Cannot save state - shared mode but no WebSocket connection');
         }
     }
 
@@ -407,6 +384,7 @@ class SectionViewedManager {
         });
 
         this.updateTocHighlights();
+        this.updateAllViewedCheckbox();
     }
 
     setupEventListeners() {
@@ -438,30 +416,63 @@ class SectionViewedManager {
         const h1 = document.querySelector('.markdown-body h1');
         if (!h1) return; // No H1, don't create toolbar
 
-        // Create toolbar element
-        const toolbar = document.createElement('div');
+        // Create checkbox label (similar to other headings)
+        const label = document.createElement('label');
+        label.className = 'viewed-checkbox-label viewed-all-label';
+        label.title = 'Mark all sections as viewed';
+
+        const checkbox = document.createElement('input');
+        checkbox.type = 'checkbox';
+        checkbox.className = 'viewed-checkbox viewed-all-checkbox';
+        checkbox.tabIndex = -1;
+
+        const text = document.createElement('span');
+        text.className = 'viewed-text';
+        text.textContent = 'All Viewed';
+
+        label.appendChild(checkbox);
+        label.appendChild(text);
+        h1.appendChild(label);
+
+        // Create toolbar element for collapse/expand links
+        const toolbar = document.createElement('span');
         toolbar.className = 'viewed-toolbar';
         toolbar.innerHTML = `
-            <span class="viewed-toolbar-label">Viewed:</span>
-            <a class="btn-mark-all-viewed">Mark All as Viewed</a>
+            <a class="btn-collapse-all">Collapse All</a>
             <span class="viewed-toolbar-separator">|</span>
-            <a class="btn-mark-all-unviewed">Unviewed</a>
+            <a class="btn-expand-all">Expand All</a>
         `;
 
-        // Insert after H1
-        h1.parentNode.insertBefore(toolbar, h1.nextSibling);
+        // Append to H1 (inline on the right)
+        h1.appendChild(toolbar);
+
+        // Store reference for updating
+        this.allViewedCheckbox = checkbox;
+        this.updatingAllViewedCheckbox = false; // Flag to prevent recursion
+
+        // Setup checkbox listener
+        checkbox.addEventListener('change', (e) => {
+            // Prevent recursion when we're programmatically updating the checkbox
+            if (this.updatingAllViewedCheckbox) return;
+
+            if (e.target.checked) {
+                this.markAllViewed();
+            } else {
+                this.markAllUnviewed();
+            }
+        });
 
         // Setup toolbar link listeners
-        toolbar.querySelector('.btn-mark-all-viewed').addEventListener('click', () => this.markAllViewed());
-        toolbar.querySelector('.btn-mark-all-unviewed').addEventListener('click', () => this.markAllUnviewed());
+        toolbar.querySelector('.btn-collapse-all').addEventListener('click', () => this.collapseAll());
+        toolbar.querySelector('.btn-expand-all').addEventListener('click', () => this.expandAll());
     }
 
 
     markAllViewed() {
         // Check all checkboxes and collapse all sections
-        const allHeadingIds = Array.from(document.querySelectorAll('.viewed-checkbox')).map(
-            cb => cb.dataset.headingId
-        );
+        const allHeadingIds = Array.from(document.querySelectorAll('.viewed-checkbox'))
+            .filter(cb => cb.dataset.headingId) // Filter out the "All Viewed" checkbox
+            .map(cb => cb.dataset.headingId);
 
         allHeadingIds.forEach(headingId => {
             this.viewedState[headingId] = true;
@@ -471,6 +482,13 @@ class SectionViewedManager {
         this.updateCheckboxes();
         this.updateTocHighlights();
         this.saveState();
+
+        // Update "All Viewed" checkbox (with recursion prevention)
+        if (this.allViewedCheckbox) {
+            this.updatingAllViewedCheckbox = true;
+            this.allViewedCheckbox.checked = true;
+            this.updatingAllViewedCheckbox = false;
+        }
     }
 
     markAllUnviewed() {
@@ -482,6 +500,53 @@ class SectionViewedManager {
         this.applyViewedState();
         this.updateTocHighlights();
         this.saveState();
+
+        // Update "All Viewed" checkbox (with recursion prevention)
+        if (this.allViewedCheckbox) {
+            this.updatingAllViewedCheckbox = true;
+            this.allViewedCheckbox.checked = false;
+            this.updatingAllViewedCheckbox = false;
+        }
+    }
+
+    collapseAll() {
+        // Collapse all sections regardless of viewed state
+        // Process in reverse order (h6 -> h5 -> ... -> h2) to handle nested sections correctly
+        const allHeadings = document.querySelectorAll('.markdown-body h2, .markdown-body h3, .markdown-body h4, .markdown-body h5, .markdown-body h6');
+        const headingsArray = Array.from(allHeadings);
+
+        // Sort by heading level in descending order (h6 first, h2 last)
+        headingsArray.sort((a, b) => {
+            const levelA = parseInt(a.tagName.substring(1));
+            const levelB = parseInt(b.tagName.substring(1));
+            return levelB - levelA; // Descending order
+        });
+
+        headingsArray.forEach(heading => {
+            if (heading.id) {
+                this.collapseSection(heading.id);
+            }
+        });
+    }
+
+    expandAll() {
+        // Expand all sections regardless of viewed state
+        // Process in order (h2 -> h3 -> ... -> h6) to handle nested sections correctly
+        const allHeadings = document.querySelectorAll('.markdown-body h2, .markdown-body h3, .markdown-body h4, .markdown-body h5, .markdown-body h6');
+        const headingsArray = Array.from(allHeadings);
+
+        // Sort by heading level in ascending order (h2 first, h6 last)
+        headingsArray.sort((a, b) => {
+            const levelA = parseInt(a.tagName.substring(1));
+            const levelB = parseInt(b.tagName.substring(1));
+            return levelA - levelB; // Ascending order
+        });
+
+        headingsArray.forEach(heading => {
+            if (heading.id) {
+                this.expandSection(heading.id);
+            }
+        });
     }
 
 
@@ -520,7 +585,7 @@ function initViewedFeature() {
         const ws = window.ws || null;
 
         // eslint-disable-next-line no-new
-        new SectionViewedManager(isSharedMode, ws);
+        window.viewedManager = new SectionViewedManager(isSharedMode, ws);
     }
 }
 

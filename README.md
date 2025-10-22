@@ -8,46 +8,83 @@ English | [简体中文](README.zh.md)
 
 ## Use Cases
 
-Markon makes it easy to read, print, and annotate Markdown files in beautiful HTML format. Whether you're:
+Markon makes it easy to read, review, and verify Markdown documents with beautiful GitHub-style rendering. Whether you're:
 
-- **Reading documentation** on remote servers without a GUI
-- **Reviewing and annotating** technical documents with highlights and notes
-- **Printing** Markdown files with professional formatting
-- **Presenting** Markdown content with GitHub-style rendering
+- **Reading & Review** - Annotate key points, track progress with Section Viewed checkboxes (GitHub PR-style)
+- **Remote Servers** - Browse and annotate Markdown files on headless servers via browser (no GUI needed)
+- **Team Collaboration** - Shared annotations with real-time sync across devices
+- **Printing & Presenting** - Professional formatting and GitHub-style rendering with Mermaid diagrams
 
 Simply run `markon` in any directory to browse and render Markdown files with a clean, distraction-free interface.
 
 ## Features
 
-### Core Features
-- ✅ **GitHub Styling**: Complete GitHub Markdown CSS (dark/light themes)
-- ✅ **Syntax Highlighting**: Powered by Syntect
+### Core Rendering
+- ✅ **GitHub Styling**: Complete GitHub Markdown CSS with dark/light/auto themes
+- ✅ **Syntax Highlighting**: Powered by Syntect with 40+ languages
 - ✅ **GitHub Alerts**: Support for NOTE, TIP, IMPORTANT, WARNING, CAUTION
 - ✅ **Emoji Support**: Unicode emoji shortcodes (e.g., `:smile:` → 😄)
 - ✅ **Mermaid Diagrams**: Flowcharts, sequence diagrams, pie charts, etc.
-- ✅ **Theme Switching**: Light, dark, and auto themes
-- ✅ **Table Support**: GitHub Flavored Markdown (GFM) tables
-- ✅ **Task Lists**: Checkbox task lists
+- ✅ **GFM Tables**: Full GitHub Flavored Markdown table support
+- ✅ **Task Lists**: Interactive checkbox task lists
 - ✅ **Print Optimization**: Professional print styles with multilingual font support
-- ✅ **Table of Contents**: Auto-generated TOC
-- ✅ **Directory Browsing**: Auto-list Markdown files in current directory
-- ✅ **Mobile Friendly**: Responsive design with QR code generation for easy mobile access
-- ✅ **Zero Dependencies**: All resources embedded in a single binary
+- ✅ **Auto TOC**: Auto-generated Table of Contents with smart scrolling
+- ✅ **Directory Browsing**: Browse and select Markdown files in current directory
+- ✅ **Mobile Friendly**: Responsive design with QR code for easy mobile access
+- ✅ **Zero Dependencies**: Single binary with all resources embedded
 
-### Medium-Style Annotation Features
-- ✅ **Text Highlighting**: Add orange, green, or yellow highlights to selected text
-- ✅ **Strikethrough**: Mark text with strikethrough
-- ✅ **Notes**: Add annotation notes to highlighted text
-- ✅ **Sidebar Display**: Note cards displayed on the right side, linked to highlights
-- ✅ **Unhighlight**: Remove highlights from selected text
-- ✅ **Persistent Storage**: Annotation data saved in browser local storage
+### Annotation System
+- ✅ **Text Highlighting**: Three colors (orange, green, yellow) for different purposes
+- ✅ **Strikethrough**: Mark text as deleted or obsolete
+- ✅ **Notes**: Attach comments to any highlighted text
+- ✅ **Sidebar Cards**: Notes displayed in right sidebar (wide screen) with smart positioning
+- ✅ **Popup Notes**: Notes shown as popups (narrow screen) near highlighted text
+- ✅ **Click to Edit**: Click highlighted text to view/edit/delete notes
+- ✅ **Clear Selection**: Select highlighted text again to remove highlight
+- ✅ **Two Storage Modes**:
+  - **Local Mode**: Browser LocalStorage (single device)
+  - **Shared Mode**: SQLite + WebSocket (real-time multi-device sync)
+- ✅ **Undo/Redo**: Full undo/redo support for all annotation operations
 
-### Section Viewed Feature
-- ✅ **GitHub PR-Style Checkboxes**: Mark sections as "Viewed" with checkboxes next to headings
-- ✅ **Auto-Collapse**: Viewed sections automatically collapse to save space
-- ✅ **Click to Expand**: Click collapsed headings to expand and uncheck
-- ✅ **Persistent State**: Viewed states saved in LocalStorage per file
-- ✅ **Smart Folding**: Collapses all content until next same-level or higher-level heading
+### Section Viewed System
+- ✅ **GitHub PR-Style Checkboxes**: Mark sections as "Viewed" next to headings (H2-H6)
+- ✅ **Auto-Collapse**: Checked sections automatically collapse
+- ✅ **Click to Expand**: Toggle collapsed sections without changing viewed state
+- ✅ **Batch Operations**: "All Viewed" and "Unviewed" toolbar after H1 heading
+- ✅ **Visual Progress**: TOC items turn green when sections are viewed
+- ✅ **Smart Folding**: Collapses content until next same/higher-level heading
+- ✅ **Two Storage Modes**:
+  - **Local Mode**: Browser LocalStorage (per-browser)
+  - **Shared Mode**: SQLite + WebSocket (synced across devices)
+- ✅ **Independent Toggle**: Expand/collapse without changing viewed status
+
+### Keyboard Shortcuts
+- ✅ **Undo/Redo**: `Ctrl/Cmd+Z`, `Ctrl/Cmd+Shift+Z`, `Ctrl/Cmd+Y`
+- ✅ **Navigation**: `j/k` (next/prev heading), `Ctrl/Cmd+j/k` (next/prev annotation)
+- ✅ **Smart Scroll**: `Space` (smooth 1/3 page scroll, `ESC` to stop)
+- ✅ **TOC Control**: `Ctrl/Cmd+\` (toggle/focus TOC)
+- ✅ **Section Control**: `o` (collapse/expand current section)
+- ✅ **Viewed Control**: `v` (toggle current section viewed state)
+- ✅ **Help Panel**: `?` (show all shortcuts)
+- ✅ **Close/Cancel**: `ESC` (close popups, clear selection, cancel focus)
+- ✅ **Platform Detection**: Auto-detects Mac vs Windows/Linux for modifier keys
+
+### UI/UX Enhancements
+- ✅ **Smart Popover**: Selection toolbar with auto-positioning (above/below)
+- ✅ **Modal System**: Unified modal manager for notes and confirmations
+- ✅ **Selection Overlay**: Visual selection highlight persists during note input
+- ✅ **Focus Management**: Click outside markdown area clears section focus
+- ✅ **Responsive Layout**: Adapts to wide screen (1400px+) and narrow screen modes
+- ✅ **Note Positioning**: Smart positioning avoiding scrollbars and screen edges
+- ✅ **Prevent Scroll**: Modal/popover focus doesn't trigger auto-scroll
+
+### Developer Features
+- ✅ **Modular Architecture**: Clean separation (managers, navigators, components, services)
+- ✅ **Configuration System**: Centralized config with frozen constants
+- ✅ **Logger Utility**: Structured logging for debugging
+- ✅ **WebSocket Manager**: Auto-reconnect with exponential backoff
+- ✅ **Storage Abstraction**: Strategy pattern for local vs shared storage
+- ✅ **Event System**: Pub/sub for WebSocket and annotation changes
 
 ## Installation
 
@@ -71,27 +108,7 @@ cargo run -- [OPTIONS] [FILE]
 
 ## Usage
 
-### Basic Usage
-
-```bash
-# Display list of Markdown files in current directory
-markon
-
-# Render a specific Markdown file
-markon README.md
-
-# Specify port
-markon -p 8080 README.md
-
-# Use dark theme
-markon -t dark README.md
-
-# Use light theme
-markon -t light README.md
-
-# Auto theme (based on system settings)
-markon -t auto README.md
-```
+**Quick Start**: `markon [FILE]` - Render a Markdown file or browse current directory.
 
 ### Command Line Options
 
@@ -99,204 +116,68 @@ markon -t auto README.md
 Usage: markon [OPTIONS] [FILE]
 
 Arguments:
-  [FILE]  The markdown file to render
+  [FILE]  Markdown file to render (omit to browse current directory)
 
 Options:
-  -p, --port <PORT>                The port to use for the server [default: 6419]
-  -t, --theme <THEME>              Theme selection (light, dark, auto) [default: auto]
-      --qr [<BASE_URL>]            Generate QR code for server address. Optionally specify a base URL (e.g., http://192.168.1.100:6419) to override the default local address
-  -b, --open-browser [<BASE_URL>]  Automatically open browser after starting the server. Optionally specify a base URL (e.g., http://example.com:8080) to override the default local address
-      --shared-annotation          Enable shared annotation mode. Annotations are stored in SQLite and synced across clients via WebSocket
-      --enable-viewed              Enable section viewed checkbox feature (GitHub PR-style)
+  -p, --port <PORT>                Server port [default: 6419]
+  -t, --theme <THEME>              Theme: light, dark, auto [default: auto]
+      --qr [<BASE_URL>]            Generate QR code (optional: custom URL)
+  -b, --open-browser [<BASE_URL>]  Auto-open browser (optional: custom URL)
+      --shared-annotation          Enable shared annotation via SQLite + WebSocket
+      --enable-viewed              Enable section viewed checkboxes (GitHub PR-style)
   -h, --help                       Print help
   -V, --version                    Print version
 ```
 
-### Advanced Usage Examples
+### Common Examples
 
 ```bash
-# Generate QR code for easy mobile access (uses local address)
-markon --qr
+# Browse markdown files in current directory
+markon
 
-# Generate QR code with a custom base URL (e.g., when using port forwarding or public IP)
+# Render specific file
+markon README.md
+
+# Custom port and dark theme
+markon -p 8080 -t dark README.md
+
+# QR code for mobile access
 markon --qr http://192.168.1.100:6419
 
-# Auto-open browser after starting (opens local address)
-markon -b
+# Auto-open browser with custom URL (reverse proxy)
+markon -b http://docs.example.com
 
-# Auto-open with custom base URL (useful when behind reverse proxy)
-# Server listens on localhost:6419, but accessible via proxy at example.com
-markon -b http://example.com
-
-# Combine options: QR code + auto-open + dark theme
-markon --qr -b -t dark README.md
-
-# Complete example: Custom port, QR for public IP, auto-open local browser
-markon -p 8080 --qr http://203.0.113.1:8080 -b
-
-# Enable shared annotation mode for real-time collaboration
+# Enable shared annotations (multi-device sync)
 markon --shared-annotation README.md
 
-# Enable section viewed feature (GitHub PR-style collapse)
+# Enable viewed feature (track reading progress)
 markon --enable-viewed README.md
 
-# Combine annotation and viewed features
-markon --shared-annotation --enable-viewed README.md
+# Full-featured: QR + browser + shared + viewed
+markon --qr -b --shared-annotation --enable-viewed README.md
 ```
 
-**Understanding URL Parameters**:
+### Features Guide
 
-Both `--qr` and `-b` options accept optional URL arguments:
+**Annotations**:
+- Select text → Choose highlight/strikethrough/note from toolbar
+- Local mode: Stored in browser LocalStorage
+- Shared mode (`--shared-annotation`): SQLite database with real-time WebSocket sync
+- Custom DB path: `MARKON_SQLITE_PATH=/path/to/db markon --shared-annotation`
 
-**QR Code (`--qr` option)**:
-- Without argument (`--qr`): Generates QR code for `http://127.0.0.1:6419` (local address)
-- With base URL (`--qr <BASE_URL>`): Generates QR code for the specified URL
-- Use cases:
-  - **Port forwarding**: `--qr http://192.168.1.100:6419` (LAN IP)
-  - **Public access**: `--qr http://example.com/docs` (public domain)
-  - **Mobile access**: `--qr http://your-laptop-ip:6419` (for phones on same network)
+**Section Viewed** (`--enable-viewed`):
+- Check box next to heading → Section collapses
+- Click "(click to expand)" → Temporarily view collapsed section
+- Uncheck box → Section expands permanently
+- Batch toolbar (after H1): "All Viewed" / "Unviewed" buttons
+- Storage: LocalStorage (default) or SQLite (with `--shared-annotation`)
 
-**Open Browser (`-b` option)**:
-- Without argument (`-b`): Opens `http://127.0.0.1:6419` (local address)
-- With base URL (`-b <BASE_URL>`): Opens the specified URL instead
-- Use cases:
-  - **Reverse proxy**: Server on `localhost:6419`, proxy at `https://docs.example.com`
-  - **SSH tunnel**: Remote server tunneled to `http://localhost:8080`
-  - **Custom routing**: Any URL that points to your running server instance
-
-### Using Annotation Features
-
-1. Open a Markdown file in your browser
-2. Select any text to see the toolbar
-3. Choose highlight color (orange/green/yellow), strikethrough, or note
-4. Notes will appear on the right side of the page
-5. Click highlighted text to view associated notes
-6. Select highlighted text again to unhighlight
-
-#### Two Annotation Modes
-
-**Local Mode (Default)**:
-- Annotation data is stored in browser's LocalStorage
-- Limited to a single browser, not shared across browsers or devices
-- Suitable for personal reading and annotation
-- No additional configuration needed
-
-**Shared Mode (`--shared-annotation`)**:
-- Annotation data is stored in a SQLite database (default path: `~/.markon/annotation.sqlite`)
-- Supports real-time synchronization across multiple clients via WebSocket
-- Suitable for various collaboration scenarios:
-  - Single-user multi-device: Sync annotations across phone, tablet, desktop, etc.
-  - Team collaboration: Multiple users can simultaneously view and edit annotations on the same document
-- Custom database path can be set via `MARKON_SQLITE_PATH` environment variable
-
-```bash
-# Use shared annotation mode
-markon --shared-annotation README.md
-
-# Customize database location
-MARKON_SQLITE_PATH=/path/to/annotations.db markon --shared-annotation README.md
-```
-
-In both modes, you can use the "Clear Annotations(mode) in this page" button at the bottom of the page to clear all annotations for the current page.
-
-### Using Section Viewed Feature
-
-The Section Viewed feature adds GitHub PR-style "Viewed" checkboxes to help you track your reading progress through long documents.
-
-**How to Use**:
-
-1. Start markon with `--enable-viewed` flag:
-   ```bash
-   markon --enable-viewed README.md
-   ```
-
-2. Each section heading (H2-H6) will have a "Viewed" checkbox on the right
-
-3. **Check the box** to mark a section as viewed:
-   - The section automatically collapses
-   - Content is hidden until the next same-level or higher-level heading
-   - The heading shows "(click to expand)" hint
-
-4. **Click "(click to expand)"** to temporarily expand a viewed section:
-   - The section content becomes visible again
-   - The "Viewed" checkbox remains checked
-   - The hint changes to "(click to collapse)"
-   - Click again to re-collapse while keeping viewed status
-
-5. **Uncheck the box** to fully unmark a section:
-   - The section expands permanently
-   - The "(click to expand/collapse)" hint disappears
-
-**Features**:
-
-- ✅ **Persistent State**: Viewed status saved in LocalStorage (local mode) or SQLite (shared mode)
-- ✅ **Smart Collapse**: Only collapses the current section, not subsections from other branches
-- ✅ **Visual Feedback**: Collapsed sections are slightly dimmed and show expand hint
-- ✅ **Keyboard Friendly**: Works with standard checkbox keyboard navigation
-- ✅ **Real-time Sync**: When used with `--shared-annotation`, viewed states sync across devices/browsers
-
-**Use Cases**:
-
-- **Long Documentation**: Collapse sections you've already read
-- **Code Review**: Similar to GitHub PR file review workflow
-- **Study Materials**: Track your progress through tutorials
-- **Technical Specs**: Hide completed sections while working through requirements
-
-**Example Workflow**:
-
-```bash
-# Reading a long API documentation
-markon --enable-viewed API_DOCS.md
-
-# 1. Read "Authentication" section → Check "Viewed"
-# 2. Read "Endpoints" section → Check "Viewed"
-# 3. Working on "Rate Limiting" → Leave unchecked
-# 4. Come back later → Previously viewed sections are still collapsed
-# 5. Need to reference "Authentication" → Click to expand temporarily
-```
-
-**Storage Modes**:
-
-The viewed feature supports two storage modes, depending on whether `--shared-annotation` is enabled:
-
-**Local Mode** (default):
-- Viewed states stored in browser LocalStorage
-- Per-browser storage (not shared across devices)
-- Perfect for personal reading sessions
-- No database required
-
-```bash
-markon --enable-viewed README.md
-```
-
-**Shared Mode** (with `--shared-annotation`):
-- Viewed states stored in SQLite database
-- Real-time synchronization across all connected clients via WebSocket
-- Share progress across devices (phone, tablet, desktop)
-- Team collaboration: everyone sees the same sections marked as viewed
-- Uses the same database as annotations (`~/.markon/annotation.sqlite`)
-
-```bash
-# Enable both annotations and viewed with sharing
-markon --enable-viewed --shared-annotation README.md
-
-# Customize database location
-MARKON_SQLITE_PATH=/path/to/data.db markon --enable-viewed --shared-annotation README.md
-```
-
-**Important**: Viewed states are stored separately from annotations. Local mode viewed states (LocalStorage) do not interfere with shared mode (SQLite).
-
-**Advanced Features** (Phase 3):
-
-When `--enable-viewed` is active, you get additional productivity tools:
-
-- **Batch Operations Toolbar**: Appears after the H1 heading with quick actions
-  - **Mark All as Viewed**: Check all sections and collapse them
-  - **Unviewed**: Uncheck all sections and expand everything
-
-- **Visual Progress Tracking**: TOC (Table of Contents) items turn green when their corresponding sections are marked as viewed
-
-- **Independent Expand/Collapse**: Temporarily expand viewed sections without changing their viewed status
+**Keyboard Shortcuts** (press `?` to see all):
+- `Ctrl/Cmd+Z` / `Ctrl/Cmd+Shift+Z`: Undo/Redo annotations
+- `j` / `k`: Next/Previous heading
+- `Ctrl/Cmd+\`: Toggle TOC
+- `v`: Toggle current section viewed (requires `--enable-viewed`)
+- `ESC`: Close popups/Clear selection
 
 ## Important Notes
 
@@ -402,23 +283,6 @@ Supported types:
 - **WARNING** (yellow) - Important warnings
 - **CAUTION** (red) - Dangerous or critical warnings
 
-## Project Origin
-
-This project is a Rust port of [go-grip](https://github.com/kookyleo/go-grip) with added Medium-style annotation features.
-
-### Key Differences from go-grip
-
-| Feature | go-grip | markon |
-|---------|---------|--------|
-| Language | Go | Rust |
-| GitHub Alerts | ✅ | ✅ |
-| Emoji | Custom mapping | Unicode (emojis crate) |
-| Medium Annotations | ❌ | ✅ |
-| Hot Reload | ✅ | ❌ |
-| Auto Browser Open | ✅ | ✅ |
-| QR Code Generation | ❌ | ✅ |
-| Print Optimization | ✅ | ✅ |
-
 ## Tech Stack
 
 ### Backend
@@ -432,76 +296,50 @@ This project is a Rust port of [go-grip](https://github.com/kookyleo/go-grip) wi
 ### Frontend
 - **Diagram Rendering**: [Mermaid.js](https://mermaid.js.org/)
 - **Styling**: [GitHub Markdown CSS](https://github.com/sindresorhus/github-markdown-css)
-- **Annotations**: Vanilla JavaScript + LocalStorage
+- **Architecture**: ES6 modules, OOP design, Strategy pattern
 
 ## Development
-
-### Project Structure
-
-```
-markon/
-├── src/
-│   ├── main.rs         # Entry point
-│   ├── server.rs       # HTTP server
-│   ├── markdown.rs     # Markdown renderer
-│   └── assets.rs       # Static asset management
-├── assets/
-│   ├── css/            # Stylesheets
-│   │   ├── github-markdown-dark.css
-│   │   ├── github-markdown-light.css
-│   │   ├── github-print.css
-│   │   └── editor.css  # Annotation styles
-│   ├── js/             # JavaScript
-│   │   ├── mermaid.min.js
-│   │   └── editor.js   # Annotation logic
-│   └── templates/      # HTML templates
-│       ├── layout.html
-│       └── directory.html
-├── Cargo.toml
-├── README.md
-└── README.zh.md
-```
 
 ### Build
 
 ```bash
-# Debug mode
+# Development build
 cargo build
 
-# Release mode
+# Release build
 cargo build --release
 
 # Run tests
 cargo test
 
-# Lint
-cargo clippy
-
 # JavaScript lint
-npx eslint assets/js/editor.js
+npx eslint assets/js/**/*.js
+
+# Run
+./target/debug/markon README.md
 ```
 
 ## Contributing
 
-We welcome all forms of contributions! Whether it's reporting bugs, suggesting new features, or submitting code improvements.
+Contributions are welcome! Whether it's bug reports, feature requests, or code improvements.
 
 ### How to Contribute
 
-1. **Report Issues**: Submit bug reports or feature requests in [GitHub Issues](https://github.com/kookyleo/markon/issues)
+1. **Report Issues**: Submit bugs or feature requests via [GitHub Issues](https://github.com/kookyleo/markon/issues)
 2. **Submit PRs**:
-   - Fork the project
-   - Create a feature branch (`git checkout -b feature/amazing-feature`)
-   - Commit your changes (`git commit -m 'Add some amazing feature'`)
-   - Push to the branch (`git push origin feature/amazing-feature`)
+   - Fork the repository
+   - Create a feature branch (`git checkout -b feature/your-feature`)
+   - Commit changes (`git commit -m 'Add your feature'`)
+   - Push to branch (`git push origin feature/your-feature`)
    - Open a Pull Request
 
-### Code Standards
+### Before Submitting PR
 
-Before submitting a PR, please ensure:
-- ✅ Run `cargo test` to ensure all tests pass
-- ✅ Run `cargo clippy` to ensure code follows Rust best practices
-- ✅ Run `cargo fmt` to format the code
-- ✅ Run `npx eslint assets/js/editor.js` for JavaScript code
+- Run `cargo test` - Ensure all tests pass
+- Run `cargo clippy` - Check code quality
+- Run `cargo fmt` - Format code
+- Run `npx eslint assets/js/**/*.js` - Lint JavaScript code
+- Test the changes manually
 
 ## License
 
@@ -509,13 +347,13 @@ Apache License 2.0
 
 ## Acknowledgments
 
-- [go-grip](https://github.com/kookyleo/go-grip) - Original project
+- [go-grip](https://github.com/kookyleo/go-grip) - Initial inspiration for Markdown rendering
 - [GitHub Markdown CSS](https://github.com/sindresorhus/github-markdown-css) - Styling source
 - [Medium](https://medium.com) - Annotation feature inspiration
 - All open-source contributors
 
 ## Links
 
-- Original project: https://github.com/kookyleo/go-grip
 - GitHub Markdown CSS: https://github.com/sindresorhus/github-markdown-css
 - Mermaid documentation: https://mermaid.js.org/
+- go-grip: https://github.com/kookyleo/go-grip

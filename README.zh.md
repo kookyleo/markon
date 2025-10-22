@@ -1,6 +1,6 @@
 # Markon
 
-一个轻量级的 Markdown 渲染工具，使用 Rust 编写，提供 GitHub 风格的样式和 Medium 风格的标注功能。
+基于 Rust 开发的轻量级 Markdown 渲染器，提供 GitHub 风格样式和类似 Medium 的标注功能。
 
 ![Markon Banner](banner.png)
 
@@ -8,46 +8,83 @@
 
 ## 使用场景
 
-Markon 让你可以便捷地以精美的 HTML 格式阅读、打印和批注 Markdown 文件。无论你是：
+Markon 让您能够以美观的 GitHub 风格阅读、审阅和验证 Markdown 文档。无论您是：
 
-- **阅读文档** - 在没有图形界面的服务器上查看 Markdown 文档
-- **审阅批注** - 使用高亮和笔记功能标注技术文档
-- **打印输出** - 以专业的排版格式打印 Markdown 文件
-- **演示展示** - 以 GitHub 风格渲染 Markdown 内容进行展示
+- **阅读与审阅** - 标注要点，使用 Section Viewed 复选框（GitHub PR 风格）跟踪进度
+- **远程服务器** - 在无 GUI 的服务器上通过浏览器浏览和标注 Markdown 文件
+- **团队协作** - 跨设备实时同步共享标注
+- **打印与演示** - 专业排版和 GitHub 风格渲染，支持 Mermaid 图表
 
-只需在任意目录运行 `markon`，即可浏览并渲染 Markdown 文件，享受简洁无干扰的阅读体验。
+只需在任意目录运行 `markon`，即可以简洁、无干扰的界面浏览和渲染 Markdown 文件。
 
 ## 功能特性
 
-### 核心功能
-- ✅ **GitHub 样式**: 完整的 GitHub Markdown CSS 样式（深色/浅色主题）
-- ✅ **代码高亮**: 基于 Syntect 的语法高亮
-- ✅ **GitHub Alerts**: 支持 NOTE、TIP、IMPORTANT、WARNING、CAUTION 五种提示框
-- ✅ **Emoji 支持**: Unicode emoji shortcodes（如 `:smile:` → 😄）
-- ✅ **Mermaid 图表**: 支持流程图、时序图、饼图等
-- ✅ **主题切换**: 支持 light、dark、auto 三种主题模式
-- ✅ **表格支持**: GitHub Flavored Markdown (GFM) 表格
-- ✅ **任务列表**: 复选框任务列表
-- ✅ **打印优化**: 专业的打印样式和多语言字体支持
-- ✅ **目录生成**: 自动生成文章目录（TOC）
-- ✅ **目录浏览**: 自动列出当前目录的 Markdown 文件
-- ✅ **移动端友好**: 响应式设计，支持二维码生成便捷访问
-- ✅ **零依赖部署**: 所有资源嵌入到单一二进制文件
+### 核心渲染
+- ✅ **GitHub 样式**：完整的 GitHub Markdown CSS，支持深色/浅色/自动主题
+- ✅ **语法高亮**：基于 Syntect，支持 40+ 种编程语言
+- ✅ **GitHub Alerts**：支持 NOTE、TIP、IMPORTANT、WARNING、CAUTION
+- ✅ **Emoji 支持**：Unicode emoji 短代码（如 `:smile:` → 😄）
+- ✅ **Mermaid 图表**：流程图、时序图、饼图等
+- ✅ **GFM 表格**：完整的 GitHub Flavored Markdown 表格支持
+- ✅ **任务列表**：交互式复选框任务列表
+- ✅ **打印优化**：专业打印样式，支持多语言字体
+- ✅ **自动目录**：自动生成目录，智能滚动
+- ✅ **目录浏览**：浏览并选择当前目录中的 Markdown 文件
+- ✅ **移动端友好**：响应式设计，支持 QR 码便捷移动访问
+- ✅ **零依赖**：单一二进制文件，所有资源内嵌
 
-### Medium 风格标注功能
-- ✅ **文本高亮**: 选中文本后可添加橙色、绿色、黄色高亮
-- ✅ **删除线**: 为文本添加删除线标记
-- ✅ **笔记功能**: 为高亮文本添加批注笔记
-- ✅ **侧边栏显示**: 笔记卡片显示在页面右侧，与高亮文本关联
-- ✅ **取消高亮**: 选中已高亮的文本可取消高亮
-- ✅ **持久化存储**: 标注数据保存在浏览器本地存储
+### 标注系统
+- ✅ **文本高亮**：三种颜色（橙色、绿色、黄色）用于不同目的
+- ✅ **删除线**：标记文本为已删除或过时
+- ✅ **笔记**：为任何高亮文本添加注释
+- ✅ **侧边栏卡片**：笔记显示在右侧边栏（宽屏模式），智能定位
+- ✅ **弹出式笔记**：笔记以弹窗形式显示（窄屏模式），靠近高亮文本
+- ✅ **点击编辑**：点击高亮文本查看/编辑/删除笔记
+- ✅ **清除选择**：再次选择高亮文本可移除高亮
+- ✅ **两种存储模式**：
+  - **本地模式**：浏览器 LocalStorage（单设备）
+  - **共享模式**：SQLite + WebSocket（实时多设备同步）
+- ✅ **撤销/重做**：完整支持所有标注操作的撤销/重做
 
-### 章节已读标记功能
-- ✅ **GitHub PR 风格复选框**: 在章节标题旁添加"Viewed"复选框
-- ✅ **自动折叠**: 已读章节自动折叠以节省空间
-- ✅ **点击展开**: 点击折叠的标题即可展开并取消勾选
-- ✅ **状态持久化**: 已读状态按文件保存在 LocalStorage
-- ✅ **智能折叠**: 折叠当前章节直到下一个同级或更高级标题
+### Section Viewed 系统
+- ✅ **GitHub PR 风格复选框**：在标题（H2-H6）旁标记章节为"已查看"
+- ✅ **自动折叠**：已勾选的章节自动折叠
+- ✅ **点击展开**：切换折叠章节而不改变已查看状态
+- ✅ **批量操作**：H1 标题后的"全部已查看"和"全部未查看"工具栏
+- ✅ **视觉进度**：TOC 中已查看的章节变为绿色
+- ✅ **智能折叠**：折叠内容直到下一个同级或更高级标题
+- ✅ **两种存储模式**：
+  - **本地模式**：浏览器 LocalStorage（每个浏览器独立）
+  - **共享模式**：SQLite + WebSocket（跨设备同步）
+- ✅ **独立切换**：展开/折叠不改变已查看状态
+
+### 键盘快捷键
+- ✅ **撤销/重做**：`Ctrl/Cmd+Z`、`Ctrl/Cmd+Shift+Z`、`Ctrl/Cmd+Y`
+- ✅ **导航**：`j/k`（下一个/上一个标题）、`Ctrl/Cmd+j/k`（下一个/上一个标注）
+- ✅ **智能滚动**：`Space`（平滑滚动 1/3 页，`ESC` 停止）
+- ✅ **TOC 控制**：`Ctrl/Cmd+\`（切换/聚焦 TOC）
+- ✅ **章节控制**：`o`（折叠/展开当前章节）
+- ✅ **已查看控制**：`v`（切换当前章节已查看状态）
+- ✅ **帮助面板**：`?`（显示所有快捷键）
+- ✅ **关闭/取消**：`ESC`（关闭弹窗、清除选择、取消聚焦）
+- ✅ **平台检测**：自动检测 Mac vs Windows/Linux 的修饰键
+
+### UI/UX 增强
+- ✅ **智能弹出框**：选择工具栏自动定位（上方/下方）
+- ✅ **模态系统**：统一的模态管理器，用于笔记和确认对话框
+- ✅ **选择覆盖层**：笔记输入时视觉选择高亮保持
+- ✅ **焦点管理**：点击 markdown 区域外清除章节焦点
+- ✅ **响应式布局**：适应宽屏（1400px+）和窄屏模式
+- ✅ **笔记定位**：智能定位，避开滚动条和屏幕边缘
+- ✅ **防止滚动**：模态/弹出框聚焦不触发自动滚动
+
+### 开发者特性
+- ✅ **模块化架构**：清晰分离（managers、navigators、components、services）
+- ✅ **配置系统**：集中式配置，冻结常量
+- ✅ **日志工具**：结构化日志用于调试
+- ✅ **WebSocket 管理器**：自动重连，指数退避
+- ✅ **存储抽象**：本地 vs 共享存储的策略模式
+- ✅ **事件系统**：WebSocket 和标注变更的发布/订阅
 
 ## 安装
 
@@ -57,461 +94,314 @@ Markon 让你可以便捷地以精美的 HTML 格式阅读、打印和批注 Mar
 cargo install markon
 ```
 
-### 从源代码安装
+### 从源码安装
 
 ```bash
 cargo install --path .
 ```
 
-### 直接运行（无需安装）
+### 从 GitHub Releases 安装
 
-```bash
-cargo run -- [OPTIONS] [FILE]
-```
+从 [Releases](https://github.com/kookyleo/markon/releases) 下载预编译二进制文件。
 
 ## 使用方法
 
 ### 基本用法
 
 ```bash
-# 显示当前目录的 Markdown 文件列表
-markon
-
-# 渲染指定的 Markdown 文件
+# 渲染单个文件
 markon README.md
 
-# 指定端口
-markon -p 8080 README.md
+# 目录浏览模式
+markon
 
-# 使用深色主题
-markon -t dark README.md
+# 自定义端口
+markon -p 8080
 
-# 使用浅色主题
-markon -t light README.md
+# 指定绑定地址
+markon -l 0.0.0.0
 
-# 自动主题（根据系统设置）
-markon -t auto README.md
+# 自动打开浏览器
+markon -b README.md
 ```
 
-### 命令行参数
+### 命令行选项
 
-```
-用法: markon [OPTIONS] [FILE]
+| 选项 | 说明 | 示例 |
+|------|------|------|
+| `<FILE>` | 要渲染的 Markdown 文件 | `markon README.md` |
+| `-p, --port <PORT>` | HTTP 服务器端口（默认：6419） | `markon -p 8080` |
+| `-l, --listen <ADDR>` | 绑定地址（默认：127.0.0.1） | `markon -l 0.0.0.0` |
+| `-b, --browser [URL]` | 启动后自动打开浏览器 | `markon -b` |
+| `--qr [URL]` | 生成 QR 码用于移动访问 | `markon --qr` |
+| `--theme <THEME>` | 颜色主题：light/dark/auto | `markon --theme dark` |
+| `--shared-annotation` | 启用共享标注（SQLite + WebSocket） | `markon --shared-annotation` |
+| `--enable-viewed` | 启用 Section Viewed 功能 | `markon --enable-viewed` |
 
-参数:
-  [FILE]  要渲染的 Markdown 文件
-
-选项:
-  -p, --port <PORT>                服务器端口 [默认: 6419]
-  -t, --theme <THEME>              主题选择（light, dark, auto）[默认: auto]
-      --qr [<BASE_URL>]            生成服务器地址的二维码。可选指定基础 URL（如 http://192.168.1.100:6419）以覆盖默认的本地地址
-  -b, --open-browser [<BASE_URL>]  服务启动后自动打开浏览器。可选指定基础 URL（如 http://example.com:8080）以覆盖默认的本地地址
-      --shared-annotation          启用共享标注模式。标注数据存储在 SQLite 数据库，多客户端通过 WebSocket 实时同步
-      --enable-viewed              启用章节已读标记功能（GitHub PR 风格）
-  -h, --help                       显示帮助信息
-  -V, --version                    显示版本信息
-```
-
-### 高级用法示例
+### 常用示例
 
 ```bash
-# 生成二维码以便手机访问（使用本地地址）
+# 带 QR 码的目录浏览
 markon --qr
 
-# 使用自定义基础 URL 生成二维码（如使用端口转发或公网 IP）
+# 自定义 QR 码 URL（反向代理）
 markon --qr http://192.168.1.100:6419
 
-# 启动后自动打开浏览器（打开本地地址）
-markon -b
+# 自动打开浏览器，使用自定义 URL（反向代理）
+markon -b http://docs.example.com
 
-# 使用自定义基础 URL 打开浏览器（适用于反向代理场景）
-# 服务监听在 localhost:6419，但通过代理在 example.com 访问
-markon -b http://example.com
-
-# 组合选项：二维码 + 自动打开浏览器 + 深色主题
-markon --qr -b -t dark README.md
-
-# 完整示例：自定义端口、公网 IP 二维码、自动打开本地浏览器
-markon -p 8080 --qr http://203.0.113.1:8080 -b
-
-# 启用共享标注模式，多用户实时协作
+# 启用共享标注（多设备同步）
 markon --shared-annotation README.md
 
-# 启用章节已读标记功能（GitHub PR 风格折叠）
+# 启用 viewed 功能（跟踪阅读进度）
 markon --enable-viewed README.md
 
-# 同时启用标注和已读标记功能
-markon --shared-annotation --enable-viewed README.md
+# 全功能：QR + 浏览器 + 共享 + viewed
+markon --qr -b --shared-annotation --enable-viewed README.md
 ```
 
-**理解 URL 参数**：
+### 功能指南
 
-`--qr` 和 `-b` 选项都接受可选的 URL 参数：
+**标注**：
+- 选择文本 → 从工具栏选择高亮/删除线/笔记
+- 本地模式：存储在浏览器 LocalStorage
+- 共享模式（`--shared-annotation`）：SQLite 数据库，通过 WebSocket 实时同步
+- 自定义数据库路径：`MARKON_SQLITE_PATH=/path/to/db markon --shared-annotation`
 
-**二维码（`--qr` 选项）**：
-- 无参数（`--qr`）：为 `http://127.0.0.1:6419`（本地地址）生成二维码
-- 带基础 URL（`--qr <BASE_URL>`）：为指定的 URL 生成二维码
-- 使用场景：
-  - **端口转发**：`--qr http://192.168.1.100:6419`（局域网 IP）
-  - **公网访问**：`--qr http://example.com/docs`（公网域名）
-  - **移动设备访问**：`--qr http://your-laptop-ip:6419`（同网络手机访问）
+**Section Viewed**（`--enable-viewed`）：
+- 标题旁的复选框 → 章节折叠
+- 点击"(点击展开)" → 临时查看折叠的章节
+- 取消勾选 → 章节永久展开
+- 批量工具栏（H1 后）："全部已查看" / "全部未查看"按钮
+- 存储：LocalStorage（默认）或 SQLite（配合 `--shared-annotation`）
 
-**打开浏览器（`-b` 选项）**：
-- 无参数（`-b`）：打开 `http://127.0.0.1:6419`（本地地址）
-- 带基础 URL（`-b <BASE_URL>`）：打开指定的 URL
-- 使用场景：
-  - **反向代理**：服务在 `localhost:6419`，代理在 `https://docs.example.com`
-  - **SSH 隧道**：远程服务器通过隧道映射到 `http://localhost:8080`
-  - **自定义路由**：任何指向运行服务器实例的 URL
-
-### 使用标注功能
-
-1. 在浏览器中打开 Markdown 文件
-2. 选中任意文本，会弹出工具栏
-3. 选择高亮颜色（橙色/绿色/黄色）、删除线或笔记
-4. 笔记会显示在页面右侧
-5. 点击高亮文本可查看对应笔记
-6. 选中已高亮的文本可取消高亮
-
-#### 两种标注模式
-
-**本地模式（默认）**：
-- 标注数据存储在浏览器的 LocalStorage 中
-- 仅限单个浏览器使用，不同浏览器或设备间不共享
-- 适合个人阅读和批注
-- 无需额外配置
-
-**共享模式（`--shared-annotation`）**：
-- 标注数据存储在 SQLite 数据库中（默认路径：`~/.markon/annotation.sqlite`）
-- 支持多客户端通过 WebSocket 实时同步标注
-- 适合多种协作场景：
-  - 单人多终端：在手机、平板、电脑等不同设备间同步标注
-  - 团队协作：多用户同时查看和编辑同一文档的标注
-- 可通过环境变量 `MARKON_SQLITE_PATH` 自定义数据库路径
-
-```bash
-# 使用共享标注模式
-markon --shared-annotation README.md
-
-# 自定义数据库位置
-MARKON_SQLITE_PATH=/path/to/annotations.db markon --shared-annotation README.md
-```
-
-两种模式下都可以使用页面底部的"清除本页标注 (模式)"按钮清除当前页面的所有标注。
-
-### 使用章节已读标记功能
-
-章节已读标记功能仿照 GitHub PR 文件审核的"Viewed"功能，帮助您跟踪长文档的阅读进度。
-
-**使用方法**：
-
-1. 使用 `--enable-viewed` 参数启动 markon：
-   ```bash
-   markon --enable-viewed README.md
-   ```
-
-2. 每个章节标题（H2-H6）右侧会显示"Viewed"复选框
-
-3. **勾选复选框**标记章节为已读：
-   - 该章节自动折叠
-   - 内容被隐藏，直到下一个同级或更高级标题
-   - 标题显示"(click to expand)"提示
-
-4. **点击折叠的标题**展开章节：
-   - 章节内容重新显示
-   - "Viewed"复选框自动取消勾选
-
-**功能特性**：
-
-- ✅ **状态持久化**：已读状态保存在 LocalStorage（本地模式）或 SQLite（共享模式）
-- ✅ **智能折叠**：只折叠当前章节，不影响其他分支的子章节
-- ✅ **视觉反馈**：折叠的章节略微变暗并显示展开提示
-- ✅ **键盘友好**：支持标准复选框键盘导航
-- ✅ **实时同步**：配合 `--shared-annotation` 使用时，已读状态跨设备/浏览器同步
-
-**使用场景**：
-
-- **长篇文档**：折叠已读章节，专注于未读内容
-- **代码审查**：类似 GitHub PR 文件审核的工作流
-- **学习材料**：跟踪教程的学习进度
-- **技术规范**：隐藏已完成的章节，聚焦当前工作内容
-
-**工作流示例**：
-
-```bash
-# 阅读长篇 API 文档
-markon --enable-viewed API_DOCS.md
-
-# 1. 阅读完"身份认证"章节 → 勾选"Viewed"
-# 2. 阅读完"API 端点"章节 → 勾选"Viewed"
-# 3. 正在处理"限流规则"章节 → 保持未勾选
-# 4. 稍后返回 → 之前已读的章节仍然是折叠状态
-# 5. 需要参考"身份认证" → 点击标题临时展开
-```
-
-**存储模式**：
-
-已读标记功能支持两种存储模式，取决于是否启用了 `--shared-annotation`：
-
-**本地模式**（默认）：
-- 已读状态存储在浏览器 LocalStorage
-- 单浏览器存储（不跨设备共享）
-- 适合个人阅读会话
-- 无需数据库
-
-```bash
-markon --enable-viewed README.md
-```
-
-**共享模式**（配合 `--shared-annotation`）：
-- 已读状态存储在 SQLite 数据库
-- 通过 WebSocket 实时同步所有连接的客户端
-- 跨设备共享进度（手机、平板、电脑）
-- 团队协作：所有人看到相同的已读标记
-- 与标注功能使用同一个数据库（`~/.markon/annotation.sqlite`）
-
-```bash
-# 同时启用标注和已读标记共享
-markon --enable-viewed --shared-annotation README.md
-
-# 自定义数据库位置
-MARKON_SQLITE_PATH=/path/to/data.db markon --enable-viewed --shared-annotation README.md
-```
-
-**重要提示**：已读状态与标注数据分别存储。本地模式的已读状态（LocalStorage）不会与共享模式（SQLite）混淆。
-
-**高级功能**（Phase 3）：
-
-启用 `--enable-viewed` 后，你将获得额外的生产力工具：
-
-- **批量操作工具栏**：在 H1 标题后显示，提供快捷操作
-  - **跳转到下一未读章节**：自动滚动到第一个未读章节（页面加载时也会自动执行）
-  - **全部展开**：取消所有章节的已读状态并展开
-  - **全部折叠**：将所有章节标记为已读并折叠
-  - **清除已读状态**：重置当前页面的所有已读状态
-
-- **可视化进度跟踪**：TOC（目录）中已读章节会显示为绿色
-
-- **智能导航**：页面加载时自动跳转到第一个未读章节，帮助你从上次离开的地方继续阅读
+**键盘快捷键**（按 `?` 查看全部）：
+- `Ctrl/Cmd+Z` / `Ctrl/Cmd+Shift+Z`：撤销/重做标注
+- `j` / `k`：下一个/上一个标题
+- `Ctrl/Cmd+\`：切换 TOC
+- `v`：切换当前章节已查看状态（需要 `--enable-viewed`）
+- `ESC`：关闭弹窗/清除选择
 
 ## 重要说明
 
 ### 系统路径前缀
 
-Markon 使用 `/_/` 作为所有系统资源（CSS、JavaScript、WebSocket、favicon）的保留路径前缀，确保系统文件与用户内容完全分离：
+Markon 使用 `/_/` 作为所有系统资源（CSS、JavaScript、WebSocket、favicon）的保留路径前缀。这确保系统文件与您的内容完全分离：
 
 - **保留路径**：`/_/`（仅此特定前缀）
-- **这意味着什么**：请勿在工作目录根目录创建名为 `_`（单下划线）的目录
-- **您可以做什么**：
+- **注意事项**：不要在工作目录根目录创建名为 `_`（单下划线）的目录
+- **允许操作**：
   - ✅ 创建 `_build/`、`__pycache__/`、`_test/`、`_cache/` 等目录（与 `_` 不同）
-  - ✅ 创建 `ws/`、`static/`、`css/`、`js/` 等目录（不会冲突！）
+  - ✅ 创建 `ws/`、`static/`、`css/`、`js/` 等目录（无冲突！）
   - ✅ 使用任何不以 `_/` 开头的文件或目录名
 
-**示例**：
+**为什么？** Markon 将 `/_/` 映射到系统资源。浏览器会将 `/ws` 和 `/_/ws` 视为不同路径，因此只有精确的 `_/` 前缀是保留的。
+
+### 共享标注模式
+
+启用 `--shared-annotation` 时：
+
+**数据库位置**：
+- Linux/macOS：`~/.local/share/markon/annotations.db`
+- Windows：`%APPDATA%\markon\annotations.db`
+- 自定义：设置 `MARKON_SQLITE_PATH` 环境变量
+
+**同步机制**：
+- 通过 WebSocket 实时同步标注和 viewed 状态
+- 自动重连，指数退避
+- 广播到所有连接的客户端
+
+**多设备用法**：
+1. 在服务器启动：`markon --shared-annotation -l 0.0.0.0 README.md`
+2. 在任何设备打开：`http://server-ip:6419`
+3. 所有标注在设备间实时同步
+
+### 反向代理
+
+通过反向代理暴露 Markon 时，使用 `--browser` 和 `--qr` 指定公共 URL：
+
 ```bash
-# ❌ 这会与系统路径冲突
-mkdir _              # 不要创建单下划线目录
-markon               # 系统使用 /_/css/*、/_/js/* 等
-
-# ✅ 以下都可以正常使用
-mkdir _build         # URL: /_build/* (不是 /_/*)
-mkdir __pycache__    # URL: /__pycache__/* (不是 /_/*)
-mkdir ws             # URL: /ws/* (与 /_/ws 不同！)
-mkdir static         # URL: /static/* (不是 /_/*)
+# Nginx 监听 docs.example.com
+markon -b http://docs.example.com --qr http://docs.example.com
 ```
 
-**使用反向代理时**：请确保配置代理转发 `/_/` 路径。详细的 Nginx、Caddy、Apache、Traefik 配置示例请参考 [REVERSE_PROXY.zh.md](REVERSE_PROXY.zh.md) ([English](REVERSE_PROXY.md))。
+参见 [反向代理配置指南](REVERSE_PROXY.zh.md) 了解详细设置。
 
-## 支持的 Markdown 特性
+## GitHub Alerts
 
-- **标题** (H1-H6)
-- **粗体/斜体/删除线**
-- **列表** (有序/无序)
-- **任务列表** (- [ ] / - [x])
-- **表格**
-- **代码块** (支持语法高亮)
-- **引用块**
-- **链接和图片**
-- **分隔线**
-- **脚注**
-- **Emoji** (:emoji_name:)
-- **Mermaid 图表**
-- **GitHub Alerts** ([!NOTE], [!TIP], etc.)
-
-## Mermaid 图表示例
-
-markon 支持 Mermaid 图表渲染，只需使用 \`\`\`mermaid 代码块：
-
-\`\`\`markdown
-\`\`\`mermaid
-graph TD
-    A[开始] --> B{判断}
-    B -->|是| C[操作1]
-    B -->|否| D[操作2]
-\`\`\`
-\`\`\`
-
-支持的图表类型：
-- 流程图 (graph/flowchart)
-- 时序图 (sequenceDiagram)
-- 饼图 (pie)
-- 甘特图 (gantt)
-- 类图 (classDiagram)
-- 状态图 (stateDiagram)
-- 等等...
-
-## Emoji 支持
-
-使用标准的 emoji shortcodes：
-
-```markdown
-:smile: :heart: :rocket: :tada: :sparkles:
-```
-
-渲染结果：😄 ❤️ 🚀 🎉 ✨
-
-## GitHub Alerts 示例
-
-使用特殊的 blockquote 语法创建提示框：
+支持 GitHub 风格的提示块：
 
 ```markdown
 > [!NOTE]
-> 这是一条提示信息。
+> 高亮需要注意的信息。
 
 > [!TIP]
-> 这是一条技巧提示。
+> 可选信息，帮助用户更成功。
 
 > [!IMPORTANT]
-> 这是一条重要信息。
+> 用户成功所需的关键信息。
 
 > [!WARNING]
-> 这是一条警告信息。
+> 由于潜在风险需要用户立即注意的关键内容。
 
 > [!CAUTION]
-> 这是一条严重警告。
+> 操作的负面潜在后果。
 ```
 
-支持的类型：
-- **NOTE** (蓝色) - 一般性提示信息
-- **TIP** (绿色) - 有用的技巧或建议
-- **IMPORTANT** (紫色) - 关键信息
-- **WARNING** (黄色) - 需要注意的警告
-- **CAUTION** (红色) - 危险或严重警告
-
-## 项目来源
-
-本项目移植自 [go-grip](https://github.com/kookyleo/go-grip)，使用 Rust 重新实现，并添加了 Medium 风格的标注功能。
-
-### 与 go-grip 的主要区别
-
-| 特性 | go-grip | markon |
-|------|---------|---------|
-| 语言 | Go | Rust |
-| GitHub Alerts | ✅ | ✅ |
-| Emoji | 自定义映射 | Unicode (emojis crate) |
-| Medium 标注 | ❌ | ✅ |
-| 热重载 | ✅ | ❌ |
-| 自动打开浏览器 | ✅ | ✅ |
-| 二维码生成 | ❌ | ✅ |
-| 打印优化 | ✅ | ✅ |
+颜色主题：
+- **NOTE**（蓝色）- 高亮信息
+- **TIP**（绿色）- 可选提示
+- **IMPORTANT**（紫色）- 关键信息
+- **WARNING**（黄色）- 重要警告
+- **CAUTION**（红色）- 危险或严重警告
 
 ## 技术栈
 
 ### 后端
-- **Markdown 解析**: [pulldown-cmark](https://github.com/raphlinus/pulldown-cmark)
-- **语法高亮**: [syntect](https://github.com/trishume/syntect)
-- **HTTP 服务器**: [axum](https://github.com/tokio-rs/axum) + [tokio](https://tokio.rs/)
-- **模板引擎**: [tera](https://github.com/Keats/tera)
-- **静态资源嵌入**: [rust-embed](https://github.com/pyrossh/rust-embed)
-- **Emoji**: [emojis](https://github.com/rosetta-rs/emojis)
+- **Markdown 解析**：[pulldown-cmark](https://github.com/raphlinus/pulldown-cmark)
+- **语法高亮**：[syntect](https://github.com/trishume/syntect)
+- **HTTP 服务器**：[axum](https://github.com/tokio-rs/axum) + [tokio](https://tokio.rs/)
+- **模板引擎**：[tera](https://github.com/Keats/tera)
+- **静态资源嵌入**：[rust-embed](https://github.com/pyrossh/rust-embed)
+- **Emoji**：[emojis](https://github.com/rosetta-rs/emojis)
 
 ### 前端
-- **图表渲染**: [Mermaid.js](https://mermaid.js.org/)
-- **样式**: [GitHub Markdown CSS](https://github.com/sindresorhus/github-markdown-css)
-- **标注功能**: 原生 JavaScript + LocalStorage
+- **图表渲染**：[Mermaid.js](https://mermaid.js.org/)
+- **样式**：[GitHub Markdown CSS](https://github.com/sindresorhus/github-markdown-css)
+- **架构**：ES6 模块，面向对象设计，策略模式
+
+## 常见问题
+
+<details>
+<summary><strong>如何从其他设备访问？</strong></summary>
+
+在服务器上使用 `-l 0.0.0.0` 绑定所有接口：
+
+```bash
+markon -l 0.0.0.0 README.md
+```
+
+然后从任何设备打开 `http://server-ip:6419`。使用 `--qr` 生成移动访问 QR 码。
+</details>
+
+<details>
+<summary><strong>标注存储在哪里？</strong></summary>
+
+**本地模式**（默认）：浏览器 LocalStorage（每个浏览器独立）
+
+**共享模式**（`--shared-annotation`）：SQLite 数据库
+- Linux/macOS：`~/.local/share/markon/annotations.db`
+- Windows：`%APPDATA%\markon\annotations.db`
+- 自定义：`MARKON_SQLITE_PATH=/path/to/db markon --shared-annotation`
+</details>
+
+<details>
+<summary><strong>如何使用 Nginx/Apache 反向代理？</strong></summary>
+
+Nginx 示例：
+
+```nginx
+location / {
+    proxy_pass http://127.0.0.1:6419;
+    proxy_http_version 1.1;
+    proxy_set_header Upgrade $http_upgrade;
+    proxy_set_header Connection "upgrade";
+    proxy_set_header Host $host;
+    proxy_set_header X-Real-IP $remote_addr;
+}
+```
+
+然后使用：
+```bash
+markon -b http://yourdomain.com --qr http://yourdomain.com
+```
+
+参见 [反向代理指南](REVERSE_PROXY.zh.md) 了解详细配置。
+</details>
+
+<details>
+<summary><strong>可以同时渲染多个文件吗？</strong></summary>
+
+不支持。Markon 一次渲染一个文件，但提供目录浏览模式快速切换：
+
+```bash
+markon  # 在当前目录浏览所有 .md 文件
+```
+</details>
+
+<details>
+<summary><strong>如何更改端口？</strong></summary>
+
+```bash
+markon -p 8080 README.md
+```
+</details>
+
+<details>
+<summary><strong>支持哪些主题？</strong></summary>
+
+三种主题模式：
+- `--theme light`：强制浅色主题
+- `--theme dark`：强制深色主题
+- `--theme auto`（默认）：跟随系统设置
+</details>
 
 ## 开发
-
-### 项目结构
-
-```
-markon/
-├── src/
-│   ├── main.rs         # 程序入口
-│   ├── server.rs       # HTTP 服务器
-│   ├── markdown.rs     # Markdown 渲染器
-│   └── assets.rs       # 静态资源管理
-├── assets/
-│   ├── css/            # 样式表
-│   │   ├── github-markdown-dark.css
-│   │   ├── github-markdown-light.css
-│   │   ├── github-print.css
-│   │   └── editor.css  # 标注功能样式
-│   ├── js/             # JavaScript
-│   │   ├── mermaid.min.js
-│   │   └── editor.js   # 标注功能逻辑
-│   └── templates/      # HTML 模板
-│       ├── layout.html
-│       └── directory.html
-├── Cargo.toml
-├── README.md
-└── README.zh.md
-```
 
 ### 构建
 
 ```bash
-# Debug 模式
+# 开发构建
 cargo build
 
-# Release 模式
+# 发布构建
 cargo build --release
 
 # 运行测试
 cargo test
 
-# 代码检查
-cargo clippy
+# JavaScript lint
+npx eslint assets/js/**/*.js
 
-# JavaScript Lint
-npx eslint assets/js/editor.js
+# 运行
+./target/debug/markon README.md
 ```
 
 ## 贡献
 
-我们欢迎所有形式的贡献！无论是报告 bug、提出新功能建议，还是提交代码改进。
+欢迎贡献！无论是 bug 报告、功能请求还是代码改进。
 
 ### 如何贡献
 
-1. **报告问题**：在 [GitHub Issues](https://github.com/kookyleo/markon/issues) 中提交 bug 报告或功能请求
+1. **报告问题**：通过 [GitHub Issues](https://github.com/kookyleo/markon/issues) 提交 bug 或功能请求
 2. **提交 PR**：
-   - Fork 本项目
-   - 创建特性分支（`git checkout -b feature/amazing-feature`）
-   - 提交更改（`git commit -m 'Add some amazing feature'`）
-   - 推送到分支（`git push origin feature/amazing-feature`）
-   - 开启 Pull Request
+   - Fork 仓库
+   - 创建功能分支（`git checkout -b feature/your-feature`）
+   - 提交更改（`git commit -m 'Add your feature'`）
+   - 推送分支（`git push origin feature/your-feature`）
+   - 创建 Pull Request
 
-### 代码规范
+### 提交 PR 前
 
-提交 PR 前请确保：
-- ✅ 运行 `cargo test` 确保所有测试通过
-- ✅ 运行 `cargo clippy` 确保代码符合 Rust 最佳实践
-- ✅ 运行 `cargo fmt` 格式化代码
-- ✅ 对 JavaScript 代码运行 `npx eslint assets/js/editor.js`
+- 运行 `cargo test` - 确保所有测试通过
+- 运行 `cargo clippy` - 检查代码质量
+- 运行 `cargo fmt` - 格式化代码
+- 运行 `npx eslint assets/js/**/*.js` - 检查 JavaScript 代码
+- 手动测试更改
 
-## License
+## 许可证
 
 Apache License 2.0
 
 ## 致谢
 
-- [go-grip](https://github.com/kookyleo/go-grip) - 原始项目
+- [go-grip](https://github.com/kookyleo/go-grip) - Markdown 渲染的最初启发
 - [GitHub Markdown CSS](https://github.com/sindresorhus/github-markdown-css) - 样式来源
-- [Medium](https://medium.com) - 标注功能灵感来源
-- 所有开源依赖库的贡献者
+- [Medium](https://medium.com) - 标注功能灵感
+- 所有开源贡献者
 
-## 相关链接
+## 链接
 
-- 原项目: https://github.com/kookyleo/go-grip
-- GitHub Markdown 样式: https://github.com/sindresorhus/github-markdown-css
+- GitHub Markdown CSS: https://github.com/sindresorhus/github-markdown-css
 - Mermaid 文档: https://mermaid.js.org/
+- go-grip: https://github.com/kookyleo/go-grip

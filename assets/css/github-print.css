@@ -57,9 +57,16 @@
   @page {
     margin-top: 1.5cm;
     margin-right: 1.5cm;
-    margin-bottom: 1.5cm;
+    margin-bottom: 2cm;  /* Increased for page number */
     margin-left: 2cm;  /* Larger left margin for binding */
     size: A4;
+
+    /* Page number at bottom center */
+    @bottom-center {
+      content: counter(page) " / " counter(pages);
+      font-size: 10pt;
+      color: #666;
+    }
   }
 
   html, body {
