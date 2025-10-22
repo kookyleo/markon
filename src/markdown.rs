@@ -261,7 +261,6 @@ impl MarkdownRenderer {
         let mut open_sections: Vec<u8> = Vec::new();
 
         for (start, end, level, tag, id, content) in &headings {
-
             // Add content before this heading
             result.push_str(&html[last_pos..*start]);
 
