@@ -18,6 +18,10 @@ class SectionViewedManager {
         this.tempExpandedState = {}; // Track temporarily expanded sections (viewed but expanded)
         this.stateLoaded = false;
 
+        // Check if viewed feature is enabled
+        const enableViewedMeta = document.querySelector('meta[name="enable-viewed"]');
+        this.enableViewed = enableViewedMeta ? enableViewedMeta.getAttribute('content') === 'true' : true;
+
         if (this.isSharedMode && this.ws) {
             this.setupWebSocketListeners();
         }
@@ -26,17 +30,23 @@ class SectionViewedManager {
     }
 
     async init() {
-        // 1. Load saved state (async for shared mode)
-        await this.loadState();
+        // 1. Load saved state (async for shared mode) - only if viewed is enabled
+        if (this.enableViewed) {
+            await this.loadState();
+        }
 
-        // 2. Inject checkboxes to all headings (h2-h6)
+        // 2. Inject action buttons to all headings (h2-h6)
         this.injectCheckboxes();
 
-        // 3. Create toolbar for batch operations
-        this.createToolbar();
+        // 3. Create toolbar for batch operations - only if viewed is enabled
+        if (this.enableViewed) {
+            this.createToolbar();
+        }
 
-        // 4. Apply saved viewed state
-        this.applyViewedState();
+        // 4. Apply saved viewed state - only if viewed is enabled
+        if (this.enableViewed) {
+            this.applyViewedState();
+        }
 
         // 5. Setup event listeners
         this.setupEventListeners();
@@ -99,35 +109,78 @@ class SectionViewedManager {
 
             const headingId = heading.id;
 
-            // Create checkbox container
-            const label = document.createElement('label');
-            label.className = 'viewed-checkbox-label';
-            label.title = 'Mark as viewed to collapse this section';
+            // Define available section actions (features)
+            const actions = [];
 
-            const checkbox = document.createElement('input');
-            checkbox.type = 'checkbox';
-            checkbox.className = 'viewed-checkbox';
-            checkbox.dataset.headingId = headingId;
-            checkbox.tabIndex = -1; // Prevent keyboard navigation to checkbox
+            // 1. Viewed feature (optional, controlled by config)
+            if (this.enableViewed) {
+                actions.push({
+                    type: 'viewed',
+                    create: () => {
+                        const label = document.createElement('label');
+                        label.className = 'viewed-checkbox-label';
+                        label.title = 'Mark as viewed to collapse this section';
 
-            if (this.viewedState[headingId]) {
-                checkbox.checked = true;
+                        const checkbox = document.createElement('input');
+                        checkbox.type = 'checkbox';
+                        checkbox.className = 'viewed-checkbox';
+                        checkbox.dataset.headingId = headingId;
+                        checkbox.tabIndex = -1; // Prevent keyboard navigation to checkbox
+
+                        if (this.viewedState[headingId]) {
+                            checkbox.checked = true;
+                        }
+
+                        const text = document.createElement('span');
+                        text.className = 'viewed-text';
+                        text.textContent = 'Viewed';
+
+                        label.appendChild(checkbox);
+                        label.appendChild(text);
+                        return label;
+                    }
+                });
             }
 
-            const text = document.createElement('span');
-            text.className = 'viewed-text';
-            text.textContent = 'Viewed';
+            // 2. Print feature (always enabled)
+            actions.push({
+                type: 'print',
+                create: () => {
+                    const printBtn = document.createElement('span');
+                    printBtn.className = 'section-action section-print-btn';
+                    printBtn.textContent = 'Print';
+                    printBtn.title = 'Print this section';
+                    printBtn.dataset.headingId = headingId;
+                    return printBtn;
+                }
+            });
 
-            label.appendChild(checkbox);
-            label.appendChild(text);
-            heading.appendChild(label);
+            // 3. Expand/collapse toggle (always enabled)
+            actions.push({
+                type: 'toggle',
+                create: () => {
+                    const toggleBtn = document.createElement('span');
+                    toggleBtn.className = 'section-action section-expand-toggle';
+                    toggleBtn.textContent = 'Expand';
+                    toggleBtn.dataset.headingId = headingId;
+                    return toggleBtn;
+                }
+            });
 
-            // Create expand/collapse toggle button
-            const toggleBtn = document.createElement('span');
-            toggleBtn.className = 'section-expand-toggle';
-            toggleBtn.textContent = '(click to expand)';
-            toggleBtn.dataset.headingId = headingId;
-            heading.appendChild(toggleBtn);
+            // Inject actions with separators
+            actions.forEach((action, idx) => {
+                // Add separator before action (except first one)
+                if (idx > 0) {
+                    const separator = document.createElement('span');
+                    separator.className = 'section-action-separator';
+                    separator.textContent = ' | ';
+                    heading.appendChild(separator);
+                }
+
+                // Add the action element
+                const element = action.create();
+                heading.appendChild(element);
+            });
         });
     }
 
@@ -223,7 +276,7 @@ class SectionViewedManager {
                 el.classList.remove('section-content-temp-visible');
             });
             if (toggleBtn) {
-                toggleBtn.textContent = '(click to expand)';
+                toggleBtn.textContent = 'Expand';
             }
         } else {
             // Expand (show content)
@@ -233,9 +286,53 @@ class SectionViewedManager {
                 el.classList.add('section-content-temp-visible');
             });
             if (toggleBtn) {
-                toggleBtn.textContent = '(click to collapse)';
+                toggleBtn.textContent = 'Collapse';
             }
         }
+    }
+
+    printSection(headingId) {
+        // Print the specified section
+        const heading = document.getElementById(headingId);
+        if (!heading) {
+            console.warn('[ViewedManager] printSection: heading not found:', headingId);
+            return;
+        }
+
+        const content = this.getSectionContent(heading);
+        if (!content || content.length === 0) {
+            console.warn('[ViewedManager] printSection: no content found for heading:', headingId);
+            return;
+        }
+
+        // Create a temporary container for print content
+        const printContainer = document.createElement('div');
+        printContainer.className = 'print-section-container';
+
+        // Clone the heading (without controls)
+        const headingClone = heading.cloneNode(true);
+        // Remove interactive elements
+        headingClone.querySelectorAll('.viewed-checkbox-label, .section-action-separator, .section-print-btn, .section-expand-toggle').forEach(el => el.remove());
+        printContainer.appendChild(headingClone);
+
+        // Clone the section content
+        content.forEach(el => {
+            const clone = el.cloneNode(true);
+            printContainer.appendChild(clone);
+        });
+
+        // Add print container to document
+        document.body.appendChild(printContainer);
+
+        // Trigger print dialog
+        window.print();
+
+        // Remove print container after printing
+        setTimeout(() => {
+            document.body.removeChild(printContainer);
+        }, 100);
+
+        console.log('[ViewedManager] printSection: printed section', headingId);
     }
 
     toggleCollapse(headingId) {
@@ -403,6 +500,15 @@ class SectionViewedManager {
                 e.stopPropagation(); // Prevent event bubbling
                 const headingId = e.target.dataset.headingId;
                 this.toggleTempExpand(headingId);
+            });
+        });
+
+        // Print button click event
+        document.querySelectorAll('.section-print-btn').forEach(printBtn => {
+            printBtn.addEventListener('click', (e) => {
+                e.stopPropagation(); // Prevent event bubbling
+                const headingId = e.target.dataset.headingId;
+                this.printSection(headingId);
             });
         });
     }

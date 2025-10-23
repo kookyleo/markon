@@ -605,6 +605,45 @@
     font-size: 0.8125rem;
 }
 
+/* Common section action button style */
+.section-action {
+    font-size: 0.8125rem;
+    color: #0969da;
+    font-weight: normal;
+    cursor: pointer;
+    -webkit-user-select: none;
+    -moz-user-select: none;
+    -ms-user-select: none;
+    user-select: none;
+    -webkit-touch-callout: none;
+    vertical-align: middle;
+    transition: opacity 0.2s;
+    pointer-events: auto;
+}
+
+.section-action:hover {
+    opacity: 0.7;
+    text-decoration: underline;
+}
+
+/* Section action separator */
+.section-action-separator {
+    margin: 0 0.25rem;
+    font-size: 0.8125rem;
+    color: #656d76;
+    -webkit-user-select: none;
+    -moz-user-select: none;
+    -ms-user-select: none;
+    user-select: none;
+    -webkit-touch-callout: none;
+    vertical-align: middle;
+}
+
+/* Print section container - hidden by default */
+.print-section-container {
+    display: none;
+}
+
 /* Collapsed section styles */
 .section-collapsed {
     cursor: pointer;
@@ -617,26 +656,10 @@
     opacity: 0.85;
 }
 
-/* Expand/collapse toggle button (replaces ::after pseudo-element) */
+/* Expand/collapse toggle button - inherits from .section-action */
+/* Note: Additional specific class kept for potential future customization */
 .section-expand-toggle {
-    font-size: 0.75rem;
-    color: #656d76;
-    font-weight: normal;
-    margin-left: 0.5rem;
-    font-style: italic;
-    -webkit-user-select: none;
-    -moz-user-select: none;
-    -ms-user-select: none;
-    user-select: none;
-    -webkit-touch-callout: none;
-    cursor: pointer;
-    display: none; /* Hidden by default */
-    vertical-align: middle;
-}
-
-/* Show toggle button when section is collapsed */
-.section-collapsed .section-expand-toggle {
-    display: inline;
+    /* All common styles are inherited from .section-action */
 }
 
 /* Temporarily expanded section (viewed but expanded) */
@@ -675,7 +698,11 @@
     color: #8b949e;
 }
 
-[data-theme="dark"] .section-expand-toggle {
+[data-theme="dark"] .section-action {
+    color: #58a6ff;
+}
+
+[data-theme="dark"] .section-action-separator {
     color: #8b949e;
 }
 
@@ -810,6 +837,22 @@
    ============================================================ */
 
 @media print {
+    /* When printing a specific section, hide everything except the print container */
+    body:has(.print-section-container) > *:not(.print-section-container) {
+        display: none !important;
+    }
+
+    /* Show the print section container when printing */
+    .print-section-container {
+        display: block !important;
+    }
+
+    /* Hide interactive elements in print section container */
+    .print-section-container .section-action-separator,
+    .print-section-container .section-print-btn {
+        display: none !important;
+    }
+
     /* Hide viewed checkboxes and labels */
     .viewed-checkbox-label {
         display: none !important;
