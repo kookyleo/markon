@@ -608,7 +608,7 @@
 /* Common section action button style */
 .section-action {
     font-size: 0.8125rem;
-    color: #0969da;
+    color: #656d76;
     font-weight: normal;
     cursor: pointer;
     -webkit-user-select: none;
@@ -699,7 +699,7 @@
 }
 
 [data-theme="dark"] .section-action {
-    color: #58a6ff;
+    color: #8b949e;
 }
 
 [data-theme="dark"] .section-action-separator {
