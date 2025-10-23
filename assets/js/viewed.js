@@ -132,7 +132,7 @@ class SectionViewedManager {
                         }
 
                         const text = document.createElement('span');
-                        text.className = 'viewed-text';
+                        text.className = 'section-action viewed-text';
                         text.textContent = 'Viewed';
 
                         label.appendChild(checkbox);
@@ -161,7 +161,8 @@ class SectionViewedManager {
                 create: () => {
                     const toggleBtn = document.createElement('span');
                     toggleBtn.className = 'section-action section-expand-toggle';
-                    toggleBtn.textContent = 'Expand';
+                    // Default state: section is expanded, so show "Collapse"
+                    toggleBtn.textContent = 'Collapse';
                     toggleBtn.dataset.headingId = headingId;
                     return toggleBtn;
                 }
@@ -260,34 +261,36 @@ class SectionViewedManager {
     }
 
     toggleTempExpand(headingId) {
-        // Toggle temporary expand/collapse for viewed sections
+        // Toggle expand/collapse for any section
         const heading = document.getElementById(headingId);
         if (!heading) return;
 
         const content = this.getSectionContent(heading);
         const toggleBtn = heading.querySelector('.section-expand-toggle');
-        const isTempExpanded = this.tempExpandedState[headingId];
+        const isCollapsed = heading.classList.contains('section-collapsed');
 
-        if (isTempExpanded) {
-            // Collapse (hide content)
-            this.tempExpandedState[headingId] = false;
-            heading.classList.remove('section-temp-expanded');
+        if (isCollapsed) {
+            // Currently collapsed -> expand it
+            heading.classList.remove('section-collapsed');
             content.forEach(el => {
-                el.classList.remove('section-content-temp-visible');
-            });
-            if (toggleBtn) {
-                toggleBtn.textContent = 'Expand';
-            }
-        } else {
-            // Expand (show content)
-            this.tempExpandedState[headingId] = true;
-            heading.classList.add('section-temp-expanded');
-            content.forEach(el => {
+                el.classList.remove('section-content-hidden');
                 el.classList.add('section-content-temp-visible');
             });
             if (toggleBtn) {
                 toggleBtn.textContent = 'Collapse';
             }
+            this.tempExpandedState[headingId] = false;
+        } else {
+            // Currently expanded -> collapse it
+            heading.classList.add('section-collapsed');
+            content.forEach(el => {
+                el.classList.add('section-content-hidden');
+                el.classList.remove('section-content-temp-visible');
+            });
+            if (toggleBtn) {
+                toggleBtn.textContent = 'Expand';
+            }
+            this.tempExpandedState[headingId] = true;
         }
     }
 
