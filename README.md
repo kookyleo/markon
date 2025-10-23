@@ -58,6 +58,13 @@ Simply run `markon` in any directory to browse and render Markdown files with a 
   - **Shared Mode**: SQLite + WebSocket (synced across devices)
 - ✅ **Independent Toggle**: Expand/collapse without changing viewed status
 
+### Section Print
+- ✅ **Individual Print**: "Print" button next to each heading (H2-H6)
+- ✅ **Precise Range**: Print only current section content (from heading to next same/higher-level heading)
+- ✅ **Clean Output**: Automatically hide interactive elements (checkboxes, buttons) when printing
+- ✅ **Preserve Styling**: Maintain GitHub-style professional formatting in print
+- ✅ **One-Click Operation**: Click "Print" button to open system print dialog
+
 ### Keyboard Shortcuts
 - ✅ **Undo/Redo**: `Ctrl/Cmd+Z`, `Ctrl/Cmd+Shift+Z`, `Ctrl/Cmd+Y`
 - ✅ **Navigation**: `j/k` (next/prev heading), `Ctrl/Cmd+j/k` (next/prev annotation)
