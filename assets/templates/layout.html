@@ -770,13 +770,53 @@
     <script src="/_/js/mermaid.min.js"></script>
     <script>
         {% if theme == "dark" %}
-        mermaid.initialize({ startOnLoad: true, theme: 'dark' });
+        mermaid.initialize({
+            startOnLoad: true,
+            theme: 'dark',
+            themeVariables: {
+                // Darker text for better readability in dark mode
+                primaryTextColor: '#1f2328',
+                secondaryTextColor: '#1f2328',
+                tertiaryTextColor: '#1f2328',
+                textColor: '#1f2328',
+                labelTextColor: '#1f2328',
+                nodeTextColor: '#1f2328',
+                edgeLabelBackground: '#f0f6fc',
+                // Lighter backgrounds for contrast with dark text
+                primaryColor: '#f0f6fc',
+                primaryBorderColor: '#8b949e',
+                secondaryColor: '#e6edf3',
+                secondaryBorderColor: '#6e7681',
+                tertiaryColor: '#d0d7de',
+                tertiaryBorderColor: '#484f58'
+            }
+        });
         {% elif theme == "light" %}
         mermaid.initialize({ startOnLoad: true, theme: 'default' });
         {% else %}
         // Auto theme
         if (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches) {
-            mermaid.initialize({ startOnLoad: true, theme: 'dark' });
+            mermaid.initialize({
+                startOnLoad: true,
+                theme: 'dark',
+                themeVariables: {
+                    // Darker text for better readability in dark mode
+                    primaryTextColor: '#1f2328',
+                    secondaryTextColor: '#1f2328',
+                    tertiaryTextColor: '#1f2328',
+                    textColor: '#1f2328',
+                    labelTextColor: '#1f2328',
+                    nodeTextColor: '#1f2328',
+                    edgeLabelBackground: '#f0f6fc',
+                    // Lighter backgrounds for contrast with dark text
+                    primaryColor: '#f0f6fc',
+                    primaryBorderColor: '#8b949e',
+                    secondaryColor: '#e6edf3',
+                    secondaryBorderColor: '#6e7681',
+                    tertiaryColor: '#d0d7de',
+                    tertiaryBorderColor: '#484f58'
+                }
+            });
         } else {
             mermaid.initialize({ startOnLoad: true, theme: 'default' });
         }

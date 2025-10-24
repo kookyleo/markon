@@ -57,24 +57,23 @@
   @page {
     margin-top: 1.5cm;
     margin-right: 1.5cm;
-    margin-bottom: 2cm;  /* Increased for page number */
-    margin-left: 2cm;  /* Larger left margin for binding */
+    margin-bottom: 1.5cm;
+    margin-left: 1.5cm;
     size: A4;
-
-    /* Page number at bottom center */
-    @bottom-center {
-      content: counter(page) " / " counter(pages);
-      font-size: 10pt;
-      color: #666;
-    }
   }
 
   html, body {
-    background: transparent !important;
+    /* Force light paper background in print regardless of OS/theme */
+    background: #ffffff !important;
     font-size: 12pt !important;
     line-height: 1.4 !important;
-    margin: 0 !important;
-    padding: 0 !important;
+  }
+
+  /* Remove dark backgrounds inside diagrams/content */
+  .markdown-body,
+  .mermaid,
+  .mermaid svg {
+    background: transparent !important;
   }
 
   /* ========== CONTAINER & LAYOUT OPTIMIZATION ========== */
@@ -111,6 +110,7 @@
     margin-top: 0 !important;
     margin-bottom: 12pt !important;
     page-break-after: auto !important;
+    page-break-before: auto !important;
     border-bottom: 2pt solid #333 !important;
     padding-bottom: 6pt !important;
   }
@@ -121,7 +121,7 @@
     margin-top: 16pt !important;
     margin-bottom: 8pt !important;
     page-break-after: auto !important;
-    page-break-inside: avoid !important;  /* Prevent border separation */
+    page-break-before: auto !important;
     border-bottom: 1pt solid #666 !important;
     padding-bottom: 4pt !important;
   }
@@ -132,6 +132,7 @@
     margin-top: 12pt !important;
     margin-bottom: 6pt !important;
     page-break-after: auto !important;
+    page-break-before: auto !important;
   }
 
   .markdown-body h4,
@@ -142,6 +143,7 @@
     margin-top: 12pt !important;
     margin-bottom: 6pt !important;
     page-break-after: auto !important;
+    page-break-before: auto !important;
   }
 
   /* Paragraph spacing */
@@ -324,119 +326,195 @@
   .anchor,
   .octicon,
   .task-list-item .handle,
-  [data-footnote-backref] {
+  [data-footnote-backref],
+  .section-print-btn,
+  .section-action,
+  .section-actions,
+  .section-action-separator,
+  .section-expand-toggle,
+  .viewed-checkbox-label,
+  .toc,
+  #toc-container,
+  .shortcuts-help-panel,
+  .selection-popover,
+  .note-popup,
+  header,
+  .footer {
     display: none !important;
   }
 
   /* ========== PAGE BREAK CONTROL ========== */
   .markdown-body h1,
-  .markdown-body h2,
+  .markdown-body h2 {
+    page-break-before: auto !important;
+    page-break-after: avoid !important;
+  }
+
   .markdown-body h3,
   .markdown-body h4,
   .markdown-body h5,
   .markdown-body h6 {
-    page-break-before: auto !important;
-    page-break-after: auto !important;
+    page-break-after: avoid !important;
   }
 
-  /* Only avoid page breaks for small elements */
+  .markdown-body pre,
   .markdown-body blockquote,
   .markdown-body table,
   .markdown-body .markdown-alert {
     page-break-inside: avoid !important;
   }
 
-  /* Allow page breaks in ALL pre elements including code blocks */
-  .markdown-body pre {
-    page-break-inside: auto !important;
-    break-inside: auto !important;
-  }
-
-  /* Reduce orphans and widows requirements */
+  /* Avoid orphans and widows */
   .markdown-body p,
   .markdown-body li {
-    orphans: 1 !important;
-    widows: 1 !important;
+    orphans: 3 !important;
+    widows: 3 !important;
   }
 
-  /* ========== SECTION & DIAGRAM HANDLING ========== */
-  /* Allow page breaks in heading sections to prevent blank pages */
-  .heading-section {
+  /* ========== MERMAID DIAGRAMS ========== */
+  /* Mermaid diagrams - move border to inner graphic to avoid border-only pages */
+  .mermaid {
     page-break-inside: auto !important;
-    break-inside: auto !important;
-    position: static !important;  /* Reset position to avoid print layout issues */
+    border: none !important;
     padding: 0 !important;
-    margin: 0 !important;
-  }
-
-  /* Ensure all container divs allow page breaks */
-  .markdown-body div {
-    page-break-inside: auto !important;
-    break-inside: auto !important;
-  }
-
-  /* Mermaid diagrams should be handled gracefully */
-  .mermaid {
-    /* Allow page breaks for large diagrams to avoid blank pages */
-    page-break-inside: auto !important;
-    break-inside: auto !important;
-    border: 1pt solid #ddd !important;
-    padding: 8pt !important;
     margin: 8pt 0 !important;
-  }
-
-  /* Pre elements containing Mermaid should also allow breaks */
-  pre.mermaid {
-    page-break-inside: auto !important;
-    break-inside: auto !important;
-  }
-
-  /* SVG elements should also allow page breaks */
-  .mermaid svg {
-    page-break-inside: auto !important;
-    break-inside: auto !important;
-    max-height: none !important;
     overflow: visible !important;
   }
-
-  /* Reset any min-height that might prevent breaking */
-  .mermaid,
-  pre.mermaid,
-  .mermaid svg {
-    min-height: 0 !important;
-  }
-
-  /* Fix for foreignObject elements in SVG that break printing */
-  foreignObject {
-    overflow: visible !important;
-    page-break-inside: auto !important;
-    break-inside: auto !important;
-  }
-
-  /* Ensure foreignObject content can break */
-  foreignObject * {
-    page-break-inside: auto !important;
-    break-inside: auto !important;
-    overflow: visible !important;
-  }
-
-  /* Alternative approach: Convert SVG to be more print-friendly */
-  .mermaid svg {
-    overflow: visible !important;
-  }
-
-  /* Critical fix: Ensure Mermaid container doesn't expand beyond content */
-  .mermaid {
-    max-height: none !important;
-    height: auto !important;
-    contain: none !important;
-  }
-
-  .mermaid svg {
+  .mermaid svg,
+  .mermaid img {
     display: block !important;
-    max-height: none !important;
+    width: 100% !important;
+    height: auto !important;
+    max-width: 100% !important;
+    max-height: 85vh !important; /* scale down to fit current page height */
+    object-fit: contain !important;
+    page-break-before: auto !important;
+    page-break-inside: avoid !important; /* keep each graphic in one page; may move to next if not enough space */
+    border: none !important;
+  }
+  /* Reduce gap between heading and first diagram to help fit on current page */
+  .markdown-body h1 + .mermaid,
+  .markdown-body h2 + .mermaid,
+  .markdown-body h3 + .mermaid {
+    margin-top: 6pt !important;
   }
 
+  /* Force light theme colors for Mermaid diagrams in print mode */
+  /* Override dark theme backgrounds and colors */
+  .mermaid svg * {
+    /* Remove all dark backgrounds from SVG elements */
+    background: transparent !important;
+  }
+
+  /* Mermaid diagram elements - force light theme colors */
+  .mermaid svg rect,
+  .mermaid svg circle,
+  .mermaid svg ellipse,
+  .mermaid svg polygon,
+  .mermaid svg path {
+    /* Remove dark fills, preserve stroke for visibility */
+    fill: #ffffff !important;
+  }
+
+  /* Preserve stroke colors but ensure they're visible on white */
+  .mermaid svg .node rect,
+  .mermaid svg .node circle,
+  .mermaid svg .node ellipse,
+  .mermaid svg .node polygon {
+    stroke: #333333 !important;
+    stroke-width: 1.5px !important;
+  }
+
+  /* Edge paths and arrows */
+  .mermaid svg .edgePath path,
+  .mermaid svg .flowchart-link {
+    stroke: #333333 !important;
+    fill: none !important;
+  }
+
+  .mermaid svg marker path {
+    fill: #333333 !important;
+    stroke: #333333 !important;
+  }
+
+  /* Text labels - ensure dark text on white background */
+  .mermaid svg text,
+  .mermaid svg .nodeLabel,
+  .mermaid svg .edgeLabel,
+  .mermaid svg .label {
+    fill: #000000 !important;
+    color: #000000 !important;
+  }
+
+  /* Label backgrounds */
+  .mermaid svg .labelBkg,
+  .mermaid svg .edgeLabel rect {
+    fill: #ffffff !important;
+    stroke: #cccccc !important;
+  }
+
+  /* Cluster/subgraph backgrounds */
+  .mermaid svg .cluster rect,
+  .mermaid svg g.cluster polygon {
+    fill: #f9f9f9 !important;
+    stroke: #666666 !important;
+  }
+
+  /* Note boxes and special elements */
+  .mermaid svg .note rect,
+  .mermaid svg .noteText {
+    fill: #fffbea !important;
+    stroke: #666666 !important;
+  }
+
+  /* State diagram specific */
+  .mermaid svg .statediagram-state rect {
+    fill: #ffffff !important;
+    stroke: #333333 !important;
+  }
+
+  /* Sequence diagram specific */
+  .mermaid svg .actor {
+    fill: #ffffff !important;
+    stroke: #333333 !important;
+  }
+
+  .mermaid svg .actor-line {
+    stroke: #666666 !important;
+  }
+
+  .mermaid svg .messageLine0,
+  .mermaid svg .messageLine1 {
+    stroke: #333333 !important;
+  }
+
+  .mermaid svg .activation0,
+  .mermaid svg .activation1,
+  .mermaid svg .activation2 {
+    fill: #f4f4f4 !important;
+    stroke: #666666 !important;
+  }
+
+  /* Class diagram specific */
+  .mermaid svg .classGroup rect {
+    fill: #ffffff !important;
+    stroke: #333333 !important;
+  }
+
+  .mermaid svg .divider {
+    stroke: #666666 !important;
+  }
+
+  /* Gantt chart specific */
+  .mermaid svg .task,
+  .mermaid svg .taskText {
+    fill: #ffffff !important;
+    stroke: #333333 !important;
+  }
+
+  .mermaid svg .grid .tick line {
+    stroke: #e0e0e0 !important;
+  }
 
   /* ========== UTILITY CLASSES ========== */
   .print-break-before {
@@ -496,5 +574,24 @@
   .note-edit,
   .note-delete {
     display: none !important;
+  }
+}
+
+@media print {
+  /* Keep only content area for print - generic fallback */
+  body > *:not(.container):not(.markdown-body) { display: none !important; }
+  /* If there is a container wrapper, keep only markdown-body inside it */
+  body > .container > *:not(.markdown-body) { display: none !important; }
+
+  html, body { margin: 0 !important; padding: 0 !important; }
+  .markdown-body {
+    position: static !important;
+    transform: none !important;
+    overflow: visible !important;
+  }
+  .markdown-body > :first-child {
+    break-before: auto !important;
+    page-break-before: auto !important;
+    margin-top: 0 !important;
   }
 }

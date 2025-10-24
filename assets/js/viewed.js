@@ -294,7 +294,7 @@ class SectionViewedManager {
         }
     }
 
-    printSection(headingId) {
+    async printSection(headingId) {
         // Print the specified section
         const heading = document.getElementById(headingId);
         if (!heading) {
@@ -308,132 +308,118 @@ class SectionViewedManager {
             return;
         }
 
-        // Create a temporary container for print content
-        const printContainer = document.createElement('div');
-        printContainer.className = 'print-section-container';
+        // Build a cloned container for the target section
+        const sectionContainer = document.createElement('div');
+        sectionContainer.className = 'markdown-body';
 
         // Clone the heading (without controls)
         const headingClone = heading.cloneNode(true);
-        // Remove interactive elements
         headingClone.querySelectorAll('.viewed-checkbox-label, .section-action-separator, .section-print-btn, .section-expand-toggle').forEach(el => el.remove());
-        printContainer.appendChild(headingClone);
+        sectionContainer.appendChild(headingClone);
 
         // Clone the section content
         content.forEach(el => {
             const clone = el.cloneNode(true);
-            printContainer.appendChild(clone);
+            sectionContainer.appendChild(clone);
         });
 
-        // Fix SVG marker IDs to avoid conflicts with original DOM
-        // This allows us to use display:none for hiding original content
-        this.fixSvgMarkerIds(printContainer);
+        // Create a hidden iframe as isolated print sandbox
+        const iframe = document.createElement('iframe');
+        iframe.style.position = 'fixed';
+        iframe.style.right = '0';
+        iframe.style.bottom = '0';
+        iframe.style.width = '0';
+        iframe.style.height = '0';
+        iframe.style.border = '0';
+        iframe.style.visibility = 'hidden';
+        document.body.appendChild(iframe);
 
-        // Fix SVG foreignObject elements that cause printing issues
-        this.fixSvgForeignObjects(printContainer);
+        // Resolve theme for markdown CSS
+        const prefersDark = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
+        const themeCss = prefersDark ? '/_/css/github-markdown-dark.css' : '/_/css/github-markdown-light.css';
 
-        // Add print container to the beginning of document body
-        // This ensures it appears first in print layout
-        document.body.insertBefore(printContainer, document.body.firstChild);
+        const doc = iframe.contentDocument;
+        doc.open();
+        doc.write(`<!DOCTYPE html><html><head><meta charset="utf-8"><title>Print Section</title>
+<link rel="stylesheet" href="${themeCss}">
+<link rel="stylesheet" href="/_/css/github-print.css">
+<style>
+  html, body { margin:0; padding:0; background: transparent !important; }
+  /* Tweak page margins slightly to avoid leading blank page */
+  @page { margin: 1.5cm 1.5cm 1.5cm 1.5cm; }
+  .markdown-body { box-sizing: border-box; max-width: 980px; margin: 0 auto; padding: 16px; border: none; }
+  /* Strip UI hierarchy boxes from print */
+  .markdown-body .section,
+  .markdown-body .section-box,
+  .markdown-body .section-wrapper,
+  .markdown-body .heading-container {
+    border: none !important;
+    box-shadow: none !important;
+    background: transparent !important;
+  }
+  /* Ensure first element never forces a break */
+  .markdown-body > :first-child { page-break-before: auto !important; margin-top: 0 !important; }
+  /* Mermaid sizing overrides */
+  .mermaid { overflow: visible !important; border: none !important; padding: 0 !important; margin: 12pt 0 !important; page-break-inside: avoid !important; }
+  .mermaid svg { display: block; width: 100% !important; height: auto !important; max-width: 100% !important; }
+  @media print { body { background: transparent !important; } }
+</style>
+</head><body><div class="markdown-body" id="root"></div></body></html>`);
+        doc.close();
 
-        // Trigger print dialog
-        window.print();
+        // Wait a tick to ensure iframe is ready
+        await new Promise(r => setTimeout(r, 0));
 
-        // Remove print container after printing
+        // Inject the cloned section
+        const root = doc.getElementById('root');
+        root.appendChild(doc.importNode(sectionContainer, true));
+
+        // Wait two frames to let styles/layout settle more reliably
+        await new Promise(requestAnimationFrame);
+        await new Promise(requestAnimationFrame);
+
+        // Normalize Mermaid/SVG sizing in iframe to avoid tiny boxes or overflow
+        const normalizeIframeSVGs = () => {
+            const svgs = Array.from(doc.querySelectorAll('.mermaid svg, svg'));
+            svgs.forEach(svg => {
+                try {
+                    // Remove fixed dimensions to allow CSS scaling
+                    svg.removeAttribute('width');
+                    svg.removeAttribute('height');
+                    svg.style.width = '100%';
+                    svg.style.height = 'auto';
+                    svg.setAttribute('preserveAspectRatio', 'xMidYMid meet');
+                } catch (_) {}
+            });
+        };
+        normalizeIframeSVGs();
+
+        // Fix marker ids inside iframe to ensure arrows render correctly
+        try { this.fixSvgMarkerIds(doc); } catch (_) {}
+
+        // Ensure all images in iframe are loaded prior to printing
+        const waitForImages = async () => {
+            const imgs = Array.from(doc.images || []);
+            await Promise.all(imgs.map(img => img.complete && img.naturalWidth > 0 ? Promise.resolve() : new Promise(res => { img.onload = img.onerror = () => res(); })));
+        };
+        await waitForImages();
+
+        // Ensure fonts are ready (best effort)
+        if (doc.fonts && doc.fonts.ready) {
+            try { await doc.fonts.ready; } catch (_) {}
+        }
+
+        // Small delay to stabilize layout, then print from iframe
+        await new Promise(res => setTimeout(res, 60));
+        try { iframe.contentWindow.focus(); } catch (_) {}
+        iframe.contentWindow.print();
+
+        // Cleanup after printing
         setTimeout(() => {
-            document.body.removeChild(printContainer);
-        }, 100);
+            try { iframe.parentNode && iframe.parentNode.removeChild(iframe); } catch (_) {}
+        }, 200);
 
-        console.log('[ViewedManager] printSection: printed section', headingId);
-    }
-
-    fixSvgMarkerIds(container) {
-        // Generate unique suffix for this print operation
-        const uniqueSuffix = `_print_${Date.now()}`;
-
-        // Find all SVG elements
-        const svgs = container.querySelectorAll('svg');
-
-        console.log(`[ViewedManager] fixSvgMarkerIds: found ${svgs.length} SVG elements`);
-
-        svgs.forEach((svg, svgIndex) => {
-            // Find all marker definitions
-            const markers = svg.querySelectorAll('marker[id]');
-            const markerMap = new Map(); // oldId -> newId
-
-            console.log(`[ViewedManager] fixSvgMarkerIds: SVG #${svgIndex} has ${markers.length} markers`);
-
-            // Update marker IDs
-            markers.forEach(marker => {
-                const oldId = marker.id;
-                const newId = oldId + uniqueSuffix;
-                marker.id = newId;
-                markerMap.set(oldId, newId);
-                console.log(`[ViewedManager] fixSvgMarkerIds: renamed marker ${oldId} -> ${newId}`);
-            });
-
-            // Update all references to markers
-            if (markerMap.size > 0) {
-                // Find all elements that reference markers
-                const elementsWithMarkers = svg.querySelectorAll('[marker-start], [marker-mid], [marker-end]');
-
-                console.log(`[ViewedManager] fixSvgMarkerIds: found ${elementsWithMarkers.length} elements with marker references`);
-
-                elementsWithMarkers.forEach(el => {
-                    ['marker-start', 'marker-mid', 'marker-end'].forEach(attr => {
-                        const value = el.getAttribute(attr);
-                        if (value) {
-                            // Extract marker ID from url(#id) format
-                            const match = value.match(/url\(#([^)]+)\)/);
-                            if (match && match[1]) {
-                                const oldId = match[1];
-                                const newId = markerMap.get(oldId);
-                                if (newId) {
-                                    el.setAttribute(attr, `url(#${newId})`);
-                                    console.log(`[ViewedManager] fixSvgMarkerIds: updated ${attr}: ${oldId} -> ${newId}`);
-                                }
-                            }
-                        }
-                    });
-                });
-            }
-        });
-
-        console.log('[ViewedManager] fixSvgMarkerIds: completed processing');
-    }
-
-    fixSvgForeignObjects(container) {
-        // ForeignObject elements in SVG can cause printing issues
-        // Apply print-friendly styles without replacing elements
-        const svgs = container.querySelectorAll('svg');
-
-        console.log(`[ViewedManager] fixSvgForeignObjects: found ${svgs.length} SVG elements`);
-
-        svgs.forEach((svg, svgIndex) => {
-            const foreignObjects = svg.querySelectorAll('foreignObject');
-
-            console.log(`[ViewedManager] fixSvgForeignObjects: SVG #${svgIndex} has ${foreignObjects.length} foreignObjects`);
-
-            // Apply print-friendly styles to foreignObjects
-            foreignObjects.forEach(fo => {
-                fo.style.overflow = 'visible';
-                fo.style.pageBreakInside = 'auto';
-
-                // Also apply to child elements
-                const children = fo.querySelectorAll('*');
-                children.forEach(child => {
-                    child.style.pageBreakInside = 'auto';
-                    child.style.overflow = 'visible';
-                });
-            });
-
-            // Set SVG container to be print-friendly
-            svg.style.overflow = 'visible';
-            svg.style.pageBreakInside = 'auto';
-
-            console.log(`[ViewedManager] fixSvgForeignObjects: applied print-friendly styles to ${foreignObjects.length} foreignObjects`);
-        });
-
-        console.log('[ViewedManager] fixSvgForeignObjects: completed processing');
+        console.log('[ViewedManager] printSection(iframe): printed section', headingId);
     }
 
     toggleCollapse(headingId) {
