@@ -73,6 +73,8 @@
     background: transparent !important;
     font-size: 12pt !important;
     line-height: 1.4 !important;
+    margin: 0 !important;
+    padding: 0 !important;
   }
 
   /* ========== CONTAINER & LAYOUT OPTIMIZATION ========== */
@@ -108,7 +110,7 @@
     font-weight: bold !important;
     margin-top: 0 !important;
     margin-bottom: 12pt !important;
-    page-break-after: avoid !important;
+    page-break-after: auto !important;
     border-bottom: 2pt solid #333 !important;
     padding-bottom: 6pt !important;
   }
@@ -118,7 +120,8 @@
     font-weight: bold !important;
     margin-top: 16pt !important;
     margin-bottom: 8pt !important;
-    page-break-after: avoid !important;
+    page-break-after: auto !important;
+    page-break-inside: avoid !important;  /* Prevent border separation */
     border-bottom: 1pt solid #666 !important;
     padding-bottom: 4pt !important;
   }
@@ -128,7 +131,7 @@
     font-weight: bold !important;
     margin-top: 12pt !important;
     margin-bottom: 6pt !important;
-    page-break-after: avoid !important;
+    page-break-after: auto !important;
   }
 
   .markdown-body h4,
@@ -138,7 +141,7 @@
     font-weight: bold !important;
     margin-top: 12pt !important;
     margin-bottom: 6pt !important;
-    page-break-after: avoid !important;
+    page-break-after: auto !important;
   }
 
   /* Paragraph spacing */
@@ -327,40 +330,113 @@
 
   /* ========== PAGE BREAK CONTROL ========== */
   .markdown-body h1,
-  .markdown-body h2 {
-    page-break-before: auto !important;
-    page-break-after: avoid !important;
-  }
-
+  .markdown-body h2,
   .markdown-body h3,
   .markdown-body h4,
   .markdown-body h5,
   .markdown-body h6 {
-    page-break-after: avoid !important;
+    page-break-before: auto !important;
+    page-break-after: auto !important;
   }
 
-  .markdown-body pre,
+  /* Only avoid page breaks for small elements */
   .markdown-body blockquote,
   .markdown-body table,
   .markdown-body .markdown-alert {
     page-break-inside: avoid !important;
   }
 
-  /* Avoid orphans and widows */
-  .markdown-body p,
-  .markdown-body li {
-    orphans: 3 !important;
-    widows: 3 !important;
+  /* Allow page breaks in ALL pre elements including code blocks */
+  .markdown-body pre {
+    page-break-inside: auto !important;
+    break-inside: auto !important;
   }
 
-  /* ========== MERMAID DIAGRAMS ========== */
+  /* Reduce orphans and widows requirements */
+  .markdown-body p,
+  .markdown-body li {
+    orphans: 1 !important;
+    widows: 1 !important;
+  }
+
+  /* ========== SECTION & DIAGRAM HANDLING ========== */
+  /* Allow page breaks in heading sections to prevent blank pages */
+  .heading-section {
+    page-break-inside: auto !important;
+    break-inside: auto !important;
+    position: static !important;  /* Reset position to avoid print layout issues */
+    padding: 0 !important;
+    margin: 0 !important;
+  }
+
+  /* Ensure all container divs allow page breaks */
+  .markdown-body div {
+    page-break-inside: auto !important;
+    break-inside: auto !important;
+  }
+
   /* Mermaid diagrams should be handled gracefully */
   .mermaid {
-    page-break-inside: avoid !important;
+    /* Allow page breaks for large diagrams to avoid blank pages */
+    page-break-inside: auto !important;
+    break-inside: auto !important;
     border: 1pt solid #ddd !important;
     padding: 8pt !important;
     margin: 8pt 0 !important;
   }
+
+  /* Pre elements containing Mermaid should also allow breaks */
+  pre.mermaid {
+    page-break-inside: auto !important;
+    break-inside: auto !important;
+  }
+
+  /* SVG elements should also allow page breaks */
+  .mermaid svg {
+    page-break-inside: auto !important;
+    break-inside: auto !important;
+    max-height: none !important;
+    overflow: visible !important;
+  }
+
+  /* Reset any min-height that might prevent breaking */
+  .mermaid,
+  pre.mermaid,
+  .mermaid svg {
+    min-height: 0 !important;
+  }
+
+  /* Fix for foreignObject elements in SVG that break printing */
+  foreignObject {
+    overflow: visible !important;
+    page-break-inside: auto !important;
+    break-inside: auto !important;
+  }
+
+  /* Ensure foreignObject content can break */
+  foreignObject * {
+    page-break-inside: auto !important;
+    break-inside: auto !important;
+    overflow: visible !important;
+  }
+
+  /* Alternative approach: Convert SVG to be more print-friendly */
+  .mermaid svg {
+    overflow: visible !important;
+  }
+
+  /* Critical fix: Ensure Mermaid container doesn't expand beyond content */
+  .mermaid {
+    max-height: none !important;
+    height: auto !important;
+    contain: none !important;
+  }
+
+  .mermaid svg {
+    display: block !important;
+    max-height: none !important;
+  }
+
 
   /* ========== UTILITY CLASSES ========== */
   .print-break-before {

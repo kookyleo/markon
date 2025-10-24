@@ -837,12 +837,13 @@
    ============================================================ */
 
 @media print {
-    /* When printing a specific section, hide everything except the print container */
+    /* When printing a specific section, hide everything else */
+    /* With unique marker IDs in cloned SVG, we can safely use display:none */
     body:has(.print-section-container) > *:not(.print-section-container) {
         display: none !important;
     }
 
-    /* Show the print section container when printing */
+    /* Show only the print section container */
     .print-section-container {
         display: block !important;
     }

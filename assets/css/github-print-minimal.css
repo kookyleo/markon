@@ -1,0 +1,45 @@
+/* Minimal print styles to test blank page issue */
+@media print {
+  /* Reset everything */
+  * {
+    page-break-inside: auto !important;
+    page-break-before: auto !important;
+    page-break-after: auto !important;
+    break-inside: auto !important;
+    break-before: auto !important;
+    break-after: auto !important;
+    orphans: 1 !important;
+    widows: 1 !important;
+    min-height: 0 !important;
+    max-height: none !important;
+  }
+
+  /* Basic page setup */
+  @page {
+    margin: 1cm;
+    size: A4;
+  }
+
+  html, body {
+    margin: 0 !important;
+    padding: 0 !important;
+  }
+
+  /* Hide non-print elements */
+  .no-print,
+  .navigation,
+  .footer {
+    display: none !important;
+  }
+
+  /* Allow everything to break naturally */
+  .heading-section,
+  .markdown-body,
+  pre,
+  .mermaid,
+  svg,
+  div {
+    page-break-inside: auto !important;
+    break-inside: auto !important;
+  }
+}

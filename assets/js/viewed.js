@@ -324,8 +324,16 @@ class SectionViewedManager {
             printContainer.appendChild(clone);
         });
 
-        // Add print container to document
-        document.body.appendChild(printContainer);
+        // Fix SVG marker IDs to avoid conflicts with original DOM
+        // This allows us to use display:none for hiding original content
+        this.fixSvgMarkerIds(printContainer);
+
+        // Fix SVG foreignObject elements that cause printing issues
+        this.fixSvgForeignObjects(printContainer);
+
+        // Add print container to the beginning of document body
+        // This ensures it appears first in print layout
+        document.body.insertBefore(printContainer, document.body.firstChild);
 
         // Trigger print dialog
         window.print();
@@ -336,6 +344,96 @@ class SectionViewedManager {
         }, 100);
 
         console.log('[ViewedManager] printSection: printed section', headingId);
+    }
+
+    fixSvgMarkerIds(container) {
+        // Generate unique suffix for this print operation
+        const uniqueSuffix = `_print_${Date.now()}`;
+
+        // Find all SVG elements
+        const svgs = container.querySelectorAll('svg');
+
+        console.log(`[ViewedManager] fixSvgMarkerIds: found ${svgs.length} SVG elements`);
+
+        svgs.forEach((svg, svgIndex) => {
+            // Find all marker definitions
+            const markers = svg.querySelectorAll('marker[id]');
+            const markerMap = new Map(); // oldId -> newId
+
+            console.log(`[ViewedManager] fixSvgMarkerIds: SVG #${svgIndex} has ${markers.length} markers`);
+
+            // Update marker IDs
+            markers.forEach(marker => {
+                const oldId = marker.id;
+                const newId = oldId + uniqueSuffix;
+                marker.id = newId;
+                markerMap.set(oldId, newId);
+                console.log(`[ViewedManager] fixSvgMarkerIds: renamed marker ${oldId} -> ${newId}`);
+            });
+
+            // Update all references to markers
+            if (markerMap.size > 0) {
+                // Find all elements that reference markers
+                const elementsWithMarkers = svg.querySelectorAll('[marker-start], [marker-mid], [marker-end]');
+
+                console.log(`[ViewedManager] fixSvgMarkerIds: found ${elementsWithMarkers.length} elements with marker references`);
+
+                elementsWithMarkers.forEach(el => {
+                    ['marker-start', 'marker-mid', 'marker-end'].forEach(attr => {
+                        const value = el.getAttribute(attr);
+                        if (value) {
+                            // Extract marker ID from url(#id) format
+                            const match = value.match(/url\(#([^)]+)\)/);
+                            if (match && match[1]) {
+                                const oldId = match[1];
+                                const newId = markerMap.get(oldId);
+                                if (newId) {
+                                    el.setAttribute(attr, `url(#${newId})`);
+                                    console.log(`[ViewedManager] fixSvgMarkerIds: updated ${attr}: ${oldId} -> ${newId}`);
+                                }
+                            }
+                        }
+                    });
+                });
+            }
+        });
+
+        console.log('[ViewedManager] fixSvgMarkerIds: completed processing');
+    }
+
+    fixSvgForeignObjects(container) {
+        // ForeignObject elements in SVG can cause printing issues
+        // Apply print-friendly styles without replacing elements
+        const svgs = container.querySelectorAll('svg');
+
+        console.log(`[ViewedManager] fixSvgForeignObjects: found ${svgs.length} SVG elements`);
+
+        svgs.forEach((svg, svgIndex) => {
+            const foreignObjects = svg.querySelectorAll('foreignObject');
+
+            console.log(`[ViewedManager] fixSvgForeignObjects: SVG #${svgIndex} has ${foreignObjects.length} foreignObjects`);
+
+            // Apply print-friendly styles to foreignObjects
+            foreignObjects.forEach(fo => {
+                fo.style.overflow = 'visible';
+                fo.style.pageBreakInside = 'auto';
+
+                // Also apply to child elements
+                const children = fo.querySelectorAll('*');
+                children.forEach(child => {
+                    child.style.pageBreakInside = 'auto';
+                    child.style.overflow = 'visible';
+                });
+            });
+
+            // Set SVG container to be print-friendly
+            svg.style.overflow = 'visible';
+            svg.style.pageBreakInside = 'auto';
+
+            console.log(`[ViewedManager] fixSvgForeignObjects: applied print-friendly styles to ${foreignObjects.length} foreignObjects`);
+        });
+
+        console.log('[ViewedManager] fixSvgForeignObjects: completed processing');
     }
 
     toggleCollapse(headingId) {
