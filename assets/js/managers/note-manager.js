@@ -211,6 +211,19 @@ export class NoteManager {
 
         document.body.appendChild(popup);
 
+        // 添加点击外部关闭功能
+        const closeHandler = (e) => {
+            if (!popup.contains(e.target) && !noteData.highlightElement.contains(e.target)) {
+                popup.remove();
+                document.removeEventListener('click', closeHandler);
+                Logger.log('NoteManager', 'Note popup closed by clicking outside');
+            }
+        };
+        // 延迟添加事件监听器，避免立即触发
+        setTimeout(() => {
+            document.addEventListener('click', closeHandler);
+        }, 0);
+
         // 调整位置以保持在视口内
         const popupRect = popup.getBoundingClientRect();
         if (popupRect.right > window.innerWidth) {
