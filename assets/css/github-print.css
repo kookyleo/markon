@@ -53,13 +53,19 @@
     text-shadow: none !important;
   }
 
-  /* Page setup with optimized margins */
+  /* Page setup with optimized margins and page numbers */
   @page {
     margin-top: 1.5cm;
     margin-right: 1.5cm;
-    margin-bottom: 1.5cm;
+    margin-bottom: 2cm;
     margin-left: 1.5cm;
     size: A4;
+
+    @bottom-center {
+      content: counter(page) " / " counter(pages);
+      font-size: 10pt;
+      color: #666;
+    }
   }
 
   html, body {
@@ -101,6 +107,12 @@
     font-size: 12pt !important;
     line-height: 1.4 !important;
     background: transparent !important;
+    color: #000000 !important;
+  }
+
+  /* Force black text color on all elements except specific exceptions */
+  .markdown-body * {
+    color: #000000 !important;
   }
 
   /* Headings optimization */
@@ -152,6 +164,7 @@
     margin-bottom: 8pt !important;
     orphans: 3 !important;
     widows: 3 !important;
+    color: #000000 !important;
   }
 
   /* ========== LISTS OPTIMIZATION ========== */
@@ -291,7 +304,7 @@
     text-decoration: underline !important;
   }
 
-  /* Print URLs after links */
+  /* Print URLs after links - keep gray color */
   .markdown-body a[href]:after {
     content: " (" attr(href) ")" !important;
     font-size: 9pt !important;
@@ -344,6 +357,21 @@
   }
 
   /* ========== PAGE BREAK CONTROL ========== */
+  /* Allow page breaks in heading sections to prevent blank pages */
+  .heading-section {
+    page-break-inside: auto !important;
+    break-inside: auto !important;
+    position: static !important;
+    padding: 0 !important;
+    margin: 0 !important;
+  }
+
+  /* Ensure all container divs allow page breaks */
+  .markdown-body div {
+    page-break-inside: auto !important;
+    break-inside: auto !important;
+  }
+
   .markdown-body h1,
   .markdown-body h2 {
     page-break-before: auto !important;
@@ -552,8 +580,9 @@
     border-bottom: 1pt solid rgba(218, 165, 32, 0.6) !important;
   }
 
-  /* Strikethrough */
-  .strikethrough {
+  /* Strikethrough - keep gray color */
+  .strikethrough,
+  .strikethrough * {
     text-decoration: line-through !important;
     color: #666 !important;
   }

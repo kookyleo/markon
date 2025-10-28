@@ -553,6 +553,10 @@ export class MarkonApp {
                 const annotationId = e.target.dataset.annotationId;
                 const annotation = this.#annotationManager.getById(annotationId);
                 if (annotation) {
+                    // 关闭 note-popup
+                    const popup = document.querySelector('.note-popup');
+                    if (popup) popup.remove();
+
                     const highlightElement = this.#markdownBody.querySelector(`[data-annotation-id="${annotationId}"]`);
                     if (highlightElement) {
                         const range = document.createRange();
