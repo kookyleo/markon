@@ -237,10 +237,9 @@ export class PopoverManager {
     }
 
     handleHighlightClick(highlightedElement) {
-        // 如果当前有文本选择，不处理点击事件（让 handleSelection 处理）
-        const selection = window.getSelection();
-        if (selection && selection.toString().trim().length > 0) {
-            Logger.log('PopoverManager', 'handleHighlightClick: ignored due to active selection');
+        // 如果 popover 已经可见，说明 handleSelection 刚刚处理过，不要覆盖
+        if (this.isVisible()) {
+            Logger.log('PopoverManager', 'handleHighlightClick: ignored because popover is already visible');
             return;
         }
 
