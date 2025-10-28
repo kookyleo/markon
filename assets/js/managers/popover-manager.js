@@ -29,12 +29,14 @@ export class PopoverManager {
         // Debug：Print选中的Content
         const selectedText = range.toString();
         Logger.log('PopoverManager', `show() called with text: "${selectedText}" (length: ${selectedText.length}, trimmed: ${selectedText.trim().length})`);
+        Logger.log('PopoverManager', `show() highlightedElement: ${!!highlightedElement}${highlightedElement ? `, class: ${highlightedElement.className}` : ''}`);
 
         this.#currentSelection = range.cloneRange();
         this.#currentHighlightedElement = highlightedElement;
 
         // UpdateContent - 传递是否有选中文本
         const hasSelection = selectedText.trim().length > 0;
+        Logger.log('PopoverManager', `show() hasSelection: ${hasSelection}`);
         this.#updateContent(highlightedElement, hasSelection);
 
         // 先Show以Get尺寸
@@ -220,7 +222,10 @@ export class PopoverManager {
 
                 selection.removeAllRanges();
                 selection.addRange(trimmed);
-                this.show(trimmed);
+
+                // Check trimmed range 是否在已高亮区域内
+                const isHighlightedTrimmed = startElement.closest(CONFIG.SELECTORS.HIGHLIGHT_CLASSES);
+                this.show(trimmed, isHighlightedTrimmed);
             }
             return;
         }
@@ -349,9 +354,12 @@ export class PopoverManager {
     }
 
     #updateContent(highlightedElement, hasSelection = false) {
+        Logger.log('PopoverManager', `#updateContent called: highlightedElement=${!!highlightedElement}, hasSelection=${hasSelection}`);
+
         if (highlightedElement) {
             if (hasSelection) {
                 // 已Highlight但有选中文本：显示 Unhighlight + Note
+                Logger.log('PopoverManager', 'Showing: Unhighlight + Note');
                 this.#element.innerHTML = `
                     <button data-action="unhighlight">Unhighlight</button>
                     <span class="popover-separator">|</span>
@@ -359,6 +367,7 @@ export class PopoverManager {
                 `;
             } else {
                 // 已Highlight且无选中文本（仅点击）：只显示 Unhighlight
+                Logger.log('PopoverManager', 'Showing: Unhighlight only');
                 this.#element.innerHTML = '<button data-action="unhighlight">Unhighlight</button>';
             }
         } else {
