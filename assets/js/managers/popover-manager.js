@@ -33,8 +33,9 @@ export class PopoverManager {
         this.#currentSelection = range.cloneRange();
         this.#currentHighlightedElement = highlightedElement;
 
-        // UpdateContent
-        this.#updateContent(highlightedElement);
+        // UpdateContent - 传递是否有选中文本
+        const hasSelection = selectedText.trim().length > 0;
+        this.#updateContent(highlightedElement, hasSelection);
 
         // 先Show以Get尺寸
         this.#element.style.visibility = 'hidden';
@@ -232,7 +233,7 @@ export class PopoverManager {
 
     handleHighlightClick(highlightedElement) {
         this.#currentHighlightedElement = highlightedElement;
-        this.#updateContent(highlightedElement);
+        this.#updateContent(highlightedElement, false);
 
         // 先Show以Get尺寸
         this.#element.style.visibility = 'hidden';
@@ -347,10 +348,19 @@ export class PopoverManager {
         });
     }
 
-    #updateContent(highlightedElement) {
+    #updateContent(highlightedElement, hasSelection = false) {
         if (highlightedElement) {
-            // 已Highlight：ShowCancelHighlightButton
-            this.#element.innerHTML = '<button data-action="unhighlight">Unhighlight</button>';
+            if (hasSelection) {
+                // 已Highlight但有选中文本：显示 Unhighlight + Note
+                this.#element.innerHTML = `
+                    <button data-action="unhighlight">Unhighlight</button>
+                    <span class="popover-separator">|</span>
+                    <button data-action="add-note">Note</button>
+                `;
+            } else {
+                // 已Highlight且无选中文本（仅点击）：只显示 Unhighlight
+                this.#element.innerHTML = '<button data-action="unhighlight">Unhighlight</button>';
+            }
         } else {
             // 未Highlight：Show注解Button
             this.#element.innerHTML = `
