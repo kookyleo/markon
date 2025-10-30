@@ -950,6 +950,7 @@ export class MarkonApp {
      */
     #navigateHeading(direction) {
         const allHeadings = Array.from(document.querySelectorAll(CONFIG.SELECTORS.HEADINGS));
+        Logger.log('MarkonApp', `Total headings found: ${allHeadings.length}`);
 
         // Filter可见的Heading：
         // 1. 不在折叠章节内的Heading
@@ -958,9 +959,12 @@ export class MarkonApp {
             if (h.classList.contains('section-content-hidden')) {
                 return false;
             }
-            return !this.#isHeadingInCollapsedSection(h, allHeadings);
+            const inCollapsed = this.#isHeadingInCollapsedSection(h, allHeadings);
+            Logger.log('MarkonApp', `Heading ${h.tagName} "${h.textContent.substring(0, 30)}..." - inCollapsed: ${inCollapsed}`);
+            return !inCollapsed;
         });
 
+        Logger.log('MarkonApp', `Visible headings after filter: ${headings.length}`);
         if (headings.length === 0) return;
 
         const currentFocused = document.querySelector('.heading-focused');
