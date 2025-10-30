@@ -310,10 +310,12 @@ export class MarkonApp {
 
         // Navigation
         this.#shortcutsManager.register('NEXT_HEADING', () => {
+            Logger.log('MarkonApp', 'NEXT_HEADING triggered');
             this.#navigateHeading('next');
         });
 
         this.#shortcutsManager.register('PREV_HEADING', () => {
+            Logger.log('MarkonApp', 'PREV_HEADING triggered');
             this.#navigateHeading('prev');
         });
 
