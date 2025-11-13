@@ -1,6 +1,7 @@
 mod assets;
 mod markdown;
 mod server;
+mod search;
 
 use clap::Parser;
 use std::path::Path;

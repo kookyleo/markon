@@ -8,7 +8,6 @@ use axum::{
     routing::get,
     Router,
 };
-use axum::extract::Query;
 use futures_util::{stream::StreamExt, SinkExt};
 use qrcode::render::unicode::Dense1x2;
 use qrcode::{EcLevel, QrCode};
@@ -23,91 +22,23 @@ use tokio::sync::broadcast;
 
 use crate::assets::{CssAssets, IconAssets, JsAssets, Templates};
 use crate::markdown::MarkdownRenderer;
-use walkdir::WalkDir;
-
-#[derive(Deserialize)]
-pub struct SearchQuery {
-    q: String,
-}
-
-#[derive(Serialize)]
-struct SearchResult {
-    file_path: String,
-    snippet: String,
-}
-
-async fn search_handler(
-    State(state): State<AppState>,
-    Query(query): Query<SearchQuery>,
-) -> impl IntoResponse {
-    if !state.enable_search || query.q.is_empty() {
-        return axum::Json(Vec::<SearchResult>::new());
-    }
-
-    let search_db = match state.search_db {
-        Some(ref db) => db.clone(),
-        None => return axum::Json(Vec::new()),
-    };
-
-    let db = search_db.lock().unwrap();
-    let mut stmt = db
-        .prepare("SELECT file_path, snippet(search_index, 1, '<b>', '</b>', '...', 20) FROM search_index WHERE content MATCH ?1 ORDER BY rank")
-        .unwrap();
-
-    let results = stmt
-        .query_map([&query.q], |row| {
-            Ok(SearchResult {
-                file_path: row.get(0)?,
-                snippet: row.get(1)?,
-            })
-        })
-        .unwrap()
-        .filter_map(Result::ok)
-        .collect::<Vec<_>>();
-
-    axum::Json(results)
-}
-
-// Initialize search database
-async fn initialize_search_db(state: &mut AppState) {
-    if !state.enable_search {
-        return;
-    }
-
-    let conn = Connection::open_in_memory().expect("Failed to open in-memory database");
-    conn.execute(
-        "CREATE VIRTUAL TABLE search_index USING fts5(file_path, content)",
-        [],
-    )
-    .expect("Failed to create FTS5 table");
-
-    let start_dir = state.start_dir.as_ref().clone();
-    let search_db = Arc::new(Mutex::new(conn));
-    state.search_db = Some(search_db.clone());
-
-    tokio::spawn(async move {
-        println!("Start indexing Markdown files...");
-        for entry in WalkDir::new(start_dir)
-            .into_iter()
-            .filter_map(Result::ok)
-            .filter(|e| e.path().extension().map_or(false, |ext| ext == "md"))
-        {
-            let path = entry.path().to_path_buf();
-            if let Ok(content) = fs::read_to_string(&path) {
-                let relative_path = path.to_str().unwrap_or_default().to_string();
-                let db = search_db.lock().unwrap();
-                db.execute(
-                    "INSERT INTO search_index (file_path, content) VALUES (?1, ?2)",
-                    [&relative_path, &content],
-                )
-                .ok();
-            }
-        }
-        println!("Indexing complete.");
-    });
-}
+use crate::search;
 
 /// Print a compact QR code using Unicode half-blocks
+#[derive(Clone)]
+pub struct AppState {
+    pub file_path: Arc<Option<String>>,
+    pub theme: Arc<String>,
+    pub tera: Arc<Tera>,
+    pub start_dir: Arc<std::path::PathBuf>,
+    pub shared_annotation: bool,
+    pub enable_viewed: bool,
+    pub enable_search: bool,
+    pub db: Option<Arc<Mutex<Connection>>>,
+    pub tx: Option<broadcast::Sender<String>>,
+    pub search_db: Option<Arc<Mutex<Connection>>>,
+}
+
 fn print_compact_qr(data: &str) -> Result<(), Box<dyn std::error::Error>> {
     // Use low error correction level for smaller QR codes
     let code = QrCode::with_error_correction_level(data.as_bytes(), EcLevel::L)?;
@@ -129,20 +60,6 @@ fn print_compact_qr(data: &str) -> Result<(), Box<dyn std::error::Error>> {
     println!(); // Blank line below
 
     Ok(())
-}
-
-#[derive(Clone)]
-struct AppState {
-    file_path: Arc<Option<String>>,
-    theme: Arc<String>,
-    tera: Arc<Tera>,
-    start_dir: Arc<std::path::PathBuf>,
-    shared_annotation: bool,
-    enable_viewed: bool,
-    enable_search: bool,
-    db: Option<Arc<Mutex<Connection>>>,
-    tx: Option<broadcast::Sender<String>>,
-    search_db: Option<Arc<Mutex<Connection>>>,
 }
 
 #[derive(Serialize, Deserialize, Debug)]
@@ -253,11 +170,13 @@ pub async fn start(
         search_db: None,
     };
 
-    initialize_search_db(&mut state).await;
+    if enable_search {
+        search::init_and_watch(&mut state).await;
+    }
 
     let mut app = Router::new()
         .route("/", get(root))
-        .route("/search", get(search_handler))
+        .route("/search", get(search::search_handler))
         .route("/favicon.ico", get(serve_favicon))
         .route("/_/favicon.ico", get(serve_favicon))
         .route("/_/favicon.svg", get(serve_favicon_svg))
