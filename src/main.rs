@@ -37,6 +37,10 @@ struct Cli {
     /// Enable section viewed checkbox feature.
     #[arg(long, action = clap::ArgAction::SetTrue)]
     enable_viewed: bool,
+
+    /// Enable directory-level search functionality.
+    #[arg(long, action = clap::ArgAction::SetTrue)]
+    enable_search: bool,
 }
 
 #[tokio::main]
@@ -70,6 +74,7 @@ async fn main() {
         cli.open_browser,
         cli.shared_annotation,
         cli.enable_viewed,
+        cli.enable_search,
     )
     .await;
 }

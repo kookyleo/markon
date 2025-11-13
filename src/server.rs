@@ -8,6 +8,7 @@ use axum::{
     routing::get,
     Router,
 };
+use axum::extract::Query;
 use futures_util::{stream::StreamExt, SinkExt};
 use qrcode::render::unicode::Dense1x2;
 use qrcode::{EcLevel, QrCode};
@@ -22,6 +23,89 @@ use tokio::sync::broadcast;
 
 use crate::assets::{CssAssets, IconAssets, JsAssets, Templates};
 use crate::markdown::MarkdownRenderer;
+use walkdir::WalkDir;
+
+#[derive(Deserialize)]
+pub struct SearchQuery {
+    q: String,
+}
+
+#[derive(Serialize)]
+struct SearchResult {
+    file_path: String,
+    snippet: String,
+}
+
+async fn search_handler(
+    State(state): State<AppState>,
+    Query(query): Query<SearchQuery>,
+) -> impl IntoResponse {
+    if !state.enable_search || query.q.is_empty() {
+        return axum::Json(Vec::<SearchResult>::new());
+    }
+
+    let search_db = match state.search_db {
+        Some(ref db) => db.clone(),
+        None => return axum::Json(Vec::new()),
+    };
+
+    let db = search_db.lock().unwrap();
+    let mut stmt = db
+        .prepare("SELECT file_path, snippet(search_index, 1, '<b>', '</b>', '...', 20) FROM search_index WHERE content MATCH ?1 ORDER BY rank")
+        .unwrap();
+
+    let results = stmt
+        .query_map([&query.q], |row| {
+            Ok(SearchResult {
+                file_path: row.get(0)?,
+                snippet: row.get(1)?,
+            })
+        })
+        .unwrap()
+        .filter_map(Result::ok)
+        .collect::<Vec<_>>();
+
+    axum::Json(results)
+}
+
+// Initialize search database
+async fn initialize_search_db(state: &mut AppState) {
+    if !state.enable_search {
+        return;
+    }
+
+    let conn = Connection::open_in_memory().expect("Failed to open in-memory database");
+    conn.execute(
+        "CREATE VIRTUAL TABLE search_index USING fts5(file_path, content)",
+        [],
+    )
+    .expect("Failed to create FTS5 table");
+
+    let start_dir = state.start_dir.as_ref().clone();
+    let search_db = Arc::new(Mutex::new(conn));
+    state.search_db = Some(search_db.clone());
+
+    tokio::spawn(async move {
+        println!("Start indexing Markdown files...");
+        for entry in WalkDir::new(start_dir)
+            .into_iter()
+            .filter_map(Result::ok)
+            .filter(|e| e.path().extension().map_or(false, |ext| ext == "md"))
+        {
+            let path = entry.path().to_path_buf();
+            if let Ok(content) = fs::read_to_string(&path) {
+                let relative_path = path.to_str().unwrap_or_default().to_string();
+                let db = search_db.lock().unwrap();
+                db.execute(
+                    "INSERT INTO search_index (file_path, content) VALUES (?1, ?2)",
+                    [&relative_path, &content],
+                )
+                .ok();
+            }
+        }
+        println!("Indexing complete.");
+    });
+}
 
 /// Print a compact QR code using Unicode half-blocks
 fn print_compact_qr(data: &str) -> Result<(), Box<dyn std::error::Error>> {
@@ -55,8 +139,10 @@ struct AppState {
     start_dir: Arc<std::path::PathBuf>,
     shared_annotation: bool,
     enable_viewed: bool,
+    enable_search: bool,
     db: Option<Arc<Mutex<Connection>>>,
     tx: Option<broadcast::Sender<String>>,
+    search_db: Option<Arc<Mutex<Connection>>>,
 }
 
 #[derive(Serialize, Deserialize, Debug)]
@@ -84,6 +170,7 @@ pub async fn start(
     open_browser: Option<String>,
     shared_annotation: bool,
     enable_viewed: bool,
+    enable_search: bool,
 ) {
     // Initialize Tera template engine
     let mut tera = Tera::default();
@@ -153,19 +240,24 @@ pub async fn start(
     // Clone file_path for later use in URL display
     let file_path_for_display = file_path.clone();
 
-    let state = AppState {
+    let mut state = AppState {
         file_path: Arc::new(file_path),
         theme: Arc::new(theme),
         tera: Arc::new(tera),
         start_dir: Arc::new(start_dir),
         shared_annotation,
         enable_viewed,
+        enable_search,
         db,
         tx,
+        search_db: None,
     };
+
+    initialize_search_db(&mut state).await;
 
     let mut app = Router::new()
         .route("/", get(root))
+        .route("/search", get(search_handler))
         .route("/favicon.ico", get(serve_favicon))
         .route("/_/favicon.ico", get(serve_favicon))
         .route("/_/favicon.svg", get(serve_favicon_svg))
@@ -540,6 +632,7 @@ fn render_markdown_file(file_path: &str, state: &AppState) -> Response {
             context.insert("toc", &toc);
             context.insert("shared_annotation", &state.shared_annotation);
             context.insert("enable_viewed", &state.enable_viewed);
+            context.insert("enable_search", &state.enable_search);
 
             match state.tera.render("layout.html", &context) {
                 Ok(html) => Html(html).into_response(),
@@ -700,6 +793,7 @@ fn render_directory_listing(state: &AppState, dir_param: Option<&str>) -> Respon
     context.insert("entries", &entries);
     context.insert("show_parent", &show_parent);
     context.insert("parent_link", &parent_link);
+    context.insert("enable_search", &state.enable_search);
 
     match state.tera.render("directory.html", &context) {
         Ok(html) => Html(html).into_response(),

@@ -72,8 +72,13 @@ export class KeyboardShortcutsManager {
     handle(event) {
         if (!this.#enabled) return false;
 
-        // 不拦截Input框内的按键（除了已读复选框）
+        // Handle search input escape key
         const target = event.target;
+        if (target.id === 'search-input' && event.key === 'Escape') {
+            return false;
+        }
+
+        // 不拦截Input框内的按键（除了已读复选框）
         const isViewedCheckbox = target.classList && target.classList.contains('viewed-checkbox');
 
         if ((target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable) && !isViewedCheckbox) {
@@ -150,6 +155,10 @@ export class KeyboardShortcutsManager {
             'Navigation': ['SCROLL_HALF_PAGE_DOWN', 'PREV_HEADING', 'NEXT_HEADING', 'PREV_ANNOTATION', 'NEXT_ANNOTATION'],
             'Viewed (when enabled)': ['TOGGLE_VIEWED', 'TOGGLE_SECTION_COLLAPSE']
         };
+
+        if (document.querySelector('meta[name="enable-search"]')) {
+            categories['Core'].unshift('SEARCH');
+        }
 
         let html = '<div class="shortcuts-help-overlay"></div>';
         html += '<div class="shortcuts-help-modal">';

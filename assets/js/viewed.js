@@ -777,7 +777,7 @@ function initViewedFeature() {
         const isSharedMode = window.isSharedAnnotationMode || false;
         const ws = window.ws || null;
 
-        // eslint-disable-next-line no-new
+
         window.viewedManager = new SectionViewedManager(isSharedMode, ws);
     }
 }
