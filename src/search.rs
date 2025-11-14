@@ -1,4 +1,8 @@
-use axum::{extract::{Query, State}, response::{IntoResponse, Json}};
+use crate::server::AppState;
+use axum::{
+    extract::{Query, State},
+    response::{IntoResponse, Json},
+};
 use notify::Watcher;
 use rusqlite::Connection;
 use serde::{Deserialize, Serialize};
@@ -6,7 +10,6 @@ use std::fs;
 use std::sync::{Arc, Mutex};
 use tokio::sync::mpsc;
 use walkdir::WalkDir;
-use crate::server::AppState;
 
 #[derive(Deserialize)]
 pub struct SearchQuery {
@@ -72,7 +75,7 @@ pub async fn initialize_search_db(state: &mut AppState) {
         for entry in WalkDir::new(start_dir)
             .into_iter()
             .filter_map(Result::ok)
-            .filter(|e| e.path().extension().map_or(false, |ext| ext == "md"))
+            .filter(|e| e.path().extension().is_some_and(|ext| ext == "md"))
         {
             let path = entry.path().to_path_buf();
             if let Ok(content) = fs::read_to_string(&path) {
@@ -116,7 +119,7 @@ pub async fn watch_files_for_changes(state: AppState) {
         tokio::time::sleep(tokio::time::Duration::from_millis(200)).await;
 
         for path in event.paths {
-            if path.extension().map_or(false, |ext| ext == "md") {
+            if path.extension().is_some_and(|ext| ext == "md") {
                 let db = state.search_db.as_ref().unwrap().lock().unwrap();
                 let relative_path = path.to_str().unwrap_or_default().to_string();
 
@@ -125,7 +128,7 @@ pub async fn watch_files_for_changes(state: AppState) {
                         if let Ok(content) = fs::read_to_string(&path) {
                             db.execute(
                                 "INSERT OR REPLACE INTO search_index (file_path, content) VALUES (?1, ?2)",
-                                &[&relative_path, &content],
+                                [&relative_path, &content],
                             )
                             .ok();
                             println!("Indexed: {}", relative_path);
@@ -134,7 +137,7 @@ pub async fn watch_files_for_changes(state: AppState) {
                     notify::EventKind::Remove(_) => {
                         db.execute(
                             "DELETE FROM search_index WHERE file_path = ?1",
-                            &[&relative_path],
+                            [&relative_path],
                         )
                         .ok();
                         println!("Removed: {}", relative_path);

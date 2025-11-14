@@ -24,6 +24,18 @@ use crate::assets::{CssAssets, IconAssets, JsAssets, Templates};
 use crate::markdown::MarkdownRenderer;
 use crate::search;
 
+/// Server configuration
+pub struct ServerConfig {
+    pub port: u16,
+    pub file_path: Option<String>,
+    pub theme: String,
+    pub qr: Option<String>,
+    pub open_browser: Option<String>,
+    pub shared_annotation: bool,
+    pub enable_viewed: bool,
+    pub enable_search: bool,
+}
+
 /// Print a compact QR code using Unicode half-blocks
 #[derive(Clone)]
 pub struct AppState {
@@ -79,16 +91,17 @@ enum WebSocketMessage {
     UpdateViewedState { state: serde_json::Value },
 }
 
-pub async fn start(
-    port: u16,
-    file_path: Option<String>,
-    theme: String,
-    qr: Option<String>,
-    open_browser: Option<String>,
-    shared_annotation: bool,
-    enable_viewed: bool,
-    enable_search: bool,
-) {
+pub async fn start(config: ServerConfig) {
+    let ServerConfig {
+        port,
+        file_path,
+        theme,
+        qr,
+        open_browser,
+        shared_annotation,
+        enable_viewed,
+        enable_search,
+    } = config;
     // Initialize Tera template engine
     let mut tera = Tera::default();
 

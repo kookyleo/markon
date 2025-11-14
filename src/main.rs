@@ -1,7 +1,7 @@
 mod assets;
 mod markdown;
-mod server;
 mod search;
+mod server;
 
 use clap::Parser;
 use std::path::Path;
@@ -67,15 +67,15 @@ async fn main() {
         None
     };
 
-    server::start(
-        cli.port,
-        file_to_render,
+    server::start(server::ServerConfig {
+        port: cli.port,
+        file_path: file_to_render,
         theme,
-        cli.qr,
-        cli.open_browser,
-        cli.shared_annotation,
-        cli.enable_viewed,
-        cli.enable_search,
-    )
+        qr: cli.qr,
+        open_browser: cli.open_browser,
+        shared_annotation: cli.shared_annotation,
+        enable_viewed: cli.enable_viewed,
+        enable_search: cli.enable_search,
+    })
     .await;
 }
