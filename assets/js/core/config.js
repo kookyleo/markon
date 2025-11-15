@@ -56,6 +56,7 @@ export const CONFIG = {
         ESCAPE: { key: 'Escape', ctrl: false, shift: false, desc: 'Close popups/Clear selection' },
         TOGGLE_TOC: { key: '\\', ctrl: true, shift: false, desc: 'Toggle/Focus TOC' },
         HELP: { key: '?', ctrl: false, shift: false, desc: 'Show keyboard shortcuts help' },
+        SEARCH: { key: '/', ctrl: false, shift: false, desc: 'Open search' },
 
         // Navigation
         PREV_HEADING: { key: 'k', ctrl: false, shift: false, desc: 'Jump to previous heading' },

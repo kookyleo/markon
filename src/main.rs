@@ -1,5 +1,6 @@
 mod assets;
 mod markdown;
+mod search;
 mod server;
 
 use clap::Parser;
@@ -37,6 +38,10 @@ struct Cli {
     /// Enable section viewed checkbox feature.
     #[arg(long, action = clap::ArgAction::SetTrue)]
     enable_viewed: bool,
+
+    /// Enable directory-level search functionality.
+    #[arg(long, action = clap::ArgAction::SetTrue)]
+    enable_search: bool,
 }
 
 #[tokio::main]
@@ -62,14 +67,15 @@ async fn main() {
         None
     };
 
-    server::start(
-        cli.port,
-        file_to_render,
+    server::start(server::ServerConfig {
+        port: cli.port,
+        file_path: file_to_render,
         theme,
-        cli.qr,
-        cli.open_browser,
-        cli.shared_annotation,
-        cli.enable_viewed,
-    )
+        qr: cli.qr,
+        open_browser: cli.open_browser,
+        shared_annotation: cli.shared_annotation,
+        enable_viewed: cli.enable_viewed,
+        enable_search: cli.enable_search,
+    })
     .await;
 }

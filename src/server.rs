@@ -22,8 +22,35 @@ use tokio::sync::broadcast;
 
 use crate::assets::{CssAssets, IconAssets, JsAssets, Templates};
 use crate::markdown::MarkdownRenderer;
+use crate::search;
+
+/// Server configuration
+pub struct ServerConfig {
+    pub port: u16,
+    pub file_path: Option<String>,
+    pub theme: String,
+    pub qr: Option<String>,
+    pub open_browser: Option<String>,
+    pub shared_annotation: bool,
+    pub enable_viewed: bool,
+    pub enable_search: bool,
+}
 
 /// Print a compact QR code using Unicode half-blocks
+#[derive(Clone)]
+pub struct AppState {
+    pub file_path: Arc<Option<String>>,
+    pub theme: Arc<String>,
+    pub tera: Arc<Tera>,
+    pub start_dir: Arc<std::path::PathBuf>,
+    pub shared_annotation: bool,
+    pub enable_viewed: bool,
+    pub enable_search: bool,
+    pub db: Option<Arc<Mutex<Connection>>>,
+    pub tx: Option<broadcast::Sender<String>>,
+    pub search_db: Option<Arc<Mutex<Connection>>>,
+}
+
 fn print_compact_qr(data: &str) -> Result<(), Box<dyn std::error::Error>> {
     // Use low error correction level for smaller QR codes
     let code = QrCode::with_error_correction_level(data.as_bytes(), EcLevel::L)?;
@@ -47,18 +74,6 @@ fn print_compact_qr(data: &str) -> Result<(), Box<dyn std::error::Error>> {
     Ok(())
 }
 
-#[derive(Clone)]
-struct AppState {
-    file_path: Arc<Option<String>>,
-    theme: Arc<String>,
-    tera: Arc<Tera>,
-    start_dir: Arc<std::path::PathBuf>,
-    shared_annotation: bool,
-    enable_viewed: bool,
-    db: Option<Arc<Mutex<Connection>>>,
-    tx: Option<broadcast::Sender<String>>,
-}
-
 #[derive(Serialize, Deserialize, Debug)]
 #[serde(tag = "type")]
 enum WebSocketMessage {
@@ -76,15 +91,17 @@ enum WebSocketMessage {
     UpdateViewedState { state: serde_json::Value },
 }
 
-pub async fn start(
-    port: u16,
-    file_path: Option<String>,
-    theme: String,
-    qr: Option<String>,
-    open_browser: Option<String>,
-    shared_annotation: bool,
-    enable_viewed: bool,
-) {
+pub async fn start(config: ServerConfig) {
+    let ServerConfig {
+        port,
+        file_path,
+        theme,
+        qr,
+        open_browser,
+        shared_annotation,
+        enable_viewed,
+        enable_search,
+    } = config;
     // Initialize Tera template engine
     let mut tera = Tera::default();
 
@@ -153,19 +170,26 @@ pub async fn start(
     // Clone file_path for later use in URL display
     let file_path_for_display = file_path.clone();
 
-    let state = AppState {
+    let mut state = AppState {
         file_path: Arc::new(file_path),
         theme: Arc::new(theme),
         tera: Arc::new(tera),
         start_dir: Arc::new(start_dir),
         shared_annotation,
         enable_viewed,
+        enable_search,
         db,
         tx,
+        search_db: None,
     };
+
+    if enable_search {
+        search::init_and_watch(&mut state).await;
+    }
 
     let mut app = Router::new()
         .route("/", get(root))
+        .route("/search", get(search::search_handler))
         .route("/favicon.ico", get(serve_favicon))
         .route("/_/favicon.ico", get(serve_favicon))
         .route("/_/favicon.svg", get(serve_favicon_svg))
@@ -540,6 +564,7 @@ fn render_markdown_file(file_path: &str, state: &AppState) -> Response {
             context.insert("toc", &toc);
             context.insert("shared_annotation", &state.shared_annotation);
             context.insert("enable_viewed", &state.enable_viewed);
+            context.insert("enable_search", &state.enable_search);
 
             match state.tera.render("layout.html", &context) {
                 Ok(html) => Html(html).into_response(),
@@ -700,6 +725,7 @@ fn render_directory_listing(state: &AppState, dir_param: Option<&str>) -> Respon
     context.insert("entries", &entries);
     context.insert("show_parent", &show_parent);
     context.insert("parent_link", &parent_link);
+    context.insert("enable_search", &state.enable_search);
 
     match state.tera.render("directory.html", &context) {
         Ok(html) => Html(html).into_response(),
