@@ -365,8 +365,18 @@ mod tests {
         let temp_dir = TempDir::new().unwrap();
         let dir_path = temp_dir.path();
 
-        create_test_file(dir_path, "rust.md", "# Rust Programming\nRust is a systems programming language.").unwrap();
-        create_test_file(dir_path, "python.md", "# Python Guide\nPython is easy to learn.").unwrap();
+        create_test_file(
+            dir_path,
+            "rust.md",
+            "# Rust Programming\nRust is a systems programming language.",
+        )
+        .unwrap();
+        create_test_file(
+            dir_path,
+            "python.md",
+            "# Python Guide\nPython is easy to learn.",
+        )
+        .unwrap();
 
         let index = SearchIndex::new(dir_path).unwrap();
 
@@ -380,8 +390,18 @@ mod tests {
         let temp_dir = TempDir::new().unwrap();
         let dir_path = temp_dir.path();
 
-        create_test_file(dir_path, "chinese.md", "# 中文测试\n这是一个中文搜索测试文档。").unwrap();
-        create_test_file(dir_path, "english.md", "# English Test\nThis is an English document.").unwrap();
+        create_test_file(
+            dir_path,
+            "chinese.md",
+            "# 中文测试\n这是一个中文搜索测试文档。",
+        )
+        .unwrap();
+        create_test_file(
+            dir_path,
+            "english.md",
+            "# English Test\nThis is an English document.",
+        )
+        .unwrap();
 
         let index = SearchIndex::new(dir_path).unwrap();
 
@@ -400,7 +420,12 @@ mod tests {
         let temp_dir = TempDir::new().unwrap();
         let dir_path = temp_dir.path();
 
-        create_test_file(dir_path, "hello.md", "# Hello World\nContent about greetings.").unwrap();
+        create_test_file(
+            dir_path,
+            "hello.md",
+            "# Hello World\nContent about greetings.",
+        )
+        .unwrap();
         create_test_file(dir_path, "world.md", "# Universe\nThe world is vast.").unwrap();
         create_test_file(dir_path, "test.md", "# Testing\nAnother document.").unwrap();
 
@@ -412,7 +437,7 @@ mod tests {
 
         // Search for "Hello" should find in title
         let results = index.search("Hello", 10).unwrap();
-        assert!(results.len() >= 1);
+        assert!(!results.is_empty());
     }
 
     #[test]
@@ -550,8 +575,9 @@ mod tests {
             create_test_file(
                 dir_path,
                 &format!("file{}.md", i),
-                "# Document\nCommon content"
-            ).unwrap();
+                "# Document\nCommon content",
+            )
+            .unwrap();
         }
 
         let index = SearchIndex::new(dir_path).unwrap();

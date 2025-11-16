@@ -66,11 +66,15 @@ fn test_search_across_directory_structure() {
 
     // Search for "Tutorial" (capitalized as it appears in titles)
     let results = index.search("Tutorial", 20).unwrap();
-    assert!(results.len() >= 2, "Should find at least 2 tutorials, found {}", results.len());
+    assert!(
+        results.len() >= 2,
+        "Should find at least 2 tutorials, found {}",
+        results.len()
+    );
 
     // Search for "project" should find the README
     let results = index.search("project", 20).unwrap();
-    assert!(results.len() >= 1);
+    assert!(!results.is_empty());
     assert!(results.iter().any(|r| r.file_path.contains("README.md")));
 }
 
@@ -108,9 +112,12 @@ fn test_search_returns_correct_metadata() {
 
     // Search for a word that appears in content
     let results = index.search("started", 20).unwrap();
-    assert!(results.len() >= 1);
+    assert!(!results.is_empty());
 
-    let result = results.iter().find(|r| r.title == "Getting Started").expect("Should find Getting Started");
+    let result = results
+        .iter()
+        .find(|r| r.title == "Getting Started")
+        .expect("Should find Getting Started");
     assert_eq!(result.file_name, "getting-started");
     assert!(result.file_path.contains("getting-started.md"));
     // Snippet may be empty if the match is only in title, so we don't assert on it
@@ -264,7 +271,10 @@ fn test_large_file_indexing() {
     // Create a large markdown file
     let mut large_content = String::from("# Large Document\n\n");
     for i in 0..1000 {
-        large_content.push_str(&format!("## Section {}\nThis is paragraph {} with unique content unique{}.\n\n", i, i, i));
+        large_content.push_str(&format!(
+            "## Section {}\nThis is paragraph {} with unique content unique{}.\n\n",
+            i, i, i
+        ));
     }
 
     fs::write(dir_path.join("large.md"), &large_content).unwrap();
@@ -346,8 +356,6 @@ fn test_search_query_deserialization() {
     };
     assert_eq!(query.q, "test query");
 
-    let empty_query = SearchQuery {
-        q: String::new(),
-    };
+    let empty_query = SearchQuery { q: String::new() };
     assert!(empty_query.q.is_empty());
 }
