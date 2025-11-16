@@ -8,7 +8,7 @@ use notify::{EventKind, RecursiveMode, Watcher};
 use serde::{Deserialize, Serialize};
 use std::{
     fs,
-    path::Path,
+    path::{Path, PathBuf},
     sync::{Arc, Mutex},
 };
 use tantivy::{
@@ -41,6 +41,7 @@ pub struct SearchIndex {
     field_file_name: Field,
     field_title: Field,
     field_content: Field,
+    start_dir: PathBuf,
 }
 
 impl SearchIndex {
@@ -83,6 +84,7 @@ impl SearchIndex {
             field_file_name,
             field_title,
             field_content,
+            start_dir: start_dir.to_path_buf(),
         };
 
         // Index all markdown files
@@ -117,7 +119,13 @@ impl SearchIndex {
     }
 
     fn index_file(&self, path: &Path, content: &str) -> tantivy::Result<()> {
-        let relative_path = path.to_string_lossy().to_string();
+        // Calculate relative path from start_dir
+        let relative_path = path
+            .strip_prefix(&self.start_dir)
+            .unwrap_or(path)
+            .to_string_lossy()
+            .to_string();
+
         let file_name = path
             .file_stem()
             .and_then(|s| s.to_str())
@@ -199,7 +207,12 @@ impl SearchIndex {
         }
 
         let content = fs::read_to_string(path)?;
-        let relative_path = path.to_string_lossy().to_string();
+        // Calculate relative path from start_dir
+        let relative_path = path
+            .strip_prefix(&self.start_dir)
+            .unwrap_or(path)
+            .to_string_lossy()
+            .to_string();
 
         let file_name = path
             .file_stem()
@@ -235,7 +248,12 @@ impl SearchIndex {
     }
 
     pub fn delete_file(&self, path: &Path) -> tantivy::Result<()> {
-        let relative_path = path.to_string_lossy().to_string();
+        // Calculate relative path from start_dir
+        let relative_path = path
+            .strip_prefix(&self.start_dir)
+            .unwrap_or(path)
+            .to_string_lossy()
+            .to_string();
 
         let mut writer = self.writer.lock().unwrap();
         let term = Term::from_field_text(self.field_path, &relative_path);
