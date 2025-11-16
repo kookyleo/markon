@@ -726,7 +726,7 @@
         .search-modal {
             display: none;
             position: fixed;
-            z-index: 1000;
+            z-index: 10000;
             left: 0;
             top: 0;
             width: 100%;
@@ -745,8 +745,8 @@
 
         #search-input {
             width: 100%;
-            padding: 32px 48px;
-            font-size: 1.4em;
+            padding: 16px 24px;
+            font-size: 1.1em;
             border: none;
             outline: none;
             box-sizing: border-box;
@@ -766,15 +766,15 @@
         }
 
         .search-result-item.no-results {
-            padding: 80px 48px;
+            padding: 40px 24px;
             text-align: center;
             opacity: 0.5;
-            font-size: 1.1em;
+            font-size: 0.95em;
         }
 
         .search-result-item a {
             display: block;
-            padding: 24px 48px;
+            padding: 12px 24px;
             text-decoration: none;
             transition: all 0.15s ease;
             border-left: 3px solid transparent;
@@ -785,23 +785,23 @@
         }
 
         .search-result-title {
-            font-size: 1.1em;
+            font-size: 0.95em;
             font-weight: 600;
-            margin-bottom: 6px;
+            margin-bottom: 4px;
         }
 
         .search-result-path {
-            font-size: 0.9em;
+            font-size: 0.8em;
             opacity: 0.6;
-            margin-bottom: 10px;
+            margin-bottom: 6px;
             font-family: 'SF Mono', Monaco, 'Cascadia Code', 'Roboto Mono', Consolas, 'Courier New', monospace;
         }
 
         .search-result-snippet {
-            font-size: 0.95em;
+            font-size: 0.85em;
             opacity: 0.75;
-            line-height: 1.6;
-            margin-top: 8px;
+            line-height: 1.5;
+            margin-top: 4px;
         }
 
         .search-result-snippet b {
