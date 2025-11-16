@@ -48,7 +48,7 @@ pub struct AppState {
     pub enable_search: bool,
     pub db: Option<Arc<Mutex<Connection>>>,
     pub tx: Option<broadcast::Sender<String>>,
-    pub search_db: Option<Arc<Mutex<Connection>>>,
+    pub search_index: Option<Arc<crate::search::SearchIndex>>,
 }
 
 fn print_compact_qr(data: &str) -> Result<(), Box<dyn std::error::Error>> {
@@ -170,21 +170,40 @@ pub async fn start(config: ServerConfig) {
     // Clone file_path for later use in URL display
     let file_path_for_display = file_path.clone();
 
-    let mut state = AppState {
+    // Initialize search index if enabled
+    let search_index = if enable_search {
+        match search::SearchIndex::new(&start_dir) {
+            Ok(index) => {
+                let index = Arc::new(index);
+                Some(index)
+            }
+            Err(e) => {
+                eprintln!("Failed to initialize search index: {}", e);
+                None
+            }
+        }
+    } else {
+        None
+    };
+
+    let state = AppState {
         file_path: Arc::new(file_path),
         theme: Arc::new(theme),
         tera: Arc::new(tera),
-        start_dir: Arc::new(start_dir),
+        start_dir: Arc::new(start_dir.clone()),
         shared_annotation,
         enable_viewed,
         enable_search,
         db,
         tx,
-        search_db: None,
+        search_index: search_index.clone(),
     };
 
-    if enable_search {
-        search::init_and_watch(&mut state).await;
+    // Start file watcher for search index
+    if enable_search && search_index.is_some() {
+        if let Err(e) = search::start_file_watcher(state.clone()) {
+            eprintln!("Failed to start file watcher: {}", e);
+        }
     }
 
     let mut app = Router::new()
