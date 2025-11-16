@@ -1414,6 +1414,7 @@ dependencies = [
  "syntect",
  "tantivy",
  "tantivy-jieba",
+ "tempfile",
  "tera",
  "tokio",
  "tokio-stream",

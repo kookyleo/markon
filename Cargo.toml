@@ -11,6 +11,10 @@ keywords = ["markdown", "preview", "github", "mermaid", "toc"]
 categories = ["command-line-utilities", "text-processing", "web-programming"]
 readme = "README.md"
 
+[lib]
+name = "markon"
+path = "src/lib.rs"
+
 [dependencies]
 # Search engine
 tantivy = "0.25"
@@ -45,3 +49,6 @@ open = "5.3.2"
 dirs = "6.0.0"
 walkdir = "2.5.0"
 notify = "6.1.1"
+
+[dev-dependencies]
+tempfile = "3.17"
