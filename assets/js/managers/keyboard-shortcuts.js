@@ -153,12 +153,9 @@ export class KeyboardShortcutsManager {
         const categories = {
             'Core': ['UNDO', 'REDO', 'REDO_ALT', 'ESCAPE', 'TOGGLE_TOC', 'HELP'],
             'Navigation': ['SCROLL_HALF_PAGE_DOWN', 'PREV_HEADING', 'NEXT_HEADING', 'PREV_ANNOTATION', 'NEXT_ANNOTATION'],
+            'Search (when enabled)': ['SEARCH'],
             'Viewed (when enabled)': ['TOGGLE_VIEWED', 'TOGGLE_SECTION_COLLAPSE']
         };
-
-        if (document.querySelector('meta[name="enable-search"]')) {
-            categories['Core'].unshift('SEARCH');
-        }
 
         let html = '<div class="shortcuts-help-overlay"></div>';
         html += '<div class="shortcuts-help-modal">';
@@ -168,6 +165,11 @@ export class KeyboardShortcutsManager {
         html += '<div class="shortcuts-help-content">';
 
         for (const [category, shortcutNames] of Object.entries(categories)) {
+            // Skip Search Category（如果未启用）
+            if (category.startsWith('Search') && !document.querySelector('meta[name="enable-search"]')) {
+                continue;
+            }
+
             // Skip Viewed Category（如果未启用）
             if (category.startsWith('Viewed') && !document.querySelector('meta[name="enable-viewed"]')) {
                 continue;
