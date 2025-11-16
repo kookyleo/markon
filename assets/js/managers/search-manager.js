@@ -112,7 +112,9 @@ export class SearchManager {
     #selectCurrent() {
         if (this.#selectedIndex >= 0 && this.#selectedIndex < this.#currentResults.length) {
             const result = this.#currentResults[this.#selectedIndex];
-            window.location.href = `/${result.file_path}`;
+            const query = this.#searchInput.value;
+            // Add search query parameter for highlighting
+            window.location.href = `/${result.file_path}?highlight=${encodeURIComponent(query)}`;
         }
     }
 
@@ -142,11 +144,12 @@ export class SearchManager {
             return;
         }
 
+        const query = this.#searchInput.value;
         this.#searchResults.innerHTML = results
             .map(
                 (result) => `
                     <li class="search-result-item">
-                        <a href="/${result.file_path}">
+                        <a href="/${result.file_path}?highlight=${encodeURIComponent(query)}">
                             <div class="search-result-title">${result.title}</div>
                             <div class="search-result-path">${result.file_path}</div>
                             <div class="search-result-snippet">${result.snippet}</div>

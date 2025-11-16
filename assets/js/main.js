@@ -15,6 +15,7 @@ import { PopoverManager } from './managers/popover-manager.js';
 import { UndoManager } from './managers/undo-manager.js';
 import { KeyboardShortcutsManager } from './managers/keyboard-shortcuts.js';
 import { SearchManager } from './managers/search-manager.js';
+import { HighlightManager } from './managers/highlight-manager.js';
 import { TOCNavigator } from './navigators/toc-navigator.js';
 import { AnnotationNavigator } from './navigators/annotation-navigator.js';
 import { ModalManager, showConfirmDialog } from './components/modal.js';
@@ -1123,6 +1124,10 @@ export class MarkonApp {
             window.searchManager = this.#searchManager;
             Logger.log('MarkonApp', 'SearchManager initialized');
         }
+
+        // Always initialize highlight manager (works independently of search feature)
+        new HighlightManager();
+        Logger.log('MarkonApp', 'HighlightManager initialized');
     }
 
     /**
