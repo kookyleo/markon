@@ -72,13 +72,6 @@ export class SearchManager {
                 this.hide();
             }
         });
-
-        // 点击遮罩层关闭
-        this.#searchModal.addEventListener('click', (e) => {
-            if (e.target === this.#searchModal) {
-                this.hide();
-            }
-        });
     }
 
     #moveSelection(direction) {
