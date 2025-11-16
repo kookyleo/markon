@@ -72,8 +72,13 @@ export class KeyboardShortcutsManager {
     handle(event) {
         if (!this.#enabled) return false;
 
-        // 不拦截Input框内的按键（除了已读复选框）
+        // Handle search input escape key
         const target = event.target;
+        if (target.id === 'search-input' && event.key === 'Escape') {
+            return false;
+        }
+
+        // 不拦截Input框内的按键（除了已读复选框）
         const isViewedCheckbox = target.classList && target.classList.contains('viewed-checkbox');
 
         if ((target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable) && !isViewedCheckbox) {
@@ -148,6 +153,7 @@ export class KeyboardShortcutsManager {
         const categories = {
             'Core': ['UNDO', 'REDO', 'REDO_ALT', 'ESCAPE', 'TOGGLE_TOC', 'HELP'],
             'Navigation': ['SCROLL_HALF_PAGE_DOWN', 'PREV_HEADING', 'NEXT_HEADING', 'PREV_ANNOTATION', 'NEXT_ANNOTATION'],
+            'Search (when enabled)': ['SEARCH'],
             'Viewed (when enabled)': ['TOGGLE_VIEWED', 'TOGGLE_SECTION_COLLAPSE']
         };
 
@@ -159,6 +165,11 @@ export class KeyboardShortcutsManager {
         html += '<div class="shortcuts-help-content">';
 
         for (const [category, shortcutNames] of Object.entries(categories)) {
+            // Skip Search Category（如果未启用）
+            if (category.startsWith('Search') && !document.querySelector('meta[name="enable-search"]')) {
+                continue;
+            }
+
             // Skip Viewed Category（如果未启用）
             if (category.startsWith('Viewed') && !document.querySelector('meta[name="enable-viewed"]')) {
                 continue;

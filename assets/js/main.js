@@ -14,6 +14,8 @@ import { NoteManager } from './managers/note-manager.js';
 import { PopoverManager } from './managers/popover-manager.js';
 import { UndoManager } from './managers/undo-manager.js';
 import { KeyboardShortcutsManager } from './managers/keyboard-shortcuts.js';
+import { SearchManager } from './managers/search-manager.js';
+import { HighlightManager } from './managers/highlight-manager.js';
 import { TOCNavigator } from './navigators/toc-navigator.js';
 import { AnnotationNavigator } from './navigators/annotation-navigator.js';
 import { ModalManager, showConfirmDialog } from './components/modal.js';
@@ -30,6 +32,7 @@ export class MarkonApp {
     #popoverManager;
     #undoManager;
     #shortcutsManager;
+    #searchManager;
     #tocNavigator;
     #annotationNavigator;
 
@@ -37,6 +40,7 @@ export class MarkonApp {
     #markdownBody;
     #filePath;
     #isSharedMode;
+    #enableSearch;
 
     // Scroll control
     #scrollAnimationId = null;
@@ -45,6 +49,7 @@ export class MarkonApp {
     constructor(config = {}) {
         this.#filePath = config.filePath || this.#getFilePathFromMeta();
         this.#isSharedMode = config.isSharedMode || false;
+        this.#enableSearch = config.enableSearch || false;
         this.#markdownBody = document.querySelector(CONFIG.SELECTORS.MARKDOWN_BODY);
 
         if (!this.#markdownBody) {
@@ -79,13 +84,16 @@ export class MarkonApp {
         // 5. Setup event listeners
         this.#setupEventListeners();
 
-        // 6. Register keyboard shortcuts
+        // 6. Initialize search
+        this.#initSearch();
+
+        // 7. Register keyboard shortcuts
         this.#registerShortcuts();
 
-        // 7. Fix TOC HTML entities
+        // 8. Fix TOC HTML entities
         this.#fixTocHtmlEntities();
 
-        // 8. Update clear button text
+        // 9. Update clear button text
         this.#updateClearButtonText();
 
         Logger.log('MarkonApp', 'Initialization complete');
@@ -286,6 +294,12 @@ export class MarkonApp {
         this.#shortcutsManager.register('HELP', () => {
             this.#shortcutsManager.showHelp();
         });
+
+        if (this.#searchManager) {
+            this.#shortcutsManager.register('SEARCH', () => {
+                this.#searchManager.toggle();
+            });
+        }
 
         this.#shortcutsManager.register('ESCAPE', () => {
             this.#handleEscapeKey();
@@ -1101,6 +1115,22 @@ export class MarkonApp {
     }
 
     /**
+     * Initialize search
+     * @private
+     */
+    #initSearch() {
+        if (this.#enableSearch) {
+            this.#searchManager = new SearchManager();
+            window.searchManager = this.#searchManager;
+            Logger.log('MarkonApp', 'SearchManager initialized');
+        }
+
+        // Always initialize highlight manager (works independently of search feature)
+        new HighlightManager();
+        Logger.log('MarkonApp', 'HighlightManager initialized');
+    }
+
+    /**
      * GetManagement器（用于Debug）
      */
     getManagers() {
@@ -1112,6 +1142,7 @@ export class MarkonApp {
             popoverManager: this.#popoverManager,
             undoManager: this.#undoManager,
             shortcutsManager: this.#shortcutsManager,
+            searchManager: this.#searchManager,
             tocNavigator: this.#tocNavigator,
             annotationNavigator: this.#annotationNavigator
         };
@@ -1129,6 +1160,7 @@ window.clearPageAnnotations = function(event, ws, isSharedAnnotationMode) {
 document.addEventListener('DOMContentLoaded', () => {
     const filePathMeta = document.querySelector('meta[name="file-path"]');
     const sharedAnnotationMeta = document.querySelector('meta[name="shared-annotation"]');
+    const enableSearchMeta = document.querySelector('meta[name="enable-search"]');
     const isSharedMode = sharedAnnotationMeta?.getAttribute('content') === 'true';
 
     // Settings全局变量供 viewed.js 使用
@@ -1156,7 +1188,8 @@ document.addEventListener('DOMContentLoaded', () => {
 
     const app = new MarkonApp({
         filePath: filePathMeta?.getAttribute('content'),
-        isSharedMode: isSharedMode
+        isSharedMode: isSharedMode,
+        enableSearch: enableSearchMeta?.getAttribute('content') === 'true',
     });
 
     app.init();
