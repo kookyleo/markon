@@ -6,6 +6,8 @@ export class SearchManager {
     #searchInput;
     #searchResults;
     #isSearchModalVisible = false;
+    #selectedIndex = -1;
+    #currentResults = [];
 
     constructor() {
         this.#searchModal = document.getElementById('search-modal');
@@ -23,7 +25,11 @@ export class SearchManager {
     show() {
         if (!this.#searchModal) return;
         this.#searchModal.style.display = 'block';
+        this.#searchInput.value = '';
         this.#searchInput.focus();
+        this.#searchResults.innerHTML = '';
+        this.#selectedIndex = -1;
+        this.#currentResults = [];
         this.#isSearchModalVisible = true;
     }
 
@@ -31,6 +37,8 @@ export class SearchManager {
         if (!this.#searchModal) return;
         this.#searchModal.style.display = 'none';
         this.#isSearchModalVisible = false;
+        this.#selectedIndex = -1;
+        this.#currentResults = [];
     }
 
     toggle() {
@@ -43,23 +51,85 @@ export class SearchManager {
 
     #setupEventListeners() {
         this.#searchInput.addEventListener('input', this.#handleSearchInput.bind(this));
+
+        this.#searchInput.addEventListener('keydown', (e) => {
+            if (!this.#isSearchModalVisible) return;
+
+            if (e.key === 'ArrowDown') {
+                e.preventDefault();
+                this.#moveSelection(1);
+            } else if (e.key === 'ArrowUp') {
+                e.preventDefault();
+                this.#moveSelection(-1);
+            } else if (e.key === 'Enter') {
+                e.preventDefault();
+                this.#selectCurrent();
+            }
+        });
+
         document.addEventListener('keydown', (e) => {
             if (e.key === 'Escape' && this.#isSearchModalVisible) {
                 this.hide();
             }
         });
+
+        // 点击遮罩层关闭
+        this.#searchModal.addEventListener('click', (e) => {
+            if (e.target === this.#searchModal) {
+                this.hide();
+            }
+        });
+    }
+
+    #moveSelection(direction) {
+        if (this.#currentResults.length === 0) return;
+
+        const newIndex = this.#selectedIndex + direction;
+
+        if (newIndex < 0) {
+            this.#selectedIndex = this.#currentResults.length - 1;
+        } else if (newIndex >= this.#currentResults.length) {
+            this.#selectedIndex = 0;
+        } else {
+            this.#selectedIndex = newIndex;
+        }
+
+        this.#updateSelection();
+    }
+
+    #updateSelection() {
+        const items = this.#searchResults.querySelectorAll('.search-result-item');
+        items.forEach((item, index) => {
+            if (index === this.#selectedIndex) {
+                item.classList.add('selected');
+                item.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+            } else {
+                item.classList.remove('selected');
+            }
+        });
+    }
+
+    #selectCurrent() {
+        if (this.#selectedIndex >= 0 && this.#selectedIndex < this.#currentResults.length) {
+            const result = this.#currentResults[this.#selectedIndex];
+            window.location.href = `/${result.file_path}`;
+        }
     }
 
     async #handleSearchInput() {
         const query = this.#searchInput.value;
         if (query.length < 2) {
             this.#searchResults.innerHTML = '';
+            this.#currentResults = [];
+            this.#selectedIndex = -1;
             return;
         }
 
         try {
             const response = await fetch(`/search?q=${encodeURIComponent(query)}`);
             const results = await response.json();
+            this.#currentResults = results;
+            this.#selectedIndex = -1;
             this.#renderResults(results);
         } catch (error) {
             Logger.error('SearchManager', 'Error fetching search results:', error);
@@ -68,7 +138,7 @@ export class SearchManager {
 
     #renderResults(results) {
         if (results.length === 0) {
-            this.#searchResults.innerHTML = '<li class="search-result-item">No results found</li>';
+            this.#searchResults.innerHTML = '<li class="search-result-item no-results">No results found</li>';
             return;
         }
 
@@ -77,6 +147,7 @@ export class SearchManager {
                 (result) => `
                     <li class="search-result-item">
                         <a href="/${result.file_path}">
+                            <div class="search-result-title">${result.title}</div>
                             <div class="search-result-path">${result.file_path}</div>
                             <div class="search-result-snippet">${result.snippet}</div>
                         </a>
@@ -84,5 +155,14 @@ export class SearchManager {
                 `
             )
             .join('');
+
+        // 添加鼠标点击事件
+        const items = this.#searchResults.querySelectorAll('.search-result-item');
+        items.forEach((item, index) => {
+            item.addEventListener('mouseenter', () => {
+                this.#selectedIndex = index;
+                this.#updateSelection();
+            });
+        });
     }
 }
