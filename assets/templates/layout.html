@@ -743,22 +743,44 @@
             margin: 0;
         }
 
+        .search-input-container {
+            width: 100%;
+            display: flex;
+            justify-content: center;
+            flex-shrink: 0;
+        }
+
         #search-input {
             width: 100%;
-            padding: 16px 24px;
+            max-width: 980px;
+            padding: 16px 45px;
             font-size: 1.1em;
             border: none;
             outline: none;
             box-sizing: border-box;
-            flex-shrink: 0;
+        }
+
+        .search-results-container {
+            width: 100%;
+            flex: 1;
+            overflow-y: auto;
+            display: flex;
+            justify-content: center;
         }
 
         #search-results {
             list-style: none;
             padding: 0;
             margin: 0;
-            flex: 1;
-            overflow-y: auto;
+            width: 100%;
+            max-width: 980px;
+            box-sizing: border-box;
+        }
+
+        @media (max-width: 768px) {
+            #search-input {
+                padding: 16px 20px;
+            }
         }
 
         .search-result-item {
@@ -766,7 +788,7 @@
         }
 
         .search-result-item.no-results {
-            padding: 40px 24px;
+            padding: 40px 45px;
             text-align: center;
             opacity: 0.5;
             font-size: 0.95em;
@@ -774,10 +796,20 @@
 
         .search-result-item a {
             display: block;
-            padding: 12px 24px;
+            padding: 12px 45px;
             text-decoration: none;
             transition: all 0.15s ease;
             border-left: 3px solid transparent;
+        }
+
+        @media (max-width: 768px) {
+            .search-result-item.no-results {
+                padding: 40px 20px;
+            }
+
+            .search-result-item a {
+                padding: 12px 20px;
+            }
         }
 
         .search-result-item.selected a {
@@ -819,17 +851,21 @@
             background-color: #ffffff;
         }
 
-        #search-input {
+        .search-input-container {
             background: #f6f8fa;
-            color: #1f2328;
             border-bottom: 2px solid #d0d7de;
+        }
+
+        #search-input {
+            background: transparent;
+            color: #1f2328;
         }
 
         #search-input::placeholder {
             color: #656d76;
         }
 
-        #search-results {
+        .search-results-container {
             background: #ffffff;
         }
 
@@ -861,17 +897,21 @@
             background-color: #0d1117;
         }
 
-        #search-input {
+        .search-input-container {
             background: #161b22;
-            color: #f0f6fc;
             border-bottom: 2px solid #30363d;
+        }
+
+        #search-input {
+            background: transparent;
+            color: #f0f6fc;
         }
 
         #search-input::placeholder {
             color: #8b949e;
         }
 
-        #search-results {
+        .search-results-container {
             background: #0d1117;
         }
 
@@ -904,17 +944,21 @@
                 background-color: #ffffff;
             }
 
-            #search-input {
+            .search-input-container {
                 background: #f6f8fa;
-                color: #1f2328;
                 border-bottom: 2px solid #d0d7de;
+            }
+
+            #search-input {
+                background: transparent;
+                color: #1f2328;
             }
 
             #search-input::placeholder {
                 color: #656d76;
             }
 
-            #search-results {
+            .search-results-container {
                 background: #ffffff;
             }
 
@@ -946,17 +990,21 @@
                 background-color: #0d1117;
             }
 
-            #search-input {
+            .search-input-container {
                 background: #161b22;
-                color: #f0f6fc;
                 border-bottom: 2px solid #30363d;
+            }
+
+            #search-input {
+                background: transparent;
+                color: #f0f6fc;
             }
 
             #search-input::placeholder {
                 color: #8b949e;
             }
 
-            #search-results {
+            .search-results-container {
                 background: #0d1117;
             }
 
@@ -1107,8 +1155,12 @@
     {% if enable_search %}
     <div id="search-modal" class="search-modal">
         <div class="search-modal-content">
-            <input type="text" id="search-input" placeholder="Search...">
-            <ul id="search-results"></ul>
+            <div class="search-input-container">
+                <input type="text" id="search-input" placeholder="Search..." autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false">
+            </div>
+            <div class="search-results-container">
+                <ul id="search-results"></ul>
+            </div>
         </div>
     </div>
     {% endif %}
