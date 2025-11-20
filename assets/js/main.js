@@ -71,6 +71,9 @@ export class MarkonApp {
         this.#initKeyboardShortcuts();
 
         if (!this.#markdownBody) {
+            // Directory mode: setup keyboard event listeners and register shortcuts
+            this.#setupKeyboardEventListener();
+            this.#registerShortcuts();
             Logger.log('MarkonApp', 'Minimal initialization complete (directory mode)');
             return;
         }
@@ -211,6 +214,17 @@ export class MarkonApp {
     }
 
     /**
+     * Setup keyboard event listener (used in both directory and document modes)
+     * @private
+     */
+    #setupKeyboardEventListener() {
+        document.addEventListener('keydown', (e) => {
+            this.#shortcutsManager.handle(e);
+        });
+        Logger.log('MarkonApp', 'Keyboard event listener setup complete');
+    }
+
+    /**
      * Setup event listeners
      * @private
      */
@@ -247,9 +261,7 @@ export class MarkonApp {
         }
 
         // 全局键盘Event
-        document.addEventListener('keydown', (e) => {
-            this.#shortcutsManager.handle(e);
-        });
+        this.#setupKeyboardEventListener();
 
         // 外部点击Hide弹出框
         this.#setupOutsideClickHandler();
