@@ -1390,7 +1390,7 @@ checksum = "08ab2867e3eeeca90e844d1940eab391c9dc5228783db2ed999acbc0a9ed375a"
 
 [[package]]
 name = "markon"
-version = "0.5.0"
+version = "0.6.0"
 dependencies = [
  "axum",
  "clap",
