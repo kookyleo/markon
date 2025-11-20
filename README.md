@@ -65,6 +65,18 @@ Simply run `markon` in any directory to browse and render Markdown files with a 
 - ✅ **Preserve Styling**: Maintain GitHub-style professional formatting in print
 - ✅ **One-Click Operation**: Click "Print" button to open system print dialog
 
+### Full-Text Search
+- ✅ **Tantivy-Powered**: Fast full-text search engine with in-memory indexing
+- ✅ **Chinese Support**: Jieba word segmentation for accurate Chinese text search
+- ✅ **Multi-Field Search**: Search across file paths, names, titles, and content
+- ✅ **Snippet Preview**: Highlighted search results with context excerpts
+- ✅ **Auto-Scroll & Highlight**: Jump to exact position with temporary keyword highlighting
+- ✅ **Keyboard Navigation**: `↑/↓` to select results, `Enter` to navigate
+- ✅ **Auto-Indexing**: File watcher automatically updates index on changes
+- ✅ **Portable URLs**: Relative paths for consistent navigation
+- ✅ **Clean UI**: Full-screen search with content-width constraint (980px)
+- ✅ **Quick Access**: Press `/` to open search, `ESC` to close
+
 ### Keyboard Shortcuts
 - ✅ **Undo/Redo**: `Ctrl/Cmd+Z`, `Ctrl/Cmd+Shift+Z`, `Ctrl/Cmd+Y`
 - ✅ **Navigation**: `j/k` (next/prev heading), `Ctrl/Cmd+j/k` (next/prev annotation)
@@ -72,6 +84,7 @@ Simply run `markon` in any directory to browse and render Markdown files with a 
 - ✅ **TOC Control**: `Ctrl/Cmd+\` (toggle/focus TOC)
 - ✅ **Section Control**: `o` (collapse/expand current section)
 - ✅ **Viewed Control**: `v` (toggle current section viewed state)
+- ✅ **Search**: `/` (open full-text search)
 - ✅ **Help Panel**: `?` (show all shortcuts)
 - ✅ **Close/Cancel**: `ESC` (close popups, clear selection, cancel focus)
 - ✅ **Platform Detection**: Auto-detects Mac vs Windows/Linux for modifier keys
@@ -132,6 +145,7 @@ Options:
   -b, --open-browser [<BASE_URL>]  Auto-open browser (optional: custom URL)
       --shared-annotation          Enable shared annotation via SQLite + WebSocket
       --enable-viewed              Enable section viewed checkboxes (GitHub PR-style)
+      --enable-search              Enable full-text search with Tantivy
   -h, --help                       Print help
   -V, --version                    Print version
 ```
@@ -160,8 +174,11 @@ markon --shared-annotation README.md
 # Enable viewed feature (track reading progress)
 markon --enable-viewed README.md
 
-# Full-featured: QR + browser + shared + viewed
-markon --qr -b --shared-annotation --enable-viewed README.md
+# Enable full-text search
+markon --enable-search
+
+# Full-featured: QR + browser + shared + viewed + search
+markon --qr -b --shared-annotation --enable-viewed --enable-search README.md
 ```
 
 ### Features Guide
@@ -179,7 +196,16 @@ markon --qr -b --shared-annotation --enable-viewed README.md
 - Batch toolbar (after H1): "All Viewed" / "Unviewed" buttons
 - Storage: LocalStorage (default) or SQLite (with `--shared-annotation`)
 
+**Full-Text Search** (`--enable-search`):
+- Press `/` to open search modal
+- Type keywords to search across all markdown files
+- Use `↑/↓` arrow keys to navigate results, `Enter` to jump
+- Results show file path, title, and highlighted snippets
+- Click result or press `Enter` to navigate with auto-scroll and keyword highlighting
+- Chinese text automatically tokenized with Jieba for accurate matching
+
 **Keyboard Shortcuts** (press `?` to see all):
+- `/`: Open search (requires `--enable-search`)
 - `Ctrl/Cmd+Z` / `Ctrl/Cmd+Shift+Z`: Undo/Redo annotations
 - `j` / `k`: Next/Previous heading
 - `Ctrl/Cmd+\`: Toggle TOC
@@ -299,6 +325,7 @@ Supported types:
 - **Template Engine**: [tera](https://github.com/Keats/tera)
 - **Static Asset Embedding**: [rust-embed](https://github.com/pyrossh/rust-embed)
 - **Emoji**: [emojis](https://github.com/rosetta-rs/emojis)
+- **Full-Text Search**: [tantivy](https://github.com/quickwit-oss/tantivy) + [tantivy-jieba](https://github.com/baoyachi/tantivy-jieba)
 
 ### Frontend
 - **Diagram Rendering**: [Mermaid.js](https://mermaid.js.org/)
