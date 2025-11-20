@@ -53,21 +53,27 @@ export class MarkonApp {
         this.#markdownBody = document.querySelector(CONFIG.SELECTORS.MARKDOWN_BODY);
 
         if (!this.#markdownBody) {
-            Logger.warn('MarkonApp', 'Markdown body not found, skipping initialization');
-            return;
+            Logger.warn('MarkonApp', 'Markdown body not found, will initialize minimal features');
+        } else {
+            Logger.log('MarkonApp', 'Initializing...', {
+                filePath: this.#filePath,
+                isSharedMode: this.#isSharedMode
+            });
         }
-
-        Logger.log('MarkonApp', 'Initializing...', {
-            filePath: this.#filePath,
-            isSharedMode: this.#isSharedMode
-        });
     }
 
     /**
      * Initialize application
      */
     async init() {
-        if (!this.#markdownBody) return;
+        // Always initialize search and keyboard shortcuts (they work without markdown body)
+        this.#initSearch();
+        this.#initKeyboardShortcuts();
+
+        if (!this.#markdownBody) {
+            Logger.log('MarkonApp', 'Minimal initialization complete (directory mode)');
+            return;
+        }
 
         // 1. Initialize storage
         await this.#initStorage();
@@ -159,9 +165,6 @@ export class MarkonApp {
         // Undo manager
         this.#undoManager = new UndoManager();
 
-        // Keyboard shortcuts manager
-        this.#shortcutsManager = new KeyboardShortcutsManager();
-
         // Navigators
         this.#tocNavigator = new TOCNavigator();
         this.#annotationNavigator = new AnnotationNavigator();
@@ -172,6 +175,17 @@ export class MarkonApp {
         });
 
         Logger.log('MarkonApp', 'Managers initialized');
+    }
+
+    /**
+     * Initialize keyboard shortcuts (works without markdown body)
+     * @private
+     */
+    #initKeyboardShortcuts() {
+        if (!this.#shortcutsManager) {
+            this.#shortcutsManager = new KeyboardShortcutsManager();
+            Logger.log('MarkonApp', 'KeyboardShortcutsManager initialized');
+        }
     }
 
     /**
@@ -1125,9 +1139,11 @@ export class MarkonApp {
             Logger.log('MarkonApp', 'SearchManager initialized');
         }
 
-        // Always initialize highlight manager (works independently of search feature)
-        new HighlightManager();
-        Logger.log('MarkonApp', 'HighlightManager initialized');
+        // Initialize highlight manager only if markdown body exists
+        if (this.#markdownBody) {
+            new HighlightManager();
+            Logger.log('MarkonApp', 'HighlightManager initialized');
+        }
     }
 
     /**
