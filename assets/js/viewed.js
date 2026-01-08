@@ -295,7 +295,15 @@ class SectionViewedManager {
     }
 
     async printSection(headingId) {
-        // Print the specified section
+        // Detect mobile devices
+        const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+
+        // Mobile: use new window method (better compatibility than iframe)
+        if (isMobile) {
+            return this.printSectionInNewWindow(headingId);
+        }
+
+        // Desktop: use iframe method (existing implementation)
         const heading = document.getElementById(headingId);
         if (!heading) {
             console.warn('[ViewedManager] printSection: heading not found:', headingId);
@@ -324,14 +332,16 @@ class SectionViewedManager {
         });
 
         // Create a hidden iframe as isolated print sandbox
+        // Use actual A4 dimensions but visually hidden for iPad Safari compatibility
         const iframe = document.createElement('iframe');
         iframe.style.position = 'fixed';
-        iframe.style.right = '0';
-        iframe.style.bottom = '0';
-        iframe.style.width = '0';
-        iframe.style.height = '0';
+        iframe.style.left = '-9999px';  // Move off-screen instead of zero dimensions
+        iframe.style.top = '0';
+        iframe.style.width = '21cm';    // A4 width - gives Safari proper layout space
+        iframe.style.height = '29.7cm'; // A4 height
         iframe.style.border = '0';
-        iframe.style.visibility = 'hidden';
+        iframe.style.opacity = '0';
+        iframe.style.pointerEvents = 'none';
         document.body.appendChild(iframe);
 
         // Resolve theme for markdown CSS
@@ -374,6 +384,9 @@ class SectionViewedManager {
         const root = doc.getElementById('root');
         root.appendChild(doc.importNode(sectionContainer, true));
 
+        // Detect Safari for optimization
+        const isSafari = /^((?!chrome|android).)*safari/i.test(navigator.userAgent);
+
         // Wait two frames to let styles/layout settle more reliably
         await new Promise(requestAnimationFrame);
         await new Promise(requestAnimationFrame);
@@ -397,29 +410,243 @@ class SectionViewedManager {
         // Fix marker ids inside iframe to ensure arrows render correctly
         try { this.fixSvgMarkerIds(doc); } catch (_) {}
 
+        // For Safari: load resources with shorter timeout to stay in user gesture context
+        const resourceTimeout = isSafari ? 100 : 2000;
+
         // Ensure all images in iframe are loaded prior to printing
         const waitForImages = async () => {
             const imgs = Array.from(doc.images || []);
-            await Promise.all(imgs.map(img => img.complete && img.naturalWidth > 0 ? Promise.resolve() : new Promise(res => { img.onload = img.onerror = () => res(); })));
+            const imagePromises = imgs.map(img => {
+                if (img.complete && img.naturalWidth > 0) return Promise.resolve();
+                return new Promise(res => {
+                    img.onload = img.onerror = () => res();
+                    setTimeout(() => res(), resourceTimeout);
+                });
+            });
+            await Promise.all(imagePromises);
         };
         await waitForImages();
 
         // Ensure fonts are ready (best effort)
         if (doc.fonts && doc.fonts.ready) {
-            try { await doc.fonts.ready; } catch (_) {}
+            try {
+                await Promise.race([
+                    doc.fonts.ready,
+                    new Promise(res => setTimeout(res, resourceTimeout))
+                ]);
+            } catch (_) {}
         }
 
-        // Small delay to stabilize layout, then print from iframe
-        await new Promise(res => setTimeout(res, 60));
-        try { iframe.contentWindow.focus(); } catch (_) {}
-        iframe.contentWindow.print();
+        // Wait for stylesheets to load (critical for iPad Safari)
+        const waitForStylesheets = async () => {
+            const links = Array.from(doc.querySelectorAll('link[rel="stylesheet"]'));
+            await Promise.all(links.map(link => {
+                if (link.sheet) return Promise.resolve();
+                return new Promise(res => {
+                    link.onload = () => res();
+                    link.onerror = () => res(); // Continue even if CSS fails
+                    setTimeout(() => res(), resourceTimeout);
+                });
+            }));
+        };
+        await waitForStylesheets();
 
-        // Cleanup after printing
-        setTimeout(() => {
-            try { iframe.parentNode && iframe.parentNode.removeChild(iframe); } catch (_) {}
-        }, 200);
+        // Minimal delay for Safari to reduce risk of auto-print blocking
+        const finalDelay = isSafari ? 50 : 300;
+        await new Promise(res => setTimeout(res, finalDelay));
 
-        console.log('[ViewedManager] printSection(iframe): printed section', headingId);
+        // Setup cleanup handler - wait for print dialog to close
+        let cleanupDone = false;
+        const cleanupIframe = () => {
+            if (cleanupDone) return;
+            cleanupDone = true;
+            try {
+                if (iframe.parentNode) {
+                    iframe.parentNode.removeChild(iframe);
+                }
+            } catch (_) {}
+            console.log('[ViewedManager] printSection: iframe cleaned up');
+        };
+
+        // Listen for afterprint event (when print dialog closes)
+        const iframeWindow = iframe.contentWindow;
+        if (iframeWindow) {
+            iframeWindow.addEventListener('afterprint', cleanupIframe, { once: true });
+        }
+
+        // Fallback cleanup after 30 seconds if afterprint doesn't fire
+        const fallbackCleanup = setTimeout(cleanupIframe, 30000);
+
+        // Try to trigger print dialog
+        try {
+            iframeWindow.focus();
+            iframeWindow.print();
+            console.log('[ViewedManager] printSection: print dialog opened for section', headingId);
+        } catch (error) {
+            console.warn('[ViewedManager] printSection: print blocked or failed', error);
+            // Don't cleanup immediately - offer manual print option
+            clearTimeout(fallbackCleanup);
+
+            // Show manual print dialog with retry option
+            const retry = confirm('浏览器阻止了自动打印。\n\n点击"确定"重试打印，或点击"取消"关闭。');
+            if (retry) {
+                try {
+                    iframeWindow.print();
+                } catch (_) {
+                    alert('请在浏览器设置中允许此网站的打印权限，或使用浏览器菜单中的打印功能。');
+                }
+            }
+            // Cleanup after user interaction
+            setTimeout(cleanupIframe, 500);
+        }
+    }
+
+    async printSectionInNewWindow(headingId) {
+        // New window printing method for mobile devices
+        // Creates a complete HTML document with inlined styles and opens in new tab
+        const heading = document.getElementById(headingId);
+        if (!heading) {
+            console.warn('[ViewedManager] printSectionInNewWindow: heading not found:', headingId);
+            return;
+        }
+
+        const content = this.getSectionContent(heading);
+        if (!content || content.length === 0) {
+            console.warn('[ViewedManager] printSectionInNewWindow: no content found for heading:', headingId);
+            return;
+        }
+
+        // Clone heading and remove UI controls
+        const headingClone = heading.cloneNode(true);
+        headingClone.querySelectorAll('.viewed-checkbox-label, .section-action-separator, .section-print-btn, .section-expand-toggle, .section-action').forEach(el => el.remove());
+
+        // Clone content
+        const contentClones = content.map(el => el.cloneNode(true));
+
+        // Build HTML string
+        const contentHTML = [headingClone, ...contentClones].map(el => el.outerHTML).join('\n');
+
+        // Fetch and inline CSS styles
+        const styles = await this.fetchPrintStyles();
+
+        // Detect theme
+        const prefersDark = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
+        const theme = prefersDark ? 'dark' : 'light';
+
+        // Create complete HTML document
+        const fullHTML = `<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Print Section</title>
+    <style>
+        /* Inlined styles */
+        ${styles}
+
+        /* Additional print-specific styles */
+        body {
+            margin: 0;
+            padding: 20px;
+            background: white;
+        }
+        .markdown-body {
+            max-width: 980px;
+            margin: 0 auto;
+            background: white;
+            color: black;
+        }
+    </style>
+</head>
+<body>
+    <div class="markdown-body">
+        ${contentHTML}
+    </div>
+    <script>
+        // Auto-print on desktop, show instructions on mobile
+        const isMobile = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
+
+        window.addEventListener('load', function() {
+            if (!isMobile) {
+                // Desktop: auto-print after content loads
+                setTimeout(function() {
+                    window.print();
+                }, 500);
+            } else {
+                // Mobile: show friendly instructions
+                const instructions = document.createElement('div');
+                instructions.style.cssText = 'position: fixed; top: 10px; left: 50%; transform: translateX(-50%); background: #0969da; color: white; padding: 12px 20px; border-radius: 6px; box-shadow: 0 2px 8px rgba(0,0,0,0.15); font-size: 14px; z-index: 9999; text-align: center;';
+                instructions.innerHTML = '点击右上角菜单 → 打印<br><small style="opacity: 0.9;">或使用浏览器的分享功能</small>';
+                document.body.appendChild(instructions);
+
+                // Auto-hide after 5 seconds
+                setTimeout(function() {
+                    instructions.style.transition = 'opacity 0.5s';
+                    instructions.style.opacity = '0';
+                    setTimeout(function() {
+                        instructions.remove();
+                    }, 500);
+                }, 5000);
+            }
+        });
+    </script>
+</body>
+</html>`;
+
+        // Create Blob URL
+        const blob = new Blob([fullHTML], { type: 'text/html; charset=utf-8' });
+        const url = URL.createObjectURL(blob);
+
+        // Open in new window/tab
+        try {
+            const printWindow = window.open(url, '_blank');
+
+            if (!printWindow) {
+                // Popup blocked
+                alert('请允许弹出窗口以打印章节。\n\n或使用浏览器菜单中的"打印"功能打印整个页面。');
+                URL.revokeObjectURL(url);
+                return;
+            }
+
+            console.log('[ViewedManager] printSectionInNewWindow: opened print window');
+
+            // Cleanup Blob URL after window loads
+            setTimeout(() => {
+                URL.revokeObjectURL(url);
+                console.log('[ViewedManager] printSectionInNewWindow: cleaned up Blob URL');
+            }, 2000);
+
+        } catch (error) {
+            console.error('[ViewedManager] printSectionInNewWindow: failed to open window', error);
+            URL.revokeObjectURL(url);
+            alert('无法打开打印窗口。请使用浏览器菜单中的"打印"功能。');
+        }
+    }
+
+    async fetchPrintStyles() {
+        // Fetch and combine CSS files for printing
+        const cssFiles = [
+            '/_/css/github-markdown-light.css',  // Always use light theme for printing
+            '/_/css/github-print.css'
+        ];
+
+        const cssContents = await Promise.all(
+            cssFiles.map(async (file) => {
+                try {
+                    const response = await fetch(file);
+                    if (!response.ok) {
+                        console.warn(`[ViewedManager] Failed to fetch ${file}`);
+                        return '';
+                    }
+                    return await response.text();
+                } catch (error) {
+                    console.warn(`[ViewedManager] Error fetching ${file}:`, error);
+                    return '';
+                }
+            })
+        );
+
+        return cssContents.join('\n\n');
     }
 
     toggleCollapse(headingId) {
@@ -627,13 +854,15 @@ class SectionViewedManager {
         label.appendChild(text);
         h1.appendChild(label);
 
-        // Create toolbar element for collapse/expand links
+        // Create toolbar element for collapse/expand/print links
         const toolbar = document.createElement('span');
         toolbar.className = 'viewed-toolbar';
         toolbar.innerHTML = `
             <a class="btn-collapse-all">Collapse All</a>
             <span class="viewed-toolbar-separator">|</span>
             <a class="btn-expand-all">Expand All</a>
+            <span class="viewed-toolbar-separator">|</span>
+            <a class="btn-print-page">Print</a>
         `;
 
         // Append to H1 (inline on the right)
@@ -658,6 +887,10 @@ class SectionViewedManager {
         // Setup toolbar link listeners
         toolbar.querySelector('.btn-collapse-all').addEventListener('click', () => this.collapseAll());
         toolbar.querySelector('.btn-expand-all').addEventListener('click', () => this.expandAll());
+        toolbar.querySelector('.btn-print-page').addEventListener('click', () => {
+            console.log('[ViewedManager] Printing full page');
+            window.print();
+        });
     }
 
 

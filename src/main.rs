@@ -48,6 +48,9 @@ struct Cli {
 async fn main() {
     let cli = Cli::parse();
 
+    // Print version on startup
+    println!("Markon v{}", env!("CARGO_PKG_VERSION"));
+
     // Validate theme parameter
     let theme = match cli.theme.as_str() {
         "light" | "dark" | "auto" => cli.theme.clone(),

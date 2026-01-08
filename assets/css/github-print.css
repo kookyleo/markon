@@ -82,6 +82,10 @@
     background: transparent !important;
   }
 
+  /* Note: CSS-based section printing for mobile has been temporarily disabled
+   * due to conflicts with browser's native print functionality.
+   * Mobile devices will show a message to use browser's built-in print feature. */
+
   /* ========== CONTAINER & LAYOUT OPTIMIZATION ========== */
   .container {
     max-width: none !important;
