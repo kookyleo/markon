@@ -503,7 +503,8 @@ class SectionViewedManager {
 
     async printSectionInNewWindow(headingId) {
         // New window printing method for mobile devices
-        // Creates a complete HTML document with inlined styles and opens in new tab
+        // CRITICAL: Open window FIRST in user gesture context to avoid Safari blocking
+
         const heading = document.getElementById(headingId);
         if (!heading) {
             console.warn('[ViewedManager] printSectionInNewWindow: heading not found:', headingId);
@@ -516,6 +517,20 @@ class SectionViewedManager {
             return;
         }
 
+        // STEP 1: Open blank window immediately (synchronously in user gesture context)
+        // This prevents Safari popup blocker
+        const printWindow = window.open('about:blank', '_blank');
+
+        if (!printWindow) {
+            // Popup blocked
+            alert('请允许弹出窗口以打印章节。\n\n或使用浏览器菜单中的"打印"功能打印整个页面。');
+            return;
+        }
+
+        // Show loading message in new window
+        printWindow.document.write('<html><head><title>Loading...</title></head><body style="font-family: system-ui; padding: 40px; text-align: center;"><h2>正在准备打印内容...</h2></body></html>');
+
+        // STEP 2: Prepare content (can be async now that window is already open)
         // Clone heading and remove UI controls
         const headingClone = heading.cloneNode(true);
         headingClone.querySelectorAll('.viewed-checkbox-label, .section-action-separator, .section-print-btn, .section-expand-toggle, .section-action').forEach(el => el.remove());
@@ -526,14 +541,10 @@ class SectionViewedManager {
         // Build HTML string
         const contentHTML = [headingClone, ...contentClones].map(el => el.outerHTML).join('\n');
 
-        // Fetch and inline CSS styles
+        // STEP 3: Fetch and inline CSS styles (async)
         const styles = await this.fetchPrintStyles();
 
-        // Detect theme
-        const prefersDark = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
-        const theme = prefersDark ? 'dark' : 'light';
-
-        // Create complete HTML document
+        // STEP 4: Create complete HTML document
         const fullHTML = `<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -563,62 +574,28 @@ class SectionViewedManager {
         ${contentHTML}
     </div>
     <script>
-        // Auto-print on desktop, show instructions on mobile
-        const isMobile = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
-
+        // Auto-print for all devices after content loads
         window.addEventListener('load', function() {
-            if (!isMobile) {
-                // Desktop: auto-print after content loads
-                setTimeout(function() {
-                    window.print();
-                }, 500);
-            } else {
-                // Mobile: show friendly instructions
-                const instructions = document.createElement('div');
-                instructions.style.cssText = 'position: fixed; top: 10px; left: 50%; transform: translateX(-50%); background: #0969da; color: white; padding: 12px 20px; border-radius: 6px; box-shadow: 0 2px 8px rgba(0,0,0,0.15); font-size: 14px; z-index: 9999; text-align: center;';
-                instructions.innerHTML = '点击右上角菜单 → 打印<br><small style="opacity: 0.9;">或使用浏览器的分享功能</small>';
-                document.body.appendChild(instructions);
-
-                // Auto-hide after 5 seconds
-                setTimeout(function() {
-                    instructions.style.transition = 'opacity 0.5s';
-                    instructions.style.opacity = '0';
-                    setTimeout(function() {
-                        instructions.remove();
-                    }, 500);
-                }, 5000);
-            }
+            // Small delay to ensure styles are applied
+            setTimeout(function() {
+                window.print();
+            }, 300);
         });
     </script>
 </body>
 </html>`;
 
-        // Create Blob URL
-        const blob = new Blob([fullHTML], { type: 'text/html; charset=utf-8' });
-        const url = URL.createObjectURL(blob);
-
-        // Open in new window/tab
+        // STEP 5: Write HTML to already-open window
         try {
-            const printWindow = window.open(url, '_blank');
+            printWindow.document.open();
+            printWindow.document.write(fullHTML);
+            printWindow.document.close();
 
-            if (!printWindow) {
-                // Popup blocked
-                alert('请允许弹出窗口以打印章节。\n\n或使用浏览器菜单中的"打印"功能打印整个页面。');
-                URL.revokeObjectURL(url);
-                return;
-            }
-
-            console.log('[ViewedManager] printSectionInNewWindow: opened print window');
-
-            // Cleanup Blob URL after window loads
-            setTimeout(() => {
-                URL.revokeObjectURL(url);
-                console.log('[ViewedManager] printSectionInNewWindow: cleaned up Blob URL');
-            }, 2000);
+            console.log('[ViewedManager] printSectionInNewWindow: content written to print window');
 
         } catch (error) {
-            console.error('[ViewedManager] printSectionInNewWindow: failed to open window', error);
-            URL.revokeObjectURL(url);
+            console.error('[ViewedManager] printSectionInNewWindow: failed to write content', error);
+            printWindow.close();
             alert('无法打开打印窗口。请使用浏览器菜单中的"打印"功能。');
         }
     }

@@ -82,22 +82,35 @@ async printSection(headingId) {
 }
 ```
 
-### 2. 新窗口打印 (`viewed.js:504-624`)
+### 2. 新窗口打印 (`viewed.js:504-601`)
 
 ```javascript
 async printSectionInNewWindow(headingId) {
-    // 1. 获取并克隆内容
+    // 1. 获取内容
     const heading = document.getElementById(headingId);
     const content = this.getSectionContent(heading);
+
+    // 2. ⚠️ 关键：立即同步打开窗口（在用户手势上下文中）
+    // 这样可以避免 Safari 弹窗拦截器
+    const printWindow = window.open('about:blank', '_blank');
+
+    if (!printWindow) {
+        alert('请允许弹出窗口以打印章节...');
+        return;
+    }
+
+    // 显示加载提示
+    printWindow.document.write('<html><body><h2>正在准备打印内容...</h2></body></html>');
+
+    // 3. 克隆并清理内容（异步，但窗口已打开）
     const headingClone = heading.cloneNode(true);
-
-    // 移除 UI 控件
     headingClone.querySelectorAll('.section-action, .viewed-checkbox-label').forEach(el => el.remove());
+    const contentHTML = [headingClone, ...contentClones].map(el => el.outerHTML).join('\n');
 
-    // 2. 内联 CSS 样式
+    // 4. 异步 fetch CSS（窗口已打开，不会被拦截）
     const styles = await this.fetchPrintStyles();
 
-    // 3. 创建完整 HTML 文档
+    // 5. 创建完整 HTML 文档
     const fullHTML = `<!DOCTYPE html>
 <html>
 <head>
@@ -106,30 +119,18 @@ async printSectionInNewWindow(headingId) {
 <body>
     <div class="markdown-body">${contentHTML}</div>
     <script>
-        // 移动端：显示提示
-        // 桌面端：自动打印
-        const isMobile = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
+        // 所有设备都自动打印
         window.addEventListener('load', function() {
-            if (!isMobile) {
-                setTimeout(() => window.print(), 500);
-            } else {
-                // 显示蓝色提示框
-                // "点击右上角菜单 → 打印"
-            }
+            setTimeout(() => window.print(), 300);
         });
     </script>
 </body>
 </html>`;
 
-    // 4. 创建 Blob URL
-    const blob = new Blob([fullHTML], { type: 'text/html; charset=utf-8' });
-    const url = URL.createObjectURL(blob);
-
-    // 5. 打开新窗口
-    const printWindow = window.open(url, '_blank');
-
-    // 6. 清理 Blob URL
-    setTimeout(() => URL.revokeObjectURL(url), 2000);
+    // 6. 写入内容到已打开的窗口
+    printWindow.document.open();
+    printWindow.document.write(fullHTML);
+    printWindow.document.close();
 }
 ```
 
@@ -170,19 +171,17 @@ async fetchPrintStyles() {
 
 1. 点击章节 Print 按钮
 2. **打开新标签页**，显示章节内容
-3. 顶部显示蓝色提示框："点击右上角菜单 → 打印"
-4. 用户点击分享按钮 → 打印
-5. 打印预览只显示该章节
-6. ✅ 功能可用
+3. **自动弹出打印对话框** 🎉
+4. 打印预览只显示该章节
+5. ✅ 一键打印，体验流畅
 
 #### Android Chrome
 
 1. 点击章节 Print 按钮
 2. **打开新标签页**，显示章节内容
-3. 顶部显示蓝色提示框："点击右上角菜单 → 打印"
-4. 用户点击菜单 → 分享 → 打印
-5. 打印预览只显示该章节
-6. ✅ 功能可用
+3. **自动弹出打印对话框** 🎉
+4. 打印预览只显示该章节
+5. ✅ 一键打印，体验流畅
 
 ---
 
@@ -190,23 +189,22 @@ async fetchPrintStyles() {
 
 ### 1. 弹窗拦截器
 
-**问题**：浏览器可能阻止 `window.open()`
+**问题**：浏览器可能阻止 `window.open()`（尤其是异步调用后）
 
-**处理**：
+**解决方案**：在用户手势的同步上下文中立即打开窗口
 ```javascript
-const printWindow = window.open(url, '_blank');
+// ✅ 正确：立即同步打开（在 await 之前）
+const printWindow = window.open('about:blank', '_blank');
 
-if (!printWindow) {
-    // 弹窗被拦截
-    alert('请允许弹出窗口以打印章节。\n\n或使用浏览器菜单中的"打印"功能打印整个页面。');
-    URL.revokeObjectURL(url);
-    return;
-}
+// ❌ 错误：在 await 之后打开（会被 Safari 拦截）
+const styles = await this.fetchPrintStyles();
+const printWindow = window.open(url, '_blank');  // 已失去用户手势上下文
 ```
 
-**用户操作**：
-- 浏览器会提示"允许弹出窗口"
-- 用户允许后，再次点击 Print 即可
+**优势**：
+- Safari Mobile 无需设置弹窗权限
+- 窗口在用户点击的同步路径中打开，不会被拦截
+- 内容可以异步加载到已打开的窗口
 
 ### 2. CSS 加载失败
 
@@ -226,26 +224,25 @@ try {
 
 **影响**：内容仍可打印，只是样式可能不完整
 
-### 3. Blob URL 清理
+### 3. 自动打印失败
 
-**问题**：需要及时释放内存
+**问题**：某些浏览器可能阻止自动调用 `window.print()`
 
 **处理**：
 ```javascript
-// 2秒后清理（足够窗口加载）
-setTimeout(() => {
-    URL.revokeObjectURL(url);
-}, 2000);
+window.addEventListener('load', function() {
+    setTimeout(function() {
+        try {
+            window.print();
+        } catch (error) {
+            // 如果自动打印失败，窗口仍然打开，用户可手动打印
+            console.warn('Auto-print failed, user can manually print');
+        }
+    }, 300);
+});
 ```
 
-### 4. 移动端新标签页管理
-
-**问题**：移动端打开新标签页后，用户可能不知道如何打印
-
-**处理**：显示友好的蓝色提示框
-- 5秒后自动淡出
-- 明确告知用户下一步操作
-- 样式醒目但不遮挡内容
+**影响**：即使自动打印失败，用户仍可看到完整内容，手动使用浏览器打印功能
 
 ---
 
@@ -267,28 +264,26 @@ setTimeout(() => {
 1. 在 iPad 上访问 Markon
 2. 点击章节 Print 按钮
 3. **预期**：
-   - ✅ 打开新标签页
-   - ✅ 显示章节内容
-   - ✅ 顶部蓝色提示："点击右上角菜单 → 打印"
-   - ✅ 5秒后提示淡出
-4. 点击分享按钮 → 打印
-5. **预期**：
+   - ✅ 立即打开新标签页（无弹窗拦截）
+   - ✅ 短暂显示"正在准备打印内容..."
+   - ✅ **自动弹出打印对话框**
    - ✅ 打印预览只显示该章节
    - ✅ 内容完整（标题、段落、代码块、表格）
 
 #### Android Chrome
 1. 在 Android 设备上访问
 2. 点击章节 Print 按钮
-3. **预期**：同 iPad Safari
+3. **预期**：
+   - ✅ 立即打开新标签页（无弹窗拦截）
+   - ✅ 短暂显示"正在准备打印内容..."
+   - ✅ **自动弹出打印对话框**
+   - ✅ 打印预览只显示该章节
+   - ✅ 内容完整（标题、段落、代码块、表格）
 
-#### 弹窗拦截测试
-1. 在移动设备上首次点击 Print
-2. 如果弹窗被拦截：
-   - ✅ 显示 alert："请允许弹出窗口..."
-3. 浏览器提示允许弹窗后
-4. 再次点击 Print
-5. **预期**：
-   - ✅ 成功打开新标签页
+#### 边缘情况测试
+1. **网络慢速**：CSS 加载慢时，窗口显示"正在准备..."直到加载完成
+2. **自动打印失败**：窗口仍显示内容，用户可手动打印
+3. **极端情况**：如果弹窗仍被拦截（极少见），显示提示用户允许弹窗
 
 ---
 
