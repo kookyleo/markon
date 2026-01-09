@@ -140,6 +140,10 @@ Arguments:
 
 Options:
   -p, --port <PORT>                Server port [default: 6419]
+      --host [<IP>]                Bind address (default: 127.0.0.1)
+                                   - Omit: localhost only (127.0.0.1)
+                                   - --host: interactive selection
+                                   - --host <IP>: bind to specific IP
   -t, --theme <THEME>              Theme: light, dark, auto [default: auto]
       --qr [<BASE_URL>]            Generate QR code (optional: custom URL)
   -b, --open-browser [<BASE_URL>]  Auto-open browser (optional: custom URL)
@@ -162,8 +166,17 @@ markon README.md
 # Custom port and dark theme
 markon -p 8080 -t dark README.md
 
-# QR code for mobile access
-markon --qr http://192.168.1.100:6419
+# LAN access - bind to all interfaces
+markon --host 0.0.0.0 README.md
+
+# LAN access - interactive selection
+markon --host README.md
+
+# LAN access - specific IP address
+markon --host 192.168.1.100 README.md
+
+# LAN access + QR code for easy mobile access
+markon --host 0.0.0.0 --qr http://192.168.1.100:6419 README.md
 
 # Auto-open browser with custom URL (reverse proxy)
 markon -b http://docs.example.com
@@ -182,6 +195,13 @@ markon --qr -b --shared-annotation --enable-viewed --enable-search README.md
 ```
 
 ### Features Guide
+
+**LAN Access** (`--host`):
+- Default: Server binds to `127.0.0.1` (localhost only, secure)
+- `--host`: Interactive selection of available network interfaces with arrow keys
+- `--host 0.0.0.0`: Bind to all interfaces (accessible from LAN)
+- `--host <IP>`: Bind to specific IP address
+- Combine with `--qr` for easy mobile/team access
 
 **Annotations**:
 - Select text → Choose highlight/strikethrough/note from toolbar

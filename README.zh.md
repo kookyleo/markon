@@ -138,8 +138,11 @@ markon
 # 自定义端口
 markon -p 8080
 
-# 指定绑定地址
-markon -l 0.0.0.0
+# 局域网访问 - 绑定所有接口
+markon --host 0.0.0.0 README.md
+
+# 局域网访问 - 交互式选择
+markon --host README.md
 
 # 自动打开浏览器
 markon -b README.md
@@ -151,7 +154,7 @@ markon -b README.md
 |------|------|------|
 | `<FILE>` | 要渲染的 Markdown 文件 | `markon README.md` |
 | `-p, --port <PORT>` | HTTP 服务器端口（默认：6419） | `markon -p 8080` |
-| `-l, --listen <ADDR>` | 绑定地址（默认：127.0.0.1） | `markon -l 0.0.0.0` |
+| `--host [IP]` | 绑定地址（默认：127.0.0.1）<br>- 不指定：仅本地访问<br>- `--host`：交互式选择<br>- `--host <IP>`：指定 IP | `markon --host 0.0.0.0` |
 | `-b, --browser [URL]` | 启动后自动打开浏览器 | `markon -b` |
 | `--qr [URL]` | 生成 QR 码用于移动访问 | `markon --qr` |
 | `--theme <THEME>` | 颜色主题：light/dark/auto | `markon --theme dark` |
@@ -165,8 +168,14 @@ markon -b README.md
 # 带 QR 码的目录浏览
 markon --qr
 
-# 自定义 QR 码 URL（反向代理）
-markon --qr http://192.168.1.100:6419
+# 局域网访问 + QR 码（方便移动设备和团队访问）
+markon --host 0.0.0.0 --qr http://192.168.1.100:6419
+
+# 局域网访问 - 交互式选择网络接口
+markon --host
+
+# 局域网访问 - 指定具体 IP
+markon --host 192.168.1.100 README.md
 
 # 自动打开浏览器，使用自定义 URL（反向代理）
 markon -b http://docs.example.com
@@ -185,6 +194,13 @@ markon --qr -b --shared-annotation --enable-viewed --enable-search README.md
 ```
 
 ### 功能指南
+
+**局域网访问**（`--host`）：
+- 默认：服务器绑定到 `127.0.0.1`（仅本地访问，安全）
+- `--host`：交互式选择可用网络接口（上下箭头选择）
+- `--host 0.0.0.0`：绑定所有接口（局域网可访问）
+- `--host <IP>`：绑定到指定 IP 地址
+- 结合 `--qr` 使用，方便移动设备和团队访问
 
 **标注**：
 - 选择文本 → 从工具栏选择高亮/删除线/笔记
