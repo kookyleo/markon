@@ -140,10 +140,11 @@ Arguments:
 
 Options:
   -p, --port <PORT>                Server port [default: 6419]
-      --host [<IP>]                Bind address (default: 127.0.0.1)
-                                   - Omit: localhost only (127.0.0.1)
+      --host [<IP>]                Bind address for LAN access [default: 127.0.0.1]
+                                   - (omit): localhost only
                                    - --host: interactive selection
-                                   - --host <IP>: bind to specific IP
+                                   - --host 0.0.0.0: all interfaces
+                                   - --host <IP>: specific IP address
   -t, --theme <THEME>              Theme: light, dark, auto [default: auto]
       --qr [<BASE_URL>]            Generate QR code (optional: custom URL)
   -b, --open-browser [<BASE_URL>]  Auto-open browser (optional: custom URL)

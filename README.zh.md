@@ -154,7 +154,7 @@ markon -b README.md
 |------|------|------|
 | `<FILE>` | 要渲染的 Markdown 文件 | `markon README.md` |
 | `-p, --port <PORT>` | HTTP 服务器端口（默认：6419） | `markon -p 8080` |
-| `--host [IP]` | 绑定地址（默认：127.0.0.1）<br>- 不指定：仅本地访问<br>- `--host`：交互式选择<br>- `--host <IP>`：指定 IP | `markon --host 0.0.0.0` |
+| `--host [IP]` | 绑定地址（用于局域网访问）<br>- 不指定：仅本地 (127.0.0.1)<br>- `--host`：交互式选择<br>- `--host 0.0.0.0`：所有接口<br>- `--host <IP>`：指定 IP | `markon --host 0.0.0.0` |
 | `-b, --browser [URL]` | 启动后自动打开浏览器 | `markon -b` |
 | `--qr [URL]` | 生成 QR 码用于移动访问 | `markon --qr` |
 | `--theme <THEME>` | 颜色主题：light/dark/auto | `markon --theme dark` |
