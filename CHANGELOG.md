@@ -5,6 +5,27 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.6.3] - 2026-01-09
+
+### Added
+- **Smart `--host` parameter** for flexible network binding (#18)
+  - No `--host`: Binds to `127.0.0.1` (localhost only, secure by default)
+  - `--host`: Interactive selection from available network interfaces
+  - `--host <IP>`: Binds to specific IP address (e.g., `--host 0.0.0.0` for LAN access)
+- Interactive network interface selector with arrow key navigation
+- Automatic detection of all local IP addresses and network interfaces
+
+### Changed
+- Server binding is now configurable instead of hardcoded to `127.0.0.1`
+- Improved user experience for sharing Markon with team members on LAN
+
+### Fixed
+- Unable to access Markon via LAN IP address (#18)
+
+### Dependencies
+- Added `local-ip-address` 0.6 for network interface discovery
+- Added `dialoguer` 0.11 for interactive selection
+
 ## [0.6.2] - 2026-01-08
 
 ### Added

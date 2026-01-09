@@ -26,6 +26,7 @@ use crate::search;
 
 /// Server configuration
 pub struct ServerConfig {
+    pub host: String,
     pub port: u16,
     pub file_path: Option<String>,
     pub theme: String,
@@ -93,6 +94,7 @@ enum WebSocketMessage {
 
 pub async fn start(config: ServerConfig) {
     let ServerConfig {
+        host,
         port,
         file_path,
         theme,
@@ -222,7 +224,15 @@ pub async fn start(config: ServerConfig) {
 
     let app = app.with_state(state);
 
-    let addr = SocketAddr::from(([127, 0, 0, 1], port));
+    // Parse host address
+    let addr = match format!("{}:{}", host, port).parse::<SocketAddr>() {
+        Ok(addr) => addr,
+        Err(e) => {
+            eprintln!("Invalid host address '{}': {}", host, e);
+            std::process::exit(1);
+        }
+    };
+
     let listener = match TcpListener::bind(&addr).await {
         Ok(listener) => listener,
         Err(e) => {
