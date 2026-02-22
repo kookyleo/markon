@@ -1,6 +1,6 @@
 /**
- * EditorManager - Markdown 源码编辑器
- * 提供极简的浏览器内编辑功能
+ * EditorManager - Markdown source editor
+ * Provides minimalist in-browser editing functionality
  */
 
 import { CONFIG } from '../core/config.js';
@@ -20,18 +20,18 @@ export class EditorManager {
     }
 
     /**
-     * 打开编辑器
+     * Open the editor
      */
     async open() {
-        // 获取当前文件内容
+        // Fetch current file content
         const content = await this.#fetchCurrentContent();
         if (content === null) {
             Logger.error('EditorManager', 'Failed to fetch file content');
-            alert('无法加载文件内容，请确保启用了编辑功能。');
+            alert('Failed to load file content. Please ensure edit feature is enabled.');
             return;
         }
 
-        // 创建编辑器 UI
+        // Create editor UI
         this.#createEditorUI(content);
         this.#setupEventListeners();
         this.#focusEditor();
@@ -40,13 +40,13 @@ export class EditorManager {
     }
 
     /**
-     * 关闭编辑器
+     * Close the editor
      */
     close() {
         if (this.#editorModal) {
-            // 如果有未保存的改动，提示用户
+            // Prompt user if there are unsaved changes
             if (this.#isDirty) {
-                const confirmClose = confirm('有未保存的改动，确定要关闭吗？');
+                const confirmClose = confirm('You have unsaved changes. Close anyway?');
                 if (!confirmClose) return;
             }
 
@@ -62,7 +62,7 @@ export class EditorManager {
     }
 
     /**
-     * 保存文件
+     * Save the file
      */
     async save() {
         if (!this.#textarea) return;
@@ -74,7 +74,7 @@ export class EditorManager {
             this.#isDirty = false;
             this.#updateSaveButtonState();
 
-            // 保存成功后刷新页面
+            // Reload page after successful save
             setTimeout(() => {
                 window.location.reload();
             }, 500);
@@ -82,12 +82,12 @@ export class EditorManager {
     }
 
     /**
-     * 获取当前文件内容
+     * Fetch current file content
      * @private
      */
     async #fetchCurrentContent() {
         try {
-            // 从页面中嵌入的原始 Markdown 脚本标签读取
+            // Read from embedded original Markdown script tag in page
             const markdownScript = document.querySelector('script[type="text/markdown"]');
             if (markdownScript) {
                 return markdownScript.textContent;
@@ -102,7 +102,7 @@ export class EditorManager {
     }
 
     /**
-     * 保存内容到服务器
+     * Save content to server
      * @private
      */
     async #saveToServer(content) {
@@ -124,7 +124,7 @@ export class EditorManager {
 
             if (result.success) {
                 Logger.log('EditorManager', 'File saved successfully');
-                alert('文件保存成功！');
+                alert('File saved successfully!');
                 return true;
             } else {
                 Logger.error('EditorManager', 'Save failed:', result.message);
@@ -133,7 +133,7 @@ export class EditorManager {
             }
         } catch (error) {
             Logger.error('EditorManager', 'Save error:', error);
-            alert(`保存文件时出错：${error.message}`);
+            alert(`Error saving file: ${error.message}`);
             return false;
         } finally {
             this.#setSaving(false);
@@ -141,25 +141,25 @@ export class EditorManager {
     }
 
     /**
-     * 显示友好的错误信息
+     * Show friendly error message
      * @private
      */
     #showErrorAlert(message) {
         if (message.includes('read-only')) {
-            alert('无法保存：文件是只读的，请检查文件权限。');
+            alert('Cannot save: File is read-only. Please check file permissions.');
         } else if (message.includes('Access denied')) {
-            alert('无法保存：访问被拒绝，文件在允许的目录之外。');
+            alert('Cannot save: Access denied. File is outside allowed directory.');
         } else if (message.includes('not enabled')) {
-            alert('编辑功能未启用，请使用 --enable-edit 参数启动服务器。');
+            alert('Edit feature is not enabled. Please start server with --enable-edit.');
         } else if (message.includes('Only Markdown')) {
-            alert('只能编辑 Markdown 文件（.md）。');
+            alert('Only Markdown files (.md) can be edited.');
         } else {
-            alert(`保存失败：${message}`);
+            alert(`Save failed: ${message}`);
         }
     }
 
     /**
-     * 创建编辑器 UI
+     * Create editor UI
      * @private
      */
     #createEditorUI(content) {
@@ -172,7 +172,7 @@ export class EditorManager {
                     <span class="editor-file-name">${this.#escapeHtml(this.#filePath)}</span>
                 </div>
                 <div class="editor-actions">
-                    <button class="editor-close" title="关闭 (Esc)">✕</button>
+                    <button class="editor-close" title="Close (Esc)">✕</button>
                 </div>
             </div>
             <div class="editor-body">
@@ -183,7 +183,7 @@ export class EditorManager {
                     <span class="editor-line-count"></span>
                 </div>
                 <div class="editor-buttons">
-                    <button class="editor-save-btn">保存 (Ctrl+S)</button>
+                    <button class="editor-save-btn">Save Changes (Ctrl+S)</button>
                 </div>
             </div>
         `;
@@ -198,21 +198,21 @@ export class EditorManager {
     }
 
     /**
-     * 设置事件监听器
+     * Setup event listeners
      * @private
      */
     #setupEventListeners() {
-        // 关闭按钮
+        // Close button
         this.#closeButton.addEventListener('click', () => {
             this.close();
         });
 
-        // 保存按钮
+        // Save button
         this.#saveButton.addEventListener('click', () => {
             this.save();
         });
 
-        // Ctrl+S / Cmd+S 保存
+        // Ctrl+S / Cmd+S to save
         this.#textarea.addEventListener('keydown', (e) => {
             if ((e.ctrlKey || e.metaKey) && e.key === 's') {
                 e.preventDefault();
@@ -220,10 +220,10 @@ export class EditorManager {
             }
         });
 
-        // Esc 关闭
+        // Esc to close
         document.addEventListener('keydown', this.#handleEscapeKey);
 
-        // 监听内容变化
+        // Monitor content changes
         this.#textarea.addEventListener('input', () => {
             this.#isDirty = true;
             this.#updateSaveButtonState();
@@ -232,7 +232,7 @@ export class EditorManager {
     }
 
     /**
-     * 处理 Escape 键
+     * Handle Escape key
      * @private
      */
     #handleEscapeKey = (e) => {
@@ -242,19 +242,19 @@ export class EditorManager {
     };
 
     /**
-     * 聚焦编辑器
+     * Focus the editor
      * @private
      */
     #focusEditor() {
         if (this.#textarea) {
             this.#textarea.focus();
-            // 移动光标到开头
+            // Move cursor to beginning
             this.#textarea.setSelectionRange(0, 0);
         }
     }
 
     /**
-     * 更新保存按钮状态
+     * Update save button state
      * @private
      */
     #updateSaveButtonState() {
@@ -268,20 +268,20 @@ export class EditorManager {
     }
 
     /**
-     * 设置保存状态
+     * Set saving state
      * @private
      */
     #setSaving(isSaving) {
         if (this.#saveButton) {
             this.#saveButton.disabled = isSaving;
             this.#saveButton.textContent = isSaving
-                ? '保存中...'
-                : '保存 (Ctrl+S)';
+                ? 'Saving...'
+                : 'Save Changes (Ctrl+S)';
         }
     }
 
     /**
-     * 更新行数显示
+     * Update line count display
      * @private
      */
     #updateLineCount() {
@@ -290,12 +290,12 @@ export class EditorManager {
         const lines = this.#textarea.value.split('\n').length;
         const lineCountEl = this.#editorModal.querySelector('.editor-line-count');
         if (lineCountEl) {
-            lineCountEl.textContent = `${lines} 行`;
+            lineCountEl.textContent = `${lines} lines`;
         }
     }
 
     /**
-     * HTML 转义
+     * Escape HTML
      * @private
      */
     #escapeHtml(text) {

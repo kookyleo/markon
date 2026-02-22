@@ -601,7 +601,7 @@ fn render_markdown_file(file_path: &str, state: &AppState) -> Response {
             context.insert("enable_search", &state.enable_search);
             context.insert("enable_edit", &state.enable_edit);
 
-            // 如果启用编辑，传递原始内容
+            // Pass original content if edit is enabled
             if state.enable_edit {
                 context.insert("markdown_content", &markdown_input);
             }
@@ -897,7 +897,7 @@ async fn save_file_handler(
 ) -> impl IntoResponse {
     use std::path::PathBuf;
 
-    // 1. 检查功能是否启用
+    // 1. Check if feature is enabled
     if !state.enable_edit {
         return Json(SaveFileResponse {
             success: false,
@@ -906,7 +906,7 @@ async fn save_file_handler(
         .into_response();
     }
 
-    // 2. 解码路径
+    // 2. Decode path
     let decoded_path = match urlencoding::decode(&payload.file_path) {
         Ok(p) => p,
         Err(_) => {
@@ -918,11 +918,11 @@ async fn save_file_handler(
         }
     };
 
-    // 3. 构建完整路径
+    // 3. Build full path
     let requested_path = PathBuf::from(decoded_path.as_ref());
     let full_path = state.start_dir.join(&requested_path);
 
-    // 4. 规范化并检查路径安全性
+    // 4. Canonicalize and check path safety
     let canonical_path = match full_path.canonicalize() {
         Ok(p) => p,
         Err(_) => {
@@ -934,7 +934,7 @@ async fn save_file_handler(
         }
     };
 
-    // 5. 安全检查：必须在 start_dir 内
+    // 5. Security check: must be within start_dir
     if !canonical_path.starts_with(&*state.start_dir) {
         return Json(SaveFileResponse {
             success: false,
@@ -943,7 +943,7 @@ async fn save_file_handler(
         .into_response();
     }
 
-    // 6. 检查是否为文件
+    // 6. Check if path is a file
     if !canonical_path.is_file() {
         return Json(SaveFileResponse {
             success: false,
@@ -952,7 +952,7 @@ async fn save_file_handler(
         .into_response();
     }
 
-    // 7. 检查文件扩展名（仅允许 .md）
+    // 7. Check file extension (only .md allowed)
     let is_markdown = canonical_path
         .extension()
         .is_some_and(|ext| ext.to_string_lossy().to_lowercase() == "md");
@@ -965,7 +965,7 @@ async fn save_file_handler(
         .into_response();
     }
 
-    // 8. 检查写权限
+    // 8. Check write permissions
     match fs::metadata(&canonical_path) {
         Ok(metadata) => {
             if metadata.permissions().readonly() {
@@ -985,7 +985,7 @@ async fn save_file_handler(
         }
     }
 
-    // 9. 写入文件
+    // 9. Write file
     match fs::write(&canonical_path, &payload.content) {
         Ok(_) => Json(SaveFileResponse {
             success: true,

@@ -387,7 +387,7 @@ export class MarkonApp {
             });
         }
 
-        // Edit 快捷键（如果启用）
+        // Edit shortcuts (if enabled)
         if (this.#enableEdit) {
             this.#shortcutsManager.register('EDIT', () => {
                 this.#openEditor();
@@ -1170,7 +1170,7 @@ export class MarkonApp {
     }
 
     /**
-     * 打开编辑器
+     * Open the editor
      * @private
      */
     #openEditor() {
