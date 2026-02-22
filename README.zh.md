@@ -161,6 +161,7 @@ markon -b README.md
 | `--shared-annotation` | 启用共享标注（SQLite + WebSocket） | `markon --shared-annotation` |
 | `--enable-viewed` | 启用 Section Viewed 功能 | `markon --enable-viewed` |
 | `--enable-search` | 启用全文搜索（Tantivy） | `markon --enable-search` |
+| `--enable-edit` | 启用 Markdown 文件编辑（带语法高亮） | `markon --enable-edit` |
 
 ### 常用示例
 
@@ -189,8 +190,11 @@ markon --enable-viewed README.md
 # 启用全文搜索
 markon --enable-search
 
-# 全功能：QR + 浏览器 + 共享 + viewed + 搜索
-markon --qr -b --shared-annotation --enable-viewed --enable-search README.md
+# 启用 Markdown 编辑
+markon --enable-edit README.md
+
+# 全功能：QR + 浏览器 + 共享 + viewed + 搜索 + 编辑
+markon --qr -b --shared-annotation --enable-viewed --enable-search --enable-edit README.md
 ```
 
 ### 功能指南
@@ -223,8 +227,17 @@ markon --qr -b --shared-annotation --enable-viewed --enable-search README.md
 - 点击结果或按 `Enter` 跳转，支持自动滚动和关键词高亮
 - 中文文本自动使用 Jieba 分词，精确匹配
 
+**Markdown 编辑**（`--enable-edit`）：
+- 按 `e` 键打开编辑器，带行号和语法高亮
+- 选中文本 → 点击工具栏"Edit"按钮 → 自动跳转到源码并选中相应文本
+- `Ctrl/Cmd+S`：保存更改（标题中的星号 * 表示有未保存更改）
+- `ESC`：关闭编辑器返回查看模式
+- 安全限制：仅允许编辑启动目录内的 `.md` 文件
+- 主题：自动跟随亮色/暗色模式，使用 GitHub 风格语法高亮
+
 **键盘快捷键**（按 `?` 查看全部）：
 - `/`：打开搜索（需要 `--enable-search`）
+- `e`：编辑当前文件（需要 `--enable-edit`）
 - `Ctrl/Cmd+Z` / `Ctrl/Cmd+Shift+Z`：撤销/重做标注
 - `j` / `k`：下一个/上一个标题
 - `Ctrl/Cmd+\`：切换 TOC

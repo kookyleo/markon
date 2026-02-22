@@ -570,12 +570,10 @@
         .editor-modal {
             background-color: #0d1117;
         }
-        .editor-header,
-        .editor-footer {
+        .editor-header {
             background-color: #161b22;
             border-color: #30363d;
         }
-        .editor-title,
         .editor-close {
             color: #8b949e;
         }
@@ -590,12 +588,18 @@
             border-right-color: #30363d;
             color: #6e7681;
         }
-        .editor-textarea {
+        .editor-highlight-layer {
             background-color: #0d1117;
             color: #f0f6fc;
         }
+        .editor-textarea {
+            background-color: transparent;
+            color: transparent;
+            caret-color: #f0f6fc;
+        }
         .editor-textarea::selection {
-            background-color: #1f6feb;
+            background-color: rgba(31, 111, 235, 0.6);
+            color: transparent;
         }
         .editor-status {
             color: #8b949e;
@@ -608,12 +612,10 @@
         .editor-modal {
             background-color: #ffffff;
         }
-        .editor-header,
-        .editor-footer {
+        .editor-header {
             background-color: #f6f8fa;
             border-color: #d0d7de;
         }
-        .editor-title,
         .editor-close {
             color: #656d76;
         }
@@ -628,12 +630,18 @@
             border-right-color: #d0d7de;
             color: #656d76;
         }
-        .editor-textarea {
+        .editor-highlight-layer {
             background-color: #ffffff;
             color: #1f2328;
         }
+        .editor-textarea {
+            background-color: transparent;
+            color: transparent;
+            caret-color: #1f2328;
+        }
         .editor-textarea::selection {
-            background-color: #add6ff;
+            background-color: rgba(173, 214, 255, 0.6);
+            color: transparent;
         }
         .editor-status {
             color: #656d76;
@@ -1280,7 +1288,7 @@
 
     {% if enable_edit and markdown_content %}
     <!-- Original Markdown content for editor -->
-    <script type="text/markdown" id="original-markdown">{{ markdown_content }}</script>
+    <script type="text/markdown" id="original-markdown">{{ markdown_content | safe }}</script>
     {% endif %}
 
     <script type="module" src="/_/js/main.js"></script>

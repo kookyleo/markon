@@ -1139,50 +1139,43 @@
 /* Header */
 .editor-header {
     display: flex;
-    justify-content: space-between;
     align-items: center;
+    gap: 16px;
     padding: 12px 20px;
     background-color: #2d2d2d;
     border-bottom: 1px solid #3e3e3e;
-}
-
-.editor-title {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    color: #cccccc;
-    font-size: 14px;
-}
-
-.editor-file-icon {
-    font-size: 18px;
-}
-
-.editor-file-name {
-    font-family: monospace;
-    color: #ffffff;
 }
 
 .editor-close {
     background: none;
     border: none;
     color: #cccccc;
-    font-size: 20px;
+    font-size: 18px;
     cursor: pointer;
     padding: 4px 8px;
     line-height: 1;
     transition: color 0.2s;
+    flex-shrink: 0;
 }
 
 .editor-close:hover {
     color: #ffffff;
 }
 
+.editor-file-name {
+    flex: 1;
+    font-family: monospace;
+    color: #ffffff;
+    font-size: 14px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
 /* Body */
 .editor-body {
     flex: 1;
     overflow: hidden;
-    padding: 20px;
 }
 
 .editor-container {
@@ -1213,12 +1206,55 @@
     height: 22.4px; /* Match line-height of textarea (14px * 1.6) */
 }
 
-/* Textarea */
-.editor-textarea {
+/* Text container (holds both highlight layer and textarea) */
+.editor-text-container {
     flex: 1;
+    position: relative;
     height: 100%;
+    overflow: hidden;
+}
+
+/* Highlight layer (background, with syntax coloring) */
+.editor-highlight-layer {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    margin: 0;
+    padding: 0 0 0 12px;
+    font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
+    font-size: 14px;
+    line-height: 1.6;
+    white-space: pre-wrap;
+    word-wrap: break-word;
+    overflow-y: auto;
+    overflow-x: auto;
+    pointer-events: none;
     background-color: #1e1e1e;
     color: #d4d4d4;
+    tab-size: 4;
+}
+
+.editor-highlight-layer code {
+    display: block;
+    font-family: inherit;
+    font-size: inherit;
+    line-height: inherit;
+    white-space: inherit;
+    word-wrap: inherit;
+}
+
+/* Textarea (foreground, transparent) */
+.editor-textarea {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background-color: transparent;
+    color: transparent;
+    caret-color: #ffffff;
     border: none;
     outline: none;
     font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
@@ -1232,29 +1268,60 @@
 }
 
 .editor-textarea::selection {
-    background-color: #264f78;
+    background-color: rgba(38, 79, 120, 0.6);
+    color: transparent;
 }
 
-/* Footer */
-.editor-footer {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    padding: 12px 20px;
-    background-color: #2d2d2d;
-    border-top: 1px solid #3e3e3e;
+/* Markdown syntax highlighting colors */
+.md-header {
+    color: #569cd6;
+    font-weight: bold;
 }
 
-.editor-status {
-    color: #858585;
-    font-size: 12px;
-    font-family: monospace;
+.md-header-text {
+    color: #4ec9b0;
+    font-weight: bold;
 }
 
-.editor-buttons {
-    display: flex;
-    gap: 10px;
+.md-bold {
+    color: #dcdcaa;
+    font-weight: bold;
 }
+
+.md-italic {
+    color: #ce9178;
+    font-style: italic;
+}
+
+.md-code {
+    color: #d16969;
+    background-color: rgba(255, 255, 255, 0.1);
+}
+
+.md-code-fence {
+    color: #808080;
+}
+
+.md-link {
+    color: #3794ff;
+}
+
+.md-image {
+    color: #c586c0;
+}
+
+.md-quote {
+    color: #6a9955;
+}
+
+.md-list {
+    color: #dcdcaa;
+}
+
+.md-hr {
+    color: #808080;
+}
+
 
 .editor-save-btn {
     background-color: #0e639c;
@@ -1265,6 +1332,7 @@
     cursor: pointer;
     border-radius: 2px;
     transition: background-color 0.2s;
+    flex-shrink: 0;
 }
 
 .editor-save-btn:hover {
@@ -1295,22 +1363,20 @@
         background-color: #ffffff;
     }
 
-    .editor-header,
-    .editor-footer {
+    .editor-header {
         background-color: #f3f3f3;
         border-color: #e0e0e0;
     }
 
-    .editor-title,
     .editor-close {
         color: #333333;
     }
 
-    .editor-file-name {
+    .editor-close:hover {
         color: #000000;
     }
 
-    .editor-close:hover {
+    .editor-file-name {
         color: #000000;
     }
 
@@ -1320,9 +1386,61 @@
         color: #656d76;
     }
 
-    .editor-textarea {
+    .editor-highlight-layer {
         background-color: #ffffff;
         color: #1f2328;
+    }
+
+    .editor-textarea {
+        background-color: transparent;
+        color: transparent;
+        caret-color: #1f2328;
+    }
+
+    /* Light theme syntax colors */
+    .md-header {
+        color: #0550ae;
+    }
+
+    .md-header-text {
+        color: #0a3069;
+    }
+
+    .md-bold {
+        color: #8250df;
+    }
+
+    .md-italic {
+        color: #cf222e;
+    }
+
+    .md-code {
+        color: #a40e26;
+        background-color: rgba(175, 184, 193, 0.2);
+    }
+
+    .md-code-fence {
+        color: #57606a;
+    }
+
+    .md-link {
+        color: #0969da;
+    }
+
+    .md-image {
+        color: #8250df;
+    }
+
+    .md-quote {
+        color: #1a7f37;
+    }
+
+    .md-list {
+        color: #8250df;
+    }
+
+    .md-hr {
+        color: #57606a;
     }
 
     .editor-textarea::selection {

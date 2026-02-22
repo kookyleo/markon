@@ -178,7 +178,12 @@ class BaseModal {
             this.#handlers.keydown = (e) => {
                 if (e.key === 'Escape') {
                     e.preventDefault();
-                    this.close();
+                    // Call cancel() if available (e.g., NoteInputModal), otherwise close()
+                    if (typeof this.cancel === 'function') {
+                        this.cancel();
+                    } else {
+                        this.close();
+                    }
                 }
             };
             document.addEventListener('keydown', this.#handlers.keydown);
@@ -188,7 +193,12 @@ class BaseModal {
         if (this.#options.closeOnOutsideClick) {
             this.#handlers.click = (e) => {
                 if (!this.#element.contains(e.target)) {
-                    this.close();
+                    // Call cancel() if available (e.g., NoteInputModal), otherwise close()
+                    if (typeof this.cancel === 'function') {
+                        this.cancel();
+                    } else {
+                        this.close();
+                    }
                 }
             };
             setTimeout(() => {
@@ -252,13 +262,25 @@ export class NoteInputModal extends BaseModal {
             <textarea class="note-textarea" placeholder="Enter your note...">${this.#initialValue}</textarea>
             <div class="note-input-actions">
                 <button class="note-cancel">Cancel</button>
-                <button class="note-save">Save</button>
+                <button class="note-save" disabled>Save</button>
             </div>
         `;
 
         const textarea = modal.querySelector('.note-textarea');
         const cancelBtn = modal.querySelector('.note-cancel');
         const saveBtn = modal.querySelector('.note-save');
+
+        // Update Save button state based on content
+        const updateSaveButton = () => {
+            const hasContent = textarea.value.trim().length > 0;
+            saveBtn.disabled = !hasContent;
+        };
+
+        // Initialize button state
+        updateSaveButton();
+
+        // Monitor content changes
+        textarea.addEventListener('input', updateSaveButton);
 
         // 如果有初始值，选中全部Text
         if (this.#initialValue) {
@@ -274,8 +296,10 @@ export class NoteInputModal extends BaseModal {
         // SaveButton
         const save = () => {
             const value = textarea.value.trim();
-            this.#onSave(value);
-            this.close();
+            if (value) {
+                this.#onSave(value);
+                this.close();
+            }
         };
 
         saveBtn.addEventListener('click', save);
@@ -289,6 +313,21 @@ export class NoteInputModal extends BaseModal {
         });
 
         return modal;
+    }
+
+    /**
+     * Handle cancel action
+     */
+    cancel() {
+        this.#onCancel();
+        this.close();
+    }
+
+    /**
+     * Override close to prevent direct closure (use cancel() instead)
+     */
+    close() {
+        super.close();
     }
 }
 

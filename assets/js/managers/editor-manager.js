@@ -11,6 +11,7 @@ export class EditorManager {
     #editorModal = null;
     #textarea = null;
     #lineNumbers = null;
+    #highlightLayer = null;
     #saveButton = null;
     #closeButton = null;
     #isDirty = false;
@@ -22,8 +23,10 @@ export class EditorManager {
 
     /**
      * Open the editor
+     * @param {Object} options - Optional configuration
+     * @param {string} options.selectedText - Text to find and select in editor
      */
-    async open() {
+    async open(options = {}) {
         // Fetch current file content
         const content = await this.#fetchCurrentContent();
         if (content === null) {
@@ -35,8 +38,14 @@ export class EditorManager {
         // Create editor UI
         this.#createEditorUI(content);
         this.#setupEventListeners();
-        this.#focusEditor();
         this.#updateLineNumbers();
+
+        // If selectedText provided, find and select it
+        if (options.selectedText && options.selectedText.trim()) {
+            this.#selectText(options.selectedText.trim());
+        } else {
+            this.#focusEditor();
+        }
 
         Logger.log('EditorManager', 'Editor opened');
     }
@@ -63,6 +72,9 @@ export class EditorManager {
             this.#closeButton = null;
             this.#isDirty = false;
 
+            // Reload page to return to view mode
+            window.location.reload();
+
             Logger.log('EditorManager', 'Editor closed');
         }
     }
@@ -79,11 +91,7 @@ export class EditorManager {
         if (success) {
             this.#isDirty = false;
             this.#updateSaveButtonState();
-
-            // Reload page after successful save
-            setTimeout(() => {
-                window.location.reload();
-            }, 500);
+            this.#updateTitleDirtyIndicator();
         }
     }
 
@@ -130,7 +138,6 @@ export class EditorManager {
 
             if (result.success) {
                 Logger.log('EditorManager', 'File saved successfully');
-                alert('File saved successfully!');
                 return true;
             } else {
                 Logger.error('EditorManager', 'Save failed:', result.message);
@@ -173,26 +180,17 @@ export class EditorManager {
         modal.className = 'editor-modal';
         modal.innerHTML = `
             <div class="editor-header">
-                <div class="editor-title">
-                    <span class="editor-file-icon">📝</span>
-                    <span class="editor-file-name">${this.#escapeHtml(this.#filePath)}</span>
-                </div>
-                <div class="editor-actions">
-                    <button class="editor-close" title="Close (Esc)">✕</button>
-                </div>
+                <button class="editor-close" title="Close (Esc)">✕</button>
+                <span class="editor-file-name">${this.#escapeHtml(this.#filePath)}</span>
+                <button class="editor-save-btn" style="display: none;">Save Changes</button>
             </div>
             <div class="editor-body">
                 <div class="editor-container">
                     <div class="editor-line-numbers"></div>
-                    <textarea class="editor-textarea" spellcheck="false">${this.#escapeHtml(content)}</textarea>
-                </div>
-            </div>
-            <div class="editor-footer">
-                <div class="editor-status">
-                    <span class="editor-line-count"></span>
-                </div>
-                <div class="editor-buttons">
-                    <button class="editor-save-btn">Save Changes (Ctrl+S)</button>
+                    <div class="editor-text-container">
+                        <pre class="editor-highlight-layer"><code></code></pre>
+                        <textarea class="editor-textarea" spellcheck="false"></textarea>
+                    </div>
                 </div>
             </div>
         `;
@@ -201,10 +199,15 @@ export class EditorManager {
         this.#editorModal = modal;
         this.#textarea = modal.querySelector('.editor-textarea');
         this.#lineNumbers = modal.querySelector('.editor-line-numbers');
+        this.#highlightLayer = modal.querySelector('.editor-highlight-layer code');
         this.#saveButton = modal.querySelector('.editor-save-btn');
         this.#closeButton = modal.querySelector('.editor-close');
 
-        this.#updateLineCount();
+        // Set textarea content (no HTML escaping needed for textarea.value)
+        this.#textarea.value = content;
+
+        // Initialize syntax highlighting
+        this.#updateSyntaxHighlight();
     }
 
     /**
@@ -233,10 +236,14 @@ export class EditorManager {
         // Esc to close
         document.addEventListener('keydown', this.#handleEscapeKey);
 
-        // Sync scroll between textarea and line numbers
+        // Sync scroll between textarea, line numbers, and highlight layer
         this.#textarea.addEventListener('scroll', () => {
             if (this.#lineNumbers) {
                 this.#lineNumbers.scrollTop = this.#textarea.scrollTop;
+            }
+            if (this.#highlightLayer) {
+                this.#highlightLayer.parentElement.scrollTop = this.#textarea.scrollTop;
+                this.#highlightLayer.parentElement.scrollLeft = this.#textarea.scrollLeft;
             }
         });
 
@@ -244,8 +251,9 @@ export class EditorManager {
         this.#textarea.addEventListener('input', () => {
             this.#isDirty = true;
             this.#updateSaveButtonState();
-            this.#updateLineCount();
+            this.#updateTitleDirtyIndicator();
             this.#updateLineNumbers();
+            this.#updateSyntaxHighlight();
         });
     }
 
@@ -278,10 +286,28 @@ export class EditorManager {
     #updateSaveButtonState() {
         if (this.#saveButton) {
             if (this.#isDirty) {
+                this.#saveButton.style.display = 'block';
                 this.#saveButton.classList.add('has-changes');
             } else {
+                this.#saveButton.style.display = 'none';
                 this.#saveButton.classList.remove('has-changes');
             }
+        }
+    }
+
+    /**
+     * Update title dirty indicator (add/remove asterisk)
+     * @private
+     */
+    #updateTitleDirtyIndicator() {
+        const fileNameElement = this.#editorModal?.querySelector('.editor-file-name');
+        if (!fileNameElement) return;
+
+        const cleanFileName = this.#filePath.replace(/\*$/, ''); // Remove existing asterisk
+        if (this.#isDirty) {
+            fileNameElement.textContent = cleanFileName + '*';
+        } else {
+            fileNameElement.textContent = cleanFileName;
         }
     }
 
@@ -325,6 +351,260 @@ export class EditorManager {
             .join('');
 
         this.#lineNumbers.innerHTML = lineNumbersHtml;
+    }
+
+    /**
+     * Find and select text in the editor with fuzzy matching for Markdown syntax
+     * @private
+     */
+    #selectText(searchText) {
+        if (!this.#textarea) return;
+
+        const content = this.#textarea.value;
+
+        // Try multiple search strategies
+        const result = this.#findTextInSource(content, searchText);
+
+        if (result !== -1) {
+            // Found the text, select it
+            this.#textarea.focus();
+
+            // Find the actual length in source (may include Markdown syntax)
+            const actualLength = this.#findActualLength(content, result, searchText);
+            this.#textarea.setSelectionRange(result, result + actualLength);
+
+            // Scroll to the selection
+            const beforeText = content.substring(0, result);
+            const lineNumber = beforeText.split('\n').length;
+            const lineHeight = 22.4;
+            const scrollTop = (lineNumber - 3) * lineHeight;
+
+            this.#textarea.scrollTop = Math.max(0, scrollTop);
+
+            if (this.#lineNumbers) {
+                this.#lineNumbers.scrollTop = this.#textarea.scrollTop;
+            }
+
+            Logger.log('EditorManager', `Selected text at index ${result}, line ${lineNumber}`);
+        } else {
+            // Text not found, just focus at the beginning
+            Logger.warn('EditorManager', `Text not found: "${searchText}"`);
+            this.#focusEditor();
+
+            // Show a subtle notification
+            const notification = document.createElement('div');
+            notification.textContent = 'Selected text not found in source';
+            notification.style.cssText = `
+                position: fixed;
+                top: 80px;
+                left: 50%;
+                transform: translateX(-50%);
+                background: rgba(0, 0, 0, 0.8);
+                color: white;
+                padding: 10px 20px;
+                border-radius: 4px;
+                z-index: 10001;
+                font-size: 14px;
+            `;
+            document.body.appendChild(notification);
+
+            setTimeout(() => {
+                notification.remove();
+            }, 3000);
+        }
+    }
+
+    /**
+     * Find text in source with multiple strategies
+     * @private
+     */
+    #findTextInSource(content, searchText) {
+        // Strategy 1: Exact match
+        let index = content.indexOf(searchText);
+        if (index !== -1) return index;
+
+        // Strategy 2: Try to find by building regex patterns that account for common Markdown syntax
+        // This creates a pattern that allows Markdown syntax between words
+        const words = searchText.split(/\s+/).filter(w => w.length > 0);
+        if (words.length > 1) {
+            // Build a flexible regex pattern
+            // Allow Markdown syntax between words: `, **, __, *, _, [, ], (, ), etc.
+            const pattern = words
+                .map(word => this.#escapeRegex(word))
+                .join('[\\s`*_\\[\\]()]*');
+
+            const regex = new RegExp(pattern, 'i');
+            const match = content.match(regex);
+            if (match) {
+                return content.indexOf(match[0]);
+            }
+        }
+
+        // Strategy 3: Try removing common Markdown syntax from search text
+        const cleaned = searchText
+            .replace(/`/g, '')  // Remove backticks
+            .replace(/\*\*/g, '')  // Remove bold markers
+            .replace(/__/g, '')  // Remove bold markers (alternative)
+            .replace(/\*/g, '')  // Remove italic markers
+            .replace(/_/g, '')  // Remove italic markers (alternative)
+            .trim();
+
+        if (cleaned !== searchText) {
+            index = content.indexOf(cleaned);
+            if (index !== -1) return index;
+        }
+
+        return -1;
+    }
+
+    /**
+     * Find the actual length of text in source (including Markdown syntax)
+     * @private
+     */
+    #findActualLength(content, startIndex, originalText) {
+        // Try exact match first
+        const exactMatch = content.substring(startIndex, startIndex + originalText.length);
+        if (exactMatch === originalText) {
+            return originalText.length;
+        }
+
+        // Normalize original text for comparison
+        const normalizedOriginal = this.#normalizeText(originalText);
+        const originalLength = normalizedOriginal.length;
+
+        // Search window: allow up to 3x the original length for Markdown syntax
+        const maxLength = originalText.length * 3;
+        const searchWindow = content.substring(startIndex, startIndex + maxLength);
+
+        // Build "rendered" version by skipping Markdown syntax
+        let rendered = '';
+        let sourceLength = 0;
+        let inCodeBacktick = false;
+        let inLink = false;
+
+        for (let i = 0; i < searchWindow.length; i++) {
+            const char = searchWindow[i];
+            const nextChar = searchWindow[i + 1];
+
+            // Track backtick state for inline code
+            if (char === '`') {
+                inCodeBacktick = !inCodeBacktick;
+                sourceLength++;
+                continue;
+            }
+
+            // Track link/image syntax
+            if (char === '[') {
+                inLink = true;
+                sourceLength++;
+                continue;
+            }
+
+            if (inLink) {
+                if (char === ']' && (nextChar === '(' || nextChar === '[')) {
+                    sourceLength++;
+                    continue;
+                }
+                if (char === ')' && searchWindow.substring(Math.max(0, i - 10), i).includes('](')) {
+                    inLink = false;
+                    sourceLength++;
+                    continue;
+                }
+            }
+
+            // Skip common Markdown syntax markers (when not in code)
+            if (!inCodeBacktick && (char === '*' || char === '_')) {
+                // Check if it's likely a bold/italic marker (repeated or followed by non-whitespace)
+                if (char === nextChar || (nextChar && nextChar !== ' ' && nextChar !== '\n')) {
+                    sourceLength++;
+                    continue;
+                }
+            }
+
+            // Add character to rendered version
+            rendered += char;
+            sourceLength++;
+
+            // Check if we've matched the original text
+            const normalizedRendered = this.#normalizeText(rendered);
+
+            // Exact match on normalized text
+            if (normalizedRendered === normalizedOriginal) {
+                return sourceLength;
+            }
+
+            // Stop if we've gone too far
+            if (normalizedRendered.length > originalLength * 1.5) {
+                break;
+            }
+        }
+
+        // Fallback: conservative estimate
+        return Math.min(originalText.length, searchWindow.length);
+    }
+
+    /**
+     * Normalize text for comparison (remove extra whitespace)
+     * @private
+     */
+    #normalizeText(text) {
+        return text.replace(/\s+/g, ' ').trim();
+    }
+
+    /**
+     * Escape special regex characters
+     * @private
+     */
+    #escapeRegex(str) {
+        return str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    }
+
+    /**
+     * Update syntax highlighting
+     * @private
+     */
+    #updateSyntaxHighlight() {
+        if (!this.#textarea || !this.#highlightLayer) return;
+
+        const text = this.#textarea.value;
+        const highlighted = this.#highlightMarkdown(text);
+        this.#highlightLayer.innerHTML = highlighted + '\n';
+    }
+
+    /**
+     * Simple Markdown syntax highlighting
+     * @private
+     */
+    #highlightMarkdown(text) {
+        // Escape HTML first
+        text = this.#escapeHtml(text);
+
+        // Apply syntax highlighting (order matters!)
+        text = text
+            // Headers (h1-h6)
+            .replace(/^(#{1,6})\s+(.+)$/gm, '<span class="md-header">$1</span> <span class="md-header-text">$2</span>')
+            // Bold **text** or __text__
+            .replace(/(\*\*|__)(.*?)\1/g, '<span class="md-bold">$1$2$1</span>')
+            // Italic *text* or _text_
+            .replace(/(\*|_)(.*?)\1/g, '<span class="md-italic">$1$2$1</span>')
+            // Inline code `code`
+            .replace(/`([^`]+)`/g, '<span class="md-code">`$1`</span>')
+            // Links [text](url)
+            .replace(/\[([^\]]+)\]\(([^\)]+)\)/g, '<span class="md-link">[$1]($2)</span>')
+            // Images ![alt](url)
+            .replace(/!\[([^\]]*)\]\(([^\)]+)\)/g, '<span class="md-image">![$1]($2)</span>')
+            // Blockquotes
+            .replace(/^(&gt;+)\s+(.+)$/gm, '<span class="md-quote">$1 $2</span>')
+            // Unordered lists
+            .replace(/^([\s]*)([-*+])\s+(.+)$/gm, '$1<span class="md-list">$2</span> $3')
+            // Ordered lists
+            .replace(/^([\s]*)(\d+\.)\s+(.+)$/gm, '$1<span class="md-list">$2</span> $3')
+            // Horizontal rules
+            .replace(/^([-*_]{3,})$/gm, '<span class="md-hr">$1</span>')
+            // Code blocks ```
+            .replace(/^```(\w*)$/gm, '<span class="md-code-fence">```$1</span>');
+
+        return text;
     }
 
     /**

@@ -151,6 +151,7 @@ Options:
       --shared-annotation          Enable shared annotation via SQLite + WebSocket
       --enable-viewed              Enable section viewed checkboxes (GitHub PR-style)
       --enable-search              Enable full-text search with Tantivy
+      --enable-edit                Enable Markdown file editing with syntax highlighting
   -h, --help                       Print help
   -V, --version                    Print version
 ```
@@ -191,8 +192,11 @@ markon --enable-viewed README.md
 # Enable full-text search
 markon --enable-search
 
-# Full-featured: QR + browser + shared + viewed + search
-markon --qr -b --shared-annotation --enable-viewed --enable-search README.md
+# Enable Markdown editing
+markon --enable-edit README.md
+
+# Full-featured: QR + browser + shared + viewed + search + edit
+markon --qr -b --shared-annotation --enable-viewed --enable-search --enable-edit README.md
 ```
 
 ### Features Guide
@@ -225,8 +229,17 @@ markon --qr -b --shared-annotation --enable-viewed --enable-search README.md
 - Click result or press `Enter` to navigate with auto-scroll and keyword highlighting
 - Chinese text automatically tokenized with Jieba for accurate matching
 
+**Markdown Editing** (`--enable-edit`):
+- Press `e` to open editor with line numbers and syntax highlighting
+- Select text → Click "Edit" in toolbar → Auto-jump to source with text selected
+- `Ctrl/Cmd+S`: Save changes (asterisk * in title shows unsaved changes)
+- `ESC`: Close editor and return to view mode
+- Security: Only `.md` files within the start directory can be edited
+- Theme: Auto-follows light/dark mode with GitHub-style syntax highlighting
+
 **Keyboard Shortcuts** (press `?` to see all):
 - `/`: Open search (requires `--enable-search`)
+- `e`: Edit current file (requires `--enable-edit`)
 - `Ctrl/Cmd+Z` / `Ctrl/Cmd+Shift+Z`: Undo/Redo annotations
 - `j` / `k`: Next/Previous heading
 - `Ctrl/Cmd+\`: Toggle TOC

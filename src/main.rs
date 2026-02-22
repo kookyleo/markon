@@ -11,8 +11,14 @@ use std::path::Path;
 /// Get list of available network interfaces with IP addresses
 fn get_available_hosts() -> Vec<(String, String)> {
     let mut hosts = vec![
-        ("127.0.0.1".to_string(), "Localhost (local only)".to_string()),
-        ("0.0.0.0".to_string(), "All interfaces (LAN accessible)".to_string()),
+        (
+            "127.0.0.1".to_string(),
+            "Localhost (local only)".to_string(),
+        ),
+        (
+            "0.0.0.0".to_string(),
+            "All interfaces (LAN accessible)".to_string(),
+        ),
     ];
 
     // Get all network interfaces

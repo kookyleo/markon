@@ -154,6 +154,7 @@ export class KeyboardShortcutsManager {
             'Core': ['UNDO', 'REDO', 'REDO_ALT', 'ESCAPE', 'TOGGLE_TOC', 'HELP'],
             'Navigation': ['SCROLL_HALF_PAGE_DOWN', 'PREV_HEADING', 'NEXT_HEADING', 'PREV_ANNOTATION', 'NEXT_ANNOTATION'],
             'Search (when enabled)': ['SEARCH'],
+            'Edit (when enabled)': ['EDIT'],
             'Viewed (when enabled)': ['TOGGLE_VIEWED', 'TOGGLE_SECTION_COLLAPSE']
         };
 
@@ -167,6 +168,11 @@ export class KeyboardShortcutsManager {
         for (const [category, shortcutNames] of Object.entries(categories)) {
             // Skip Search Category（如果未启用）
             if (category.startsWith('Search') && !document.querySelector('meta[name="enable-search"]')) {
+                continue;
+            }
+
+            // Skip Edit Category（如果未启用）
+            if (category.startsWith('Edit') && !document.querySelector('meta[name="enable-edit"]')) {
                 continue;
             }
 

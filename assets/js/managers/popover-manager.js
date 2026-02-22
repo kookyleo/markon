@@ -10,7 +10,7 @@ import { DraggableManager } from '../components/draggable.js';
 import { Position } from '../services/position.js';
 
 /**
- * 弹出框Management器
+ * Popover manager
  */
 export class PopoverManager {
     #element;
@@ -19,9 +19,11 @@ export class PopoverManager {
     #markdownBody;
     #onAction = null;
     #draggable = null;
+    #enableEdit;
 
-    constructor(markdownBody) {
+    constructor(markdownBody, options = {}) {
         this.#markdownBody = markdownBody;
+        this.#enableEdit = options.enableEdit || false;
         this.#createElement();
     }
 
@@ -362,22 +364,27 @@ export class PopoverManager {
     #updateContent(highlightedElement, hasSelection = false) {
         Logger.log('PopoverManager', `#updateContent called: highlightedElement=${!!highlightedElement}, hasSelection=${hasSelection}`);
 
+        const editButton = this.#enableEdit && hasSelection
+            ? '<span class="popover-separator">|</span><button data-action="edit">Edit</button>'
+            : '';
+
         if (highlightedElement) {
             if (hasSelection) {
-                // 已Highlight但有选中文本：显示 Unhighlight + Note
-                Logger.log('PopoverManager', 'Showing: Unhighlight + Note');
+                // Highlighted with selection: show Unhighlight + Note + Edit
+                Logger.log('PopoverManager', 'Showing: Unhighlight + Note + Edit');
                 this.#element.innerHTML = `
                     <button data-action="unhighlight">Unhighlight</button>
                     <span class="popover-separator">|</span>
                     <button data-action="add-note">Note</button>
+                    ${editButton}
                 `;
             } else {
-                // 已Highlight且无选中文本（仅点击）：只显示 Unhighlight
+                // Highlighted without selection (just click): show only Unhighlight
                 Logger.log('PopoverManager', 'Showing: Unhighlight only');
                 this.#element.innerHTML = '<button data-action="unhighlight">Unhighlight</button>';
             }
         } else {
-            // 未Highlight：Show注解Button
+            // Not highlighted: show annotation buttons + Edit
             this.#element.innerHTML = `
                 <button data-action="highlight-orange">Orange</button>
                 <button data-action="highlight-green">Green</button>
@@ -385,6 +392,7 @@ export class PopoverManager {
                 <button data-action="strikethrough">Strike</button>
                 <span class="popover-separator">|</span>
                 <button data-action="add-note">Note</button>
+                ${editButton}
             `;
         }
     }

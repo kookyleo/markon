@@ -167,7 +167,7 @@ export class MarkonApp {
         this.#noteManager = new NoteManager(this.#annotationManager, this.#markdownBody);
 
         // Popover manager
-        this.#popoverManager = new PopoverManager(this.#markdownBody);
+        this.#popoverManager = new PopoverManager(this.#markdownBody, { enableEdit: this.#enableEdit });
 
         // Undo manager
         this.#undoManager = new UndoManager();
@@ -452,9 +452,17 @@ export class MarkonApp {
             // 添加Note - 不ClearSelect，保持选中State直到模态框Close
             this.#showNoteInputModal(selection);
             return; // 提前Return，不ClearSelect
+        } else if (action === 'edit') {
+            // Open editor with selected text
+            const selectedText = selection.toString().trim();
+            if (!this.#editorManager) {
+                this.#editorManager = new EditorManager(this.#filePath);
+            }
+            this.#editorManager.open({ selectedText: selectedText });
+            return; // Don't clear selection until editor opens
         }
 
-        // ClearSelect（add-note 操作除外）
+        // ClearSelect（add-note 和 edit 操作除外）
         window.getSelection().removeAllRanges();
     }
 

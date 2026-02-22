@@ -8,6 +8,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [0.6.3] - 2026-01-09
 
 ### Added
+- **Markdown editing feature** with `--enable-edit` parameter
+  - In-browser editor with line numbers and syntax highlighting
+  - Press `e` to open editor or click "Edit" button in selection toolbar
+  - Auto-jump to source when selecting text in view mode
+  - Smart text matching with Markdown syntax awareness
+  - `Ctrl/Cmd+S` to save, asterisk (*) in title indicates unsaved changes
+  - GitHub-style syntax highlighting for both light and dark themes
+  - Security: Only `.md` files within start directory can be edited
 - **Smart `--host` parameter** for flexible network binding (#18)
   - No `--host`: Binds to `127.0.0.1` (localhost only, secure by default)
   - `--host`: Interactive selection from available network interfaces
