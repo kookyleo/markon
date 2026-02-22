@@ -5,8 +5,8 @@ use axum::{
     },
     http::{header, StatusCode},
     response::{Html, IntoResponse, Response},
-    routing::get,
-    Router,
+    routing::{get, post},
+    Json, Router,
 };
 use futures_util::{stream::StreamExt, SinkExt};
 use qrcode::render::unicode::Dense1x2;
@@ -35,6 +35,7 @@ pub struct ServerConfig {
     pub shared_annotation: bool,
     pub enable_viewed: bool,
     pub enable_search: bool,
+    pub enable_edit: bool,
 }
 
 /// Print a compact QR code using Unicode half-blocks
@@ -47,6 +48,7 @@ pub struct AppState {
     pub shared_annotation: bool,
     pub enable_viewed: bool,
     pub enable_search: bool,
+    pub enable_edit: bool,
     pub db: Option<Arc<Mutex<Connection>>>,
     pub tx: Option<broadcast::Sender<String>>,
     pub search_index: Option<Arc<crate::search::SearchIndex>>,
@@ -103,6 +105,7 @@ pub async fn start(config: ServerConfig) {
         shared_annotation,
         enable_viewed,
         enable_search,
+        enable_edit,
     } = config;
     // Initialize Tera template engine
     let mut tera = Tera::default();
@@ -196,6 +199,7 @@ pub async fn start(config: ServerConfig) {
         shared_annotation,
         enable_viewed,
         enable_search,
+        enable_edit,
         db,
         tx,
         search_index: search_index.clone(),
@@ -211,6 +215,7 @@ pub async fn start(config: ServerConfig) {
     let mut app = Router::new()
         .route("/", get(root))
         .route("/search", get(search::search_handler))
+        .route("/api/save", post(save_file_handler))
         .route("/favicon.ico", get(serve_favicon))
         .route("/_/favicon.ico", get(serve_favicon))
         .route("/_/favicon.svg", get(serve_favicon_svg))
@@ -594,6 +599,12 @@ fn render_markdown_file(file_path: &str, state: &AppState) -> Response {
             context.insert("shared_annotation", &state.shared_annotation);
             context.insert("enable_viewed", &state.enable_viewed);
             context.insert("enable_search", &state.enable_search);
+            context.insert("enable_edit", &state.enable_edit);
+
+            // 如果启用编辑，传递原始内容
+            if state.enable_edit {
+                context.insert("markdown_content", &markdown_input);
+            }
 
             match state.tera.render("layout.html", &context) {
                 Ok(html) => Html(html).into_response(),
@@ -861,5 +872,130 @@ fn get_mime_type(ext: &str) -> Option<&'static str> {
         "7z" => Some("application/x-7z-compressed"),
 
         _ => None,
+    }
+}
+
+// ============================================================
+// File Editing API
+// ============================================================
+
+#[derive(Deserialize)]
+struct SaveFileRequest {
+    file_path: String,
+    content: String,
+}
+
+#[derive(Serialize)]
+struct SaveFileResponse {
+    success: bool,
+    message: String,
+}
+
+async fn save_file_handler(
+    State(state): State<AppState>,
+    Json(payload): Json<SaveFileRequest>,
+) -> impl IntoResponse {
+    use std::path::PathBuf;
+
+    // 1. 检查功能是否启用
+    if !state.enable_edit {
+        return Json(SaveFileResponse {
+            success: false,
+            message: "Edit feature is not enabled".to_string(),
+        })
+        .into_response();
+    }
+
+    // 2. 解码路径
+    let decoded_path = match urlencoding::decode(&payload.file_path) {
+        Ok(p) => p,
+        Err(_) => {
+            return Json(SaveFileResponse {
+                success: false,
+                message: "Invalid file path encoding".to_string(),
+            })
+            .into_response();
+        }
+    };
+
+    // 3. 构建完整路径
+    let requested_path = PathBuf::from(decoded_path.as_ref());
+    let full_path = state.start_dir.join(&requested_path);
+
+    // 4. 规范化并检查路径安全性
+    let canonical_path = match full_path.canonicalize() {
+        Ok(p) => p,
+        Err(_) => {
+            return Json(SaveFileResponse {
+                success: false,
+                message: format!("File not found: {}", decoded_path),
+            })
+            .into_response();
+        }
+    };
+
+    // 5. 安全检查：必须在 start_dir 内
+    if !canonical_path.starts_with(&*state.start_dir) {
+        return Json(SaveFileResponse {
+            success: false,
+            message: "Access denied: path outside allowed directory".to_string(),
+        })
+        .into_response();
+    }
+
+    // 6. 检查是否为文件
+    if !canonical_path.is_file() {
+        return Json(SaveFileResponse {
+            success: false,
+            message: "Path is not a file".to_string(),
+        })
+        .into_response();
+    }
+
+    // 7. 检查文件扩展名（仅允许 .md）
+    let is_markdown = canonical_path
+        .extension()
+        .is_some_and(|ext| ext.to_string_lossy().to_lowercase() == "md");
+
+    if !is_markdown {
+        return Json(SaveFileResponse {
+            success: false,
+            message: "Only Markdown files (.md) can be edited".to_string(),
+        })
+        .into_response();
+    }
+
+    // 8. 检查写权限
+    match fs::metadata(&canonical_path) {
+        Ok(metadata) => {
+            if metadata.permissions().readonly() {
+                return Json(SaveFileResponse {
+                    success: false,
+                    message: "File is read-only".to_string(),
+                })
+                .into_response();
+            }
+        }
+        Err(e) => {
+            return Json(SaveFileResponse {
+                success: false,
+                message: format!("Cannot access file: {}", e),
+            })
+            .into_response();
+        }
+    }
+
+    // 9. 写入文件
+    match fs::write(&canonical_path, &payload.content) {
+        Ok(_) => Json(SaveFileResponse {
+            success: true,
+            message: "File saved successfully".to_string(),
+        })
+        .into_response(),
+        Err(e) => Json(SaveFileResponse {
+            success: false,
+            message: format!("Failed to save file: {}", e),
+        })
+        .into_response(),
     }
 }

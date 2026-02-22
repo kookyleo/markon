@@ -16,6 +16,7 @@ import { UndoManager } from './managers/undo-manager.js';
 import { KeyboardShortcutsManager } from './managers/keyboard-shortcuts.js';
 import { SearchManager } from './managers/search-manager.js';
 import { HighlightManager } from './managers/highlight-manager.js';
+import { EditorManager } from './managers/editor-manager.js';
 import { TOCNavigator } from './navigators/toc-navigator.js';
 import { AnnotationNavigator } from './navigators/annotation-navigator.js';
 import { ModalManager, showConfirmDialog } from './components/modal.js';
@@ -33,6 +34,7 @@ export class MarkonApp {
     #undoManager;
     #shortcutsManager;
     #searchManager;
+    #editorManager;
     #tocNavigator;
     #annotationNavigator;
 
@@ -41,6 +43,7 @@ export class MarkonApp {
     #filePath;
     #isSharedMode;
     #enableSearch;
+    #enableEdit;
 
     // Scroll control
     #scrollAnimationId = null;
@@ -50,6 +53,7 @@ export class MarkonApp {
         this.#filePath = config.filePath || this.#getFilePathFromMeta();
         this.#isSharedMode = config.isSharedMode || false;
         this.#enableSearch = config.enableSearch || false;
+        this.#enableEdit = config.enableEdit || false;
         this.#markdownBody = document.querySelector(CONFIG.SELECTORS.MARKDOWN_BODY);
 
         if (!this.#markdownBody) {
@@ -380,6 +384,13 @@ export class MarkonApp {
 
             this.#shortcutsManager.register('TOGGLE_SECTION_COLLAPSE', () => {
                 this.#toggleCurrentSectionCollapse();
+            });
+        }
+
+        // Edit 快捷键（如果启用）
+        if (this.#enableEdit) {
+            this.#shortcutsManager.register('EDIT', () => {
+                this.#openEditor();
             });
         }
 
@@ -1159,6 +1170,23 @@ export class MarkonApp {
     }
 
     /**
+     * 打开编辑器
+     * @private
+     */
+    #openEditor() {
+        if (!this.#enableEdit) {
+            Logger.warn('MarkonApp', 'Edit feature is not enabled');
+            return;
+        }
+
+        if (!this.#editorManager) {
+            this.#editorManager = new EditorManager(this.#filePath);
+        }
+
+        this.#editorManager.open();
+    }
+
+    /**
      * GetManagement器（用于Debug）
      */
     getManagers() {
@@ -1214,10 +1242,13 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     });
 
+    const enableEditMeta = document.querySelector('meta[name="enable-edit"]');
+
     const app = new MarkonApp({
         filePath: filePathMeta?.getAttribute('content'),
         isSharedMode: isSharedMode,
         enableSearch: enableSearchMeta?.getAttribute('content') === 'true',
+        enableEdit: enableEditMeta?.getAttribute('content') === 'true',
     });
 
     app.init();

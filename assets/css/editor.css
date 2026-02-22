@@ -1118,3 +1118,181 @@
 .highlight-flash {
     animation: highlight-flash 1s ease-in-out;
 }
+
+/* ============================================================
+   EDITOR MODAL
+   极简 Markdown 源码编辑器
+   ============================================================ */
+
+.editor-modal {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 10000;
+    background-color: #1e1e1e;
+    display: flex;
+    flex-direction: column;
+}
+
+/* Header */
+.editor-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 12px 20px;
+    background-color: #2d2d2d;
+    border-bottom: 1px solid #3e3e3e;
+}
+
+.editor-title {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    color: #cccccc;
+    font-size: 14px;
+}
+
+.editor-file-icon {
+    font-size: 18px;
+}
+
+.editor-file-name {
+    font-family: monospace;
+    color: #ffffff;
+}
+
+.editor-close {
+    background: none;
+    border: none;
+    color: #cccccc;
+    font-size: 20px;
+    cursor: pointer;
+    padding: 4px 8px;
+    line-height: 1;
+    transition: color 0.2s;
+}
+
+.editor-close:hover {
+    color: #ffffff;
+}
+
+/* Body */
+.editor-body {
+    flex: 1;
+    overflow: hidden;
+    padding: 20px;
+}
+
+.editor-textarea {
+    width: 100%;
+    height: 100%;
+    background-color: #1e1e1e;
+    color: #d4d4d4;
+    border: none;
+    outline: none;
+    font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
+    font-size: 14px;
+    line-height: 1.6;
+    padding: 0;
+    resize: none;
+    tab-size: 4;
+}
+
+.editor-textarea::selection {
+    background-color: #264f78;
+}
+
+/* Footer */
+.editor-footer {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 12px 20px;
+    background-color: #2d2d2d;
+    border-top: 1px solid #3e3e3e;
+}
+
+.editor-status {
+    color: #858585;
+    font-size: 12px;
+    font-family: monospace;
+}
+
+.editor-buttons {
+    display: flex;
+    gap: 10px;
+}
+
+.editor-save-btn {
+    background-color: #0e639c;
+    color: #ffffff;
+    border: none;
+    padding: 6px 16px;
+    font-size: 13px;
+    cursor: pointer;
+    border-radius: 2px;
+    transition: background-color 0.2s;
+}
+
+.editor-save-btn:hover {
+    background-color: #1177bb;
+}
+
+.editor-save-btn:active {
+    background-color: #0d5a8f;
+}
+
+.editor-save-btn:disabled {
+    background-color: #4d4d4d;
+    color: #808080;
+    cursor: not-allowed;
+}
+
+.editor-save-btn.has-changes {
+    background-color: #0e7a0d;
+}
+
+.editor-save-btn.has-changes:hover {
+    background-color: #13a10e;
+}
+
+/* Light mode support */
+@media (prefers-color-scheme: light) {
+    .editor-modal {
+        background-color: #ffffff;
+    }
+
+    .editor-header,
+    .editor-footer {
+        background-color: #f3f3f3;
+        border-color: #e0e0e0;
+    }
+
+    .editor-title,
+    .editor-close {
+        color: #333333;
+    }
+
+    .editor-file-name {
+        color: #000000;
+    }
+
+    .editor-close:hover {
+        color: #000000;
+    }
+
+    .editor-textarea {
+        background-color: #ffffff;
+        color: #000000;
+    }
+
+    .editor-textarea::selection {
+        background-color: #add6ff;
+    }
+
+    .editor-status {
+        color: #757575;
+    }
+}

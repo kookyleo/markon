@@ -70,6 +70,9 @@ export const CONFIG = {
 
         // Viewed functionality (requires enabling)
         TOGGLE_VIEWED: { key: 'v', ctrl: false, shift: false, desc: 'Toggle current section viewed state' },
+
+        // Edit functionality (requires enabling)
+        EDIT: { key: 'e', ctrl: false, shift: false, desc: 'Edit current Markdown file' },
     },
 
     // Storage keys
@@ -99,6 +102,7 @@ export const CONFIG = {
         NOTE_INPUT_MODAL: '.note-input-modal',
         CONFIRM_DIALOG: '.confirm-dialog',
         SHORTCUTS_HELP_PANEL: '.shortcuts-help-panel',
+        EDITOR_MODAL: '.editor-modal',
 
         // Viewed Related
         VIEWED_CHECKBOX: '.viewed-checkbox',
@@ -117,6 +121,7 @@ export const CONFIG = {
         FILE_PATH: 'file-path',
         SHARED_ANNOTATION: 'shared-annotation',
         ENABLE_VIEWED: 'enable-viewed',
+        ENABLE_EDIT: 'enable-edit',
     },
 
     // WebSocket Message types

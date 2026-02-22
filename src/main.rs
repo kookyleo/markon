@@ -87,6 +87,10 @@ struct Cli {
     /// Enable directory-level search functionality.
     #[arg(long, action = clap::ArgAction::SetTrue)]
     enable_search: bool,
+
+    /// Enable Markdown file editing feature.
+    #[arg(long, action = clap::ArgAction::SetTrue)]
+    enable_edit: bool,
 }
 
 #[tokio::main]
@@ -141,6 +145,7 @@ async fn main() {
         shared_annotation: cli.shared_annotation,
         enable_viewed: cli.enable_viewed,
         enable_search: cli.enable_search,
+        enable_edit: cli.enable_edit,
     })
     .await;
 }

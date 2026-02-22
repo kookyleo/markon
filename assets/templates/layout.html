@@ -7,6 +7,7 @@
     <meta name="shared-annotation" content="{{ shared_annotation }}">
     <meta name="enable-viewed" content="{{ enable_viewed }}">
     <meta name="enable-search" content="{{ enable_search }}">
+    <meta name="enable-edit" content="{{ enable_edit }}">
     <title>{{ title }}</title>
     <link rel="icon" type="image/svg+xml" href="/_/favicon.svg">
     <link rel="alternate icon" href="/_/favicon.ico">
@@ -1172,6 +1173,12 @@
         mermaid.initialize({ startOnLoad: true, theme: 'default' });
     </script>
     {% endif %}
+
+    {% if enable_edit and markdown_content %}
+    <!-- 原始 Markdown 内容（用于编辑器） -->
+    <script type="text/markdown" id="original-markdown">{{ markdown_content }}</script>
+    {% endif %}
+
     <script type="module" src="/_/js/main.js"></script>
     <script src="/_/js/viewed.js"></script>
     <script>
