@@ -566,9 +566,78 @@
             margin-bottom: 0;
         }
 
+        /* Editor modal - dark theme */
+        .editor-modal {
+            background-color: #0d1117;
+        }
+        .editor-header,
+        .editor-footer {
+            background-color: #161b22;
+            border-color: #30363d;
+        }
+        .editor-title,
+        .editor-close {
+            color: #8b949e;
+        }
+        .editor-file-name {
+            color: #f0f6fc;
+        }
+        .editor-close:hover {
+            color: #f0f6fc;
+        }
+        .editor-line-numbers {
+            background-color: #0d1117;
+            border-right-color: #30363d;
+            color: #6e7681;
+        }
+        .editor-textarea {
+            background-color: #0d1117;
+            color: #f0f6fc;
+        }
+        .editor-textarea::selection {
+            background-color: #1f6feb;
+        }
+        .editor-status {
+            color: #8b949e;
+        }
+
         {% elif theme == "light" %}
-        /* Light Theme: Uses default styles from editor.css */
-        /* No color overrides needed */
+        /* Light Theme: Override dark defaults */
+
+        /* Editor modal - light theme */
+        .editor-modal {
+            background-color: #ffffff;
+        }
+        .editor-header,
+        .editor-footer {
+            background-color: #f6f8fa;
+            border-color: #d0d7de;
+        }
+        .editor-title,
+        .editor-close {
+            color: #656d76;
+        }
+        .editor-file-name {
+            color: #1f2328;
+        }
+        .editor-close:hover {
+            color: #1f2328;
+        }
+        .editor-line-numbers {
+            background-color: #f6f8fa;
+            border-right-color: #d0d7de;
+            color: #656d76;
+        }
+        .editor-textarea {
+            background-color: #ffffff;
+            color: #1f2328;
+        }
+        .editor-textarea::selection {
+            background-color: #add6ff;
+        }
+        .editor-status {
+            color: #656d76;
+        }
 
         /* Remove H1 bottom margin when followed by viewed toolbar */
         .markdown-body h1:has(+ .viewed-toolbar) {
@@ -717,6 +786,41 @@
             /* Remove H1 bottom margin when followed by viewed toolbar */
             .markdown-body h1:has(+ .viewed-toolbar) {
                 margin-bottom: 0;
+            }
+
+            /* Editor modal - dark theme (auto mode) */
+            .editor-modal {
+                background-color: #0d1117;
+            }
+            .editor-header,
+            .editor-footer {
+                background-color: #161b22;
+                border-color: #30363d;
+            }
+            .editor-title,
+            .editor-close {
+                color: #8b949e;
+            }
+            .editor-file-name {
+                color: #f0f6fc;
+            }
+            .editor-close:hover {
+                color: #f0f6fc;
+            }
+            .editor-line-numbers {
+                background-color: #0d1117;
+                border-right-color: #30363d;
+                color: #6e7681;
+            }
+            .editor-textarea {
+                background-color: #0d1117;
+                color: #f0f6fc;
+            }
+            .editor-textarea::selection {
+                background-color: #1f6feb;
+            }
+            .editor-status {
+                color: #8b949e;
             }
         }
         {% endif %}

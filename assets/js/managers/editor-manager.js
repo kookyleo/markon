@@ -1,6 +1,6 @@
 /**
  * EditorManager - Markdown source editor
- * Provides minimalist in-browser editing functionality
+ * Provides minimalist in-browser editing functionality with line numbers
  */
 
 import { CONFIG } from '../core/config.js';
@@ -10,6 +10,7 @@ export class EditorManager {
     #filePath;
     #editorModal = null;
     #textarea = null;
+    #lineNumbers = null;
     #saveButton = null;
     #closeButton = null;
     #isDirty = false;
@@ -35,6 +36,7 @@ export class EditorManager {
         this.#createEditorUI(content);
         this.#setupEventListeners();
         this.#focusEditor();
+        this.#updateLineNumbers();
 
         Logger.log('EditorManager', 'Editor opened');
     }
@@ -50,9 +52,13 @@ export class EditorManager {
                 if (!confirmClose) return;
             }
 
+            // Clean up event listeners
+            document.removeEventListener('keydown', this.#handleEscapeKey);
+
             this.#editorModal.remove();
             this.#editorModal = null;
             this.#textarea = null;
+            this.#lineNumbers = null;
             this.#saveButton = null;
             this.#closeButton = null;
             this.#isDirty = false;
@@ -176,7 +182,10 @@ export class EditorManager {
                 </div>
             </div>
             <div class="editor-body">
-                <textarea class="editor-textarea" spellcheck="false">${this.#escapeHtml(content)}</textarea>
+                <div class="editor-container">
+                    <div class="editor-line-numbers"></div>
+                    <textarea class="editor-textarea" spellcheck="false">${this.#escapeHtml(content)}</textarea>
+                </div>
             </div>
             <div class="editor-footer">
                 <div class="editor-status">
@@ -191,6 +200,7 @@ export class EditorManager {
         document.body.appendChild(modal);
         this.#editorModal = modal;
         this.#textarea = modal.querySelector('.editor-textarea');
+        this.#lineNumbers = modal.querySelector('.editor-line-numbers');
         this.#saveButton = modal.querySelector('.editor-save-btn');
         this.#closeButton = modal.querySelector('.editor-close');
 
@@ -223,11 +233,19 @@ export class EditorManager {
         // Esc to close
         document.addEventListener('keydown', this.#handleEscapeKey);
 
+        // Sync scroll between textarea and line numbers
+        this.#textarea.addEventListener('scroll', () => {
+            if (this.#lineNumbers) {
+                this.#lineNumbers.scrollTop = this.#textarea.scrollTop;
+            }
+        });
+
         // Monitor content changes
         this.#textarea.addEventListener('input', () => {
             this.#isDirty = true;
             this.#updateSaveButtonState();
             this.#updateLineCount();
+            this.#updateLineNumbers();
         });
     }
 
@@ -292,6 +310,21 @@ export class EditorManager {
         if (lineCountEl) {
             lineCountEl.textContent = `${lines} lines`;
         }
+    }
+
+    /**
+     * Update line numbers gutter
+     * @private
+     */
+    #updateLineNumbers() {
+        if (!this.#textarea || !this.#lineNumbers) return;
+
+        const lines = this.#textarea.value.split('\n').length;
+        const lineNumbersHtml = Array.from({ length: lines }, (_, i) => i + 1)
+            .map(num => `<div class="editor-line-number">${num}</div>`)
+            .join('');
+
+        this.#lineNumbers.innerHTML = lineNumbersHtml;
     }
 
     /**
