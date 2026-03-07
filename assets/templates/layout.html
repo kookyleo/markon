@@ -47,10 +47,16 @@
             background-color: #0d1117;
             color: #f0f6fc;
         }
+        @media (min-width: 1401px) {
+            #main-content { background-color: #0d1117; }
+        }
         {% elif theme == "light" %}
         body {
             background-color: #ffffff;
             color: #1f2328;
+        }
+        @media (min-width: 1401px) {
+            #main-content { background-color: #ffffff; }
         }
         {% else %}
         @media (prefers-color-scheme: dark) {
@@ -64,6 +70,12 @@
                 background-color: #ffffff;
                 color: #1f2328;
             }
+        }
+        @media (prefers-color-scheme: dark) and (min-width: 1401px) {
+            #main-content { background-color: #0d1117; }
+        }
+        @media (prefers-color-scheme: light) and (min-width: 1401px) {
+            #main-content { background-color: #ffffff; }
         }
         {% endif %}
 
@@ -227,10 +239,10 @@
         @media (min-width: 1401px) {
             .toc {
                 position: fixed;
-                left: 20px;
-                top: 20px;
+                left: 0;
+                top: 0;
                 width: 280px;
-                max-height: calc(100vh - 40px);
+                max-height: 100vh;
                 overflow-y: auto;
                 border: 1px solid transparent; /* Always have border for consistent width */
             }
@@ -241,6 +253,22 @@
                 position: relative;
                 margin-bottom: 30px;
                 max-width: 100%;
+            }
+        }
+
+        /* Z-index stacking: article and #toc-container are siblings in body,
+           competing directly in the root stacking context. Cursor location wins. */
+        @media (min-width: 1401px) {
+            article.markdown-body {
+                position: relative;
+                z-index: 2;
+            }
+            #toc-container {
+                position: relative;
+                z-index: 1;
+            }
+            #toc-container:hover {
+                z-index: 3;
             }
         }
 
@@ -331,8 +359,11 @@
                 box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
             }
         }
-        /* TOC navigation active on wide screens - same visual style */
+        /* TOC background on wide screens (matches body, ensures overlap is clean) */
         @media (min-width: 1401px) {
+            .toc {
+                background-color: #0d1117;
+            }
             #toc-container.toc-nav-active .toc {
                 background-color: #22272e;
                 border: 1px solid #444c56;
@@ -356,8 +387,11 @@
                 box-shadow: 0 8px 24px rgba(140, 149, 159, 0.2);
             }
         }
-        /* TOC navigation active on wide screens - same visual style */
+        /* TOC background on wide screens (matches body, ensures overlap is clean) */
         @media (min-width: 1401px) {
+            .toc {
+                background-color: #ffffff;
+            }
             #toc-container.toc-nav-active .toc {
                 background-color: #ffffff;
                 border: 1px solid #d0d7de;
@@ -400,8 +434,11 @@
                 box-shadow: 0 8px 24px rgba(140, 149, 159, 0.2);
             }
         }
-        /* TOC navigation active on wide screens - same visual style */
+        /* TOC background on wide screens (matches body, ensures overlap is clean) */
         @media (prefers-color-scheme: dark) and (min-width: 1401px) {
+            .toc {
+                background-color: #0d1117;
+            }
             #toc-container.toc-nav-active .toc {
                 background-color: #22272e;
                 border: 1px solid #444c56;
@@ -410,6 +447,9 @@
             }
         }
         @media (prefers-color-scheme: light) and (min-width: 1401px) {
+            .toc {
+                background-color: #ffffff;
+            }
             #toc-container.toc-nav-active .toc {
                 background-color: #ffffff;
                 border: 1px solid #d0d7de;
@@ -1225,6 +1265,25 @@
     </style>
 </head>
 <body>
+    {% if toc and toc | length > 0 %}
+    <div id="toc-container">
+        <div id="toc-icon">
+            <span></span>
+            <span></span>
+            <span></span>
+        </div>
+        <nav class="toc">
+            <div class="toc-title">Table of Contents</div>
+            <ul class="toc-list">
+                {% for item in toc %}
+                <li class="toc-item toc-level-{{ item.level }}">
+                    <a href="#{{ item.id }}">{{ item.text }}</a>
+                </li>
+                {% endfor %}
+            </ul>
+        </nav>
+    </div>
+    {% endif %}
     <article class="markdown-body">
         {% if show_back_link %}
         <div class="back-link">
@@ -1232,26 +1291,7 @@
         </div>
         {% endif %}
         <div id="notes-sidebar"></div>
-        {% if toc and toc | length > 0 %}
-        <div id="toc-container">
-            <div id="toc-icon">
-                <span></span>
-                <span></span>
-                <span></span>
-            </div>
-            <nav class="toc">
-                <div class="toc-title">Table of Contents</div>
-                <ul class="toc-list">
-                    {% for item in toc %}
-                    <li class="toc-item toc-level-{{ item.level }}">
-                        <a href="#{{ item.id }}">{{ item.text }}</a>
-                    </li>
-                    {% endfor %}
-                </ul>
-            </nav>
-        </div>
-        {% endif %}
-        {{ content | safe }}
+        <div id="main-content">{{ content | safe }}</div>
     </article>
     <footer class="container footer">
         <a href="https://github.com/kookyleo/markon">(L) Generated by AI, Gently approved by kookyleo 👀</a>
