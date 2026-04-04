@@ -1,0 +1,52 @@
+name: Release
+
+on:
+  push:
+    tags: ['v*']
+
+jobs:
+  release:
+    permissions:
+      contents: write
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: macos-latest
+            bundles: dmg
+          - platform: ubuntu-22.04
+            bundles: deb,appimage
+          - platform: windows-latest
+            bundles: nsis
+
+    runs-on: ${{ matrix.platform }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Install Linux system dependencies
+        if: matrix.platform == 'ubuntu-22.04'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libwebkit2gtk-4.1-dev \
+            libappindicator3-dev \
+            librsvg2-dev \
+            patchelf
+
+      - name: Build and upload release
+        uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # macOS: ad-hoc signing (no certificate needed, no notarization).
+          # Users see "unverified developer" instead of "damaged" — bypassable via System Settings.
+          APPLE_SIGNING_IDENTITY: "-"
+        with:
+          projectPath: crates/gui
+          tagName: ${{ github.ref_name }}
+          releaseName: Markon ${{ github.ref_name }}
+          releaseDraft: true
+          args: --bundles ${{ matrix.bundles }}

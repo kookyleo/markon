@@ -1,0 +1,478 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Markon</title>
+  <style>
+    :root {
+      --bg: #f2f2f7;
+      --surface: #ffffff;
+      --accent: #1976D2;
+      --accent-hover: #1565C0;
+      --text: #1c1c1e;
+      --text-2: #6c6c70;
+      --border: #d1d1d6;
+      --danger: #d32f2f;
+      --radius: 8px;
+    }
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --bg: #1c1c1e;
+        --surface: #2c2c2e;
+        --accent: #2196F3;
+        --accent-hover: #42a5f5;
+        --text: #f2f2f7;
+        --text-2: #8e8e93;
+        --border: #38383a;
+      }
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+      font-size: 13px;
+      background: var(--bg);
+      color: var(--text);
+      display: flex;
+      flex-direction: column;
+      height: 100vh;
+      overflow: hidden;
+      user-select: none;
+    }
+    .layout { display: flex; flex-direction: column; flex: 1; overflow: hidden; }
+    .tabbar {
+      display: flex;
+      flex-direction: row;
+      gap: 2px;
+      padding: 8px 16px 0;
+      background: var(--bg);
+      border-bottom: 1px solid var(--border);
+      flex-shrink: 0;
+    }
+    .nav-item {
+      padding: 6px 16px;
+      border-radius: 6px 6px 0 0;
+      cursor: default;
+      font-size: 12.5px;
+      font-weight: 500;
+      color: var(--text-2);
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      transition: background 0.12s, color 0.12s;
+      border: 1px solid transparent;
+      border-bottom: none;
+      margin-bottom: -1px;
+    }
+    .nav-item:hover { color: var(--text); background: rgba(120,120,128,0.08); }
+    .nav-item.active {
+      background: var(--surface);
+      color: var(--accent);
+      border-color: var(--border);
+      border-bottom-color: var(--surface);
+    }
+    .content { flex: 1; overflow-y: auto; padding: 20px 24px; background: var(--surface); }
+    .tab { display: none; }
+    .tab.active { display: block; }
+    /* Form */
+    .field { margin-bottom: 14px; }
+    .field label {
+      display: block;
+      font-size: 11px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.4px;
+      color: var(--text-2);
+      margin-bottom: 5px;
+    }
+    .field input[type="number"],
+    .field input[type="text"],
+    .field select {
+      width: 100%;
+      padding: 7px 10px;
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      background: var(--surface);
+      color: var(--text);
+      font-size: 13px;
+      font-family: inherit;
+      outline: none;
+      transition: border-color 0.15s;
+    }
+    .field input:focus, .field select:focus { border-color: var(--accent); }
+    /* Toggle */
+    .toggle-list { border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; }
+    .toggle-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 11px 14px;
+      background: var(--surface);
+      border-bottom: 1px solid var(--border);
+    }
+    .toggle-row:last-child { border-bottom: none; }
+    .toggle-label h4 { font-size: 13px; font-weight: 500; }
+    .toggle-label p { font-size: 11px; color: var(--text-2); margin-top: 2px; }
+    .switch { position: relative; display: inline-block; width: 38px; height: 22px; flex-shrink: 0; }
+    .switch input { display: none; }
+    .switch-track {
+      position: absolute; inset: 0;
+      border-radius: 11px;
+      background: #ccc;
+      cursor: pointer;
+      transition: background 0.2s;
+    }
+    .switch input:checked + .switch-track { background: var(--accent); }
+    .switch-track::after {
+      content: '';
+      position: absolute;
+      top: 2px; left: 2px;
+      width: 18px; height: 18px;
+      border-radius: 50%;
+      background: #fff;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.25);
+      transition: transform 0.2s;
+    }
+    .switch input:checked + .switch-track::after { transform: translateX(16px); }
+    /* Buttons */
+    .btn {
+      padding: 5px 14px;
+      border-radius: 6px;
+      border: 1px solid var(--border);
+      background: var(--surface);
+      color: var(--text);
+      font-size: 12px;
+      font-family: inherit;
+      cursor: default;
+      white-space: nowrap;
+      transition: opacity 0.1s;
+    }
+    .btn:hover:not(:disabled) { opacity: 0.85; }
+    .btn:disabled { opacity: 0.4; cursor: not-allowed; }
+    .btn-primary { background: var(--accent); color: #fff; border-color: var(--accent); }
+    .btn-danger  { background: var(--danger); color: #fff; border-color: var(--danger); }
+    /* Segmented control */
+    .seg-ctrl {
+      display: inline-flex;
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      overflow: hidden;
+      background: var(--bg);
+    }
+    .seg-ctrl label {
+      padding: 5px 16px;
+      font-size: 12px;
+      font-weight: 500;
+      color: var(--text-2);
+      cursor: default;
+      transition: background 0.12s, color 0.12s;
+      user-select: none;
+    }
+    .seg-ctrl input[type="radio"] { display: none; }
+    .seg-ctrl input[type="radio"]:checked + label { background: var(--accent); color: #fff; }
+    /* Workspace list */
+    .ws-list { display: flex; flex-direction: column; gap: 10px; }
+    .ws-card {
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 12px 14px;
+      background: var(--surface);
+    }
+    .ws-card-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 8px;
+    }
+    .ws-path {
+      font-size: 12px;
+      font-family: 'SF Mono', Monaco, Menlo, monospace;
+      word-break: break-all;
+      color: var(--text);
+    }
+    .ws-url {
+      font-size: 11px;
+      color: var(--accent);
+      text-decoration: none;
+      cursor: pointer;
+      word-break: break-all;
+    }
+    .ws-url:hover { text-decoration: underline; }
+    .ws-toggles {
+      display: flex;
+      gap: 14px;
+      margin-top: 8px;
+      flex-wrap: wrap;
+    }
+    .ws-toggle {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 12px;
+      color: var(--text-2);
+    }
+    .ws-toggle input[type="checkbox"] { accent-color: var(--accent); cursor: pointer; }
+    .ws-add {
+      display: flex;
+      gap: 8px;
+      margin-top: 12px;
+    }
+    .ws-add input {
+      flex: 1;
+      padding: 7px 10px;
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      background: var(--surface);
+      color: var(--text);
+      font-size: 13px;
+      font-family: inherit;
+      outline: none;
+    }
+    .ws-add input:focus { border-color: var(--accent); }
+    /* About */
+    .about { text-align: center; padding: 28px 0; }
+    .about-logo {
+      width: 64px; height: 64px;
+      background: var(--accent);
+      border-radius: 14px;
+      margin: 0 auto 14px;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 32px;
+    }
+    .about h2 { font-size: 20px; font-weight: 700; }
+    .about .ver { font-size: 12px; color: var(--text-2); margin: 4px 0 18px; }
+    .about p { font-size: 12px; color: var(--text-2); line-height: 1.7; }
+    .about a { color: var(--accent); text-decoration: none; }
+    .about a:hover { text-decoration: underline; }
+    .about hr { border: none; border-top: 1px solid var(--border); margin: 16px 0; }
+  </style>
+</head>
+<body>
+<div class="layout">
+  <nav class="tabbar">
+    <div class="nav-item"        data-tab="global">⚙️ 全局</div>
+    <div class="nav-item active" data-tab="workspaces">📁 工作区</div>
+    <div class="nav-item"        data-tab="about">ℹ️ 关于</div>
+  </nav>
+
+  <main class="content">
+
+    <!-- 全局设置 -->
+    <div class="tab" id="tab-global">
+      <div class="field">
+        <label>端口模式</label>
+        <div class="seg-ctrl">
+          <input type="radio" name="port_mode" id="port_mode_auto" value="auto">
+          <label for="port_mode_auto">自动</label>
+          <input type="radio" name="port_mode" id="port_mode_spec" value="spec" checked>
+          <label for="port_mode_spec">指定</label>
+        </div>
+      </div>
+      <div class="field" id="field-port">
+        <label>端口</label>
+        <input type="number" id="port" min="1024" max="65535" value="6419">
+      </div>
+      <div class="field">
+        <label>绑定地址</label>
+        <select id="host">
+          <option value="127.0.0.1">Localhost — 127.0.0.1（仅本机）</option>
+          <option value="0.0.0.0">所有网口 — 0.0.0.0（局域网可访问）</option>
+        </select>
+      </div>
+      <div class="field">
+        <label>主题</label>
+        <select id="theme">
+          <option value="auto">跟随系统 (Auto)</option>
+          <option value="light">浅色 (Light)</option>
+          <option value="dark">深色 (Dark)</option>
+        </select>
+      </div>
+      <div class="toggle-list">
+        <div class="toggle-row">
+          <div class="toggle-label">
+            <h4>在菜单栏驻留</h4>
+            <p>关闭窗口时保留菜单栏图标；取消则退出应用</p>
+          </div>
+          <label class="switch">
+            <input type="checkbox" id="tray_resident">
+            <div class="switch-track"></div>
+          </label>
+        </div>
+      </div>
+      <div class="field" style="margin-top:14px">
+        <label>共享注释数据库路径</label>
+        <input type="text" id="db_path" placeholder="默认: ~/.markon/annotation.sqlite">
+      </div>
+    </div>
+
+    <!-- 工作区 -->
+    <div class="tab active" id="tab-workspaces">
+      <div class="ws-list" id="ws-list"></div>
+      <div class="ws-add">
+        <input type="text" id="ws-path-input" placeholder="输入目录路径…">
+        <button class="btn btn-primary" id="ws-add-btn">添加</button>
+      </div>
+    </div>
+
+    <!-- 关于 -->
+    <div class="tab" id="tab-about">
+      <div class="about">
+        <div class="about-logo">📝</div>
+        <h2>Markon</h2>
+        <div class="ver" id="ver-label">v0.7.1</div>
+        <p>A lightweight Markdown renderer<br>with GitHub styling and annotations.</p>
+        <hr>
+        <p>
+          <a href="#" id="link-github">GitHub</a>
+          &nbsp;·&nbsp;
+          <a href="#" id="link-license">Apache-2.0</a>
+          &nbsp;·&nbsp;
+          作者: kookyleo
+        </p>
+      </div>
+    </div>
+
+  </main>
+</div>
+
+<script type="module">
+  const { invoke } = window.__TAURI__.core;
+
+  // ── Tab navigation ────────────────────────────────────────────────────────
+  document.querySelectorAll('.nav-item').forEach(item => {
+    item.addEventListener('click', () => {
+      document.querySelectorAll('.nav-item').forEach(i => i.classList.remove('active'));
+      document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+      item.classList.add('active');
+      document.getElementById(`tab-${item.dataset.tab}`).classList.add('active');
+      if (item.dataset.tab === 'workspaces') refreshWorkspaces();
+    });
+  });
+
+  // ── Global settings ───────────────────────────────────────────────────────
+  function applyPortMode(mode) {
+    document.getElementById('field-port').style.display = mode === 'spec' ? '' : 'none';
+  }
+
+  async function loadSettings() {
+    const s = await invoke('get_settings');
+    const mode = s.port_mode ?? 'spec';
+    document.querySelector(`input[name="port_mode"][value="${mode}"]`).checked = true;
+    applyPortMode(mode);
+    document.getElementById('port').value = s.port;
+    document.getElementById('host').value = s.host;
+    document.getElementById('theme').value = s.theme;
+    document.getElementById('db_path').value = s.db_path ?? '';
+    document.getElementById('tray_resident').checked = s.tray_resident ?? true;
+  }
+
+  async function saveSettings() {
+    const settings = {
+      port_mode:         document.querySelector('input[name="port_mode"]:checked')?.value ?? 'spec',
+      port:              parseInt(document.getElementById('port').value) || 6419,
+      host:              document.getElementById('host').value,
+      theme:             document.getElementById('theme').value,
+      db_path:           document.getElementById('db_path').value || null,
+      workspaces:        [],  // workspaces managed separately
+    };
+    await invoke('save_settings', { settings });
+  }
+
+  ['port', 'host', 'theme', 'db_path'].forEach(id =>
+    document.getElementById(id).addEventListener('change', saveSettings)
+  );
+  document.getElementById('tray_resident').addEventListener('change', e => {
+    invoke('set_tray_resident', { value: e.target.checked });
+  });
+  document.querySelectorAll('input[name="port_mode"]').forEach(radio => {
+    radio.addEventListener('change', () => { applyPortMode(radio.value); saveSettings(); });
+  });
+
+  // ── Workspace management ──────────────────────────────────────────────────
+  async function refreshWorkspaces() {
+    const workspaces = await invoke('get_workspaces');
+    const list = document.getElementById('ws-list');
+    list.innerHTML = '';
+    workspaces.forEach(ws => {
+      const card = document.createElement('div');
+      card.className = 'ws-card';
+      card.dataset.id = ws.id;
+      card.innerHTML = `
+        <div class="ws-card-header">
+          <span class="ws-path">${ws.path}</span>
+          <button class="btn btn-danger" style="padding:3px 10px;font-size:11px">移除</button>
+        </div>
+        <a class="ws-url" href="#">${ws.url}</a>
+        <div class="ws-toggles">
+          <label class="ws-toggle"><input type="checkbox" data-flag="search" ${ws.enable_search ? 'checked' : ''}> 搜索${ws.search_ready ? '✓' : '…'}</label>
+          <label class="ws-toggle"><input type="checkbox" data-flag="viewed" ${ws.enable_viewed ? 'checked' : ''}> Viewed</label>
+          <label class="ws-toggle"><input type="checkbox" data-flag="edit" ${ws.enable_edit ? 'checked' : ''}> 编辑</label>
+          <label class="ws-toggle"><input type="checkbox" data-flag="annotation" ${ws.shared_annotation ? 'checked' : ''}> 共享注释</label>
+        </div>
+      `;
+      // Open URL
+      card.querySelector('.ws-url').addEventListener('click', e => {
+        e.preventDefault();
+        invoke('open_url', { url: ws.url });
+      });
+      // Toggle flags
+      card.querySelectorAll('.ws-toggle input').forEach(cb => {
+        cb.addEventListener('change', async () => {
+          const checks = card.querySelectorAll('.ws-toggle input');
+          try {
+            await invoke('update_workspace', {
+              id: ws.id,
+              enableSearch:      checks[0].checked,
+              enableViewed:      checks[1].checked,
+              enableEdit:        checks[2].checked,
+              sharedAnnotation:  checks[3].checked,
+            });
+            refreshWorkspaces();
+          } catch (e) { alert('更新失败: ' + e); }
+        });
+      });
+      // Remove
+      card.querySelector('.btn-danger').addEventListener('click', async () => {
+        await invoke('remove_workspace', { id: ws.id });
+        refreshWorkspaces();
+      });
+      list.appendChild(card);
+    });
+  }
+
+  document.getElementById('ws-add-btn').addEventListener('click', async () => {
+    const path = document.getElementById('ws-path-input').value.trim();
+    if (!path) return;
+    try {
+      await invoke('add_workspace', {
+        path,
+        enableSearch:     false,
+        enableViewed:     false,
+        enableEdit:       false,
+        sharedAnnotation: false,
+      });
+      document.getElementById('ws-path-input').value = '';
+      refreshWorkspaces();
+    } catch (e) {
+      alert('添加失败: ' + e);
+    }
+  });
+
+  // ── About links ───────────────────────────────────────────────────────────
+  document.getElementById('link-github').addEventListener('click', e => {
+    e.preventDefault();
+    invoke('open_url', { url: 'https://github.com/kookyleo/markon' });
+  });
+  document.getElementById('link-license').addEventListener('click', e => {
+    e.preventDefault();
+    invoke('open_url', { url: 'https://github.com/kookyleo/markon/blob/main/LICENSE' });
+  });
+
+  // ── Init ──────────────────────────────────────────────────────────────────
+  loadSettings();
+  refreshWorkspaces();
+  // Refresh workspace list whenever the window regains focus (e.g. after Finder open).
+  window.addEventListener('focus', refreshWorkspaces);
+</script>
+</body>
+</html>

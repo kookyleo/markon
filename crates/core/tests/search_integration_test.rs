@@ -1,4 +1,4 @@
-use markon::search::{SearchIndex, SearchQuery};
+use markon_core::search::{SearchIndex, SearchQuery};
 use std::fs;
 use std::path::Path;
 use tempfile::TempDir;

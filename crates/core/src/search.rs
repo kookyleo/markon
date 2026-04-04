@@ -1,10 +1,3 @@
-use crate::server::AppState;
-use axum::{
-    extract::{Query, State},
-    response::IntoResponse,
-    Json,
-};
-use notify::{EventKind, RecursiveMode, Watcher};
 use serde::{Deserialize, Serialize};
 use std::{
     fs,
@@ -269,70 +262,6 @@ impl SearchIndex {
     }
 }
 
-pub async fn search_handler(
-    State(state): State<AppState>,
-    Query(query): Query<SearchQuery>,
-) -> impl IntoResponse {
-    if !state.enable_search || query.q.is_empty() {
-        return Json(Vec::<SearchResult>::new());
-    }
-
-    let search_index = match state.search_index {
-        Some(ref index) => index.clone(),
-        None => return Json(Vec::new()),
-    };
-
-    let results = search_index.search(&query.q, 20).unwrap_or_else(|e| {
-        eprintln!("Search error: {}", e);
-        Vec::new()
-    });
-
-    Json(results)
-}
-
-pub fn start_file_watcher(state: AppState) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
-    let search_index = match state.search_index {
-        Some(index) => index,
-        None => return Ok(()),
-    };
-
-    let start_dir = state.start_dir.as_ref().clone();
-
-    std::thread::spawn(move || {
-        let (tx, rx) = std::sync::mpsc::channel();
-
-        let mut watcher = notify::recommended_watcher(move |res: Result<notify::Event, _>| {
-            if let Ok(event) = res {
-                let _ = tx.send(event);
-            }
-        })
-        .unwrap();
-
-        watcher.watch(&start_dir, RecursiveMode::Recursive).unwrap();
-
-        println!("Watching for file changes in {:?}", start_dir);
-
-        while let Ok(event) = rx.recv() {
-            for path in event.paths {
-                match event.kind {
-                    EventKind::Create(_) | EventKind::Modify(_) => {
-                        if let Err(e) = search_index.update_file(&path) {
-                            eprintln!("Error updating index: {}", e);
-                        }
-                    }
-                    EventKind::Remove(_) => {
-                        if let Err(e) = search_index.delete_file(&path) {
-                            eprintln!("Error removing from index: {}", e);
-                        }
-                    }
-                    _ => {}
-                }
-            }
-        }
-    });
-
-    Ok(())
-}
 
 #[cfg(test)]
 mod tests {
