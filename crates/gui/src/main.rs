@@ -235,6 +235,7 @@ fn main() {
             commands::get_workspaces,
             commands::open_browser,
             commands::open_url,
+            commands::get_system_info,
         ])
         .build(tauri::generate_context!())
         .expect("error building markon-gui");

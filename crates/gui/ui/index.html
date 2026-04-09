@@ -5,6 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Markon</title>
   <style>
+    /* Light theme (default) */
     :root {
       --bg: #f2f2f7;
       --surface: #ffffff;
@@ -19,8 +20,22 @@
       --radius: 10px;
       --radius-sm: 6px;
     }
+    /* Explicit dark override */
+    :root[data-theme="dark"] {
+      --bg: #1c1c1e;
+      --surface: #2c2c2e;
+      --surface-2: #3a3a3c;
+      --accent: #0A84FF;
+      --accent-hover: #409CFF;
+      --text: #f2f2f7;
+      --text-2: #8e8e93;
+      --text-3: #48484a;
+      --border: #38383a;
+      --danger: #ff453a;
+    }
+    /* Auto: follow system when attribute is "auto" */
     @media (prefers-color-scheme: dark) {
-      :root {
+      :root[data-theme="auto"] {
         --bg: #1c1c1e;
         --surface: #2c2c2e;
         --surface-2: #3a3a3c;
@@ -34,6 +49,11 @@
       }
     }
     * { box-sizing: border-box; margin: 0; padding: 0; }
+    html, body {
+      -webkit-user-select: none;
+      user-select: none;
+      -webkit-touch-callout: none;
+    }
     body {
       font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
       font-size: 13px;
@@ -41,9 +61,13 @@
       color: var(--text);
       height: 100vh;
       overflow: hidden;
-      user-select: none;
       display: flex;
       flex-direction: column;
+    }
+    /* Allow text selection only in editable fields */
+    input[type="text"], input[type="number"] {
+      -webkit-user-select: text;
+      user-select: text;
     }
 
     /* ── Tab bar ─────────────────────────────────────────────────────────── */
@@ -363,6 +387,7 @@
       transition: background 0.1s;
     }
     .about-btn:hover { background: var(--surface-2); }
+
     .about-btn.star {
       color: #92690a;
       border-color: #e8c469;
@@ -395,14 +420,14 @@
         <circle cx="12" cy="12" r="3"/>
         <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>
       </svg>
-      全局
+      <span data-i18n="nav.global"></span>
     </div>
     <div class="nav-item active" data-tab="workspaces">
       <!-- folder -->
       <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
         <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/>
       </svg>
-      工作区
+      <span data-i18n="nav.workspaces"></span>
     </div>
     <div class="nav-item" data-tab="about">
       <!-- info -->
@@ -410,7 +435,7 @@
         <circle cx="12" cy="12" r="10"/>
         <path d="M12 16v-4M12 8h.01"/>
       </svg>
-      关于
+      <span data-i18n="nav.about"></span>
     </div>
   </nav>
 
@@ -420,26 +445,26 @@
     <div class="tab" id="tab-global">
 
       <div class="section">
-        <div class="section-title">服务器</div>
+        <div class="section-title" data-i18n="sec.server"></div>
         <div class="section-body">
           <div class="pref-row">
-            <span class="pref-label">端口</span>
+            <span class="pref-label" data-i18n="pref.port"></span>
             <div class="pref-control">
               <div class="seg-ctrl">
                 <input type="radio" name="port_mode" id="port_mode_auto" value="auto">
-                <label for="port_mode_auto">自动</label>
+                <label for="port_mode_auto" data-i18n="port.auto"></label>
                 <input type="radio" name="port_mode" id="port_mode_spec" value="spec" checked>
-                <label for="port_mode_spec">指定</label>
+                <label for="port_mode_spec" data-i18n="port.spec"></label>
               </div>
               <input type="number" id="port" min="1024" max="65535" value="6419">
             </div>
           </div>
           <div class="pref-row">
-            <span class="pref-label">绑定地址</span>
+            <span class="pref-label" data-i18n="pref.bind"></span>
             <div class="pref-control">
-              <select id="host" style="width:220px">
-                <option value="127.0.0.1">127.0.0.1 — 仅本机</option>
-                <option value="0.0.0.0">0.0.0.0 — 局域网可访问</option>
+              <select id="host" style="width:240px">
+                <option value="127.0.0.1" data-i18n="bind.local"></option>
+                <option value="0.0.0.0" data-i18n="bind.lan"></option>
               </select>
             </div>
           </div>
@@ -447,15 +472,15 @@
       </div>
 
       <div class="section">
-        <div class="section-title">外观</div>
+        <div class="section-title" data-i18n="sec.appearance"></div>
         <div class="section-body">
           <div class="pref-row">
-            <span class="pref-label">主题</span>
+            <span class="pref-label" data-i18n="pref.theme"></span>
             <div class="pref-control">
               <select id="theme" style="width:150px">
-                <option value="auto">跟随系统</option>
-                <option value="light">浅色</option>
-                <option value="dark">深色</option>
+                <option value="auto"  data-i18n="theme.auto"></option>
+                <option value="light" data-i18n="theme.light"></option>
+                <option value="dark"  data-i18n="theme.dark"></option>
               </select>
             </div>
           </div>
@@ -463,12 +488,12 @@
       </div>
 
       <div class="section">
-        <div class="section-title">行为</div>
+        <div class="section-title" data-i18n="sec.behavior"></div>
         <div class="section-body">
           <div class="pref-row">
             <div class="pref-label">
-              菜单栏驻留
-              <small>关闭窗口时隐藏而非退出，通过菜单栏图标唤起</small>
+              <span data-i18n="pref.tray"></span>
+              <small data-i18n="pref.tray.desc"></small>
             </div>
             <label class="switch">
               <input type="checkbox" id="tray_resident">
@@ -479,15 +504,15 @@
       </div>
 
       <div class="section">
-        <div class="section-title">数据库</div>
+        <div class="section-title" data-i18n="sec.database"></div>
         <div class="section-body">
           <div class="pref-row">
             <div class="pref-label">
-              共享注释路径
-              <small>用于多端同步注释与 Viewed 状态（SQLite）</small>
+              <span data-i18n="pref.dbpath"></span>
+              <small data-i18n="pref.dbpath.desc"></small>
             </div>
             <div class="pref-control-full" style="margin-left:16px; max-width:220px">
-              <input type="text" id="db_path" placeholder="默认路径" style="width:100%">
+              <input type="text" id="db_path" data-i18n-placeholder="pref.dbpath.placeholder" style="width:100%">
             </div>
           </div>
         </div>
@@ -499,8 +524,8 @@
     <div class="tab active" id="tab-workspaces">
       <div class="ws-list" id="ws-list"></div>
       <div class="ws-add">
-        <input type="text" id="ws-path-input" placeholder="输入目录路径，回车或点击添加…">
-        <button class="btn btn-primary" id="ws-add-btn">添加</button>
+        <input type="text" id="ws-path-input" data-i18n-placeholder="ws.add.placeholder">
+        <button class="btn btn-primary" id="ws-add-btn" data-i18n="ws.add.btn"></button>
       </div>
     </div>
 
@@ -520,26 +545,18 @@
         <h2>Markon</h2>
         <div class="ver" id="ver-label">v0.8.0</div>
 
-        <p class="about-desc">
-          轻量级 Markdown 渲染器，GitHub 风格排版，<br>
-          支持全文搜索、批注与多端注释同步。
-        </p>
+        <p class="about-desc" data-i18n="about.desc"></p>
 
         <div class="about-actions">
           <button class="about-btn star" id="btn-star">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
               <path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/>
             </svg>
-            Star 支持项目
+            <span data-i18n="about.star"></span>
           </button>
-          <button class="about-btn issue" id="btn-issue">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-              <circle cx="12" cy="12" r="10"/>
-              <line x1="12" y1="8" x2="12" y2="12"/>
-              <line x1="12" y1="16" x2="12.01" y2="16"/>
-            </svg>
-            提交反馈
-          </button>
+          <button class="about-btn" id="btn-bug" title=""></button>
+          <button class="about-btn" id="btn-idea" title=""></button>
+          <button class="about-btn" id="btn-ask" title=""></button>
         </div>
 
         <div class="about-links">
@@ -569,21 +586,33 @@
     });
   });
 
-  // ── Global settings ─────────────────────────────────────────────────────
-  function applyPortMode(mode) {
-    document.getElementById('port').style.display = mode === 'spec' ? '' : 'none';
+  // ── Live-apply framework ────────────────────────────────────────────────
+  // Each key maps to a function that applies that setting to the page immediately.
+  const liveApply = {
+    theme(value) {
+      // "auto" | "light" | "dark" — drives :root[data-theme] for CSS vars.
+      document.documentElement.setAttribute('data-theme', value || 'auto');
+    },
+    port_mode(value) {
+      document.getElementById('port').style.display = value === 'spec' ? '' : 'none';
+    },
+  };
+  function applyAll(s) {
+    liveApply.theme(s.theme);
+    liveApply.port_mode(s.port_mode ?? 'spec');
   }
 
+  // ── Global settings ─────────────────────────────────────────────────────
   async function loadSettings() {
     const s = await invoke('get_settings');
     const mode = s.port_mode ?? 'spec';
     document.querySelector(`input[name="port_mode"][value="${mode}"]`).checked = true;
-    applyPortMode(mode);
     document.getElementById('port').value = s.port;
     document.getElementById('host').value = s.host;
     document.getElementById('theme').value = s.theme;
     document.getElementById('db_path').value = s.db_path ?? '';
     document.getElementById('tray_resident').checked = s.tray_resident ?? true;
+    applyAll(s);
   }
 
   async function saveSettings() {
@@ -598,11 +627,19 @@
     await invoke('save_settings', { settings });
   }
 
-  ['port', 'host', 'theme', 'db_path'].forEach(id =>
+  // Wire change handlers: save + live-apply where applicable.
+  ['port', 'host', 'db_path'].forEach(id =>
     document.getElementById(id).addEventListener('change', saveSettings)
   );
+  document.getElementById('theme').addEventListener('change', e => {
+    liveApply.theme(e.target.value);
+    saveSettings();
+  });
   document.querySelectorAll('input[name="port_mode"]').forEach(radio => {
-    radio.addEventListener('change', () => { applyPortMode(radio.value); saveSettings(); });
+    radio.addEventListener('change', () => {
+      liveApply.port_mode(radio.value);
+      saveSettings();
+    });
   });
   document.getElementById('tray_resident').addEventListener('change', e => {
     invoke('set_tray_resident', { value: e.target.checked });
@@ -620,8 +657,8 @@
           <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.4">
             <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/>
           </svg>
-          <p>尚无工作区</p>
-          <small>在下方输入目录路径，或从 Finder 中打开文件夹</small>
+          <p>${T('ws.empty.title')}</p>
+          <small>${T('ws.empty.desc')}</small>
         </div>`;
       return;
     }
@@ -632,10 +669,10 @@
       card.dataset.id = ws.id;
 
       const flagDefs = [
-        { key: 'search',     label: ws.enable_search && ws.search_ready ? '搜索 ✓' : '搜索', checked: ws.enable_search },
-        { key: 'viewed',     label: 'Viewed',   checked: ws.enable_viewed },
-        { key: 'edit',       label: '编辑',     checked: ws.enable_edit },
-        { key: 'annotation', label: '共享注释', checked: ws.shared_annotation },
+        { key: 'search',     label: ws.enable_search && ws.search_ready ? T('ws.flag.search') + ' ✓' : T('ws.flag.search'), checked: ws.enable_search },
+        { key: 'viewed',     label: T('ws.flag.viewed'), checked: ws.enable_viewed },
+        { key: 'edit',       label: T('ws.flag.edit'),   checked: ws.enable_edit },
+        { key: 'annotation', label: T('ws.flag.shared'), checked: ws.shared_annotation },
       ];
 
       const flagsHtml = flagDefs.map(f =>
@@ -655,8 +692,8 @@
             <div class="ws-url">${ws.url}</div>
           </div>
           <div class="ws-card-actions">
-            <button class="ws-open-btn">打开</button>
-            <button class="ws-remove-btn" title="移除">×</button>
+            <button class="ws-open-btn">${T('ws.open')}</button>
+            <button class="ws-remove-btn" title="${T('ws.remove')}">×</button>
           </div>
         </div>
         <div class="ws-flags-row">${flagsHtml}</div>
@@ -691,7 +728,7 @@
             });
             // Re-render to update search_ready indicator
             refreshWorkspaces();
-          } catch (e) { alert('更新失败: ' + e); }
+          } catch (e) { alert(T('ws.update.fail') + ': ' + e); }
         });
       });
 
@@ -714,7 +751,7 @@
       document.getElementById('ws-path-input').value = '';
       refreshWorkspaces();
     } catch (e) {
-      alert('添加失败: ' + e);
+      alert(T('ws.add.fail') + ': ' + e);
     }
   }
 
@@ -727,8 +764,282 @@
   document.getElementById('btn-star').addEventListener('click', () => {
     invoke('open_url', { url: 'https://github.com/kookyleo/markon' });
   });
-  document.getElementById('btn-issue').addEventListener('click', () => {
-    invoke('open_url', { url: 'https://github.com/kookyleo/markon/issues/new/choose' });
+  // ── Feedback menu (Bug / Feature / Question) with i18n ──────────────────
+  const REPO = 'kookyleo/markon';
+
+  const i18n = {
+    zh: {
+      // Nav
+      'nav.global':     '全局',
+      'nav.workspaces': '工作区',
+      'nav.about':      '关于',
+      // Section titles
+      'sec.server':     '服务器',
+      'sec.appearance': '外观',
+      'sec.behavior':   '行为',
+      'sec.database':   '数据库',
+      // Global preferences
+      'pref.port':       '端口',
+      'port.auto':       '自动',
+      'port.spec':       '指定',
+      'pref.bind':       '绑定地址',
+      'bind.local':      '127.0.0.1 — 仅本机',
+      'bind.lan':        '0.0.0.0 — 局域网可访问',
+      'pref.theme':      '主题',
+      'theme.auto':      '跟随系统',
+      'theme.light':     '浅色',
+      'theme.dark':      '深色',
+      'pref.tray':       '菜单栏驻留',
+      'pref.tray.desc':  '关闭窗口时隐藏而非退出,通过菜单栏图标唤起',
+      'pref.dbpath':     '共享注释路径',
+      'pref.dbpath.desc':'用于多端同步注释与 Viewed 状态 (SQLite)',
+      'pref.dbpath.placeholder': '默认路径',
+      // Workspaces
+      'ws.add.placeholder': '输入目录路径,回车或点击添加…',
+      'ws.add.btn':     '添加',
+      'ws.open':        '打开',
+      'ws.remove':      '移除',
+      'ws.flag.search': '搜索',
+      'ws.flag.viewed': '已读',
+      'ws.flag.edit':   '编辑',
+      'ws.flag.shared': '共享注释',
+      'ws.empty.title': '尚无工作区',
+      'ws.empty.desc':  '在下方输入目录路径,或从 Finder 中打开文件夹',
+      'ws.update.fail': '更新失败',
+      'ws.add.fail':    '添加失败',
+      // About
+      'about.desc':     '轻量级 Markdown 渲染器,GitHub 风格排版,<br>支持全文搜索、批注与多端注释同步。',
+      'about.star':     'Star 支持项目',
+      // Feedback buttons
+      bug:     { label: 'Bug',  tip: '报告崩溃或错误行为' },
+      idea:    { label: '提案', tip: '功能建议、改进提议' },
+      ask:     { label: '求助', tip: '使用问题、求助问答' },
+      tplBug: (info) =>
+`## 问题描述
+<!-- 简要描述遇到的问题 -->
+
+
+## 复现步骤
+1.
+2.
+3.
+
+## 预期行为
+
+
+## 实际行为
+
+
+## 环境
+- **Markon**: v${info.app_version}
+- **操作系统**: ${info.os} ${info.os_version} (${info.arch})
+- **UA**: ${navigator.userAgent}
+`,
+      tplIdea: (info) =>
+`## 想法概述
+<!-- 你希望看到什么样的功能或改进? -->
+
+
+## 使用场景 / 动机
+<!-- 这个想法解决了你什么痛点? -->
+
+
+## 可能的实现思路 (可选)
+
+
+---
+*Markon v${info.app_version} · ${info.os} ${info.os_version}*
+`,
+      tplAsk: (info) =>
+`## 问题描述
+
+
+
+## 你已经尝试过什么 (可选)
+
+
+
+---
+*Markon v${info.app_version} · ${info.os} ${info.os_version}*
+`,
+      titleBug:  '[Bug] ',
+      titleIdea: '',
+      titleAsk:  '',
+    },
+    en: {
+      'nav.global':     'General',
+      'nav.workspaces': 'Workspaces',
+      'nav.about':      'About',
+      'sec.server':     'Server',
+      'sec.appearance': 'Appearance',
+      'sec.behavior':   'Behavior',
+      'sec.database':   'Database',
+      'pref.port':       'Port',
+      'port.auto':       'Auto',
+      'port.spec':       'Manual',
+      'pref.bind':       'Bind address',
+      'bind.local':      '127.0.0.1 — Localhost only',
+      'bind.lan':        '0.0.0.0 — Accessible on LAN',
+      'pref.theme':      'Theme',
+      'theme.auto':      'Follow system',
+      'theme.light':     'Light',
+      'theme.dark':      'Dark',
+      'pref.tray':       'Stay in menu bar',
+      'pref.tray.desc':  'Hide on window close instead of quitting; reopen via menu bar icon',
+      'pref.dbpath':     'Shared annotation DB',
+      'pref.dbpath.desc':'Path to SQLite DB for syncing annotations and viewed state',
+      'pref.dbpath.placeholder': 'Default location',
+      'ws.add.placeholder': 'Enter directory path, press Enter or click Add…',
+      'ws.add.btn':     'Add',
+      'ws.open':        'Open',
+      'ws.remove':      'Remove',
+      'ws.flag.search': 'Search',
+      'ws.flag.viewed': 'Viewed',
+      'ws.flag.edit':   'Edit',
+      'ws.flag.shared': 'Shared notes',
+      'ws.empty.title': 'No workspaces yet',
+      'ws.empty.desc':  'Enter a directory path below, or open a folder from Finder',
+      'ws.update.fail': 'Update failed',
+      'ws.add.fail':    'Add failed',
+      'about.desc':     'A lightweight Markdown renderer with GitHub-style layout,<br>full-text search, annotations and multi-device sync.',
+      'about.star':     'Star on GitHub',
+      bug:     { label: 'Bug',     tip: 'Report a crash or incorrect behavior' },
+      idea:    { label: 'Idea', tip: 'Suggest a new feature or improvement' },
+      ask:     { label: 'Ask',  tip: 'Questions, usage help' },
+      tplBug: (info) =>
+`## Description
+<!-- A clear description of the bug -->
+
+
+## Steps to reproduce
+1.
+2.
+3.
+
+## Expected behavior
+
+
+## Actual behavior
+
+
+## Environment
+- **Markon**: v${info.app_version}
+- **OS**: ${info.os} ${info.os_version} (${info.arch})
+- **UA**: ${navigator.userAgent}
+`,
+      tplIdea: (info) =>
+`## Summary
+<!-- What would you like to see? -->
+
+
+## Motivation / Use case
+<!-- What problem does this solve for you? -->
+
+
+## Possible implementation (optional)
+
+
+---
+*Markon v${info.app_version} · ${info.os} ${info.os_version}*
+`,
+      tplAsk: (info) =>
+`## Question
+
+
+
+## What have you tried (optional)
+
+
+
+---
+*Markon v${info.app_version} · ${info.os} ${info.os_version}*
+`,
+      titleBug:  '[Bug] ',
+      titleIdea: '',
+      titleAsk:  '',
+    },
+  };
+
+  // Default to English until Rust tells us the system locale.
+  let lang = 'en';
+  let t = i18n[lang];
+
+  function T(key) {
+    return (t[key] ?? i18n.en[key] ?? key);
+  }
+
+  function applyI18n() {
+    document.documentElement.lang = lang === 'zh' ? 'zh-CN' : 'en';
+    document.querySelectorAll('[data-i18n]').forEach(el => {
+      const key = el.getAttribute('data-i18n');
+      const val = T(key);
+      // Allow simple <br> in translations (e.g. about.desc)
+      if (val.includes('<br>')) el.innerHTML = val;
+      else el.textContent = val;
+    });
+    document.querySelectorAll('[data-i18n-placeholder]').forEach(el => {
+      el.placeholder = T(el.getAttribute('data-i18n-placeholder'));
+    });
+    // Feedback buttons (dynamic)
+    ['bug', 'idea', 'ask'].forEach(kind => {
+      const btn = document.getElementById(`btn-${kind}`);
+      if (btn) {
+        btn.innerHTML = `${ICONS[kind]}${t[kind].label}`;
+        btn.title = t[kind].tip;
+      }
+    });
+  }
+
+  function setLocale(localeStr) {
+    const newLang = (localeStr || 'en').toLowerCase().startsWith('zh') ? 'zh' : 'en';
+    if (newLang === lang && t === i18n[newLang]) return;
+    lang = newLang;
+    t = i18n[lang];
+    applyI18n();
+  }
+
+  const ICONS = {
+    // Bug — small bug outline
+    bug: `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="8" y="6" width="8" height="14" rx="4"/><path d="M12 6V4M8 6l-2-2M16 6l2-2M8 13H4M16 13h4M8 18l-3 3M16 18l3 3"/></svg>`,
+    // Idea — lightbulb
+    idea: `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18h6M10 22h4M12 2a7 7 0 0 0-4 12.7c.8.7 1.3 1.5 1.5 2.3h5c.2-.8.7-1.6 1.5-2.3A7 7 0 0 0 12 2z"/></svg>`,
+    // Ask — chat with question mark
+    ask: `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/><path d="M9.5 9a2.5 2.5 0 0 1 5 0c0 1.5-2.5 2-2.5 3.5M12 16h.01"/></svg>`,
+  };
+
+  function buildUrl(kind, info) {
+    const base = `https://github.com/${REPO}`;
+    if (kind === 'bug') {
+      // Bug → Issue (the only thing that becomes actionable work immediately)
+      return base + '/issues/new'
+        + '?labels=bug'
+        + '&title=' + encodeURIComponent(t.titleBug)
+        + '&body='  + encodeURIComponent(t.tplBug(info));
+    }
+    if (kind === 'idea') {
+      // Idea → Discussions/Ideas (low-pressure proposal pool, upvotable)
+      return base + '/discussions/new'
+        + '?category=ideas'
+        + '&title=' + encodeURIComponent(t.titleIdea)
+        + '&body='  + encodeURIComponent(t.tplIdea(info));
+    }
+    // Ask → Discussions/Q&A
+    return base + '/discussions/new'
+      + '?category=q-a'
+      + '&title=' + encodeURIComponent(t.titleAsk)
+      + '&body='  + encodeURIComponent(t.tplAsk(info));
+  }
+
+  // Wire the three inline feedback buttons
+  ['bug', 'idea', 'ask'].forEach(kind => {
+    const btn = document.getElementById(`btn-${kind}`);
+    btn.innerHTML = `${ICONS[kind]}${t[kind].label}`;
+    btn.title = t[kind].tip;
+    btn.addEventListener('click', async () => {
+      let info = { app_version: '?', os: '?', os_version: '', arch: '' };
+      try { info = await invoke('get_system_info'); } catch (_) {}
+      invoke('open_url', { url: buildUrl(kind, info) });
+    });
   });
   document.getElementById('link-github').addEventListener('click', e => {
     e.preventDefault();
@@ -740,6 +1051,15 @@
   });
 
   // ── Init ────────────────────────────────────────────────────────────────
+  // Initial render with default (en), then update once Rust reports system locale.
+  applyI18n();
+  (async () => {
+    try {
+      const info = await invoke('get_system_info');
+      setLocale(info.locale);
+      refreshWorkspaces(); // re-render ws list with localized strings
+    } catch (_) {}
+  })();
   loadSettings();
   refreshWorkspaces();
   window.addEventListener('focus', refreshWorkspaces);

@@ -164,6 +164,68 @@ pub fn open_url(url: String) -> Result<(), String> {
     open::that(url).map_err(|e| e.to_string())
 }
 
+/// Returns system/app info used to prefill a GitHub issue template
+/// and to drive UI i18n.
+#[tauri::command]
+pub fn get_system_info() -> serde_json::Value {
+    let os = std::env::consts::OS;
+    let arch = std::env::consts::ARCH;
+    let os_version = os_version_string();
+    let locale = sys_locale::get_locale().unwrap_or_else(|| "en-US".to_string());
+    serde_json::json!({
+        "app_version": env!("CARGO_PKG_VERSION"),
+        "os": os,
+        "os_version": os_version,
+        "arch": arch,
+        "locale": locale,
+    })
+}
+
+#[cfg(target_os = "macos")]
+fn os_version_string() -> String {
+    std::process::Command::new("sw_vers")
+        .arg("-productVersion")
+        .output()
+        .ok()
+        .and_then(|o| {
+            if o.status.success() {
+                Some(String::from_utf8_lossy(&o.stdout).trim().to_string())
+            } else {
+                None
+            }
+        })
+        .unwrap_or_else(|| "unknown".to_string())
+}
+
+#[cfg(target_os = "windows")]
+fn os_version_string() -> String {
+    std::process::Command::new("cmd")
+        .args(["/C", "ver"])
+        .output()
+        .ok()
+        .and_then(|o| {
+            if o.status.success() {
+                Some(String::from_utf8_lossy(&o.stdout).trim().to_string())
+            } else {
+                None
+            }
+        })
+        .unwrap_or_else(|| "unknown".to_string())
+}
+
+#[cfg(not(any(target_os = "macos", target_os = "windows")))]
+fn os_version_string() -> String {
+    std::fs::read_to_string("/etc/os-release")
+        .ok()
+        .and_then(|content| {
+            content.lines().find_map(|l| {
+                l.strip_prefix("PRETTY_NAME=")
+                    .map(|v| v.trim_matches('"').to_string())
+            })
+        })
+        .unwrap_or_else(|| "unknown".to_string())
+}
+
 /// Toggle tray-resident setting: persists, updates AtomicBool, and applies tray visibility.
 #[tauri::command]
 pub fn set_tray_resident(value: bool, app: tauri::AppHandle, state: State<AppState>) -> Result<(), String> {
