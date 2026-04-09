@@ -1,1 +1,1 @@
-{}
+{"default":{"identifier":"default","description":"Default capability for Markon","local":true,"windows":["settings"],"permissions":["core:default","updater:default"]}}

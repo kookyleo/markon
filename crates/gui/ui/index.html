@@ -96,7 +96,7 @@
     .nav-item svg { flex-shrink: 0; }
 
     /* ── Content ─────────────────────────────────────────────────────────── */
-    .content { flex: 1; overflow-y: auto; background: var(--bg); }
+    .content { flex: 1; overflow-y: auto; background: var(--bg); position: relative; }
     .tab { display: none; padding: 18px 20px; }
     .tab.active { display: block; }
 
@@ -166,7 +166,18 @@
       border-color: var(--accent);
       box-shadow: 0 0 0 3px rgba(0,122,255,0.15);
     }
-    input[type="number"] { width: 72px; text-align: right; }
+    input[type="number"] { width: 72px; text-align: right; -moz-appearance: textfield; }
+    input[type="number"]::-webkit-inner-spin-button,
+    input[type="number"]::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
+    input:disabled { opacity: 0.4; cursor: not-allowed; }
+    .db-path-val {
+      display: block;
+      font-family: 'SF Mono', Monaco, Menlo, monospace;
+      font-size: 11px;
+      color: var(--accent);
+      word-break: break-all;
+      margin-top: 3px;
+    }
     select {
       appearance: none; -webkit-appearance: none;
       padding-right: 22px;
@@ -233,7 +244,7 @@
     .btn-primary:hover { background: var(--accent-hover); }
 
     /* ── Workspace list ──────────────────────────────────────────────────── */
-    .ws-list { display: flex; flex-direction: column; gap: 8px; margin-bottom: 10px; }
+    .ws-list { display: flex; flex-direction: column; gap: 8px; padding-bottom: 60px; }
 
     .ws-card {
       background: var(--surface);
@@ -277,19 +288,17 @@
     }
     .ws-open-btn:hover { background: var(--surface-2); }
     .ws-remove-btn {
-      width: 22px; height: 22px;
+      font-size: 11px;
+      padding: 3px 9px;
       border-radius: 4px;
-      border: none;
+      border: 1px solid var(--border);
       background: transparent;
-      color: var(--text-3);
+      color: var(--text-2);
       cursor: default;
-      font-size: 16px;
-      line-height: 1;
-      display: flex; align-items: center; justify-content: center;
       font-family: inherit;
-      transition: background 0.1s, color 0.1s;
+      transition: background 0.1s, color 0.1s, border-color 0.1s;
     }
-    .ws-remove-btn:hover { background: rgba(255,59,48,0.1); color: var(--danger); }
+    .ws-remove-btn:hover { background: rgba(255,59,48,0.08); color: var(--danger); border-color: var(--danger); }
 
     .ws-flags-row {
       display: flex;
@@ -329,27 +338,31 @@
     .empty-state p { font-size: 13px; }
     .empty-state small { font-size: 11px; display: block; margin-top: 4px; color: var(--text-2); opacity: 0.7; }
 
-    /* Add workspace */
-    .ws-add {
+    /* FAB — floating add button, pinned at bottom-left */
+    .ws-fab {
+      position: fixed;
+      bottom: 18px;
+      left: 18px;
+      width: 40px;
+      height: 40px;
+      border-radius: 50%;
+      border: none;
+      background: var(--accent);
+      color: #fff;
       display: flex;
-      gap: 8px;
+      align-items: center;
+      justify-content: center;
+      cursor: default;
+      box-shadow: 0 2px 10px rgba(0,0,0,0.25);
+      transition: background 0.12s, transform 0.12s, box-shadow 0.12s;
+      z-index: 50;
     }
-    .ws-add input {
-      flex: 1;
-      padding: 7px 10px;
-      border: 1px solid var(--border);
-      border-radius: var(--radius-sm);
-      background: var(--surface);
-      color: var(--text);
-      font-size: 13px;
-      font-family: inherit;
-      outline: none;
-      transition: border-color 0.15s, box-shadow 0.15s;
+    .ws-fab:hover {
+      background: var(--accent-hover);
+      transform: scale(1.08);
+      box-shadow: 0 4px 16px rgba(0,0,0,0.3);
     }
-    .ws-add input:focus {
-      border-color: var(--accent);
-      box-shadow: 0 0 0 3px rgba(0,122,255,0.15);
-    }
+    .ws-fab:active { transform: scale(0.96); }
 
     /* ── About ───────────────────────────────────────────────────────────── */
     .about {
@@ -500,19 +513,31 @@
               <div class="switch-track"></div>
             </label>
           </div>
+          <div class="pref-row">
+            <div class="pref-label">
+              <span data-i18n="pref.autoupdate"></span>
+              <small data-i18n="pref.autoupdate.desc"></small>
+            </div>
+            <label class="switch">
+              <input type="checkbox" id="auto_update">
+              <div class="switch-track"></div>
+            </label>
+          </div>
         </div>
       </div>
 
       <div class="section">
         <div class="section-title" data-i18n="sec.database"></div>
         <div class="section-body">
-          <div class="pref-row">
-            <div class="pref-label">
+          <div class="pref-row" style="flex-wrap:wrap">
+            <div class="pref-label" style="flex:1;min-width:0">
               <span data-i18n="pref.dbpath"></span>
               <small data-i18n="pref.dbpath.desc"></small>
+              <small id="db_path_display" class="db-path-val" style="display:none"></small>
             </div>
-            <div class="pref-control-full" style="margin-left:16px; max-width:220px">
-              <input type="text" id="db_path" data-i18n-placeholder="pref.dbpath.placeholder" style="width:100%">
+            <div class="pref-control">
+              <button class="btn" id="db_path_browse" data-i18n="pref.dbpath.browse" style="font-size:12px"></button>
+              <button class="btn" id="db_path_clear" data-i18n="pref.dbpath.clear" style="font-size:12px;display:none"></button>
             </div>
           </div>
         </div>
@@ -523,10 +548,12 @@
     <!-- ── 工作区 ────────────────────────────────────────────────────────── -->
     <div class="tab active" id="tab-workspaces">
       <div class="ws-list" id="ws-list"></div>
-      <div class="ws-add">
-        <input type="text" id="ws-path-input" data-i18n-placeholder="ws.add.placeholder">
-        <button class="btn btn-primary" id="ws-add-btn" data-i18n="ws.add.btn"></button>
-      </div>
+      <button class="ws-fab" id="ws-add-btn" data-i18n-title="ws.add.btn">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+          <line x1="12" y1="5" x2="12" y2="19"/>
+          <line x1="5" y1="12" x2="19" y2="12"/>
+        </svg>
+      </button>
     </div>
 
     <!-- ── 关于 ──────────────────────────────────────────────────────────── -->
@@ -543,7 +570,10 @@
         </div>
 
         <h2>Markon</h2>
-        <div class="ver" id="ver-label">v0.8.0</div>
+        <div class="ver">
+          <span id="ver-label">v0.8.0</span>
+          <span id="update-status" style="margin-left:6px"></span>
+        </div>
 
         <p class="about-desc" data-i18n="about.desc"></p>
 
@@ -564,7 +594,7 @@
           <span class="sep">·</span>
           <a href="#" id="link-license">Apache-2.0</a>
           <span class="sep">·</span>
-          <span>kookyleo</span>
+          <a href="#" id="link-author">@kookyleo</a>
         </div>
 
       </div>
@@ -582,6 +612,8 @@
       document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
       item.classList.add('active');
       document.getElementById(`tab-${item.dataset.tab}`).classList.add('active');
+      // FAB only visible on workspaces tab
+      document.getElementById('ws-add-btn').style.display = item.dataset.tab === 'workspaces' ? '' : 'none';
       if (item.dataset.tab === 'workspaces') refreshWorkspaces();
     });
   });
@@ -594,7 +626,10 @@
       document.documentElement.setAttribute('data-theme', value || 'auto');
     },
     port_mode(value) {
-      document.getElementById('port').style.display = value === 'spec' ? '' : 'none';
+      const el = document.getElementById('port');
+      const isAuto = value !== 'spec';
+      el.disabled = isAuto;
+      el.placeholder = isAuto ? T('port.auto.hint') : '';
     },
   };
   function applyAll(s) {
@@ -610,8 +645,9 @@
     document.getElementById('port').value = s.port;
     document.getElementById('host').value = s.host;
     document.getElementById('theme').value = s.theme;
-    document.getElementById('db_path').value = s.db_path ?? '';
+    updateDbPathDisplay(s.db_path ?? '');
     document.getElementById('tray_resident').checked = s.tray_resident ?? true;
+    document.getElementById('auto_update').checked = s.auto_update ?? true;
     applyAll(s);
   }
 
@@ -621,14 +657,45 @@
       port:      parseInt(document.getElementById('port').value) || 6419,
       host:      document.getElementById('host').value,
       theme:     document.getElementById('theme').value,
-      db_path:   document.getElementById('db_path').value || null,
+      db_path:   currentDbPath || null,
+      auto_update: document.getElementById('auto_update').checked,
       workspaces: [],  // preserved by Rust command; managed via add/remove/update
     };
     await invoke('save_settings', { settings });
   }
 
+  // ── DB path state & helpers ────────────────────────────────────────────
+  let currentDbPath = '';
+
+  function updateDbPathDisplay(path) {
+    currentDbPath = path || '';
+    const display = document.getElementById('db_path_display');
+    const clearBtn = document.getElementById('db_path_clear');
+    if (currentDbPath) {
+      display.textContent = currentDbPath;
+      display.style.display = '';
+      clearBtn.style.display = '';
+    } else {
+      display.style.display = 'none';
+      clearBtn.style.display = 'none';
+    }
+  }
+
+  document.getElementById('db_path_browse').addEventListener('click', async () => {
+    let path;
+    try { path = await invoke('pick_db_path'); } catch (_) { return; }
+    if (!path) return; // cancelled
+    updateDbPathDisplay(path);
+    saveSettings();
+  });
+
+  document.getElementById('db_path_clear').addEventListener('click', () => {
+    updateDbPathDisplay('');
+    saveSettings();
+  });
+
   // Wire change handlers: save + live-apply where applicable.
-  ['port', 'host', 'db_path'].forEach(id =>
+  ['port', 'host'].forEach(id =>
     document.getElementById(id).addEventListener('change', saveSettings)
   );
   document.getElementById('theme').addEventListener('change', e => {
@@ -644,6 +711,7 @@
   document.getElementById('tray_resident').addEventListener('change', e => {
     invoke('set_tray_resident', { value: e.target.checked });
   });
+  document.getElementById('auto_update').addEventListener('change', saveSettings);
 
   // ── Workspace list ──────────────────────────────────────────────────────
   async function refreshWorkspaces() {
@@ -669,14 +737,14 @@
       card.dataset.id = ws.id;
 
       const flagDefs = [
-        { key: 'search',     label: ws.enable_search && ws.search_ready ? T('ws.flag.search') + ' ✓' : T('ws.flag.search'), checked: ws.enable_search },
-        { key: 'viewed',     label: T('ws.flag.viewed'), checked: ws.enable_viewed },
-        { key: 'edit',       label: T('ws.flag.edit'),   checked: ws.enable_edit },
-        { key: 'annotation', label: T('ws.flag.shared'), checked: ws.shared_annotation },
+        { key: 'search',     label: ws.enable_search && ws.search_ready ? T('ws.flag.search') + ' ✓' : T('ws.flag.search'), tip: T('ws.flag.search.tip'), checked: ws.enable_search },
+        { key: 'viewed',     label: T('ws.flag.viewed'), tip: T('ws.flag.viewed.tip'), checked: ws.enable_viewed },
+        { key: 'edit',       label: T('ws.flag.edit'),   tip: T('ws.flag.edit.tip'),   checked: ws.enable_edit },
+        { key: 'annotation', label: T('ws.flag.shared'), tip: T('ws.flag.shared.tip'), checked: ws.shared_annotation },
       ];
 
       const flagsHtml = flagDefs.map(f =>
-        `<label class="ws-flag ${f.checked ? 'checked' : ''}">
+        `<label class="ws-flag ${f.checked ? 'checked' : ''}" title="${f.tip}">
           <input type="checkbox" data-flag="${f.key}" ${f.checked ? 'checked' : ''}>
           ${f.label}
         </label>`
@@ -693,7 +761,7 @@
           </div>
           <div class="ws-card-actions">
             <button class="ws-open-btn">${T('ws.open')}</button>
-            <button class="ws-remove-btn" title="${T('ws.remove')}">×</button>
+            <button class="ws-remove-btn">${T('ws.remove')}</button>
           </div>
         </div>
         <div class="ws-flags-row">${flagsHtml}</div>
@@ -736,10 +804,16 @@
     });
   }
 
-  // Add workspace
+  // Add workspace via native folder picker
   async function addWorkspace() {
-    const path = document.getElementById('ws-path-input').value.trim();
-    if (!path) return;
+    let path;
+    try {
+      path = await invoke('pick_workspace_dir');
+    } catch (e) {
+      alert(T('ws.add.fail') + ': ' + e);
+      return;
+    }
+    if (!path) return; // user cancelled
     try {
       await invoke('add_workspace', {
         path,
@@ -748,7 +822,6 @@
         enableEdit:       false,
         sharedAnnotation: false,
       });
-      document.getElementById('ws-path-input').value = '';
       refreshWorkspaces();
     } catch (e) {
       alert(T('ws.add.fail') + ': ' + e);
@@ -756,9 +829,6 @@
   }
 
   document.getElementById('ws-add-btn').addEventListener('click', addWorkspace);
-  document.getElementById('ws-path-input').addEventListener('keydown', e => {
-    if (e.key === 'Enter') addWorkspace();
-  });
 
   // ── About ───────────────────────────────────────────────────────────────
   document.getElementById('btn-star').addEventListener('click', () => {
@@ -782,6 +852,7 @@
       'pref.port':       '端口',
       'port.auto':       '自动',
       'port.spec':       '指定',
+      'port.auto.hint':  '自动分配',
       'pref.bind':       '绑定地址',
       'bind.local':      '127.0.0.1 — 仅本机',
       'bind.lan':        '0.0.0.0 — 局域网可访问',
@@ -791,20 +862,31 @@
       'theme.dark':      '深色',
       'pref.tray':       '菜单栏驻留',
       'pref.tray.desc':  '关闭窗口时隐藏而非退出,通过菜单栏图标唤起',
+      'pref.autoupdate':      '自动更新',
+      'pref.autoupdate.desc': '启动时检查 GitHub 上的新版本并自动安装',
+      'update.checking': '检查中…',
+      'update.latest':   '已是最新版本',
+      'update.found':    '发现新版本 v{v},正在安装…',
+      'update.done':     '更新完成,重启生效',
+      'update.error':    '检查失败',
       'pref.dbpath':     '共享注释路径',
       'pref.dbpath.desc':'用于多端同步注释与 Viewed 状态 (SQLite)',
-      'pref.dbpath.placeholder': '默认路径',
+      'pref.dbpath.browse': '选择…',
+      'pref.dbpath.clear':  '恢复默认',
       // Workspaces
-      'ws.add.placeholder': '输入目录路径,回车或点击添加…',
-      'ws.add.btn':     '添加',
+      'ws.add.btn':     '添加工作区…',
       'ws.open':        '打开',
       'ws.remove':      '移除',
       'ws.flag.search': '搜索',
+      'ws.flag.search.tip': '启用全文搜索索引,可在浏览器中搜索文件内容',
       'ws.flag.viewed': '已读',
+      'ws.flag.viewed.tip': '追踪文件已读/未读状态',
       'ws.flag.edit':   '编辑',
+      'ws.flag.edit.tip': '允许在浏览器中编辑 Markdown 文件',
       'ws.flag.shared': '共享注释',
+      'ws.flag.shared.tip': '启用多端同步注释与已读状态 (需要 SQLite 数据库)',
       'ws.empty.title': '尚无工作区',
-      'ws.empty.desc':  '在下方输入目录路径,或从 Finder 中打开文件夹',
+      'ws.empty.desc':  '点击下方按钮选择目录,或从 Finder 中打开文件夹',
       'ws.update.fail': '更新失败',
       'ws.add.fail':    '添加失败',
       // About
@@ -877,6 +959,7 @@
       'pref.port':       'Port',
       'port.auto':       'Auto',
       'port.spec':       'Manual',
+      'port.auto.hint':  'Auto-assigned',
       'pref.bind':       'Bind address',
       'bind.local':      '127.0.0.1 — Localhost only',
       'bind.lan':        '0.0.0.0 — Accessible on LAN',
@@ -886,19 +969,30 @@
       'theme.dark':      'Dark',
       'pref.tray':       'Stay in menu bar',
       'pref.tray.desc':  'Hide on window close instead of quitting; reopen via menu bar icon',
+      'pref.autoupdate':      'Auto-update',
+      'pref.autoupdate.desc': 'Check GitHub for new versions on launch and install automatically',
+      'update.checking': 'Checking…',
+      'update.latest':   'Up to date',
+      'update.found':    'New version v{v} found, installing…',
+      'update.done':     'Update installed, restart to apply',
+      'update.error':    'Check failed',
       'pref.dbpath':     'Shared annotation DB',
       'pref.dbpath.desc':'Path to SQLite DB for syncing annotations and viewed state',
-      'pref.dbpath.placeholder': 'Default location',
-      'ws.add.placeholder': 'Enter directory path, press Enter or click Add…',
-      'ws.add.btn':     'Add',
+      'pref.dbpath.browse': 'Browse…',
+      'pref.dbpath.clear':  'Reset',
+      'ws.add.btn':     'Add workspace…',
       'ws.open':        'Open',
       'ws.remove':      'Remove',
       'ws.flag.search': 'Search',
+      'ws.flag.search.tip': 'Build a full-text search index for file contents',
       'ws.flag.viewed': 'Viewed',
+      'ws.flag.viewed.tip': 'Track read/unread status for each file',
       'ws.flag.edit':   'Edit',
+      'ws.flag.edit.tip': 'Allow editing Markdown files in the browser',
       'ws.flag.shared': 'Shared notes',
+      'ws.flag.shared.tip': 'Sync annotations and viewed state across devices (requires SQLite)',
       'ws.empty.title': 'No workspaces yet',
-      'ws.empty.desc':  'Enter a directory path below, or open a folder from Finder',
+      'ws.empty.desc':  'Click the button below to pick a folder, or open one from Finder',
       'ws.update.fail': 'Update failed',
       'ws.add.fail':    'Add failed',
       'about.desc':     'A lightweight Markdown renderer with GitHub-style layout,<br>full-text search, annotations and multi-device sync.',
@@ -980,6 +1074,9 @@
     document.querySelectorAll('[data-i18n-placeholder]').forEach(el => {
       el.placeholder = T(el.getAttribute('data-i18n-placeholder'));
     });
+    document.querySelectorAll('[data-i18n-title]').forEach(el => {
+      el.title = T(el.getAttribute('data-i18n-title'));
+    });
     // Feedback buttons (dynamic)
     ['bug', 'idea', 'ask'].forEach(kind => {
       const btn = document.getElementById(`btn-${kind}`);
@@ -1049,6 +1146,10 @@
     e.preventDefault();
     invoke('open_url', { url: 'https://github.com/kookyleo/markon/blob/main/LICENSE' });
   });
+  document.getElementById('link-author').addEventListener('click', e => {
+    e.preventDefault();
+    invoke('open_url', { url: 'https://x.com/kookyle_' });
+  });
 
   // ── Init ────────────────────────────────────────────────────────────────
   // Initial render with default (en), then update once Rust reports system locale.
@@ -1063,6 +1164,45 @@
   loadSettings();
   refreshWorkspaces();
   window.addEventListener('focus', refreshWorkspaces);
+
+  // ── Auto-update check ───────────────────────────────────────────────────
+  const statusEl = document.getElementById('update-status');
+
+  async function doUpdateCheck() {
+    statusEl.textContent = T('update.checking');
+    statusEl.style.color = 'var(--text-2)';
+    try {
+      const r = await invoke('check_for_update');
+      if (r.error) {
+        statusEl.textContent = T('update.error');
+        statusEl.style.color = 'var(--danger)';
+      } else if (r.available && r.installed) {
+        statusEl.textContent = T('update.done');
+        statusEl.style.color = 'var(--accent)';
+      } else if (r.available) {
+        statusEl.textContent = T('update.found').replace('{v}', r.latest);
+        statusEl.style.color = 'var(--accent)';
+      } else {
+        statusEl.textContent = T('update.latest');
+        statusEl.style.color = 'var(--text-2)';
+      }
+    } catch (e) {
+      statusEl.textContent = T('update.error');
+      statusEl.style.color = 'var(--danger)';
+    }
+  }
+
+  // Click version label to manually check
+  document.getElementById('ver-label').addEventListener('click', doUpdateCheck);
+  document.getElementById('ver-label').style.cursor = 'pointer';
+
+  // Auto-check on startup if enabled
+  (async () => {
+    try {
+      const s = await invoke('get_settings');
+      if (s.auto_update !== false) doUpdateCheck();
+    } catch (_) {}
+  })();
 </script>
 </body>
 </html>

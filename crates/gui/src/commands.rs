@@ -4,6 +4,7 @@ use markon_core::workspace::WorkspaceConfig;
 use std::path::PathBuf;
 use std::sync::atomic::Ordering;
 use tauri::State;
+use tauri_plugin_updater::UpdaterExt;
 
 #[tauri::command]
 pub fn get_settings(state: State<AppState>) -> AppSettings {
@@ -164,6 +165,17 @@ pub fn open_url(url: String) -> Result<(), String> {
     open::that(url).map_err(|e| e.to_string())
 }
 
+/// Show a native folder picker and return the selected path, or None if cancelled.
+/// Uses rfd's async API so the UI dispatch is handled correctly on macOS.
+#[tauri::command]
+pub async fn pick_workspace_dir() -> Option<String> {
+    rfd::AsyncFileDialog::new()
+        .set_title("Select workspace folder")
+        .pick_folder()
+        .await
+        .map(|h| h.path().to_string_lossy().to_string())
+}
+
 /// Returns system/app info used to prefill a GitHub issue template
 /// and to drive UI i18n.
 #[tauri::command]
@@ -224,6 +236,50 @@ fn os_version_string() -> String {
             })
         })
         .unwrap_or_else(|| "unknown".to_string())
+}
+
+/// Show a native file dialog to pick (or create) a SQLite database file.
+#[tauri::command]
+pub async fn pick_db_path() -> Option<String> {
+    rfd::AsyncFileDialog::new()
+        .set_title("Select annotation database")
+        .add_filter("SQLite", &["sqlite", "db", "sqlite3"])
+        .set_file_name("annotation.sqlite")
+        .save_file()
+        .await
+        .map(|h| h.path().to_string_lossy().to_string())
+}
+
+/// Check for updates and return status. If an update is available, download & install it.
+/// Returns a JSON with { available, current, latest, error? }.
+#[tauri::command]
+pub async fn check_for_update(app: tauri::AppHandle) -> serde_json::Value {
+    let updater = match app.updater() {
+        Ok(u) => u,
+        Err(e) => return serde_json::json!({ "available": false, "error": e.to_string() }),
+    };
+    let update = match updater.check().await {
+        Ok(Some(u)) => u,
+        Ok(None) => return serde_json::json!({ "available": false, "current": env!("CARGO_PKG_VERSION") }),
+        Err(e) => return serde_json::json!({ "available": false, "error": e.to_string() }),
+    };
+    let latest = update.version.clone();
+    // Download and install
+    match update.download_and_install(|_, _| {}, || {}).await {
+        Ok(()) => serde_json::json!({
+            "available": true,
+            "current": env!("CARGO_PKG_VERSION"),
+            "latest": latest,
+            "installed": true,
+        }),
+        Err(e) => serde_json::json!({
+            "available": true,
+            "current": env!("CARGO_PKG_VERSION"),
+            "latest": latest,
+            "installed": false,
+            "error": e.to_string(),
+        }),
+    }
 }
 
 /// Toggle tray-resident setting: persists, updates AtomicBool, and applies tray visibility.

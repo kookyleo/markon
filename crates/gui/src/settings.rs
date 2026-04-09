@@ -51,6 +51,14 @@ pub struct AppSettings {
     /// Whether the app stays resident in the menu bar (close hides; false = close exits).
     #[serde(default = "default_true")]
     pub tray_resident: bool,
+    /// Check for updates on launch via GitHub releases.
+    #[serde(default = "default_true")]
+    pub auto_update: bool,
+    /// Last Settings window size. None on first run → use config defaults.
+    #[serde(default)]
+    pub window_width: Option<u32>,
+    #[serde(default)]
+    pub window_height: Option<u32>,
 }
 
 impl Default for AppSettings {
@@ -63,6 +71,9 @@ impl Default for AppSettings {
             db_path: None,
             workspaces: vec![],
             tray_resident: true,
+            auto_update: true,
+            window_width: None,
+            window_height: None,
         }
     }
 }

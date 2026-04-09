@@ -13,11 +13,11 @@ jobs:
       matrix:
         include:
           - platform: macos-latest
-            bundles: dmg
+            bundles: dmg,updater
           - platform: ubuntu-22.04
-            bundles: deb,appimage
+            bundles: deb,appimage,updater
           - platform: windows-latest
-            bundles: nsis
+            bundles: nsis,updater
 
     runs-on: ${{ matrix.platform }}
 
@@ -44,9 +44,13 @@ jobs:
           # macOS: ad-hoc signing (no certificate needed, no notarization).
           # Users see "unverified developer" instead of "damaged" — bypassable via System Settings.
           APPLE_SIGNING_IDENTITY: "-"
+          # Tauri updater signing
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         with:
           projectPath: crates/gui
           tagName: ${{ github.ref_name }}
           releaseName: Markon ${{ github.ref_name }}
           releaseDraft: true
+          updaterJsonPreferNsis: true
           args: --bundles ${{ matrix.bundles }}

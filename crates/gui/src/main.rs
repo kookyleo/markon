@@ -132,6 +132,7 @@ fn main() {
     let settings = AppSettings::load();
 
     let app = tauri::Builder::default()
+        .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_single_instance::init(|app, args, _cwd| {
             if let Some(path_str) = args.get(1) {
                 handle_open_path(app, Path::new(path_str));
@@ -160,11 +161,18 @@ fn main() {
             // ── System tray ───────────────────────────────────────────────
             let icon = tauri::include_image!("icons/tray.png");
 
+            let is_zh = sys_locale::get_locale()
+                .unwrap_or_default()
+                .to_lowercase()
+                .starts_with("zh");
+            let label_settings = if is_zh { "打开设置…" } else { "Settings…" };
+            let label_quit = if is_zh { "退出 Markon" } else { "Quit Markon" };
+
             let item_settings =
-                MenuItem::with_id(app, "settings", "打开设置…", true, None::<&str>)?;
+                MenuItem::with_id(app, "settings", label_settings, true, None::<&str>)?;
             let sep = PredefinedMenuItem::separator(app)?;
             let item_quit =
-                MenuItem::with_id(app, "quit", "退出 Markon", true, None::<&str>)?;
+                MenuItem::with_id(app, "quit", label_quit, true, None::<&str>)?;
 
             let menu = Menu::with_items(app, &[&item_settings, &sep, &item_quit])?;
 
@@ -186,12 +194,33 @@ fn main() {
                 }
             }
 
-            // ── Settings window: close behavior depends on tray_resident ──
+            // ── Settings window: restore size, close behavior, persist size ──
             if let Some(win) = app.get_webview_window("settings") {
+                // Restore saved size from settings if present.
+                {
+                    let state = app.state::<AppState>();
+                    let settings = state.settings.lock().unwrap();
+                    if let (Some(w), Some(h)) = (settings.window_width, settings.window_height) {
+                        let _ = win.set_size(tauri::LogicalSize::new(w, h));
+                    }
+                }
+
                 let win_clone = win.clone();
+                let app_handle = app.app_handle().clone();
                 let tray_flag = app.state::<AppState>().tray_resident.clone();
                 win.on_window_event(move |event| {
                     if let tauri::WindowEvent::CloseRequested { api, .. } = event {
+                        // Persist current window size before hiding/closing.
+                        if let Ok(size) = win_clone.inner_size() {
+                            if let Ok(factor) = win_clone.scale_factor() {
+                                let logical = size.to_logical::<u32>(factor);
+                                let state = app_handle.state::<AppState>();
+                                let mut settings = state.settings.lock().unwrap();
+                                settings.window_width = Some(logical.width);
+                                settings.window_height = Some(logical.height);
+                                settings.save().ok();
+                            }
+                        }
                         if tray_flag.load(Ordering::Relaxed) {
                             api.prevent_close();
                             let _ = win_clone.hide();
@@ -236,6 +265,9 @@ fn main() {
             commands::open_browser,
             commands::open_url,
             commands::get_system_info,
+            commands::pick_workspace_dir,
+            commands::pick_db_path,
+            commands::check_for_update,
         ])
         .build(tauri::generate_context!())
         .expect("error building markon-gui");
