@@ -8,23 +8,29 @@
     :root {
       --bg: #f2f2f7;
       --surface: #ffffff;
-      --accent: #1976D2;
-      --accent-hover: #1565C0;
+      --surface-2: #ebebf0;
+      --accent: #007AFF;
+      --accent-hover: #0062cc;
       --text: #1c1c1e;
       --text-2: #6c6c70;
+      --text-3: #c7c7cc;
       --border: #d1d1d6;
-      --danger: #d32f2f;
-      --radius: 8px;
+      --danger: #ff3b30;
+      --radius: 10px;
+      --radius-sm: 6px;
     }
     @media (prefers-color-scheme: dark) {
       :root {
         --bg: #1c1c1e;
         --surface: #2c2c2e;
-        --accent: #2196F3;
-        --accent-hover: #42a5f5;
+        --surface-2: #3a3a3c;
+        --accent: #0A84FF;
+        --accent-hover: #409CFF;
         --text: #f2f2f7;
         --text-2: #8e8e93;
+        --text-3: #48484a;
         --border: #38383a;
+        --danger: #ff453a;
       }
     }
     * { box-sizing: border-box; margin: 0; padding: 0; }
@@ -33,111 +39,159 @@
       font-size: 13px;
       background: var(--bg);
       color: var(--text);
-      display: flex;
-      flex-direction: column;
       height: 100vh;
       overflow: hidden;
       user-select: none;
+      display: flex;
+      flex-direction: column;
     }
-    .layout { display: flex; flex-direction: column; flex: 1; overflow: hidden; }
+
+    /* ── Tab bar ─────────────────────────────────────────────────────────── */
     .tabbar {
       display: flex;
-      flex-direction: row;
-      gap: 2px;
-      padding: 8px 16px 0;
       background: var(--bg);
       border-bottom: 1px solid var(--border);
+      padding: 0 16px;
       flex-shrink: 0;
     }
     .nav-item {
-      padding: 6px 16px;
-      border-radius: 6px 6px 0 0;
+      padding: 9px 14px;
       cursor: default;
       font-size: 12.5px;
       font-weight: 500;
       color: var(--text-2);
       display: flex;
       align-items: center;
-      gap: 6px;
-      transition: background 0.12s, color 0.12s;
-      border: 1px solid transparent;
-      border-bottom: none;
+      gap: 5px;
+      border-bottom: 2px solid transparent;
       margin-bottom: -1px;
+      transition: color 0.12s;
     }
-    .nav-item:hover { color: var(--text); background: rgba(120,120,128,0.08); }
-    .nav-item.active {
-      background: var(--surface);
-      color: var(--accent);
-      border-color: var(--border);
-      border-bottom-color: var(--surface);
-    }
-    .content { flex: 1; overflow-y: auto; padding: 20px 24px; background: var(--surface); }
-    .tab { display: none; }
+    .nav-item:hover { color: var(--text); }
+    .nav-item.active { color: var(--accent); border-bottom-color: var(--accent); }
+    .nav-item svg { flex-shrink: 0; }
+
+    /* ── Content ─────────────────────────────────────────────────────────── */
+    .content { flex: 1; overflow-y: auto; background: var(--bg); }
+    .tab { display: none; padding: 18px 20px; }
     .tab.active { display: block; }
-    /* Form */
-    .field { margin-bottom: 14px; }
-    .field label {
-      display: block;
+
+    /* ── Preference sections ─────────────────────────────────────────────── */
+    .section { margin-bottom: 18px; }
+    .section-title {
       font-size: 11px;
       font-weight: 600;
       text-transform: uppercase;
-      letter-spacing: 0.4px;
+      letter-spacing: 0.5px;
       color: var(--text-2);
       margin-bottom: 5px;
+      padding: 0 2px;
     }
-    .field input[type="number"],
-    .field input[type="text"],
-    .field select {
-      width: 100%;
-      padding: 7px 10px;
-      border: 1px solid var(--border);
+    .section-body {
+      background: var(--surface);
       border-radius: var(--radius);
+      border: 1px solid var(--border);
+      overflow: hidden;
+    }
+    .pref-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 9px 14px;
+      border-bottom: 1px solid var(--border);
+      gap: 12px;
+      min-height: 40px;
+    }
+    .pref-row:last-child { border-bottom: none; }
+    .pref-label { font-size: 13px; color: var(--text); }
+    .pref-label small {
+      display: block;
+      font-size: 11px;
+      color: var(--text-2);
+      margin-top: 1px;
+    }
+    .pref-control {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      flex-shrink: 0;
+    }
+    .pref-control-full {
+      flex: 1;
+      display: flex;
+      min-width: 0;
+    }
+
+    /* ── Inputs ──────────────────────────────────────────────────────────── */
+    input[type="number"],
+    input[type="text"],
+    select {
+      padding: 4px 8px;
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
       background: var(--surface);
       color: var(--text);
       font-size: 13px;
       font-family: inherit;
       outline: none;
-      transition: border-color 0.15s;
+      transition: border-color 0.15s, box-shadow 0.15s;
     }
-    .field input:focus, .field select:focus { border-color: var(--accent); }
-    /* Toggle */
-    .toggle-list { border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; }
-    .toggle-row {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      padding: 11px 14px;
-      background: var(--surface);
-      border-bottom: 1px solid var(--border);
+    input[type="number"]:focus,
+    input[type="text"]:focus,
+    select:focus {
+      border-color: var(--accent);
+      box-shadow: 0 0 0 3px rgba(0,122,255,0.15);
     }
-    .toggle-row:last-child { border-bottom: none; }
-    .toggle-label h4 { font-size: 13px; font-weight: 500; }
-    .toggle-label p { font-size: 11px; color: var(--text-2); margin-top: 2px; }
+    input[type="number"] { width: 72px; text-align: right; }
+    select {
+      appearance: none; -webkit-appearance: none;
+      padding-right: 22px;
+      background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6'%3E%3Cpath d='M0 0l5 6 5-6z' fill='%238e8e93'/%3E%3C/svg%3E");
+      background-repeat: no-repeat;
+      background-position: right 7px center;
+    }
+    input[type="text"].full { width: 100%; }
+
+    /* ── Toggle switch ───────────────────────────────────────────────────── */
     .switch { position: relative; display: inline-block; width: 38px; height: 22px; flex-shrink: 0; }
     .switch input { display: none; }
     .switch-track {
       position: absolute; inset: 0;
-      border-radius: 11px;
-      background: #ccc;
-      cursor: pointer;
-      transition: background 0.2s;
+      border-radius: 11px; background: var(--border);
+      cursor: pointer; transition: background 0.2s;
     }
     .switch input:checked + .switch-track { background: var(--accent); }
     .switch-track::after {
-      content: '';
-      position: absolute;
-      top: 2px; left: 2px;
-      width: 18px; height: 18px;
-      border-radius: 50%;
-      background: #fff;
-      box-shadow: 0 1px 3px rgba(0,0,0,0.25);
-      transition: transform 0.2s;
+      content: ''; position: absolute;
+      top: 2px; left: 2px; width: 18px; height: 18px;
+      border-radius: 50%; background: #fff;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.25); transition: transform 0.2s;
     }
     .switch input:checked + .switch-track::after { transform: translateX(16px); }
-    /* Buttons */
+
+    /* ── Segmented control ───────────────────────────────────────────────── */
+    .seg-ctrl {
+      display: inline-flex;
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      overflow: hidden;
+      background: var(--bg);
+    }
+    .seg-ctrl input[type="radio"] { display: none; }
+    .seg-ctrl label {
+      padding: 4px 13px;
+      font-size: 12px;
+      font-weight: 500;
+      color: var(--text-2);
+      cursor: default;
+      transition: background 0.12s, color 0.12s;
+    }
+    .seg-ctrl input[type="radio"]:checked + label { background: var(--accent); color: #fff; }
+
+    /* ── Buttons ─────────────────────────────────────────────────────────── */
     .btn {
-      padding: 5px 14px;
-      border-radius: 6px;
+      padding: 5px 12px;
+      border-radius: var(--radius-sm);
       border: 1px solid var(--border);
       background: var(--surface);
       color: var(--text);
@@ -145,200 +199,366 @@
       font-family: inherit;
       cursor: default;
       white-space: nowrap;
-      transition: opacity 0.1s;
-    }
-    .btn:hover:not(:disabled) { opacity: 0.85; }
-    .btn:disabled { opacity: 0.4; cursor: not-allowed; }
-    .btn-primary { background: var(--accent); color: #fff; border-color: var(--accent); }
-    .btn-danger  { background: var(--danger); color: #fff; border-color: var(--danger); }
-    /* Segmented control */
-    .seg-ctrl {
       display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      transition: background 0.1s;
+    }
+    .btn:hover { background: var(--surface-2); }
+    .btn-primary { background: var(--accent); color: #fff; border-color: transparent; }
+    .btn-primary:hover { background: var(--accent-hover); }
+
+    /* ── Workspace list ──────────────────────────────────────────────────── */
+    .ws-list { display: flex; flex-direction: column; gap: 8px; margin-bottom: 10px; }
+
+    .ws-card {
+      background: var(--surface);
       border: 1px solid var(--border);
       border-radius: var(--radius);
       overflow: hidden;
-      background: var(--bg);
     }
-    .seg-ctrl label {
-      padding: 5px 16px;
-      font-size: 12px;
-      font-weight: 500;
-      color: var(--text-2);
-      cursor: default;
-      transition: background 0.12s, color 0.12s;
-      user-select: none;
-    }
-    .seg-ctrl input[type="radio"] { display: none; }
-    .seg-ctrl input[type="radio"]:checked + label { background: var(--accent); color: #fff; }
-    /* Workspace list */
-    .ws-list { display: flex; flex-direction: column; gap: 10px; }
-    .ws-card {
-      border: 1px solid var(--border);
-      border-radius: var(--radius);
-      padding: 12px 14px;
-      background: var(--surface);
-    }
-    .ws-card-header {
+    .ws-card-top {
       display: flex;
-      align-items: center;
-      justify-content: space-between;
-      margin-bottom: 8px;
+      align-items: flex-start;
+      gap: 10px;
+      padding: 11px 12px 10px 14px;
     }
+    .ws-folder-icon { flex-shrink: 0; margin-top: 1px; color: var(--accent); }
+    .ws-info { flex: 1; min-width: 0; }
     .ws-path {
       font-size: 12px;
       font-family: 'SF Mono', Monaco, Menlo, monospace;
-      word-break: break-all;
       color: var(--text);
+      word-break: break-all;
+      line-height: 1.4;
     }
     .ws-url {
       font-size: 11px;
-      color: var(--accent);
-      text-decoration: none;
-      cursor: pointer;
+      color: var(--text-2);
+      margin-top: 2px;
       word-break: break-all;
+      line-height: 1.3;
     }
-    .ws-url:hover { text-decoration: underline; }
-    .ws-toggles {
+    .ws-card-actions { display: flex; align-items: center; gap: 5px; flex-shrink: 0; }
+    .ws-open-btn {
+      font-size: 11px;
+      padding: 3px 9px;
+      border-radius: 4px;
+      border: 1px solid var(--border);
+      background: transparent;
+      color: var(--accent);
+      cursor: default;
+      font-family: inherit;
+      transition: background 0.1s;
+    }
+    .ws-open-btn:hover { background: var(--surface-2); }
+    .ws-remove-btn {
+      width: 22px; height: 22px;
+      border-radius: 4px;
+      border: none;
+      background: transparent;
+      color: var(--text-3);
+      cursor: default;
+      font-size: 16px;
+      line-height: 1;
+      display: flex; align-items: center; justify-content: center;
+      font-family: inherit;
+      transition: background 0.1s, color 0.1s;
+    }
+    .ws-remove-btn:hover { background: rgba(255,59,48,0.1); color: var(--danger); }
+
+    .ws-flags-row {
       display: flex;
-      gap: 14px;
-      margin-top: 8px;
+      gap: 2px;
+      padding: 4px 10px 6px;
+      border-top: 1px solid var(--border);
+      background: var(--bg);
       flex-wrap: wrap;
     }
-    .ws-toggle {
+    .ws-flag {
       display: flex;
       align-items: center;
-      gap: 6px;
+      gap: 5px;
+      padding: 4px 8px;
+      border-radius: 5px;
       font-size: 12px;
       color: var(--text-2);
+      cursor: default;
+      transition: background 0.1s;
     }
-    .ws-toggle input[type="checkbox"] { accent-color: var(--accent); cursor: pointer; }
+    .ws-flag:hover { background: var(--surface); }
+    .ws-flag input[type="checkbox"] {
+      width: 13px; height: 13px;
+      accent-color: var(--accent);
+      cursor: pointer;
+      flex-shrink: 0;
+    }
+    .ws-flag.checked { color: var(--text); }
+
+    /* Empty state */
+    .empty-state {
+      text-align: center;
+      padding: 36px 20px;
+      color: var(--text-2);
+    }
+    .empty-state svg { opacity: 0.25; margin-bottom: 10px; display: block; margin-left: auto; margin-right: auto; }
+    .empty-state p { font-size: 13px; }
+    .empty-state small { font-size: 11px; display: block; margin-top: 4px; color: var(--text-2); opacity: 0.7; }
+
+    /* Add workspace */
     .ws-add {
       display: flex;
       gap: 8px;
-      margin-top: 12px;
     }
     .ws-add input {
       flex: 1;
       padding: 7px 10px;
       border: 1px solid var(--border);
-      border-radius: var(--radius);
+      border-radius: var(--radius-sm);
       background: var(--surface);
       color: var(--text);
       font-size: 13px;
       font-family: inherit;
       outline: none;
+      transition: border-color 0.15s, box-shadow 0.15s;
     }
-    .ws-add input:focus { border-color: var(--accent); }
-    /* About */
-    .about { text-align: center; padding: 28px 0; }
-    .about-logo {
-      width: 64px; height: 64px;
-      background: var(--accent);
-      border-radius: 14px;
-      margin: 0 auto 14px;
+    .ws-add input:focus {
+      border-color: var(--accent);
+      box-shadow: 0 0 0 3px rgba(0,122,255,0.15);
+    }
+
+    /* ── About ───────────────────────────────────────────────────────────── */
+    .about {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 28px 40px 24px;
+      text-align: center;
+    }
+    .about-icon {
+      width: 72px; height: 72px;
+      border-radius: 16px;
+      background: linear-gradient(145deg, #1565C0 0%, #2196F3 100%);
       display: flex; align-items: center; justify-content: center;
-      font-size: 32px;
+      margin-bottom: 14px;
+      box-shadow: 0 4px 16px rgba(0,122,255,0.28);
     }
-    .about h2 { font-size: 20px; font-weight: 700; }
-    .about .ver { font-size: 12px; color: var(--text-2); margin: 4px 0 18px; }
-    .about p { font-size: 12px; color: var(--text-2); line-height: 1.7; }
-    .about a { color: var(--accent); text-decoration: none; }
-    .about a:hover { text-decoration: underline; }
-    .about hr { border: none; border-top: 1px solid var(--border); margin: 16px 0; }
+    .about h2 { font-size: 21px; font-weight: 700; letter-spacing: -0.3px; }
+    .about .ver { font-size: 12px; color: var(--text-2); margin: 4px 0 16px; }
+    .about-desc { font-size: 12.5px; color: var(--text-2); line-height: 1.65; margin-bottom: 22px; max-width: 360px; }
+
+    .about-actions { display: flex; gap: 10px; margin-bottom: 22px; }
+    .about-btn {
+      display: flex;
+      align-items: center;
+      gap: 7px;
+      padding: 8px 18px;
+      border-radius: var(--radius-sm);
+      border: 1px solid var(--border);
+      background: var(--surface);
+      color: var(--text);
+      font-size: 13px;
+      font-family: inherit;
+      cursor: default;
+      transition: background 0.1s;
+    }
+    .about-btn:hover { background: var(--surface-2); }
+    .about-btn.star {
+      color: #92690a;
+      border-color: #e8c469;
+      background: #fffae8;
+    }
+    .about-btn.star:hover { background: #fff4c8; }
+    @media (prefers-color-scheme: dark) {
+      .about-btn.star { background: #2a2000; border-color: #7a5200; color: #ffd966; }
+      .about-btn.star:hover { background: #332800; }
+    }
+
+    .about-links {
+      font-size: 12px;
+      color: var(--text-2);
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .about-links a { color: var(--accent); text-decoration: none; cursor: default; }
+    .about-links a:hover { text-decoration: underline; }
+    .about-links .sep { color: var(--text-3); }
   </style>
 </head>
 <body>
-<div class="layout">
+
   <nav class="tabbar">
-    <div class="nav-item"        data-tab="global">⚙️ 全局</div>
-    <div class="nav-item active" data-tab="workspaces">📁 工作区</div>
-    <div class="nav-item"        data-tab="about">ℹ️ 关于</div>
+    <div class="nav-item" data-tab="global">
+      <!-- gear -->
+      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+        <circle cx="12" cy="12" r="3"/>
+        <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>
+      </svg>
+      全局
+    </div>
+    <div class="nav-item active" data-tab="workspaces">
+      <!-- folder -->
+      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/>
+      </svg>
+      工作区
+    </div>
+    <div class="nav-item" data-tab="about">
+      <!-- info -->
+      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+        <circle cx="12" cy="12" r="10"/>
+        <path d="M12 16v-4M12 8h.01"/>
+      </svg>
+      关于
+    </div>
   </nav>
 
-  <main class="content">
+  <div class="content">
 
-    <!-- 全局设置 -->
+    <!-- ── 全局设置 ──────────────────────────────────────────────────────── -->
     <div class="tab" id="tab-global">
-      <div class="field">
-        <label>端口模式</label>
-        <div class="seg-ctrl">
-          <input type="radio" name="port_mode" id="port_mode_auto" value="auto">
-          <label for="port_mode_auto">自动</label>
-          <input type="radio" name="port_mode" id="port_mode_spec" value="spec" checked>
-          <label for="port_mode_spec">指定</label>
-        </div>
-      </div>
-      <div class="field" id="field-port">
-        <label>端口</label>
-        <input type="number" id="port" min="1024" max="65535" value="6419">
-      </div>
-      <div class="field">
-        <label>绑定地址</label>
-        <select id="host">
-          <option value="127.0.0.1">Localhost — 127.0.0.1（仅本机）</option>
-          <option value="0.0.0.0">所有网口 — 0.0.0.0（局域网可访问）</option>
-        </select>
-      </div>
-      <div class="field">
-        <label>主题</label>
-        <select id="theme">
-          <option value="auto">跟随系统 (Auto)</option>
-          <option value="light">浅色 (Light)</option>
-          <option value="dark">深色 (Dark)</option>
-        </select>
-      </div>
-      <div class="toggle-list">
-        <div class="toggle-row">
-          <div class="toggle-label">
-            <h4>在菜单栏驻留</h4>
-            <p>关闭窗口时保留菜单栏图标；取消则退出应用</p>
+
+      <div class="section">
+        <div class="section-title">服务器</div>
+        <div class="section-body">
+          <div class="pref-row">
+            <span class="pref-label">端口</span>
+            <div class="pref-control">
+              <div class="seg-ctrl">
+                <input type="radio" name="port_mode" id="port_mode_auto" value="auto">
+                <label for="port_mode_auto">自动</label>
+                <input type="radio" name="port_mode" id="port_mode_spec" value="spec" checked>
+                <label for="port_mode_spec">指定</label>
+              </div>
+              <input type="number" id="port" min="1024" max="65535" value="6419">
+            </div>
           </div>
-          <label class="switch">
-            <input type="checkbox" id="tray_resident">
-            <div class="switch-track"></div>
-          </label>
+          <div class="pref-row">
+            <span class="pref-label">绑定地址</span>
+            <div class="pref-control">
+              <select id="host" style="width:220px">
+                <option value="127.0.0.1">127.0.0.1 — 仅本机</option>
+                <option value="0.0.0.0">0.0.0.0 — 局域网可访问</option>
+              </select>
+            </div>
+          </div>
         </div>
       </div>
-      <div class="field" style="margin-top:14px">
-        <label>共享注释数据库路径</label>
-        <input type="text" id="db_path" placeholder="默认: ~/.markon/annotation.sqlite">
+
+      <div class="section">
+        <div class="section-title">外观</div>
+        <div class="section-body">
+          <div class="pref-row">
+            <span class="pref-label">主题</span>
+            <div class="pref-control">
+              <select id="theme" style="width:150px">
+                <option value="auto">跟随系统</option>
+                <option value="light">浅色</option>
+                <option value="dark">深色</option>
+              </select>
+            </div>
+          </div>
+        </div>
       </div>
+
+      <div class="section">
+        <div class="section-title">行为</div>
+        <div class="section-body">
+          <div class="pref-row">
+            <div class="pref-label">
+              菜单栏驻留
+              <small>关闭窗口时隐藏而非退出，通过菜单栏图标唤起</small>
+            </div>
+            <label class="switch">
+              <input type="checkbox" id="tray_resident">
+              <div class="switch-track"></div>
+            </label>
+          </div>
+        </div>
+      </div>
+
+      <div class="section">
+        <div class="section-title">数据库</div>
+        <div class="section-body">
+          <div class="pref-row">
+            <div class="pref-label">
+              共享注释路径
+              <small>用于多端同步注释与 Viewed 状态（SQLite）</small>
+            </div>
+            <div class="pref-control-full" style="margin-left:16px; max-width:220px">
+              <input type="text" id="db_path" placeholder="默认路径" style="width:100%">
+            </div>
+          </div>
+        </div>
+      </div>
+
     </div>
 
-    <!-- 工作区 -->
+    <!-- ── 工作区 ────────────────────────────────────────────────────────── -->
     <div class="tab active" id="tab-workspaces">
       <div class="ws-list" id="ws-list"></div>
       <div class="ws-add">
-        <input type="text" id="ws-path-input" placeholder="输入目录路径…">
+        <input type="text" id="ws-path-input" placeholder="输入目录路径，回车或点击添加…">
         <button class="btn btn-primary" id="ws-add-btn">添加</button>
       </div>
     </div>
 
-    <!-- 关于 -->
+    <!-- ── 关于 ──────────────────────────────────────────────────────────── -->
     <div class="tab" id="tab-about">
       <div class="about">
-        <div class="about-logo">📝</div>
+
+        <div class="about-icon">
+          <!-- Markdown badge icon, white fill -->
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="2 4 28 24" width="48" height="40">
+            <path fill="white" fill-rule="evenodd"
+              d="M11 4a9 9 0 0 0-9 9v6a9 9 0 0 0 9 9h10a9 9 0 0 0 9-9v-6a9 9 0 0 0-9-9zm4.707 8.293a.997.997 0 0 1 .293.698V19a1 1 0 1 1-2 0v-3.586l-2.293 2.293a1 1 0 0 1-1.414 0L8 15.414V19a1 1 0 1 1-2 0v-6a.997.997 0 0 1 1-1 .997.997 0 0 1 .707.293L11 15.586l3.293-3.293a.997.997 0 0 1 .704-.293h.006c.255 0 .51.098.704.293zM23 13a1 1 0 1 0-2 0v4.006l-1.427-.997a1 1 0 0 0-1.146 1.64l3 2.095a1 1 0 0 0 1.124.015l3.172-2.096a1 1 0 0 0-1.103-1.669L23 17.065z"
+              clip-rule="evenodd"/>
+          </svg>
+        </div>
+
         <h2>Markon</h2>
-        <div class="ver" id="ver-label">v0.7.1</div>
-        <p>A lightweight Markdown renderer<br>with GitHub styling and annotations.</p>
-        <hr>
-        <p>
-          <a href="#" id="link-github">GitHub</a>
-          &nbsp;·&nbsp;
-          <a href="#" id="link-license">Apache-2.0</a>
-          &nbsp;·&nbsp;
-          作者: kookyleo
+        <div class="ver" id="ver-label">v0.8.0</div>
+
+        <p class="about-desc">
+          轻量级 Markdown 渲染器，GitHub 风格排版，<br>
+          支持全文搜索、批注与多端注释同步。
         </p>
+
+        <div class="about-actions">
+          <button class="about-btn star" id="btn-star">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
+              <path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/>
+            </svg>
+            Star 支持项目
+          </button>
+          <button class="about-btn issue" id="btn-issue">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <circle cx="12" cy="12" r="10"/>
+              <line x1="12" y1="8" x2="12" y2="12"/>
+              <line x1="12" y1="16" x2="12.01" y2="16"/>
+            </svg>
+            提交反馈
+          </button>
+        </div>
+
+        <div class="about-links">
+          <a href="#" id="link-github">GitHub</a>
+          <span class="sep">·</span>
+          <a href="#" id="link-license">Apache-2.0</a>
+          <span class="sep">·</span>
+          <span>kookyleo</span>
+        </div>
+
       </div>
     </div>
 
-  </main>
-</div>
+  </div><!-- .content -->
 
 <script type="module">
   const { invoke } = window.__TAURI__.core;
 
-  // ── Tab navigation ────────────────────────────────────────────────────────
+  // ── Tab navigation ──────────────────────────────────────────────────────
   document.querySelectorAll('.nav-item').forEach(item => {
     item.addEventListener('click', () => {
       document.querySelectorAll('.nav-item').forEach(i => i.classList.remove('active'));
@@ -349,9 +569,9 @@
     });
   });
 
-  // ── Global settings ───────────────────────────────────────────────────────
+  // ── Global settings ─────────────────────────────────────────────────────
   function applyPortMode(mode) {
-    document.getElementById('field-port').style.display = mode === 'spec' ? '' : 'none';
+    document.getElementById('port').style.display = mode === 'spec' ? '' : 'none';
   }
 
   async function loadSettings() {
@@ -368,12 +588,12 @@
 
   async function saveSettings() {
     const settings = {
-      port_mode:         document.querySelector('input[name="port_mode"]:checked')?.value ?? 'spec',
-      port:              parseInt(document.getElementById('port').value) || 6419,
-      host:              document.getElementById('host').value,
-      theme:             document.getElementById('theme').value,
-      db_path:           document.getElementById('db_path').value || null,
-      workspaces:        [],  // workspaces managed separately
+      port_mode: document.querySelector('input[name="port_mode"]:checked')?.value ?? 'spec',
+      port:      parseInt(document.getElementById('port').value) || 6419,
+      host:      document.getElementById('host').value,
+      theme:     document.getElementById('theme').value,
+      db_path:   document.getElementById('db_path').value || null,
+      workspaces: [],  // preserved by Rust command; managed via add/remove/update
     };
     await invoke('save_settings', { settings });
   }
@@ -381,66 +601,106 @@
   ['port', 'host', 'theme', 'db_path'].forEach(id =>
     document.getElementById(id).addEventListener('change', saveSettings)
   );
-  document.getElementById('tray_resident').addEventListener('change', e => {
-    invoke('set_tray_resident', { value: e.target.checked });
-  });
   document.querySelectorAll('input[name="port_mode"]').forEach(radio => {
     radio.addEventListener('change', () => { applyPortMode(radio.value); saveSettings(); });
   });
+  document.getElementById('tray_resident').addEventListener('change', e => {
+    invoke('set_tray_resident', { value: e.target.checked });
+  });
 
-  // ── Workspace management ──────────────────────────────────────────────────
+  // ── Workspace list ──────────────────────────────────────────────────────
   async function refreshWorkspaces() {
     const workspaces = await invoke('get_workspaces');
     const list = document.getElementById('ws-list');
     list.innerHTML = '';
+
+    if (workspaces.length === 0) {
+      list.innerHTML = `
+        <div class="empty-state">
+          <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.4">
+            <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/>
+          </svg>
+          <p>尚无工作区</p>
+          <small>在下方输入目录路径，或从 Finder 中打开文件夹</small>
+        </div>`;
+      return;
+    }
+
     workspaces.forEach(ws => {
       const card = document.createElement('div');
       card.className = 'ws-card';
       card.dataset.id = ws.id;
+
+      const flagDefs = [
+        { key: 'search',     label: ws.enable_search && ws.search_ready ? '搜索 ✓' : '搜索', checked: ws.enable_search },
+        { key: 'viewed',     label: 'Viewed',   checked: ws.enable_viewed },
+        { key: 'edit',       label: '编辑',     checked: ws.enable_edit },
+        { key: 'annotation', label: '共享注释', checked: ws.shared_annotation },
+      ];
+
+      const flagsHtml = flagDefs.map(f =>
+        `<label class="ws-flag ${f.checked ? 'checked' : ''}">
+          <input type="checkbox" data-flag="${f.key}" ${f.checked ? 'checked' : ''}>
+          ${f.label}
+        </label>`
+      ).join('');
+
       card.innerHTML = `
-        <div class="ws-card-header">
-          <span class="ws-path">${ws.path}</span>
-          <button class="btn btn-danger" style="padding:3px 10px;font-size:11px">移除</button>
+        <div class="ws-card-top">
+          <svg class="ws-folder-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/>
+          </svg>
+          <div class="ws-info">
+            <div class="ws-path">${ws.path}</div>
+            <div class="ws-url">${ws.url}</div>
+          </div>
+          <div class="ws-card-actions">
+            <button class="ws-open-btn">打开</button>
+            <button class="ws-remove-btn" title="移除">×</button>
+          </div>
         </div>
-        <a class="ws-url" href="#">${ws.url}</a>
-        <div class="ws-toggles">
-          <label class="ws-toggle"><input type="checkbox" data-flag="search" ${ws.enable_search ? 'checked' : ''}> 搜索${ws.search_ready ? '✓' : '…'}</label>
-          <label class="ws-toggle"><input type="checkbox" data-flag="viewed" ${ws.enable_viewed ? 'checked' : ''}> Viewed</label>
-          <label class="ws-toggle"><input type="checkbox" data-flag="edit" ${ws.enable_edit ? 'checked' : ''}> 编辑</label>
-          <label class="ws-toggle"><input type="checkbox" data-flag="annotation" ${ws.shared_annotation ? 'checked' : ''}> 共享注释</label>
-        </div>
+        <div class="ws-flags-row">${flagsHtml}</div>
       `;
-      // Open URL
-      card.querySelector('.ws-url').addEventListener('click', e => {
-        e.preventDefault();
+
+      // Open in browser
+      card.querySelector('.ws-open-btn').addEventListener('click', () => {
         invoke('open_url', { url: ws.url });
       });
+
+      // Remove
+      card.querySelector('.ws-remove-btn').addEventListener('click', async () => {
+        await invoke('remove_workspace', { id: ws.id });
+        refreshWorkspaces();
+      });
+
       // Toggle flags
-      card.querySelectorAll('.ws-toggle input').forEach(cb => {
+      card.querySelectorAll('.ws-flag input').forEach(cb => {
         cb.addEventListener('change', async () => {
-          const checks = card.querySelectorAll('.ws-toggle input');
+          const checks = card.querySelectorAll('.ws-flag input');
           try {
             await invoke('update_workspace', {
               id: ws.id,
-              enableSearch:      checks[0].checked,
-              enableViewed:      checks[1].checked,
-              enableEdit:        checks[2].checked,
-              sharedAnnotation:  checks[3].checked,
+              enableSearch:     checks[0].checked,
+              enableViewed:     checks[1].checked,
+              enableEdit:       checks[2].checked,
+              sharedAnnotation: checks[3].checked,
             });
+            // Update label style immediately
+            checks.forEach(c => {
+              c.closest('.ws-flag').classList.toggle('checked', c.checked);
+            });
+            // Re-render to update search_ready indicator
             refreshWorkspaces();
           } catch (e) { alert('更新失败: ' + e); }
         });
       });
-      // Remove
-      card.querySelector('.btn-danger').addEventListener('click', async () => {
-        await invoke('remove_workspace', { id: ws.id });
-        refreshWorkspaces();
-      });
+
       list.appendChild(card);
     });
   }
 
-  document.getElementById('ws-add-btn').addEventListener('click', async () => {
+  // Add workspace
+  async function addWorkspace() {
     const path = document.getElementById('ws-path-input').value.trim();
     if (!path) return;
     try {
@@ -456,9 +716,20 @@
     } catch (e) {
       alert('添加失败: ' + e);
     }
+  }
+
+  document.getElementById('ws-add-btn').addEventListener('click', addWorkspace);
+  document.getElementById('ws-path-input').addEventListener('keydown', e => {
+    if (e.key === 'Enter') addWorkspace();
   });
 
-  // ── About links ───────────────────────────────────────────────────────────
+  // ── About ───────────────────────────────────────────────────────────────
+  document.getElementById('btn-star').addEventListener('click', () => {
+    invoke('open_url', { url: 'https://github.com/kookyleo/markon' });
+  });
+  document.getElementById('btn-issue').addEventListener('click', () => {
+    invoke('open_url', { url: 'https://github.com/kookyleo/markon/issues/new/choose' });
+  });
   document.getElementById('link-github').addEventListener('click', e => {
     e.preventDefault();
     invoke('open_url', { url: 'https://github.com/kookyleo/markon' });
@@ -468,10 +739,9 @@
     invoke('open_url', { url: 'https://github.com/kookyleo/markon/blob/main/LICENSE' });
   });
 
-  // ── Init ──────────────────────────────────────────────────────────────────
+  // ── Init ────────────────────────────────────────────────────────────────
   loadSettings();
   refreshWorkspaces();
-  // Refresh workspace list whenever the window regains focus (e.g. after Finder open).
   window.addEventListener('focus', refreshWorkspaces);
 </script>
 </body>

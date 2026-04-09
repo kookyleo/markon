@@ -12,6 +12,11 @@ pub fn get_settings(state: State<AppState>) -> AppSettings {
 
 #[tauri::command]
 pub fn save_settings(settings: AppSettings, state: State<AppState>) -> Result<(), String> {
+    // Preserve existing workspaces — they are managed separately via add/remove/update commands.
+    let existing_workspaces = state.settings.lock().unwrap().workspaces.clone();
+    let mut settings = settings;
+    settings.workspaces = existing_workspaces;
+
     settings.save()?;
     let port = if settings.port_mode == PortMode::Auto { 0 } else { settings.port };
     let config = settings.to_server_config(port);
