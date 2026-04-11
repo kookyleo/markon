@@ -64,7 +64,7 @@ fn update_tray_language(app: &tauri::AppHandle, language: &str) {
     let i18n: serde_json::Value = serde_json::from_str(
         &strip_json5_comments(i18n_text)
     ).unwrap_or_default();
-    let label_settings = i18n["tray.settings"].as_str().unwrap_or("Settings…");
+    let label_settings = i18n["tray.show"].as_str().unwrap_or("Settings…");
     let label_quit = i18n["tray.quit"].as_str().unwrap_or("Quit Markon");
 
     if let Some(tray) = app.tray_by_id("main") {

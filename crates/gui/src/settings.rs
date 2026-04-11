@@ -49,6 +49,12 @@ pub struct AppSettings {
     /// UI language: "auto" (follow system), "zh", "en".
     #[serde(default)]
     pub language: String,
+    /// Browser page theme: "auto" (follow GUI), "light", "dark".
+    #[serde(default)]
+    pub web_theme: String,
+    /// Browser page language: "auto" (follow GUI), "zh", "en".
+    #[serde(default)]
+    pub web_language: String,
     pub db_path: Option<String>,
     pub workspaces: Vec<WorkspaceSettings>,
     /// Whether the app stays resident in the menu bar (close hides; false = close exits).
@@ -81,6 +87,8 @@ impl Default for AppSettings {
             host: "127.0.0.1".to_string(),
             theme: "auto".to_string(),
             language: "auto".to_string(),
+            web_theme: "auto".to_string(),
+            web_language: "auto".to_string(),
             db_path: None,
             workspaces: vec![],
             tray_resident: true,
@@ -149,10 +157,22 @@ impl AppSettings {
         // DB is activated if any workspace enables shared annotation.
         let shared_annotation = initial_workspaces.iter().any(|w| w.shared_annotation);
 
+        // "auto" for web settings → inherit from GUI settings.
+        let effective_web_theme = if self.web_theme == "auto" || self.web_theme.is_empty() {
+            self.theme.clone()
+        } else {
+            self.web_theme.clone()
+        };
+        let effective_web_lang = if self.web_language == "auto" || self.web_language.is_empty() {
+            self.language.clone()
+        } else {
+            self.web_language.clone()
+        };
+
         ServerConfig {
             host: self.host.clone(),
             port,
-            theme: self.theme.clone(),
+            theme: effective_web_theme,
             qr: None,
             open_browser: None,
             shared_annotation,
@@ -161,6 +181,7 @@ impl AppSettings {
             bound_listener: None,
             registry: None,
             management_token: None,
+            language: Some(effective_web_lang),
         }
     }
 }

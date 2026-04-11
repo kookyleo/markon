@@ -713,6 +713,26 @@
               </select>
             </div>
           </div>
+          <div class="pref-row">
+            <span class="pref-label" data-i18n="pref.web.theme"></span>
+            <div class="pref-control">
+              <select id="web_theme" style="width:150px">
+                <option value="auto" data-i18n="web.auto"></option>
+                <option value="light" data-i18n="theme.light"></option>
+                <option value="dark"  data-i18n="theme.dark"></option>
+              </select>
+            </div>
+          </div>
+          <div class="pref-row">
+            <span class="pref-label" data-i18n="pref.web.lang"></span>
+            <div class="pref-control">
+              <select id="web_language" style="width:150px">
+                <option value="auto" data-i18n="web.auto"></option>
+                <option value="zh">中文</option>
+                <option value="en">English</option>
+              </select>
+            </div>
+          </div>
         </div>
       </div>
 
@@ -1037,6 +1057,8 @@
     document.getElementById('host').value = s.host;
     document.getElementById('theme').value = s.theme;
     document.getElementById('language').value = s.language ?? 'auto';
+    document.getElementById('web_theme').value = s.web_theme ?? 'auto';
+    document.getElementById('web_language').value = s.web_language ?? 'auto';
     updateDbPathDisplay(s.db_path ?? '');
     document.getElementById('tray_resident').checked = s.tray_resident ?? true;
     document.getElementById('default_search').checked = s.default_search ?? true;
@@ -1054,6 +1076,8 @@
       host:      document.getElementById('host').value,
       theme:     document.getElementById('theme').value,
       language:  document.getElementById('language').value,
+      web_theme: document.getElementById('web_theme').value,
+      web_language: document.getElementById('web_language').value,
       db_path:   currentDbPath || null,
       default_search: document.getElementById('default_search').checked,
       default_viewed: document.getElementById('default_viewed').checked,
@@ -1107,6 +1131,9 @@
     liveApply.language(e.target.value, systemLocale);
     saveSettings();
   });
+  ['web_theme', 'web_language'].forEach(id =>
+    document.getElementById(id).addEventListener('change', saveSettings)
+  );
   document.querySelectorAll('input[name="port_mode"]').forEach(radio => {
     radio.addEventListener('change', () => {
       liveApply.port_mode(radio.value);

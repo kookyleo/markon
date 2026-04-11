@@ -514,7 +514,7 @@
     {% if i18n_json %}<script>
     window.__MARKON_I18N__ = (function(){
         var all = {{ i18n_json | safe }};
-        var lang = (navigator.language || 'en').toLowerCase().startsWith('zh') ? 'zh' : 'en';
+        var lang = "{{ i18n_lang | default(value='en') }}";
         var dict = all[lang] || all.en;
         return { lang: lang, t: function(k) { return dict[k] || all.en[k] || k; } };
     })();

@@ -23,7 +23,7 @@ use tokio::sync::broadcast;
 use crate::assets::{CssAssets, IconAssets, JsAssets, Templates};
 use crate::markdown::MarkdownRenderer;
 use crate::search::{SearchQuery, SearchResult};
-use crate::workspace::{generate_token, random_salt, ServerLock, WorkspaceConfig, WorkspaceEntry, WorkspaceRegistry};
+use crate::workspace::{generate_token, ServerLock, WorkspaceConfig, WorkspaceEntry, WorkspaceRegistry};
 
 /// Initial workspace for the server (one per CLI path / GUI workspace entry).
 pub struct WorkspaceInit {
@@ -55,6 +55,8 @@ pub struct ServerConfig {
     pub registry: Option<Arc<WorkspaceRegistry>>,
     /// Management API token. None = auto-generate and write to lock file.
     pub management_token: Option<String>,
+    /// UI language override: "zh", "en", or None (auto-detect via sys_locale).
+    pub language: Option<String>,
 }
 
 #[derive(Clone)]
@@ -68,6 +70,8 @@ pub struct AppState {
     pub management_token: Arc<String>,
     /// Pre-built i18n JSON string for injection into templates.
     pub i18n_json: Arc<String>,
+    /// Resolved UI language ("zh" or "en").
+    pub i18n_lang: Arc<String>,
 }
 
 /// Strip `// ...` line comments from JSON5 text so serde_json can parse it.
@@ -86,6 +90,17 @@ fn load_i18n() -> String {
         &strip_json5_comments(include_str!("../../../i18n/en.json5"))
     ).unwrap_or_default();
     serde_json::json!({"zh": zh, "en": en}).to_string()
+}
+
+fn detect_lang(override_lang: &Option<String>) -> String {
+    match override_lang.as_deref() {
+        Some("zh") => "zh".into(),
+        Some("en") => "en".into(),
+        _ => {
+            let locale = sys_locale::get_locale().unwrap_or_default();
+            if locale.to_lowercase().starts_with("zh") { "zh".into() } else { "en".into() }
+        }
+    }
 }
 
 fn print_compact_qr(data: &str) -> Result<(), Box<dyn std::error::Error>> {
@@ -141,6 +156,7 @@ pub async fn start(config: ServerConfig) -> Result<(), String> {
         bound_listener,
         registry,
         management_token,
+        language,
     } = config;
 
     // Initialize Tera template engine from embedded resources.
@@ -198,7 +214,7 @@ pub async fn start(config: ServerConfig) -> Result<(), String> {
     };
 
     // Build workspace registry and register initial workspaces.
-    let effective_salt = salt.unwrap_or_else(random_salt);
+    let effective_salt = salt.unwrap_or_else(|| format!("markon:{port}"));
     let registry = registry.unwrap_or_else(|| Arc::new(WorkspaceRegistry::new(effective_salt)));
 
     // Track first workspace's URL path for browser/QR.
@@ -250,6 +266,7 @@ pub async fn start(config: ServerConfig) -> Result<(), String> {
         workspace_registry: registry,
         management_token: token.clone(),
         i18n_json: Arc::new(load_i18n()),
+        i18n_lang: Arc::new(detect_lang(&language)),
     };
 
     // Management API: requires loopback source IP + valid token header.
@@ -849,6 +866,7 @@ fn render_markdown_file(
             }
 
             context.insert("i18n_json", state.i18n_json.as_str());
+            context.insert("i18n_lang", state.i18n_lang.as_str());
 
             match state.tera.render("layout.html", &context) {
                 Ok(html) => Html(html).into_response(),
@@ -873,6 +891,7 @@ fn render_markdown_file(
             context.insert("show_back_link", &false);
             context.insert("has_mermaid", &false);
             context.insert("i18n_json", state.i18n_json.as_str());
+            context.insert("i18n_lang", state.i18n_lang.as_str());
 
             match state.tera.render("layout.html", &context) {
                 Ok(html) => Html(html).into_response(),
@@ -998,6 +1017,7 @@ fn render_directory_listing(
     context.insert("parent_link", &parent_link);
     context.insert("enable_search", &ws.enable_search);
     context.insert("i18n_json", state.i18n_json.as_str());
+            context.insert("i18n_lang", state.i18n_lang.as_str());
 
     match state.tera.render("directory.html", &context) {
         Ok(html) => Html(html).into_response(),

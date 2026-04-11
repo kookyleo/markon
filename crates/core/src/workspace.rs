@@ -5,7 +5,7 @@ use std::{
     collections::HashMap,
     path::PathBuf,
     sync::{
-        atomic::{AtomicBool, AtomicU32, Ordering},
+        atomic::{AtomicBool, Ordering},
         Arc, Mutex, RwLock,
     },
 };
@@ -59,28 +59,21 @@ pub struct WorkspaceInfo {
 
 pub struct WorkspaceRegistry {
     inner: RwLock<HashMap<String, Arc<WorkspaceEntry>>>,
-    counter: AtomicU32,
     pub salt: String,
 }
 
-// ID = first 16 hex chars of SipHash(salt ++ counter).
-fn hash_id(counter: u32, salt: &str) -> String {
+/// Stable workspace ID: hash(path + salt).
+/// When salt includes the port (default), the same directory on the same port
+/// always produces the same ID — bookmarks and shared links survive restarts.
+fn hash_id(path: &std::path::Path, salt: &str) -> String {
     use std::collections::hash_map::DefaultHasher;
     use std::hash::{Hash, Hasher};
     let mut h = DefaultHasher::new();
     salt.hash(&mut h);
-    counter.hash(&mut h);
+    path.hash(&mut h);
     format!("{:08x}", h.finish() as u32)
 }
 
-pub fn random_salt() -> String {
-    use std::time::{SystemTime, UNIX_EPOCH};
-    let nanos = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .map(|d| d.subsec_nanos())
-        .unwrap_or(0);
-    format!("{:08x}{:08x}", nanos, std::process::id())
-}
 
 /// Generate a hard-to-guess management token from timestamp + pid entropy.
 pub fn generate_token() -> String {
@@ -100,14 +93,12 @@ impl WorkspaceRegistry {
     pub fn new(salt: String) -> Self {
         Self {
             inner: RwLock::new(HashMap::new()),
-            counter: AtomicU32::new(0),
             salt,
         }
     }
 
     pub fn add(&self, config: WorkspaceConfig) -> String {
-        let counter = self.counter.fetch_add(1, Ordering::SeqCst);
-        let id = hash_id(counter, &self.salt);
+        let id = hash_id(&config.path, &self.salt);
 
         let search_slot: Arc<Mutex<Option<Arc<SearchIndex>>>> = Arc::new(Mutex::new(None));
 

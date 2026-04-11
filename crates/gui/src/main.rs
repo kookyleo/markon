@@ -177,7 +177,7 @@ fn main() {
             let i18n_json: serde_json::Value = serde_json::from_str(
                 &commands::strip_json5_comments(i18n_text)
             ).unwrap_or_default();
-            let label_settings = i18n_json["tray.settings"]
+            let label_settings = i18n_json["tray.show"]
                 .as_str().unwrap_or("Settings…").to_string();
             let label_quit = i18n_json["tray.quit"]
                 .as_str().unwrap_or("Quit Markon").to_string();

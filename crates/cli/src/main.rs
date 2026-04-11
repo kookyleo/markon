@@ -236,6 +236,7 @@ async fn main() {
         bound_listener: None,
         registry: None,
         management_token: None,
+        language: None,
     })
     .await
     {

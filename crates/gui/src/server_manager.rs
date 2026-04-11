@@ -1,5 +1,5 @@
 use markon_core::server::ServerConfig;
-use markon_core::workspace::{random_salt, WorkspaceRegistry};
+use markon_core::workspace::WorkspaceRegistry;
 use std::sync::Arc;
 
 pub struct ServerManager {
@@ -18,15 +18,15 @@ impl ServerManager {
             thread: None,
             port: 0,
             running: false,
-            registry: Arc::new(WorkspaceRegistry::new(random_salt())),
+            registry: Arc::new(WorkspaceRegistry::new("markon:0".into())),
         }
     }
 
     pub fn start(&mut self, mut config: ServerConfig) {
         self.stop();
 
-        // Fresh registry each time the server restarts (new salt → new IDs).
-        let salt = markon_core::workspace::random_salt();
+        // Stable salt based on port — same dir+port = same workspace ID.
+        let salt = format!("markon:{}", config.port);
         self.registry = Arc::new(WorkspaceRegistry::new(salt.clone()));
         config.salt = Some(salt);
         config.registry = Some(self.registry.clone());
