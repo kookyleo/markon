@@ -69,6 +69,10 @@ pub struct AppSettings {
     pub default_edit: bool,
     #[serde(default)]
     pub default_shared_annotation: bool,
+    /// Custom CSS variable overrides for browser page styling.
+    /// Keys = CSS variable names without `--markon-` prefix, values = CSS values.
+    #[serde(default)]
+    pub web_styles: std::collections::HashMap<String, String>,
     /// Custom keyboard shortcut overrides. Keys = shortcut name (e.g. "UNDO"),
     /// values = { key, ctrl, shift } partial objects (desc is not stored).
     #[serde(default)]
@@ -100,6 +104,7 @@ impl Default for AppSettings {
             default_viewed: true,
             default_edit: false,
             default_shared_annotation: false,
+            web_styles: std::collections::HashMap::new(),
             shortcuts: std::collections::HashMap::new(),
             auto_update: true,
             window_width: None,
@@ -187,6 +192,14 @@ impl AppSettings {
             registry: None,
             management_token: None,
             language: Some(effective_web_lang),
+            styles_css: if self.web_styles.is_empty() {
+                None
+            } else {
+                Some(self.web_styles.iter()
+                    .map(|(k, v)| format!("--markon-{}: {};", k, v))
+                    .collect::<Vec<_>>()
+                    .join(" "))
+            },
             shortcuts_json: if self.shortcuts.is_empty() {
                 None
             } else {

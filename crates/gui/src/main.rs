@@ -276,6 +276,8 @@ fn main() {
             commands::pick_db_path,
             commands::check_for_update,
             commands::get_i18n,
+            commands::list_fonts,
+            commands::star_repo,
         ])
         .build(tauri::generate_context!())
         .expect("error building markon-gui");

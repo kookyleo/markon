@@ -30,18 +30,27 @@
     "theme.dark":      "深色",
     "pref.lang":       "面板语言",
     "lang.auto":       "跟随系统",
-    "pref.web.theme":  "内容页主题",
-    "pref.web.lang":   "页面语言",
+    "pref.web.theme":  "阅读页主题",
+    "pref.web.lang":   "阅读页语言",
     "web.auto":        "跟随面板",
 
     // ── 全局设置 — 行为 ──────────────────────────────────────
     "sec.behavior":   "行为",
-    "pref.tray":       "菜单栏驻留",
     "pref.tray.desc":  "关闭窗口时隐藏而非退出,通过菜单栏图标唤起",
+    "sec.webstyles":        "页面样式",
+    "webstyles.reset":      "恢复默认",
+    "webstyles.ui-color":   "功能区文字",
+    "webstyles.accent":     "强调色/链接",
+    "webstyles.ui-font":    "功能区字体",
+    "webstyles.ui-font-size": "功能区字号",
+    "webstyles.heading-border": "标题分隔线",
+    "webstyles.panel-opacity": "浮动面板透明度",
+    "webstyles.toc-active-bg": "滚动位置背景",
+    "webstyles.toc-selected-border": "选中章节边框",
+
     "sec.shortcuts":        "快捷键",
     "shortcuts.reset":      "恢复默认",
     "shortcuts.record":     "按下新快捷键…",
-    "pref.autoupdate":      "自动更新",
     "pref.autoupdate.desc": "启动时检查 GitHub 上的新版本并自动安装",
 
     // ── 全局设置 — 新工作区默认功能 ──────────────────────────
@@ -53,7 +62,6 @@
 
     // ── 全局设置 — 数据库 ────────────────────────────────────
     "sec.database":   "数据库",
-    "pref.dbpath":     "数据库路径",
     "pref.dbpath.desc":"批注与已读状态的持久化存储 (SQLite)",
     "pref.dbpath.browse": "选择…",
     "pref.dbpath.clear":  "恢复默认",
@@ -88,18 +96,9 @@
     "tips.quickstart": "快速上手",
     "tips.quickstart.1": "1. 在「工作区」tab 中点击 + 按钮,选择 Markdown 文件所在目录",
     "tips.quickstart.2": "2. 点击 ↗ 图标在浏览器中查看渲染结果",
+    "tips.quickstart.help": "2.1 在浏览器页面中按下 {key} 查看完整快捷键列表,了解所有可用功能",
     "tips.quickstart.3": "3. 在「全局」tab 中配置新工作区默认启用的功能",
 
-    // ── 小贴士 — 快捷键 ──────────────────────────────────────
-    "tips.shortcuts":  "浏览器中的快捷键",
-    "tips.kbd.help":   "显示完整快捷键列表",
-    "tips.kbd.search": "打开搜索 (需启用搜索)",
-    "tips.kbd.nav":    "跳转到上/下一个标题",
-    "tips.kbd.scroll": "自动滚动阅读",
-    "tips.kbd.toc":    "切换目录面板",
-    "tips.kbd.undo":   "撤销操作",
-    "tips.kbd.annot":  "跳转到上/下一个批注",
-    "tips.kbd.mod":    "⌘",
 
     // ── 小贴士 — 命令行构建器 ────────────────────────────────
     "tips.cli":        "命令行构建器",
@@ -115,7 +114,6 @@
     "cli.edit":        "编辑",
     "cli.shared":      "共享注释",
     "cli.open":        "自动打开浏览器",
-    "cli.alias.desc":  "添加为 shell 别名,方便快速启动:",
 
     // ── 小贴士 — 桌面集成 ────────────────────────────────────
     "tips.gui":        "GUI 桌面集成",
@@ -222,9 +220,7 @@
     "web.viewed.print":     "打印",
     "web.viewed.print.tip": "打印此章节",
     "web.viewed.print.blocked":    "浏览器阻止了自动打印。\n\n点击「确定」重试打印,或点击「取消」关闭。",
-    "web.viewed.print.permission": "请在浏览器设置中允许此网站的打印权限,或使用浏览器菜单中的打印功能。",
     "web.viewed.print.popup":      "请允许弹出窗口以打印章节。\n\n或使用浏览器菜单中的「打印」功能打印整个页面。",
-    "web.viewed.print.loading":    "正在准备打印内容…",
     "web.viewed.print.failed":     "无法打开打印窗口。请使用浏览器菜单中的「打印」功能。",
 
     // ── 快捷键面板 ───────────────────────────────────────────

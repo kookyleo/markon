@@ -238,6 +238,7 @@ async fn main() {
         management_token: None,
         language: None,
         shortcuts_json: None,
+        styles_css: None,
     })
     .await
     {

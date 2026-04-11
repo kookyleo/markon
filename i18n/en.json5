@@ -30,18 +30,27 @@
     "theme.dark":      "Dark",
     "pref.lang":       "Panel language",
     "lang.auto":       "Follow system",
-    "pref.web.theme":  "Content theme",
-    "pref.web.lang":   "Page language",
+    "pref.web.theme":  "Viewer theme",
+    "pref.web.lang":   "Viewer language",
     "web.auto":        "Follow panel",
 
     // ── General — Behavior ───────────────────────────────────
     "sec.behavior":   "Behavior",
-    "pref.tray":       "Stay in menu bar",
     "pref.tray.desc":  "Hide on window close instead of quitting; reopen via menu bar icon",
+    "sec.webstyles":        "Page styles",
+    "webstyles.reset":      "Reset to defaults",
+    "webstyles.ui-color":   "UI text color",
+    "webstyles.accent":     "Accent / links",
+    "webstyles.ui-font":    "UI font",
+    "webstyles.ui-font-size": "UI font size",
+    "webstyles.heading-border": "Heading border",
+    "webstyles.panel-opacity": "Panel opacity",
+    "webstyles.toc-active-bg": "Scroll position bg",
+    "webstyles.toc-selected-border": "Selected section border",
+
     "sec.shortcuts":        "Keyboard shortcuts",
     "shortcuts.reset":      "Reset to defaults",
     "shortcuts.record":     "Press new shortcut…",
-    "pref.autoupdate":      "Auto-update",
     "pref.autoupdate.desc": "Check GitHub for new versions on launch and install automatically",
 
     // ── General — New workspace defaults ─────────────────────
@@ -53,7 +62,6 @@
 
     // ── General — Database ───────────────────────────────────
     "sec.database":   "Database",
-    "pref.dbpath":     "Database path",
     "pref.dbpath.desc":"Persistent storage for annotations and viewed state (SQLite)",
     "pref.dbpath.browse": "Browse…",
     "pref.dbpath.clear":  "Reset",
@@ -88,18 +96,9 @@
     "tips.quickstart": "Quick start",
     "tips.quickstart.1": "1. Click the + button in Workspaces to add a folder with Markdown files",
     "tips.quickstart.2": "2. Click the ↗ icon to view rendered output in your browser",
+    "tips.quickstart.help": "2.1 Press {key} in the browser page to see all keyboard shortcuts and available features",
     "tips.quickstart.3": "3. Configure default features for new workspaces in General",
 
-    // ── Tips — Keyboard shortcuts ────────────────────────────
-    "tips.shortcuts":  "Keyboard shortcuts (in browser)",
-    "tips.kbd.help":   "Show full shortcut list",
-    "tips.kbd.search": "Open search (requires Search enabled)",
-    "tips.kbd.nav":    "Jump to previous / next heading",
-    "tips.kbd.scroll": "Auto-scroll reading",
-    "tips.kbd.toc":    "Toggle table of contents",
-    "tips.kbd.undo":   "Undo",
-    "tips.kbd.annot":  "Jump to previous / next annotation",
-    "tips.kbd.mod":    "⌘",
 
     // ── Tips — Command builder ───────────────────────────────
     "tips.cli":        "Command builder",
@@ -115,7 +114,6 @@
     "cli.edit":        "Edit",
     "cli.shared":      "Shared notes",
     "cli.open":        "Auto-open browser",
-    "cli.alias.desc":  "Add as a shell alias for quick launch:",
 
     // ── Tips — Desktop integration ───────────────────────────
     "tips.gui":        "Desktop integration",
@@ -222,9 +220,7 @@
     "web.viewed.print":     "Print",
     "web.viewed.print.tip": "Print this section",
     "web.viewed.print.blocked":    "The browser blocked auto-print.\n\nClick OK to retry, or Cancel to close.",
-    "web.viewed.print.permission": "Please allow print permissions for this site in browser settings, or use the browser menu to print.",
     "web.viewed.print.popup":      "Please allow popups to print sections.\n\nOr use the browser menu Print to print the full page.",
-    "web.viewed.print.loading":    "Preparing print content…",
     "web.viewed.print.failed":     "Could not open print window. Please use the browser menu Print.",
 
     // ── Keyboard shortcuts panel ─────────────────────────────

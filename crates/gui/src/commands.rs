@@ -385,6 +385,67 @@ pub fn get_i18n() -> serde_json::Value {
     serde_json::Value::Object(result)
 }
 
+/// List available system font families.
+#[tauri::command]
+pub fn list_fonts() -> Vec<String> {
+    let output = if cfg!(target_os = "macos") {
+        std::process::Command::new("osascript")
+            .args(["-l", "JavaScript", "-e",
+                "ObjC.import('AppKit');\
+                 var a=$.NSFontManager.sharedFontManager.availableFontFamilies;\
+                 var r=[];for(var i=0;i<a.count;i++)r.push(a.objectAtIndex(i).js);\
+                 r.sort().join('\\n');"])
+            .output()
+    } else if cfg!(target_os = "windows") {
+        std::process::Command::new("powershell")
+            .args(["-c", r#"(New-Object System.Drawing.Text.InstalledFontCollection).Families | ForEach-Object { $_.Name }"#])
+            .output()
+    } else {
+        std::process::Command::new("fc-list")
+            .args([":", "family"])
+            .output()
+    };
+
+    match output {
+        Ok(o) if o.status.success() => {
+            let text = String::from_utf8_lossy(&o.stdout);
+            let mut fonts: Vec<String> = text.lines()
+                .map(|l| l.trim().to_string())
+                .filter(|l| !l.is_empty())
+                .collect();
+            fonts.sort();
+            fonts.dedup();
+            fonts
+        }
+        _ => Vec::new(),
+    }
+}
+
+// ── GitHub star via `gh` CLI ─────────────────────────────────────────────
+
+const MARKON_REPO: &str = "kookyleo/markon";
+
+/// Check if `gh` CLI is installed and authenticated.
+fn gh_available() -> bool {
+    std::process::Command::new("gh")
+        .args(["auth", "status"])
+        .output()
+        .map(|o| o.status.success())
+        .unwrap_or(false)
+}
+
+/// Star the repo via `gh` CLI. Returns true on success, false on failure.
+/// If `gh` is unavailable, the frontend should fallback to opening the repo URL in browser.
+#[tauri::command]
+pub async fn star_repo() -> bool {
+    if !gh_available() { return false; }
+    let result = tokio::process::Command::new("gh")
+        .args(["api", "-X", "PUT", &format!("user/starred/{MARKON_REPO}")])
+        .output()
+        .await;
+    matches!(result, Ok(output) if output.status.success())
+}
+
 /// Toggle tray-resident setting: persists, updates AtomicBool, and applies tray visibility.
 #[tauri::command]
 pub fn set_tray_resident(value: bool, app: tauri::AppHandle, state: State<AppState>) -> Result<(), String> {

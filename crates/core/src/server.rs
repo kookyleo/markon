@@ -59,6 +59,8 @@ pub struct ServerConfig {
     pub language: Option<String>,
     /// Custom keyboard shortcut overrides (JSON object, injected into browser pages).
     pub shortcuts_json: Option<String>,
+    /// Custom CSS variable overrides (rendered as :root { --markon-*: value }).
+    pub styles_css: Option<String>,
 }
 
 #[derive(Clone)]
@@ -76,6 +78,8 @@ pub struct AppState {
     pub i18n_lang: Arc<String>,
     /// Keyboard shortcut overrides JSON (empty string if none).
     pub shortcuts_json: Arc<String>,
+    /// CSS variable overrides string.
+    pub styles_css: Arc<String>,
 }
 
 /// Strip `// ...` line comments from JSON5 text so serde_json can parse it.
@@ -175,6 +179,7 @@ pub async fn start(config: ServerConfig) -> Result<(), String> {
         management_token,
         language,
         shortcuts_json,
+        styles_css,
     } = config;
 
     // Initialize Tera template engine from embedded resources.
@@ -286,6 +291,7 @@ pub async fn start(config: ServerConfig) -> Result<(), String> {
         i18n_json: Arc::new(load_i18n()),
         i18n_lang: Arc::new(detect_lang(&language)),
         shortcuts_json: Arc::new(shortcuts_json.unwrap_or_default()),
+        styles_css: Arc::new(styles_css.unwrap_or_default()),
     };
 
     // Management API: requires loopback source IP + valid token header.
@@ -887,6 +893,7 @@ fn render_markdown_file(
             context.insert("i18n_json", state.i18n_json.as_str());
             context.insert("i18n_lang", state.i18n_lang.as_str());
             context.insert("shortcuts_json", state.shortcuts_json.as_str());
+            context.insert("styles_css", state.styles_css.as_str());
 
             match state.tera.render("layout.html", &context) {
                 Ok(html) => Html(html).into_response(),
@@ -913,6 +920,7 @@ fn render_markdown_file(
             context.insert("i18n_json", state.i18n_json.as_str());
             context.insert("i18n_lang", state.i18n_lang.as_str());
             context.insert("shortcuts_json", state.shortcuts_json.as_str());
+            context.insert("styles_css", state.styles_css.as_str());
 
             match state.tera.render("layout.html", &context) {
                 Ok(html) => Html(html).into_response(),
@@ -1040,6 +1048,7 @@ fn render_directory_listing(
     context.insert("i18n_json", state.i18n_json.as_str());
             context.insert("i18n_lang", state.i18n_lang.as_str());
             context.insert("shortcuts_json", state.shortcuts_json.as_str());
+            context.insert("styles_css", state.styles_css.as_str());
 
     match state.tera.render("directory.html", &context) {
         Ok(html) => Html(html).into_response(),

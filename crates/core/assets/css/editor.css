@@ -1,4 +1,49 @@
 /* ============================================================
+   MARKON CONFIGURABLE CSS VARIABLES
+   Override via Settings → Web styles, injected as :root vars.
+   ============================================================ */
+:root {
+    /* Functional UI text */
+    --markon-ui-font: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+    --markon-ui-font-size: 0.8125rem;
+    --markon-ui-color: #656d76;
+    --markon-ui-color-hover: #24292f;
+    /* Accent / links */
+    --markon-accent: #0969da;
+    --markon-accent-hover: #0550ae;
+    /* Heading border */
+    --markon-heading-border: #d1d9e0b3;
+    /* Toolbar / section controls */
+    --markon-toolbar-bg: transparent;
+    --markon-toolbar-border: transparent;
+    /* Section collapse */
+    --markon-collapsed-opacity: 0.6;
+    --markon-collapsed-opacity-hover: 0.85;
+    /* Floating panels (TOC, etc.) */
+    --markon-panel-opacity: 0.9;
+    /* TOC states */
+    --markon-toc-active-bg: rgba(9, 105, 218, 0.1);
+    --markon-toc-selected-border: #0969da;
+}
+
+@media (prefers-color-scheme: dark) {
+    :root {
+        --markon-toc-active-bg: rgba(88, 166, 255, 0.15);
+        --markon-toc-selected-border: #58a6ff;
+    }
+}
+
+@media (prefers-color-scheme: dark) {
+    :root {
+        --markon-ui-color: #8b949e;
+        --markon-ui-color-hover: #c9d1d9;
+        --markon-accent: #58a6ff;
+        --markon-accent-hover: #79c0ff;
+        --markon-heading-border: #30363d;
+    }
+}
+
+/* ============================================================
    SELECTION POPOVER
    Floating toolbar for text annotation actions
    ============================================================ */
@@ -571,9 +616,10 @@
 
 .viewed-checkbox-label {
     margin-left: 0.75rem;
-    font-size: 0.875rem;
+    font-size: var(--markon-ui-font-size);
+    font-family: var(--markon-ui-font);
     font-weight: normal;
-    color: #656d76;
+    color: var(--markon-ui-color);
     cursor: pointer;
     -webkit-user-select: none;
     -moz-user-select: none;
@@ -607,8 +653,9 @@
 
 /* Common section action button style */
 .section-action {
-    font-size: 0.8125rem;
-    color: #656d76;
+    font-size: var(--markon-ui-font-size);
+    font-family: var(--markon-ui-font);
+    color: var(--markon-ui-color);
     font-weight: normal;
     cursor: pointer;
     margin-left: 0.5em;
@@ -635,8 +682,8 @@
 /* Section action separator */
 .section-action-separator {
     margin: 0 0.25rem;
-    font-size: 0.8125rem;
-    color: #656d76;
+    font-size: var(--markon-ui-font-size);
+    color: var(--markon-ui-color);
     -webkit-user-select: none;
     -moz-user-select: none;
     -ms-user-select: none;
@@ -653,13 +700,13 @@
 /* Collapsed section styles */
 .section-collapsed {
     cursor: pointer;
-    opacity: 0.6;
+    opacity: var(--markon-collapsed-opacity);
     transition: opacity 0.2s ease;
     position: relative;
 }
 
 .section-collapsed:hover {
-    opacity: 0.85;
+    opacity: var(--markon-collapsed-opacity-hover);
 }
 
 /* Expand/collapse toggle button - inherits from .section-action */
@@ -720,9 +767,10 @@
 
 .viewed-toolbar {
     margin-left: 0.75rem;
-    font-size: 0.875rem;
+    font-size: var(--markon-ui-font-size);
+    font-family: var(--markon-ui-font);
     font-weight: normal;
-    color: #656d76;
+    color: var(--markon-ui-color);
     -webkit-user-select: none;
     -moz-user-select: none;
     -ms-user-select: none;
@@ -735,7 +783,7 @@
 }
 
 .viewed-toolbar a {
-    color: #0969da;
+    color: var(--markon-accent);
     text-decoration: none;
     cursor: pointer;
     padding: 2px 4px;
@@ -751,21 +799,10 @@
 .viewed-toolbar-separator {
     color: #8b949e;
     margin: 0 4px;
-    font-size: 0.8125rem;
+    font-size: var(--markon-ui-font-size);
 }
 
-/* Dark theme adjustments for viewed toolbar */
-[data-theme="dark"] .viewed-toolbar {
-    color: #8b949e;
-}
-
-[data-theme="dark"] .viewed-toolbar a {
-    color: #58a6ff;
-}
-
-[data-theme="dark"] .viewed-toolbar a:hover {
-    color: #79c0ff;
-}
+/* Dark theme adjustments — now handled by CSS variables above */
 
 /* ============================================================
    TOC VIEWED STATE HIGHLIGHTING

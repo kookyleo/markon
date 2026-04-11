@@ -194,7 +194,7 @@
             padding: 15px;
             border-radius: 6px;
             font-size: 0.85rem;
-            opacity: 0.9;
+            opacity: var(--markon-panel-opacity, 0.9);
         }
 
         .toc-title {
@@ -225,6 +225,15 @@
         }
 
         .toc-item a.active {
+            font-weight: 600;
+            background-color: var(--markon-toc-active-bg);
+            border-radius: 4px;
+            padding: 2px 6px;
+        }
+        /* User-selected section (click): left border accent */
+        .toc-item a.selected {
+            border-left: 3px solid var(--markon-toc-selected-border);
+            padding-left: 6px;
             font-weight: 600;
         }
 
@@ -286,9 +295,6 @@
         }
         .toc-item a.active {
             color: #58a6ff;
-            background-color: rgba(88, 166, 255, 0.15);
-            border-radius: 4px;
-            padding: 2px 6px;
         }
         {% elif theme == "light" %}
         .toc-title {
@@ -302,9 +308,6 @@
         }
         .toc-item a.active {
             color: #0969da;
-            background-color: rgba(9, 105, 218, 0.1);
-            border-radius: 4px;
-            padding: 2px 6px;
         }
         {% else %}
         @media (prefers-color-scheme: dark) {
@@ -319,9 +322,6 @@
             }
             .toc-item a.active {
                 color: #58a6ff;
-                background-color: rgba(88, 166, 255, 0.15);
-                border-radius: 4px;
-                padding: 2px 6px;
             }
         }
         @media (prefers-color-scheme: light) {
@@ -336,9 +336,6 @@
             }
             .toc-item a.active {
                 color: #0969da;
-                background-color: rgba(9, 105, 218, 0.1);
-                border-radius: 4px;
-                padding: 2px 6px;
             }
         }
         {% endif %}
@@ -1264,6 +1261,7 @@
             }
         }
     </style>
+    {% if styles_css %}<style>:root { {{ styles_css | safe }} }</style>{% endif %}
     {% if shortcuts_json %}<script>window.__MARKON_SHORTCUTS__ = {{ shortcuts_json | safe }};</script>{% endif %}
     {% if i18n_json %}<script>
     window.__MARKON_I18N__ = (function(){
@@ -1345,7 +1343,9 @@
     <script type="module" src="/_/js/main.js"></script>
     <script src="/_/js/viewed.js"></script>
     <script>
-        // TOC active item tracking with Intersection Observer
+        // TOC dual-state tracking:
+        // 1. "active"   = scroll position (which heading is at viewport top) — blue bg
+        // 2. "selected" = user-clicked section — left border accent
         (function() {
             const toc = document.querySelector('.toc');
             if (!toc) return;
@@ -1353,107 +1353,59 @@
             const tocLinks = toc.querySelectorAll('.toc-item a');
             if (tocLinks.length === 0) return;
 
-            // Get all heading elements that have IDs
             const headings = Array.from(document.querySelectorAll('h1[id], h2[id], h3[id], h4[id], h5[id], h6[id]'));
             if (headings.length === 0) return;
 
-            // Track visible headings
-            const visibleHeadings = new Set();
-            let isUserClicking = false;
-            let clickedTargetId = null;
-
-            // Helper to update active state
-            function setActiveLink(targetId) {
-                tocLinks.forEach(link => {
-                    const href = link.getAttribute('href');
-                    if (href === '#' + targetId) {
-                        link.classList.add('active');
-                    } else {
-                        link.classList.remove('active');
+            // ── State 1: Scroll position → .active ──────────────────
+            function updateScrollActive() {
+                const scrollTop = window.scrollY + 60;
+                let activeHeading = null;
+                for (const heading of headings) {
+                    if (heading.offsetHeight === 0) continue;
+                    const top = heading.getBoundingClientRect().top + window.scrollY;
+                    if (top <= scrollTop) {
+                        activeHeading = heading;
                     }
+                }
+                tocLinks.forEach(link => {
+                    const match = activeHeading && link.getAttribute('href') === '#' + activeHeading.id;
+                    link.classList.toggle('active', !!match);
                 });
             }
 
-            // Intersection Observer to detect visible headings
-            const observer = new IntersectionObserver((entries) => {
-                // During click, ignore observer updates
-                if (isUserClicking) return;
-
-                entries.forEach(entry => {
-                    if (entry.isIntersecting) {
-                        visibleHeadings.add(entry.target);
-                    } else {
-                        visibleHeadings.delete(entry.target);
-                    }
+            let scrollRaf = null;
+            window.addEventListener('scroll', () => {
+                if (scrollRaf) return;
+                scrollRaf = requestAnimationFrame(() => {
+                    updateScrollActive();
+                    scrollRaf = null;
                 });
+            }, { passive: true });
 
-                // Find the first visible heading (topmost)
-                let activeHeading = null;
-                for (const heading of headings) {
-                    if (visibleHeadings.has(heading)) {
-                        activeHeading = heading;
-                        break;
-                    }
-                }
+            updateScrollActive();
 
-                // Update active class
-                if (activeHeading) {
-                    setActiveLink(activeHeading.id);
-                }
-            }, {
-                rootMargin: '0px 0px -85% 0px',
-                threshold: [0, 0.25, 0.5, 0.75, 1.0]
-            });
+            // ── State 2: User selection → .selected ─────────────────
+            function setSelected(targetId) {
+                tocLinks.forEach(link => {
+                    const match = link.getAttribute('href') === '#' + targetId;
+                    link.classList.toggle('selected', match);
+                });
+            }
 
-            // Observe all headings
-            headings.forEach(heading => observer.observe(heading));
-
-            // Ensure TOC clicks are instant (no smooth scroll)
+            // ── TOC click: set selected + smooth scroll ─────────────
             tocLinks.forEach(link => {
                 link.addEventListener('click', (e) => {
                     const href = link.getAttribute('href');
                     if (href && href.startsWith('#')) {
                         e.preventDefault();
+                        e.stopPropagation();
                         const targetId = href.substring(1);
                         const targetElement = document.getElementById(targetId);
                         if (targetElement) {
-                            // Lock observer updates
-                            isUserClicking = true;
-                            clickedTargetId = targetId;
-
-                            // Clear visible headings to prevent stale state
-                            visibleHeadings.clear();
-
-                            // Immediately update active state
-                            setActiveLink(targetId);
-
-                            // Direct jump, no animation
-                            window.scrollTo({
-                                top: targetElement.offsetTop - 20,
-                                behavior: 'auto'
-                            });
+                            setSelected(targetId);
+                            const targetTop = targetElement.getBoundingClientRect().top + window.scrollY - 20;
+                            window.scrollTo({ top: targetTop, behavior: 'smooth' });
                             history.pushState(null, '', href);
-
-                            // After scroll, manually update visible headings and unlock
-                            requestAnimationFrame(() => {
-                                requestAnimationFrame(() => {
-                                    // Double RAF to ensure layout is complete
-                                    // Manually check which headings are now visible
-                                    const viewportTop = window.scrollY;
-                                    const viewportBottom = viewportTop + window.innerHeight * 0.15;
-
-                                    headings.forEach(heading => {
-                                        const headingTop = heading.offsetTop;
-                                        if (headingTop >= viewportTop && headingTop <= viewportBottom) {
-                                            visibleHeadings.add(heading);
-                                        }
-                                    });
-
-                                    // Unlock observer
-                                    isUserClicking = false;
-                                    clickedTargetId = null;
-                                });
-                            });
                         }
                     }
                 });

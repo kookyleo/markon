@@ -116,24 +116,17 @@
       border-radius: var(--radius);
       border: 1px solid var(--border);
       overflow: hidden;
+      padding: 4px 0;
     }
-    .pref-row {
+    .pref-row, .style-row, .shortcut-row {
       display: flex;
       align-items: center;
       justify-content: space-between;
-      padding: 9px 14px;
-      border-bottom: 1px solid var(--border);
+      padding: 6px 14px;
       gap: 12px;
-      min-height: 40px;
+      min-height: 36px;
     }
-    .pref-row:last-child { border-bottom: none; }
-    .pref-label { font-size: 13px; color: var(--text); }
-    .pref-label small {
-      display: block;
-      font-size: 11px;
-      color: var(--text-2);
-      margin-top: 1px;
-    }
+    .pref-label, .st-name, .sc-name { font-size: 13px; color: var(--text); flex: 1; }
     .pref-control {
       display: flex;
       align-items: center;
@@ -207,7 +200,7 @@
     /* ── Segmented control ───────────────────────────────────────────────── */
     .seg-ctrl {
       display: inline-flex;
-      border: 1px solid var(--border);
+      border: 1px solid var(--accent);
       border-radius: var(--radius-sm);
       overflow: hidden;
       background: var(--bg);
@@ -447,16 +440,18 @@
     .cli-fields {
       display: flex;
       flex-wrap: wrap;
-      gap: 8px 14px;
-      padding: 12px 14px;
-      font-size: 12.5px;
-      color: var(--text-2);
+      gap: 0;
+      padding: 0;
+      font-size: 13px;
+      color: var(--text);
       align-items: center;
     }
     .cli-field {
       display: flex;
       align-items: center;
       gap: 5px;
+      padding: 6px 14px;
+      min-height: 36px;
     }
     .cli-field span { flex-shrink: 0; }
     .cli-field .req::after { content: '*'; color: var(--accent); margin-left: 2px; }
@@ -489,7 +484,8 @@
       display: flex;
       align-items: center;
       gap: 5px;
-      padding: 8px 14px;
+      padding: 6px 14px;
+      min-height: 36px;
       flex-wrap: wrap;
     }
     .cli-pill {
@@ -531,19 +527,26 @@
     .cli-term-row code { flex: 1; min-width: 0; color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; -webkit-user-select: text; user-select: text; }
     .cli-term-row .tips-copy { position: static; transform: none; width: 22px; height: 22px; }
 
+    /* Web styles editor */
+    .style-row input[type="color"] {
+      width: 28px; height: 22px; border: 1px solid var(--border); border-radius: 4px;
+      padding: 0; cursor: pointer; background: var(--surface);
+    }
+    .style-row input[type="text"] {
+      width: 100px; padding: 2px 6px; border: 1px solid var(--border); border-radius: 4px;
+      background: var(--bg); color: var(--text); font-size: 11px;
+      font-family: 'SF Mono', Monaco, Menlo, monospace;
+    }
+    .style-row select {
+      padding: 2px 6px; border: 1px solid var(--border); border-radius: 4px;
+      background: var(--bg); color: var(--text); font-size: 11px;
+    }
+
+    /* Slim range sliders */
+    input[type="range"] { height: 2px; -webkit-appearance: none; appearance: none; background: var(--border); border-radius: 1px; outline: none; }
+    input[type="range"]::-webkit-slider-thumb { -webkit-appearance: none; width: 12px; height: 12px; border-radius: 50%; background: var(--accent); cursor: pointer; border: none; }
+
     /* Shortcuts editor */
-    .shortcut-row {
-      display: flex;
-      align-items: center;
-      gap: 8px;
-      padding: 4px 0;
-      font-size: 12px;
-    }
-    .shortcut-row .sc-name {
-      flex: 1;
-      color: var(--text-2);
-      font-size: 11.5px;
-    }
     .shortcut-row .sc-key {
       padding: 3px 8px;
       border: 1px solid var(--border);
@@ -602,13 +605,13 @@
       text-align: center;
     }
     .about-icon {
-      width: 72px; height: 72px;
-      border-radius: 16px;
-      margin-bottom: 14px;
+      width: 96px; height: 96px;
+      border-radius: 20px;
+      margin-bottom: 16px;
     }
-    .about h2 { font-size: 21px; font-weight: 700; letter-spacing: -0.3px; }
-    .about .ver { font-size: 12px; color: var(--text-2); margin: 4px 0 16px; }
-    .about-slogan { font-size: 13px; color: var(--text); font-style: italic; margin-bottom: 6px; }
+    .about h2 { font-size: 22px; font-weight: 700; letter-spacing: -0.3px; }
+    .about .ver { font-size: 12px; color: var(--text-2); margin: 4px 0 14px; }
+    .about-slogan { font-size: 13.5px; color: var(--text); font-style: italic; margin-bottom: 5px; }
     .about-desc { font-size: 12px; color: var(--text-2); line-height: 1.65; margin-bottom: 22px; }
 
     .about-actions { display: flex; gap: 10px; margin-bottom: 22px; }
@@ -770,8 +773,7 @@
         <div class="section-body">
           <div class="pref-row">
             <div class="pref-label">
-              <span data-i18n="pref.tray"></span>
-              <small data-i18n="pref.tray.desc"></small>
+              <span data-i18n="pref.tray.desc"></span>
             </div>
             <label class="switch">
               <input type="checkbox" id="tray_resident">
@@ -780,8 +782,7 @@
           </div>
           <div class="pref-row">
             <div class="pref-label">
-              <span data-i18n="pref.autoupdate"></span>
-              <small data-i18n="pref.autoupdate.desc"></small>
+              <span data-i18n="pref.autoupdate.desc"></span>
             </div>
             <label class="switch">
               <input type="checkbox" id="auto_update">
@@ -818,8 +819,7 @@
         <div class="section-body">
           <div class="pref-row" style="flex-wrap:wrap">
             <div class="pref-label" style="flex:1;min-width:0">
-              <span data-i18n="pref.dbpath"></span>
-              <small data-i18n="pref.dbpath.desc"></small>
+              <span data-i18n="pref.dbpath.desc"></span>
               <small id="db_path_display" class="db-path-val" style="display:none"></small>
             </div>
             <div class="pref-control">
@@ -831,10 +831,22 @@
       </div>
 
       <div class="section">
+        <div class="section-title" data-i18n="sec.webstyles"></div>
+        <div class="section-body" id="webstyles-editor">
+          <div id="webstyles-list"></div>
+          <div class="pref-row">
+            <span class="pref-label"></span>
+            <button class="btn" id="webstyles-reset" data-i18n="webstyles.reset" style="font-size:11px"></button>
+          </div>
+        </div>
+      </div>
+
+      <div class="section">
         <div class="section-title" data-i18n="sec.shortcuts"></div>
-        <div class="section-body" id="shortcuts-editor" style="padding:10px 14px">
+        <div class="section-body" id="shortcuts-editor">
           <div id="shortcuts-list"></div>
-          <div style="margin-top:8px;text-align:right">
+          <div class="pref-row">
+            <span class="pref-label"></span>
             <button class="btn" id="shortcuts-reset" data-i18n="shortcuts.reset" style="font-size:11px"></button>
           </div>
         </div>
@@ -870,25 +882,12 @@
           <div class="section-body tips-body">
             <p data-i18n="tips.quickstart.1"></p>
             <p data-i18n="tips.quickstart.2"></p>
+            <p id="tips-quickstart-help"></p>
             <p data-i18n="tips.quickstart.3"></p>
           </div>
         </div>
 
-        <!-- 2. 浏览器中的快捷键 -->
-        <div class="section tips-section">
-          <div class="section-title" data-i18n="tips.shortcuts"></div>
-          <div class="section-body tips-body tips-kbd">
-            <div class="tip-row"><kbd>?</kbd> <span data-i18n="tips.kbd.help"></span></div>
-            <div class="tip-row"><kbd>/</kbd> <span data-i18n="tips.kbd.search"></span></div>
-            <div class="tip-row"><kbd>j</kbd> / <kbd>k</kbd> <span data-i18n="tips.kbd.nav"></span></div>
-            <div class="tip-row"><kbd>Space</kbd> <span data-i18n="tips.kbd.scroll"></span></div>
-            <div class="tip-row"><kbd data-i18n="tips.kbd.mod"></kbd><kbd>\</kbd> <span data-i18n="tips.kbd.toc"></span></div>
-            <div class="tip-row"><kbd data-i18n="tips.kbd.mod"></kbd><kbd>z</kbd> <span data-i18n="tips.kbd.undo"></span></div>
-            <div class="tip-row"><kbd data-i18n="tips.kbd.mod"></kbd><kbd>j</kbd> / <kbd data-i18n="tips.kbd.mod"></kbd><kbd>k</kbd> <span data-i18n="tips.kbd.annot"></span></div>
-          </div>
-        </div>
-
-        <!-- 3. 命令行构建器 -->
+        <!-- 2. 命令行构建器 -->
         <div class="section tips-section">
           <div class="section-title" data-i18n="tips.cli"></div>
           <div class="section-body">
@@ -1105,8 +1104,11 @@
     document.getElementById('default_edit').checked = s.default_edit ?? false;
     document.getElementById('default_shared').checked = s.default_shared_annotation ?? false;
     document.getElementById('auto_update').checked = s.auto_update ?? true;
+    currentWebStyles = s.web_styles ?? {};
+    renderWebStyles();
     currentShortcuts = s.shortcuts ?? {};
     renderShortcuts();
+    renderHelpTip();
     applyAll(s);
   }
 
@@ -1124,6 +1126,7 @@
       default_viewed: document.getElementById('default_viewed').checked,
       default_edit: document.getElementById('default_edit').checked,
       default_shared_annotation: document.getElementById('default_shared').checked,
+      web_styles: currentWebStyles,
       shortcuts: currentShortcuts,
       auto_update: document.getElementById('auto_update').checked,
       workspaces: [],  // preserved by Rust command; managed via add/remove/update
@@ -1313,9 +1316,13 @@
 
   document.getElementById('ws-add-btn').addEventListener('click', addWorkspace);
 
-  // ── About ───────────────────────────────────────────────────────────────
-  document.getElementById('btn-star').addEventListener('click', () => {
-    invoke('open_url', { url: 'https://github.com/kookyleo/markon' });
+  // ── About — GitHub Star ──────────────────────────────────────────────────
+  document.getElementById('btn-star').addEventListener('click', async () => {
+    const ok = await invoke('star_repo');
+    if (!ok) {
+      // gh unavailable or failed → open browser
+      invoke('open_url', { url: 'https://github.com/kookyleo/markon' });
+    }
   });
   // ── Feedback menu (Bug / Feature / Question) with i18n ──────────────────
   const REPO = 'kookyleo/markon';
@@ -1354,8 +1361,11 @@
     });
     // Refresh language dropdown labels (the "auto" text changes with locale)
     populateLanguageSelects();
-    // Re-render shortcuts with translated descriptions
-    if (document.getElementById('shortcuts-list')?.children.length) renderShortcuts();
+    // Re-render shortcuts and help tip with translated descriptions
+    if (document.getElementById('shortcuts-list')?.children.length) {
+      renderShortcuts();
+      renderHelpTip();
+    }
   }
 
   // Populate language dropdowns from i18n meta.
@@ -1569,6 +1579,103 @@
   document.querySelectorAll('.tips-copy').forEach(attachCopyHandler);
 
   // ── Auto-update check ───────────────────────────────────────────────────
+  // ── Web styles editor ────────────────────────────────────────────────
+  const STYLE_DEFS = [
+    { key: 'ui-color',         type: 'color', def: '#656d76' },
+    { key: 'accent',           type: 'color', def: '#0969da' },
+    { key: 'heading-border',   type: 'color', def: '#d1d9e0' },
+    { key: 'ui-font',          type: 'font',  def: 'system-ui, sans-serif' },
+    { key: 'ui-font-size',     type: 'range', def: '0.80', min: 0.60, max: 1.20, step: 0.05, unit: 'rem' },
+    { key: 'panel-opacity',   type: 'range', def: '0.90', min: 0.30, max: 1.00, step: 0.05, unit: '' },
+    { key: 'toc-active-bg',   type: 'color', def: '#174ea6' },
+    { key: 'toc-selected-border', type: 'color', def: '#0969da' },
+  ];
+
+  let currentWebStyles = {};
+
+  function renderWebStyles() {
+    const list = document.getElementById('webstyles-list');
+    list.innerHTML = '';
+    for (const d of STYLE_DEFS) {
+      const val = currentWebStyles[d.key] || d.def;
+      const row = document.createElement('div');
+      row.className = 'style-row';
+      const label = T('webstyles.' + d.key) || d.key;
+      if (d.type === 'font') {
+        row.innerHTML = `<span class="st-name">${label}</span>
+          <select data-key="${d.key}" style="flex:1;max-width:180px;font-size:11px"></select>`;
+        const sel = row.querySelector('select');
+        function populateFontSelect(fonts) {
+          sel.innerHTML = '';
+          for (const f of fonts) {
+            const opt = document.createElement('option');
+            opt.value = f; opt.textContent = f;
+            opt.style.fontFamily = f;
+            sel.appendChild(opt);
+          }
+          sel.value = val;
+          if (sel.value !== val) {
+            const opt = document.createElement('option');
+            opt.value = val; opt.textContent = val;
+            sel.insertBefore(opt, sel.firstChild);
+            sel.value = val;
+          }
+        }
+        // Load system fonts from Rust, fallback to common list
+        invoke('list_fonts').then(fonts => {
+          populateFontSelect(['system-ui, sans-serif', ...fonts]);
+        }).catch(() => {
+          populateFontSelect(['system-ui, sans-serif', 'Arial', 'Helvetica Neue', 'Georgia', 'Menlo', 'Monaco', 'Inter']);
+        });
+      } else if (d.type === 'color') {
+        row.innerHTML = `<span class="st-name">${label}</span>
+          <input type="color" value="${val}" data-key="${d.key}">
+          <input type="text" value="${val}" data-key="${d.key}" data-peer="color">`;
+      } else if (d.type === 'range') {
+        const num = parseFloat(val) || parseFloat(d.def);
+        row.innerHTML = `<span class="st-name">${label}</span>
+          <input type="range" min="${d.min}" max="${d.max}" step="${d.step}" value="${num}" data-key="${d.key}" data-unit="${d.unit}" style="width:100px;accent-color:var(--accent)">
+          <span class="st-val" style="font-size:11px;color:var(--text-2);width:56px;text-align:right;font-family:monospace;flex-shrink:0">${num.toFixed(2)}${d.unit}</span>`;
+      } else {
+        row.innerHTML = `<span class="st-name">${label}</span>
+          <input type="text" value="${val}" data-key="${d.key}">`;
+      }
+      row.querySelectorAll('input, select[data-key]').forEach(inp => {
+        inp.addEventListener(inp.tagName === 'SELECT' ? 'change' : 'input', () => {
+          const k = inp.dataset.key;
+          let v = inp.value;
+          const def = STYLE_DEFS.find(s => s.key === k);
+          // Sync color ↔ text peers
+          if (inp.type === 'color') {
+            const peer = row.querySelector('input[data-peer="color"]');
+            if (peer) peer.value = v;
+          } else if (inp.dataset.peer === 'color') {
+            const peer = row.querySelector('input[type="color"]');
+            if (peer && /^#[0-9a-fA-F]{6}$/.test(v)) peer.value = v;
+          } else if (inp.type === 'range') {
+            const unit = inp.dataset.unit || '';
+            const valSpan = row.querySelector('.st-val');
+            if (valSpan) valSpan.textContent = parseFloat(v).toFixed(2) + unit;
+            v = v + unit;
+          }
+          if (v === def?.def || v === def?.def + (def?.unit || '')) {
+            delete currentWebStyles[k];
+          } else {
+            currentWebStyles[k] = v;
+          }
+          saveSettings();
+        });
+      });
+      list.appendChild(row);
+    }
+  }
+
+  document.getElementById('webstyles-reset').addEventListener('click', () => {
+    currentWebStyles = {};
+    saveSettings();
+    renderWebStyles();
+  });
+
   // ── Shortcuts editor ─────────────────────────────────────────────────
   const DEFAULT_SHORTCUTS = {
     UNDO:           { key: 'z', ctrl: true, shift: false },
@@ -1611,6 +1718,12 @@
     else if (k.length === 1) k = k.toUpperCase();
     parts.push(k);
     return parts.join(' + ');
+  }
+
+  function renderHelpTip() {
+    const helpSc = { ...DEFAULT_SHORTCUTS.HELP, ...(currentShortcuts.HELP || {}) };
+    const el = document.getElementById('tips-quickstart-help');
+    if (el) el.innerHTML = T('tips.quickstart.help').replace('{key}', `<kbd>${formatKey(helpSc)}</kbd>`);
   }
 
   function renderShortcuts() {
@@ -1673,6 +1786,7 @@
     currentShortcuts = {};
     saveSettings();
     renderShortcuts();
+    renderHelpTip();
   });
 
   const statusEl = document.getElementById('update-status');

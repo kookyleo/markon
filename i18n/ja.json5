@@ -30,18 +30,27 @@
     "theme.dark":      "ダーク",
     "pref.lang":       "パネル言語",
     "lang.auto":       "システムに従う",
-    "pref.web.theme":  "コンテンツテーマ",
-    "pref.web.lang":   "ページ言語",
+    "pref.web.theme":  "ビューアテーマ",
+    "pref.web.lang":   "ビューア言語",
     "web.auto":        "パネルに従う",
 
     // ── General — Behavior ───────────────────────────────────
     "sec.behavior":   "動作",
-    "pref.tray":       "メニューバーに常駐",
     "pref.tray.desc":  "ウィンドウを閉じても終了せず非表示にし、メニューバーアイコンから再表示",
+    "sec.webstyles":        "ページスタイル",
+    "webstyles.reset":      "デフォルトに戻す",
+    "webstyles.ui-color":   "UI テキスト色",
+    "webstyles.accent":     "アクセント/リンク",
+    "webstyles.ui-font":    "UI フォント",
+    "webstyles.ui-font-size": "UI フォントサイズ",
+    "webstyles.heading-border": "見出しの区切り線",
+    "webstyles.panel-opacity": "パネル透明度",
+    "webstyles.toc-active-bg": "スクロール位置の背景",
+    "webstyles.toc-selected-border": "選択セクションの枠線",
+
     "sec.shortcuts":        "ショートカットキー",
     "shortcuts.reset":      "デフォルトに戻す",
     "shortcuts.record":     "新しいキーを押してください…",
-    "pref.autoupdate":      "自動アップデート",
     "pref.autoupdate.desc": "起動時に GitHub で新バージョンを確認し、自動的にインストール",
 
     // ── General — New workspace defaults ─────────────────────
@@ -53,7 +62,6 @@
 
     // ── General — Database ───────────────────────────────────
     "sec.database":   "データベース",
-    "pref.dbpath":     "データベースパス",
     "pref.dbpath.desc":"注釈と既読状態の永続化ストレージ (SQLite)",
     "pref.dbpath.browse": "参照…",
     "pref.dbpath.clear":  "リセット",
@@ -88,18 +96,9 @@
     "tips.quickstart": "クイックスタート",
     "tips.quickstart.1": "1.「ワークスペース」タブで + ボタンをクリックし、Markdown ファイルのあるフォルダを選択",
     "tips.quickstart.2": "2. ↗ アイコンをクリックしてブラウザでレンダリング結果を確認",
+    "tips.quickstart.help": "2.1 ブラウザページで {key} を押すと、すべてのショートカットキーと利用可能な機能を確認できます",
     "tips.quickstart.3": "3.「全般」タブで新規ワークスペースのデフォルト機能を設定",
 
-    // ── Tips — Keyboard shortcuts ────────────────────────────
-    "tips.shortcuts":  "ブラウザでのキーボードショートカット",
-    "tips.kbd.help":   "ショートカット一覧を表示",
-    "tips.kbd.search": "検索を開く (検索の有効化が必要)",
-    "tips.kbd.nav":    "前/次の見出しへジャンプ",
-    "tips.kbd.scroll": "自動スクロール",
-    "tips.kbd.toc":    "目次パネルの切り替え",
-    "tips.kbd.undo":   "元に戻す",
-    "tips.kbd.annot":  "前/次の注釈へジャンプ",
-    "tips.kbd.mod":    "⌘",
 
     // ── Tips — Command builder ───────────────────────────────
     "tips.cli":        "コマンドビルダー",
@@ -115,7 +114,6 @@
     "cli.edit":        "編集",
     "cli.shared":      "共有ノート",
     "cli.open":        "ブラウザを自動で開く",
-    "cli.alias.desc":  "シェルエイリアスとして登録すると素早く起動できます:",
 
     // ── Tips — Desktop integration ───────────────────────────
     "tips.gui":        "デスクトップ連携",
@@ -222,9 +220,7 @@
     "web.viewed.print":     "印刷",
     "web.viewed.print.tip": "このセクションを印刷",
     "web.viewed.print.blocked":    "ブラウザが自動印刷をブロックしました。\n\n「OK」をクリックして再試行するか、「キャンセル」で閉じてください。",
-    "web.viewed.print.permission": "ブラウザの設定でこのサイトの印刷を許可するか、ブラウザメニューの印刷機能をご利用ください。",
     "web.viewed.print.popup":      "セクションを印刷するにはポップアップを許可してください。\n\nまたはブラウザメニューの「印刷」でページ全体を印刷できます。",
-    "web.viewed.print.loading":    "印刷内容を準備中…",
     "web.viewed.print.failed":     "印刷ウィンドウを開けませんでした。ブラウザメニューの「印刷」をご利用ください。",
 
     // ── Keyboard shortcuts panel ─────────────────────────────
