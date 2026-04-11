@@ -156,6 +156,15 @@ export const CONFIG = {
     BLOCK_TAGS: ['P', 'DIV', 'LI', 'H1', 'H2', 'H3', 'H4', 'H5', 'H6', 'BLOCKQUOTE', 'PRE', 'TD', 'TH'],
 };
 
+// Apply user shortcut overrides from Settings (injected as window.__MARKON_SHORTCUTS__).
+if (window.__MARKON_SHORTCUTS__) {
+    for (const [name, override] of Object.entries(window.__MARKON_SHORTCUTS__)) {
+        if (CONFIG.SHORTCUTS[name]) {
+            Object.assign(CONFIG.SHORTCUTS[name], override);
+        }
+    }
+}
+
 // 冻结ConfigurationObject，防止意外修改
 Object.freeze(CONFIG);
 Object.freeze(CONFIG.BREAKPOINTS);

@@ -531,6 +531,42 @@
     .cli-term-row code { flex: 1; min-width: 0; color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; -webkit-user-select: text; user-select: text; }
     .cli-term-row .tips-copy { position: static; transform: none; width: 22px; height: 22px; }
 
+    /* Shortcuts editor */
+    .shortcut-row {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 4px 0;
+      font-size: 12px;
+    }
+    .shortcut-row .sc-name {
+      flex: 1;
+      color: var(--text-2);
+      font-size: 11.5px;
+    }
+    .shortcut-row .sc-key {
+      padding: 3px 8px;
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      background: var(--bg);
+      color: var(--text);
+      font-family: 'SF Mono', Monaco, Menlo, monospace;
+      font-size: 11px;
+      min-width: 60px;
+      text-align: center;
+      cursor: default;
+      transition: border-color 0.15s;
+    }
+    .shortcut-row .sc-key:focus {
+      border-color: var(--accent);
+      outline: none;
+      box-shadow: 0 0 0 2px rgba(0,122,255,0.2);
+    }
+    .shortcut-row .sc-key.recording {
+      border-color: var(--accent);
+      color: var(--accent);
+    }
+
     /* FAB — floating add button, pinned at bottom-left */
     .ws-fab {
       position: fixed;
@@ -704,13 +740,9 @@
             </div>
           </div>
           <div class="pref-row">
-            <span class="pref-label" data-i18n="pref.lang"></span>
+            <span class="pref-label"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" style="vertical-align:-2px;margin-right:3px;opacity:.6"><circle cx="12" cy="12" r="10"/><path d="M2 12h20M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg><span data-i18n="pref.lang"></span></span>
             <div class="pref-control">
-              <select id="language" style="width:150px">
-                <option value="auto" data-i18n="lang.auto"></option>
-                <option value="zh">中文</option>
-                <option value="en">English</option>
-              </select>
+              <select id="language" style="width:150px"></select>
             </div>
           </div>
           <div class="pref-row">
@@ -724,12 +756,9 @@
             </div>
           </div>
           <div class="pref-row">
-            <span class="pref-label" data-i18n="pref.web.lang"></span>
+            <span class="pref-label"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" style="vertical-align:-2px;margin-right:3px;opacity:.6"><circle cx="12" cy="12" r="10"/><path d="M2 12h20M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg><span data-i18n="pref.web.lang"></span></span>
             <div class="pref-control">
               <select id="web_language" style="width:150px">
-                <option value="auto" data-i18n="web.auto"></option>
-                <option value="zh">中文</option>
-                <option value="en">English</option>
               </select>
             </div>
           </div>
@@ -797,6 +826,16 @@
               <button class="btn" id="db_path_browse" data-i18n="pref.dbpath.browse" style="font-size:12px"></button>
               <button class="btn" id="db_path_clear" data-i18n="pref.dbpath.clear" style="font-size:12px;display:none"></button>
             </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="section">
+        <div class="section-title" data-i18n="sec.shortcuts"></div>
+        <div class="section-body" id="shortcuts-editor" style="padding:10px 14px">
+          <div id="shortcuts-list"></div>
+          <div style="margin-top:8px;text-align:right">
+            <button class="btn" id="shortcuts-reset" data-i18n="shortcuts.reset" style="font-size:11px"></button>
           </div>
         </div>
       </div>
@@ -1005,7 +1044,7 @@
   </div><!-- .content -->
 
 <script type="module">
-  import { i18n } from './i18n.js';
+  import { i18n, availableLanguages } from './i18n.js';
   const { invoke } = window.__TAURI__.core;
 
   // ── Tab navigation ──────────────────────────────────────────────────────
@@ -1066,6 +1105,8 @@
     document.getElementById('default_edit').checked = s.default_edit ?? false;
     document.getElementById('default_shared').checked = s.default_shared_annotation ?? false;
     document.getElementById('auto_update').checked = s.auto_update ?? true;
+    currentShortcuts = s.shortcuts ?? {};
+    renderShortcuts();
     applyAll(s);
   }
 
@@ -1083,6 +1124,7 @@
       default_viewed: document.getElementById('default_viewed').checked,
       default_edit: document.getElementById('default_edit').checked,
       default_shared_annotation: document.getElementById('default_shared').checked,
+      shortcuts: currentShortcuts,
       auto_update: document.getElementById('auto_update').checked,
       workspaces: [],  // preserved by Rust command; managed via add/remove/update
     };
@@ -1310,10 +1352,43 @@
         btn.title = t[kind].tip;
       }
     });
+    // Refresh language dropdown labels (the "auto" text changes with locale)
+    populateLanguageSelects();
+    // Re-render shortcuts with translated descriptions
+    if (document.getElementById('shortcuts-list')?.children.length) renderShortcuts();
+  }
+
+  // Populate language dropdowns from i18n meta.
+  function populateLanguageSelects() {
+    ['language', 'web_language'].forEach(id => {
+      const sel = document.getElementById(id);
+      const cur = sel.value || 'auto';
+      sel.innerHTML = '';
+      // "auto" option — label depends on which select
+      const autoLabel = id === 'language' ? T('lang.auto') : T('web.auto');
+      const autoOpt = document.createElement('option');
+      autoOpt.value = 'auto';
+      autoOpt.textContent = autoLabel;
+      sel.appendChild(autoOpt);
+      // Language options from i18n files
+      availableLanguages.forEach(l => {
+        const opt = document.createElement('option');
+        opt.value = l.value;
+        opt.textContent = l.label;
+        sel.appendChild(opt);
+      });
+      sel.value = cur;
+    });
   }
 
   function setLocale(localeStr) {
-    const newLang = (localeStr || 'en').toLowerCase().startsWith('zh') ? 'zh' : 'en';
+    const s = (localeStr || 'en').toLowerCase();
+    // Match against available languages: exact value, exact key, or prefix match
+    let newLang = 'en';
+    for (const l of availableLanguages) {
+      if (s === l.value.toLowerCase() || s === l.key) { newLang = l.key; break; }
+      if (s.startsWith(l.key)) { newLang = l.key; }
+    }
     if (newLang === lang && t === i18n[newLang]) return;
     lang = newLang;
     t = i18n[lang];
@@ -1395,11 +1470,11 @@
       } else {
         setLocale(langPref);
       }
-      refreshWorkspaces();
     } catch (_) {}
+    // Load settings AFTER locale is resolved so all UI renders in correct language.
+    await loadSettings();
+    refreshWorkspaces();
   })();
-  loadSettings();
-  refreshWorkspaces();
   window.addEventListener('focus', refreshWorkspaces);
 
   // ── Tips: Cmd+F search ───────────────────────────────────────────────
@@ -1494,6 +1569,112 @@
   document.querySelectorAll('.tips-copy').forEach(attachCopyHandler);
 
   // ── Auto-update check ───────────────────────────────────────────────────
+  // ── Shortcuts editor ─────────────────────────────────────────────────
+  const DEFAULT_SHORTCUTS = {
+    UNDO:           { key: 'z', ctrl: true, shift: false },
+    REDO:           { key: 'z', ctrl: true, shift: true },
+    REDO_ALT:       { key: 'y', ctrl: true, shift: false },
+    ESCAPE:         { key: 'Escape', ctrl: false, shift: false },
+    TOGGLE_TOC:     { key: '\\', ctrl: true, shift: false },
+    HELP:           { key: '?', ctrl: false, shift: false },
+    SEARCH:         { key: '/', ctrl: false, shift: false },
+    PREV_HEADING:   { key: 'k', ctrl: false, shift: false },
+    NEXT_HEADING:   { key: 'j', ctrl: false, shift: false },
+    PREV_ANNOTATION:{ key: 'k', ctrl: true, shift: false },
+    NEXT_ANNOTATION:{ key: 'j', ctrl: true, shift: false },
+    SCROLL_HALF_PAGE_DOWN: { key: ' ', ctrl: false, shift: false },
+    TOGGLE_SECTION_COLLAPSE: { key: 'o', ctrl: false, shift: false },
+    TOGGLE_VIEWED:  { key: 'v', ctrl: false, shift: false },
+    EDIT:           { key: 'e', ctrl: false, shift: false },
+  };
+
+  // i18n keys for shortcut descriptions (reuse web.kbd.* keys)
+  const SHORTCUT_DESC_KEYS = {
+    UNDO: 'web.kbd.undo', REDO: 'web.kbd.redo', REDO_ALT: 'web.kbd.redo.alt',
+    ESCAPE: 'web.kbd.escape', TOGGLE_TOC: 'web.kbd.toc', HELP: 'web.kbd.help',
+    SEARCH: 'web.kbd.search', PREV_HEADING: 'web.kbd.prevheading',
+    NEXT_HEADING: 'web.kbd.nextheading', PREV_ANNOTATION: 'web.kbd.prevanno',
+    NEXT_ANNOTATION: 'web.kbd.nextanno', SCROLL_HALF_PAGE_DOWN: 'web.kbd.scroll',
+    TOGGLE_SECTION_COLLAPSE: 'web.kbd.collapse', TOGGLE_VIEWED: 'web.kbd.viewed',
+    EDIT: 'web.kbd.edit',
+  };
+
+  let currentShortcuts = {}; // user overrides only
+
+  function formatKey(sc) {
+    const parts = [];
+    if (sc.ctrl) parts.push(navigator.platform.includes('Mac') ? '⌘' : 'Ctrl');
+    if (sc.shift) parts.push('Shift');
+    let k = sc.key;
+    if (k === ' ') k = 'Space';
+    else if (k === 'Escape') k = 'ESC';
+    else if (k.length === 1) k = k.toUpperCase();
+    parts.push(k);
+    return parts.join(' + ');
+  }
+
+  function renderShortcuts() {
+    const list = document.getElementById('shortcuts-list');
+    list.innerHTML = '';
+    for (const [name, defaults] of Object.entries(DEFAULT_SHORTCUTS)) {
+      const current = { ...defaults, ...(currentShortcuts[name] || {}) };
+      const row = document.createElement('div');
+      row.className = 'shortcut-row';
+      row.innerHTML = `
+        <span class="sc-name">${T(SHORTCUT_DESC_KEYS[name] || name)}</span>
+        <div class="sc-key" tabindex="0" data-name="${name}">${formatKey(current)}</div>
+      `;
+      const keyEl = row.querySelector('.sc-key');
+      keyEl.addEventListener('click', () => startRecording(keyEl, name));
+      keyEl.addEventListener('keydown', (e) => {
+        if (!keyEl.classList.contains('recording')) return;
+        e.preventDefault();
+        e.stopPropagation();
+        // Ignore modifier-only presses — wait for an actual key
+        if (['Meta', 'Control', 'Shift', 'Alt', 'CapsLock'].includes(e.key)) return;
+        if (e.key === 'Escape' && !e.metaKey && !e.ctrlKey && !e.shiftKey) {
+          stopRecording(keyEl, name, null); return;
+        }
+        const sc = { key: e.key, ctrl: e.metaKey || e.ctrlKey, shift: e.shiftKey };
+        stopRecording(keyEl, name, sc);
+      });
+      list.appendChild(row);
+    }
+  }
+
+  function startRecording(el, name) {
+    document.querySelectorAll('.sc-key.recording').forEach(k => {
+      k.classList.remove('recording');
+      const n = k.dataset.name;
+      const cur = { ...DEFAULT_SHORTCUTS[n], ...(currentShortcuts[n] || {}) };
+      k.textContent = formatKey(cur);
+    });
+    el.classList.add('recording');
+    el.textContent = T('shortcuts.record');
+    el.focus();
+  }
+
+  function stopRecording(el, name, sc) {
+    el.classList.remove('recording');
+    if (sc) {
+      const def = DEFAULT_SHORTCUTS[name];
+      if (sc.key === def.key && sc.ctrl === def.ctrl && sc.shift === def.shift) {
+        delete currentShortcuts[name];
+      } else {
+        currentShortcuts[name] = sc;
+      }
+      saveSettings();
+    }
+    const cur = { ...DEFAULT_SHORTCUTS[name], ...(currentShortcuts[name] || {}) };
+    el.textContent = formatKey(cur);
+  }
+
+  document.getElementById('shortcuts-reset').addEventListener('click', () => {
+    currentShortcuts = {};
+    saveSettings();
+    renderShortcuts();
+  });
+
   const statusEl = document.getElementById('update-status');
   const retryBtn = document.getElementById('update-retry');
 

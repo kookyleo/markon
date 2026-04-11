@@ -1,4 +1,7 @@
 {
+    // ── Meta ─────────────────────────────────────────────────
+    "_meta.label": "简体中文",
+
     // ══════════════════════════════════════════════════════════
     // GUI — Settings 窗口
     // ══════════════════════════════════════════════════════════
@@ -28,13 +31,16 @@
     "pref.lang":       "面板语言",
     "lang.auto":       "跟随系统",
     "pref.web.theme":  "内容页主题",
-    "pref.web.lang":   "内容页语言",
+    "pref.web.lang":   "页面语言",
     "web.auto":        "跟随面板",
 
     // ── 全局设置 — 行为 ──────────────────────────────────────
     "sec.behavior":   "行为",
     "pref.tray":       "菜单栏驻留",
     "pref.tray.desc":  "关闭窗口时隐藏而非退出,通过菜单栏图标唤起",
+    "sec.shortcuts":        "快捷键",
+    "shortcuts.reset":      "恢复默认",
+    "shortcuts.record":     "按下新快捷键…",
     "pref.autoupdate":      "自动更新",
     "pref.autoupdate.desc": "启动时检查 GitHub 上的新版本并自动安装",
 
@@ -47,8 +53,8 @@
 
     // ── 全局设置 — 数据库 ────────────────────────────────────
     "sec.database":   "数据库",
-    "pref.dbpath":     "共享注释路径",
-    "pref.dbpath.desc":"用于多端同步注释与 Viewed 状态 (SQLite)",
+    "pref.dbpath":     "数据库路径",
+    "pref.dbpath.desc":"批注与已读状态的持久化存储 (SQLite)",
     "pref.dbpath.browse": "选择…",
     "pref.dbpath.clear":  "恢复默认",
 

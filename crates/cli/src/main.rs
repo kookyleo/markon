@@ -237,6 +237,7 @@ async fn main() {
         registry: None,
         management_token: None,
         language: None,
+        shortcuts_json: None,
     })
     .await
     {

@@ -169,17 +169,10 @@ fn main() {
             // ── System tray ───────────────────────────────────────────────
             let icon = tauri::include_image!("icons/tray.png");
 
-            let tray_lang = commands::resolve_lang(&language_init);
-            let i18n_text = match tray_lang {
-                "zh" => include_str!("../../../i18n/zh_CN.json5"),
-                _    => include_str!("../../../i18n/en.json5"),
-            };
-            let i18n_json: serde_json::Value = serde_json::from_str(
-                &commands::strip_json5_comments(i18n_text)
-            ).unwrap_or_default();
-            let label_settings = i18n_json["tray.show"]
+            let i18n_data = commands::get_lang_data(&language_init);
+            let label_settings = i18n_data["tray.show"]
                 .as_str().unwrap_or("Settings…").to_string();
-            let label_quit = i18n_json["tray.quit"]
+            let label_quit = i18n_data["tray.quit"]
                 .as_str().unwrap_or("Quit Markon").to_string();
 
             let item_settings =

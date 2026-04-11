@@ -1264,6 +1264,7 @@
             }
         }
     </style>
+    {% if shortcuts_json %}<script>window.__MARKON_SHORTCUTS__ = {{ shortcuts_json | safe }};</script>{% endif %}
     {% if i18n_json %}<script>
     window.__MARKON_I18N__ = (function(){
         var all = {{ i18n_json | safe }};

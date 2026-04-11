@@ -1,0 +1,253 @@
+{
+    // ── Meta ─────────────────────────────────────────────────
+    "_meta.label": "日本語",
+
+    // ══════════════════════════════════════════════════════════
+    // GUI — Settings window
+    // ══════════════════════════════════════════════════════════
+
+    // ── Navigation ───────────────────────────────────────────
+    "nav.global":     "全般",
+    "nav.workspaces": "ワークスペース",
+    "nav.tips":       "ヒント",
+    "nav.about":      "このアプリについて",
+
+    // ── General — Server ─────────────────────────────────────
+    "sec.server":     "サーバー",
+    "pref.port":       "ポート",
+    "port.auto":       "自動",
+    "port.spec":       "手動",
+    "port.auto.hint":  "自動割り当て",
+    "pref.bind":       "バインドアドレス",
+    "bind.local":      "127.0.0.1 — ローカルホストのみ",
+    "bind.lan":        "0.0.0.0",
+
+    // ── General — Appearance ─────────────────────────────────
+    "sec.appearance": "外観",
+    "pref.theme":      "パネルテーマ",
+    "theme.auto":      "システムに従う",
+    "theme.light":     "ライト",
+    "theme.dark":      "ダーク",
+    "pref.lang":       "パネル言語",
+    "lang.auto":       "システムに従う",
+    "pref.web.theme":  "コンテンツテーマ",
+    "pref.web.lang":   "ページ言語",
+    "web.auto":        "パネルに従う",
+
+    // ── General — Behavior ───────────────────────────────────
+    "sec.behavior":   "動作",
+    "pref.tray":       "メニューバーに常駐",
+    "pref.tray.desc":  "ウィンドウを閉じても終了せず非表示にし、メニューバーアイコンから再表示",
+    "sec.shortcuts":        "ショートカットキー",
+    "shortcuts.reset":      "デフォルトに戻す",
+    "shortcuts.record":     "新しいキーを押してください…",
+    "pref.autoupdate":      "自動アップデート",
+    "pref.autoupdate.desc": "起動時に GitHub で新バージョンを確認し、自動的にインストール",
+
+    // ── General — New workspace defaults ─────────────────────
+    "sec.defaults":         "新規ワークスペースでデフォルト有効にする機能",
+    "pref.def.search":      "検索",
+    "pref.def.viewed":      "既読トラッキング",
+    "pref.def.edit":        "編集",
+    "pref.def.shared":      "共有ノート",
+
+    // ── General — Database ───────────────────────────────────
+    "sec.database":   "データベース",
+    "pref.dbpath":     "データベースパス",
+    "pref.dbpath.desc":"注釈と既読状態の永続化ストレージ (SQLite)",
+    "pref.dbpath.browse": "参照…",
+    "pref.dbpath.clear":  "リセット",
+
+    // ── Auto-update status ───────────────────────────────────
+    "update.checking": "確認中…",
+    "update.latest":   "最新バージョンです",
+    "update.found":    "新バージョン v{v} が見つかりました。インストール中…",
+    "update.done":     "アップデート完了、再起動で適用されます",
+    "update.error":    "確認に失敗しました",
+
+    // ── Workspace list ───────────────────────────────────────
+    "ws.add.btn":     "ワークスペースを追加…",
+    "ws.open.tip":    "ブラウザで開く",
+    "ws.remove":      "リストから削除",
+    "ws.flag.search": "検索",
+    "ws.flag.search.tip": "ファイル内容の全文検索インデックスを構築",
+    "ws.flag.search.ready": "検索インデックスは準備完了です",
+    "ws.flag.viewed": "既読トラッキング",
+    "ws.flag.viewed.tip": "ブロック単位で閲読の進捗を追跡",
+    "ws.flag.edit":   "編集",
+    "ws.flag.edit.tip": "ブラウザで Markdown ファイルを編集可能にする",
+    "ws.flag.shared": "共有ノート",
+    "ws.flag.shared.tip": "デバイス間で注釈と既読状態を同期 (SQLite が必要)",
+    "ws.empty.title": "ワークスペースがありません",
+    "ws.empty.desc":  "下のボタンをクリックしてフォルダを選択するか、Finder からフォルダを開いてください",
+    "ws.update.fail": "更新に失敗しました",
+    "ws.add.fail":    "追加に失敗しました",
+
+    // ── Tips — Quick start ───────────────────────────────────
+    "tips.search.placeholder": "ヒントを検索…",
+    "tips.quickstart": "クイックスタート",
+    "tips.quickstart.1": "1.「ワークスペース」タブで + ボタンをクリックし、Markdown ファイルのあるフォルダを選択",
+    "tips.quickstart.2": "2. ↗ アイコンをクリックしてブラウザでレンダリング結果を確認",
+    "tips.quickstart.3": "3.「全般」タブで新規ワークスペースのデフォルト機能を設定",
+
+    // ── Tips — Keyboard shortcuts ────────────────────────────
+    "tips.shortcuts":  "ブラウザでのキーボードショートカット",
+    "tips.kbd.help":   "ショートカット一覧を表示",
+    "tips.kbd.search": "検索を開く (検索の有効化が必要)",
+    "tips.kbd.nav":    "前/次の見出しへジャンプ",
+    "tips.kbd.scroll": "自動スクロール",
+    "tips.kbd.toc":    "目次パネルの切り替え",
+    "tips.kbd.undo":   "元に戻す",
+    "tips.kbd.annot":  "前/次の注釈へジャンプ",
+    "tips.kbd.mod":    "⌘",
+
+    // ── Tips — Command builder ───────────────────────────────
+    "tips.cli":        "コマンドビルダー",
+    "cli.lbl.path":    "対象ディレクトリ/ファイル",
+    "cli.lbl.server":  "リッスン",
+    "cli.lbl.entry":   "エントリ",
+    "cli.lbl.theme":   "ページテーマ",
+    "cli.lbl.features":"有効な機能",
+    "cli.path.ph":     "ディレクトリまたはファイルパス",
+    "cli.entry.tip":   "プロキシドメイン/グローバル IP (QR コードおよび外部アクセス用、任意)",
+    "cli.search":      "検索",
+    "cli.viewed":      "既読トラッキング",
+    "cli.edit":        "編集",
+    "cli.shared":      "共有ノート",
+    "cli.open":        "ブラウザを自動で開く",
+    "cli.alias.desc":  "シェルエイリアスとして登録すると素早く起動できます:",
+
+    // ── Tips — Desktop integration ───────────────────────────
+    "tips.gui":        "デスクトップ連携",
+    "tips.gui.mac.title": "macOS",
+    "tips.gui.mac.1":  "· Markon.app を Finder ツールバーにドラッグすると、現在のフォルダをワンクリックで開けます",
+    "tips.gui.mac.2":  "· .md ファイルを右クリック → このアプリケーションで開く → Markon でブラウザプレビュー",
+    "tips.gui.mac.3":  "· フォルダを Dock の Markon アイコンにドラッグして素早く追加",
+    "tips.gui.mac.4":  "· メニューバー常駐モード: ウィンドウを閉じてもメニューバーアイコンから再度開けます",
+    "tips.gui.win.title": "Windows",
+    "tips.gui.win.1":  "· .md ファイルを右クリック → プログラムから開く → Markon を選択",
+    "tips.gui.win.2":  "· インストール後、右クリックメニューの「Markon でプレビュー」から素早く開けます",
+
+    // ── Tips — Key features ──────────────────────────────────
+    "tips.features":   "主な機能",
+    "tips.feat.search.title": "全文検索",
+    "tips.feat.search.desc":  "Tantivy ベースのインデックスで CJK 分かち書きに対応。ブラウザで / を押すとファイル内容をリアルタイム検索",
+    "tips.feat.viewed.title": "既読トラッキング",
+    "tips.feat.viewed.desc":  "ブロック単位で閲読の進捗を記録し、自動保存。ドキュメントを再度開くと前回の位置にジャンプ",
+    "tips.feat.edit.title":   "オンライン編集",
+    "tips.feat.edit.desc":    "ブラウザ上で Markdown ソースファイルを直接編集。シンタックスハイライト + ライブプレビュー、変更は即座に保存",
+    "tips.feat.shared.title": "共有ノート",
+    "tips.feat.shared.desc":  "SQLite DB を介して注釈と既読状態を同期。複数デバイスでの共有やチームコラボレーションに最適",
+
+    // ── About ────────────────────────────────────────────────
+    "about.slogan":   "Turn your markdown on.",
+    "about.desc":     "軽量な Markdown レンダラー。GitHub スタイルのレイアウト、全文検索、注釈、マルチデバイス同期に対応。",
+    "about.icon.credit": "Icon by brajaomar_j — Flaticon",
+    "about.star":     "GitHub でスターする",
+
+    // ── Feedback buttons ─────────────────────────────────────
+    "feedback.bug.label": "Bug",
+    "feedback.bug.tip":   "クラッシュや不具合を報告",
+    "feedback.idea.label": "提案",
+    "feedback.idea.tip":   "新機能や改善の提案",
+    "feedback.ask.label": "質問",
+    "feedback.ask.tip":   "使い方やヘルプについての質問",
+
+    // ── Issue / Discussion templates (placeholders: {app_version} {os} {os_version} {arch} {ua})
+    "tpl.bug": "## 問題の説明\n<!-- バグの内容を簡潔に記述してください -->\n\n\n## 再現手順\n1.\n2.\n3.\n\n## 期待される動作\n\n\n## 実際の動作\n\n\n## 環境\n- **Markon**: v{app_version}\n- **OS**: {os} {os_version} ({arch})\n- **UA**: {ua}\n",
+    "tpl.idea": "## 概要\n<!-- どのような機能や改善を望みますか? -->\n\n\n## 使用場面 / 動機\n<!-- この提案はどのような課題を解決しますか? -->\n\n\n## 実装案 (任意)\n\n\n---\n*Markon v{app_version} · {os} {os_version}*\n",
+    "tpl.ask": "## 質問内容\n\n\n\n## 試したこと (任意)\n\n\n\n---\n*Markon v{app_version} · {os} {os_version}*\n",
+    "tpl.title.bug":  "[Bug] ",
+    "tpl.title.idea": "",
+    "tpl.title.ask":  "",
+
+    // ── System tray menu ─────────────────────────────────────
+    "tray.show": "メインウィンドウを表示…",
+    "tray.quit": "Markon を終了",
+
+    // ══════════════════════════════════════════════════════════
+    // Web — Browser-side rendered pages
+    // ══════════════════════════════════════════════════════════
+
+    // ── Page structure ───────────────────────────────────────
+    "web.title.dir":       "ディレクトリ一覧 - markon",
+    "web.dir.heading":     "ディレクトリ一覧",
+    "web.dir.current":     "現在のディレクトリ:",
+    "web.toc.title":       "目次",
+    "web.back":            "← ファイル一覧に戻る",
+    "web.search":          "検索",
+    "web.search.placeholder": "検索…",
+    "web.search.noresult": "結果が見つかりません",
+    "web.search.esc":     "で閉じる",
+    "web.kbd.link":        "ショートカットキー (?)",
+    "web.footer":          "(L) Generated by AI, Gently approved by kookyleo 👀",
+
+    // ── Annotations / Highlights ─────────────────────────────
+    "web.annot.unhighlight": "ハイライト解除",
+    "web.annot.note":       "メモ",
+    "web.annot.orange":     "オレンジ",
+    "web.annot.green":      "グリーン",
+    "web.annot.yellow":     "イエロー",
+    "web.annot.strike":     "取り消し線",
+    "web.annot.clear":      "このページの注釈をすべて消去",
+    "web.note.edit":        "メモを編集",
+    "web.note.delete":      "メモを削除",
+
+    // ── Modals ───────────────────────────────────────────────
+    "web.modal.note.placeholder": "メモを入力…",
+    "web.modal.cancel":     "キャンセル",
+    "web.modal.save":       "保存",
+    "web.modal.ok":         "OK",
+    "web.modal.confirm":    "よろしいですか?",
+
+    // ── Editor ───────────────────────────────────────────────
+    "web.editor.save":      "変更を保存",
+    "web.editor.save.tip":  "変更を保存 (Ctrl+S)",
+    "web.editor.close.tip": "閉じる (ESC)",
+    "web.editor.err.readonly":  "保存できません: ファイルは読み取り専用です。ファイルのアクセス権限を確認してください。",
+    "web.editor.err.denied":   "保存できません: アクセスが拒否されました。ファイルが許可されたディレクトリ外にあります。",
+    "web.editor.err.disabled": "編集機能が有効になっていません。--enable-edit オプションを付けてサーバーを起動してください。",
+    "web.editor.err.notmd":    "Markdown ファイル (.md) のみ編集可能です。",
+    "web.editor.err.save":     "保存に失敗: ",
+
+    // ── Viewed tracking ──────────────────────────────────────
+    "web.viewed":           "既読",
+    "web.viewed.mark":      "既読にしてこのセクションを折りたたむ",
+    "web.viewed.all":       "すべて既読",
+    "web.viewed.all.tip":   "すべてのセクションを既読にする",
+    "web.viewed.collapse":  "折りたたむ",
+    "web.viewed.expand":    "展開",
+    "web.viewed.collapseall": "すべて折りたたむ",
+    "web.viewed.expandall": "すべて展開",
+    "web.viewed.print":     "印刷",
+    "web.viewed.print.tip": "このセクションを印刷",
+    "web.viewed.print.blocked":    "ブラウザが自動印刷をブロックしました。\n\n「OK」をクリックして再試行するか、「キャンセル」で閉じてください。",
+    "web.viewed.print.permission": "ブラウザの設定でこのサイトの印刷を許可するか、ブラウザメニューの印刷機能をご利用ください。",
+    "web.viewed.print.popup":      "セクションを印刷するにはポップアップを許可してください。\n\nまたはブラウザメニューの「印刷」でページ全体を印刷できます。",
+    "web.viewed.print.loading":    "印刷内容を準備中…",
+    "web.viewed.print.failed":     "印刷ウィンドウを開けませんでした。ブラウザメニューの「印刷」をご利用ください。",
+
+    // ── Keyboard shortcuts panel ─────────────────────────────
+    "web.kbd.title":        "キーボードショートカット",
+    "web.kbd.cat.core":     "基本操作",
+    "web.kbd.cat.nav":      "ナビゲーション",
+    "web.kbd.cat.search":   "検索 (有効時)",
+    "web.kbd.cat.edit":     "編集 (有効時)",
+    "web.kbd.cat.viewed":   "既読トラッキング (有効時)",
+    "web.kbd.footer":       "ESC または ? で閉じる",
+    "web.kbd.undo":         "操作を元に戻す",
+    "web.kbd.redo":         "やり直し",
+    "web.kbd.redo.alt":     "やり直し (代替)",
+    "web.kbd.escape":       "ポップアップを閉じる/選択を解除",
+    "web.kbd.toc":          "目次の切り替え/フォーカス",
+    "web.kbd.help":         "ショートカットキーのヘルプを表示",
+    "web.kbd.search":       "検索を開く",
+    "web.kbd.prevheading":  "前の見出しへジャンプ",
+    "web.kbd.nextheading":  "次の見出しへジャンプ",
+    "web.kbd.prevanno":     "前の注釈へジャンプ",
+    "web.kbd.nextanno":     "次の注釈へジャンプ",
+    "web.kbd.scroll":       "1/3 ページ分下へスクロール (ESC で停止)",
+    "web.kbd.collapse":     "現在のセクションの折りたたみ/展開を切り替え",
+    "web.kbd.viewed":       "現在のセクションの既読状態を切り替え",
+    "web.kbd.edit":         "現在の Markdown ファイルを編集"
+}

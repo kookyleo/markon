@@ -69,6 +69,10 @@ pub struct AppSettings {
     pub default_edit: bool,
     #[serde(default)]
     pub default_shared_annotation: bool,
+    /// Custom keyboard shortcut overrides. Keys = shortcut name (e.g. "UNDO"),
+    /// values = { key, ctrl, shift } partial objects (desc is not stored).
+    #[serde(default)]
+    pub shortcuts: std::collections::HashMap<String, serde_json::Value>,
     /// Check for updates on launch via GitHub releases.
     #[serde(default = "default_true")]
     pub auto_update: bool,
@@ -96,6 +100,7 @@ impl Default for AppSettings {
             default_viewed: true,
             default_edit: false,
             default_shared_annotation: false,
+            shortcuts: std::collections::HashMap::new(),
             auto_update: true,
             window_width: None,
             window_height: None,
@@ -182,6 +187,11 @@ impl AppSettings {
             registry: None,
             management_token: None,
             language: Some(effective_web_lang),
+            shortcuts_json: if self.shortcuts.is_empty() {
+                None
+            } else {
+                serde_json::to_string(&self.shortcuts).ok()
+            },
         }
     }
 }
