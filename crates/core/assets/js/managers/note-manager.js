@@ -8,6 +8,8 @@ import { PlatformUtils, Logger } from '../core/utils.js';
 import { LayoutEngine } from '../services/layout.js';
 import { Text } from '../services/text.js';
 
+const _t = (window.__MARKON_I18N__ && window.__MARKON_I18N__.t) || (k => k);
+
 export class NoteManager {
     #annotationManager;
     #markdownBody;
@@ -129,8 +131,8 @@ export class NoteManager {
 
         noteCard.innerHTML = `
             <div class="note-actions">
-                <button class="note-edit" data-annotation-id="${annotation.id}" title="Edit note">✎</button>
-                <button class="note-delete" data-annotation-id="${annotation.id}" title="Delete note">×</button>
+                <button class="note-edit" data-annotation-id="${annotation.id}" title="${_t('web.note.edit')}">✎</button>
+                <button class="note-delete" data-annotation-id="${annotation.id}" title="${_t('web.note.delete')}">×</button>
             </div>
             <div class="note-content">${Text.escape(annotation.note)}</div>
         `;
@@ -197,8 +199,8 @@ export class NoteManager {
         popup.dataset.annotationId = annotationId;
         popup.innerHTML = `
             <div class="note-actions">
-                <button class="note-edit" data-annotation-id="${annotationId}" title="Edit note">✎</button>
-                <button class="note-delete" data-annotation-id="${annotationId}" title="Delete note">×</button>
+                <button class="note-edit" data-annotation-id="${annotationId}" title="${_t('web.note.edit')}">✎</button>
+                <button class="note-delete" data-annotation-id="${annotationId}" title="${_t('web.note.delete')}">×</button>
             </div>
             <div class="note-content">${Text.escape(noteData.note)}</div>
         `;

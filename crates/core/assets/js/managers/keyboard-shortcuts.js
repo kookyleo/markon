@@ -6,6 +6,8 @@
 import { CONFIG } from '../core/config.js';
 import { PlatformUtils, Logger } from '../core/utils.js';
 
+const _t = (window.__MARKON_I18N__ && window.__MARKON_I18N__.t) || (k => k);
+
 /**
  * Keyboard shortcuts manager
  */
@@ -151,33 +153,33 @@ export class KeyboardShortcutsManager {
         };
 
         const categories = {
-            'Core': ['UNDO', 'REDO', 'REDO_ALT', 'ESCAPE', 'TOGGLE_TOC', 'HELP'],
-            'Navigation': ['SCROLL_HALF_PAGE_DOWN', 'PREV_HEADING', 'NEXT_HEADING', 'PREV_ANNOTATION', 'NEXT_ANNOTATION'],
-            'Search (when enabled)': ['SEARCH'],
-            'Edit (when enabled)': ['EDIT'],
-            'Viewed (when enabled)': ['TOGGLE_VIEWED', 'TOGGLE_SECTION_COLLAPSE']
+            [_t('web.kbd.cat.core')]: ['UNDO', 'REDO', 'REDO_ALT', 'ESCAPE', 'TOGGLE_TOC', 'HELP'],
+            [_t('web.kbd.cat.nav')]: ['SCROLL_HALF_PAGE_DOWN', 'PREV_HEADING', 'NEXT_HEADING', 'PREV_ANNOTATION', 'NEXT_ANNOTATION'],
+            [_t('web.kbd.cat.search')]: ['SEARCH'],
+            [_t('web.kbd.cat.edit')]: ['EDIT'],
+            [_t('web.kbd.cat.viewed')]: ['TOGGLE_VIEWED', 'TOGGLE_SECTION_COLLAPSE']
         };
 
         let html = '<div class="shortcuts-help-overlay"></div>';
         html += '<div class="shortcuts-help-modal">';
         html += '<div class="shortcuts-help-header">';
-        html += '<h2>Keyboard Shortcuts</h2>';
+        html += `<h2>${_t('web.kbd.title')}</h2>`;
         html += '</div>';
         html += '<div class="shortcuts-help-content">';
 
         for (const [category, shortcutNames] of Object.entries(categories)) {
             // Skip Search Category（如果未启用）
-            if (category.startsWith('Search') && !document.querySelector('meta[name="enable-search"]')) {
+            if (shortcutNames.includes('SEARCH') && !document.querySelector('meta[name="enable-search"]')) {
                 continue;
             }
 
             // Skip Edit Category（如果未启用）
-            if (category.startsWith('Edit') && !document.querySelector('meta[name="enable-edit"]')) {
+            if (shortcutNames.includes('EDIT') && !document.querySelector('meta[name="enable-edit"]')) {
                 continue;
             }
 
             // Skip Viewed Category（如果未启用）
-            if (category.startsWith('Viewed') && !document.querySelector('meta[name="enable-viewed"]')) {
+            if (shortcutNames.includes('TOGGLE_VIEWED') && !document.querySelector('meta[name="enable-viewed"]')) {
                 continue;
             }
 
@@ -206,7 +208,7 @@ export class KeyboardShortcutsManager {
         }
 
         html += '</div>';
-        html += '<div class="shortcuts-help-footer">Press <kbd>ESC</kbd> or <kbd>?</kbd> to close</div>';
+        html += `<div class="shortcuts-help-footer">${_t('web.kbd.footer')}</div>`;
         html += '</div>';
 
         panel.innerHTML = html;

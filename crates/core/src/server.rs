@@ -66,6 +66,26 @@ pub struct AppState {
     pub tx: Option<broadcast::Sender<String>>,
     pub workspace_registry: Arc<WorkspaceRegistry>,
     pub management_token: Arc<String>,
+    /// Pre-built i18n JSON string for injection into templates.
+    pub i18n_json: Arc<String>,
+}
+
+/// Strip `// ...` line comments from JSON5 text so serde_json can parse it.
+fn strip_json5_comments(s: &str) -> String {
+    s.lines()
+        .map(|line| if line.trim_start().starts_with("//") { "" } else { line })
+        .collect::<Vec<_>>()
+        .join("\n")
+}
+
+fn load_i18n() -> String {
+    let zh: serde_json::Value = serde_json::from_str(
+        &strip_json5_comments(include_str!("../../../i18n/zh_CN.json5"))
+    ).unwrap_or_default();
+    let en: serde_json::Value = serde_json::from_str(
+        &strip_json5_comments(include_str!("../../../i18n/en.json5"))
+    ).unwrap_or_default();
+    serde_json::json!({"zh": zh, "en": en}).to_string()
 }
 
 fn print_compact_qr(data: &str) -> Result<(), Box<dyn std::error::Error>> {
@@ -229,6 +249,7 @@ pub async fn start(config: ServerConfig) -> Result<(), String> {
         tx,
         workspace_registry: registry,
         management_token: token.clone(),
+        i18n_json: Arc::new(load_i18n()),
     };
 
     // Management API: requires loopback source IP + valid token header.
@@ -827,6 +848,8 @@ fn render_markdown_file(
                 context.insert("markdown_content_json", &json);
             }
 
+            context.insert("i18n_json", state.i18n_json.as_str());
+
             match state.tera.render("layout.html", &context) {
                 Ok(html) => Html(html).into_response(),
                 Err(e) => (
@@ -849,6 +872,7 @@ fn render_markdown_file(
             );
             context.insert("show_back_link", &false);
             context.insert("has_mermaid", &false);
+            context.insert("i18n_json", state.i18n_json.as_str());
 
             match state.tera.render("layout.html", &context) {
                 Ok(html) => Html(html).into_response(),
@@ -973,6 +997,7 @@ fn render_directory_listing(
     context.insert("show_parent", &show_parent);
     context.insert("parent_link", &parent_link);
     context.insert("enable_search", &ws.enable_search);
+    context.insert("i18n_json", state.i18n_json.as_str());
 
     match state.tera.render("directory.html", &context) {
         Ok(html) => Html(html).into_response(),

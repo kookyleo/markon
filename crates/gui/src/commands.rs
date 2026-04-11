@@ -58,8 +58,8 @@ pub fn resolve_lang(language: &str) -> &'static str {
 fn update_tray_language(app: &tauri::AppHandle, language: &str) {
     let lang = resolve_lang(language);
     let i18n_text = match lang {
-        "zh" => include_str!("../ui/zh_CN.i18n.json5"),
-        _    => include_str!("../ui/en.i18n.json5"),
+        "zh" => include_str!("../../../i18n/zh_CN.json5"),
+        _    => include_str!("../../../i18n/en.json5"),
     };
     let i18n: serde_json::Value = serde_json::from_str(
         &strip_json5_comments(i18n_text)
@@ -348,6 +348,18 @@ pub async fn check_for_update(app: tauri::AppHandle) -> serde_json::Value {
             "error": e.to_string(),
         }),
     }
+}
+
+/// Return all i18n translations (both languages) for the frontend.
+#[tauri::command]
+pub fn get_i18n() -> serde_json::Value {
+    let zh: serde_json::Value = serde_json::from_str(
+        &strip_json5_comments(include_str!("../../../i18n/zh_CN.json5"))
+    ).unwrap_or_default();
+    let en: serde_json::Value = serde_json::from_str(
+        &strip_json5_comments(include_str!("../../../i18n/en.json5"))
+    ).unwrap_or_default();
+    serde_json::json!({ "zh": zh, "en": en })
 }
 
 /// Toggle tray-resident setting: persists, updates AtomicBool, and applies tray visibility.

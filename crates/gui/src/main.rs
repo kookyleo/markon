@@ -171,8 +171,8 @@ fn main() {
 
             let tray_lang = commands::resolve_lang(&language_init);
             let i18n_text = match tray_lang {
-                "zh" => include_str!("../ui/zh_CN.i18n.json5"),
-                _    => include_str!("../ui/en.i18n.json5"),
+                "zh" => include_str!("../../../i18n/zh_CN.json5"),
+                _    => include_str!("../../../i18n/en.json5"),
             };
             let i18n_json: serde_json::Value = serde_json::from_str(
                 &commands::strip_json5_comments(i18n_text)
@@ -282,6 +282,7 @@ fn main() {
             commands::pick_workspace_dir,
             commands::pick_db_path,
             commands::check_for_update,
+            commands::get_i18n,
         ])
         .build(tauri::generate_context!())
         .expect("error building markon-gui");

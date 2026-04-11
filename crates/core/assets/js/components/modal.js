@@ -6,6 +6,8 @@
 import { Logger } from '../core/utils.js';
 import { Position } from '../services/position.js';
 
+const _t = (window.__MARKON_I18N__ && window.__MARKON_I18N__.t) || (k => k);
+
 /**
  * 模态框Type枚举
  */
@@ -259,10 +261,10 @@ export class NoteInputModal extends BaseModal {
         modal.className = 'note-input-modal';
 
         modal.innerHTML = `
-            <textarea class="note-textarea" placeholder="Enter your note...">${this.#initialValue}</textarea>
+            <textarea class="note-textarea" placeholder="${_t('web.modal.note.placeholder')}">${this.#initialValue}</textarea>
             <div class="note-input-actions">
-                <button class="note-cancel">Cancel</button>
-                <button class="note-save" disabled>Save</button>
+                <button class="note-cancel">${_t('web.modal.cancel')}</button>
+                <button class="note-save" disabled>${_t('web.modal.save')}</button>
             </div>
         `;
 
@@ -347,11 +349,11 @@ export class ConfirmModal extends BaseModal {
             ...options
         });
 
-        this.#message = options.message || 'Are you sure?';
+        this.#message = options.message || _t('web.modal.confirm');
         this.#onConfirm = options.onConfirm || (() => {});
         this.#onCancel = options.onCancel || (() => {});
-        this.#confirmText = options.confirmText || 'OK';
-        this.#cancelText = options.cancelText || 'Cancel';
+        this.#confirmText = options.confirmText || _t('web.modal.ok');
+        this.#cancelText = options.cancelText || _t('web.modal.cancel');
     }
 
     create() {
@@ -446,7 +448,7 @@ export class ModalManager {
  * @param {string} confirmText - ConfirmButtonText
  * @returns {ConfirmModal}
  */
-export function showConfirmDialog(message, onConfirm, anchorElement = null, confirmText = 'OK') {
+export function showConfirmDialog(message, onConfirm, anchorElement = null, confirmText = _t('web.modal.ok')) {
     return ModalManager.showConfirm({
         message,
         onConfirm,

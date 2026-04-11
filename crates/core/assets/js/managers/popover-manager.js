@@ -9,6 +9,8 @@ import { DOM } from '../services/dom.js';
 import { DraggableManager } from '../components/draggable.js';
 import { Position } from '../services/position.js';
 
+const _t = (window.__MARKON_I18N__ && window.__MARKON_I18N__.t) || (k => k);
+
 /**
  * Popover manager
  */
@@ -373,25 +375,25 @@ export class PopoverManager {
                 // Highlighted with selection: show Unhighlight + Note + Edit
                 Logger.log('PopoverManager', 'Showing: Unhighlight + Note + Edit');
                 this.#element.innerHTML = `
-                    <button data-action="unhighlight">Unhighlight</button>
+                    <button data-action="unhighlight">${_t('web.annot.unhighlight')}</button>
                     <span class="popover-separator">|</span>
-                    <button data-action="add-note">Note</button>
+                    <button data-action="add-note">${_t('web.annot.note')}</button>
                     ${editButton}
                 `;
             } else {
                 // Highlighted without selection (just click): show only Unhighlight
                 Logger.log('PopoverManager', 'Showing: Unhighlight only');
-                this.#element.innerHTML = '<button data-action="unhighlight">Unhighlight</button>';
+                this.#element.innerHTML = `<button data-action="unhighlight">${_t('web.annot.unhighlight')}</button>`;
             }
         } else {
             // Not highlighted: show annotation buttons + Edit
             this.#element.innerHTML = `
-                <button data-action="highlight-orange">Orange</button>
-                <button data-action="highlight-green">Green</button>
-                <button data-action="highlight-yellow">Yellow</button>
-                <button data-action="strikethrough">Strike</button>
+                <button data-action="highlight-orange">${_t('web.annot.orange')}</button>
+                <button data-action="highlight-green">${_t('web.annot.green')}</button>
+                <button data-action="highlight-yellow">${_t('web.annot.yellow')}</button>
+                <button data-action="strikethrough">${_t('web.annot.strike')}</button>
                 <span class="popover-separator">|</span>
-                <button data-action="add-note">Note</button>
+                <button data-action="add-note">${_t('web.annot.note')}</button>
                 ${editButton}
             `;
         }

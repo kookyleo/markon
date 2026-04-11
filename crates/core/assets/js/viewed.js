@@ -7,6 +7,8 @@
  * - Phase 3: Batch operations, TOC highlighting
  */
 
+const _t = (window.__MARKON_I18N__ && window.__MARKON_I18N__.t) || (k => k);
+
 class SectionViewedManager {
     constructor(isSharedMode, ws) {
         this.isSharedMode = isSharedMode;
@@ -119,7 +121,7 @@ class SectionViewedManager {
                     create: () => {
                         const label = document.createElement('label');
                         label.className = 'viewed-checkbox-label';
-                        label.title = 'Mark as viewed to collapse this section';
+                        label.title = _t('web.viewed.mark');
 
                         const checkbox = document.createElement('input');
                         checkbox.type = 'checkbox';
@@ -133,7 +135,7 @@ class SectionViewedManager {
 
                         const text = document.createElement('span');
                         text.className = 'section-action viewed-text';
-                        text.textContent = 'Viewed';
+                        text.textContent = _t('web.viewed');
 
                         label.appendChild(checkbox);
                         label.appendChild(text);
@@ -148,8 +150,8 @@ class SectionViewedManager {
                 create: () => {
                     const printBtn = document.createElement('span');
                     printBtn.className = 'section-action section-print-btn';
-                    printBtn.textContent = 'Print';
-                    printBtn.title = 'Print this section';
+                    printBtn.textContent = _t('web.viewed.print');
+                    printBtn.title = _t('web.viewed.print.tip');
                     printBtn.dataset.headingId = headingId;
                     return printBtn;
                 }
@@ -162,7 +164,7 @@ class SectionViewedManager {
                     const toggleBtn = document.createElement('span');
                     toggleBtn.className = 'section-action section-expand-toggle';
                     // Default state: section is expanded, so show "Collapse"
-                    toggleBtn.textContent = 'Collapse';
+                    toggleBtn.textContent = _t('web.viewed.collapse');
                     toggleBtn.dataset.headingId = headingId;
                     return toggleBtn;
                 }
@@ -277,7 +279,7 @@ class SectionViewedManager {
                 el.classList.add('section-content-temp-visible');
             });
             if (toggleBtn) {
-                toggleBtn.textContent = 'Collapse';
+                toggleBtn.textContent = _t('web.viewed.collapse');
             }
             this.tempExpandedState[headingId] = false;
         } else {
@@ -288,7 +290,7 @@ class SectionViewedManager {
                 el.classList.remove('section-content-temp-visible');
             });
             if (toggleBtn) {
-                toggleBtn.textContent = 'Expand';
+                toggleBtn.textContent = _t('web.viewed.expand');
             }
             this.tempExpandedState[headingId] = true;
         }
@@ -488,12 +490,12 @@ class SectionViewedManager {
             clearTimeout(fallbackCleanup);
 
             // Show manual print dialog with retry option
-            const retry = confirm('浏览器阻止了自动打印。\n\n点击"确定"重试打印，或点击"取消"关闭。');
+            const retry = confirm(_t('web.viewed.print.blocked'));
             if (retry) {
                 try {
                     iframeWindow.print();
                 } catch (_) {
-                    alert('请在浏览器设置中允许此网站的打印权限，或使用浏览器菜单中的打印功能。');
+                    alert(_t('web.viewed.print.allow'));
                 }
             }
             // Cleanup after user interaction
@@ -523,12 +525,12 @@ class SectionViewedManager {
 
         if (!printWindow) {
             // Popup blocked
-            alert('请允许弹出窗口以打印章节。\n\n或使用浏览器菜单中的"打印"功能打印整个页面。');
+            alert(_t('web.viewed.print.popup'));
             return;
         }
 
         // Show loading message in new window
-        printWindow.document.write('<html><head><title>Loading...</title></head><body style="font-family: system-ui; padding: 40px; text-align: center;"><h2>正在准备打印内容...</h2></body></html>');
+        printWindow.document.write(`<html><head><title>Loading...</title></head><body style="font-family: system-ui; padding: 40px; text-align: center;"><h2>${_t('web.viewed.print.preparing')}</h2></body></html>`);
 
         // STEP 2: Prepare content (can be async now that window is already open)
         // Clone heading and remove UI controls
@@ -596,7 +598,7 @@ class SectionViewedManager {
         } catch (error) {
             console.error('[ViewedManager] printSectionInNewWindow: failed to write content', error);
             printWindow.close();
-            alert('无法打开打印窗口。请使用浏览器菜单中的"打印"功能。');
+            alert(_t('web.viewed.print.failed'));
         }
     }
 
@@ -816,7 +818,7 @@ class SectionViewedManager {
         // Create checkbox label (similar to other headings)
         const label = document.createElement('label');
         label.className = 'viewed-checkbox-label viewed-all-label';
-        label.title = 'Mark all sections as viewed';
+        label.title = _t('web.viewed.all.tip');
 
         const checkbox = document.createElement('input');
         checkbox.type = 'checkbox';
@@ -825,7 +827,7 @@ class SectionViewedManager {
 
         const text = document.createElement('span');
         text.className = 'viewed-text';
-        text.textContent = 'All Viewed';
+        text.textContent = _t('web.viewed.all');
 
         label.appendChild(checkbox);
         label.appendChild(text);
@@ -835,11 +837,11 @@ class SectionViewedManager {
         const toolbar = document.createElement('span');
         toolbar.className = 'viewed-toolbar';
         toolbar.innerHTML = `
-            <a class="btn-collapse-all">Collapse All</a>
+            <a class="btn-collapse-all">${_t('web.viewed.collapseall')}</a>
             <span class="viewed-toolbar-separator">|</span>
-            <a class="btn-expand-all">Expand All</a>
+            <a class="btn-expand-all">${_t('web.viewed.expandall')}</a>
             <span class="viewed-toolbar-separator">|</span>
-            <a class="btn-print-page">Print</a>
+            <a class="btn-print-page">${_t('web.viewed.print')}</a>
         `;
 
         // Append to H1 (inline on the right)

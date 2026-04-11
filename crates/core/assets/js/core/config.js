@@ -3,6 +3,8 @@
  * Centralized configuration constants to avoid magic numbers scattered in code
  */
 
+const _t = (window.__MARKON_I18N__ && window.__MARKON_I18N__.t) || (k => k);
+
 export const CONFIG = {
     // Responsive breakpoints
     BREAKPOINTS: {
@@ -50,29 +52,29 @@ export const CONFIG = {
     // Keyboard shortcuts configuration
     SHORTCUTS: {
         // Core functionality
-        UNDO: { key: 'z', ctrl: true, shift: false, desc: 'Undo last operation' },
-        REDO: { key: 'z', ctrl: true, shift: true, desc: 'Redo last undone operation' },
-        REDO_ALT: { key: 'y', ctrl: true, shift: false, desc: 'Redo (alternative)' },
-        ESCAPE: { key: 'Escape', ctrl: false, shift: false, desc: 'Close popups/Clear selection' },
-        TOGGLE_TOC: { key: '\\', ctrl: true, shift: false, desc: 'Toggle/Focus TOC' },
-        HELP: { key: '?', ctrl: false, shift: false, desc: 'Show keyboard shortcuts help' },
-        SEARCH: { key: '/', ctrl: false, shift: false, desc: 'Open search' },
+        UNDO: { key: 'z', ctrl: true, shift: false, desc: _t('web.kbd.undo') },
+        REDO: { key: 'z', ctrl: true, shift: true, desc: _t('web.kbd.redo') },
+        REDO_ALT: { key: 'y', ctrl: true, shift: false, desc: _t('web.kbd.redo.alt') },
+        ESCAPE: { key: 'Escape', ctrl: false, shift: false, desc: _t('web.kbd.escape') },
+        TOGGLE_TOC: { key: '\\', ctrl: true, shift: false, desc: _t('web.kbd.toc') },
+        HELP: { key: '?', ctrl: false, shift: false, desc: _t('web.kbd.help') },
+        SEARCH: { key: '/', ctrl: false, shift: false, desc: _t('web.kbd.search') },
 
         // Navigation
-        PREV_HEADING: { key: 'k', ctrl: false, shift: false, desc: 'Jump to previous heading' },
-        NEXT_HEADING: { key: 'j', ctrl: false, shift: false, desc: 'Jump to next heading' },
-        PREV_ANNOTATION: { key: 'k', ctrl: true, shift: false, desc: 'Jump to previous annotation' },
-        NEXT_ANNOTATION: { key: 'j', ctrl: true, shift: false, desc: 'Jump to next annotation' },
-        SCROLL_HALF_PAGE_DOWN: { key: ' ', ctrl: false, shift: false, desc: 'Scroll 1/3 page down (ESC to stop)' },
+        PREV_HEADING: { key: 'k', ctrl: false, shift: false, desc: _t('web.kbd.prevheading') },
+        NEXT_HEADING: { key: 'j', ctrl: false, shift: false, desc: _t('web.kbd.nextheading') },
+        PREV_ANNOTATION: { key: 'k', ctrl: true, shift: false, desc: _t('web.kbd.prevanno') },
+        NEXT_ANNOTATION: { key: 'j', ctrl: true, shift: false, desc: _t('web.kbd.nextanno') },
+        SCROLL_HALF_PAGE_DOWN: { key: ' ', ctrl: false, shift: false, desc: _t('web.kbd.scroll') },
 
         // Section control
-        TOGGLE_SECTION_COLLAPSE: { key: 'o', ctrl: false, shift: false, desc: 'Toggle current section collapse/expand' },
+        TOGGLE_SECTION_COLLAPSE: { key: 'o', ctrl: false, shift: false, desc: _t('web.kbd.collapse') },
 
         // Viewed functionality (requires enabling)
-        TOGGLE_VIEWED: { key: 'v', ctrl: false, shift: false, desc: 'Toggle current section viewed state' },
+        TOGGLE_VIEWED: { key: 'v', ctrl: false, shift: false, desc: _t('web.kbd.viewed') },
 
         // Edit functionality (requires enabling)
-        EDIT: { key: 'e', ctrl: false, shift: false, desc: 'Edit current Markdown file' },
+        EDIT: { key: 'e', ctrl: false, shift: false, desc: _t('web.kbd.edit') },
     },
 
     // Storage keys

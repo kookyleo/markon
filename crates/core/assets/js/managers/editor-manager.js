@@ -6,6 +6,8 @@
 import { CONFIG } from '../core/config.js';
 import { Logger } from '../core/utils.js';
 
+const _t = (window.__MARKON_I18N__ && window.__MARKON_I18N__.t) || (k => k);
+
 export class EditorManager {
     #filePath;
     #editorModal = null;
@@ -160,15 +162,15 @@ export class EditorManager {
      */
     #showErrorAlert(message) {
         if (message.includes('read-only')) {
-            alert('Cannot save: File is read-only. Please check file permissions.');
+            alert(_t('web.editor.err.readonly'));
         } else if (message.includes('Access denied')) {
-            alert('Cannot save: Access denied. File is outside allowed directory.');
+            alert(_t('web.editor.err.denied'));
         } else if (message.includes('not enabled')) {
-            alert('Edit feature is not enabled. Please start server with --enable-edit.');
+            alert(_t('web.editor.err.disabled'));
         } else if (message.includes('Only Markdown')) {
-            alert('Only Markdown files (.md) can be edited.');
+            alert(_t('web.editor.err.notmd'));
         } else {
-            alert(`Save failed: ${message}`);
+            alert(`${_t('web.editor.err.save')}${message}`);
         }
     }
 
@@ -181,9 +183,9 @@ export class EditorManager {
         modal.className = 'editor-modal';
         modal.innerHTML = `
             <div class="editor-header">
-                <button class="editor-close" title="Close (Esc)">✕</button>
+                <button class="editor-close" title="${_t('web.editor.close.tip')}">✕</button>
                 <span class="editor-file-name">${this.#escapeHtml(this.#filePath)}</span>
-                <button class="editor-save-btn" style="display: none;">Save Changes</button>
+                <button class="editor-save-btn" style="display: none;">${_t('web.editor.save')}</button>
             </div>
             <div class="editor-body">
                 <div class="editor-container">
@@ -321,7 +323,7 @@ export class EditorManager {
             this.#saveButton.disabled = isSaving;
             this.#saveButton.textContent = isSaving
                 ? 'Saving...'
-                : 'Save Changes (Ctrl+S)';
+                : _t('web.editor.save.tip');
         }
     }
 

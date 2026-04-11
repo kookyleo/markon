@@ -1,6 +1,8 @@
 import { CONFIG } from '../core/config.js';
 import { Logger } from '../core/utils.js';
 
+const _t = (window.__MARKON_I18N__ && window.__MARKON_I18N__.t) || (k => k);
+
 export class SearchManager {
     #searchModal;
     #searchInput;
@@ -138,7 +140,7 @@ export class SearchManager {
 
     #renderResults(results) {
         if (results.length === 0) {
-            this.#searchResults.innerHTML = '<li class="search-result-item no-results">No results found</li>';
+            this.#searchResults.innerHTML = `<li class="search-result-item no-results">${_t('web.search.noresult')}</li>`;
             return;
         }
 

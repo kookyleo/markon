@@ -1,14 +1,8 @@
-// Load per-language translations from json5 files.
-// Strip // comments before parsing (json5-lite approach).
+// Load translations from Rust backend (single source: /i18n/*.json5).
+// Falls back to fetch if invoke is unavailable (shouldn't happen in Tauri).
 
-function parseJson5(text) {
-  return JSON.parse(text.replace(/^\s*\/\/.*$/gm, ''));
-}
-
-const [zh, en] = await Promise.all([
-  fetch('./zh_CN.i18n.json5').then(r => r.text()).then(parseJson5),
-  fetch('./en.i18n.json5').then(r => r.text()).then(parseJson5),
-]);
+const { invoke } = window.__TAURI__.core;
+const raw = await invoke('get_i18n');
 
 function buildTemplateFunc(tplStr) {
   return (info) => tplStr
@@ -34,6 +28,6 @@ function buildLang(data) {
 }
 
 export const i18n = {
-  zh: buildLang(zh),
-  en: buildLang(en),
+  zh: buildLang(raw.zh),
+  en: buildLang(raw.en),
 };
