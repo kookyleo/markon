@@ -1,0 +1,154 @@
+{
+    // ── Navigation ───────────────────────────────────────────
+    "nav.global":     "General",
+    "nav.workspaces": "Workspaces",
+    "nav.tips":       "Tips",
+    "nav.about":      "About",
+
+    // ── General — Server ─────────────────────────────────────
+    "sec.server":     "Server",
+    "pref.port":       "Port",
+    "port.auto":       "Auto",
+    "port.spec":       "Manual",
+    "port.auto.hint":  "Auto-assigned",
+    "pref.bind":       "Bind address",
+    "bind.local":      "127.0.0.1 — Localhost only",
+    "bind.lan":        "0.0.0.0",
+
+    // ── General — Appearance ─────────────────────────────────
+    "sec.appearance": "Appearance",
+    "pref.theme":      "Theme",
+    "theme.auto":      "Follow system",
+    "theme.light":     "Light",
+    "theme.dark":      "Dark",
+    "pref.lang":       "Language",
+    "lang.auto":       "Follow system",
+
+    // ── General — Behavior ───────────────────────────────────
+    "sec.behavior":   "Behavior",
+    "pref.tray":       "Stay in menu bar",
+    "pref.tray.desc":  "Hide on window close instead of quitting; reopen via menu bar icon",
+    "pref.autoupdate":      "Auto-update",
+    "pref.autoupdate.desc": "Check GitHub for new versions on launch and install automatically",
+
+    // ── General — New workspace defaults ─────────────────────
+    "sec.defaults":         "Features enabled by default for new workspaces",
+    "pref.def.search":      "Search",
+    "pref.def.viewed":      "Viewed tracking",
+    "pref.def.edit":        "Edit",
+    "pref.def.shared":      "Shared notes",
+
+    // ── General — Database ───────────────────────────────────
+    "sec.database":   "Database",
+    "pref.dbpath":     "Shared annotation DB",
+    "pref.dbpath.desc":"Path to SQLite DB for syncing annotations and viewed state",
+    "pref.dbpath.browse": "Browse…",
+    "pref.dbpath.clear":  "Reset",
+
+    // ── Auto-update status ───────────────────────────────────
+    "update.checking": "Checking…",
+    "update.latest":   "Up to date",
+    "update.found":    "New version v{v} found, installing…",
+    "update.done":     "Update installed, restart to apply",
+    "update.error":    "Check failed",
+
+    // ── Workspace list ───────────────────────────────────────
+    "ws.add.btn":     "Add workspace…",
+    "ws.open.tip":    "Open in browser",
+    "ws.remove":      "Remove from list",
+    "ws.flag.search": "Search",
+    "ws.flag.search.tip": "Build a full-text search index for file contents",
+    "ws.flag.search.ready": "Search index is ready",
+    "ws.flag.viewed": "Viewed tracking",
+    "ws.flag.viewed.tip": "Track reading progress at block level",
+    "ws.flag.edit":   "Edit",
+    "ws.flag.edit.tip": "Allow editing Markdown files in the browser",
+    "ws.flag.shared": "Shared notes",
+    "ws.flag.shared.tip": "Sync annotations and viewed state across devices (requires SQLite)",
+    "ws.empty.title": "No workspaces yet",
+    "ws.empty.desc":  "Click the button below to pick a folder, or open one from Finder",
+    "ws.update.fail": "Update failed",
+    "ws.add.fail":    "Add failed",
+
+    // ── Tips — Quick start ───────────────────────────────────
+    "tips.search.placeholder": "Search tips…",
+    "tips.quickstart": "Quick start",
+    "tips.quickstart.1": "1. Click the + button in Workspaces to add a folder with Markdown files",
+    "tips.quickstart.2": "2. Click the ↗ icon to view rendered output in your browser",
+    "tips.quickstart.3": "3. Configure default features for new workspaces in General",
+
+    // ── Tips — Keyboard shortcuts ────────────────────────────
+    "tips.shortcuts":  "Keyboard shortcuts (in browser)",
+    "tips.kbd.help":   "Show full shortcut list",
+    "tips.kbd.search": "Open search (requires Search enabled)",
+    "tips.kbd.nav":    "Jump to previous / next heading",
+    "tips.kbd.scroll": "Auto-scroll reading",
+    "tips.kbd.toc":    "Toggle table of contents",
+    "tips.kbd.undo":   "Undo",
+    "tips.kbd.annot":  "Jump to previous / next annotation",
+    "tips.kbd.mod":    "⌘",
+
+    // ── Tips — Command builder ───────────────────────────────
+    "tips.cli":        "Command builder",
+    "cli.lbl.path":    "Target dir/file",
+    "cli.lbl.server":  "Listen",
+    "cli.lbl.entry":   "Entry",
+    "cli.lbl.theme":   "Page theme",
+    "cli.lbl.features":"Features",
+    "cli.path.ph":     "Directory or file path",
+    "cli.entry.tip":   "Proxy domain / public IP for QR code & external access (optional)",
+    "cli.search":      "Search",
+    "cli.viewed":      "Viewed tracking",
+    "cli.edit":        "Edit",
+    "cli.shared":      "Shared notes",
+    "cli.open":        "Auto-open browser",
+    "cli.alias.desc":  "Add as a shell alias for quick launch:",
+
+    // ── Tips — Desktop integration ───────────────────────────
+    "tips.gui":        "Desktop integration",
+    "tips.gui.mac.title": "macOS",
+    "tips.gui.mac.1":  "· Drag Markon.app to the Finder toolbar — click to open the current folder",
+    "tips.gui.mac.2":  "· Right-click a .md file → Open With → Markon to preview in browser",
+    "tips.gui.mac.3":  "· Drag a folder onto the Markon icon in the Dock to add it quickly",
+    "tips.gui.mac.4":  "· Menu bar resident mode: close window but keep the menu bar icon active",
+    "tips.gui.win.title": "Windows",
+    "tips.gui.win.1":  "· Right-click a .md file → Open With → choose Markon",
+    "tips.gui.win.2":  "· After install, use the \"Preview with Markon\" context menu entry",
+
+    // ── Tips — Key features ──────────────────────────────────
+    "tips.features":   "Key features",
+    "tips.feat.search.title": "Full-text search",
+    "tips.feat.search.desc":  "Tantivy-based index with CJK tokenization. Press / in the browser to search file contents in real time",
+    "tips.feat.viewed.title": "Viewed tracking",
+    "tips.feat.viewed.desc":  "Tracks reading progress at block level, auto-saved. Jumps to last position when reopening a document",
+    "tips.feat.edit.title":   "Live editing",
+    "tips.feat.edit.desc":    "Edit Markdown source files directly in the browser. Syntax highlighting + live preview, changes saved on the fly",
+    "tips.feat.shared.title": "Shared notes",
+    "tips.feat.shared.desc":  "Sync annotations and viewed state via SQLite DB. Ideal for multi-device setups or team collaboration",
+
+    // ── About ────────────────────────────────────────────────
+    "about.slogan":   "Turn your markdown on.",
+    "about.desc":     "A lightweight Markdown renderer with GitHub-style layout, full-text search, annotations and multi-device sync.",
+    "about.icon.credit": "Icon by brajaomar_j — Flaticon",
+    "about.star":     "Star on GitHub",
+
+    // ── Feedback buttons ─────────────────────────────────────
+    "feedback.bug.label": "Bug",
+    "feedback.bug.tip":   "Report a crash or incorrect behavior",
+    "feedback.idea.label": "Idea",
+    "feedback.idea.tip":   "Suggest a new feature or improvement",
+    "feedback.ask.label": "Ask",
+    "feedback.ask.tip":   "Questions, usage help",
+
+    // ── Issue / Discussion templates (placeholders: {app_version} {os} {os_version} {arch} {ua})
+    "tpl.bug": "## Description\n<!-- A clear description of the bug -->\n\n\n## Steps to reproduce\n1.\n2.\n3.\n\n## Expected behavior\n\n\n## Actual behavior\n\n\n## Environment\n- **Markon**: v{app_version}\n- **OS**: {os} {os_version} ({arch})\n- **UA**: {ua}\n",
+    "tpl.idea": "## Summary\n<!-- What would you like to see? -->\n\n\n## Motivation / Use case\n<!-- What problem does this solve for you? -->\n\n\n## Possible implementation (optional)\n\n\n---\n*Markon v{app_version} · {os} {os_version}*\n",
+    "tpl.ask": "## Question\n\n\n\n## What have you tried (optional)\n\n\n\n---\n*Markon v{app_version} · {os} {os_version}*\n",
+    "tpl.title.bug":  "[Bug] ",
+    "tpl.title.idea": "",
+    "tpl.title.ask":  "",
+
+    // ── System tray menu ─────────────────────────────────────
+    "tray.settings": "Settings…",
+    "tray.quit":     "Quit Markon"
+}

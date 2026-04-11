@@ -46,11 +46,23 @@ pub struct AppSettings {
     pub port: u16,
     pub host: String,
     pub theme: String,
+    /// UI language: "auto" (follow system), "zh", "en".
+    #[serde(default)]
+    pub language: String,
     pub db_path: Option<String>,
     pub workspaces: Vec<WorkspaceSettings>,
     /// Whether the app stays resident in the menu bar (close hides; false = close exits).
     #[serde(default = "default_true")]
     pub tray_resident: bool,
+    /// Default feature flags applied to newly added workspaces.
+    #[serde(default = "default_true")]
+    pub default_search: bool,
+    #[serde(default = "default_true")]
+    pub default_viewed: bool,
+    #[serde(default)]
+    pub default_edit: bool,
+    #[serde(default)]
+    pub default_shared_annotation: bool,
     /// Check for updates on launch via GitHub releases.
     #[serde(default = "default_true")]
     pub auto_update: bool,
@@ -68,9 +80,14 @@ impl Default for AppSettings {
             port: 6419,
             host: "127.0.0.1".to_string(),
             theme: "auto".to_string(),
+            language: "auto".to_string(),
             db_path: None,
             workspaces: vec![],
             tray_resident: true,
+            default_search: true,
+            default_viewed: true,
+            default_edit: false,
+            default_shared_annotation: false,
             auto_update: true,
             window_width: None,
             window_height: None,

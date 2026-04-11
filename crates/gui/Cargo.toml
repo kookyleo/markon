@@ -6,7 +6,7 @@ authors.workspace = true
 license.workspace = true
 repository.workspace = true
 homepage.workspace = true
-description = "Desktop GUI for markon - Markdown renderer with GitHub styling"
+description = "markon desktop - Turn your markdown on."
 
 [[bin]]
 name = "markon-gui"

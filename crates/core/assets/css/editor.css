@@ -1057,45 +1057,47 @@
     }
 }
 
-/* Dark theme support */
-[data-theme="dark"] .shortcuts-help-modal {
-    background: #0d1117;
-    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.6);
-}
+/* Dark theme support — follow system preference */
+@media (prefers-color-scheme: dark) {
+    .shortcuts-help-modal {
+        background: #0d1117;
+        box-shadow: 0 4px 16px rgba(0, 0, 0, 0.6);
+    }
 
-[data-theme="dark"] .shortcuts-help-header,
-[data-theme="dark"] .shortcuts-help-footer {
-    background: #161b22;
-    border-color: #30363d;
-}
+    .shortcuts-help-header,
+    .shortcuts-help-footer {
+        background: #161b22;
+        border-color: #30363d;
+    }
 
-[data-theme="dark"] .shortcuts-help-header h2 {
-    color: #c9d1d9;
-}
+    .shortcuts-help-header h2 {
+        color: #c9d1d9;
+    }
 
-[data-theme="dark"] .shortcuts-category h3 {
-    color: #8b949e;
-}
+    .shortcuts-category h3 {
+        color: #8b949e;
+    }
 
-[data-theme="dark"] .shortcut-key kbd {
-    color: #c9d1d9;
-    background: #161b22;
-    border-color: #30363d;
-    box-shadow: inset 0 -1px 0 #30363d;
-}
+    .shortcut-key kbd {
+        color: #c9d1d9;
+        background: #161b22;
+        border-color: #30363d;
+        box-shadow: inset 0 -1px 0 #30363d;
+    }
 
-[data-theme="dark"] .shortcut-desc {
-    color: #c9d1d9;
-}
+    .shortcut-desc {
+        color: #c9d1d9;
+    }
 
-[data-theme="dark"] .shortcuts-help-footer {
-    color: #8b949e;
-}
+    .shortcuts-help-footer {
+        color: #8b949e;
+    }
 
-[data-theme="dark"] .shortcuts-help-footer kbd {
-    color: #c9d1d9;
-    background: #0d1117;
-    border-color: #30363d;
+    .shortcuts-help-footer kbd {
+        color: #c9d1d9;
+        background: #0d1117;
+        border-color: #30363d;
+    }
 }
 
 /* Print: hide shortcuts panel */

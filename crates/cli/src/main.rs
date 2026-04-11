@@ -32,7 +32,7 @@ fn select_host() -> Result<String, Box<dyn std::error::Error>> {
     Ok(hosts[sel].0.clone())
 }
 
-/// Preview Markdown files locally with GitHub styling.
+/// markon - Turn your markdown on.
 #[derive(Parser, Debug)]
 #[command(author, version, about, long_about = None)]
 struct Cli {
@@ -51,9 +51,9 @@ struct Cli {
     #[arg(short = 't', long, default_value = "auto")]
     theme: String,
 
-    /// Generate QR code for server address.
-    #[arg(long, value_name = "BASE_URL", action = clap::ArgAction::Set, num_args = 0..=1, default_missing_value = "missing")]
-    qr: Option<String>,
+    /// Public entry URL (proxy/domain). Used as QR code base and browser open URL.
+    #[arg(long, alias = "qr", value_name = "URL", action = clap::ArgAction::Set, num_args = 0..=1, default_missing_value = "missing")]
+    entry: Option<String>,
 
     /// Automatically open browser after starting the server.
     #[arg(short = 'b', long, value_name = "BASE_URL", action = clap::ArgAction::Set, num_args = 0..=1, default_missing_value = "local")]
@@ -220,6 +220,7 @@ async fn main() {
         enable_search: cli.enable_search,
         enable_viewed: cli.enable_viewed,
         enable_edit: cli.enable_edit,
+        shared_annotation: cli.shared_annotation,
         initial_path,
     };
 
@@ -227,7 +228,7 @@ async fn main() {
         host,
         port: cli.port,
         theme,
-        qr: cli.qr,
+        qr: cli.entry,
         open_browser,
         shared_annotation: cli.shared_annotation,
         salt: cli.salt,

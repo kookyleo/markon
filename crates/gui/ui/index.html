@@ -250,78 +250,61 @@
       background: var(--surface);
       border: 1px solid var(--border);
       border-radius: var(--radius);
-      overflow: hidden;
+      padding: 10px 12px;
     }
-    .ws-card-top {
+    /* Row 1: path + icon buttons */
+    .ws-row-top {
       display: flex;
-      align-items: flex-start;
-      gap: 10px;
-      padding: 11px 12px 10px 14px;
+      align-items: center;
+      gap: 8px;
     }
-    .ws-folder-icon { flex-shrink: 0; margin-top: 1px; color: var(--accent); }
-    .ws-info { flex: 1; min-width: 0; }
     .ws-path {
-      font-size: 12px;
+      flex: 1;
+      min-width: 0;
+      font-size: 12.5px;
       font-family: 'SF Mono', Monaco, Menlo, monospace;
       color: var(--text);
-      word-break: break-all;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
       line-height: 1.4;
     }
-    .ws-url {
-      font-size: 11px;
-      color: var(--text-2);
-      margin-top: 2px;
-      word-break: break-all;
-      line-height: 1.3;
-    }
-    .ws-card-actions { display: flex; align-items: center; gap: 5px; flex-shrink: 0; }
-    .ws-open-btn {
-      font-size: 11px;
-      padding: 3px 9px;
-      border-radius: 4px;
-      border: 1px solid var(--border);
-      background: transparent;
-      color: var(--accent);
-      cursor: default;
-      font-family: inherit;
-      transition: background 0.1s;
-    }
-    .ws-open-btn:hover { background: var(--surface-2); }
-    .ws-remove-btn {
-      font-size: 11px;
-      padding: 3px 9px;
-      border-radius: 4px;
-      border: 1px solid var(--border);
+    .ws-icon-btn {
+      width: 26px; height: 26px;
+      border-radius: 6px;
+      border: none;
       background: transparent;
       color: var(--text-2);
       cursor: default;
-      font-family: inherit;
-      transition: background 0.1s, color 0.1s, border-color 0.1s;
+      display: flex; align-items: center; justify-content: center;
+      flex-shrink: 0;
+      transition: background 0.1s, color 0.1s;
     }
-    .ws-remove-btn:hover { background: rgba(255,59,48,0.08); color: var(--danger); border-color: var(--danger); }
-
-    .ws-flags-row {
+    .ws-icon-btn:hover { background: var(--surface-2); }
+    .ws-icon-btn.open-btn { color: var(--accent); }
+    .ws-icon-btn.open-btn:hover { background: rgba(0,122,255,0.1); }
+    .ws-icon-btn.remove-btn:hover { background: rgba(255,59,48,0.1); color: var(--danger); }
+    /* Row 2: feature flags */
+    .ws-flags {
       display: flex;
-      gap: 2px;
-      padding: 4px 10px 6px;
-      border-top: 1px solid var(--border);
-      background: var(--bg);
+      gap: 1px;
+      margin-top: 6px;
       flex-wrap: wrap;
     }
     .ws-flag {
       display: flex;
       align-items: center;
-      gap: 5px;
-      padding: 4px 8px;
-      border-radius: 5px;
-      font-size: 12px;
-      color: var(--text-2);
+      gap: 4px;
+      padding: 3px 7px;
+      border-radius: 4px;
+      font-size: 11.5px;
+      color: var(--text-3);
       cursor: default;
-      transition: background 0.1s;
+      transition: color 0.1s;
     }
-    .ws-flag:hover { background: var(--surface); }
+    .ws-flag:hover { color: var(--text-2); }
     .ws-flag input[type="checkbox"] {
-      width: 13px; height: 13px;
+      width: 12px; height: 12px;
       accent-color: var(--accent);
       cursor: pointer;
       flex-shrink: 0;
@@ -337,6 +320,216 @@
     .empty-state svg { opacity: 0.25; margin-bottom: 10px; display: block; margin-left: auto; margin-right: auto; }
     .empty-state p { font-size: 13px; }
     .empty-state small { font-size: 11px; display: block; margin-top: 4px; color: var(--text-2); opacity: 0.7; }
+
+    /* ── Tips ────────────────────────────────────────────────────────────── */
+    .tips-section.hidden { display: none; }
+    .tips-search-bar {
+      position: sticky;
+      top: 0;
+      z-index: 10;
+      display: none;
+      align-items: center;
+      gap: 8px;
+      padding: 8px 12px;
+      margin: -18px -20px 12px;
+      background: var(--surface);
+      border-bottom: 1px solid var(--border);
+    }
+    .tips-search-bar.open { display: flex; }
+    .tips-search-bar input {
+      flex: 1;
+      padding: 5px 9px;
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      background: var(--bg);
+      color: var(--text);
+      font-size: 12.5px;
+      font-family: inherit;
+      outline: none;
+    }
+    .tips-search-bar input:focus { border-color: var(--accent); }
+    .tips-search-close {
+      width: 22px; height: 22px;
+      border: none; background: transparent;
+      color: var(--text-2); cursor: default;
+      display: flex; align-items: center; justify-content: center;
+      border-radius: 4px;
+      font-family: inherit;
+    }
+    .tips-search-close:hover { background: var(--surface-2); }
+    .tips-body {
+      padding: 10px 14px;
+      font-size: 12.5px;
+      line-height: 1.7;
+      color: var(--text-2);
+    }
+    .tips-body p { margin-bottom: 4px; }
+    .tips-body p:last-child { margin-bottom: 0; }
+    .tips-cmd {
+      position: relative;
+      margin: 5px 0 8px;
+    }
+    .tips-cmd code {
+      display: block;
+      font-family: 'SF Mono', Monaco, Menlo, monospace;
+      font-size: 11.5px;
+      color: var(--text);
+      background: var(--bg);
+      padding: 6px 30px 6px 10px;
+      border-radius: 5px;
+      -webkit-user-select: text;
+      user-select: text;
+    }
+    .tips-copy {
+      position: absolute;
+      right: 4px;
+      top: 50%;
+      transform: translateY(-50%);
+      width: 22px; height: 22px;
+      border: none;
+      border-radius: 4px;
+      background: transparent;
+      color: var(--text-3);
+      cursor: default;
+      display: flex; align-items: center; justify-content: center;
+      transition: background 0.1s, color 0.1s;
+    }
+    .tips-copy:hover { background: var(--surface); color: var(--accent); }
+    .tips-copy.copied { color: #22c55e; }
+    .tips-kbd .tip-row {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      padding: 3px 0;
+      font-size: 12.5px;
+      color: var(--text-2);
+    }
+    .tips-kbd kbd {
+      display: inline-block;
+      padding: 1px 6px;
+      font-family: 'SF Mono', Monaco, Menlo, monospace;
+      font-size: 11px;
+      color: var(--text);
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      min-width: 20px;
+      text-align: center;
+    }
+    .tips-kbd .tip-row span { flex: 1; }
+    /* Feature cards with icons */
+    .tips-features { display: flex; flex-direction: column; gap: 12px; }
+    .tip-feature {
+      display: flex;
+      gap: 10px;
+      align-items: flex-start;
+    }
+    .tip-feature-icon {
+      width: 32px; height: 32px;
+      border-radius: 8px;
+      background: var(--bg);
+      display: flex; align-items: center; justify-content: center;
+      flex-shrink: 0;
+    }
+    .tip-feature-title {
+      font-size: 12.5px;
+      font-weight: 600;
+      color: var(--text);
+      margin-bottom: 2px;
+    }
+    .tip-feature p:not(.tip-feature-title) {
+      font-size: 11.5px;
+      color: var(--text-2);
+      line-height: 1.5;
+    }
+
+    /* CLI builder — flat form, no nested borders */
+    .cli-fields {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px 14px;
+      padding: 12px 14px;
+      font-size: 12.5px;
+      color: var(--text-2);
+      align-items: center;
+    }
+    .cli-field {
+      display: flex;
+      align-items: center;
+      gap: 5px;
+    }
+    .cli-field span { flex-shrink: 0; }
+    .cli-field .req::after { content: '*'; color: var(--accent); margin-left: 2px; }
+    .cli-fields input[type="text"],
+    .cli-fields input[type="number"],
+    .cli-fields select {
+      padding: 3px 7px;
+      border: none;
+      border-bottom: 1px solid var(--border);
+      border-radius: 0;
+      background: transparent;
+      color: var(--text);
+      font-size: 12px;
+      font-family: 'SF Mono', Monaco, Menlo, monospace;
+      outline: none;
+      transition: border-color 0.15s;
+    }
+    .cli-fields input:focus, .cli-fields select:focus { border-bottom-color: var(--accent); box-shadow: none; }
+    .cli-fields input[type="text"] { width: 100%; }
+    .cli-fields input[type="number"] { width: 56px; text-align: center; }
+    .cli-fields select {
+      appearance: none; -webkit-appearance: none; padding-right: 14px;
+      background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='8' height='5'%3E%3Cpath d='M0 0l4 5 4-5z' fill='%238e8e93'/%3E%3C/svg%3E");
+      background-repeat: no-repeat; background-position: right 2px center;
+    }
+    .cli-field-full { flex-basis: 100%; }
+    .cli-field-full input { width: 100%; }
+    /* Feature pills */
+    .cli-pills {
+      display: flex;
+      align-items: center;
+      gap: 5px;
+      padding: 8px 14px;
+      flex-wrap: wrap;
+    }
+    .cli-pill {
+      padding: 3px 10px;
+      border-radius: 10px;
+      border: 1px solid var(--border);
+      background: transparent;
+      color: var(--text-2);
+      font-size: 11.5px;
+      font-family: inherit;
+      cursor: default;
+      transition: all 0.12s;
+    }
+    .cli-pills-label { font-size: 12.5px; color: var(--text-2); flex-shrink: 0; margin-right: 4px; }
+    .cli-pill:hover { border-color: var(--accent); color: var(--accent); }
+    .cli-pill.on { background: var(--accent); color: #fff; border-color: var(--accent); }
+    .cli-pill input { display: none; }
+    /* Terminal output block */
+    .cli-terminal {
+      margin-top: 8px;
+      border-radius: var(--radius);
+      overflow: hidden;
+      font-family: 'SF Mono', Monaco, Menlo, monospace;
+      font-size: 12px;
+    }
+    .cli-term-row {
+      display: flex;
+      align-items: center;
+      padding: 7px 10px;
+      gap: 6px;
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-bottom: none;
+    }
+    .cli-term-row:first-child { border-radius: var(--radius) var(--radius) 0 0; }
+    .cli-term-row:last-child { border-bottom: 1px solid var(--border); border-radius: 0 0 var(--radius) var(--radius); }
+    .cli-term-row:only-child { border-radius: var(--radius); border-bottom: 1px solid var(--border); }
+    .cli-term-row .prompt { color: var(--text-3); flex-shrink: 0; font-size: 11px; }
+    .cli-term-row code { flex: 1; min-width: 0; color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; -webkit-user-select: text; user-select: text; }
+    .cli-term-row .tips-copy { position: static; transform: none; width: 22px; height: 22px; }
 
     /* FAB — floating add button, pinned at bottom-left */
     .ws-fab {
@@ -375,14 +568,12 @@
     .about-icon {
       width: 72px; height: 72px;
       border-radius: 16px;
-      background: linear-gradient(145deg, #1565C0 0%, #2196F3 100%);
-      display: flex; align-items: center; justify-content: center;
       margin-bottom: 14px;
-      box-shadow: 0 4px 16px rgba(0,122,255,0.28);
     }
     .about h2 { font-size: 21px; font-weight: 700; letter-spacing: -0.3px; }
     .about .ver { font-size: 12px; color: var(--text-2); margin: 4px 0 16px; }
-    .about-desc { font-size: 12.5px; color: var(--text-2); line-height: 1.65; margin-bottom: 22px; max-width: 360px; }
+    .about-slogan { font-size: 13px; color: var(--text); font-style: italic; margin-bottom: 6px; }
+    .about-desc { font-size: 12px; color: var(--text-2); line-height: 1.65; margin-bottom: 22px; }
 
     .about-actions { display: flex; gap: 10px; margin-bottom: 22px; }
     .about-btn {
@@ -422,6 +613,13 @@
     .about-links a { color: var(--accent); text-decoration: none; cursor: default; }
     .about-links a:hover { text-decoration: underline; }
     .about-links .sep { color: var(--text-3); }
+    .about-attribution {
+      margin-top: 14px;
+      font-size: 10.5px;
+      color: var(--text-3);
+    }
+    .about-attribution a { color: var(--text-3); text-decoration: none; cursor: default; }
+    .about-attribution a:hover { color: var(--text-2); text-decoration: underline; }
   </style>
 </head>
 <body>
@@ -441,6 +639,14 @@
         <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/>
       </svg>
       <span data-i18n="nav.workspaces"></span>
+    </div>
+    <div class="nav-item" data-tab="tips">
+      <!-- book/help -->
+      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/>
+        <path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/>
+      </svg>
+      <span data-i18n="nav.tips"></span>
     </div>
     <div class="nav-item" data-tab="about">
       <!-- info -->
@@ -497,6 +703,16 @@
               </select>
             </div>
           </div>
+          <div class="pref-row">
+            <span class="pref-label" data-i18n="pref.lang"></span>
+            <div class="pref-control">
+              <select id="language" style="width:150px">
+                <option value="auto" data-i18n="lang.auto"></option>
+                <option value="zh">中文</option>
+                <option value="en">English</option>
+              </select>
+            </div>
+          </div>
         </div>
       </div>
 
@@ -522,6 +738,28 @@
               <input type="checkbox" id="auto_update">
               <div class="switch-track"></div>
             </label>
+          </div>
+        </div>
+      </div>
+
+      <div class="section">
+        <div class="section-title" data-i18n="sec.defaults"></div>
+        <div class="section-body">
+          <div class="pref-row">
+            <span class="pref-label" data-i18n="pref.def.search"></span>
+            <label class="switch"><input type="checkbox" id="default_search"><div class="switch-track"></div></label>
+          </div>
+          <div class="pref-row">
+            <span class="pref-label" data-i18n="pref.def.viewed"></span>
+            <label class="switch"><input type="checkbox" id="default_viewed"><div class="switch-track"></div></label>
+          </div>
+          <div class="pref-row">
+            <span class="pref-label" data-i18n="pref.def.edit"></span>
+            <label class="switch"><input type="checkbox" id="default_edit"><div class="switch-track"></div></label>
+          </div>
+          <div class="pref-row">
+            <span class="pref-label" data-i18n="pref.def.shared"></span>
+            <label class="switch"><input type="checkbox" id="default_shared"><div class="switch-track"></div></label>
           </div>
         </div>
       </div>
@@ -556,25 +794,165 @@
       </button>
     </div>
 
+    <!-- ── 使用帮助 ────────────────────────────────────────────────────── -->
+    <div class="tab" id="tab-tips">
+      <div class="tips-search-bar" id="tips-search-bar">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="opacity:.4;flex-shrink:0">
+          <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
+        </svg>
+        <input type="text" id="tips-filter" data-i18n-placeholder="tips.search.placeholder">
+        <button class="tips-search-close" id="tips-search-close">×</button>
+      </div>
+      <div id="tips-content">
+
+        <!-- 1. 快速上手 -->
+        <div class="section tips-section">
+          <div class="section-title" data-i18n="tips.quickstart"></div>
+          <div class="section-body tips-body">
+            <p data-i18n="tips.quickstart.1"></p>
+            <p data-i18n="tips.quickstart.2"></p>
+            <p data-i18n="tips.quickstart.3"></p>
+          </div>
+        </div>
+
+        <!-- 2. 浏览器中的快捷键 -->
+        <div class="section tips-section">
+          <div class="section-title" data-i18n="tips.shortcuts"></div>
+          <div class="section-body tips-body tips-kbd">
+            <div class="tip-row"><kbd>?</kbd> <span data-i18n="tips.kbd.help"></span></div>
+            <div class="tip-row"><kbd>/</kbd> <span data-i18n="tips.kbd.search"></span></div>
+            <div class="tip-row"><kbd>j</kbd> / <kbd>k</kbd> <span data-i18n="tips.kbd.nav"></span></div>
+            <div class="tip-row"><kbd>Space</kbd> <span data-i18n="tips.kbd.scroll"></span></div>
+            <div class="tip-row"><kbd data-i18n="tips.kbd.mod"></kbd><kbd>\</kbd> <span data-i18n="tips.kbd.toc"></span></div>
+            <div class="tip-row"><kbd data-i18n="tips.kbd.mod"></kbd><kbd>z</kbd> <span data-i18n="tips.kbd.undo"></span></div>
+            <div class="tip-row"><kbd data-i18n="tips.kbd.mod"></kbd><kbd>j</kbd> / <kbd data-i18n="tips.kbd.mod"></kbd><kbd>k</kbd> <span data-i18n="tips.kbd.annot"></span></div>
+          </div>
+        </div>
+
+        <!-- 3. 命令行构建器 -->
+        <div class="section tips-section">
+          <div class="section-title" data-i18n="tips.cli"></div>
+          <div class="section-body">
+            <div class="cli-fields">
+              <div class="cli-field cli-field-full">
+                <span class="req" data-i18n="cli.lbl.path"></span>
+                <input type="text" id="cli-path" value="." data-i18n-placeholder="cli.path.ph">
+              </div>
+              <div class="cli-field cli-field-full">
+                <span data-i18n="cli.lbl.server"></span>
+                <select id="cli-host"><option value="">127.0.0.1</option><option value="0.0.0.0">0.0.0.0</option></select>
+                <span style="color:var(--text-3)">:</span>
+                <input type="number" id="cli-port" value="6419">
+              </div>
+              <div class="cli-field cli-field-full">
+                <span data-i18n="cli.lbl.entry"></span>
+                <input type="text" id="cli-qr" data-i18n-placeholder="cli.entry.tip">
+              </div>
+              <div class="cli-field cli-field-full">
+                <span data-i18n="cli.lbl.theme"></span>
+                <select id="cli-theme"><option value="">auto</option><option value="light">light</option><option value="dark">dark</option></select>
+              </div>
+            </div>
+            <div class="cli-pills">
+              <span class="cli-pills-label" data-i18n="cli.lbl.features"></span>
+              <label class="cli-pill"><input type="checkbox" id="cli-search"><span data-i18n="cli.search"></span></label>
+              <label class="cli-pill"><input type="checkbox" id="cli-viewed"><span data-i18n="cli.viewed"></span></label>
+              <label class="cli-pill"><input type="checkbox" id="cli-edit"><span data-i18n="cli.edit"></span></label>
+              <label class="cli-pill"><input type="checkbox" id="cli-shared"><span data-i18n="cli.shared"></span></label>
+              <label class="cli-pill"><input type="checkbox" id="cli-open"><span data-i18n="cli.open"></span></label>
+            </div>
+          </div>
+          <div class="cli-terminal">
+            <div class="cli-term-row">
+              <span class="prompt">$</span>
+              <code id="cli-output">markon .</code>
+              <button class="tips-copy" id="cli-copy"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg></button>
+            </div>
+            <div class="cli-term-row">
+              <span class="prompt">alias</span>
+              <code id="cli-alias-output"></code>
+              <button class="tips-copy" id="cli-alias-copy"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg></button>
+            </div>
+          </div>
+        </div>
+
+        <!-- 4. GUI 集成 (macOS & Windows) -->
+        <div class="section tips-section">
+          <div class="section-title" data-i18n="tips.gui"></div>
+          <div class="section-body tips-body">
+            <p style="font-weight:500;color:var(--text);margin-bottom:2px" data-i18n="tips.gui.mac.title"></p>
+            <p data-i18n="tips.gui.mac.1"></p>
+            <p data-i18n="tips.gui.mac.2"></p>
+            <p data-i18n="tips.gui.mac.3"></p>
+            <p data-i18n="tips.gui.mac.4"></p>
+            <p style="font-weight:500;color:var(--text);margin-top:8px;margin-bottom:2px" data-i18n="tips.gui.win.title"></p>
+            <p data-i18n="tips.gui.win.1"></p>
+            <p data-i18n="tips.gui.win.2"></p>
+          </div>
+        </div>
+
+        <!-- 5. 主要功能概述 -->
+        <div class="section tips-section">
+          <div class="section-title" data-i18n="tips.features"></div>
+          <div class="section-body tips-body tips-features">
+            <div class="tip-feature">
+              <div class="tip-feature-icon">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" stroke-width="1.8"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+              </div>
+              <div>
+                <p class="tip-feature-title" data-i18n="tips.feat.search.title"></p>
+                <p data-i18n="tips.feat.search.desc"></p>
+              </div>
+            </div>
+            <div class="tip-feature">
+              <div class="tip-feature-icon">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" stroke-width="1.8"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+              </div>
+              <div>
+                <p class="tip-feature-title" data-i18n="tips.feat.viewed.title"></p>
+                <p data-i18n="tips.feat.viewed.desc"></p>
+              </div>
+            </div>
+            <div class="tip-feature">
+              <div class="tip-feature-icon">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" stroke-width="1.8"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.12 2.12 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+              </div>
+              <div>
+                <p class="tip-feature-title" data-i18n="tips.feat.edit.title"></p>
+                <p data-i18n="tips.feat.edit.desc"></p>
+              </div>
+            </div>
+            <div class="tip-feature">
+              <div class="tip-feature-icon">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" stroke-width="1.8"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>
+              </div>
+              <div>
+                <p class="tip-feature-title" data-i18n="tips.feat.shared.title"></p>
+                <p data-i18n="tips.feat.shared.desc"></p>
+              </div>
+            </div>
+          </div>
+        </div>
+
+      </div>
+    </div>
+
     <!-- ── 关于 ──────────────────────────────────────────────────────────── -->
     <div class="tab" id="tab-about">
       <div class="about">
 
-        <div class="about-icon">
-          <!-- Markdown badge icon, white fill -->
-          <svg xmlns="http://www.w3.org/2000/svg" viewBox="2 4 28 24" width="48" height="40">
-            <path fill="white" fill-rule="evenodd"
-              d="M11 4a9 9 0 0 0-9 9v6a9 9 0 0 0 9 9h10a9 9 0 0 0 9-9v-6a9 9 0 0 0-9-9zm4.707 8.293a.997.997 0 0 1 .293.698V19a1 1 0 1 1-2 0v-3.586l-2.293 2.293a1 1 0 0 1-1.414 0L8 15.414V19a1 1 0 1 1-2 0v-6a.997.997 0 0 1 1-1 .997.997 0 0 1 .707.293L11 15.586l3.293-3.293a.997.997 0 0 1 .704-.293h.006c.255 0 .51.098.704.293zM23 13a1 1 0 1 0-2 0v4.006l-1.427-.997a1 1 0 0 0-1.146 1.64l3 2.095a1 1 0 0 0 1.124.015l3.172-2.096a1 1 0 0 0-1.103-1.669L23 17.065z"
-              clip-rule="evenodd"/>
-          </svg>
-        </div>
+        <img class="about-icon" src="icon.png" alt="markon">
 
-        <h2>Markon</h2>
+        <h2>markon</h2>
         <div class="ver">
           <span id="ver-label">v0.8.0</span>
           <span id="update-status" style="margin-left:6px"></span>
+          <button id="update-retry" style="display:none;border:none;background:transparent;color:var(--text-2);cursor:default;padding:2px;border-radius:4px;vertical-align:middle;margin-left:2px" title="">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
+          </button>
         </div>
 
+        <p class="about-slogan" data-i18n="about.slogan"></p>
         <p class="about-desc" data-i18n="about.desc"></p>
 
         <div class="about-actions">
@@ -597,12 +975,17 @@
           <a href="#" id="link-author">@kookyleo</a>
         </div>
 
+        <div class="about-attribution">
+          <a href="#" id="link-icon-credit" data-i18n="about.icon.credit"></a>
+        </div>
+
       </div>
     </div>
 
   </div><!-- .content -->
 
 <script type="module">
+  import { i18n } from './i18n.js';
   const { invoke } = window.__TAURI__.core;
 
   // ── Tab navigation ──────────────────────────────────────────────────────
@@ -625,6 +1008,13 @@
       // "auto" | "light" | "dark" — drives :root[data-theme] for CSS vars.
       document.documentElement.setAttribute('data-theme', value || 'auto');
     },
+    language(value, sysLocale) {
+      if (value === 'auto') {
+        setLocale(sysLocale || navigator.language);
+      } else {
+        setLocale(value);
+      }
+    },
     port_mode(value) {
       const el = document.getElementById('port');
       const isAuto = value !== 'spec';
@@ -634,6 +1024,7 @@
   };
   function applyAll(s) {
     liveApply.theme(s.theme);
+    liveApply.language(s.language ?? 'auto', systemLocale);
     liveApply.port_mode(s.port_mode ?? 'spec');
   }
 
@@ -645,8 +1036,13 @@
     document.getElementById('port').value = s.port;
     document.getElementById('host').value = s.host;
     document.getElementById('theme').value = s.theme;
+    document.getElementById('language').value = s.language ?? 'auto';
     updateDbPathDisplay(s.db_path ?? '');
     document.getElementById('tray_resident').checked = s.tray_resident ?? true;
+    document.getElementById('default_search').checked = s.default_search ?? true;
+    document.getElementById('default_viewed').checked = s.default_viewed ?? true;
+    document.getElementById('default_edit').checked = s.default_edit ?? false;
+    document.getElementById('default_shared').checked = s.default_shared_annotation ?? false;
     document.getElementById('auto_update').checked = s.auto_update ?? true;
     applyAll(s);
   }
@@ -657,7 +1053,12 @@
       port:      parseInt(document.getElementById('port').value) || 6419,
       host:      document.getElementById('host').value,
       theme:     document.getElementById('theme').value,
+      language:  document.getElementById('language').value,
       db_path:   currentDbPath || null,
+      default_search: document.getElementById('default_search').checked,
+      default_viewed: document.getElementById('default_viewed').checked,
+      default_edit: document.getElementById('default_edit').checked,
+      default_shared_annotation: document.getElementById('default_shared').checked,
       auto_update: document.getElementById('auto_update').checked,
       workspaces: [],  // preserved by Rust command; managed via add/remove/update
     };
@@ -702,6 +1103,10 @@
     liveApply.theme(e.target.value);
     saveSettings();
   });
+  document.getElementById('language').addEventListener('change', e => {
+    liveApply.language(e.target.value, systemLocale);
+    saveSettings();
+  });
   document.querySelectorAll('input[name="port_mode"]').forEach(radio => {
     radio.addEventListener('change', () => {
       liveApply.port_mode(radio.value);
@@ -711,7 +1116,9 @@
   document.getElementById('tray_resident').addEventListener('change', e => {
     invoke('set_tray_resident', { value: e.target.checked });
   });
-  document.getElementById('auto_update').addEventListener('change', saveSettings);
+  ['default_search', 'default_viewed', 'default_edit', 'default_shared', 'auto_update'].forEach(id =>
+    document.getElementById(id).addEventListener('change', saveSettings)
+  );
 
   // ── Workspace list ──────────────────────────────────────────────────────
   async function refreshWorkspaces() {
@@ -737,7 +1144,7 @@
       card.dataset.id = ws.id;
 
       const flagDefs = [
-        { key: 'search',     label: ws.enable_search && ws.search_ready ? T('ws.flag.search') + ' ✓' : T('ws.flag.search'), tip: T('ws.flag.search.tip'), checked: ws.enable_search },
+        { key: 'search',     label: T('ws.flag.search'), tip: ws.enable_search && ws.search_ready ? T('ws.flag.search.ready') : T('ws.flag.search.tip'), checked: ws.enable_search },
         { key: 'viewed',     label: T('ws.flag.viewed'), tip: T('ws.flag.viewed.tip'), checked: ws.enable_viewed },
         { key: 'edit',       label: T('ws.flag.edit'),   tip: T('ws.flag.edit.tip'),   checked: ws.enable_edit },
         { key: 'annotation', label: T('ws.flag.shared'), tip: T('ws.flag.shared.tip'), checked: ws.shared_annotation },
@@ -750,30 +1157,37 @@
         </label>`
       ).join('');
 
+      // Shorten path: replace home dir with ~
+      const home = ws.path.match(/^\/Users\/[^/]+/)?.[0] || '';
+      const shortPath = home ? ws.path.replace(home, '~') : ws.path;
+
       card.innerHTML = `
-        <div class="ws-card-top">
-          <svg class="ws-folder-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
-            <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/>
-          </svg>
-          <div class="ws-info">
-            <div class="ws-path">${ws.path}</div>
-            <div class="ws-url">${ws.url}</div>
-          </div>
-          <div class="ws-card-actions">
-            <button class="ws-open-btn">${T('ws.open')}</button>
-            <button class="ws-remove-btn">${T('ws.remove')}</button>
-          </div>
+        <div class="ws-row-top">
+          <span class="ws-path" title="${ws.path}">${shortPath}</span>
+          <button class="ws-icon-btn open-btn" title="${T('ws.open.tip')}">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/>
+              <polyline points="15 3 21 3 21 9"/>
+              <line x1="10" y1="14" x2="21" y2="3"/>
+            </svg>
+          </button>
+          <button class="ws-icon-btn remove-btn" title="${T('ws.remove')}">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <line x1="18" y1="6" x2="6" y2="18"/>
+              <line x1="6" y1="6" x2="18" y2="18"/>
+            </svg>
+          </button>
         </div>
-        <div class="ws-flags-row">${flagsHtml}</div>
+        <div class="ws-flags">${flagsHtml}</div>
       `;
 
       // Open in browser
-      card.querySelector('.ws-open-btn').addEventListener('click', () => {
+      card.querySelector('.open-btn').addEventListener('click', () => {
         invoke('open_url', { url: ws.url });
       });
 
       // Remove
-      card.querySelector('.ws-remove-btn').addEventListener('click', async () => {
+      card.querySelector('.remove-btn').addEventListener('click', async () => {
         await invoke('remove_workspace', { id: ws.id });
         refreshWorkspaces();
       });
@@ -817,10 +1231,10 @@
     try {
       await invoke('add_workspace', {
         path,
-        enableSearch:     false,
-        enableViewed:     false,
-        enableEdit:       false,
-        sharedAnnotation: false,
+        enableSearch:     document.getElementById('default_search').checked,
+        enableViewed:     document.getElementById('default_viewed').checked,
+        enableEdit:       document.getElementById('default_edit').checked,
+        sharedAnnotation: document.getElementById('default_shared').checked,
       });
       refreshWorkspaces();
     } catch (e) {
@@ -837,226 +1251,10 @@
   // ── Feedback menu (Bug / Feature / Question) with i18n ──────────────────
   const REPO = 'kookyleo/markon';
 
-  const i18n = {
-    zh: {
-      // Nav
-      'nav.global':     '全局',
-      'nav.workspaces': '工作区',
-      'nav.about':      '关于',
-      // Section titles
-      'sec.server':     '服务器',
-      'sec.appearance': '外观',
-      'sec.behavior':   '行为',
-      'sec.database':   '数据库',
-      // Global preferences
-      'pref.port':       '端口',
-      'port.auto':       '自动',
-      'port.spec':       '指定',
-      'port.auto.hint':  '自动分配',
-      'pref.bind':       '绑定地址',
-      'bind.local':      '127.0.0.1 — 仅本机',
-      'bind.lan':        '0.0.0.0 — 局域网可访问',
-      'pref.theme':      '主题',
-      'theme.auto':      '跟随系统',
-      'theme.light':     '浅色',
-      'theme.dark':      '深色',
-      'pref.tray':       '菜单栏驻留',
-      'pref.tray.desc':  '关闭窗口时隐藏而非退出,通过菜单栏图标唤起',
-      'pref.autoupdate':      '自动更新',
-      'pref.autoupdate.desc': '启动时检查 GitHub 上的新版本并自动安装',
-      'update.checking': '检查中…',
-      'update.latest':   '已是最新版本',
-      'update.found':    '发现新版本 v{v},正在安装…',
-      'update.done':     '更新完成,重启生效',
-      'update.error':    '检查失败',
-      'pref.dbpath':     '共享注释路径',
-      'pref.dbpath.desc':'用于多端同步注释与 Viewed 状态 (SQLite)',
-      'pref.dbpath.browse': '选择…',
-      'pref.dbpath.clear':  '恢复默认',
-      // Workspaces
-      'ws.add.btn':     '添加工作区…',
-      'ws.open':        '打开',
-      'ws.remove':      '移除',
-      'ws.flag.search': '搜索',
-      'ws.flag.search.tip': '启用全文搜索索引,可在浏览器中搜索文件内容',
-      'ws.flag.viewed': '已读',
-      'ws.flag.viewed.tip': '追踪文件已读/未读状态',
-      'ws.flag.edit':   '编辑',
-      'ws.flag.edit.tip': '允许在浏览器中编辑 Markdown 文件',
-      'ws.flag.shared': '共享注释',
-      'ws.flag.shared.tip': '启用多端同步注释与已读状态 (需要 SQLite 数据库)',
-      'ws.empty.title': '尚无工作区',
-      'ws.empty.desc':  '点击下方按钮选择目录,或从 Finder 中打开文件夹',
-      'ws.update.fail': '更新失败',
-      'ws.add.fail':    '添加失败',
-      // About
-      'about.desc':     '轻量级 Markdown 渲染器,GitHub 风格排版,<br>支持全文搜索、批注与多端注释同步。',
-      'about.star':     'Star 支持项目',
-      // Feedback buttons
-      bug:     { label: 'Bug',  tip: '报告崩溃或错误行为' },
-      idea:    { label: '提案', tip: '功能建议、改进提议' },
-      ask:     { label: '求助', tip: '使用问题、求助问答' },
-      tplBug: (info) =>
-`## 问题描述
-<!-- 简要描述遇到的问题 -->
-
-
-## 复现步骤
-1.
-2.
-3.
-
-## 预期行为
-
-
-## 实际行为
-
-
-## 环境
-- **Markon**: v${info.app_version}
-- **操作系统**: ${info.os} ${info.os_version} (${info.arch})
-- **UA**: ${navigator.userAgent}
-`,
-      tplIdea: (info) =>
-`## 想法概述
-<!-- 你希望看到什么样的功能或改进? -->
-
-
-## 使用场景 / 动机
-<!-- 这个想法解决了你什么痛点? -->
-
-
-## 可能的实现思路 (可选)
-
-
----
-*Markon v${info.app_version} · ${info.os} ${info.os_version}*
-`,
-      tplAsk: (info) =>
-`## 问题描述
-
-
-
-## 你已经尝试过什么 (可选)
-
-
-
----
-*Markon v${info.app_version} · ${info.os} ${info.os_version}*
-`,
-      titleBug:  '[Bug] ',
-      titleIdea: '',
-      titleAsk:  '',
-    },
-    en: {
-      'nav.global':     'General',
-      'nav.workspaces': 'Workspaces',
-      'nav.about':      'About',
-      'sec.server':     'Server',
-      'sec.appearance': 'Appearance',
-      'sec.behavior':   'Behavior',
-      'sec.database':   'Database',
-      'pref.port':       'Port',
-      'port.auto':       'Auto',
-      'port.spec':       'Manual',
-      'port.auto.hint':  'Auto-assigned',
-      'pref.bind':       'Bind address',
-      'bind.local':      '127.0.0.1 — Localhost only',
-      'bind.lan':        '0.0.0.0 — Accessible on LAN',
-      'pref.theme':      'Theme',
-      'theme.auto':      'Follow system',
-      'theme.light':     'Light',
-      'theme.dark':      'Dark',
-      'pref.tray':       'Stay in menu bar',
-      'pref.tray.desc':  'Hide on window close instead of quitting; reopen via menu bar icon',
-      'pref.autoupdate':      'Auto-update',
-      'pref.autoupdate.desc': 'Check GitHub for new versions on launch and install automatically',
-      'update.checking': 'Checking…',
-      'update.latest':   'Up to date',
-      'update.found':    'New version v{v} found, installing…',
-      'update.done':     'Update installed, restart to apply',
-      'update.error':    'Check failed',
-      'pref.dbpath':     'Shared annotation DB',
-      'pref.dbpath.desc':'Path to SQLite DB for syncing annotations and viewed state',
-      'pref.dbpath.browse': 'Browse…',
-      'pref.dbpath.clear':  'Reset',
-      'ws.add.btn':     'Add workspace…',
-      'ws.open':        'Open',
-      'ws.remove':      'Remove',
-      'ws.flag.search': 'Search',
-      'ws.flag.search.tip': 'Build a full-text search index for file contents',
-      'ws.flag.viewed': 'Viewed',
-      'ws.flag.viewed.tip': 'Track read/unread status for each file',
-      'ws.flag.edit':   'Edit',
-      'ws.flag.edit.tip': 'Allow editing Markdown files in the browser',
-      'ws.flag.shared': 'Shared notes',
-      'ws.flag.shared.tip': 'Sync annotations and viewed state across devices (requires SQLite)',
-      'ws.empty.title': 'No workspaces yet',
-      'ws.empty.desc':  'Click the button below to pick a folder, or open one from Finder',
-      'ws.update.fail': 'Update failed',
-      'ws.add.fail':    'Add failed',
-      'about.desc':     'A lightweight Markdown renderer with GitHub-style layout,<br>full-text search, annotations and multi-device sync.',
-      'about.star':     'Star on GitHub',
-      bug:     { label: 'Bug',     tip: 'Report a crash or incorrect behavior' },
-      idea:    { label: 'Idea', tip: 'Suggest a new feature or improvement' },
-      ask:     { label: 'Ask',  tip: 'Questions, usage help' },
-      tplBug: (info) =>
-`## Description
-<!-- A clear description of the bug -->
-
-
-## Steps to reproduce
-1.
-2.
-3.
-
-## Expected behavior
-
-
-## Actual behavior
-
-
-## Environment
-- **Markon**: v${info.app_version}
-- **OS**: ${info.os} ${info.os_version} (${info.arch})
-- **UA**: ${navigator.userAgent}
-`,
-      tplIdea: (info) =>
-`## Summary
-<!-- What would you like to see? -->
-
-
-## Motivation / Use case
-<!-- What problem does this solve for you? -->
-
-
-## Possible implementation (optional)
-
-
----
-*Markon v${info.app_version} · ${info.os} ${info.os_version}*
-`,
-      tplAsk: (info) =>
-`## Question
-
-
-
-## What have you tried (optional)
-
-
-
----
-*Markon v${info.app_version} · ${info.os} ${info.os_version}*
-`,
-      titleBug:  '[Bug] ',
-      titleIdea: '',
-      titleAsk:  '',
-    },
-  };
-
   // Default to English until Rust tells us the system locale.
   let lang = 'en';
   let t = i18n[lang];
+  let systemLocale = 'en'; // will be updated from Rust
 
   function T(key) {
     return (t[key] ?? i18n.en[key] ?? key);
@@ -1150,6 +1348,10 @@
     e.preventDefault();
     invoke('open_url', { url: 'https://x.com/kookyle_' });
   });
+  document.getElementById('link-icon-credit').addEventListener('click', e => {
+    e.preventDefault();
+    invoke('open_url', { url: 'https://www.flaticon.com/free-icons/markdown' });
+  });
 
   // ── Init ────────────────────────────────────────────────────────────────
   // Initial render with default (en), then update once Rust reports system locale.
@@ -1157,25 +1359,127 @@
   (async () => {
     try {
       const info = await invoke('get_system_info');
-      setLocale(info.locale);
-      refreshWorkspaces(); // re-render ws list with localized strings
+      systemLocale = info.locale;
+      // Respect saved language setting; fallback to system locale.
+      const s = await invoke('get_settings');
+      const langPref = s.language ?? 'auto';
+      if (langPref === 'auto') {
+        setLocale(systemLocale);
+      } else {
+        setLocale(langPref);
+      }
+      refreshWorkspaces();
     } catch (_) {}
   })();
   loadSettings();
   refreshWorkspaces();
   window.addEventListener('focus', refreshWorkspaces);
 
+  // ── Tips: Cmd+F search ───────────────────────────────────────────────
+  const tipsBar = document.getElementById('tips-search-bar');
+  const tipsInput = document.getElementById('tips-filter');
+
+  function openTipsSearch() {
+    tipsBar.classList.add('open');
+    tipsInput.focus();
+  }
+  function closeTipsSearch() {
+    tipsBar.classList.remove('open');
+    tipsInput.value = '';
+    document.querySelectorAll('.tips-section').forEach(s => s.classList.remove('hidden'));
+  }
+
+  tipsInput.addEventListener('input', e => {
+    const q = e.target.value.toLowerCase().trim();
+    document.querySelectorAll('.tips-section').forEach(sec => {
+      if (!q) { sec.classList.remove('hidden'); return; }
+      sec.classList.toggle('hidden', !sec.textContent.toLowerCase().includes(q));
+    });
+  });
+  tipsInput.addEventListener('keydown', e => { if (e.key === 'Escape') closeTipsSearch(); });
+  document.getElementById('tips-search-close').addEventListener('click', closeTipsSearch);
+
+  // Intercept Cmd+F / Ctrl+F when Tips tab is active
+  document.addEventListener('keydown', e => {
+    if ((e.metaKey || e.ctrlKey) && e.key === 'f') {
+      const tipsTab = document.getElementById('tab-tips');
+      if (tipsTab.classList.contains('active')) {
+        e.preventDefault();
+        openTipsSearch();
+      }
+    }
+  });
+
+  // ── CLI command builder ──────────────────────────────────────────────
+  const cliIds = ['cli-path','cli-port','cli-host','cli-theme','cli-qr','cli-search','cli-viewed','cli-edit','cli-shared','cli-open'];
+  const cliOutput = document.getElementById('cli-output');
+  const cliAliasOutput = document.getElementById('cli-alias-output');
+
+  function buildCliCmd() {
+    const path  = document.getElementById('cli-path').value.trim() || '.';
+    const port  = document.getElementById('cli-port').value;
+    const host  = document.getElementById('cli-host').value;
+    const theme = document.getElementById('cli-theme').value;
+    const qr    = document.getElementById('cli-qr').value.trim();
+    let parts = ['markon'];
+    if (port && port !== '6419') parts.push(`-p ${port}`);
+    if (host) parts.push(`--host ${host}`);
+    if (theme) parts.push(`-t ${theme}`);
+    if (qr) parts.push(`--entry ${qr}`);
+    if (document.getElementById('cli-search').checked) parts.push('--enable-search');
+    if (document.getElementById('cli-viewed').checked) parts.push('--enable-viewed');
+    if (document.getElementById('cli-edit').checked)   parts.push('--enable-edit');
+    if (document.getElementById('cli-shared').checked) parts.push('--shared-annotation');
+    if (document.getElementById('cli-open').checked)   parts.push('-b');
+    parts.push(path);
+    const cmd = parts.join(' ');
+    cliOutput.textContent = cmd;
+    // Shell alias: detect rc file at runtime from $SHELL (works for bash/zsh)
+    const alias = `echo "alias mkon='${cmd}'" >> ~/."$(basename "$SHELL")rc"`;
+    cliAliasOutput.textContent = alias;
+    return cmd;
+  }
+
+  cliIds.forEach(id => {
+    const el = document.getElementById(id);
+    el.addEventListener(el.type === 'checkbox' ? 'change' : 'input', () => {
+      // Toggle pill style
+      if (el.type === 'checkbox') {
+        el.closest('.cli-pill')?.classList.toggle('on', el.checked);
+      }
+      buildCliCmd();
+    });
+  });
+  buildCliCmd();
+
+  // Copy button (CLI + any static tips-copy buttons)
+  function attachCopyHandler(btn) {
+    btn.addEventListener('click', () => {
+      const cmd = btn.getAttribute('data-cmd') || cliOutput.textContent;
+      const origHtml = btn.innerHTML;
+      navigator.clipboard.writeText(cmd).then(() => {
+        btn.innerHTML = '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>';
+        btn.classList.add('copied');
+        setTimeout(() => { btn.innerHTML = origHtml; btn.classList.remove('copied'); }, 1500);
+      });
+    });
+  }
+  document.querySelectorAll('.tips-copy').forEach(attachCopyHandler);
+
   // ── Auto-update check ───────────────────────────────────────────────────
   const statusEl = document.getElementById('update-status');
+  const retryBtn = document.getElementById('update-retry');
 
   async function doUpdateCheck() {
     statusEl.textContent = T('update.checking');
     statusEl.style.color = 'var(--text-2)';
+    retryBtn.style.display = 'none';
     try {
       const r = await invoke('check_for_update');
       if (r.error) {
         statusEl.textContent = T('update.error');
         statusEl.style.color = 'var(--danger)';
+        retryBtn.style.display = 'inline';
       } else if (r.available && r.installed) {
         statusEl.textContent = T('update.done');
         statusEl.style.color = 'var(--accent)';
@@ -1185,16 +1489,16 @@
       } else {
         statusEl.textContent = T('update.latest');
         statusEl.style.color = 'var(--text-2)';
+        retryBtn.style.display = 'inline';
       }
     } catch (e) {
       statusEl.textContent = T('update.error');
       statusEl.style.color = 'var(--danger)';
+      retryBtn.style.display = 'inline';
     }
   }
 
-  // Click version label to manually check
-  document.getElementById('ver-label').addEventListener('click', doUpdateCheck);
-  document.getElementById('ver-label').style.cursor = 'pointer';
+  retryBtn.addEventListener('click', doUpdateCheck);
 
   // Auto-check on startup if enabled
   (async () => {

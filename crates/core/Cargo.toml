@@ -6,7 +6,7 @@ authors.workspace = true
 license.workspace = true
 repository.workspace = true
 homepage.workspace = true
-description = "Core library for markon - Markdown renderer with GitHub styling and annotations"
+description = "markon core - Turn your markdown on."
 keywords = ["markdown", "preview", "github", "mermaid", "toc"]
 categories = ["command-line-utilities", "text-processing", "web-programming"]
 

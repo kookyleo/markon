@@ -1,0 +1,154 @@
+{
+    // ── 导航 ──────────────────────────────────────────────────
+    "nav.global":     "全局",
+    "nav.workspaces": "工作区",
+    "nav.tips":       "小贴士",
+    "nav.about":      "关于",
+
+    // ── 全局设置 — 监听 ───────────────────────────────────────
+    "sec.server":     "监听",
+    "pref.port":       "端口",
+    "port.auto":       "自动",
+    "port.spec":       "指定",
+    "port.auto.hint":  "自动分配",
+    "pref.bind":       "绑定地址",
+    "bind.local":      "127.0.0.1 — 仅本机可用",
+    "bind.lan":        "0.0.0.0",
+
+    // ── 全局设置 — 外观 ──────────────────────────────────────
+    "sec.appearance": "外观",
+    "pref.theme":      "主题",
+    "theme.auto":      "跟随系统",
+    "theme.light":     "浅色",
+    "theme.dark":      "深色",
+    "pref.lang":       "语言",
+    "lang.auto":       "跟随系统",
+
+    // ── 全局设置 — 行为 ──────────────────────────────────────
+    "sec.behavior":   "行为",
+    "pref.tray":       "菜单栏驻留",
+    "pref.tray.desc":  "关闭窗口时隐藏而非退出,通过菜单栏图标唤起",
+    "pref.autoupdate":      "自动更新",
+    "pref.autoupdate.desc": "启动时检查 GitHub 上的新版本并自动安装",
+
+    // ── 全局设置 — 新工作区默认功能 ──────────────────────────
+    "sec.defaults":         "新增工作区时默认开启的功能",
+    "pref.def.search":      "搜索",
+    "pref.def.viewed":      "已读追踪 (Viewed)",
+    "pref.def.edit":        "编辑",
+    "pref.def.shared":      "共享注释",
+
+    // ── 全局设置 — 数据库 ────────────────────────────────────
+    "sec.database":   "数据库",
+    "pref.dbpath":     "共享注释路径",
+    "pref.dbpath.desc":"用于多端同步注释与 Viewed 状态 (SQLite)",
+    "pref.dbpath.browse": "选择…",
+    "pref.dbpath.clear":  "恢复默认",
+
+    // ── 自动更新状态 ─────────────────────────────────────────
+    "update.checking": "检查中…",
+    "update.latest":   "已是最新版本",
+    "update.found":    "发现新版本 v{v},正在安装…",
+    "update.done":     "更新完成,重启生效",
+    "update.error":    "检查失败",
+
+    // ── 工作区列表 ───────────────────────────────────────────
+    "ws.add.btn":     "添加工作区…",
+    "ws.open.tip":    "在浏览器中打开",
+    "ws.remove":      "从列表中移除",
+    "ws.flag.search": "搜索",
+    "ws.flag.search.tip": "启用全文搜索索引,可在浏览器中搜索文件内容",
+    "ws.flag.search.ready": "搜索索引已就绪",
+    "ws.flag.viewed": "已读追踪",
+    "ws.flag.viewed.tip": "按段落级别追踪阅读进度",
+    "ws.flag.edit":   "编辑",
+    "ws.flag.edit.tip": "允许在浏览器中编辑 Markdown 文件",
+    "ws.flag.shared": "共享注释",
+    "ws.flag.shared.tip": "启用多端同步注释与已读状态 (需要 SQLite 数据库)",
+    "ws.empty.title": "尚无工作区",
+    "ws.empty.desc":  "点击下方按钮选择目录,或从 Finder 中打开文件夹",
+    "ws.update.fail": "更新失败",
+    "ws.add.fail":    "添加失败",
+
+    // ── 小贴士 — 快速上手 ────────────────────────────────────
+    "tips.search.placeholder": "搜索帮助内容…",
+    "tips.quickstart": "快速上手",
+    "tips.quickstart.1": "1. 在「工作区」tab 中点击 + 按钮,选择 Markdown 文件所在目录",
+    "tips.quickstart.2": "2. 点击 ↗ 图标在浏览器中查看渲染结果",
+    "tips.quickstart.3": "3. 在「全局」tab 中配置新工作区默认启用的功能",
+
+    // ── 小贴士 — 快捷键 ──────────────────────────────────────
+    "tips.shortcuts":  "浏览器中的快捷键",
+    "tips.kbd.help":   "显示完整快捷键列表",
+    "tips.kbd.search": "打开搜索 (需启用搜索)",
+    "tips.kbd.nav":    "跳转到上/下一个标题",
+    "tips.kbd.scroll": "自动滚动阅读",
+    "tips.kbd.toc":    "切换目录面板",
+    "tips.kbd.undo":   "撤销操作",
+    "tips.kbd.annot":  "跳转到上/下一个批注",
+    "tips.kbd.mod":    "⌘",
+
+    // ── 小贴士 — 命令行构建器 ────────────────────────────────
+    "tips.cli":        "命令行构建器",
+    "cli.lbl.path":    "目标目录/文件",
+    "cli.lbl.server":  "监听",
+    "cli.lbl.entry":   "入口",
+    "cli.lbl.theme":   "页面主题",
+    "cli.lbl.features":"启用功能",
+    "cli.path.ph":     "目录或文件路径",
+    "cli.entry.tip":   "代理域名/公网 IP,用于 QR 码和外部访问 (可选)",
+    "cli.search":      "搜索",
+    "cli.viewed":      "已读追踪",
+    "cli.edit":        "编辑",
+    "cli.shared":      "共享注释",
+    "cli.open":        "自动打开浏览器",
+    "cli.alias.desc":  "添加为 shell 别名,方便快速启动:",
+
+    // ── 小贴士 — 桌面集成 ────────────────────────────────────
+    "tips.gui":        "GUI 桌面集成",
+    "tips.gui.mac.title": "macOS",
+    "tips.gui.mac.1":  "· 将 Markon.app 拖入 Finder 工具栏,点击即可打开当前目录",
+    "tips.gui.mac.2":  "· 右键 .md 文件 → 打开方式 → Markon,直接在浏览器查看",
+    "tips.gui.mac.3":  "· 拖拽文件夹到 Dock 上的 Markon 图标快速添加",
+    "tips.gui.mac.4":  "· 菜单栏驻留模式: 关闭窗口后仍可通过菜单栏图标重新打开",
+    "tips.gui.win.title": "Windows",
+    "tips.gui.win.1":  "· 右键 .md 文件 → 打开方式 → 选择 Markon",
+    "tips.gui.win.2":  "· 安装后可通过右键菜单「用 Markon 预览」快速打开",
+
+    // ── 小贴士 — 主要功能 ────────────────────────────────────
+    "tips.features":   "主要功能",
+    "tips.feat.search.title": "全文搜索",
+    "tips.feat.search.desc":  "基于 Tantivy 构建索引,支持中日英分词。浏览器中按 / 打开搜索框,实时匹配文件内容",
+    "tips.feat.viewed.title": "已读追踪",
+    "tips.feat.viewed.desc":  "按段落级别标记阅读进度,自动记录。重新打开文档时可跳转到上次阅读位置",
+    "tips.feat.edit.title":   "在线编辑",
+    "tips.feat.edit.desc":    "在浏览器中直接编辑 Markdown 源文件,语法高亮 + 实时预览,修改即保存",
+    "tips.feat.shared.title": "共享注释",
+    "tips.feat.shared.desc":  "通过 SQLite 数据库同步批注和已读状态。适用于多设备共享同一目录或团队协作场景",
+
+    // ── 关于页 ───────────────────────────────────────────────
+    "about.slogan":   "Turn your markdown on.",
+    "about.desc":     "轻量级 Markdown 渲染器,GitHub 风格排版,支持全文搜索、批注与多端注释同步。",
+    "about.icon.credit": "Icon by brajaomar_j — Flaticon",
+    "about.star":     "Star 支持项目",
+
+    // ── 反馈按钮 ─────────────────────────────────────────────
+    "feedback.bug.label": "Bug",
+    "feedback.bug.tip":   "报告崩溃或错误行为",
+    "feedback.idea.label": "提案",
+    "feedback.idea.tip":   "功能建议、改进提议",
+    "feedback.ask.label": "求助",
+    "feedback.ask.tip":   "使用问题、求助问答",
+
+    // ── Issue / Discussion 模板 (占位符: {app_version} {os} {os_version} {arch} {ua})
+    "tpl.bug": "## 问题描述\n<!-- 简要描述遇到的问题 -->\n\n\n## 复现步骤\n1.\n2.\n3.\n\n## 预期行为\n\n\n## 实际行为\n\n\n## 环境\n- **Markon**: v{app_version}\n- **操作系统**: {os} {os_version} ({arch})\n- **UA**: {ua}\n",
+    "tpl.idea": "## 想法概述\n<!-- 你希望看到什么样的功能或改进? -->\n\n\n## 使用场景 / 动机\n<!-- 这个想法解决了你什么痛点? -->\n\n\n## 可能的实现思路 (可选)\n\n\n---\n*Markon v{app_version} · {os} {os_version}*\n",
+    "tpl.ask": "## 问题描述\n\n\n\n## 你已经尝试过什么 (可选)\n\n\n\n---\n*Markon v{app_version} · {os} {os_version}*\n",
+    "tpl.title.bug":  "[Bug] ",
+    "tpl.title.idea": "",
+    "tpl.title.ask":  "",
+
+    // ── 系统托盘菜单 ─────────────────────────────────────────
+    "tray.settings": "打开设置…",
+    "tray.quit":     "退出 Markon"
+}

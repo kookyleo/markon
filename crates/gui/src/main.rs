@@ -55,12 +55,19 @@ fn handle_open_path(app: &tauri::AppHandle, path: &Path) {
     }
 
     let ws_root_str = ws_root.to_string_lossy().to_string();
+
+    // Read default feature flags from settings.
+    let (def_search, def_viewed, def_edit, def_shared) = {
+        let settings = state.settings.lock().unwrap();
+        (settings.default_search, settings.default_viewed, settings.default_edit, settings.default_shared_annotation)
+    };
+
     let id = server.registry.add(markon_core::workspace::WorkspaceConfig {
         path: ws_root,
-        enable_search: false,
-        enable_viewed: false,
-        enable_edit: false,
-        shared_annotation: false,
+        enable_search: def_search,
+        enable_viewed: def_viewed,
+        enable_edit: def_edit,
+        shared_annotation: def_shared,
     });
     let port = server.port();
     drop(server);
@@ -72,10 +79,10 @@ fn handle_open_path(app: &tauri::AppHandle, path: &Path) {
         if !settings.workspaces.iter().any(|w| w.path == ws_root_str) {
             settings.workspaces.push(WorkspaceSettings {
                 path: ws_root_str,
-                enable_search: false,
-                enable_viewed: false,
-                enable_edit: false,
-                shared_annotation: false,
+                enable_search: def_search,
+                enable_viewed: def_viewed,
+                enable_edit: def_edit,
+                shared_annotation: def_shared,
             });
             settings.save().ok();
         }
@@ -147,6 +154,7 @@ fn main() {
             let config = settings.to_server_config(port);
 
             let tray_resident_init = settings.tray_resident;
+            let language_init = settings.language.clone();
             let state = AppState {
                 settings: Mutex::new(settings),
                 server: Mutex::new(ServerManager::new()),
@@ -161,12 +169,18 @@ fn main() {
             // ── System tray ───────────────────────────────────────────────
             let icon = tauri::include_image!("icons/tray.png");
 
-            let is_zh = sys_locale::get_locale()
-                .unwrap_or_default()
-                .to_lowercase()
-                .starts_with("zh");
-            let label_settings = if is_zh { "打开设置…" } else { "Settings…" };
-            let label_quit = if is_zh { "退出 Markon" } else { "Quit Markon" };
+            let tray_lang = commands::resolve_lang(&language_init);
+            let i18n_text = match tray_lang {
+                "zh" => include_str!("../ui/zh_CN.i18n.json5"),
+                _    => include_str!("../ui/en.i18n.json5"),
+            };
+            let i18n_json: serde_json::Value = serde_json::from_str(
+                &commands::strip_json5_comments(i18n_text)
+            ).unwrap_or_default();
+            let label_settings = i18n_json["tray.settings"]
+                .as_str().unwrap_or("Settings…").to_string();
+            let label_quit = i18n_json["tray.quit"]
+                .as_str().unwrap_or("Quit Markon").to_string();
 
             let item_settings =
                 MenuItem::with_id(app, "settings", label_settings, true, None::<&str>)?;

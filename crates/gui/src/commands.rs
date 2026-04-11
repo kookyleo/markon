@@ -4,6 +4,7 @@ use markon_core::workspace::WorkspaceConfig;
 use std::path::PathBuf;
 use std::sync::atomic::Ordering;
 use tauri::State;
+use tauri::menu::{Menu, MenuItem, PredefinedMenuItem};
 use tauri_plugin_updater::UpdaterExt;
 
 #[tauri::command]
@@ -12,11 +13,14 @@ pub fn get_settings(state: State<AppState>) -> AppSettings {
 }
 
 #[tauri::command]
-pub fn save_settings(settings: AppSettings, state: State<AppState>) -> Result<(), String> {
+pub fn save_settings(settings: AppSettings, app: tauri::AppHandle, state: State<AppState>) -> Result<(), String> {
     // Preserve existing workspaces — they are managed separately via add/remove/update commands.
     let existing_workspaces = state.settings.lock().unwrap().workspaces.clone();
     let mut settings = settings;
     settings.workspaces = existing_workspaces;
+
+    // Update tray menu labels if language changed.
+    update_tray_language(&app, &settings.language);
 
     settings.save()?;
     let port = if settings.port_mode == PortMode::Auto { 0 } else { settings.port };
@@ -24,6 +28,56 @@ pub fn save_settings(settings: AppSettings, state: State<AppState>) -> Result<()
     *state.settings.lock().unwrap() = settings;
     state.server.lock().unwrap().start(config);
     Ok(())
+}
+
+/// Strip `// ...` line comments from JSON5 text so serde_json can parse it.
+pub fn strip_json5_comments(s: &str) -> String {
+    s.lines()
+        .map(|line| {
+            let trimmed = line.trim_start();
+            if trimmed.starts_with("//") { "" } else { line }
+        })
+        .collect::<Vec<_>>()
+        .join("\n")
+}
+
+pub fn resolve_lang(language: &str) -> &'static str {
+    match language {
+        "zh" => "zh",
+        "en" => "en",
+        _ => {
+            if sys_locale::get_locale()
+                .unwrap_or_default()
+                .to_lowercase()
+                .starts_with("zh")
+            { "zh" } else { "en" }
+        }
+    }
+}
+
+fn update_tray_language(app: &tauri::AppHandle, language: &str) {
+    let lang = resolve_lang(language);
+    let i18n_text = match lang {
+        "zh" => include_str!("../ui/zh_CN.i18n.json5"),
+        _    => include_str!("../ui/en.i18n.json5"),
+    };
+    let i18n: serde_json::Value = serde_json::from_str(
+        &strip_json5_comments(i18n_text)
+    ).unwrap_or_default();
+    let label_settings = i18n["tray.settings"].as_str().unwrap_or("Settings…");
+    let label_quit = i18n["tray.quit"].as_str().unwrap_or("Quit Markon");
+
+    if let Some(tray) = app.tray_by_id("main") {
+        if let Ok(item_settings) = MenuItem::with_id(app, "settings", label_settings, true, None::<&str>) {
+            if let Ok(sep) = PredefinedMenuItem::separator(app) {
+                if let Ok(item_quit) = MenuItem::with_id(app, "quit", label_quit, true, None::<&str>) {
+                    if let Ok(menu) = Menu::with_items(app, &[&item_settings, &sep, &item_quit]) {
+                        let _ = tray.set_menu(Some(menu));
+                    }
+                }
+            }
+        }
+    }
 }
 
 /// Add a workspace directory to the running server. Returns the workspace ID and URL.
@@ -111,13 +165,27 @@ pub fn update_workspace(
     Ok(())
 }
 
-/// Remove a workspace from the running server.
+/// Remove a workspace from the running server and persist the change.
 #[tauri::command]
 pub fn remove_workspace(id: String, state: State<AppState>) -> Result<(), String> {
     let server = state.server.lock().unwrap();
+    // Look up the path before removing, so we can remove from settings too.
+    let ws_path = server
+        .registry
+        .get(&id)
+        .map(|ws| ws.root.to_string_lossy().to_string());
     let removed = server.registry.remove(&id);
+    drop(server);
+
     if !removed {
         return Err(format!("Workspace {id} not found"));
+    }
+
+    // Remove from persisted settings.
+    if let Some(path) = ws_path {
+        let mut settings = state.settings.lock().unwrap();
+        settings.workspaces.retain(|w| w.path != path);
+        settings.save().ok();
     }
     Ok(())
 }
