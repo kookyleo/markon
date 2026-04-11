@@ -195,10 +195,31 @@ impl AppSettings {
             styles_css: if self.web_styles.is_empty() {
                 None
             } else {
-                Some(self.web_styles.iter()
-                    .map(|(k, v)| format!("--markon-{}: {};", k, v))
-                    .collect::<Vec<_>>()
-                    .join(" "))
+                // Split into base / light / dark CSS blocks
+                let mut base = Vec::new();
+                let mut light = Vec::new();
+                let mut dark = Vec::new();
+                for (k, v) in &self.web_styles {
+                    if let Some(name) = k.strip_suffix(".light") {
+                        light.push(format!("--markon-{}: {};", name, v));
+                    } else if let Some(name) = k.strip_suffix(".dark") {
+                        dark.push(format!("--markon-{}: {};", name, v));
+                    } else {
+                        base.push(format!("--markon-{}: {};", k, v));
+                    }
+                }
+                let mut css = String::new();
+                if !base.is_empty() || !light.is_empty() {
+                    css.push_str(&base.join(" "));
+                    css.push_str(&light.join(" "));
+                }
+                if !dark.is_empty() {
+                    css.push_str(&format!(
+                        "}} @media (prefers-color-scheme:dark) {{ :root {{ {}",
+                        dark.join(" ")
+                    ));
+                }
+                Some(css)
             },
             shortcuts_json: if self.shortcuts.is_empty() {
                 None

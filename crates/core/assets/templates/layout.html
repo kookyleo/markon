@@ -205,36 +205,44 @@
 
         .toc-list {
             list-style: none;
-            padding: 0;
+            padding: 0 0 40vh 0;
             margin: 0;
         }
 
         .toc-item {
-            margin: 4px 0;
+            padding: 4px 0;
         }
 
         .toc-item a {
             text-decoration: none;
             display: block;
             padding: 2px 0;
-            transition: all 0.2s;
+            transition: none;
         }
 
         .toc-item a:hover {
             text-decoration: underline;
         }
 
-        .toc-item a.active {
-            font-weight: 600;
-            background-color: var(--markon-toc-active-bg);
-            border-radius: 4px;
-            padding: 2px 6px;
+        /* Viewport highlight: rendered as an absolute overlay that slides smoothly */
+        .toc-list {
+            position: relative;
         }
-        /* User-selected section (click): left border accent */
-        .toc-item a.selected {
-            border-left: 3px solid var(--markon-toc-selected-border);
-            padding-left: 6px;
-            font-weight: 600;
+        .toc-viewport-highlight {
+            position: absolute;
+            left: 0; right: 0;
+            background-color: var(--markon-primary-bg);
+            transition: top 0.25s ease, height 0.25s ease;
+            pointer-events: none;
+            z-index: 0;
+        }
+        .toc-item {
+            position: relative;
+            z-index: 1;
+        }
+        /* User-selected section */
+        .toc-item a.active {
+            color: var(--markon-primary);
         }
 
         /* Indent based on heading level */
@@ -293,8 +301,6 @@
         .toc-item a:hover {
             color: #58a6ff;
         }
-        .toc-item a.active {
-            color: #58a6ff;
         }
         {% elif theme == "light" %}
         .toc-title {
@@ -306,8 +312,6 @@
         .toc-item a:hover {
             color: #0969da;
         }
-        .toc-item a.active {
-            color: #0969da;
         }
         {% else %}
         @media (prefers-color-scheme: dark) {
@@ -320,8 +324,6 @@
             .toc-item a:hover {
                 color: #58a6ff;
             }
-            .toc-item a.active {
-                color: #58a6ff;
             }
         }
         @media (prefers-color-scheme: light) {
@@ -334,8 +336,6 @@
             .toc-item a:hover {
                 color: #0969da;
             }
-            .toc-item a.active {
-                color: #0969da;
             }
         }
         {% endif %}
@@ -1356,43 +1356,124 @@
             const headings = Array.from(document.querySelectorAll('h1[id], h2[id], h3[id], h4[id], h5[id], h6[id]'));
             if (headings.length === 0) return;
 
-            // ── State 1: Scroll position → .active ──────────────────
-            function updateScrollActive() {
-                const scrollTop = window.scrollY + 60;
-                let activeHeading = null;
-                for (const heading of headings) {
-                    if (heading.offsetHeight === 0) continue;
-                    const top = heading.getBoundingClientRect().top + window.scrollY;
-                    if (top <= scrollTop) {
-                        activeHeading = heading;
+            // ── Cached section ranges (rebuilt on resize/DOM, not on scroll) ──
+            // ── Section position cache ─────────────────────────────
+            // Built once, rebuilt on resize / DOM changes. Scroll handler does pure arithmetic.
+            var sectionCache = [];
+            function rebuildCache() {
+                sectionCache = [];
+                var sy = window.scrollY;
+                for (var i = 0; i < headings.length; i++) {
+                    var h = headings[i];
+                    if (h.offsetHeight === 0) continue;
+                    var top = h.getBoundingClientRect().top + sy;
+                    var bottom = document.documentElement.scrollHeight;
+                    for (var j = i + 1; j < headings.length; j++) {
+                        if (headings[j].offsetHeight === 0) continue;
+                        bottom = headings[j].getBoundingClientRect().top + sy;
+                        break;
+                    }
+                    var href = '#' + h.id;
+                    var link = toc.querySelector('.toc-item a[href="' + CSS.escape(href) + '"]');
+                    if (link) {
+                        sectionCache.push({ id: h.id, li: link.closest('.toc-item'), link: link, top: top, bottom: bottom });
                     }
                 }
-                tocLinks.forEach(link => {
-                    const match = activeHeading && link.getAttribute('href') === '#' + activeHeading.id;
-                    link.classList.toggle('active', !!match);
-                });
+            }
+            rebuildCache();
+            window.addEventListener('resize', function() { setTimeout(function() { rebuildCache(); updateViewport(); }, 100); });
+            // Rebuild when sections collapse/expand (class changes on .heading-section)
+            new MutationObserver(function() { setTimeout(function() { rebuildCache(); updateViewport(); }, 50); })
+                .observe(document.querySelector('.markdown-body') || document.body, { attributes: true, subtree: true, attributeFilter: ['class'] });
+
+            // ── State 1: Viewport highlight (sliding overlay) ──────
+            // Create a single overlay element that slides to cover viewport items
+            var tocList = toc.querySelector('.toc-list');
+            var vpHighlight = document.createElement('div');
+            vpHighlight.className = 'toc-viewport-highlight';
+            vpHighlight.style.top = '0px';
+            vpHighlight.style.height = '0px';
+            if (tocList) tocList.appendChild(vpHighlight);
+
+            function updateViewport() {
+                var vpTop = window.scrollY;
+                var vpBottom = vpTop + window.innerHeight;
+                var firstVp = null, lastVp = null;
+                for (var i = 0; i < sectionCache.length; i++) {
+                    var s = sectionCache[i];
+                    var overlap = Math.min(s.bottom, vpBottom) - Math.max(s.top, vpTop);
+                    if (overlap > 30) {
+                        if (!firstVp) firstVp = s.li;
+                        lastVp = s.li;
+                    }
+                }
+                // Position the highlight overlay
+                if (firstVp && tocList) {
+                    var listRect = tocList.getBoundingClientRect();
+                    var firstRect = firstVp.getBoundingClientRect();
+                    var lastRect = lastVp.getBoundingClientRect();
+                    var top = firstRect.top - listRect.top + tocList.scrollTop;
+                    var height = lastRect.bottom - firstRect.top;
+                    vpHighlight.style.top = top + 'px';
+                    vpHighlight.style.height = height + 'px';
+                } else {
+                    vpHighlight.style.height = '0px';
+                }
+                // Keep viewport range visible in TOC panel
+                if (firstVp) {
+                    var tocRect = toc.getBoundingClientRect();
+                    var lineH = firstVp.offsetHeight || 24;
+                    var lastR = lastVp.getBoundingClientRect();
+                    if (lastR.bottom > tocRect.bottom - lineH * 4) {
+                        toc.scrollTop += (lastR.bottom - tocRect.bottom + lineH * 4);
+                    }
+                    var firstR = firstVp.getBoundingClientRect();
+                    if (firstR.top < tocRect.top + lineH * 3) {
+                        toc.scrollTop -= (tocRect.top + lineH * 3 - firstR.top);
+                    }
+                }
             }
 
-            let scrollRaf = null;
-            window.addEventListener('scroll', () => {
-                if (scrollRaf) return;
-                scrollRaf = requestAnimationFrame(() => {
-                    updateScrollActive();
-                    scrollRaf = null;
-                });
-            }, { passive: true });
+            // ── Unified settle: update TOC only when main content stops moving ──
+            var pendingActiveId = null;
+            var settleTimer = null;
+            var isScrolling = false;
 
-            updateScrollActive();
-
-            // ── State 2: User selection → .selected ─────────────────
-            function setSelected(targetId) {
-                tocLinks.forEach(link => {
-                    const match = link.getAttribute('href') === '#' + targetId;
-                    link.classList.toggle('selected', match);
-                });
+            function onSettle() {
+                isScrolling = false;
+                updateViewport();
+                if (pendingActiveId) {
+                    for (var i = 0; i < sectionCache.length; i++)
+                        sectionCache[i].link.classList.toggle('active', sectionCache[i].id === pendingActiveId);
+                    pendingActiveId = null;
+                }
             }
 
-            // ── TOC click: set selected + smooth scroll ─────────────
+            function resetSettleTimer() {
+                isScrolling = true;
+                if (settleTimer) clearTimeout(settleTimer);
+                settleTimer = setTimeout(onSettle, 20);
+            }
+
+            window.addEventListener('scroll', resetSettleTimer, { passive: true });
+            window.addEventListener('resize', function() {
+                setTimeout(function() { rebuildCache(); onSettle(); }, 100);
+            });
+            if ('onscrollend' in window) window.addEventListener('scrollend', onSettle);
+
+            // Initial render
+            updateViewport();
+
+            // ── State 2: .active scheduling ──────────────────────────
+            function scheduleActive(id) {
+                // Clear old .active immediately
+                for (var i = 0; i < sectionCache.length; i++)
+                    sectionCache[i].link.classList.remove('active');
+                pendingActiveId = id;
+                resetSettleTimer();
+            }
+
+            // ── TOC click: schedule selected + smooth scroll ────────
             tocLinks.forEach(link => {
                 link.addEventListener('click', (e) => {
                     const href = link.getAttribute('href');
@@ -1402,7 +1483,7 @@
                         const targetId = href.substring(1);
                         const targetElement = document.getElementById(targetId);
                         if (targetElement) {
-                            setSelected(targetId);
+                            scheduleActive(targetId);
                             const targetTop = targetElement.getBoundingClientRect().top + window.scrollY - 20;
                             window.scrollTo({ top: targetTop, behavior: 'smooth' });
                             history.pushState(null, '', href);
@@ -1410,6 +1491,27 @@
                     }
                 });
             });
+
+            // ── Sync selected from content area clicks ──────────────
+            document.addEventListener('click', (e) => {
+                if (e.target.closest('.toc')) return;
+                // Find section heading from click target
+                const section = e.target.closest('.heading-section');
+                if (section) {
+                    const heading = section.querySelector(':scope > h1[id], :scope > h2[id], :scope > h3[id], :scope > h4[id], :scope > h5[id], :scope > h6[id]');
+                    if (heading && heading.id) { setActive(heading.id); return; }
+                }
+                const heading = e.target.closest('h1[id], h2[id], h3[id], h4[id], h5[id], h6[id]');
+                if (heading && heading.id) { setActive(heading.id); return; }
+                const link = e.target.closest('a[href^="#"]');
+                if (link) {
+                    const id = link.getAttribute('href').substring(1);
+                    if (id) scheduleActive(id);
+                }
+            }, true);
+
+            // Expose for j/k and main.js
+            window.__markonTocSetSelected = scheduleActive;
         })();
     </script>
     <script>

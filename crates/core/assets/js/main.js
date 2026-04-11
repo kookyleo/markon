@@ -1011,7 +1011,6 @@ export class MarkonApp {
      */
     #navigateHeading(direction) {
         const allHeadings = Array.from(document.querySelectorAll(CONFIG.SELECTORS.HEADINGS));
-        Logger.log('MarkonApp', `Total headings found: ${allHeadings.length}`);
 
         // Filter可见的Heading：
         // 1. 不在折叠章节内的Heading
@@ -1021,11 +1020,9 @@ export class MarkonApp {
                 return false;
             }
             const inCollapsed = this.#isHeadingInCollapsedSection(h, allHeadings);
-            Logger.log('MarkonApp', `Heading ${h.tagName} "${h.textContent.substring(0, 30)}..." - inCollapsed: ${inCollapsed}`);
             return !inCollapsed;
         });
 
-        Logger.log('MarkonApp', `Visible headings after filter: ${headings.length}`);
         if (headings.length === 0) return;
 
         const currentFocused = document.querySelector('.heading-focused');
@@ -1048,6 +1045,10 @@ export class MarkonApp {
             });
             targetHeading.classList.add('heading-focused');
             Position.smartScrollToHeading(targetHeading);
+            // Sync TOC selected state
+            if (targetHeading.id && window.__markonTocSetSelected) {
+                window.__markonTocSetSelected(targetHeading.id);
+            }
         }
     }
 
@@ -1244,9 +1245,11 @@ document.addEventListener('DOMContentLoaded', () => {
         if (targetElement) {
             e.preventDefault();
             targetElement.scrollIntoView({ behavior: 'smooth', block: 'start' });
-
-            // Update URL hash 而不Trigger跳转
             history.pushState(null, '', href);
+            // Sync TOC selected state
+            if (window.__markonTocSetSelected) {
+                window.__markonTocSetSelected(targetId);
+            }
         }
     });
 

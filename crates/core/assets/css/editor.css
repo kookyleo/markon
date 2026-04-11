@@ -1,46 +1,44 @@
 /* ============================================================
-   MARKON CONFIGURABLE CSS VARIABLES
-   Override via Settings → Web styles, injected as :root vars.
+   MARKON DESIGN TOKENS
+   4 semantic colors + typography + opacity.
+   Specific usages derive from these — no per-element config.
+   Override via Settings → Page styles (injected as :root vars).
    ============================================================ */
 :root {
-    /* Functional UI text */
+    /* ── Core palette (light) ──────────────────────────────── */
+    --markon-primary:   #0969da;   /* links, accents, TOC selected, buttons */
+    --markon-muted:     #656d76;   /* secondary text, toolbar, separators */
+    --markon-border:    #d1d9e0;   /* heading underlines, panel borders */
+    --markon-subtle:    #f6f8fa;   /* subtle backgrounds */
+
+    /* ── Typography ────────────────────────────────────────── */
     --markon-ui-font: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
     --markon-ui-font-size: 0.8125rem;
-    --markon-ui-color: #656d76;
-    --markon-ui-color-hover: #24292f;
-    /* Accent / links */
-    --markon-accent: #0969da;
-    --markon-accent-hover: #0550ae;
-    /* Heading border */
-    --markon-heading-border: #d1d9e0b3;
-    /* Toolbar / section controls */
-    --markon-toolbar-bg: transparent;
-    --markon-toolbar-border: transparent;
-    /* Section collapse */
-    --markon-collapsed-opacity: 0.6;
-    --markon-collapsed-opacity-hover: 0.85;
-    /* Floating panels (TOC, etc.) */
+
+    /* ── Opacity ───────────────────────────────────────────── */
     --markon-panel-opacity: 0.9;
-    /* TOC states */
-    --markon-toc-active-bg: rgba(9, 105, 218, 0.1);
-    --markon-toc-selected-border: #0969da;
+    --markon-collapsed-opacity: 0.6;
+
+    /* ── Derived (auto-computed, not user-configurable) ───── */
+    --markon-primary-hover: color-mix(in srgb, var(--markon-primary) 80%, black);
+    --markon-muted-hover:   color-mix(in srgb, var(--markon-muted) 60%, black);
+    --markon-primary-bg:    color-mix(in srgb, var(--markon-primary) 10%, transparent);
 }
 
 @media (prefers-color-scheme: dark) {
     :root {
-        --markon-toc-active-bg: rgba(88, 166, 255, 0.15);
-        --markon-toc-selected-border: #58a6ff;
+        --markon-primary:   #58a6ff;
+        --markon-muted:     #8b949e;
+        --markon-border:    #30363d;
+        --markon-subtle:    #161b22;
+        --markon-primary-hover: color-mix(in srgb, var(--markon-primary) 80%, white);
+        --markon-muted-hover:   color-mix(in srgb, var(--markon-muted) 60%, white);
+        --markon-primary-bg:    color-mix(in srgb, var(--markon-primary) 15%, transparent);
     }
 }
 
-@media (prefers-color-scheme: dark) {
-    :root {
-        --markon-ui-color: #8b949e;
-        --markon-ui-color-hover: #c9d1d9;
-        --markon-accent: #58a6ff;
-        --markon-accent-hover: #79c0ff;
-        --markon-heading-border: #30363d;
-    }
+:root {
+    --markon-collapsed-opacity-hover: 0.85;
 }
 
 /* ============================================================
@@ -619,7 +617,7 @@
     font-size: var(--markon-ui-font-size);
     font-family: var(--markon-ui-font);
     font-weight: normal;
-    color: var(--markon-ui-color);
+    color: var(--markon-muted);
     cursor: pointer;
     -webkit-user-select: none;
     -moz-user-select: none;
@@ -655,7 +653,7 @@
 .section-action {
     font-size: var(--markon-ui-font-size);
     font-family: var(--markon-ui-font);
-    color: var(--markon-ui-color);
+    color: var(--markon-muted);
     font-weight: normal;
     cursor: pointer;
     margin-left: 0.5em;
@@ -683,7 +681,7 @@
 .section-action-separator {
     margin: 0 0.25rem;
     font-size: var(--markon-ui-font-size);
-    color: var(--markon-ui-color);
+    color: var(--markon-muted);
     -webkit-user-select: none;
     -moz-user-select: none;
     -ms-user-select: none;
@@ -770,7 +768,7 @@
     font-size: var(--markon-ui-font-size);
     font-family: var(--markon-ui-font);
     font-weight: normal;
-    color: var(--markon-ui-color);
+    color: var(--markon-muted);
     -webkit-user-select: none;
     -moz-user-select: none;
     -ms-user-select: none;
@@ -783,7 +781,7 @@
 }
 
 .viewed-toolbar a {
-    color: var(--markon-accent);
+    color: var(--markon-primary);
     text-decoration: none;
     cursor: pointer;
     padding: 2px 4px;

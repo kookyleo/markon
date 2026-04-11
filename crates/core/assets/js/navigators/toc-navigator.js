@@ -35,7 +35,7 @@ export class TOCNavigator {
 
         // Resume之前的焦点位置，或Find当前活动Link，或默认第一个
         if (this.#focusedIndex < 0 || this.#focusedIndex >= this.#links.length) {
-            const activeLink = tocContainer.querySelector('.toc-item a.active');
+            const activeLink = tocContainer.querySelector('.toc-item.viewport a') || tocContainer.querySelector('.toc-item a.selected');
             this.#focusedIndex = activeLink ? this.#links.indexOf(activeLink) : 0;
         }
 
@@ -180,7 +180,7 @@ export class TOCNavigator {
         link.classList.add('toc-focused');
 
         // 滚动到可见
-        link.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+        link.scrollIntoView({ block: 'nearest' });
     }
 
     /**

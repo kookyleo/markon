@@ -1580,15 +1580,20 @@
 
   // ── Auto-update check ───────────────────────────────────────────────────
   // ── Web styles editor ────────────────────────────────────────────────
+  // Semantic design tokens: 4 colors (light + dark) + typography + opacity.
+  // Specific CSS usages (toc-active-bg, accent-hover, etc.) derive automatically.
   const STYLE_DEFS = [
-    { key: 'ui-color',         type: 'color', def: '#656d76' },
-    { key: 'accent',           type: 'color', def: '#0969da' },
-    { key: 'heading-border',   type: 'color', def: '#d1d9e0' },
+    { key: 'primary',  type: 'duocolor', defLight: '#0969da', defDark: '#58a6ff',
+      hint: 'webstyles.primary.hint' },
+    { key: 'muted',    type: 'duocolor', defLight: '#656d76', defDark: '#8b949e',
+      hint: 'webstyles.muted.hint' },
+    { key: 'border',   type: 'duocolor', defLight: '#d1d9e0', defDark: '#30363d',
+      hint: 'webstyles.border.hint' },
+    { key: 'subtle',   type: 'duocolor', defLight: '#f6f8fa', defDark: '#161b22',
+      hint: 'webstyles.subtle.hint' },
     { key: 'ui-font',          type: 'font',  def: 'system-ui, sans-serif' },
     { key: 'ui-font-size',     type: 'range', def: '0.80', min: 0.60, max: 1.20, step: 0.05, unit: 'rem' },
-    { key: 'panel-opacity',   type: 'range', def: '0.90', min: 0.30, max: 1.00, step: 0.05, unit: '' },
-    { key: 'toc-active-bg',   type: 'color', def: '#174ea6' },
-    { key: 'toc-selected-border', type: 'color', def: '#0969da' },
+    { key: 'panel-opacity',    type: 'range', def: '0.90', min: 0.30, max: 1.00, step: 0.05, unit: '' },
   ];
 
   let currentWebStyles = {};
@@ -1597,10 +1602,35 @@
     const list = document.getElementById('webstyles-list');
     list.innerHTML = '';
     for (const d of STYLE_DEFS) {
-      const val = currentWebStyles[d.key] || d.def;
       const row = document.createElement('div');
       row.className = 'style-row';
       const label = T('webstyles.' + d.key) || d.key;
+      const hint = d.hint ? T(d.hint) : '';
+
+      if (d.type === 'duocolor') {
+        // Two color pickers: light (☀) + dark (🌙)
+        const valL = currentWebStyles[d.key + '.light'] || d.defLight;
+        const valD = currentWebStyles[d.key + '.dark'] || d.defDark;
+        row.innerHTML = `<span class="st-name">${label}${hint ? '<br><small style="color:var(--text-2);font-size:10px;font-weight:400">' + hint + '</small>' : ''}</span>
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="opacity:.4;flex-shrink:0"><circle cx="12" cy="12" r="5"/><path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"/></svg>
+          <input type="color" value="${valL}" data-key="${d.key}.light">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="opacity:.4;flex-shrink:0"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
+          <input type="color" value="${valD}" data-key="${d.key}.dark">`;
+        row.querySelectorAll('input[type="color"]').forEach(inp => {
+          inp.addEventListener('input', () => {
+            const k = inp.dataset.key;
+            const base = k.replace(/\.(light|dark)$/, '');
+            const mode = k.endsWith('.light') ? 'light' : 'dark';
+            const def = mode === 'light' ? d.defLight : d.defDark;
+            if (inp.value === def) { delete currentWebStyles[k]; } else { currentWebStyles[k] = inp.value; }
+            saveSettings();
+          });
+        });
+        list.appendChild(row);
+        continue;
+      }
+
+      const val = currentWebStyles[d.key] || d.def;
       if (d.type === 'font') {
         row.innerHTML = `<span class="st-name">${label}</span>
           <select data-key="${d.key}" style="flex:1;max-width:180px;font-size:11px"></select>`;
@@ -1621,16 +1651,11 @@
             sel.value = val;
           }
         }
-        // Load system fonts from Rust, fallback to common list
         invoke('list_fonts').then(fonts => {
           populateFontSelect(['system-ui, sans-serif', ...fonts]);
         }).catch(() => {
           populateFontSelect(['system-ui, sans-serif', 'Arial', 'Helvetica Neue', 'Georgia', 'Menlo', 'Monaco', 'Inter']);
         });
-      } else if (d.type === 'color') {
-        row.innerHTML = `<span class="st-name">${label}</span>
-          <input type="color" value="${val}" data-key="${d.key}">
-          <input type="text" value="${val}" data-key="${d.key}" data-peer="color">`;
       } else if (d.type === 'range') {
         const num = parseFloat(val) || parseFloat(d.def);
         row.innerHTML = `<span class="st-name">${label}</span>
