@@ -46,25 +46,23 @@ jobs:
           APPLE_SIGNING_IDENTITY: "-"
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
         run: |
-          # Start a background watcher that copies .sig files as soon as they
-          # appear. Tauri generates them mid-build then cleans them before the
-          # command returns, so we must catch them in-flight.
+          # Background watcher: copies .sig files the moment they appear.
+          # Tauri generates them mid-build then deletes them before the command exits.
           mkdir -p /tmp/updater-out
           (
             while true; do
-              for f in target/release/bundle/macos/*.tar.gz.sig \
-                       target/release/bundle/appimage/*.AppImage.tar.gz.sig \
-                       target/release/bundle/nsis/*.nsis.zip.sig; do
-                [ -f "$f" ] || continue
-                bn=$(basename "$f")
-                if [ ! -f "/tmp/updater-out/$bn" ]; then
-                  cp "$f" /tmp/updater-out/
-                  bundle="${f%.sig}"
-                  [ -f "$bundle" ] && cp "$bundle" /tmp/updater-out/
-                  echo "Watcher saved: $bn"
-                fi
-              done
-              sleep 1
+              if [ -d target/release/bundle ]; then
+                find target/release/bundle -name "*.sig" -type f 2>/dev/null | while IFS= read -r f; do
+                  bn=$(basename "$f")
+                  if [ ! -f "/tmp/updater-out/$bn" ]; then
+                    cp "$f" /tmp/updater-out/ 2>/dev/null || true
+                    bundle="${f%.sig}"
+                    [ -f "$bundle" ] && cp "$bundle" /tmp/updater-out/ 2>/dev/null || true
+                    echo "Watcher: captured $bn"
+                  fi
+                done
+              fi
+              sleep 0.5
             done
           ) &
           WATCHER_PID=$!
@@ -72,7 +70,6 @@ jobs:
           cd crates/gui
           cargo tauri build --bundles ${{ matrix.bundles }}
 
-          # Give watcher a moment to catch final files, then stop it
           sleep 2
           kill $WATCHER_PID 2>/dev/null || true
           wait $WATCHER_PID 2>/dev/null || true
