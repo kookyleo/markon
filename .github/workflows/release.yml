@@ -59,7 +59,7 @@ jobs:
           projectPath: crates/gui
           tagName: ${{ github.ref_name }}
           releaseName: Markon ${{ github.ref_name }}
-          releasePrerelease: ${{ steps.meta.outputs.is_rc }}
+          prerelease: ${{ steps.meta.outputs.is_rc }}
           releaseDraft: false
           updaterJsonPreferNsis: true
           updaterJsonKeepUniversal: true
@@ -69,6 +69,7 @@ jobs:
   # permanent "updater" release so clients can find it at a stable URL.
   publish-manifest:
     needs: build
+    if: ${{ !cancelled() }}
     runs-on: ubuntu-latest
     permissions:
       contents: write
