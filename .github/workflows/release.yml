@@ -40,7 +40,29 @@ jobs:
       - name: Install Tauri CLI
         run: cargo install tauri-cli --version "^2"
 
-      - name: Build
+      # Build updater bundle first to capture .tar.gz and .sig before
+      # the DMG/AppImage bundler cleans the intermediate files.
+      - name: Build updater bundle
+        env:
+          APPLE_SIGNING_IDENTITY: "-"
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+        run: |
+          cd crates/gui
+          cargo tauri build --bundles updater
+
+      - name: Save updater artifacts
+        shell: bash
+        run: |
+          mkdir -p /tmp/updater-out
+          find target/release/bundle -name "*.sig" -o -name "*.tar.gz" -o -name "*.nsis.zip" | while read f; do
+            cp "$f" /tmp/updater-out/
+            echo "Saved: $f"
+          done
+          ls -la /tmp/updater-out/
+
+      # Now build installer bundles (dmg/deb/appimage/nsis).
+      # This may clean intermediate files but we already saved what we need.
+      - name: Build installer bundles
         env:
           APPLE_SIGNING_IDENTITY: "-"
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
@@ -48,7 +70,7 @@ jobs:
           cd crates/gui
           cargo tauri build --bundles ${{ matrix.bundles }}
 
-      - name: Create draft release (first platform wins, others skip)
+      - name: Create draft release
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
@@ -58,7 +80,7 @@ jobs:
             --draft \
             --notes ""
 
-      - name: Upload all release artifacts
+      - name: Upload all artifacts
         shell: bash
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -71,13 +93,8 @@ jobs:
                    target/release/bundle/nsis/*-setup.exe; do
             [ -f "$f" ] && gh release upload "$TAG" "$f" --clobber && echo "Uploaded: $f" || true
           done
-          # Upload updater bundles + signatures
-          for f in target/release/bundle/macos/*.tar.gz \
-                   target/release/bundle/macos/*.tar.gz.sig \
-                   target/release/bundle/appimage/*.AppImage.tar.gz \
-                   target/release/bundle/appimage/*.AppImage.tar.gz.sig \
-                   target/release/bundle/nsis/*.nsis.zip \
-                   target/release/bundle/nsis/*.nsis.zip.sig; do
+          # Upload saved updater artifacts
+          for f in /tmp/updater-out/*; do
             [ -f "$f" ] && gh release upload "$TAG" "$f" --clobber && echo "Uploaded: $f" || true
           done
 
