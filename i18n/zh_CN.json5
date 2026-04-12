@@ -55,6 +55,7 @@
     "shortcuts.reset":      "恢复默认",
     "shortcuts.record":     "按下新快捷键…",
     "pref.autoupdate.desc": "启动时检查 GitHub 上的新版本并自动安装",
+    "pref.channel.desc":    "更新通道（Stable = 仅正式版，RC = 候选版本）",
 
     // ── 全局设置 — 新工作区默认功能 ──────────────────────────
     "sec.defaults":         "新增工作区时默认开启的功能",

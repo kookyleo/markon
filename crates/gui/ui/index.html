@@ -789,6 +789,17 @@
               <div class="switch-track"></div>
             </label>
           </div>
+          <div class="pref-row">
+            <div class="pref-label">
+              <span data-i18n="pref.channel.desc"></span>
+            </div>
+            <div class="seg-ctrl" style="width:140px">
+              <input type="radio" name="update_channel" id="ch_stable" value="stable">
+              <label for="ch_stable">Stable</label>
+              <input type="radio" name="update_channel" id="ch_rc" value="rc">
+              <label for="ch_rc">RC</label>
+            </div>
+          </div>
         </div>
       </div>
 
@@ -1104,6 +1115,9 @@
     document.getElementById('default_edit').checked = s.default_edit ?? false;
     document.getElementById('default_shared').checked = s.default_shared_annotation ?? false;
     document.getElementById('auto_update').checked = s.auto_update ?? true;
+    const ch = s.update_channel ?? 'stable';
+    const chRadio = document.querySelector(`input[name="update_channel"][value="${ch}"]`);
+    if (chRadio) chRadio.checked = true;
     currentWebStyles = s.web_styles ?? {};
     renderWebStyles();
     currentShortcuts = s.shortcuts ?? {};
@@ -1129,6 +1143,7 @@
       web_styles: currentWebStyles,
       shortcuts: currentShortcuts,
       auto_update: document.getElementById('auto_update').checked,
+      update_channel: document.querySelector('input[name="update_channel"]:checked')?.value ?? 'stable',
       workspaces: [],  // preserved by Rust command; managed via add/remove/update
     };
     await invoke('save_settings', { settings });
@@ -1190,6 +1205,9 @@
   });
   ['default_search', 'default_viewed', 'default_edit', 'default_shared', 'auto_update'].forEach(id =>
     document.getElementById(id).addEventListener('change', saveSettings)
+  );
+  document.querySelectorAll('input[name="update_channel"]').forEach(r =>
+    r.addEventListener('change', saveSettings)
   );
 
   // ── Workspace list ──────────────────────────────────────────────────────

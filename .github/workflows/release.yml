@@ -5,7 +5,7 @@ on:
     tags: ['v*']
 
 jobs:
-  release:
+  build:
     permissions:
       contents: write
     strategy:
@@ -37,20 +37,76 @@ jobs:
             librsvg2-dev \
             patchelf
 
+      - name: Determine release type
+        id: meta
+        shell: bash
+        run: |
+          TAG="${{ github.ref_name }}"
+          if [[ "$TAG" == *"-rc."* ]]; then
+            echo "is_rc=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "is_rc=false" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Build and upload release
         uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          # macOS: ad-hoc signing (no certificate needed, no notarization).
-          # Users see "unverified developer" instead of "damaged" — bypassable via System Settings.
           APPLE_SIGNING_IDENTITY: "-"
-          # Tauri updater signing
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         with:
           projectPath: crates/gui
           tagName: ${{ github.ref_name }}
           releaseName: Markon ${{ github.ref_name }}
-          releaseDraft: true
+          releasePrerelease: ${{ steps.meta.outputs.is_rc }}
+          releaseDraft: false
           updaterJsonPreferNsis: true
+          updaterJsonKeepUniversal: true
           args: --bundles ${{ matrix.bundles }}
+
+  # After all platforms finish, publish the updater manifest to the
+  # permanent "updater" release so clients can find it at a stable URL.
+  publish-manifest:
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Determine manifest name
+        id: meta
+        shell: bash
+        run: |
+          TAG="${{ github.ref_name }}"
+          if [[ "$TAG" == *"-rc."* ]]; then
+            echo "manifest=latest-rc.json" >> "$GITHUB_OUTPUT"
+          else
+            echo "manifest=latest.json" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Download updater JSON from release
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release download "${{ github.ref_name }}" \
+            -p "latest.json" -D /tmp --clobber
+
+      - name: Ensure updater release exists
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release view updater >/dev/null 2>&1 || \
+          gh release create updater \
+            --title "Updater manifests" \
+            --notes "Auto-managed release hosting updater JSON manifests. Do not delete." \
+            --latest=false
+
+      - name: Upload manifest to updater release
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          MANIFEST="${{ steps.meta.outputs.manifest }}"
+          cp /tmp/latest.json "/tmp/${MANIFEST}"
+          gh release upload updater "/tmp/${MANIFEST}" --clobber

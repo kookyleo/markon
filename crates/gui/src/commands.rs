@@ -331,35 +331,56 @@ pub async fn pick_db_path() -> Option<String> {
         .map(|h| h.path().to_string_lossy().to_string())
 }
 
+/// Resolve the updater endpoint URL for the given channel.
+/// Both manifests are hosted under a permanent "updater" release tag.
+fn updater_endpoint(channel: &str) -> String {
+    let file = if channel == "rc" { "latest-rc.json" } else { "latest.json" };
+    format!("https://github.com/kookyleo/markon/releases/download/updater/{file}")
+}
+
 /// Check for updates and return status. If an update is available, download & install it.
-/// Returns a JSON with { available, current, latest, error? }.
+/// Returns a JSON with { available, current, latest, channel, error? }.
 #[tauri::command]
-pub async fn check_for_update(app: tauri::AppHandle) -> serde_json::Value {
-    let updater = match app.updater() {
-        Ok(u) => u,
-        Err(e) => return serde_json::json!({ "available": false, "error": e.to_string() }),
-    };
+pub async fn check_for_update(app: tauri::AppHandle, state: State<'_, AppState>) -> Result<serde_json::Value, String> {
+    let channel = state.settings.lock().unwrap().update_channel.clone();
+    let endpoint: url::Url = updater_endpoint(&channel)
+        .parse()
+        .map_err(|e: url::ParseError| e.to_string())?;
+
+    let updater = app
+        .updater_builder()
+        .endpoints(vec![endpoint])
+        .map_err(|e| e.to_string())?
+        .build()
+        .map_err(|e| e.to_string())?;
+
     let update = match updater.check().await {
         Ok(Some(u)) => u,
-        Ok(None) => return serde_json::json!({ "available": false, "current": env!("CARGO_PKG_VERSION") }),
-        Err(e) => return serde_json::json!({ "available": false, "error": e.to_string() }),
+        Ok(None) => return Ok(serde_json::json!({
+            "available": false,
+            "current": env!("CARGO_PKG_VERSION"),
+            "channel": channel,
+        })),
+        Err(e) => return Ok(serde_json::json!({ "available": false, "error": e.to_string() })),
     };
     let latest = update.version.clone();
     // Download and install
     match update.download_and_install(|_, _| {}, || {}).await {
-        Ok(()) => serde_json::json!({
+        Ok(()) => Ok(serde_json::json!({
             "available": true,
             "current": env!("CARGO_PKG_VERSION"),
             "latest": latest,
+            "channel": channel,
             "installed": true,
-        }),
-        Err(e) => serde_json::json!({
+        })),
+        Err(e) => Ok(serde_json::json!({
             "available": true,
             "current": env!("CARGO_PKG_VERSION"),
             "latest": latest,
+            "channel": channel,
             "installed": false,
             "error": e.to_string(),
-        }),
+        })),
     }
 }
 

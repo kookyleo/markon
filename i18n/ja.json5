@@ -55,6 +55,7 @@
     "shortcuts.reset":      "デフォルトに戻す",
     "shortcuts.record":     "新しいキーを押してください…",
     "pref.autoupdate.desc": "起動時に GitHub で新バージョンを確認し、自動的にインストール",
+    "pref.channel.desc":    "更新チャンネル（Stable = 正式版のみ、RC = リリース候補）",
 
     // ── General — New workspace defaults ─────────────────────
     "sec.defaults":         "新規ワークスペースでデフォルト有効にする機能",

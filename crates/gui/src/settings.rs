@@ -3,6 +3,7 @@ use std::path::PathBuf;
 use markon_core::server::{ServerConfig, WorkspaceInit};
 
 fn default_true() -> bool { true }
+fn default_stable() -> String { "stable".to_string() }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
@@ -80,6 +81,10 @@ pub struct AppSettings {
     /// Check for updates on launch via GitHub releases.
     #[serde(default = "default_true")]
     pub auto_update: bool,
+    /// Update channel: "stable" (default) only receives promoted releases;
+    /// "rc" also receives release-candidate builds.
+    #[serde(default = "default_stable")]
+    pub update_channel: String,
     /// Last Settings window size. None on first run → use config defaults.
     #[serde(default)]
     pub window_width: Option<u32>,
@@ -107,6 +112,7 @@ impl Default for AppSettings {
             web_styles: std::collections::HashMap::new(),
             shortcuts: std::collections::HashMap::new(),
             auto_update: true,
+            update_channel: "stable".to_string(),
             window_width: None,
             window_height: None,
         }
