@@ -67,22 +67,33 @@ jobs:
           BUNDLE=$(echo ${{ matrix.updater_bundle }})
           ARCHIVE="/tmp/${{ matrix.updater_archive }}"
 
+          # macOS: .app is cleaned after DMG bundling — extract from DMG
+          if [[ "$BUNDLE" == *.app ]] && [ ! -d "$BUNDLE" ]; then
+            DMG=$(find target/release/bundle/dmg -name "*.dmg" 2>/dev/null | head -1)
+            if [ -n "$DMG" ]; then
+              echo "Extracting .app from DMG: $DMG"
+              hdiutil attach "$DMG" -mountpoint /tmp/dmg-mount -nobrowse -quiet
+              APP=$(find /tmp/dmg-mount -maxdepth 1 -name "*.app" | head -1)
+              if [ -n "$APP" ]; then
+                mkdir -p "$(dirname "$BUNDLE")"
+                cp -R "$APP" "$BUNDLE"
+              fi
+              hdiutil detach /tmp/dmg-mount -quiet || true
+            fi
+          fi
+
           if [ ! -e "$BUNDLE" ]; then
-            echo "Bundle not found: $BUNDLE"
+            echo "Bundle not found: $BUNDLE — skipping updater archive"
             exit 0
           fi
 
           echo "Creating archive from: $BUNDLE"
           if [[ "$BUNDLE" == *.app ]]; then
-            # macOS: tar the .app bundle
             tar czf "$ARCHIVE" -C "$(dirname "$BUNDLE")" "$(basename "$BUNDLE")"
           elif [[ "$BUNDLE" == *.exe ]]; then
-            # Windows: zip the installer
-            ARCHIVE="/tmp/${{ matrix.updater_archive }}"
             cd "$(dirname "$BUNDLE")"
             7z a -tzip "$ARCHIVE" "$(basename "$BUNDLE")"
           else
-            # Linux: tar the AppImage
             tar czf "$ARCHIVE" -C "$(dirname "$BUNDLE")" "$(basename "$BUNDLE")"
           fi
 
@@ -100,8 +111,12 @@ jobs:
         run: |
           TAG="${{ github.ref_name }}"
           ARCHIVE="/tmp/${{ matrix.updater_archive }}"
-          [ -f "$ARCHIVE" ] && gh release upload "$TAG" "$ARCHIVE" --clobber && echo "Uploaded: $ARCHIVE"
-          [ -f "${ARCHIVE}.sig" ] && gh release upload "$TAG" "${ARCHIVE}.sig" --clobber && echo "Uploaded: ${ARCHIVE}.sig"
+          if [ -f "$ARCHIVE" ]; then
+            gh release upload "$TAG" "$ARCHIVE" --clobber && echo "Uploaded: $ARCHIVE"
+            gh release upload "$TAG" "${ARCHIVE}.sig" --clobber && echo "Uploaded: ${ARCHIVE}.sig"
+          else
+            echo "No updater archive to upload (platform may have failed)"
+          fi
 
   publish:
     needs: build
