@@ -29,9 +29,9 @@ fn generate_langs_registry() {
     );
     code.push_str("const LANGS: &[LangEntry] = &[\n");
     for (value, key, path) in &entries {
+        let path_str = path.to_string_lossy().replace('\\', "/");
         code.push_str(&format!(
-            "    LangEntry {{ value: \"{value}\", key: \"{key}\", data: include_str!(\"{}\") }},\n",
-            path.display()
+            "    LangEntry {{ value: \"{value}\", key: \"{key}\", data: include_str!(\"{path_str}\") }},\n",
         ));
     }
     code.push_str("];\n\n");

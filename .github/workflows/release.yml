@@ -99,7 +99,7 @@ jobs:
 
           echo "Signing: $ARCHIVE"
           cargo install tauri-cli --version "^2" 2>/dev/null || true
-          cargo tauri signer sign -k "$TAURI_SIGNING_PRIVATE_KEY" "$ARCHIVE"
+          cargo tauri signer sign -k "$TAURI_SIGNING_PRIVATE_KEY" -p "" "$ARCHIVE"
 
           echo "Created:"
           ls -la "$ARCHIVE" "${ARCHIVE}.sig"
