@@ -38,6 +38,7 @@ jobs:
             patchelf
 
       - name: Build and upload release
+        id: tauri
         uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -52,6 +53,23 @@ jobs:
           updaterJsonPreferNsis: true
           updaterJsonKeepUniversal: true
           args: --bundles ${{ matrix.bundles }}
+
+      # tauri-action's file-name pattern may skip updater artifacts.
+      # Upload any .sig/.tar.gz files it missed.
+      - name: Upload missed updater artifacts
+        shell: bash
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          TAG="${{ github.ref_name }}"
+          echo "Artifact paths from tauri-action: ${{ steps.tauri.outputs.artifactPaths }}"
+          # Find and upload all sig + updater bundles
+          for ext in "*.tar.gz" "*.tar.gz.sig" "*.nsis.zip" "*.nsis.zip.sig"; do
+            find target/release/bundle -name "$ext" -type f 2>/dev/null | while IFS= read -r f; do
+              echo "Uploading: $f"
+              gh release upload "$TAG" "$f" --clobber || true
+            done
+          done
 
   publish:
     needs: build
@@ -85,12 +103,62 @@ jobs:
             gh release edit "$TAG" --draft=false --prerelease=false --latest
           fi
 
-      - name: Download updater manifest from release
+      - name: Build updater manifest from release assets
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          gh release download "${{ github.ref_name }}" \
-            -p "latest.json" -D /tmp --clobber
+          TAG="${{ github.ref_name }}"
+          VER="${TAG#v}"
+          REPO="https://github.com/kookyleo/markon/releases/download/${TAG}"
+
+          # Download sig files
+          mkdir -p /tmp/assets
+          gh release download "$TAG" -D /tmp/assets --clobber
+          echo "Assets:" && ls /tmp/assets/
+
+          # If tauri-action generated latest.json with platforms, use it
+          if [ -f /tmp/assets/latest.json ]; then
+            PLATFORM_COUNT=$(jq '.platforms | length' /tmp/assets/latest.json 2>/dev/null || echo 0)
+            if [ "$PLATFORM_COUNT" -gt 0 ]; then
+              echo "Using tauri-action generated latest.json ($PLATFORM_COUNT platforms)"
+              cp /tmp/assets/latest.json /tmp/latest.json
+              exit 0
+            fi
+          fi
+
+          # Otherwise build it from .sig files
+          echo "Building latest.json from sig files..."
+          PLATFORMS="{}"
+          for sig_file in /tmp/assets/*.sig; do
+            [ -f "$sig_file" ] || continue
+            bundle="${sig_file%.sig}"
+            [ -f "$bundle" ] || continue
+            name=$(basename "$bundle")
+            sig=$(cat "$sig_file")
+
+            case "$name" in
+              *.app.tar.gz)              key="darwin-aarch64" ;;
+              *_amd64.AppImage.tar.gz)   key="linux-x86_64" ;;
+              *_x64-setup.nsis.zip)      key="windows-x86_64" ;;
+              *) echo "Skip: $name"; continue ;;
+            esac
+
+            echo "Platform: $key -> $name"
+            PLATFORMS=$(echo "$PLATFORMS" | jq \
+              --arg k "$key" \
+              --arg url "${REPO}/${name}" \
+              --arg sig "$sig" \
+              '. + {($k): {url: $url, signature: $sig}}')
+          done
+
+          jq -n --arg v "$VER" --argjson p "$PLATFORMS" \
+            '{version: $v, platforms: $p}' > /tmp/latest.json
+          echo "Generated:" && cat /tmp/latest.json
+
+      - name: Upload latest.json to release
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: gh release upload "${{ github.ref_name }}" /tmp/latest.json --clobber
 
       - name: Ensure updater release exists
         env:
