@@ -37,17 +37,6 @@ jobs:
             librsvg2-dev \
             patchelf
 
-      - name: Determine release type
-        id: meta
-        shell: bash
-        run: |
-          TAG="${{ github.ref_name }}"
-          if [[ "$TAG" == *"-rc."* ]]; then
-            echo "is_rc=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "is_rc=false" >> "$GITHUB_OUTPUT"
-          fi
-
       - name: Build and upload release
         uses: tauri-apps/tauri-action@v0
         env:
@@ -58,15 +47,14 @@ jobs:
           projectPath: crates/gui
           tagName: ${{ github.ref_name }}
           releaseName: Markon ${{ github.ref_name }}
-          prerelease: ${{ steps.meta.outputs.is_rc }}
-          releaseDraft: false
+          releaseDraft: true
           updaterJsonPreferNsis: true
           updaterJsonKeepUniversal: true
           args: --bundles ${{ matrix.bundles }}
 
-  # After all platforms finish, publish the updater manifest to the
-  # permanent "updater" release so clients can find it at a stable URL.
-  publish-manifest:
+  # After all platforms finish, publish the draft release and copy the
+  # updater manifest to the permanent "updater" release.
+  publish:
     needs: build
     if: ${{ !cancelled() }}
     runs-on: ubuntu-latest
@@ -75,15 +63,29 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Determine manifest name
+      - name: Determine release type
         id: meta
         shell: bash
         run: |
           TAG="${{ github.ref_name }}"
           if [[ "$TAG" == *"-rc."* ]]; then
+            echo "is_rc=true" >> "$GITHUB_OUTPUT"
             echo "manifest=latest-rc.json" >> "$GITHUB_OUTPUT"
           else
+            echo "is_rc=false" >> "$GITHUB_OUTPUT"
             echo "manifest=latest.json" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Publish draft release
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          TAG="${{ github.ref_name }}"
+          IS_RC="${{ steps.meta.outputs.is_rc }}"
+          if [ "$IS_RC" = "true" ]; then
+            gh release edit "$TAG" --draft=false --prerelease
+          else
+            gh release edit "$TAG" --draft=false --prerelease=false --latest
           fi
 
       - name: Download updater JSON from release
