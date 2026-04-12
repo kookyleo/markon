@@ -37,38 +37,48 @@ jobs:
             librsvg2-dev \
             patchelf
 
-      - name: Build and upload release
-        uses: tauri-apps/tauri-action@v0.5.16
+      - name: Install Tauri CLI
+        run: cargo install tauri-cli --version "^2"
+
+      - name: Build
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           APPLE_SIGNING_IDENTITY: "-"
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
-        with:
-          projectPath: crates/gui
-          tagName: ${{ github.ref_name }}
-          releaseName: Markon ${{ github.ref_name }}
-          releaseDraft: true
-          includeUpdaterJson: false
-          args: --bundles ${{ matrix.bundles }}
+        run: |
+          cd crates/gui
+          cargo tauri build --bundles ${{ matrix.bundles }}
 
-      # Upload updater .sig files to the draft release directly.
-      # tauri-action only uploads installer bundles (dmg/deb/appimage/nsis),
-      # not the updater tar.gz/zip and their .sig files.
-      - name: Upload updater artifacts to release
+      - name: Create draft release (first platform wins, others skip)
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release view "${{ github.ref_name }}" >/dev/null 2>&1 || \
+          gh release create "${{ github.ref_name }}" \
+            --title "Markon ${{ github.ref_name }}" \
+            --draft \
+            --notes ""
+
+      - name: Upload all release artifacts
         shell: bash
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           TAG="${{ github.ref_name }}"
-          # Find all .sig files and their corresponding bundles
-          find target/release/bundle -name "*.sig" -print | while read sig; do
-            bundle="${sig%.sig}"
-            echo "Found sig: $sig"
-            echo "Found bundle: $bundle"
-            if [ -f "$bundle" ]; then
-              gh release upload "$TAG" "$bundle" --clobber || true
-            fi
-            gh release upload "$TAG" "$sig" --clobber || true
+          # Upload installer bundles
+          for f in target/release/bundle/dmg/*.dmg \
+                   target/release/bundle/deb/*.deb \
+                   target/release/bundle/appimage/*.AppImage \
+                   target/release/bundle/nsis/*-setup.exe; do
+            [ -f "$f" ] && gh release upload "$TAG" "$f" --clobber && echo "Uploaded: $f" || true
+          done
+          # Upload updater bundles + signatures
+          for f in target/release/bundle/macos/*.tar.gz \
+                   target/release/bundle/macos/*.tar.gz.sig \
+                   target/release/bundle/appimage/*.AppImage.tar.gz \
+                   target/release/bundle/appimage/*.AppImage.tar.gz.sig \
+                   target/release/bundle/nsis/*.nsis.zip \
+                   target/release/bundle/nsis/*.nsis.zip.sig; do
+            [ -f "$f" ] && gh release upload "$TAG" "$f" --clobber && echo "Uploaded: $f" || true
           done
 
   # Collect sig files from the release, build latest.json, publish.
@@ -87,6 +97,8 @@ jobs:
         run: |
           mkdir -p /tmp/assets
           gh release download "${{ github.ref_name }}" -D /tmp/assets --clobber
+          echo "Downloaded assets:"
+          ls -la /tmp/assets/
 
       - name: Build updater manifest (latest.json)
         shell: bash
@@ -103,7 +115,6 @@ jobs:
             name=$(basename "$bundle")
             sig=$(cat "$sig_file")
 
-            # Determine platform key from filename
             case "$name" in
               *.app.tar.gz)              key="darwin-aarch64" ;;
               *_amd64.AppImage.tar.gz)   key="linux-x86_64" ;;
