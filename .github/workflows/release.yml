@@ -14,13 +14,10 @@ jobs:
         include:
           - platform: macos-latest
             bundles: dmg,updater
-            updater_glob: target/release/bundle/macos/*.tar.gz*
           - platform: ubuntu-22.04
             bundles: deb,appimage,updater
-            updater_glob: target/release/bundle/appimage/*.tar.gz*
           - platform: windows-latest
             bundles: nsis,updater
-            updater_glob: target/release/bundle/nsis/*.nsis.zip*
 
     runs-on: ${{ matrix.platform }}
 
@@ -54,16 +51,27 @@ jobs:
           includeUpdaterJson: false
           args: --bundles ${{ matrix.bundles }}
 
-      # Upload updater artifacts (.tar.gz + .sig, or .nsis.zip + .sig)
-      # so the publish job can assemble latest.json from all platforms.
-      - name: Upload updater artifacts
-        uses: actions/upload-artifact@v4
-        with:
-          name: updater-${{ matrix.platform }}
-          path: ${{ matrix.updater_glob }}
-          if-no-files-found: warn
+      # Upload updater .sig files to the draft release directly.
+      # tauri-action only uploads installer bundles (dmg/deb/appimage/nsis),
+      # not the updater tar.gz/zip and their .sig files.
+      - name: Upload updater artifacts to release
+        shell: bash
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          TAG="${{ github.ref_name }}"
+          # Find all .sig files and their corresponding bundles
+          find target/release/bundle -name "*.sig" -print | while read sig; do
+            bundle="${sig%.sig}"
+            echo "Found sig: $sig"
+            echo "Found bundle: $bundle"
+            if [ -f "$bundle" ]; then
+              gh release upload "$TAG" "$bundle" --clobber || true
+            fi
+            gh release upload "$TAG" "$sig" --clobber || true
+          done
 
-  # Collect updater artifacts, build latest.json, publish the release.
+  # Collect sig files from the release, build latest.json, publish.
   publish:
     needs: build
     if: ${{ !cancelled() }}
@@ -73,20 +81,12 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Download all updater artifacts
-        uses: actions/download-artifact@v4
-        with:
-          path: /tmp/updater
-          merge-multiple: true
-
-      - name: Upload updater bundles to release
+      - name: Download all release assets
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          TAG="${{ github.ref_name }}"
-          for f in /tmp/updater/*; do
-            [ -f "$f" ] && gh release upload "$TAG" "$f" --clobber || true
-          done
+          mkdir -p /tmp/assets
+          gh release download "${{ github.ref_name }}" -D /tmp/assets --clobber
 
       - name: Build updater manifest (latest.json)
         shell: bash
@@ -95,22 +95,23 @@ jobs:
           VER="${TAG#v}"
           REPO="https://github.com/kookyleo/markon/releases/download/${TAG}"
 
-          # Collect platform entries
           PLATFORMS="{}"
-          for sig_file in /tmp/updater/*.sig; do
+          for sig_file in /tmp/assets/*.sig; do
             [ -f "$sig_file" ] || continue
             bundle="${sig_file%.sig}"
+            [ -f "$bundle" ] || continue
             name=$(basename "$bundle")
             sig=$(cat "$sig_file")
 
             # Determine platform key from filename
             case "$name" in
-              *.app.tar.gz)       key="darwin-aarch64" ;;
-              *_amd64.AppImage.tar.gz) key="linux-x86_64" ;;
-              *_x64-setup.nsis.zip)    key="windows-x86_64" ;;
-              *) continue ;;
+              *.app.tar.gz)              key="darwin-aarch64" ;;
+              *_amd64.AppImage.tar.gz)   key="linux-x86_64" ;;
+              *_x64-setup.nsis.zip)      key="windows-x86_64" ;;
+              *) echo "Skipping unknown: $name"; continue ;;
             esac
 
+            echo "Adding platform: $key -> $name"
             PLATFORMS=$(echo "$PLATFORMS" | jq \
               --arg k "$key" \
               --arg url "${REPO}/${name}" \
