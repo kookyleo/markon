@@ -46,19 +46,37 @@ jobs:
           APPLE_SIGNING_IDENTITY: "-"
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
         run: |
+          # Start a background watcher that copies .sig files as soon as they
+          # appear. Tauri generates them mid-build then cleans them before the
+          # command returns, so we must catch them in-flight.
+          mkdir -p /tmp/updater-out
+          (
+            while true; do
+              for f in target/release/bundle/macos/*.tar.gz.sig \
+                       target/release/bundle/appimage/*.AppImage.tar.gz.sig \
+                       target/release/bundle/nsis/*.nsis.zip.sig; do
+                [ -f "$f" ] || continue
+                bn=$(basename "$f")
+                if [ ! -f "/tmp/updater-out/$bn" ]; then
+                  cp "$f" /tmp/updater-out/
+                  bundle="${f%.sig}"
+                  [ -f "$bundle" ] && cp "$bundle" /tmp/updater-out/
+                  echo "Watcher saved: $bn"
+                fi
+              done
+              sleep 1
+            done
+          ) &
+          WATCHER_PID=$!
+
           cd crates/gui
           cargo tauri build --bundles ${{ matrix.bundles }}
 
-          # Save updater sig/bundle files before anything cleans them.
-          # These live under ../../target/release/bundle/ (workspace root).
-          mkdir -p /tmp/updater-out
-          find ../../target/release/bundle -name "*.sig" 2>/dev/null | while read f; do
-            cp "$f" /tmp/updater-out/
-            # Also copy the corresponding bundle (strip .sig)
-            bundle="${f%.sig}"
-            [ -f "$bundle" ] && cp "$bundle" /tmp/updater-out/
-            echo "Saved: $(basename $f)"
-          done
+          # Give watcher a moment to catch final files, then stop it
+          sleep 2
+          kill $WATCHER_PID 2>/dev/null || true
+          wait $WATCHER_PID 2>/dev/null || true
+
           echo "Updater artifacts:"
           ls -la /tmp/updater-out/ 2>/dev/null || echo "(none)"
 
