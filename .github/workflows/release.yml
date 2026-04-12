@@ -37,73 +37,21 @@ jobs:
             librsvg2-dev \
             patchelf
 
-      - name: Install Tauri CLI
-        run: cargo install tauri-cli --version "^2"
-
-      - name: Build and collect artifacts
-        shell: bash
+      - name: Build and upload release
+        uses: tauri-apps/tauri-action@v0
         env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           APPLE_SIGNING_IDENTITY: "-"
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
-        run: |
-          # Background watcher: copies .sig files the moment they appear.
-          # Tauri generates them mid-build then deletes them before the command exits.
-          mkdir -p /tmp/updater-out
-          (
-            while true; do
-              if [ -d target/release/bundle ]; then
-                find target/release/bundle -name "*.sig" -type f 2>/dev/null | while IFS= read -r f; do
-                  bn=$(basename "$f")
-                  if [ ! -f "/tmp/updater-out/$bn" ]; then
-                    cp "$f" /tmp/updater-out/ 2>/dev/null || true
-                    bundle="${f%.sig}"
-                    [ -f "$bundle" ] && cp "$bundle" /tmp/updater-out/ 2>/dev/null || true
-                    echo "Watcher: captured $bn"
-                  fi
-                done
-              fi
-              sleep 0.5
-            done
-          ) &
-          WATCHER_PID=$!
-
-          cd crates/gui
-          cargo tauri build --bundles ${{ matrix.bundles }}
-
-          sleep 2
-          kill $WATCHER_PID 2>/dev/null || true
-          wait $WATCHER_PID 2>/dev/null || true
-
-          echo "Updater artifacts:"
-          ls -la /tmp/updater-out/ 2>/dev/null || echo "(none)"
-
-      - name: Create draft release
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          gh release view "${{ github.ref_name }}" >/dev/null 2>&1 || \
-          gh release create "${{ github.ref_name }}" \
-            --title "Markon ${{ github.ref_name }}" \
-            --draft \
-            --notes ""
-
-      - name: Upload artifacts
-        shell: bash
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          TAG="${{ github.ref_name }}"
-          # Upload installer bundles
-          for f in target/release/bundle/dmg/*.dmg \
-                   target/release/bundle/deb/*.deb \
-                   target/release/bundle/appimage/*.AppImage \
-                   target/release/bundle/nsis/*-setup.exe; do
-            [ -f "$f" ] && gh release upload "$TAG" "$f" --clobber && echo "Uploaded: $(basename $f)" || true
-          done
-          # Upload updater artifacts
-          for f in /tmp/updater-out/*; do
-            [ -f "$f" ] && gh release upload "$TAG" "$f" --clobber && echo "Uploaded: $(basename $f)" || true
-          done
+        with:
+          projectPath: crates/gui
+          tagName: ${{ github.ref_name }}
+          releaseName: Markon ${{ github.ref_name }}
+          releaseDraft: true
+          includeUpdaterJson: true
+          updaterJsonPreferNsis: true
+          updaterJsonKeepUniversal: true
+          args: --bundles ${{ matrix.bundles }}
 
   publish:
     needs: build
@@ -113,53 +61,6 @@ jobs:
       contents: write
     steps:
       - uses: actions/checkout@v4
-
-      - name: Download all release assets
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          mkdir -p /tmp/assets
-          gh release download "${{ github.ref_name }}" -D /tmp/assets --clobber
-          echo "Assets:" && ls /tmp/assets/
-
-      - name: Build updater manifest (latest.json)
-        shell: bash
-        run: |
-          TAG="${{ github.ref_name }}"
-          VER="${TAG#v}"
-          REPO="https://github.com/kookyleo/markon/releases/download/${TAG}"
-
-          PLATFORMS="{}"
-          for sig_file in /tmp/assets/*.sig; do
-            [ -f "$sig_file" ] || continue
-            bundle="${sig_file%.sig}"
-            [ -f "$bundle" ] || continue
-            name=$(basename "$bundle")
-            sig=$(cat "$sig_file")
-
-            case "$name" in
-              *.app.tar.gz)              key="darwin-aarch64" ;;
-              *_amd64.AppImage.tar.gz)   key="linux-x86_64" ;;
-              *_x64-setup.nsis.zip)      key="windows-x86_64" ;;
-              *) echo "Skip: $name"; continue ;;
-            esac
-
-            echo "Platform: $key -> $name"
-            PLATFORMS=$(echo "$PLATFORMS" | jq \
-              --arg k "$key" \
-              --arg url "${REPO}/${name}" \
-              --arg sig "$sig" \
-              '. + {($k): {url: $url, signature: $sig}}')
-          done
-
-          jq -n --arg v "$VER" --argjson p "$PLATFORMS" \
-            '{version: $v, platforms: $p}' > /tmp/latest.json
-          echo "latest.json:" && cat /tmp/latest.json
-
-      - name: Upload latest.json to release
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: gh release upload "${{ github.ref_name }}" /tmp/latest.json --clobber
 
       - name: Determine release type
         id: meta
@@ -183,6 +84,13 @@ jobs:
           else
             gh release edit "$TAG" --draft=false --prerelease=false --latest
           fi
+
+      - name: Download updater manifest from release
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release download "${{ github.ref_name }}" \
+            -p "latest.json" -D /tmp --clobber
 
       - name: Ensure updater release exists
         env:
