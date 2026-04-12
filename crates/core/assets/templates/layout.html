@@ -1499,10 +1499,10 @@
                 const section = e.target.closest('.heading-section');
                 if (section) {
                     const heading = section.querySelector(':scope > h1[id], :scope > h2[id], :scope > h3[id], :scope > h4[id], :scope > h5[id], :scope > h6[id]');
-                    if (heading && heading.id) { setActive(heading.id); return; }
+                    if (heading && heading.id) { scheduleActive(heading.id); return; }
                 }
                 const heading = e.target.closest('h1[id], h2[id], h3[id], h4[id], h5[id], h6[id]');
-                if (heading && heading.id) { setActive(heading.id); return; }
+                if (heading && heading.id) { scheduleActive(heading.id); return; }
                 const link = e.target.closest('a[href^="#"]');
                 if (link) {
                     const id = link.getAttribute('href').substring(1);
