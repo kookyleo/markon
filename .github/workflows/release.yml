@@ -14,10 +14,13 @@ jobs:
         include:
           - platform: macos-latest
             bundles: dmg,updater
+            updater_glob: target/release/bundle/macos/*.tar.gz*
           - platform: ubuntu-22.04
             bundles: deb,appimage,updater
+            updater_glob: target/release/bundle/appimage/*.tar.gz*
           - platform: windows-latest
             bundles: nsis,updater
+            updater_glob: target/release/bundle/nsis/*.nsis.zip*
 
     runs-on: ${{ matrix.platform }}
 
@@ -48,12 +51,19 @@ jobs:
           tagName: ${{ github.ref_name }}
           releaseName: Markon ${{ github.ref_name }}
           releaseDraft: true
-          updaterJsonPreferNsis: true
-          updaterJsonKeepUniversal: true
+          includeUpdaterJson: false
           args: --bundles ${{ matrix.bundles }}
 
-  # After all platforms finish, publish the draft release and copy the
-  # updater manifest to the permanent "updater" release.
+      # Upload updater artifacts (.tar.gz + .sig, or .nsis.zip + .sig)
+      # so the publish job can assemble latest.json from all platforms.
+      - name: Upload updater artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: updater-${{ matrix.platform }}
+          path: ${{ matrix.updater_glob }}
+          if-no-files-found: warn
+
+  # Collect updater artifacts, build latest.json, publish the release.
   publish:
     needs: build
     if: ${{ !cancelled() }}
@@ -62,6 +72,63 @@ jobs:
       contents: write
     steps:
       - uses: actions/checkout@v4
+
+      - name: Download all updater artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: /tmp/updater
+          merge-multiple: true
+
+      - name: Upload updater bundles to release
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          TAG="${{ github.ref_name }}"
+          for f in /tmp/updater/*; do
+            [ -f "$f" ] && gh release upload "$TAG" "$f" --clobber || true
+          done
+
+      - name: Build updater manifest (latest.json)
+        shell: bash
+        run: |
+          TAG="${{ github.ref_name }}"
+          VER="${TAG#v}"
+          REPO="https://github.com/kookyleo/markon/releases/download/${TAG}"
+
+          # Collect platform entries
+          PLATFORMS="{}"
+          for sig_file in /tmp/updater/*.sig; do
+            [ -f "$sig_file" ] || continue
+            bundle="${sig_file%.sig}"
+            name=$(basename "$bundle")
+            sig=$(cat "$sig_file")
+
+            # Determine platform key from filename
+            case "$name" in
+              *.app.tar.gz)       key="darwin-aarch64" ;;
+              *_amd64.AppImage.tar.gz) key="linux-x86_64" ;;
+              *_x64-setup.nsis.zip)    key="windows-x86_64" ;;
+              *) continue ;;
+            esac
+
+            PLATFORMS=$(echo "$PLATFORMS" | jq \
+              --arg k "$key" \
+              --arg url "${REPO}/${name}" \
+              --arg sig "$sig" \
+              '. + {($k): {url: $url, signature: $sig}}')
+          done
+
+          jq -n --arg v "$VER" --argjson p "$PLATFORMS" \
+            '{version: $v, platforms: $p}' > /tmp/latest.json
+
+          echo "Generated latest.json:"
+          cat /tmp/latest.json
+
+      - name: Upload latest.json to release
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release upload "${{ github.ref_name }}" /tmp/latest.json --clobber
 
       - name: Determine release type
         id: meta
@@ -88,13 +155,6 @@ jobs:
             gh release edit "$TAG" --draft=false --prerelease=false --latest
           fi
 
-      - name: Download updater JSON from release
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          gh release download "${{ github.ref_name }}" \
-            -p "latest.json" -D /tmp --clobber
-
       - name: Ensure updater release exists
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -105,7 +165,7 @@ jobs:
             --notes "Auto-managed release hosting updater JSON manifests. Do not delete." \
             --latest=false
 
-      - name: Upload manifest to updater release
+      - name: Copy manifest to updater release
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
