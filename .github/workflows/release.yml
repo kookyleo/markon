@@ -40,35 +40,27 @@ jobs:
       - name: Install Tauri CLI
         run: cargo install tauri-cli --version "^2"
 
-      # Build updater bundle first to capture .tar.gz and .sig before
-      # the DMG/AppImage bundler cleans the intermediate files.
-      - name: Build updater bundle
-        env:
-          APPLE_SIGNING_IDENTITY: "-"
-          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
-        run: |
-          cd crates/gui
-          cargo tauri build --bundles updater
-
-      - name: Save updater artifacts
+      - name: Build and collect artifacts
         shell: bash
-        run: |
-          mkdir -p /tmp/updater-out
-          find target/release/bundle -name "*.sig" -o -name "*.tar.gz" -o -name "*.nsis.zip" | while read f; do
-            cp "$f" /tmp/updater-out/
-            echo "Saved: $f"
-          done
-          ls -la /tmp/updater-out/
-
-      # Now build installer bundles (dmg/deb/appimage/nsis).
-      # This may clean intermediate files but we already saved what we need.
-      - name: Build installer bundles
         env:
           APPLE_SIGNING_IDENTITY: "-"
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
         run: |
           cd crates/gui
           cargo tauri build --bundles ${{ matrix.bundles }}
+
+          # Save updater sig/bundle files before anything cleans them.
+          # These live under ../../target/release/bundle/ (workspace root).
+          mkdir -p /tmp/updater-out
+          find ../../target/release/bundle -name "*.sig" 2>/dev/null | while read f; do
+            cp "$f" /tmp/updater-out/
+            # Also copy the corresponding bundle (strip .sig)
+            bundle="${f%.sig}"
+            [ -f "$bundle" ] && cp "$bundle" /tmp/updater-out/
+            echo "Saved: $(basename $f)"
+          done
+          echo "Updater artifacts:"
+          ls -la /tmp/updater-out/ 2>/dev/null || echo "(none)"
 
       - name: Create draft release
         env:
@@ -80,7 +72,7 @@ jobs:
             --draft \
             --notes ""
 
-      - name: Upload all artifacts
+      - name: Upload artifacts
         shell: bash
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -91,14 +83,13 @@ jobs:
                    target/release/bundle/deb/*.deb \
                    target/release/bundle/appimage/*.AppImage \
                    target/release/bundle/nsis/*-setup.exe; do
-            [ -f "$f" ] && gh release upload "$TAG" "$f" --clobber && echo "Uploaded: $f" || true
+            [ -f "$f" ] && gh release upload "$TAG" "$f" --clobber && echo "Uploaded: $(basename $f)" || true
           done
-          # Upload saved updater artifacts
+          # Upload updater artifacts
           for f in /tmp/updater-out/*; do
-            [ -f "$f" ] && gh release upload "$TAG" "$f" --clobber && echo "Uploaded: $f" || true
+            [ -f "$f" ] && gh release upload "$TAG" "$f" --clobber && echo "Uploaded: $(basename $f)" || true
           done
 
-  # Collect sig files from the release, build latest.json, publish.
   publish:
     needs: build
     if: ${{ !cancelled() }}
@@ -114,8 +105,7 @@ jobs:
         run: |
           mkdir -p /tmp/assets
           gh release download "${{ github.ref_name }}" -D /tmp/assets --clobber
-          echo "Downloaded assets:"
-          ls -la /tmp/assets/
+          echo "Assets:" && ls /tmp/assets/
 
       - name: Build updater manifest (latest.json)
         shell: bash
@@ -136,10 +126,10 @@ jobs:
               *.app.tar.gz)              key="darwin-aarch64" ;;
               *_amd64.AppImage.tar.gz)   key="linux-x86_64" ;;
               *_x64-setup.nsis.zip)      key="windows-x86_64" ;;
-              *) echo "Skipping unknown: $name"; continue ;;
+              *) echo "Skip: $name"; continue ;;
             esac
 
-            echo "Adding platform: $key -> $name"
+            echo "Platform: $key -> $name"
             PLATFORMS=$(echo "$PLATFORMS" | jq \
               --arg k "$key" \
               --arg url "${REPO}/${name}" \
@@ -149,19 +139,15 @@ jobs:
 
           jq -n --arg v "$VER" --argjson p "$PLATFORMS" \
             '{version: $v, platforms: $p}' > /tmp/latest.json
-
-          echo "Generated latest.json:"
-          cat /tmp/latest.json
+          echo "latest.json:" && cat /tmp/latest.json
 
       - name: Upload latest.json to release
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          gh release upload "${{ github.ref_name }}" /tmp/latest.json --clobber
+        run: gh release upload "${{ github.ref_name }}" /tmp/latest.json --clobber
 
       - name: Determine release type
         id: meta
-        shell: bash
         run: |
           TAG="${{ github.ref_name }}"
           if [[ "$TAG" == *"-rc."* ]]; then
@@ -172,13 +158,12 @@ jobs:
             echo "manifest=latest.json" >> "$GITHUB_OUTPUT"
           fi
 
-      - name: Publish draft release
+      - name: Publish release
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           TAG="${{ github.ref_name }}"
-          IS_RC="${{ steps.meta.outputs.is_rc }}"
-          if [ "$IS_RC" = "true" ]; then
+          if [ "${{ steps.meta.outputs.is_rc }}" = "true" ]; then
             gh release edit "$TAG" --draft=false --prerelease
           else
             gh release edit "$TAG" --draft=false --prerelease=false --latest
@@ -191,7 +176,7 @@ jobs:
           gh release view updater >/dev/null 2>&1 || \
           gh release create updater \
             --title "Updater manifests" \
-            --notes "Auto-managed release hosting updater JSON manifests. Do not delete." \
+            --notes "Auto-managed release hosting updater JSON manifests." \
             --latest=false
 
       - name: Copy manifest to updater release
