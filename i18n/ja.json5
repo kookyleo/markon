@@ -138,6 +138,10 @@
     "tips.feat.edit.desc":    "ブラウザ上で Markdown ソースファイルを直接編集。シンタックスハイライト + ライブプレビュー、変更は即座に保存",
     "tips.feat.shared.title": "共有ノート",
     "tips.feat.shared.desc":  "SQLite DB を介して注釈と既読状態を同期。複数デバイスでの共有やチームコラボレーションに最適",
+    "tips.feat.annot.title":  "注釈とハイライト",
+    "tips.feat.annot.desc":   "テキストを選択してハイライト（オレンジ/グリーン/イエロー）、取り消し線、またはノートを追加。ワイド画面ではサイドバー、狭い画面ではポップアップ表示",
+    "tips.feat.print.title":  "セクション印刷",
+    "tips.feat.print.desc":   "見出し横の印刷ボタンで、そのセクションだけを GitHub スタイルのレイアウトで印刷",
 
     // ── About ────────────────────────────────────────────────
     "about.slogan":   "Turn your markdown on.",
