@@ -48,7 +48,7 @@ Push to `main`. That's it — CI handles the rest.
 
 1. **auto-rc.yml** detects the version change, creates tag `v0.9.0-rc.1`
 2. **release.yml** builds all 3 platforms (macOS/Linux/Windows), creates a prerelease, uploads `latest-rc.json` to the permanent `updater` release
-3. **auto-promote.yml** runs daily — if the RC is ≥7 days old with no open issues mentioning `0.9.0`, it triggers promotion
+3. **auto-promote.yml** runs daily — if the RC is ≥7 days old with no open `release-blocker` issues, it triggers promotion
 4. **promote.yml** copies all RC assets to a new stable release `v0.9.0` and uploads `latest.json`
 
 ### 3. Manual override
