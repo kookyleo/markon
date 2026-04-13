@@ -9,7 +9,7 @@ on:
 env:
   # Minimum age (in minutes) before an RC can be auto-promoted.
   # Production value: 10080 (7 days). Set lower for testing.
-  PROMOTE_MIN_MINUTES: "14"
+  PROMOTE_MIN_MINUTES: "0"
   # Open issues with this label block auto-promotion.
   BLOCKER_LABEL: "release-blocker"
 
