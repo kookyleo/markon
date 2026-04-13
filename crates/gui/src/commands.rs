@@ -334,7 +334,7 @@ pub async fn pick_db_path() -> Option<String> {
 /// Resolve the updater endpoint URL for the given channel.
 /// Both manifests are hosted under a permanent "updater" release tag.
 fn updater_endpoint(channel: &str) -> String {
-    let file = if channel == "rc" { "latest-rc.json" } else { "latest.json" };
+    let file = if channel.eq_ignore_ascii_case("rc") { "latest-rc.json" } else { "latest.json" };
     format!("https://github.com/kookyleo/markon/releases/download/updater/{file}")
 }
 

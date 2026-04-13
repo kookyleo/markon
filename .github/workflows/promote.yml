@@ -35,7 +35,9 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           STABLE="${{ steps.ver.outputs.stable }}"
-          gh release create "$STABLE" /tmp/assets/* \
+          # Filter out RC-specific manifest files
+          ASSETS=$(ls /tmp/assets/* | grep -v 'latest.*\.json')
+          gh release create "$STABLE" $ASSETS \
             --title "Markon $STABLE" \
             --notes "Promoted from ${{ steps.ver.outputs.rc }}" \
             --latest
