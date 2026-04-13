@@ -507,24 +507,18 @@
     .cli-pill:hover { border-color: var(--accent); color: var(--accent); }
     .cli-pill.on { background: var(--accent); color: #fff; border-color: var(--accent); }
     .cli-pill input { display: none; }
-    /* CLI builder: input area needs its own padding since section-body has 0 horizontal */
-    .cli-fields, .cli-pills { padding: 0 12px; }
-    .cli-fields { padding-top: 6px; }
-    .cli-pills { padding-bottom: 8px; }
-    /* Terminal output block — sits inside .section-body as the bottom region */
+    /* Terminal output block — bottom region inside .section-body */
     .cli-terminal {
       margin: 0;
-      padding: 0;
       background: var(--bg);
       border-top: 1px solid var(--border);
-      overflow: hidden;
       font-family: 'SF Mono', Monaco, Menlo, monospace;
       font-size: 12px;
     }
     .cli-term-row {
       display: flex;
       align-items: center;
-      padding: 8px 12px;
+      padding: 8px 14px;
       gap: 6px;
     }
     .cli-term-row + .cli-term-row { border-top: 1px solid var(--border); }
