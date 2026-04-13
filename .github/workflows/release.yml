@@ -33,6 +33,14 @@ jobs:
       - name: Setup Rust
         uses: dtolnay/rust-toolchain@stable
 
+      - name: Cache Rust dependencies
+        uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: tauri-${{ matrix.platform }}
+
+      - name: Install cargo-binstall
+        run: curl -L --proto '=https' --tlsv1.2 -sSf https://raw.githubusercontent.com/cargo-bins/cargo-binstall/main/install-from-binstall-release.sh | bash
+
       - name: Install Linux system dependencies
         if: matrix.platform == 'ubuntu-22.04'
         run: |
@@ -98,7 +106,7 @@ jobs:
           fi
 
           echo "Signing: $ARCHIVE"
-          cargo install tauri-cli --version "^2" 2>/dev/null || true
+          cargo binstall tauri-cli --no-confirm 2>/dev/null || cargo install tauri-cli --version "^2"
           cargo tauri signer sign -k "$TAURI_SIGNING_PRIVATE_KEY" -p "" "$ARCHIVE"
 
           echo "Created:"
