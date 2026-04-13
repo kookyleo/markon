@@ -507,13 +507,16 @@
     .cli-pill:hover { border-color: var(--accent); color: var(--accent); }
     .cli-pill.on { background: var(--accent); color: #fff; border-color: var(--accent); }
     .cli-pill input { display: none; }
+    /* CLI builder: input area needs its own padding since section-body has 0 horizontal */
+    .cli-fields, .cli-pills { padding: 0 12px; }
+    .cli-fields { padding-top: 6px; }
+    .cli-pills { padding-bottom: 8px; }
     /* Terminal output block — sits inside .section-body as the bottom region */
     .cli-terminal {
-      margin: 10px -10px -10px;
+      margin: 0;
       padding: 0;
       background: var(--bg);
       border-top: 1px solid var(--border);
-      border-radius: 0 0 var(--radius) var(--radius);
       overflow: hidden;
       font-family: 'SF Mono', Monaco, Menlo, monospace;
       font-size: 12px;
