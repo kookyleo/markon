@@ -5,7 +5,7 @@ on:
     tags: ['v*']
 
 jobs:
-  release:
+  build:
     permissions:
       contents: write
     strategy:
@@ -13,11 +13,17 @@ jobs:
       matrix:
         include:
           - platform: macos-latest
-            bundles: dmg,updater
+            bundles: dmg
+            updater_bundle: target/release/bundle/macos/Markon.app
+            updater_archive: Markon.app.tar.gz
           - platform: ubuntu-22.04
-            bundles: deb,appimage,updater
+            bundles: deb,appimage
+            updater_bundle: target/release/bundle/appimage/*.AppImage
+            updater_archive: Markon.AppImage.tar.gz
           - platform: windows-latest
-            bundles: nsis,updater
+            bundles: nsis
+            updater_bundle: target/release/bundle/nsis/*-setup.exe
+            updater_archive: Markon-setup.nsis.zip
 
     runs-on: ${{ matrix.platform }}
 
@@ -26,6 +32,14 @@ jobs:
 
       - name: Setup Rust
         uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache Rust dependencies
+        uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: tauri-${{ matrix.platform }}
+
+      - name: Install cargo-binstall
+        run: curl -L --proto '=https' --tlsv1.2 -sSf https://raw.githubusercontent.com/cargo-bins/cargo-binstall/main/install-from-binstall-release.sh | bash
 
       - name: Install Linux system dependencies
         if: matrix.platform == 'ubuntu-22.04'
@@ -37,20 +51,171 @@ jobs:
             librsvg2-dev \
             patchelf
 
-      - name: Build and upload release
+      - name: Build installer
         uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          # macOS: ad-hoc signing (no certificate needed, no notarization).
-          # Users see "unverified developer" instead of "damaged" — bypassable via System Settings.
           APPLE_SIGNING_IDENTITY: "-"
-          # Tauri updater signing
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
-          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         with:
           projectPath: crates/gui
           tagName: ${{ github.ref_name }}
           releaseName: Markon ${{ github.ref_name }}
           releaseDraft: true
-          updaterJsonPreferNsis: true
+          includeUpdaterJson: false
           args: --bundles ${{ matrix.bundles }}
+
+      # Create updater archive + signature ourselves since tauri-action
+      # doesn't reliably upload them.
+      - name: Create updater archive and sign
+        shell: bash
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+        run: |
+          BUNDLE=$(echo ${{ matrix.updater_bundle }})
+          ARCHIVE="/tmp/${{ matrix.updater_archive }}"
+
+          # macOS: .app is cleaned after DMG bundling — extract from DMG
+          if [[ "$BUNDLE" == *.app ]] && [ ! -d "$BUNDLE" ]; then
+            DMG=$(find target/release/bundle/dmg -name "*.dmg" 2>/dev/null | head -1)
+            if [ -n "$DMG" ]; then
+              echo "Extracting .app from DMG: $DMG"
+              hdiutil attach "$DMG" -mountpoint /tmp/dmg-mount -nobrowse -quiet
+              APP=$(find /tmp/dmg-mount -maxdepth 1 -name "*.app" | head -1)
+              if [ -n "$APP" ]; then
+                mkdir -p "$(dirname "$BUNDLE")"
+                cp -R "$APP" "$BUNDLE"
+              fi
+              hdiutil detach /tmp/dmg-mount -quiet || true
+            fi
+          fi
+
+          if [ ! -e "$BUNDLE" ]; then
+            echo "Bundle not found: $BUNDLE — skipping updater archive"
+            exit 0
+          fi
+
+          echo "Creating archive from: $BUNDLE"
+          if [[ "$BUNDLE" == *.app ]]; then
+            tar czf "$ARCHIVE" -C "$(dirname "$BUNDLE")" "$(basename "$BUNDLE")"
+          elif [[ "$BUNDLE" == *.exe ]]; then
+            cd "$(dirname "$BUNDLE")"
+            7z a -tzip "$ARCHIVE" "$(basename "$BUNDLE")"
+          else
+            tar czf "$ARCHIVE" -C "$(dirname "$BUNDLE")" "$(basename "$BUNDLE")"
+          fi
+
+          echo "Signing: $ARCHIVE"
+          cargo binstall tauri-cli --no-confirm 2>/dev/null || cargo install tauri-cli --version "^2"
+          cargo tauri signer sign -k "$TAURI_SIGNING_PRIVATE_KEY" -p "" "$ARCHIVE"
+
+          echo "Created:"
+          ls -la "$ARCHIVE" "${ARCHIVE}.sig"
+
+      - name: Upload updater artifacts
+        shell: bash
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          TAG="${{ github.ref_name }}"
+          ARCHIVE="/tmp/${{ matrix.updater_archive }}"
+          if [ -f "$ARCHIVE" ]; then
+            gh release upload "$TAG" "$ARCHIVE" --clobber && echo "Uploaded: $ARCHIVE"
+            gh release upload "$TAG" "${ARCHIVE}.sig" --clobber && echo "Uploaded: ${ARCHIVE}.sig"
+          else
+            echo "No updater archive to upload (platform may have failed)"
+          fi
+
+  publish:
+    needs: build
+    if: ${{ !cancelled() }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Determine release type
+        id: meta
+        run: |
+          TAG="${{ github.ref_name }}"
+          if [[ "$TAG" == *"-rc."* ]]; then
+            echo "is_rc=true" >> "$GITHUB_OUTPUT"
+            echo "manifest=latest-rc.json" >> "$GITHUB_OUTPUT"
+          else
+            echo "is_rc=false" >> "$GITHUB_OUTPUT"
+            echo "manifest=latest.json" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Publish release
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          TAG="${{ github.ref_name }}"
+          if [ "${{ steps.meta.outputs.is_rc }}" = "true" ]; then
+            gh release edit "$TAG" --draft=false --prerelease
+          else
+            gh release edit "$TAG" --draft=false --prerelease=false --latest
+          fi
+
+      - name: Build updater manifest
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          TAG="${{ github.ref_name }}"
+          VER="${TAG#v}"
+          REPO="https://github.com/kookyleo/markon/releases/download/${TAG}"
+
+          mkdir -p /tmp/assets
+          gh release download "$TAG" -D /tmp/assets --clobber
+          echo "Assets:" && ls /tmp/assets/
+
+          PLATFORMS="{}"
+          for sig_file in /tmp/assets/*.sig; do
+            [ -f "$sig_file" ] || continue
+            bundle="${sig_file%.sig}"
+            [ -f "$bundle" ] || continue
+            name=$(basename "$bundle")
+            sig=$(cat "$sig_file")
+
+            case "$name" in
+              *.app.tar.gz)          key="darwin-aarch64" ;;
+              *.AppImage.tar.gz)     key="linux-x86_64" ;;
+              *.nsis.zip)            key="windows-x86_64" ;;
+              *) echo "Skip: $name"; continue ;;
+            esac
+
+            echo "Platform: $key -> $name"
+            PLATFORMS=$(echo "$PLATFORMS" | jq \
+              --arg k "$key" \
+              --arg url "${REPO}/${name}" \
+              --arg sig "$sig" \
+              '. + {($k): {url: $url, signature: $sig}}')
+          done
+
+          jq -n --arg v "$VER" --argjson p "$PLATFORMS" \
+            '{version: $v, platforms: $p}' > /tmp/latest.json
+          echo "Manifest:" && cat /tmp/latest.json
+
+      - name: Upload manifest to release
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: gh release upload "${{ github.ref_name }}" /tmp/latest.json --clobber
+
+      - name: Ensure updater release exists
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release view updater >/dev/null 2>&1 || \
+          gh release create updater \
+            --title "Updater manifests" \
+            --notes "Auto-managed release hosting updater JSON manifests." \
+            --latest=false
+
+      - name: Copy manifest to updater release
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          MANIFEST="${{ steps.meta.outputs.manifest }}"
+          cp /tmp/latest.json "/tmp/${MANIFEST}"
+          gh release upload updater "/tmp/${MANIFEST}" --clobber

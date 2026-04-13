@@ -207,11 +207,13 @@
     }
     .seg-ctrl input[type="radio"] { display: none; }
     .seg-ctrl label {
+      flex: 1;
       padding: 4px 13px;
       font-size: 12px;
       font-weight: 500;
       color: var(--text-2);
       cursor: default;
+      text-align: center;
       transition: background 0.12s, color 0.12s;
     }
     .seg-ctrl input[type="radio"]:checked + label { background: var(--accent); color: #fff; }
@@ -789,6 +791,17 @@
               <div class="switch-track"></div>
             </label>
           </div>
+          <div class="pref-row">
+            <div class="pref-label">
+              <span data-i18n="pref.channel.desc"></span>
+            </div>
+            <div class="seg-ctrl" style="width:120px">
+              <input type="radio" name="update_channel" id="ch_stable" value="stable">
+              <label for="ch_stable">Stable</label>
+              <input type="radio" name="update_channel" id="ch_rc" value="rc">
+              <label for="ch_rc">RC</label>
+            </div>
+          </div>
         </div>
       </div>
 
@@ -1005,6 +1018,7 @@
         <div class="ver">
           <span id="ver-label">v0.8.0</span>
           <span id="update-status" style="margin-left:6px"></span>
+          <a id="update-restart" href="#" style="display:none;margin-left:4px;color:var(--accent);text-decoration:underline;cursor:default;font-size:12px" data-i18n="update.restart"></a>
           <button id="update-retry" style="display:none;border:none;background:transparent;color:var(--text-2);cursor:default;padding:2px;border-radius:4px;vertical-align:middle;margin-left:2px" title="">
             <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
           </button>
@@ -1104,6 +1118,9 @@
     document.getElementById('default_edit').checked = s.default_edit ?? false;
     document.getElementById('default_shared').checked = s.default_shared_annotation ?? false;
     document.getElementById('auto_update').checked = s.auto_update ?? true;
+    const ch = s.update_channel ?? 'stable';
+    const chRadio = document.querySelector(`input[name="update_channel"][value="${ch}"]`);
+    if (chRadio) chRadio.checked = true;
     currentWebStyles = s.web_styles ?? {};
     renderWebStyles();
     currentShortcuts = s.shortcuts ?? {};
@@ -1129,6 +1146,7 @@
       web_styles: currentWebStyles,
       shortcuts: currentShortcuts,
       auto_update: document.getElementById('auto_update').checked,
+      update_channel: document.querySelector('input[name="update_channel"]:checked')?.value ?? 'stable',
       workspaces: [],  // preserved by Rust command; managed via add/remove/update
     };
     await invoke('save_settings', { settings });
@@ -1190,6 +1208,9 @@
   });
   ['default_search', 'default_viewed', 'default_edit', 'default_shared', 'auto_update'].forEach(id =>
     document.getElementById(id).addEventListener('change', saveSettings)
+  );
+  document.querySelectorAll('input[name="update_channel"]').forEach(r =>
+    r.addEventListener('change', saveSettings)
   );
 
   // ── Workspace list ──────────────────────────────────────────────────────
@@ -1816,11 +1837,13 @@
 
   const statusEl = document.getElementById('update-status');
   const retryBtn = document.getElementById('update-retry');
+  const restartLink = document.getElementById('update-restart');
 
   async function doUpdateCheck() {
     statusEl.textContent = T('update.checking');
     statusEl.style.color = 'var(--text-2)';
     retryBtn.style.display = 'none';
+    restartLink.style.display = 'none';
     try {
       const r = await invoke('check_for_update');
       if (r.error) {
@@ -1830,6 +1853,7 @@
       } else if (r.available && r.installed) {
         statusEl.textContent = T('update.done');
         statusEl.style.color = 'var(--accent)';
+        restartLink.style.display = 'inline';
       } else if (r.available) {
         statusEl.textContent = T('update.found').replace('{v}', r.latest);
         statusEl.style.color = 'var(--accent)';
@@ -1846,6 +1870,10 @@
   }
 
   retryBtn.addEventListener('click', doUpdateCheck);
+  restartLink.addEventListener('click', (e) => {
+    e.preventDefault();
+    window.__TAURI__.process.relaunch();
+  });
 
   // Auto-check on startup if enabled
   (async () => {

@@ -1,0 +1,57 @@
+name: Promote RC to Stable
+
+on:
+  workflow_dispatch:
+    inputs:
+      rc_tag:
+        description: 'RC tag to promote (e.g. v0.9.0-rc.1)'
+        required: true
+
+jobs:
+  promote:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Derive stable version
+        id: ver
+        run: |
+          RC="${{ github.event.inputs.rc_tag }}"
+          STABLE=$(echo "$RC" | sed 's/-rc\.[0-9]*$//')
+          echo "rc=$RC" >> "$GITHUB_OUTPUT"
+          echo "stable=$STABLE" >> "$GITHUB_OUTPUT"
+
+      - name: Download RC assets
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          mkdir -p /tmp/assets
+          gh release download "${{ steps.ver.outputs.rc }}" -D /tmp/assets
+
+      - name: Create stable release
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          STABLE="${{ steps.ver.outputs.stable }}"
+          # Filter out RC-specific manifest files
+          ASSETS=$(ls /tmp/assets/* | grep -v 'latest.*\.json')
+          gh release create "$STABLE" $ASSETS \
+            --title "Markon $STABLE" \
+            --notes "Promoted from ${{ steps.ver.outputs.rc }}" \
+            --latest
+
+      - name: Publish stable updater manifest
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          RC="${{ steps.ver.outputs.rc }}"
+          STABLE="${{ steps.ver.outputs.stable }}"
+          # Download RC manifest from updater release
+          gh release download updater -p "latest-rc.json" -D /tmp --clobber
+          # Rewrite version and URLs
+          jq --arg v "${STABLE#v}" --arg rc "$RC" --arg st "$STABLE" \
+            '.version = $v | walk(if type == "string" then gsub($rc; $st) else . end)' \
+            /tmp/latest-rc.json > /tmp/latest.json
+          gh release upload updater /tmp/latest.json --clobber

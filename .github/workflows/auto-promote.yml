@@ -1,0 +1,83 @@
+name: Auto Promote
+
+on:
+  schedule:
+    # Run daily at 08:00 UTC
+    - cron: '0 8 * * *'
+  workflow_dispatch: {}
+
+env:
+  # Minimum age (in minutes) before an RC can be auto-promoted.
+  # Production value: 10080 (7 days). Set lower for testing.
+  PROMOTE_MIN_MINUTES: "10080"
+  # Open issues with this label block auto-promotion.
+  BLOCKER_LABEL: "release-blocker"
+
+jobs:
+  check-and-promote:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      actions: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Find latest RC eligible for promotion
+        id: check
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          # Get the latest RC prerelease
+          RC_TAG=$(gh release list --json tagName,isPrerelease,publishedAt \
+            -q '[.[] | select(.isPrerelease)] | sort_by(.publishedAt) | last | .tagName // empty')
+
+          if [ -z "$RC_TAG" ]; then
+            echo "No RC releases found"
+            echo "promote=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          echo "Latest RC: $RC_TAG"
+
+          # Extract base version: v0.9.0-rc.2 → v0.9.0
+          STABLE_TAG=$(echo "$RC_TAG" | sed 's/-rc\.[0-9]*//')
+
+          # Check if stable release already exists
+          if gh release view "$STABLE_TAG" >/dev/null 2>&1; then
+            echo "Stable $STABLE_TAG already exists, skipping"
+            echo "promote=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          # Check age
+          PUBLISHED=$(gh release view "$RC_TAG" --json publishedAt -q '.publishedAt')
+          AGE_MINUTES=$(( ($(date +%s) - $(date -d "$PUBLISHED" +%s)) / 60 ))
+          echo "Age: ${AGE_MINUTES} minutes (need ${PROMOTE_MIN_MINUTES})"
+
+          if [ "$AGE_MINUTES" -lt "$PROMOTE_MIN_MINUTES" ]; then
+            echo "Too young, skipping"
+            echo "promote=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          # Check for open issues with blocker label
+          BLOCKER_COUNT=$(gh issue list --state open --label "$BLOCKER_LABEL" --json number -q 'length')
+          echo "Open issues with '$BLOCKER_LABEL' label: $BLOCKER_COUNT"
+
+          if [ "$BLOCKER_COUNT" -gt 0 ]; then
+            echo "Release blockers found, skipping promotion"
+            gh issue list --state open --label "$BLOCKER_LABEL" --json number,title -q '.[] | "#\(.number): \(.title)"'
+            echo "promote=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          echo "promote=true" >> "$GITHUB_OUTPUT"
+          echo "rc_tag=$RC_TAG" >> "$GITHUB_OUTPUT"
+          echo "Ready to promote $RC_TAG → $STABLE_TAG"
+
+      - name: Trigger promotion
+        if: steps.check.outputs.promote == 'true'
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh workflow run promote.yml -f rc_tag="${{ steps.check.outputs.rc_tag }}"

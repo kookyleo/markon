@@ -54,7 +54,8 @@
     "sec.shortcuts":        "快捷键",
     "shortcuts.reset":      "恢复默认",
     "shortcuts.record":     "按下新快捷键…",
-    "pref.autoupdate.desc": "启动时检查 GitHub 上的新版本并自动安装",
+    "pref.autoupdate.desc": "空闲时检查 GitHub 上的新版本并自动安装",
+    "pref.channel.desc":    "更新通道（Stable = 仅正式版，RC = 候选版本）",
 
     // ── 全局设置 — 新工作区默认功能 ──────────────────────────
     "sec.defaults":         "新增工作区时默认开启的功能",
@@ -74,6 +75,7 @@
     "update.latest":   "已是最新版本",
     "update.found":    "发现新版本 v{v},正在安装…",
     "update.done":     "更新完成,重启生效",
+    "update.restart":  "立即重启",
     "update.error":    "检查失败",
 
     // ── 工作区列表 ───────────────────────────────────────────
