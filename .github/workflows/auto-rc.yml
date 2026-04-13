@@ -10,6 +10,7 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: write
+      actions: write
     steps:
       - uses: actions/checkout@v4
         with:
@@ -54,3 +55,9 @@ jobs:
           TAG="${{ steps.rc.outputs.tag }}"
           git tag "$TAG"
           git push origin "$TAG"
+
+      - name: Trigger release workflow
+        if: steps.ver.outputs.changed == 'true'
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: gh workflow run release.yml -f tag="${{ steps.rc.outputs.tag }}"
