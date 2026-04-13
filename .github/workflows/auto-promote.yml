@@ -1,0 +1,77 @@
+name: Auto Promote
+
+on:
+  schedule:
+    # Run daily at 08:00 UTC
+    - cron: '0 8 * * *'
+  workflow_dispatch: {}
+
+jobs:
+  check-and-promote:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Find latest RC eligible for promotion
+        id: check
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          # Get the latest RC prerelease
+          RC_TAG=$(gh release list --json tagName,isPrerelease,publishedAt \
+            -q '[.[] | select(.isPrerelease)] | sort_by(.publishedAt) | last | .tagName // empty')
+
+          if [ -z "$RC_TAG" ]; then
+            echo "No RC releases found"
+            echo "promote=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          echo "Latest RC: $RC_TAG"
+
+          # Extract base version: v0.9.0-rc.2 → v0.9.0
+          STABLE_TAG=$(echo "$RC_TAG" | sed 's/-rc\.[0-9]*//')
+          STABLE_VER="${STABLE_TAG#v}"
+
+          # Check if stable release already exists
+          if gh release view "$STABLE_TAG" >/dev/null 2>&1; then
+            echo "Stable $STABLE_TAG already exists, skipping"
+            echo "promote=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          # Check age: must be at least 7 days old
+          PUBLISHED=$(gh release view "$RC_TAG" --json publishedAt -q '.publishedAt')
+          AGE_SECONDS=$(( $(date +%s) - $(date -d "$PUBLISHED" +%s) ))
+          AGE_DAYS=$(( AGE_SECONDS / 86400 ))
+          echo "Age: ${AGE_DAYS} days"
+
+          if [ "$AGE_DAYS" -lt 7 ]; then
+            echo "RC is only ${AGE_DAYS} days old, need 7"
+            echo "promote=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          # Check for open issues mentioning this version
+          ISSUE_COUNT=$(gh issue list --state open --search "$STABLE_VER" --json number -q 'length')
+          echo "Open issues mentioning $STABLE_VER: $ISSUE_COUNT"
+
+          if [ "$ISSUE_COUNT" -gt 0 ]; then
+            echo "Open issues found, skipping promotion"
+            echo "promote=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          echo "promote=true" >> "$GITHUB_OUTPUT"
+          echo "rc_tag=$RC_TAG" >> "$GITHUB_OUTPUT"
+          echo "stable_tag=$STABLE_TAG" >> "$GITHUB_OUTPUT"
+          echo "Ready to promote $RC_TAG → $STABLE_TAG"
+
+      - name: Trigger promotion
+        if: steps.check.outputs.promote == 'true'
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh workflow run promote.yml -f rc_tag=${{ steps.check.outputs.rc_tag }}
