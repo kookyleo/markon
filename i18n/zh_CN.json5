@@ -1,0 +1,255 @@
+{
+    // ── Meta ─────────────────────────────────────────────────
+    "_meta.label": "简体中文",
+
+    // ══════════════════════════════════════════════════════════
+    // GUI — Settings 窗口
+    // ══════════════════════════════════════════════════════════
+
+    // ── 导航 ──────────────────────────────────────────────────
+    "nav.global":     "全局",
+    "nav.workspaces": "工作区",
+    "nav.tips":       "小贴士",
+    "nav.about":      "关于",
+
+    // ── 全局设置 — 监听 ───────────────────────────────────────
+    "sec.server":     "监听",
+    "pref.port":       "端口",
+    "port.auto":       "自动",
+    "port.spec":       "指定",
+    "port.auto.hint":  "自动分配",
+    "pref.bind":       "绑定地址",
+    "bind.local":      "127.0.0.1 — 仅本机可用",
+    "bind.lan":        "0.0.0.0",
+
+    // ── 全局设置 — 外观 ──────────────────────────────────────
+    "sec.appearance": "外观",
+    "pref.theme":      "面板主题",
+    "theme.auto":      "跟随系统",
+    "theme.light":     "浅色",
+    "theme.dark":      "深色",
+    "pref.lang":       "面板语言",
+    "lang.auto":       "跟随系统",
+    "pref.web.theme":  "阅读页主题",
+    "pref.web.lang":   "阅读页语言",
+    "web.auto":        "跟随面板",
+
+    // ── 全局设置 — 行为 ──────────────────────────────────────
+    "sec.behavior":   "行为",
+    "pref.tray.desc":  "关闭窗口时隐藏而非退出,通过菜单栏图标唤起",
+    "sec.webstyles":        "页面样式",
+    "webstyles.reset":      "恢复默认",
+    "webstyles.primary":    "主色",
+    "webstyles.primary.hint": "链接、按钮、TOC 选中、强调元素",
+    "webstyles.muted":      "次要色",
+    "webstyles.muted.hint": "工具栏文字、分隔符、辅助信息",
+    "webstyles.border":     "边框色",
+    "webstyles.border.hint":"标题分隔线、面板边框",
+    "webstyles.subtle":     "背景色",
+    "webstyles.subtle.hint":"浅色区域背景",
+    "webstyles.ui-font":    "功能区字体",
+    "webstyles.ui-font-size": "功能区字号",
+    "webstyles.panel-opacity": "浮动面板透明度",
+
+    "sec.shortcuts":        "快捷键",
+    "shortcuts.reset":      "恢复默认",
+    "shortcuts.record":     "按下新快捷键…",
+    "pref.autoupdate.desc": "空闲时检查 GitHub 上的新版本并自动安装",
+    "pref.channel.desc":    "更新通道（Stable = 仅正式版，RC = 候选版本）",
+
+    // ── 全局设置 — 新工作区默认功能 ──────────────────────────
+    "sec.defaults":         "新增工作区时默认开启的功能",
+    "pref.def.search":      "搜索",
+    "pref.def.viewed":      "已读追踪 (Viewed)",
+    "pref.def.edit":        "编辑",
+    "pref.def.shared":      "共享注释",
+
+    // ── 全局设置 — 数据库 ────────────────────────────────────
+    "sec.database":   "数据库",
+    "pref.dbpath.desc":"批注与已读状态的持久化存储 (SQLite)",
+    "pref.dbpath.browse": "选择…",
+    "pref.dbpath.clear":  "恢复默认",
+
+    // ── 自动更新状态 ─────────────────────────────────────────
+    "update.checking": "检查中…",
+    "update.latest":   "已是最新版本",
+    "update.found":    "发现新版本 v{v},正在安装…",
+    "update.done":     "更新完成,重启生效",
+    "update.restart":  "立即重启",
+    "update.error":    "检查失败",
+    "update.unavailable": "暂无发布版本",
+
+    // ── 工作区列表 ───────────────────────────────────────────
+    "ws.add.btn":     "添加工作区…",
+    "ws.open.tip":    "在浏览器中打开",
+    "ws.remove":      "从列表中移除",
+    "ws.flag.search": "搜索",
+    "ws.flag.search.tip": "启用全文搜索索引,可在浏览器中搜索文件内容",
+    "ws.flag.search.ready": "搜索索引已就绪",
+    "ws.flag.viewed": "已读追踪",
+    "ws.flag.viewed.tip": "按段落级别追踪阅读进度",
+    "ws.flag.edit":   "编辑",
+    "ws.flag.edit.tip": "允许在浏览器中编辑 Markdown 文件",
+    "ws.flag.shared": "共享注释",
+    "ws.flag.shared.tip": "启用多端同步注释与已读状态 (需要 SQLite 数据库)",
+    "ws.empty.title": "尚无工作区",
+    "ws.empty.desc":  "点击下方按钮选择目录,或从 Finder 中打开文件夹",
+    "ws.update.fail": "更新失败",
+    "ws.add.fail":    "添加失败",
+
+    // ── 小贴士 — 快速上手 ────────────────────────────────────
+    "tips.search.placeholder": "搜索帮助内容…",
+    "tips.quickstart": "快速上手",
+    "tips.quickstart.1": "1. 在「工作区」tab 中点击 + 按钮,选择 Markdown 文件所在目录",
+    "tips.quickstart.2": "2. 点击 ↗ 图标在浏览器中查看渲染结果",
+    "tips.quickstart.help": "2.1 在浏览器页面中按下 {key} 查看完整快捷键列表,了解所有可用功能",
+    "tips.quickstart.3": "3. 在「全局」tab 中配置新工作区默认启用的功能",
+
+
+    // ── 小贴士 — 命令行构建器 ────────────────────────────────
+    "tips.cli":        "命令行构建器",
+    "cli.lbl.path":    "目标目录/文件",
+    "cli.lbl.server":  "监听",
+    "cli.lbl.entry":   "入口",
+    "cli.lbl.theme":   "页面主题",
+    "cli.lbl.features":"启用功能",
+    "cli.path.ph":     "目录或文件路径",
+    "cli.entry.tip":   "代理域名/公网 IP,用于 QR 码和外部访问 (可选)",
+    "cli.search":      "搜索",
+    "cli.viewed":      "已读追踪",
+    "cli.edit":        "编辑",
+    "cli.shared":      "共享注释",
+    "cli.open":        "自动打开浏览器",
+
+    // ── 小贴士 — 桌面集成 ────────────────────────────────────
+    "tips.gui":        "GUI 桌面集成",
+    "tips.gui.mac.title": "macOS",
+    "tips.gui.mac.1":  "· 将 Markon.app 拖入 Finder 工具栏,点击即可打开当前目录",
+    "tips.gui.mac.2":  "· 右键 .md 文件 → 打开方式 → Markon,直接在浏览器查看",
+    "tips.gui.mac.3":  "· 拖拽文件夹到 Dock 上的 Markon 图标快速添加",
+    "tips.gui.mac.4":  "· 菜单栏驻留模式: 关闭窗口后仍可通过菜单栏图标重新打开",
+    "tips.gui.win.title": "Windows",
+    "tips.gui.win.1":  "· 右键 .md 文件 → 打开方式 → 选择 Markon",
+    "tips.gui.win.2":  "· 安装后可通过右键菜单「用 Markon 预览」快速打开",
+
+    // ── 小贴士 — 主要功能 ────────────────────────────────────
+    "tips.features":   "主要功能",
+    "tips.feat.search.title": "全文搜索",
+    "tips.feat.search.desc":  "基于 Tantivy 构建索引,支持中日英分词。浏览器中按 / 打开搜索框,实时匹配文件内容",
+    "tips.feat.viewed.title": "已读追踪",
+    "tips.feat.viewed.desc":  "按段落级别标记阅读进度,自动记录。重新打开文档时可跳转到上次阅读位置",
+    "tips.feat.edit.title":   "在线编辑",
+    "tips.feat.edit.desc":    "在浏览器中直接编辑 Markdown 源文件,语法高亮 + 实时预览,修改即保存",
+    "tips.feat.shared.title": "共享注释",
+    "tips.feat.shared.desc":  "通过 SQLite 数据库同步批注和已读状态。适用于多设备共享同一目录或团队协作场景",
+
+    // ── 关于页 ───────────────────────────────────────────────
+    "about.slogan":   "Turn your markdown on.",
+    "about.desc":     "轻量级 Markdown 渲染器,GitHub 风格排版,支持全文搜索、批注与多端注释同步。",
+    "about.icon.credit": "Icon by brajaomar_j — Flaticon",
+    "about.star":     "Star 支持项目",
+
+    // ── 反馈按钮 ─────────────────────────────────────────────
+    "feedback.bug.label": "Bug",
+    "feedback.bug.tip":   "报告崩溃或错误行为",
+    "feedback.idea.label": "提案",
+    "feedback.idea.tip":   "功能建议、改进提议",
+    "feedback.ask.label": "求助",
+    "feedback.ask.tip":   "使用问题、求助问答",
+
+    // ── Issue / Discussion 模板 (占位符: {app_version} {os} {os_version} {arch} {ua})
+    "tpl.bug": "## 问题描述\n<!-- 简要描述遇到的问题 -->\n\n\n## 复现步骤\n1.\n2.\n3.\n\n## 预期行为\n\n\n## 实际行为\n\n\n## 环境\n- **Markon**: v{app_version}\n- **操作系统**: {os} {os_version} ({arch})\n- **UA**: {ua}\n",
+    "tpl.idea": "## 想法概述\n<!-- 你希望看到什么样的功能或改进? -->\n\n\n## 使用场景 / 动机\n<!-- 这个想法解决了你什么痛点? -->\n\n\n## 可能的实现思路 (可选)\n\n\n---\n*Markon v{app_version} · {os} {os_version}*\n",
+    "tpl.ask": "## 问题描述\n\n\n\n## 你已经尝试过什么 (可选)\n\n\n\n---\n*Markon v{app_version} · {os} {os_version}*\n",
+    "tpl.title.bug":  "[Bug] ",
+    "tpl.title.idea": "",
+    "tpl.title.ask":  "",
+
+    // ── 系统托盘菜单 ─────────────────────────────────────────
+    "tray.show": "显示主窗口…",
+    "tray.quit": "退出 Markon",
+
+    // ══════════════════════════════════════════════════════════
+    // Web — 浏览器端渲染页面
+    // ══════════════════════════════════════════════════════════
+
+    // ── 页面结构 ─────────────────────────────────────────────
+    "web.title.dir":       "目录浏览 - markon",
+    "web.dir.heading":     "目录浏览",
+    "web.dir.current":     "当前目录:",
+    "web.toc.title":       "目录",
+    "web.back":            "← 返回文件列表",
+    "web.search":          "搜索",
+    "web.search.placeholder": "搜索…",
+    "web.search.noresult": "未找到结果",
+    "web.search.esc":     "退出搜索",
+    "web.kbd.link":        "快捷键 (?)",
+    "web.footer":          "(L) Generated by AI, Gently approved by kookyleo 👀",
+
+    // ── 批注 / 高亮 ─────────────────────────────────────────
+    "web.annot.unhighlight": "取消高亮",
+    "web.annot.note":       "备注",
+    "web.annot.orange":     "橙色",
+    "web.annot.green":      "绿色",
+    "web.annot.yellow":     "黄色",
+    "web.annot.strike":     "删除线",
+    "web.annot.clear":      "清除本页所有批注",
+    "web.note.edit":        "编辑备注",
+    "web.note.delete":      "删除备注",
+
+    // ── 模态框 ───────────────────────────────────────────────
+    "web.modal.note.placeholder": "输入备注内容…",
+    "web.modal.cancel":     "取消",
+    "web.modal.save":       "保存",
+    "web.modal.ok":         "确定",
+    "web.modal.confirm":    "确定要执行吗?",
+
+    // ── 编辑器 ───────────────────────────────────────────────
+    "web.editor.save":      "保存更改",
+    "web.editor.save.tip":  "保存更改 (Ctrl+S)",
+    "web.editor.close.tip": "关闭 (Esc)",
+    "web.editor.err.readonly":  "无法保存: 文件只读,请检查文件权限。",
+    "web.editor.err.denied":   "无法保存: 拒绝访问,文件不在允许的目录内。",
+    "web.editor.err.disabled": "编辑功能未启用。请使用 --enable-edit 启动服务。",
+    "web.editor.err.notmd":    "仅支持编辑 Markdown 文件 (.md)。",
+    "web.editor.err.save":     "保存失败: ",
+
+    // ── 已读追踪 ─────────────────────────────────────────────
+    "web.viewed":           "已读",
+    "web.viewed.mark":      "标记为已读以折叠此章节",
+    "web.viewed.all":       "全部已读",
+    "web.viewed.all.tip":   "将所有章节标记为已读",
+    "web.viewed.collapse":  "折叠",
+    "web.viewed.expand":    "展开",
+    "web.viewed.collapseall": "全部折叠",
+    "web.viewed.expandall": "全部展开",
+    "web.viewed.print":     "打印",
+    "web.viewed.print.tip": "打印此章节",
+    "web.viewed.print.blocked":    "浏览器阻止了自动打印。\n\n点击「确定」重试打印,或点击「取消」关闭。",
+    "web.viewed.print.popup":      "请允许弹出窗口以打印章节。\n\n或使用浏览器菜单中的「打印」功能打印整个页面。",
+    "web.viewed.print.failed":     "无法打开打印窗口。请使用浏览器菜单中的「打印」功能。",
+
+    // ── 快捷键面板 ───────────────────────────────────────────
+    "web.kbd.title":        "快捷键",
+    "web.kbd.cat.core":     "核心",
+    "web.kbd.cat.nav":      "导航",
+    "web.kbd.cat.search":   "搜索 (需启用)",
+    "web.kbd.cat.edit":     "编辑 (需启用)",
+    "web.kbd.cat.viewed":   "已读追踪 (需启用)",
+    "web.kbd.footer":       "按 ESC 或 ? 关闭",
+    "web.kbd.undo":         "撤销操作",
+    "web.kbd.redo":         "重做操作",
+    "web.kbd.redo.alt":     "重做 (替代)",
+    "web.kbd.escape":       "关闭弹窗/取消选择",
+    "web.kbd.toc":          "切换/聚焦目录",
+    "web.kbd.help":         "显示快捷键帮助",
+    "web.kbd.search":       "打开搜索",
+    "web.kbd.prevheading":  "跳转到上一个标题",
+    "web.kbd.nextheading":  "跳转到下一个标题",
+    "web.kbd.prevanno":     "跳转到上一个批注",
+    "web.kbd.nextanno":     "跳转到下一个批注",
+    "web.kbd.scroll":       "向下滚动 1/3 页 (ESC 停止)",
+    "web.kbd.collapse":     "切换当前章节折叠/展开",
+    "web.kbd.viewed":       "切换当前章节已读状态",
+    "web.kbd.edit":         "编辑当前 Markdown 文件"
+}

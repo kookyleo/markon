@@ -5,7 +5,7 @@ use axum::{
     },
     http::{header, StatusCode},
     response::{Html, IntoResponse, Response},
-    routing::{get, post},
+    routing::{delete, get, post},
     Json, Router,
 };
 use futures_util::{stream::StreamExt, SinkExt};
@@ -21,37 +21,75 @@ use tokio::net::TcpListener;
 use tokio::sync::broadcast;
 
 use crate::assets::{CssAssets, IconAssets, JsAssets, Templates};
+use crate::i18n;
 use crate::markdown::MarkdownRenderer;
-use crate::search;
+use crate::search::{SearchQuery, SearchResult};
+use crate::workspace::{
+    generate_token, ServerLock, WorkspaceConfig, WorkspaceEntry, WorkspaceRegistry,
+};
+
+/// Initial workspace for the server (one per CLI path / GUI workspace entry).
+pub struct WorkspaceInit {
+    pub path: std::path::PathBuf,
+    pub enable_search: bool,
+    pub enable_viewed: bool,
+    pub enable_edit: bool,
+    pub shared_annotation: bool,
+    /// Path within this workspace to open in the browser (e.g. "notes/file.md").
+    pub initial_path: Option<String>,
+}
 
 /// Server configuration
 pub struct ServerConfig {
     pub host: String,
     pub port: u16,
-    pub file_path: Option<String>,
     pub theme: String,
     pub qr: Option<String>,
     pub open_browser: Option<String>,
     pub shared_annotation: bool,
-    pub enable_viewed: bool,
-    pub enable_search: bool,
-    pub enable_edit: bool,
+    /// Random salt for workspace ID generation; None = auto-generate.
+    pub salt: Option<String>,
+    pub initial_workspaces: Vec<WorkspaceInit>,
+    /// Pre-bound listener (GUI mode): server adopts this instead of binding fresh,
+    /// eliminating the TOCTOU race between port discovery and actual bind.
+    pub bound_listener: Option<std::net::TcpListener>,
+    /// Externally-owned registry (GUI mode): share the same registry between
+    /// the Tauri commands and the HTTP server so additions are immediately visible.
+    pub registry: Option<Arc<WorkspaceRegistry>>,
+    /// Management API token. None = auto-generate and write to lock file.
+    pub management_token: Option<String>,
+    /// UI language override: "zh", "en", or None (auto-detect via sys_locale).
+    pub language: Option<String>,
+    /// Custom keyboard shortcut overrides (JSON object, injected into browser pages).
+    pub shortcuts_json: Option<String>,
+    /// Custom CSS variable overrides (rendered as :root { --markon-*: value }).
+    pub styles_css: Option<String>,
 }
 
-/// Print a compact QR code using Unicode half-blocks
 #[derive(Clone)]
 pub struct AppState {
-    pub file_path: Arc<Option<String>>,
     pub theme: Arc<String>,
     pub tera: Arc<Tera>,
-    pub start_dir: Arc<std::path::PathBuf>,
     pub shared_annotation: bool,
-    pub enable_viewed: bool,
-    pub enable_search: bool,
-    pub enable_edit: bool,
     pub db: Option<Arc<Mutex<Connection>>>,
     pub tx: Option<broadcast::Sender<String>>,
-    pub search_index: Option<Arc<crate::search::SearchIndex>>,
+    pub workspace_registry: Arc<WorkspaceRegistry>,
+    pub management_token: Arc<String>,
+    /// Pre-built i18n JSON string for injection into templates.
+    pub i18n_json: Arc<String>,
+    /// Resolved UI language ("zh" or "en").
+    pub i18n_lang: Arc<String>,
+    /// Keyboard shortcut overrides JSON (empty string if none).
+    pub shortcuts_json: Arc<String>,
+    /// CSS variable overrides string.
+    pub styles_css: Arc<String>,
+}
+
+fn detect_lang(override_lang: &Option<String>) -> String {
+    match override_lang {
+        Some(lang) => i18n::resolve_lang(lang).to_string(),
+        None => i18n::resolve_lang("auto").to_string(),
+    }
 }
 
 fn print_compact_qr(data: &str) -> Result<(), Box<dyn std::error::Error>> {
@@ -94,41 +132,40 @@ enum WebSocketMessage {
     UpdateViewedState { state: serde_json::Value },
 }
 
-pub async fn start(config: ServerConfig) {
+pub async fn start(config: ServerConfig) -> Result<(), String> {
     let ServerConfig {
         host,
         port,
-        file_path,
         theme,
         qr,
         open_browser,
         shared_annotation,
-        enable_viewed,
-        enable_search,
-        enable_edit,
+        salt,
+        initial_workspaces,
+        bound_listener,
+        registry,
+        management_token,
+        language,
+        shortcuts_json,
+        styles_css,
     } = config;
-    // Initialize Tera template engine
-    let mut tera = Tera::default();
 
-    // Load templates from embedded resources
+    // Initialize Tera template engine from embedded resources.
+    let mut tera = Tera::default();
     for file_name in Templates::iter() {
         if let Some(file) = Templates::get(&file_name) {
             match std::str::from_utf8(&file.data) {
                 Ok(content) => {
                     if let Err(e) = tera.add_raw_template(&file_name, content) {
-                        eprintln!("Failed to add template '{file_name}': {e}");
-                        std::process::exit(1);
+                        return Err(format!("Failed to add template '{file_name}': {e}"));
                     }
                 }
                 Err(e) => {
-                    eprintln!("Failed to read template '{file_name}': {e}");
-                    std::process::exit(1);
+                    return Err(format!("Failed to read template '{file_name}': {e}"));
                 }
             }
         }
     }
-
-    let start_dir = std::env::current_dir().unwrap_or_else(|_| ".".into());
 
     let (db, tx) = if shared_annotation {
         let db_path = std::env::var("MARKON_SQLITE_PATH").unwrap_or_else(|_| {
@@ -137,12 +174,10 @@ pub async fn start(config: ServerConfig) {
                 .to_string_lossy()
                 .to_string()
         });
-
         let parent_dir = std::path::Path::new(&db_path).parent().unwrap();
         if !parent_dir.exists() {
             fs::create_dir_all(parent_dir).expect("Failed to create database directory");
         }
-
         let conn = Connection::open(&db_path).expect("Failed to open database");
         conn.execute(
             "CREATE TABLE IF NOT EXISTS annotations (
@@ -153,8 +188,6 @@ pub async fn start(config: ServerConfig) {
             [],
         )
         .expect("Failed to create annotations table");
-
-        // Create viewed state table for section viewed feature
         conn.execute(
             "CREATE TABLE IF NOT EXISTS viewed_state (
                 file_path TEXT PRIMARY KEY,
@@ -164,7 +197,6 @@ pub async fn start(config: ServerConfig) {
             [],
         )
         .expect("Failed to create viewed_state table");
-
         let db = Arc::new(Mutex::new(conn));
         let tx = broadcast::channel(100).0;
         (Some(db), Some(tx))
@@ -172,56 +204,98 @@ pub async fn start(config: ServerConfig) {
         (None, None)
     };
 
-    // Clone file_path for later use in URL display
-    let file_path_for_display = file_path.clone();
+    // Build workspace registry and register initial workspaces.
+    let effective_salt = salt.unwrap_or_else(|| format!("markon:{port}"));
+    let registry = registry.unwrap_or_else(|| Arc::new(WorkspaceRegistry::new(effective_salt)));
 
-    // Initialize search index if enabled
-    let search_index = if enable_search {
-        match search::SearchIndex::new(&start_dir) {
-            Ok(index) => {
-                let index = Arc::new(index);
-                Some(index)
+    // Track first workspace's URL path for browser/QR.
+    let mut first_workspace_url_path: Option<String> = None;
+
+    for ws_init in initial_workspaces {
+        // Expand leading ~ (ASCII) or ～ (full-width) before canonicalize.
+        let raw_str = ws_init.path.to_string_lossy().into_owned();
+        let normalized = if raw_str.starts_with('～') {
+            raw_str.replacen('～', "~", 1)
+        } else {
+            raw_str
+        };
+        let raw = std::path::PathBuf::from(&normalized);
+        let expanded = if normalized.starts_with("~/") || normalized == "~" {
+            if let Some(home) = dirs::home_dir() {
+                if normalized == "~" {
+                    home
+                } else {
+                    home.join(&normalized[2..])
+                }
+            } else {
+                raw
             }
-            Err(e) => {
-                eprintln!("Failed to initialize search index: {}", e);
-                None
-            }
-        }
-    } else {
-        None
-    };
-
-    let state = AppState {
-        file_path: Arc::new(file_path),
-        theme: Arc::new(theme),
-        tera: Arc::new(tera),
-        start_dir: Arc::new(start_dir.clone()),
-        shared_annotation,
-        enable_viewed,
-        enable_search,
-        enable_edit,
-        db,
-        tx,
-        search_index: search_index.clone(),
-    };
-
-    // Start file watcher for search index
-    if enable_search && search_index.is_some() {
-        if let Err(e) = search::start_file_watcher(state.clone()) {
-            eprintln!("Failed to start file watcher: {}", e);
+        } else {
+            raw
+        };
+        let path = expanded.canonicalize().unwrap_or(expanded);
+        let id = registry.add(WorkspaceConfig {
+            path,
+            enable_search: ws_init.enable_search,
+            enable_viewed: ws_init.enable_viewed,
+            enable_edit: ws_init.enable_edit,
+            shared_annotation: ws_init.shared_annotation,
+        });
+        if first_workspace_url_path.is_none() {
+            let url_path = match ws_init.initial_path {
+                Some(ref p) => format!("/{id}/{}", p.trim_start_matches('/')),
+                None => format!("/{id}/"),
+            };
+            first_workspace_url_path = Some(url_path);
         }
     }
 
-    let mut app = Router::new()
-        .route("/", get(root))
-        .route("/search", get(search::search_handler))
+    let token = Arc::new(management_token.unwrap_or_else(generate_token));
+
+    let state = AppState {
+        theme: Arc::new(theme),
+        tera: Arc::new(tera),
+        shared_annotation,
+        db,
+        tx,
+        workspace_registry: registry,
+        management_token: token.clone(),
+        i18n_json: Arc::new(i18n::load_i18n()),
+        i18n_lang: Arc::new(detect_lang(&language)),
+        shortcuts_json: Arc::new(shortcuts_json.unwrap_or_default()),
+        styles_css: Arc::new(styles_css.unwrap_or_default()),
+    };
+
+    // Management API: requires loopback source IP + valid token header.
+    let mgmt = Router::new()
+        .route("/api/workspace", post(add_workspace_handler))
+        .route(
+            "/api/workspace/{id}",
+            delete(remove_workspace_handler).put(update_workspace_handler),
+        )
+        .route("/api/workspaces", get(list_workspaces_handler))
         .route("/api/save", post(save_file_handler))
+        .layer(axum::middleware::from_fn_with_state(
+            state.clone(),
+            require_local_and_token,
+        ));
+
+    let mut app = Router::new()
+        // Static assets (literal prefix beats /{workspace_id}/ param)
         .route("/favicon.ico", get(serve_favicon))
         .route("/_/favicon.ico", get(serve_favicon))
         .route("/_/favicon.svg", get(serve_favicon_svg))
         .route("/_/css/{filename}", get(serve_css))
         .route("/_/js/{*path}", get(serve_js))
-        .route("/{*path}", get(handle_path));
+        .route("/_/ws/{workspace_id}", get(config_ws_handler))
+        // Search API (read-only, no auth needed)
+        .route("/search", get(search_handler))
+        // Workspace content routes
+        .route("/{workspace_id}/", get(handle_workspace_root))
+        .route("/{workspace_id}/{*path}", get(handle_workspace_path))
+        // Everything else → 404
+        .fallback(|| async { StatusCode::NOT_FOUND })
+        .merge(mgmt);
 
     if shared_annotation {
         app = app.route("/_/ws", get(ws_handler));
@@ -229,75 +303,143 @@ pub async fn start(config: ServerConfig) {
 
     let app = app.with_state(state);
 
-    // Parse host address
-    let addr = match format!("{}:{}", host, port).parse::<SocketAddr>() {
-        Ok(addr) => addr,
-        Err(e) => {
-            eprintln!("Invalid host address '{}': {}", host, e);
-            std::process::exit(1);
-        }
+    let listener = if let Some(std_listener) = bound_listener {
+        std_listener
+            .set_nonblocking(true)
+            .map_err(|e| format!("Failed to set non-blocking: {e}"))?;
+        TcpListener::from_std(std_listener)
+            .map_err(|e| format!("Failed to convert listener: {e}"))?
+    } else {
+        let addr = format!("{}:{}", host, port)
+            .parse::<SocketAddr>()
+            .map_err(|e| format!("Invalid host address '{}': {}", host, e))?;
+        TcpListener::bind(&addr)
+            .await
+            .map_err(|e| format!("Failed to bind to {addr}: {e}"))?
     };
-
-    let listener = match TcpListener::bind(&addr).await {
-        Ok(listener) => listener,
-        Err(e) => {
-            eprintln!("Failed to bind to {addr}: {e}");
-            std::process::exit(1);
-        }
-    };
+    let addr = listener
+        .local_addr()
+        .map_err(|e| format!("Failed to get local address: {e}"))?;
     println!("listening on http://{addr}");
-
-    // Display custom base URL if provided (via --qr or --open-browser)
-    let custom_base_url = qr
-        .as_ref()
-        .filter(|url| url.as_str() != "missing")
-        .or_else(|| open_browser.as_ref().filter(|url| url.as_str() != "local"));
-
-    if let Some(base_url) = custom_base_url {
-        // Append file path or directory indicator to the base URL
-        let full_url = if let Some(file) = &file_path_for_display {
-            // If a file is specified, append the file path
-            format!("{}/{}", base_url.trim_end_matches('/'), file)
-        } else {
-            // If no file (directory browsing mode), append trailing slash
-            if base_url.ends_with('/') {
-                base_url.to_string()
-            } else {
-                format!("{base_url}/")
-            }
-        };
-        println!("accessible at {full_url}");
+    if let Some(ref p) = first_workspace_url_path {
+        println!("workspace: http://{addr}{p}");
     }
 
-    // Generate QR code after successful bind
-    if let Some(qr_option) = qr {
-        println!(); // Blank line before QR code
+    // Write lock file so CLI can discover this server.
+    let _lock_guard = {
+        if let Err(e) = (ServerLock {
+            port: addr.port(),
+            token: token.as_ref().clone(),
+        })
+        .write()
+        {
+            eprintln!("[server] Failed to write lock file: {e}");
+        }
+        struct LockGuard;
+        impl Drop for LockGuard {
+            fn drop(&mut self) {
+                ServerLock::remove();
+            }
+        }
+        LockGuard
+    };
+
+    // Helper: build a full URL from a base option string.
+    let make_url = |base_option: &str, ws_path: &Option<String>| -> String {
+        let base = if base_option == "local" {
+            format!("http://{addr}")
+        } else {
+            base_option.to_string()
+        };
+        match ws_path {
+            Some(p) => format!("{}{}", base.trim_end_matches('/'), p),
+            None => format!("{}/", base.trim_end_matches('/')),
+        }
+    };
+
+    let custom_base = qr
+        .as_ref()
+        .filter(|u| u.as_str() != "missing")
+        .or_else(|| open_browser.as_ref().filter(|u| u.as_str() != "local"));
+    if let Some(base) = custom_base {
+        println!(
+            "accessible at {}",
+            make_url(base, &first_workspace_url_path)
+        );
+    }
+
+    if let Some(ref qr_option) = qr {
+        println!();
         let qr_url = if qr_option == "missing" {
             format!("http://{addr}")
         } else {
-            qr_option
+            make_url(qr_option, &first_workspace_url_path)
         };
         if let Err(e) = print_compact_qr(&qr_url) {
             eprintln!("Failed to generate QR code: {e}");
         }
     }
 
-    // Open browser if requested
-    if let Some(base_url_option) = open_browser {
-        let url = if base_url_option == "local" {
-            format!("http://{addr}")
-        } else {
-            base_url_option
-        };
+    if let Some(ref base_opt) = open_browser {
+        let url = make_url(base_opt, &first_workspace_url_path);
         if let Err(e) = open::that(&url) {
             eprintln!("Failed to open browser: {e}");
         }
     }
 
-    if let Err(e) = axum::serve(listener, app.into_make_service()).await {
-        eprintln!("Server error: {e}");
-        std::process::exit(1);
+    axum::serve(
+        listener,
+        app.into_make_service_with_connect_info::<std::net::SocketAddr>(),
+    )
+    .await
+    .map_err(|e| format!("Server error: {e}"))?;
+    Ok(())
+}
+
+/// Lightweight always-on WebSocket per workspace — pushes a "reload" text frame
+/// whenever workspace flags change. No auth required (read-only notification).
+async fn config_ws_handler(
+    ws: WebSocketUpgrade,
+    State(state): State<AppState>,
+    AxumPath(workspace_id): AxumPath<String>,
+) -> impl IntoResponse {
+    let Some(ws_entry) = state.workspace_registry.get(&workspace_id) else {
+        return StatusCode::NOT_FOUND.into_response();
+    };
+    let mut rx = ws_entry.config_tx.subscribe();
+    ws.on_upgrade(move |mut socket| async move {
+        while let Ok(()) = rx.recv().await {
+            if socket
+                .send(axum::extract::ws::Message::Text("reload".into()))
+                .await
+                .is_err()
+            {
+                break;
+            }
+        }
+    })
+}
+
+/// Middleware: management API only accepts loopback source + valid token header.
+async fn require_local_and_token(
+    State(state): State<AppState>,
+    axum::extract::ConnectInfo(addr): axum::extract::ConnectInfo<std::net::SocketAddr>,
+    req: axum::extract::Request,
+    next: axum::middleware::Next,
+) -> Response {
+    if !addr.ip().is_loopback() {
+        return StatusCode::FORBIDDEN.into_response();
     }
+    let ok = req
+        .headers()
+        .get("X-Markon-Token")
+        .and_then(|v| v.to_str().ok())
+        .map(|t| t == state.management_token.as_str())
+        .unwrap_or(false);
+    if !ok {
+        return StatusCode::UNAUTHORIZED.into_response();
+    }
+    next.run(req).await
 }
 
 async fn ws_handler(ws: WebSocketUpgrade, State(state): State<AppState>) -> impl IntoResponse {
@@ -520,91 +662,236 @@ async fn handle_socket(socket: WebSocket, state: AppState) {
     };
 }
 
-async fn root(State(state): State<AppState>) -> impl IntoResponse {
-    // If command-line file specified, render it
-    if let Some(file_path) = state.file_path.as_ref().as_ref() {
-        render_markdown_file(file_path, &state)
-    } else {
-        // Show directory listing for root
-        render_directory_listing(&state, None)
-    }
+// ── Workspace content handlers ────────────────────────────────────────────────
+
+async fn handle_workspace_root(
+    State(state): State<AppState>,
+    AxumPath(workspace_id): AxumPath<String>,
+) -> impl IntoResponse {
+    let Some(ws) = state.workspace_registry.get(&workspace_id) else {
+        return StatusCode::NOT_FOUND.into_response();
+    };
+    render_directory_listing(&workspace_id, &ws, None, &state)
 }
 
-async fn handle_path(
+async fn handle_workspace_path(
     State(state): State<AppState>,
-    AxumPath(path): AxumPath<String>,
+    AxumPath((workspace_id, path)): AxumPath<(String, String)>,
 ) -> impl IntoResponse {
-    use std::path::PathBuf;
+    let Some(ws) = state.workspace_registry.get(&workspace_id) else {
+        return StatusCode::NOT_FOUND.into_response();
+    };
 
-    // Decode the path
-    let decoded_path = urlencoding::decode(&path).unwrap_or_else(|_| path.clone().into());
-    let requested_path = PathBuf::from(decoded_path.as_ref());
-    let full_path = state.start_dir.join(&requested_path);
+    let decoded = urlencoding::decode(&path).unwrap_or_else(|_| path.clone().into());
+    let full_path = ws.root.join(decoded.trim_start_matches('/'));
 
-    // Canonicalize and check if path exists
-    let canonical_path = match full_path.canonicalize() {
+    let canonical = match full_path.canonicalize() {
         Ok(p) => p,
         Err(_) => {
-            return (
-                StatusCode::NOT_FOUND,
-                format!("Path not found: {decoded_path}"),
-            )
-                .into_response();
+            return (StatusCode::NOT_FOUND, format!("Path not found: {decoded}")).into_response()
         }
     };
 
-    // Security check: ensure the canonical path is under start_dir
-    if !canonical_path.starts_with(&*state.start_dir) {
-        return (
-            StatusCode::FORBIDDEN,
-            "Access denied: path outside allowed directory",
-        )
-            .into_response();
+    if !canonical.starts_with(&ws.root) {
+        return (StatusCode::FORBIDDEN, "Access denied").into_response();
     }
 
-    // Check if it's a file or directory
-    if canonical_path.is_file() {
-        // Check if it's a markdown file
-        if canonical_path
+    if canonical.is_file() {
+        if canonical
             .extension()
-            .is_some_and(|ext| ext.to_string_lossy().to_lowercase() == "md")
+            .is_some_and(|e| e.to_string_lossy().to_lowercase() == "md")
         {
-            render_markdown_file(&decoded_path, &state)
+            render_markdown_file(&canonical.to_string_lossy(), &workspace_id, &ws, &state)
         } else {
-            // Serve other files (images, videos, etc.) as static content
-            serve_file(&canonical_path)
+            serve_file(&canonical)
         }
-    } else if canonical_path.is_dir() {
-        // Show directory listing
-        render_directory_listing(&state, Some(&decoded_path))
+    } else if canonical.is_dir() {
+        render_directory_listing(&workspace_id, &ws, Some(&decoded), &state)
     } else {
         (StatusCode::NOT_FOUND, "Path not found").into_response()
     }
 }
 
-fn render_markdown_file(file_path: &str, state: &AppState) -> Response {
+// ── Workspace management API ──────────────────────────────────────────────────
+
+#[derive(Deserialize)]
+struct AddWorkspaceRequest {
+    path: String,
+    #[serde(default)]
+    enable_search: bool,
+    #[serde(default)]
+    enable_viewed: bool,
+    #[serde(default)]
+    enable_edit: bool,
+    #[serde(default)]
+    shared_annotation: bool,
+}
+
+#[derive(Serialize)]
+struct AddWorkspaceResponse {
+    id: String,
+}
+
+async fn add_workspace_handler(
+    State(state): State<AppState>,
+    Json(req): Json<AddWorkspaceRequest>,
+) -> impl IntoResponse {
+    use std::path::PathBuf;
+    let path = PathBuf::from(&req.path);
+    let path = match path.canonicalize() {
+        Ok(p) => p,
+        Err(e) => return (StatusCode::BAD_REQUEST, format!("Invalid path: {e}")).into_response(),
+    };
+    let id = state.workspace_registry.add(WorkspaceConfig {
+        path,
+        enable_search: req.enable_search,
+        enable_viewed: req.enable_viewed,
+        enable_edit: req.enable_edit,
+        shared_annotation: req.shared_annotation,
+    });
+    Json(AddWorkspaceResponse { id }).into_response()
+}
+
+async fn remove_workspace_handler(
+    State(state): State<AppState>,
+    AxumPath(id): AxumPath<String>,
+) -> impl IntoResponse {
+    if state.workspace_registry.remove(&id) {
+        StatusCode::OK
+    } else {
+        StatusCode::NOT_FOUND
+    }
+}
+
+#[derive(Deserialize)]
+struct UpdateWorkspaceRequest {
+    #[serde(default)]
+    enable_search: bool,
+    #[serde(default)]
+    enable_viewed: bool,
+    #[serde(default)]
+    enable_edit: bool,
+    #[serde(default)]
+    shared_annotation: bool,
+}
+
+async fn update_workspace_handler(
+    State(state): State<AppState>,
+    AxumPath(id): AxumPath<String>,
+    Json(req): Json<UpdateWorkspaceRequest>,
+) -> impl IntoResponse {
+    if state.workspace_registry.update_flags(
+        &id,
+        req.enable_search,
+        req.enable_viewed,
+        req.enable_edit,
+        req.shared_annotation,
+    ) {
+        StatusCode::OK
+    } else {
+        StatusCode::NOT_FOUND
+    }
+}
+
+async fn list_workspaces_handler(State(state): State<AppState>) -> impl IntoResponse {
+    Json(state.workspace_registry.info_list())
+}
+
+// ── Search handler ────────────────────────────────────────────────────────────
+
+#[derive(Deserialize)]
+struct WorkspaceSearchQuery {
+    ws: String,
+    #[serde(flatten)]
+    q: SearchQuery,
+}
+
+async fn search_handler(
+    State(state): State<AppState>,
+    axum::extract::Query(query): axum::extract::Query<WorkspaceSearchQuery>,
+) -> impl IntoResponse {
+    if query.q.q.is_empty() {
+        return Json(Vec::<SearchResult>::new());
+    }
+    let Some(ws) = state.workspace_registry.get(&query.ws) else {
+        return Json(Vec::new());
+    };
+    if !ws.enable_search.load(std::sync::atomic::Ordering::Relaxed) {
+        return Json(Vec::new());
+    }
+    let idx = ws.search_index.lock().unwrap().clone();
+    let Some(idx) = idx else {
+        return Json(Vec::new()); // still indexing
+    };
+    let results = idx.search(&query.q.q, 20).unwrap_or_else(|e| {
+        eprintln!("[search] error: {e}");
+        Vec::new()
+    });
+    Json(results)
+}
+
+fn render_markdown_file(
+    file_path: &str,
+    workspace_id: &str,
+    ws: &WorkspaceEntry,
+    state: &AppState,
+) -> Response {
     match fs::read_to_string(file_path) {
         Ok(markdown_input) => {
             let renderer = MarkdownRenderer::new(&state.theme);
             let (html_content, has_mermaid, toc) = renderer.render(&markdown_input);
 
+            let title = std::path::Path::new(file_path)
+                .file_name()
+                .map(|n| n.to_string_lossy().to_string())
+                .unwrap_or_else(|| file_path.to_string());
+
             let mut context = tera::Context::new();
-            context.insert("title", &format!("markon - {file_path}"));
+            context.insert("title", &format!("markon - {title}"));
             context.insert("file_path", file_path);
+            context.insert("workspace_id", workspace_id);
             context.insert("theme", state.theme.as_str());
             context.insert("content", &html_content);
+            // Back link: parent dir of this file within the workspace.
+            let back_link = std::path::Path::new(file_path)
+                .parent()
+                .and_then(|p| p.strip_prefix(&ws.root).ok())
+                .map(|rel| {
+                    let rel_str = rel.to_string_lossy();
+                    if rel_str.is_empty() {
+                        format!("/{workspace_id}/")
+                    } else {
+                        format!("/{workspace_id}/{}/", rel_str)
+                    }
+                })
+                .unwrap_or_else(|| format!("/{workspace_id}/"));
+            context.insert("back_link", &back_link);
             context.insert("show_back_link", &true);
             context.insert("has_mermaid", &has_mermaid);
             context.insert("toc", &toc);
-            context.insert("shared_annotation", &state.shared_annotation);
-            context.insert("enable_viewed", &state.enable_viewed);
-            context.insert("enable_search", &state.enable_search);
-            context.insert("enable_edit", &state.enable_edit);
+            context.insert(
+                "shared_annotation",
+                &ws.shared_annotation
+                    .load(std::sync::atomic::Ordering::Relaxed),
+            );
+            context.insert("enable_viewed", &ws.enable_viewed);
+            context.insert("enable_search", &ws.enable_search);
+            context.insert("enable_edit", &ws.enable_edit);
 
-            // Pass original content if edit is enabled
-            if state.enable_edit {
-                context.insert("markdown_content", &markdown_input);
+            if ws.enable_edit.load(std::sync::atomic::Ordering::Relaxed) {
+                // JSON-encode and HTML-escape so </script> in content can't break the page.
+                let json = serde_json::to_string(&markdown_input)
+                    .unwrap_or_default()
+                    .replace('<', "\\u003c")
+                    .replace('>', "\\u003e")
+                    .replace('&', "\\u0026");
+                context.insert("markdown_content_json", &json);
             }
+
+            context.insert("i18n_json", state.i18n_json.as_str());
+            context.insert("i18n_lang", state.i18n_lang.as_str());
+            context.insert("shortcuts_json", state.shortcuts_json.as_str());
+            context.insert("styles_css", state.styles_css.as_str());
 
             match state.tera.render("layout.html", &context) {
                 Ok(html) => Html(html).into_response(),
@@ -628,6 +915,10 @@ fn render_markdown_file(file_path: &str, state: &AppState) -> Response {
             );
             context.insert("show_back_link", &false);
             context.insert("has_mermaid", &false);
+            context.insert("i18n_json", state.i18n_json.as_str());
+            context.insert("i18n_lang", state.i18n_lang.as_str());
+            context.insert("shortcuts_json", state.shortcuts_json.as_str());
+            context.insert("styles_css", state.styles_css.as_str());
 
             match state.tera.render("layout.html", &context) {
                 Ok(html) => Html(html).into_response(),
@@ -641,27 +932,29 @@ fn render_markdown_file(file_path: &str, state: &AppState) -> Response {
     }
 }
 
-fn render_directory_listing(state: &AppState, dir_param: Option<&str>) -> Response {
+fn render_directory_listing(
+    workspace_id: &str,
+    ws: &WorkspaceEntry,
+    dir_param: Option<&str>,
+    state: &AppState,
+) -> Response {
     use std::path::PathBuf;
 
-    // Determine the directory to list
     let current_dir = if let Some(dir_str) = dir_param {
-        let requested_path = PathBuf::from(dir_str);
-        // Ensure the path is absolute or relative to start_dir
-        if requested_path.is_absolute() {
-            requested_path
+        let p = PathBuf::from(dir_str);
+        if p.is_absolute() {
+            p
         } else {
-            state.start_dir.join(&requested_path)
+            ws.root.join(&p)
         }
     } else {
-        state.start_dir.as_ref().clone()
+        ws.root.clone()
     };
 
-    // Canonicalize to resolve .. and .
     let current_dir = match current_dir.canonicalize() {
-        Ok(path) => path,
+        Ok(p) => p,
         Err(e) => {
-            return (StatusCode::BAD_REQUEST, format!("Invalid directory: {e}")).into_response();
+            return (StatusCode::BAD_REQUEST, format!("Invalid directory: {e}")).into_response()
         }
     };
 
@@ -678,43 +971,35 @@ fn render_directory_listing(state: &AppState, dir_param: Option<&str>) -> Respon
             .filter_map(|entry| {
                 let path = entry.path();
                 let name = entry.file_name().to_string_lossy().to_string();
-
-                // Ignore hidden files
                 if name.starts_with('.') {
                     return None;
                 }
-
-                let is_dir = path.is_dir();
-
+                // Use file_type() — avoids stat() syscall that can block on AutoFS mount points.
+                let file_type = match entry.file_type() {
+                    Ok(ft) => ft,
+                    Err(_) => return None,
+                };
+                let is_dir = file_type.is_dir();
+                let rel = path
+                    .strip_prefix(&ws.root)
+                    .unwrap_or(&path)
+                    .to_string_lossy()
+                    .to_string();
                 if is_dir {
-                    // Calculate relative path from start_dir for the link
-                    let relative_path = path
-                        .strip_prefix(&*state.start_dir)
-                        .unwrap_or(&path)
-                        .to_string_lossy()
-                        .to_string();
                     Some(Entry {
                         name,
                         is_dir: true,
-                        link: format!("/{relative_path}"),
+                        link: format!("/{workspace_id}/{rel}/"),
                     })
                 } else {
-                    // Only show Markdown files (case insensitive)
-                    let is_markdown = path
+                    let is_md = path
                         .extension()
-                        .is_some_and(|ext| ext.to_string_lossy().to_lowercase() == "md");
-
-                    if is_markdown {
-                        // Calculate relative path from start_dir for the link
-                        let relative_path = path
-                            .strip_prefix(&*state.start_dir)
-                            .unwrap_or(&path)
-                            .to_string_lossy()
-                            .to_string();
+                        .is_some_and(|e| e.to_string_lossy().to_lowercase() == "md");
+                    if is_md {
                         Some(Entry {
                             name,
                             is_dir: false,
-                            link: format!("/{relative_path}"),
+                            link: format!("/{workspace_id}/{rel}"),
                         })
                     } else {
                         None
@@ -727,45 +1012,45 @@ fn render_directory_listing(state: &AppState, dir_param: Option<&str>) -> Respon
                 StatusCode::INTERNAL_SERVER_ERROR,
                 format!("Error reading directory: {e}"),
             )
-                .into_response();
+                .into_response()
         }
     };
 
-    // Sort: directories first, then files, both alphabetically
     entries.sort_by(|a, b| match (a.is_dir, b.is_dir) {
         (true, false) => std::cmp::Ordering::Less,
         (false, true) => std::cmp::Ordering::Greater,
         _ => a.name.cmp(&b.name),
     });
 
-    // Check if we can show parent directory link
-    let show_parent = current_dir != *state.start_dir;
-    let parent_link = if show_parent {
-        if let Some(parent) = current_dir.parent() {
-            let relative_path = parent
-                .strip_prefix(&*state.start_dir)
+    let show_parent = current_dir != ws.root;
+    let parent_link: Option<String> = if show_parent {
+        current_dir.parent().map(|parent| {
+            let rel = parent
+                .strip_prefix(&ws.root)
                 .map(|p| p.to_string_lossy().to_string())
-                .unwrap_or_else(|_| String::new());
-
-            if relative_path.is_empty() {
-                Some("/".to_string())
+                .unwrap_or_default();
+            if rel.is_empty() {
+                format!("/{workspace_id}/")
             } else {
-                Some(format!("/{relative_path}"))
+                format!("/{workspace_id}/{rel}/")
             }
-        } else {
-            None
-        }
+        })
     } else {
         None
     };
 
     let mut context = tera::Context::new();
     context.insert("theme", state.theme.as_str());
+    context.insert("workspace_id", workspace_id);
     context.insert("current_dir", &current_dir.display().to_string());
     context.insert("entries", &entries);
     context.insert("show_parent", &show_parent);
     context.insert("parent_link", &parent_link);
-    context.insert("enable_search", &state.enable_search);
+    context.insert("enable_search", &ws.enable_search);
+    context.insert("i18n_json", state.i18n_json.as_str());
+    context.insert("i18n_lang", state.i18n_lang.as_str());
+    context.insert("shortcuts_json", state.shortcuts_json.as_str());
+    context.insert("styles_css", state.styles_css.as_str());
 
     match state.tera.render("directory.html", &context) {
         Ok(html) => Html(html).into_response(),
@@ -875,12 +1160,11 @@ fn get_mime_type(ext: &str) -> Option<&'static str> {
     }
 }
 
-// ============================================================
-// File Editing API
-// ============================================================
+// ── File editing API ──────────────────────────────────────────────────────────
 
 #[derive(Deserialize)]
 struct SaveFileRequest {
+    workspace_id: String,
     file_path: String,
     content: String,
 }
@@ -895,106 +1179,92 @@ async fn save_file_handler(
     State(state): State<AppState>,
     Json(payload): Json<SaveFileRequest>,
 ) -> impl IntoResponse {
-    use std::path::PathBuf;
+    let ws = match state.workspace_registry.get(&payload.workspace_id) {
+        Some(w) => w,
+        None => {
+            return Json(SaveFileResponse {
+                success: false,
+                message: "Workspace not found".into(),
+            })
+            .into_response()
+        }
+    };
 
-    // 1. Check if feature is enabled
-    if !state.enable_edit {
+    if !ws.enable_edit.load(std::sync::atomic::Ordering::Relaxed) {
         return Json(SaveFileResponse {
             success: false,
-            message: "Edit feature is not enabled".to_string(),
+            message: "Edit feature is not enabled".into(),
         })
         .into_response();
     }
 
-    // 2. Decode path
-    let decoded_path = match urlencoding::decode(&payload.file_path) {
+    let decoded = match urlencoding::decode(&payload.file_path) {
         Ok(p) => p,
         Err(_) => {
             return Json(SaveFileResponse {
                 success: false,
-                message: "Invalid file path encoding".to_string(),
+                message: "Invalid file path encoding".into(),
             })
-            .into_response();
+            .into_response()
         }
     };
 
-    // 3. Build full path
-    let requested_path = PathBuf::from(decoded_path.as_ref());
-    let full_path = state.start_dir.join(&requested_path);
-
-    // 4. Canonicalize and check path safety
-    let canonical_path = match full_path.canonicalize() {
+    let full_path = ws.root.join(decoded.trim_start_matches('/'));
+    let canonical = match full_path.canonicalize() {
         Ok(p) => p,
         Err(_) => {
             return Json(SaveFileResponse {
                 success: false,
-                message: format!("File not found: {}", decoded_path),
+                message: format!("File not found: {decoded}"),
             })
-            .into_response();
+            .into_response()
         }
     };
 
-    // 5. Security check: must be within start_dir
-    if !canonical_path.starts_with(&*state.start_dir) {
+    if !canonical.starts_with(&ws.root) {
         return Json(SaveFileResponse {
             success: false,
-            message: "Access denied: path outside allowed directory".to_string(),
+            message: "Access denied".into(),
         })
         .into_response();
     }
-
-    // 6. Check if path is a file
-    if !canonical_path.is_file() {
+    if !canonical.is_file() {
         return Json(SaveFileResponse {
             success: false,
-            message: "Path is not a file".to_string(),
+            message: "Path is not a file".into(),
         })
         .into_response();
     }
-
-    // 7. Check file extension (only .md allowed)
-    let is_markdown = canonical_path
+    if canonical
         .extension()
-        .is_some_and(|ext| ext.to_string_lossy().to_lowercase() == "md");
-
-    if !is_markdown {
+        .is_none_or(|e| e.to_string_lossy().to_lowercase() != "md")
+    {
         return Json(SaveFileResponse {
             success: false,
-            message: "Only Markdown files (.md) can be edited".to_string(),
+            message: "Only .md files can be edited".into(),
+        })
+        .into_response();
+    }
+    if fs::metadata(&canonical)
+        .map(|m| m.permissions().readonly())
+        .unwrap_or(true)
+    {
+        return Json(SaveFileResponse {
+            success: false,
+            message: "File is read-only".into(),
         })
         .into_response();
     }
 
-    // 8. Check write permissions
-    match fs::metadata(&canonical_path) {
-        Ok(metadata) => {
-            if metadata.permissions().readonly() {
-                return Json(SaveFileResponse {
-                    success: false,
-                    message: "File is read-only".to_string(),
-                })
-                .into_response();
-            }
-        }
-        Err(e) => {
-            return Json(SaveFileResponse {
-                success: false,
-                message: format!("Cannot access file: {}", e),
-            })
-            .into_response();
-        }
-    }
-
-    // 9. Write file
-    match fs::write(&canonical_path, &payload.content) {
+    match fs::write(&canonical, &payload.content) {
         Ok(_) => Json(SaveFileResponse {
             success: true,
-            message: "File saved successfully".to_string(),
+            message: "File saved successfully".into(),
         })
         .into_response(),
         Err(e) => Json(SaveFileResponse {
             success: false,
-            message: format!("Failed to save file: {}", e),
+            message: format!("Failed to save: {e}"),
         })
         .into_response(),
     }

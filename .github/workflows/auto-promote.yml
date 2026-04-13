@@ -80,4 +80,4 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          gh workflow run promote.yml -f rc_tag=${{ steps.check.outputs.rc_tag }}
+          gh workflow run promote.yml -f rc_tag="${{ steps.check.outputs.rc_tag }}"

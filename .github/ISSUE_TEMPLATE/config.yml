@@ -1,0 +1,11 @@
+blank_issues_enabled: false
+contact_links:
+  - name: 💡 Feature Idea / Proposal
+    url: https://github.com/kookyleo/markon/discussions/new?category=ideas
+    about: Propose a new feature or improvement. Ideas can be discussed and upvoted before becoming issues.
+  - name: ❓ Question / Usage Help
+    url: https://github.com/kookyleo/markon/discussions/new?category=q-a
+    about: Ask the community for help using Markon.
+  - name: 🎨 Show and Tell
+    url: https://github.com/kookyleo/markon/discussions/new?category=show-and-tell
+    about: Share what you've built or rendered with Markon.

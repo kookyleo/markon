@@ -1,0 +1,1890 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Markon</title>
+  <style>
+    /* Light theme (default) */
+    :root {
+      --bg: #f2f2f7;
+      --surface: #ffffff;
+      --surface-2: #ebebf0;
+      --accent: #007AFF;
+      --accent-hover: #0062cc;
+      --text: #1c1c1e;
+      --text-2: #6c6c70;
+      --text-3: #c7c7cc;
+      --border: #d1d1d6;
+      --danger: #ff3b30;
+      --radius: 10px;
+      --radius-sm: 6px;
+    }
+    /* Explicit dark override */
+    :root[data-theme="dark"] {
+      --bg: #1c1c1e;
+      --surface: #2c2c2e;
+      --surface-2: #3a3a3c;
+      --accent: #0A84FF;
+      --accent-hover: #409CFF;
+      --text: #f2f2f7;
+      --text-2: #8e8e93;
+      --text-3: #48484a;
+      --border: #38383a;
+      --danger: #ff453a;
+    }
+    /* Auto: follow system when attribute is "auto" */
+    @media (prefers-color-scheme: dark) {
+      :root[data-theme="auto"] {
+        --bg: #1c1c1e;
+        --surface: #2c2c2e;
+        --surface-2: #3a3a3c;
+        --accent: #0A84FF;
+        --accent-hover: #409CFF;
+        --text: #f2f2f7;
+        --text-2: #8e8e93;
+        --text-3: #48484a;
+        --border: #38383a;
+        --danger: #ff453a;
+      }
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    html, body {
+      -webkit-user-select: none;
+      user-select: none;
+      -webkit-touch-callout: none;
+    }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+      font-size: 13px;
+      background: var(--bg);
+      color: var(--text);
+      height: 100vh;
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
+    }
+    /* Allow text selection only in editable fields */
+    input[type="text"], input[type="number"] {
+      -webkit-user-select: text;
+      user-select: text;
+    }
+
+    /* ── Tab bar ─────────────────────────────────────────────────────────── */
+    .tabbar {
+      display: flex;
+      background: var(--bg);
+      border-bottom: 1px solid var(--border);
+      padding: 0 16px;
+      flex-shrink: 0;
+    }
+    .nav-item {
+      padding: 9px 14px;
+      cursor: default;
+      font-size: 12.5px;
+      font-weight: 500;
+      color: var(--text-2);
+      display: flex;
+      align-items: center;
+      gap: 5px;
+      border-bottom: 2px solid transparent;
+      margin-bottom: -1px;
+      transition: color 0.12s;
+    }
+    .nav-item:hover { color: var(--text); }
+    .nav-item.active { color: var(--accent); border-bottom-color: var(--accent); }
+    .nav-item svg { flex-shrink: 0; }
+
+    /* ── Content ─────────────────────────────────────────────────────────── */
+    .content { flex: 1; overflow-y: auto; background: var(--bg); position: relative; }
+    .tab { display: none; padding: 18px 20px; }
+    .tab.active { display: block; }
+
+    /* ── Preference sections ─────────────────────────────────────────────── */
+    .section { margin-bottom: 18px; }
+    .section-title {
+      font-size: 11px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      color: var(--text-2);
+      margin-bottom: 5px;
+      padding: 0 2px;
+    }
+    .section-body {
+      background: var(--surface);
+      border-radius: var(--radius);
+      border: 1px solid var(--border);
+      overflow: hidden;
+      padding: 4px 0;
+    }
+    .pref-row, .style-row, .shortcut-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 6px 14px;
+      gap: 12px;
+      min-height: 36px;
+    }
+    .pref-label, .st-name, .sc-name { font-size: 13px; color: var(--text); flex: 1; }
+    .pref-control {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      flex-shrink: 0;
+    }
+    .pref-control-full {
+      flex: 1;
+      display: flex;
+      min-width: 0;
+    }
+
+    /* ── Inputs ──────────────────────────────────────────────────────────── */
+    input[type="number"],
+    input[type="text"],
+    select {
+      padding: 4px 8px;
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      background: var(--surface);
+      color: var(--text);
+      font-size: 13px;
+      font-family: inherit;
+      outline: none;
+      transition: border-color 0.15s, box-shadow 0.15s;
+    }
+    input[type="number"]:focus,
+    input[type="text"]:focus,
+    select:focus {
+      border-color: var(--accent);
+      box-shadow: 0 0 0 3px rgba(0,122,255,0.15);
+    }
+    input[type="number"] { width: 72px; text-align: right; -moz-appearance: textfield; }
+    input[type="number"]::-webkit-inner-spin-button,
+    input[type="number"]::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
+    input:disabled { opacity: 0.4; cursor: not-allowed; }
+    .db-path-val {
+      display: block;
+      font-family: 'SF Mono', Monaco, Menlo, monospace;
+      font-size: 11px;
+      color: var(--accent);
+      word-break: break-all;
+      margin-top: 3px;
+    }
+    select {
+      appearance: none; -webkit-appearance: none;
+      padding-right: 22px;
+      background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6'%3E%3Cpath d='M0 0l5 6 5-6z' fill='%238e8e93'/%3E%3C/svg%3E");
+      background-repeat: no-repeat;
+      background-position: right 7px center;
+    }
+    input[type="text"].full { width: 100%; }
+
+    /* ── Toggle switch ───────────────────────────────────────────────────── */
+    .switch { position: relative; display: inline-block; width: 38px; height: 22px; flex-shrink: 0; }
+    .switch input { display: none; }
+    .switch-track {
+      position: absolute; inset: 0;
+      border-radius: 11px; background: var(--border);
+      cursor: pointer; transition: background 0.2s;
+    }
+    .switch input:checked + .switch-track { background: var(--accent); }
+    .switch-track::after {
+      content: ''; position: absolute;
+      top: 2px; left: 2px; width: 18px; height: 18px;
+      border-radius: 50%; background: #fff;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.25); transition: transform 0.2s;
+    }
+    .switch input:checked + .switch-track::after { transform: translateX(16px); }
+
+    /* ── Segmented control ───────────────────────────────────────────────── */
+    .seg-ctrl {
+      display: inline-flex;
+      border: 1px solid var(--accent);
+      border-radius: var(--radius-sm);
+      overflow: hidden;
+      background: var(--bg);
+    }
+    .seg-ctrl input[type="radio"] { display: none; }
+    .seg-ctrl label {
+      flex: 1;
+      padding: 4px 13px;
+      font-size: 12px;
+      font-weight: 500;
+      color: var(--text-2);
+      cursor: default;
+      text-align: center;
+      transition: background 0.12s, color 0.12s;
+    }
+    .seg-ctrl input[type="radio"]:checked + label { background: var(--accent); color: #fff; }
+
+    /* ── Buttons ─────────────────────────────────────────────────────────── */
+    .btn {
+      padding: 5px 12px;
+      border-radius: var(--radius-sm);
+      border: 1px solid var(--border);
+      background: var(--surface);
+      color: var(--text);
+      font-size: 12px;
+      font-family: inherit;
+      cursor: default;
+      white-space: nowrap;
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      transition: background 0.1s;
+    }
+    .btn:hover { background: var(--surface-2); }
+    .btn-primary { background: var(--accent); color: #fff; border-color: transparent; }
+    .btn-primary:hover { background: var(--accent-hover); }
+
+    /* ── Workspace list ──────────────────────────────────────────────────── */
+    .ws-list { display: flex; flex-direction: column; gap: 8px; padding-bottom: 60px; }
+
+    .ws-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 10px 12px;
+    }
+    /* Row 1: path + icon buttons */
+    .ws-row-top {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .ws-path {
+      flex: 1;
+      min-width: 0;
+      font-size: 12.5px;
+      font-family: 'SF Mono', Monaco, Menlo, monospace;
+      color: var(--text);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      line-height: 1.4;
+    }
+    .ws-icon-btn {
+      width: 26px; height: 26px;
+      border-radius: 6px;
+      border: none;
+      background: transparent;
+      color: var(--text-2);
+      cursor: default;
+      display: flex; align-items: center; justify-content: center;
+      flex-shrink: 0;
+      transition: background 0.1s, color 0.1s;
+    }
+    .ws-icon-btn:hover { background: var(--surface-2); }
+    .ws-icon-btn.open-btn { color: var(--accent); }
+    .ws-icon-btn.open-btn:hover { background: rgba(0,122,255,0.1); }
+    .ws-icon-btn.remove-btn:hover { background: rgba(255,59,48,0.1); color: var(--danger); }
+    /* Row 2: feature flags */
+    .ws-flags {
+      display: flex;
+      gap: 1px;
+      margin-top: 6px;
+      flex-wrap: wrap;
+    }
+    .ws-flag {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+      padding: 3px 7px;
+      border-radius: 4px;
+      font-size: 11.5px;
+      color: var(--text-3);
+      cursor: default;
+      transition: color 0.1s;
+    }
+    .ws-flag:hover { color: var(--text-2); }
+    .ws-flag input[type="checkbox"] {
+      width: 12px; height: 12px;
+      accent-color: var(--accent);
+      cursor: pointer;
+      flex-shrink: 0;
+    }
+    .ws-flag.checked { color: var(--text); }
+
+    /* Empty state */
+    .empty-state {
+      text-align: center;
+      padding: 36px 20px;
+      color: var(--text-2);
+    }
+    .empty-state svg { opacity: 0.25; margin-bottom: 10px; display: block; margin-left: auto; margin-right: auto; }
+    .empty-state p { font-size: 13px; }
+    .empty-state small { font-size: 11px; display: block; margin-top: 4px; color: var(--text-2); opacity: 0.7; }
+
+    /* ── Tips ────────────────────────────────────────────────────────────── */
+    .tips-section.hidden { display: none; }
+    .tips-search-bar {
+      position: sticky;
+      top: 0;
+      z-index: 10;
+      display: none;
+      align-items: center;
+      gap: 8px;
+      padding: 8px 12px;
+      margin: -18px -20px 12px;
+      background: var(--surface);
+      border-bottom: 1px solid var(--border);
+    }
+    .tips-search-bar.open { display: flex; }
+    .tips-search-bar input {
+      flex: 1;
+      padding: 5px 9px;
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      background: var(--bg);
+      color: var(--text);
+      font-size: 12.5px;
+      font-family: inherit;
+      outline: none;
+    }
+    .tips-search-bar input:focus { border-color: var(--accent); }
+    .tips-search-close {
+      width: 22px; height: 22px;
+      border: none; background: transparent;
+      color: var(--text-2); cursor: default;
+      display: flex; align-items: center; justify-content: center;
+      border-radius: 4px;
+      font-family: inherit;
+    }
+    .tips-search-close:hover { background: var(--surface-2); }
+    .tips-body {
+      padding: 10px 14px;
+      font-size: 12.5px;
+      line-height: 1.7;
+      color: var(--text-2);
+    }
+    .tips-body p { margin-bottom: 4px; }
+    .tips-body p:last-child { margin-bottom: 0; }
+    .tips-cmd {
+      position: relative;
+      margin: 5px 0 8px;
+    }
+    .tips-cmd code {
+      display: block;
+      font-family: 'SF Mono', Monaco, Menlo, monospace;
+      font-size: 11.5px;
+      color: var(--text);
+      background: var(--bg);
+      padding: 6px 30px 6px 10px;
+      border-radius: 5px;
+      -webkit-user-select: text;
+      user-select: text;
+    }
+    .tips-copy {
+      position: absolute;
+      right: 4px;
+      top: 50%;
+      transform: translateY(-50%);
+      width: 22px; height: 22px;
+      border: none;
+      border-radius: 4px;
+      background: transparent;
+      color: var(--text-3);
+      cursor: default;
+      display: flex; align-items: center; justify-content: center;
+      transition: background 0.1s, color 0.1s;
+    }
+    .tips-copy:hover { background: var(--surface); color: var(--accent); }
+    .tips-copy.copied { color: #22c55e; }
+    .tips-kbd .tip-row {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      padding: 3px 0;
+      font-size: 12.5px;
+      color: var(--text-2);
+    }
+    .tips-kbd kbd {
+      display: inline-block;
+      padding: 1px 6px;
+      font-family: 'SF Mono', Monaco, Menlo, monospace;
+      font-size: 11px;
+      color: var(--text);
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      min-width: 20px;
+      text-align: center;
+    }
+    .tips-kbd .tip-row span { flex: 1; }
+    /* Feature cards with icons */
+    .tips-features { display: flex; flex-direction: column; gap: 12px; }
+    .tip-feature {
+      display: flex;
+      gap: 10px;
+      align-items: flex-start;
+    }
+    .tip-feature-icon {
+      width: 32px; height: 32px;
+      border-radius: 8px;
+      background: var(--bg);
+      display: flex; align-items: center; justify-content: center;
+      flex-shrink: 0;
+    }
+    .tip-feature-title {
+      font-size: 12.5px;
+      font-weight: 600;
+      color: var(--text);
+      margin-bottom: 2px;
+    }
+    .tip-feature p:not(.tip-feature-title) {
+      font-size: 11.5px;
+      color: var(--text-2);
+      line-height: 1.5;
+    }
+
+    /* CLI builder — flat form, no nested borders */
+    .cli-fields {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0;
+      padding: 0;
+      font-size: 13px;
+      color: var(--text);
+      align-items: center;
+    }
+    .cli-field {
+      display: flex;
+      align-items: center;
+      gap: 5px;
+      padding: 6px 14px;
+      min-height: 36px;
+    }
+    .cli-field span { flex-shrink: 0; }
+    .cli-field .req::after { content: '*'; color: var(--accent); margin-left: 2px; }
+    .cli-fields input[type="text"],
+    .cli-fields input[type="number"],
+    .cli-fields select {
+      padding: 3px 7px;
+      border: none;
+      border-bottom: 1px solid var(--border);
+      border-radius: 0;
+      background: transparent;
+      color: var(--text);
+      font-size: 12px;
+      font-family: 'SF Mono', Monaco, Menlo, monospace;
+      outline: none;
+      transition: border-color 0.15s;
+    }
+    .cli-fields input:focus, .cli-fields select:focus { border-bottom-color: var(--accent); box-shadow: none; }
+    .cli-fields input[type="text"] { width: 100%; }
+    .cli-fields input[type="number"] { width: 56px; text-align: center; }
+    .cli-fields select {
+      appearance: none; -webkit-appearance: none; padding-right: 14px;
+      background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='8' height='5'%3E%3Cpath d='M0 0l4 5 4-5z' fill='%238e8e93'/%3E%3C/svg%3E");
+      background-repeat: no-repeat; background-position: right 2px center;
+    }
+    .cli-field-full { flex-basis: 100%; }
+    .cli-field-full input { width: 100%; }
+    /* Feature pills */
+    .cli-pills {
+      display: flex;
+      align-items: center;
+      gap: 5px;
+      padding: 6px 14px;
+      min-height: 36px;
+      flex-wrap: wrap;
+    }
+    .cli-pill {
+      padding: 3px 10px;
+      border-radius: 10px;
+      border: 1px solid var(--border);
+      background: transparent;
+      color: var(--text-2);
+      font-size: 11.5px;
+      font-family: inherit;
+      cursor: default;
+      transition: all 0.12s;
+    }
+    .cli-pills-label { font-size: 12.5px; color: var(--text-2); flex-shrink: 0; margin-right: 4px; }
+    .cli-pill:hover { border-color: var(--accent); color: var(--accent); }
+    .cli-pill.on { background: var(--accent); color: #fff; border-color: var(--accent); }
+    .cli-pill input { display: none; }
+    /* Terminal output block */
+    .cli-terminal {
+      margin-top: 8px;
+      border-radius: var(--radius);
+      overflow: hidden;
+      font-family: 'SF Mono', Monaco, Menlo, monospace;
+      font-size: 12px;
+    }
+    .cli-term-row {
+      display: flex;
+      align-items: center;
+      padding: 7px 10px;
+      gap: 6px;
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-bottom: none;
+    }
+    .cli-term-row:first-child { border-radius: var(--radius) var(--radius) 0 0; }
+    .cli-term-row:last-child { border-bottom: 1px solid var(--border); border-radius: 0 0 var(--radius) var(--radius); }
+    .cli-term-row:only-child { border-radius: var(--radius); border-bottom: 1px solid var(--border); }
+    .cli-term-row .prompt { color: var(--text-3); flex-shrink: 0; font-size: 11px; }
+    .cli-term-row code { flex: 1; min-width: 0; color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; -webkit-user-select: text; user-select: text; }
+    .cli-term-row .tips-copy { position: static; transform: none; width: 22px; height: 22px; }
+
+    /* Web styles editor */
+    .style-row input[type="color"] {
+      width: 28px; height: 22px; border: 1px solid var(--border); border-radius: 4px;
+      padding: 0; cursor: pointer; background: var(--surface);
+    }
+    .style-row input[type="text"] {
+      width: 100px; padding: 2px 6px; border: 1px solid var(--border); border-radius: 4px;
+      background: var(--bg); color: var(--text); font-size: 11px;
+      font-family: 'SF Mono', Monaco, Menlo, monospace;
+    }
+    .style-row select {
+      padding: 2px 6px; border: 1px solid var(--border); border-radius: 4px;
+      background: var(--bg); color: var(--text); font-size: 11px;
+    }
+
+    /* Slim range sliders */
+    input[type="range"] { height: 2px; -webkit-appearance: none; appearance: none; background: var(--border); border-radius: 1px; outline: none; }
+    input[type="range"]::-webkit-slider-thumb { -webkit-appearance: none; width: 12px; height: 12px; border-radius: 50%; background: var(--accent); cursor: pointer; border: none; }
+
+    /* Shortcuts editor */
+    .shortcut-row .sc-key {
+      padding: 3px 8px;
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      background: var(--bg);
+      color: var(--text);
+      font-family: 'SF Mono', Monaco, Menlo, monospace;
+      font-size: 11px;
+      min-width: 60px;
+      text-align: center;
+      cursor: default;
+      transition: border-color 0.15s;
+    }
+    .shortcut-row .sc-key:focus {
+      border-color: var(--accent);
+      outline: none;
+      box-shadow: 0 0 0 2px rgba(0,122,255,0.2);
+    }
+    .shortcut-row .sc-key.recording {
+      border-color: var(--accent);
+      color: var(--accent);
+    }
+
+    /* FAB — floating add button, pinned at bottom-left */
+    .ws-fab {
+      position: fixed;
+      bottom: 18px;
+      left: 18px;
+      width: 40px;
+      height: 40px;
+      border-radius: 50%;
+      border: none;
+      background: var(--accent);
+      color: #fff;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      cursor: default;
+      box-shadow: 0 2px 10px rgba(0,0,0,0.25);
+      transition: background 0.12s, transform 0.12s, box-shadow 0.12s;
+      z-index: 50;
+    }
+    .ws-fab:hover {
+      background: var(--accent-hover);
+      transform: scale(1.08);
+      box-shadow: 0 4px 16px rgba(0,0,0,0.3);
+    }
+    .ws-fab:active { transform: scale(0.96); }
+
+    /* ── About ───────────────────────────────────────────────────────────── */
+    .about {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 28px 40px 24px;
+      text-align: center;
+    }
+    .about-icon {
+      width: 96px; height: 96px;
+      border-radius: 20px;
+      margin-bottom: 16px;
+    }
+    .about h2 { font-size: 22px; font-weight: 700; letter-spacing: -0.3px; }
+    .about .ver { font-size: 12px; color: var(--text-2); margin: 4px 0 14px; }
+    .about-slogan { font-size: 13.5px; color: var(--text); font-style: italic; margin-bottom: 5px; }
+    .about-desc { font-size: 12px; color: var(--text-2); line-height: 1.65; margin-bottom: 22px; }
+
+    .about-actions { display: flex; gap: 10px; margin-bottom: 22px; }
+    .about-btn {
+      display: flex;
+      align-items: center;
+      gap: 7px;
+      padding: 8px 18px;
+      border-radius: var(--radius-sm);
+      border: 1px solid var(--border);
+      background: var(--surface);
+      color: var(--text);
+      font-size: 13px;
+      font-family: inherit;
+      cursor: default;
+      transition: background 0.1s;
+    }
+    .about-btn:hover { background: var(--surface-2); }
+
+    .about-btn.star {
+      color: #92690a;
+      border-color: #e8c469;
+      background: #fffae8;
+    }
+    .about-btn.star:hover { background: #fff4c8; }
+    @media (prefers-color-scheme: dark) {
+      .about-btn.star { background: #2a2000; border-color: #7a5200; color: #ffd966; }
+      .about-btn.star:hover { background: #332800; }
+    }
+
+    .about-links {
+      font-size: 12px;
+      color: var(--text-2);
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .about-links a { color: var(--accent); text-decoration: none; cursor: default; }
+    .about-links a:hover { text-decoration: underline; }
+    .about-links .sep { color: var(--text-3); }
+    .about-attribution {
+      margin-top: 14px;
+      font-size: 10.5px;
+      color: var(--text-3);
+    }
+    .about-attribution a { color: var(--text-3); text-decoration: none; cursor: default; }
+    .about-attribution a:hover { color: var(--text-2); text-decoration: underline; }
+  </style>
+</head>
+<body>
+
+  <nav class="tabbar">
+    <div class="nav-item" data-tab="global">
+      <!-- gear -->
+      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+        <circle cx="12" cy="12" r="3"/>
+        <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>
+      </svg>
+      <span data-i18n="nav.global"></span>
+    </div>
+    <div class="nav-item active" data-tab="workspaces">
+      <!-- folder -->
+      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/>
+      </svg>
+      <span data-i18n="nav.workspaces"></span>
+    </div>
+    <div class="nav-item" data-tab="tips">
+      <!-- book/help -->
+      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/>
+        <path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/>
+      </svg>
+      <span data-i18n="nav.tips"></span>
+    </div>
+    <div class="nav-item" data-tab="about">
+      <!-- info -->
+      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+        <circle cx="12" cy="12" r="10"/>
+        <path d="M12 16v-4M12 8h.01"/>
+      </svg>
+      <span data-i18n="nav.about"></span>
+    </div>
+  </nav>
+
+  <div class="content">
+
+    <!-- ── 全局设置 ──────────────────────────────────────────────────────── -->
+    <div class="tab" id="tab-global">
+
+      <div class="section">
+        <div class="section-title" data-i18n="sec.server"></div>
+        <div class="section-body">
+          <div class="pref-row">
+            <span class="pref-label" data-i18n="pref.port"></span>
+            <div class="pref-control">
+              <div class="seg-ctrl">
+                <input type="radio" name="port_mode" id="port_mode_auto" value="auto">
+                <label for="port_mode_auto" data-i18n="port.auto"></label>
+                <input type="radio" name="port_mode" id="port_mode_spec" value="spec" checked>
+                <label for="port_mode_spec" data-i18n="port.spec"></label>
+              </div>
+              <input type="number" id="port" min="1024" max="65535" value="6419">
+            </div>
+          </div>
+          <div class="pref-row">
+            <span class="pref-label" data-i18n="pref.bind"></span>
+            <div class="pref-control">
+              <select id="host" style="width:240px">
+                <option value="127.0.0.1" data-i18n="bind.local"></option>
+                <option value="0.0.0.0" data-i18n="bind.lan"></option>
+              </select>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="section">
+        <div class="section-title" data-i18n="sec.appearance"></div>
+        <div class="section-body">
+          <div class="pref-row">
+            <span class="pref-label" data-i18n="pref.theme"></span>
+            <div class="pref-control">
+              <select id="theme" style="width:150px">
+                <option value="auto"  data-i18n="theme.auto"></option>
+                <option value="light" data-i18n="theme.light"></option>
+                <option value="dark"  data-i18n="theme.dark"></option>
+              </select>
+            </div>
+          </div>
+          <div class="pref-row">
+            <span class="pref-label"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" style="vertical-align:-2px;margin-right:3px;opacity:.6"><circle cx="12" cy="12" r="10"/><path d="M2 12h20M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg><span data-i18n="pref.lang"></span></span>
+            <div class="pref-control">
+              <select id="language" style="width:150px"></select>
+            </div>
+          </div>
+          <div class="pref-row">
+            <span class="pref-label" data-i18n="pref.web.theme"></span>
+            <div class="pref-control">
+              <select id="web_theme" style="width:150px">
+                <option value="auto" data-i18n="web.auto"></option>
+                <option value="light" data-i18n="theme.light"></option>
+                <option value="dark"  data-i18n="theme.dark"></option>
+              </select>
+            </div>
+          </div>
+          <div class="pref-row">
+            <span class="pref-label"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" style="vertical-align:-2px;margin-right:3px;opacity:.6"><circle cx="12" cy="12" r="10"/><path d="M2 12h20M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg><span data-i18n="pref.web.lang"></span></span>
+            <div class="pref-control">
+              <select id="web_language" style="width:150px">
+              </select>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="section">
+        <div class="section-title" data-i18n="sec.behavior"></div>
+        <div class="section-body">
+          <div class="pref-row">
+            <div class="pref-label">
+              <span data-i18n="pref.tray.desc"></span>
+            </div>
+            <label class="switch">
+              <input type="checkbox" id="tray_resident">
+              <div class="switch-track"></div>
+            </label>
+          </div>
+          <div class="pref-row">
+            <div class="pref-label">
+              <span data-i18n="pref.autoupdate.desc"></span>
+            </div>
+            <label class="switch">
+              <input type="checkbox" id="auto_update">
+              <div class="switch-track"></div>
+            </label>
+          </div>
+          <div class="pref-row">
+            <div class="pref-label">
+              <span data-i18n="pref.channel.desc"></span>
+            </div>
+            <div class="seg-ctrl" style="width:120px">
+              <input type="radio" name="update_channel" id="ch_stable" value="stable">
+              <label for="ch_stable">Stable</label>
+              <input type="radio" name="update_channel" id="ch_rc" value="rc">
+              <label for="ch_rc">RC</label>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="section">
+        <div class="section-title" data-i18n="sec.defaults"></div>
+        <div class="section-body">
+          <div class="pref-row">
+            <span class="pref-label" data-i18n="pref.def.search"></span>
+            <label class="switch"><input type="checkbox" id="default_search"><div class="switch-track"></div></label>
+          </div>
+          <div class="pref-row">
+            <span class="pref-label" data-i18n="pref.def.viewed"></span>
+            <label class="switch"><input type="checkbox" id="default_viewed"><div class="switch-track"></div></label>
+          </div>
+          <div class="pref-row">
+            <span class="pref-label" data-i18n="pref.def.edit"></span>
+            <label class="switch"><input type="checkbox" id="default_edit"><div class="switch-track"></div></label>
+          </div>
+          <div class="pref-row">
+            <span class="pref-label" data-i18n="pref.def.shared"></span>
+            <label class="switch"><input type="checkbox" id="default_shared"><div class="switch-track"></div></label>
+          </div>
+        </div>
+      </div>
+
+      <div class="section">
+        <div class="section-title" data-i18n="sec.database"></div>
+        <div class="section-body">
+          <div class="pref-row" style="flex-wrap:wrap">
+            <div class="pref-label" style="flex:1;min-width:0">
+              <span data-i18n="pref.dbpath.desc"></span>
+              <small id="db_path_display" class="db-path-val" style="display:none"></small>
+            </div>
+            <div class="pref-control">
+              <button class="btn" id="db_path_browse" data-i18n="pref.dbpath.browse" style="font-size:12px"></button>
+              <button class="btn" id="db_path_clear" data-i18n="pref.dbpath.clear" style="font-size:12px;display:none"></button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="section">
+        <div class="section-title" data-i18n="sec.webstyles"></div>
+        <div class="section-body" id="webstyles-editor">
+          <div id="webstyles-list"></div>
+          <div class="pref-row">
+            <span class="pref-label"></span>
+            <button class="btn" id="webstyles-reset" data-i18n="webstyles.reset" style="font-size:11px"></button>
+          </div>
+        </div>
+      </div>
+
+      <div class="section">
+        <div class="section-title" data-i18n="sec.shortcuts"></div>
+        <div class="section-body" id="shortcuts-editor">
+          <div id="shortcuts-list"></div>
+          <div class="pref-row">
+            <span class="pref-label"></span>
+            <button class="btn" id="shortcuts-reset" data-i18n="shortcuts.reset" style="font-size:11px"></button>
+          </div>
+        </div>
+      </div>
+
+    </div>
+
+    <!-- ── 工作区 ────────────────────────────────────────────────────────── -->
+    <div class="tab active" id="tab-workspaces">
+      <div class="ws-list" id="ws-list"></div>
+      <button class="ws-fab" id="ws-add-btn" data-i18n-title="ws.add.btn">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+          <line x1="12" y1="5" x2="12" y2="19"/>
+          <line x1="5" y1="12" x2="19" y2="12"/>
+        </svg>
+      </button>
+    </div>
+
+    <!-- ── 使用帮助 ────────────────────────────────────────────────────── -->
+    <div class="tab" id="tab-tips">
+      <div class="tips-search-bar" id="tips-search-bar">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="opacity:.4;flex-shrink:0">
+          <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
+        </svg>
+        <input type="text" id="tips-filter" data-i18n-placeholder="tips.search.placeholder">
+        <button class="tips-search-close" id="tips-search-close">×</button>
+      </div>
+      <div id="tips-content">
+
+        <!-- 1. 快速上手 -->
+        <div class="section tips-section">
+          <div class="section-title" data-i18n="tips.quickstart"></div>
+          <div class="section-body tips-body">
+            <p data-i18n="tips.quickstart.1"></p>
+            <p data-i18n="tips.quickstart.2"></p>
+            <p id="tips-quickstart-help"></p>
+            <p data-i18n="tips.quickstart.3"></p>
+          </div>
+        </div>
+
+        <!-- 2. 命令行构建器 -->
+        <div class="section tips-section">
+          <div class="section-title" data-i18n="tips.cli"></div>
+          <div class="section-body">
+            <div class="cli-fields">
+              <div class="cli-field cli-field-full">
+                <span class="req" data-i18n="cli.lbl.path"></span>
+                <input type="text" id="cli-path" value="." data-i18n-placeholder="cli.path.ph">
+              </div>
+              <div class="cli-field cli-field-full">
+                <span data-i18n="cli.lbl.server"></span>
+                <select id="cli-host"><option value="">127.0.0.1</option><option value="0.0.0.0">0.0.0.0</option></select>
+                <span style="color:var(--text-3)">:</span>
+                <input type="number" id="cli-port" value="6419">
+              </div>
+              <div class="cli-field cli-field-full">
+                <span data-i18n="cli.lbl.entry"></span>
+                <input type="text" id="cli-qr" data-i18n-placeholder="cli.entry.tip">
+              </div>
+              <div class="cli-field cli-field-full">
+                <span data-i18n="cli.lbl.theme"></span>
+                <select id="cli-theme"><option value="">auto</option><option value="light">light</option><option value="dark">dark</option></select>
+              </div>
+            </div>
+            <div class="cli-pills">
+              <span class="cli-pills-label" data-i18n="cli.lbl.features"></span>
+              <label class="cli-pill"><input type="checkbox" id="cli-search"><span data-i18n="cli.search"></span></label>
+              <label class="cli-pill"><input type="checkbox" id="cli-viewed"><span data-i18n="cli.viewed"></span></label>
+              <label class="cli-pill"><input type="checkbox" id="cli-edit"><span data-i18n="cli.edit"></span></label>
+              <label class="cli-pill"><input type="checkbox" id="cli-shared"><span data-i18n="cli.shared"></span></label>
+              <label class="cli-pill"><input type="checkbox" id="cli-open"><span data-i18n="cli.open"></span></label>
+            </div>
+          </div>
+          <div class="cli-terminal">
+            <div class="cli-term-row">
+              <span class="prompt">$</span>
+              <code id="cli-output">markon .</code>
+              <button class="tips-copy" id="cli-copy"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg></button>
+            </div>
+            <div class="cli-term-row">
+              <span class="prompt">alias</span>
+              <code id="cli-alias-output"></code>
+              <button class="tips-copy" id="cli-alias-copy"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg></button>
+            </div>
+          </div>
+        </div>
+
+        <!-- 4. GUI 集成 (macOS & Windows) -->
+        <div class="section tips-section">
+          <div class="section-title" data-i18n="tips.gui"></div>
+          <div class="section-body tips-body">
+            <p style="font-weight:500;color:var(--text);margin-bottom:2px" data-i18n="tips.gui.mac.title"></p>
+            <p data-i18n="tips.gui.mac.1"></p>
+            <p data-i18n="tips.gui.mac.2"></p>
+            <p data-i18n="tips.gui.mac.3"></p>
+            <p data-i18n="tips.gui.mac.4"></p>
+            <p style="font-weight:500;color:var(--text);margin-top:8px;margin-bottom:2px" data-i18n="tips.gui.win.title"></p>
+            <p data-i18n="tips.gui.win.1"></p>
+            <p data-i18n="tips.gui.win.2"></p>
+          </div>
+        </div>
+
+        <!-- 5. 主要功能概述 -->
+        <div class="section tips-section">
+          <div class="section-title" data-i18n="tips.features"></div>
+          <div class="section-body tips-body tips-features">
+            <div class="tip-feature">
+              <div class="tip-feature-icon">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" stroke-width="1.8"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+              </div>
+              <div>
+                <p class="tip-feature-title" data-i18n="tips.feat.search.title"></p>
+                <p data-i18n="tips.feat.search.desc"></p>
+              </div>
+            </div>
+            <div class="tip-feature">
+              <div class="tip-feature-icon">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" stroke-width="1.8"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+              </div>
+              <div>
+                <p class="tip-feature-title" data-i18n="tips.feat.viewed.title"></p>
+                <p data-i18n="tips.feat.viewed.desc"></p>
+              </div>
+            </div>
+            <div class="tip-feature">
+              <div class="tip-feature-icon">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" stroke-width="1.8"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.12 2.12 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+              </div>
+              <div>
+                <p class="tip-feature-title" data-i18n="tips.feat.edit.title"></p>
+                <p data-i18n="tips.feat.edit.desc"></p>
+              </div>
+            </div>
+            <div class="tip-feature">
+              <div class="tip-feature-icon">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" stroke-width="1.8"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>
+              </div>
+              <div>
+                <p class="tip-feature-title" data-i18n="tips.feat.shared.title"></p>
+                <p data-i18n="tips.feat.shared.desc"></p>
+              </div>
+            </div>
+          </div>
+        </div>
+
+      </div>
+    </div>
+
+    <!-- ── 关于 ──────────────────────────────────────────────────────────── -->
+    <div class="tab" id="tab-about">
+      <div class="about">
+
+        <img class="about-icon" src="icon.png" alt="markon">
+
+        <h2>markon</h2>
+        <div class="ver">
+          <span id="ver-label"></span>
+          <span id="update-status" style="margin-left:6px"></span>
+          <a id="update-restart" href="#" style="display:none;margin-left:4px;color:var(--accent);text-decoration:underline;cursor:default;font-size:12px" data-i18n="update.restart"></a>
+          <button id="update-retry" style="display:none;border:none;background:transparent;color:var(--text-2);cursor:default;padding:2px;border-radius:4px;vertical-align:middle;margin-left:2px" title="">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
+          </button>
+        </div>
+
+        <p class="about-slogan" data-i18n="about.slogan"></p>
+        <p class="about-desc" data-i18n="about.desc"></p>
+
+        <div class="about-actions">
+          <button class="about-btn star" id="btn-star">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
+              <path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/>
+            </svg>
+            <span data-i18n="about.star"></span>
+          </button>
+          <button class="about-btn" id="btn-bug" title=""></button>
+          <button class="about-btn" id="btn-idea" title=""></button>
+          <button class="about-btn" id="btn-ask" title=""></button>
+        </div>
+
+        <div class="about-links">
+          <a href="#" id="link-github">GitHub</a>
+          <span class="sep">·</span>
+          <a href="#" id="link-license">Apache-2.0</a>
+          <span class="sep">·</span>
+          <a href="#" id="link-author">@kookyleo</a>
+        </div>
+
+        <div class="about-attribution">
+          <a href="#" id="link-icon-credit" data-i18n="about.icon.credit"></a>
+        </div>
+
+      </div>
+    </div>
+
+  </div><!-- .content -->
+
+<script type="module">
+  import { i18n, availableLanguages } from './i18n.js';
+  const { invoke } = window.__TAURI__.core;
+
+  // ── Tab navigation ──────────────────────────────────────────────────────
+  document.querySelectorAll('.nav-item').forEach(item => {
+    item.addEventListener('click', () => {
+      document.querySelectorAll('.nav-item').forEach(i => i.classList.remove('active'));
+      document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+      item.classList.add('active');
+      document.getElementById(`tab-${item.dataset.tab}`).classList.add('active');
+      // FAB only visible on workspaces tab
+      document.getElementById('ws-add-btn').style.display = item.dataset.tab === 'workspaces' ? '' : 'none';
+      if (item.dataset.tab === 'workspaces') refreshWorkspaces();
+    });
+  });
+
+  // ── Live-apply framework ────────────────────────────────────────────────
+  // Each key maps to a function that applies that setting to the page immediately.
+  const liveApply = {
+    theme(value) {
+      // "auto" | "light" | "dark" — drives :root[data-theme] for CSS vars.
+      document.documentElement.setAttribute('data-theme', value || 'auto');
+    },
+    language(value, sysLocale) {
+      if (value === 'auto') {
+        setLocale(sysLocale || navigator.language);
+      } else {
+        setLocale(value);
+      }
+    },
+    port_mode(value) {
+      const el = document.getElementById('port');
+      const isAuto = value !== 'spec';
+      el.disabled = isAuto;
+      el.placeholder = isAuto ? T('port.auto.hint') : '';
+    },
+  };
+  function applyAll(s) {
+    liveApply.theme(s.theme);
+    liveApply.language(s.language ?? 'auto', systemLocale);
+    liveApply.port_mode(s.port_mode ?? 'spec');
+  }
+
+  // ── Global settings ─────────────────────────────────────────────────────
+  async function loadSettings() {
+    const s = await invoke('get_settings');
+    const mode = s.port_mode ?? 'spec';
+    document.querySelector(`input[name="port_mode"][value="${mode}"]`).checked = true;
+    document.getElementById('port').value = s.port;
+    document.getElementById('host').value = s.host;
+    document.getElementById('theme').value = s.theme;
+    document.getElementById('language').value = s.language ?? 'auto';
+    document.getElementById('web_theme').value = s.web_theme ?? 'auto';
+    document.getElementById('web_language').value = s.web_language ?? 'auto';
+    updateDbPathDisplay(s.db_path ?? '');
+    document.getElementById('tray_resident').checked = s.tray_resident ?? true;
+    document.getElementById('default_search').checked = s.default_search ?? true;
+    document.getElementById('default_viewed').checked = s.default_viewed ?? true;
+    document.getElementById('default_edit').checked = s.default_edit ?? false;
+    document.getElementById('default_shared').checked = s.default_shared_annotation ?? false;
+    document.getElementById('auto_update').checked = s.auto_update ?? true;
+    const ch = s.update_channel ?? 'stable';
+    const chRadio = document.querySelector(`input[name="update_channel"][value="${ch}"]`);
+    if (chRadio) chRadio.checked = true;
+    currentWebStyles = s.web_styles ?? {};
+    renderWebStyles();
+    currentShortcuts = s.shortcuts ?? {};
+    renderShortcuts();
+    renderHelpTip();
+    applyAll(s);
+  }
+
+  async function saveSettings() {
+    const settings = {
+      port_mode: document.querySelector('input[name="port_mode"]:checked')?.value ?? 'spec',
+      port:      parseInt(document.getElementById('port').value) || 6419,
+      host:      document.getElementById('host').value,
+      theme:     document.getElementById('theme').value,
+      language:  document.getElementById('language').value,
+      web_theme: document.getElementById('web_theme').value,
+      web_language: document.getElementById('web_language').value,
+      db_path:   currentDbPath || null,
+      default_search: document.getElementById('default_search').checked,
+      default_viewed: document.getElementById('default_viewed').checked,
+      default_edit: document.getElementById('default_edit').checked,
+      default_shared_annotation: document.getElementById('default_shared').checked,
+      web_styles: currentWebStyles,
+      shortcuts: currentShortcuts,
+      auto_update: document.getElementById('auto_update').checked,
+      update_channel: document.querySelector('input[name="update_channel"]:checked')?.value ?? 'stable',
+      workspaces: [],  // preserved by Rust command; managed via add/remove/update
+    };
+    await invoke('save_settings', { settings });
+  }
+
+  // ── DB path state & helpers ────────────────────────────────────────────
+  let currentDbPath = '';
+
+  function updateDbPathDisplay(path) {
+    currentDbPath = path || '';
+    const display = document.getElementById('db_path_display');
+    const clearBtn = document.getElementById('db_path_clear');
+    if (currentDbPath) {
+      display.textContent = currentDbPath;
+      display.style.display = '';
+      clearBtn.style.display = '';
+    } else {
+      display.style.display = 'none';
+      clearBtn.style.display = 'none';
+    }
+  }
+
+  document.getElementById('db_path_browse').addEventListener('click', async () => {
+    let path;
+    try { path = await invoke('pick_db_path'); } catch (_) { return; }
+    if (!path) return; // cancelled
+    updateDbPathDisplay(path);
+    saveSettings();
+  });
+
+  document.getElementById('db_path_clear').addEventListener('click', () => {
+    updateDbPathDisplay('');
+    saveSettings();
+  });
+
+  // Wire change handlers: save + live-apply where applicable.
+  ['port', 'host'].forEach(id =>
+    document.getElementById(id).addEventListener('change', saveSettings)
+  );
+  document.getElementById('theme').addEventListener('change', e => {
+    liveApply.theme(e.target.value);
+    saveSettings();
+  });
+  document.getElementById('language').addEventListener('change', e => {
+    liveApply.language(e.target.value, systemLocale);
+    saveSettings();
+  });
+  ['web_theme', 'web_language'].forEach(id =>
+    document.getElementById(id).addEventListener('change', saveSettings)
+  );
+  document.querySelectorAll('input[name="port_mode"]').forEach(radio => {
+    radio.addEventListener('change', () => {
+      liveApply.port_mode(radio.value);
+      saveSettings();
+    });
+  });
+  document.getElementById('tray_resident').addEventListener('change', e => {
+    invoke('set_tray_resident', { value: e.target.checked });
+  });
+  ['default_search', 'default_viewed', 'default_edit', 'default_shared', 'auto_update'].forEach(id =>
+    document.getElementById(id).addEventListener('change', saveSettings)
+  );
+  document.querySelectorAll('input[name="update_channel"]').forEach(r =>
+    r.addEventListener('change', saveSettings)
+  );
+
+  // ── Workspace list ──────────────────────────────────────────────────────
+  async function refreshWorkspaces() {
+    const workspaces = await invoke('get_workspaces');
+    const list = document.getElementById('ws-list');
+    list.innerHTML = '';
+
+    if (workspaces.length === 0) {
+      list.innerHTML = `
+        <div class="empty-state">
+          <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.4">
+            <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/>
+          </svg>
+          <p>${T('ws.empty.title')}</p>
+          <small>${T('ws.empty.desc')}</small>
+        </div>`;
+      return;
+    }
+
+    workspaces.forEach(ws => {
+      const card = document.createElement('div');
+      card.className = 'ws-card';
+      card.dataset.id = ws.id;
+
+      const flagDefs = [
+        { key: 'search',     label: T('ws.flag.search'), tip: ws.enable_search && ws.search_ready ? T('ws.flag.search.ready') : T('ws.flag.search.tip'), checked: ws.enable_search },
+        { key: 'viewed',     label: T('ws.flag.viewed'), tip: T('ws.flag.viewed.tip'), checked: ws.enable_viewed },
+        { key: 'edit',       label: T('ws.flag.edit'),   tip: T('ws.flag.edit.tip'),   checked: ws.enable_edit },
+        { key: 'annotation', label: T('ws.flag.shared'), tip: T('ws.flag.shared.tip'), checked: ws.shared_annotation },
+      ];
+
+      const flagsHtml = flagDefs.map(f =>
+        `<label class="ws-flag ${f.checked ? 'checked' : ''}" title="${f.tip}">
+          <input type="checkbox" data-flag="${f.key}" ${f.checked ? 'checked' : ''}>
+          ${f.label}
+        </label>`
+      ).join('');
+
+      // Shorten path: replace home dir with ~
+      const home = ws.path.match(/^\/Users\/[^/]+/)?.[0] || '';
+      const shortPath = home ? ws.path.replace(home, '~') : ws.path;
+
+      card.innerHTML = `
+        <div class="ws-row-top">
+          <span class="ws-path" title="${ws.path}">${shortPath}</span>
+          <button class="ws-icon-btn open-btn" title="${T('ws.open.tip')}">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/>
+              <polyline points="15 3 21 3 21 9"/>
+              <line x1="10" y1="14" x2="21" y2="3"/>
+            </svg>
+          </button>
+          <button class="ws-icon-btn remove-btn" title="${T('ws.remove')}">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <line x1="18" y1="6" x2="6" y2="18"/>
+              <line x1="6" y1="6" x2="18" y2="18"/>
+            </svg>
+          </button>
+        </div>
+        <div class="ws-flags">${flagsHtml}</div>
+      `;
+
+      // Open in browser
+      card.querySelector('.open-btn').addEventListener('click', () => {
+        invoke('open_url', { url: ws.url });
+      });
+
+      // Remove
+      card.querySelector('.remove-btn').addEventListener('click', async () => {
+        await invoke('remove_workspace', { id: ws.id });
+        refreshWorkspaces();
+      });
+
+      // Toggle flags
+      card.querySelectorAll('.ws-flag input').forEach(cb => {
+        cb.addEventListener('change', async () => {
+          const checks = card.querySelectorAll('.ws-flag input');
+          try {
+            await invoke('update_workspace', {
+              id: ws.id,
+              enableSearch:     checks[0].checked,
+              enableViewed:     checks[1].checked,
+              enableEdit:       checks[2].checked,
+              sharedAnnotation: checks[3].checked,
+            });
+            // Update label style immediately
+            checks.forEach(c => {
+              c.closest('.ws-flag').classList.toggle('checked', c.checked);
+            });
+            // Re-render to update search_ready indicator
+            refreshWorkspaces();
+          } catch (e) { alert(T('ws.update.fail') + ': ' + e); }
+        });
+      });
+
+      list.appendChild(card);
+    });
+  }
+
+  // Add workspace via native folder picker
+  async function addWorkspace() {
+    let path;
+    try {
+      path = await invoke('pick_workspace_dir');
+    } catch (e) {
+      alert(T('ws.add.fail') + ': ' + e);
+      return;
+    }
+    if (!path) return; // user cancelled
+    try {
+      await invoke('add_workspace', {
+        path,
+        enableSearch:     document.getElementById('default_search').checked,
+        enableViewed:     document.getElementById('default_viewed').checked,
+        enableEdit:       document.getElementById('default_edit').checked,
+        sharedAnnotation: document.getElementById('default_shared').checked,
+      });
+      refreshWorkspaces();
+    } catch (e) {
+      alert(T('ws.add.fail') + ': ' + e);
+    }
+  }
+
+  document.getElementById('ws-add-btn').addEventListener('click', addWorkspace);
+
+  // ── About — GitHub Star ──────────────────────────────────────────────────
+  document.getElementById('btn-star').addEventListener('click', async () => {
+    const ok = await invoke('star_repo');
+    if (!ok) {
+      // gh unavailable or failed → open browser
+      invoke('open_url', { url: 'https://github.com/kookyleo/markon' });
+    }
+  });
+  // ── Feedback menu (Bug / Feature / Question) with i18n ──────────────────
+  const REPO = 'kookyleo/markon';
+
+  // Default to English until Rust tells us the system locale.
+  let lang = 'en';
+  let t = i18n[lang];
+  let systemLocale = 'en'; // will be updated from Rust
+
+  function T(key) {
+    return (t[key] ?? i18n.en[key] ?? key);
+  }
+
+  function applyI18n() {
+    document.documentElement.lang = lang === 'zh' ? 'zh-CN' : 'en';
+    document.querySelectorAll('[data-i18n]').forEach(el => {
+      const key = el.getAttribute('data-i18n');
+      const val = T(key);
+      // Allow simple <br> in translations (e.g. about.desc)
+      if (val.includes('<br>')) el.innerHTML = val;
+      else el.textContent = val;
+    });
+    document.querySelectorAll('[data-i18n-placeholder]').forEach(el => {
+      el.placeholder = T(el.getAttribute('data-i18n-placeholder'));
+    });
+    document.querySelectorAll('[data-i18n-title]').forEach(el => {
+      el.title = T(el.getAttribute('data-i18n-title'));
+    });
+    // Feedback buttons (dynamic)
+    ['bug', 'idea', 'ask'].forEach(kind => {
+      const btn = document.getElementById(`btn-${kind}`);
+      if (btn) {
+        btn.innerHTML = `${ICONS[kind]}${t[kind].label}`;
+        btn.title = t[kind].tip;
+      }
+    });
+    // Refresh language dropdown labels (the "auto" text changes with locale)
+    populateLanguageSelects();
+    // Re-render shortcuts and help tip with translated descriptions
+    if (document.getElementById('shortcuts-list')?.children.length) {
+      renderShortcuts();
+      renderHelpTip();
+    }
+  }
+
+  // Populate language dropdowns from i18n meta.
+  function populateLanguageSelects() {
+    ['language', 'web_language'].forEach(id => {
+      const sel = document.getElementById(id);
+      const cur = sel.value || 'auto';
+      sel.innerHTML = '';
+      // "auto" option — label depends on which select
+      const autoLabel = id === 'language' ? T('lang.auto') : T('web.auto');
+      const autoOpt = document.createElement('option');
+      autoOpt.value = 'auto';
+      autoOpt.textContent = autoLabel;
+      sel.appendChild(autoOpt);
+      // Language options from i18n files
+      availableLanguages.forEach(l => {
+        const opt = document.createElement('option');
+        opt.value = l.value;
+        opt.textContent = l.label;
+        sel.appendChild(opt);
+      });
+      sel.value = cur;
+    });
+  }
+
+  function setLocale(localeStr) {
+    const s = (localeStr || 'en').toLowerCase();
+    // Match against available languages: exact value, exact key, or prefix match
+    let newLang = 'en';
+    for (const l of availableLanguages) {
+      if (s === l.value.toLowerCase() || s === l.key) { newLang = l.key; break; }
+      if (s.startsWith(l.key)) { newLang = l.key; }
+    }
+    if (newLang === lang && t === i18n[newLang]) return;
+    lang = newLang;
+    t = i18n[lang];
+    applyI18n();
+  }
+
+  const ICONS = {
+    // Bug — small bug outline
+    bug: `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="8" y="6" width="8" height="14" rx="4"/><path d="M12 6V4M8 6l-2-2M16 6l2-2M8 13H4M16 13h4M8 18l-3 3M16 18l3 3"/></svg>`,
+    // Idea — lightbulb
+    idea: `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18h6M10 22h4M12 2a7 7 0 0 0-4 12.7c.8.7 1.3 1.5 1.5 2.3h5c.2-.8.7-1.6 1.5-2.3A7 7 0 0 0 12 2z"/></svg>`,
+    // Ask — chat with question mark
+    ask: `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/><path d="M9.5 9a2.5 2.5 0 0 1 5 0c0 1.5-2.5 2-2.5 3.5M12 16h.01"/></svg>`,
+  };
+
+  function buildUrl(kind, info) {
+    const base = `https://github.com/${REPO}`;
+    if (kind === 'bug') {
+      // Bug → Issue (the only thing that becomes actionable work immediately)
+      return base + '/issues/new'
+        + '?labels=bug'
+        + '&title=' + encodeURIComponent(t.titleBug)
+        + '&body='  + encodeURIComponent(t.tplBug(info));
+    }
+    if (kind === 'idea') {
+      // Idea → Discussions/Ideas (low-pressure proposal pool, upvotable)
+      return base + '/discussions/new'
+        + '?category=ideas'
+        + '&title=' + encodeURIComponent(t.titleIdea)
+        + '&body='  + encodeURIComponent(t.tplIdea(info));
+    }
+    // Ask → Discussions/Q&A
+    return base + '/discussions/new'
+      + '?category=q-a'
+      + '&title=' + encodeURIComponent(t.titleAsk)
+      + '&body='  + encodeURIComponent(t.tplAsk(info));
+  }
+
+  // Wire the three inline feedback buttons
+  ['bug', 'idea', 'ask'].forEach(kind => {
+    const btn = document.getElementById(`btn-${kind}`);
+    btn.innerHTML = `${ICONS[kind]}${t[kind].label}`;
+    btn.title = t[kind].tip;
+    btn.addEventListener('click', async () => {
+      let info = { app_version: '?', os: '?', os_version: '', arch: '' };
+      try { info = await invoke('get_system_info'); } catch (_) {}
+      invoke('open_url', { url: buildUrl(kind, info) });
+    });
+  });
+  document.getElementById('link-github').addEventListener('click', e => {
+    e.preventDefault();
+    invoke('open_url', { url: 'https://github.com/kookyleo/markon' });
+  });
+  document.getElementById('link-license').addEventListener('click', e => {
+    e.preventDefault();
+    invoke('open_url', { url: 'https://github.com/kookyleo/markon/blob/main/LICENSE' });
+  });
+  document.getElementById('link-author').addEventListener('click', e => {
+    e.preventDefault();
+    invoke('open_url', { url: 'https://x.com/kookyle_' });
+  });
+  document.getElementById('link-icon-credit').addEventListener('click', e => {
+    e.preventDefault();
+    invoke('open_url', { url: 'https://www.flaticon.com/free-icons/markdown' });
+  });
+
+  // ── Init ────────────────────────────────────────────────────────────────
+  // Initial render with default (en), then update once Rust reports system locale.
+  applyI18n();
+  (async () => {
+    try {
+      const info = await invoke('get_system_info');
+      document.getElementById('ver-label').textContent = `v${info.app_version}`;
+      systemLocale = info.locale;
+      // Respect saved language setting; fallback to system locale.
+      const s = await invoke('get_settings');
+      const langPref = s.language ?? 'auto';
+      if (langPref === 'auto') {
+        setLocale(systemLocale);
+      } else {
+        setLocale(langPref);
+      }
+    } catch (_) {}
+    // Load settings AFTER locale is resolved so all UI renders in correct language.
+    await loadSettings();
+    refreshWorkspaces();
+  })();
+  window.addEventListener('focus', refreshWorkspaces);
+
+  // ── Tips: Cmd+F search ───────────────────────────────────────────────
+  const tipsBar = document.getElementById('tips-search-bar');
+  const tipsInput = document.getElementById('tips-filter');
+
+  function openTipsSearch() {
+    tipsBar.classList.add('open');
+    tipsInput.focus();
+  }
+  function closeTipsSearch() {
+    tipsBar.classList.remove('open');
+    tipsInput.value = '';
+    document.querySelectorAll('.tips-section').forEach(s => s.classList.remove('hidden'));
+  }
+
+  tipsInput.addEventListener('input', e => {
+    const q = e.target.value.toLowerCase().trim();
+    document.querySelectorAll('.tips-section').forEach(sec => {
+      if (!q) { sec.classList.remove('hidden'); return; }
+      sec.classList.toggle('hidden', !sec.textContent.toLowerCase().includes(q));
+    });
+  });
+  tipsInput.addEventListener('keydown', e => { if (e.key === 'Escape') closeTipsSearch(); });
+  document.getElementById('tips-search-close').addEventListener('click', closeTipsSearch);
+
+  // Intercept Cmd+F / Ctrl+F when Tips tab is active
+  document.addEventListener('keydown', e => {
+    if ((e.metaKey || e.ctrlKey) && e.key === 'f') {
+      const tipsTab = document.getElementById('tab-tips');
+      if (tipsTab.classList.contains('active')) {
+        e.preventDefault();
+        openTipsSearch();
+      }
+    }
+  });
+
+  // ── CLI command builder ──────────────────────────────────────────────
+  const cliIds = ['cli-path','cli-port','cli-host','cli-theme','cli-qr','cli-search','cli-viewed','cli-edit','cli-shared','cli-open'];
+  const cliOutput = document.getElementById('cli-output');
+  const cliAliasOutput = document.getElementById('cli-alias-output');
+
+  function buildCliCmd() {
+    const path  = document.getElementById('cli-path').value.trim() || '.';
+    const port  = document.getElementById('cli-port').value;
+    const host  = document.getElementById('cli-host').value;
+    const theme = document.getElementById('cli-theme').value;
+    const qr    = document.getElementById('cli-qr').value.trim();
+    let parts = ['markon'];
+    if (port && port !== '6419') parts.push(`-p ${port}`);
+    if (host) parts.push(`--host ${host}`);
+    if (theme) parts.push(`-t ${theme}`);
+    if (qr) parts.push(`--entry ${qr}`);
+    if (document.getElementById('cli-search').checked) parts.push('--enable-search');
+    if (document.getElementById('cli-viewed').checked) parts.push('--enable-viewed');
+    if (document.getElementById('cli-edit').checked)   parts.push('--enable-edit');
+    if (document.getElementById('cli-shared').checked) parts.push('--shared-annotation');
+    if (document.getElementById('cli-open').checked)   parts.push('-b');
+    parts.push(path);
+    const cmd = parts.join(' ');
+    cliOutput.textContent = cmd;
+    // Shell alias: detect rc file at runtime from $SHELL (works for bash/zsh)
+    const alias = `echo "alias mkon='${cmd}'" >> ~/."$(basename "$SHELL")rc"`;
+    cliAliasOutput.textContent = alias;
+    return cmd;
+  }
+
+  cliIds.forEach(id => {
+    const el = document.getElementById(id);
+    el.addEventListener(el.type === 'checkbox' ? 'change' : 'input', () => {
+      // Toggle pill style
+      if (el.type === 'checkbox') {
+        el.closest('.cli-pill')?.classList.toggle('on', el.checked);
+      }
+      buildCliCmd();
+    });
+  });
+  buildCliCmd();
+
+  // Copy button (CLI + any static tips-copy buttons)
+  function attachCopyHandler(btn) {
+    btn.addEventListener('click', () => {
+      const cmd = btn.getAttribute('data-cmd') || cliOutput.textContent;
+      const origHtml = btn.innerHTML;
+      navigator.clipboard.writeText(cmd).then(() => {
+        btn.innerHTML = '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>';
+        btn.classList.add('copied');
+        setTimeout(() => { btn.innerHTML = origHtml; btn.classList.remove('copied'); }, 1500);
+      });
+    });
+  }
+  document.querySelectorAll('.tips-copy').forEach(attachCopyHandler);
+
+  // ── Auto-update check ───────────────────────────────────────────────────
+  // ── Web styles editor ────────────────────────────────────────────────
+  // Semantic design tokens: 4 colors (light + dark) + typography + opacity.
+  // Specific CSS usages (toc-active-bg, accent-hover, etc.) derive automatically.
+  const STYLE_DEFS = [
+    { key: 'primary',  type: 'duocolor', defLight: '#0969da', defDark: '#58a6ff',
+      hint: 'webstyles.primary.hint' },
+    { key: 'muted',    type: 'duocolor', defLight: '#656d76', defDark: '#8b949e',
+      hint: 'webstyles.muted.hint' },
+    { key: 'border',   type: 'duocolor', defLight: '#d1d9e0', defDark: '#30363d',
+      hint: 'webstyles.border.hint' },
+    { key: 'subtle',   type: 'duocolor', defLight: '#f6f8fa', defDark: '#161b22',
+      hint: 'webstyles.subtle.hint' },
+    { key: 'ui-font',          type: 'font',  def: 'system-ui, sans-serif' },
+    { key: 'ui-font-size',     type: 'range', def: '0.80', min: 0.60, max: 1.20, step: 0.05, unit: 'rem' },
+    { key: 'panel-opacity',    type: 'range', def: '0.90', min: 0.30, max: 1.00, step: 0.05, unit: '' },
+  ];
+
+  let currentWebStyles = {};
+
+  function renderWebStyles() {
+    const list = document.getElementById('webstyles-list');
+    list.innerHTML = '';
+    for (const d of STYLE_DEFS) {
+      const row = document.createElement('div');
+      row.className = 'style-row';
+      const label = T('webstyles.' + d.key) || d.key;
+      const hint = d.hint ? T(d.hint) : '';
+
+      if (d.type === 'duocolor') {
+        // Two color pickers: light (☀) + dark (🌙)
+        const valL = currentWebStyles[d.key + '.light'] || d.defLight;
+        const valD = currentWebStyles[d.key + '.dark'] || d.defDark;
+        row.innerHTML = `<span class="st-name">${label}${hint ? '<br><small style="color:var(--text-2);font-size:10px;font-weight:400">' + hint + '</small>' : ''}</span>
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="opacity:.4;flex-shrink:0"><circle cx="12" cy="12" r="5"/><path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"/></svg>
+          <input type="color" value="${valL}" data-key="${d.key}.light">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="opacity:.4;flex-shrink:0"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
+          <input type="color" value="${valD}" data-key="${d.key}.dark">`;
+        row.querySelectorAll('input[type="color"]').forEach(inp => {
+          inp.addEventListener('input', () => {
+            const k = inp.dataset.key;
+            const base = k.replace(/\.(light|dark)$/, '');
+            const mode = k.endsWith('.light') ? 'light' : 'dark';
+            const def = mode === 'light' ? d.defLight : d.defDark;
+            if (inp.value === def) { delete currentWebStyles[k]; } else { currentWebStyles[k] = inp.value; }
+            saveSettings();
+          });
+        });
+        list.appendChild(row);
+        continue;
+      }
+
+      const val = currentWebStyles[d.key] || d.def;
+      if (d.type === 'font') {
+        row.innerHTML = `<span class="st-name">${label}</span>
+          <select data-key="${d.key}" style="flex:1;max-width:180px;font-size:11px"></select>`;
+        const sel = row.querySelector('select');
+        function populateFontSelect(fonts) {
+          sel.innerHTML = '';
+          for (const f of fonts) {
+            const opt = document.createElement('option');
+            opt.value = f; opt.textContent = f;
+            opt.style.fontFamily = f;
+            sel.appendChild(opt);
+          }
+          sel.value = val;
+          if (sel.value !== val) {
+            const opt = document.createElement('option');
+            opt.value = val; opt.textContent = val;
+            sel.insertBefore(opt, sel.firstChild);
+            sel.value = val;
+          }
+        }
+        invoke('list_fonts').then(fonts => {
+          populateFontSelect(['system-ui, sans-serif', ...fonts]);
+        }).catch(() => {
+          populateFontSelect(['system-ui, sans-serif', 'Arial', 'Helvetica Neue', 'Georgia', 'Menlo', 'Monaco', 'Inter']);
+        });
+      } else if (d.type === 'range') {
+        const num = parseFloat(val) || parseFloat(d.def);
+        row.innerHTML = `<span class="st-name">${label}</span>
+          <input type="range" min="${d.min}" max="${d.max}" step="${d.step}" value="${num}" data-key="${d.key}" data-unit="${d.unit}" style="width:100px;accent-color:var(--accent)">
+          <span class="st-val" style="font-size:11px;color:var(--text-2);width:56px;text-align:right;font-family:monospace;flex-shrink:0">${num.toFixed(2)}${d.unit}</span>`;
+      } else {
+        row.innerHTML = `<span class="st-name">${label}</span>
+          <input type="text" value="${val}" data-key="${d.key}">`;
+      }
+      row.querySelectorAll('input, select[data-key]').forEach(inp => {
+        inp.addEventListener(inp.tagName === 'SELECT' ? 'change' : 'input', () => {
+          const k = inp.dataset.key;
+          let v = inp.value;
+          const def = STYLE_DEFS.find(s => s.key === k);
+          // Sync color ↔ text peers
+          if (inp.type === 'color') {
+            const peer = row.querySelector('input[data-peer="color"]');
+            if (peer) peer.value = v;
+          } else if (inp.dataset.peer === 'color') {
+            const peer = row.querySelector('input[type="color"]');
+            if (peer && /^#[0-9a-fA-F]{6}$/.test(v)) peer.value = v;
+          } else if (inp.type === 'range') {
+            const unit = inp.dataset.unit || '';
+            const valSpan = row.querySelector('.st-val');
+            if (valSpan) valSpan.textContent = parseFloat(v).toFixed(2) + unit;
+            v = v + unit;
+          }
+          if (v === def?.def || v === def?.def + (def?.unit || '')) {
+            delete currentWebStyles[k];
+          } else {
+            currentWebStyles[k] = v;
+          }
+          saveSettings();
+        });
+      });
+      list.appendChild(row);
+    }
+  }
+
+  document.getElementById('webstyles-reset').addEventListener('click', () => {
+    currentWebStyles = {};
+    saveSettings();
+    renderWebStyles();
+  });
+
+  // ── Shortcuts editor ─────────────────────────────────────────────────
+  const DEFAULT_SHORTCUTS = {
+    UNDO:           { key: 'z', ctrl: true, shift: false },
+    REDO:           { key: 'z', ctrl: true, shift: true },
+    REDO_ALT:       { key: 'y', ctrl: true, shift: false },
+    ESCAPE:         { key: 'Escape', ctrl: false, shift: false },
+    TOGGLE_TOC:     { key: '\\', ctrl: true, shift: false },
+    HELP:           { key: '?', ctrl: false, shift: false },
+    SEARCH:         { key: '/', ctrl: false, shift: false },
+    PREV_HEADING:   { key: 'k', ctrl: false, shift: false },
+    NEXT_HEADING:   { key: 'j', ctrl: false, shift: false },
+    PREV_ANNOTATION:{ key: 'k', ctrl: true, shift: false },
+    NEXT_ANNOTATION:{ key: 'j', ctrl: true, shift: false },
+    SCROLL_HALF_PAGE_DOWN: { key: ' ', ctrl: false, shift: false },
+    TOGGLE_SECTION_COLLAPSE: { key: 'o', ctrl: false, shift: false },
+    TOGGLE_VIEWED:  { key: 'v', ctrl: false, shift: false },
+    EDIT:           { key: 'e', ctrl: false, shift: false },
+  };
+
+  // i18n keys for shortcut descriptions (reuse web.kbd.* keys)
+  const SHORTCUT_DESC_KEYS = {
+    UNDO: 'web.kbd.undo', REDO: 'web.kbd.redo', REDO_ALT: 'web.kbd.redo.alt',
+    ESCAPE: 'web.kbd.escape', TOGGLE_TOC: 'web.kbd.toc', HELP: 'web.kbd.help',
+    SEARCH: 'web.kbd.search', PREV_HEADING: 'web.kbd.prevheading',
+    NEXT_HEADING: 'web.kbd.nextheading', PREV_ANNOTATION: 'web.kbd.prevanno',
+    NEXT_ANNOTATION: 'web.kbd.nextanno', SCROLL_HALF_PAGE_DOWN: 'web.kbd.scroll',
+    TOGGLE_SECTION_COLLAPSE: 'web.kbd.collapse', TOGGLE_VIEWED: 'web.kbd.viewed',
+    EDIT: 'web.kbd.edit',
+  };
+
+  let currentShortcuts = {}; // user overrides only
+
+  function formatKey(sc) {
+    const parts = [];
+    if (sc.ctrl) parts.push(navigator.platform.includes('Mac') ? '⌘' : 'Ctrl');
+    if (sc.shift) parts.push('Shift');
+    let k = sc.key;
+    if (k === ' ') k = 'Space';
+    else if (k === 'Escape') k = 'ESC';
+    else if (k.length === 1) k = k.toUpperCase();
+    parts.push(k);
+    return parts.join(' + ');
+  }
+
+  function renderHelpTip() {
+    const helpSc = { ...DEFAULT_SHORTCUTS.HELP, ...(currentShortcuts.HELP || {}) };
+    const el = document.getElementById('tips-quickstart-help');
+    if (el) el.innerHTML = T('tips.quickstart.help').replace('{key}', `<kbd>${formatKey(helpSc)}</kbd>`);
+  }
+
+  function renderShortcuts() {
+    const list = document.getElementById('shortcuts-list');
+    list.innerHTML = '';
+    for (const [name, defaults] of Object.entries(DEFAULT_SHORTCUTS)) {
+      const current = { ...defaults, ...(currentShortcuts[name] || {}) };
+      const row = document.createElement('div');
+      row.className = 'shortcut-row';
+      row.innerHTML = `
+        <span class="sc-name">${T(SHORTCUT_DESC_KEYS[name] || name)}</span>
+        <div class="sc-key" tabindex="0" data-name="${name}">${formatKey(current)}</div>
+      `;
+      const keyEl = row.querySelector('.sc-key');
+      keyEl.addEventListener('click', () => startRecording(keyEl, name));
+      keyEl.addEventListener('keydown', (e) => {
+        if (!keyEl.classList.contains('recording')) return;
+        e.preventDefault();
+        e.stopPropagation();
+        // Ignore modifier-only presses — wait for an actual key
+        if (['Meta', 'Control', 'Shift', 'Alt', 'CapsLock'].includes(e.key)) return;
+        if (e.key === 'Escape' && !e.metaKey && !e.ctrlKey && !e.shiftKey) {
+          stopRecording(keyEl, name, null); return;
+        }
+        const sc = { key: e.key, ctrl: e.metaKey || e.ctrlKey, shift: e.shiftKey };
+        stopRecording(keyEl, name, sc);
+      });
+      list.appendChild(row);
+    }
+  }
+
+  function startRecording(el, name) {
+    document.querySelectorAll('.sc-key.recording').forEach(k => {
+      k.classList.remove('recording');
+      const n = k.dataset.name;
+      const cur = { ...DEFAULT_SHORTCUTS[n], ...(currentShortcuts[n] || {}) };
+      k.textContent = formatKey(cur);
+    });
+    el.classList.add('recording');
+    el.textContent = T('shortcuts.record');
+    el.focus();
+  }
+
+  function stopRecording(el, name, sc) {
+    el.classList.remove('recording');
+    if (sc) {
+      const def = DEFAULT_SHORTCUTS[name];
+      if (sc.key === def.key && sc.ctrl === def.ctrl && sc.shift === def.shift) {
+        delete currentShortcuts[name];
+      } else {
+        currentShortcuts[name] = sc;
+      }
+      saveSettings();
+    }
+    const cur = { ...DEFAULT_SHORTCUTS[name], ...(currentShortcuts[name] || {}) };
+    el.textContent = formatKey(cur);
+  }
+
+  document.getElementById('shortcuts-reset').addEventListener('click', () => {
+    currentShortcuts = {};
+    saveSettings();
+    renderShortcuts();
+    renderHelpTip();
+  });
+
+  const statusEl = document.getElementById('update-status');
+  const retryBtn = document.getElementById('update-retry');
+  const restartLink = document.getElementById('update-restart');
+
+  async function doUpdateCheck() {
+    statusEl.textContent = T('update.checking');
+    statusEl.style.color = 'var(--text-2)';
+    retryBtn.style.display = 'none';
+    restartLink.style.display = 'none';
+    try {
+      const r = await invoke('check_for_update');
+      if (r.error) {
+        const is404 = /404|not found/i.test(r.error);
+        statusEl.textContent = is404 ? T('update.unavailable') : T('update.error');
+        statusEl.title = r.error;
+        statusEl.style.color = is404 ? 'var(--text-3)' : 'var(--danger)';
+        retryBtn.style.display = is404 ? 'none' : 'inline';
+      } else if (r.available && r.installed) {
+        statusEl.textContent = T('update.done');
+        statusEl.style.color = 'var(--accent)';
+        restartLink.style.display = 'inline';
+      } else if (r.available) {
+        statusEl.textContent = T('update.found').replace('{v}', r.latest);
+        statusEl.style.color = 'var(--accent)';
+      } else {
+        statusEl.textContent = T('update.latest');
+        statusEl.style.color = 'var(--text-2)';
+        retryBtn.style.display = 'inline';
+      }
+    } catch (e) {
+      statusEl.textContent = T('update.error');
+      statusEl.style.color = 'var(--danger)';
+      retryBtn.style.display = 'inline';
+    }
+  }
+
+  retryBtn.addEventListener('click', doUpdateCheck);
+  restartLink.addEventListener('click', (e) => {
+    e.preventDefault();
+    window.__TAURI__.process.relaunch();
+  });
+
+  // Auto-check on startup if enabled
+  (async () => {
+    try {
+      const s = await invoke('get_settings');
+      if (s.auto_update !== false) doUpdateCheck();
+    } catch (_) {}
+  })();
+</script>
+</body>
+</html>

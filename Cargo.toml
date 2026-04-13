@@ -1,56 +1,17 @@
-[package]
-name = "markon"
-version = "0.7.1"
+[workspace]
+members = ["crates/core", "crates/cli", "crates/gui"]
+resolver = "2"
+
+[profile.release]
+strip = true
+lto = true
+codegen-units = 1
+opt-level = "s"
+
+[workspace.package]
+version = "0.9.0"
 edition = "2021"
 authors = ["kookyleo"]
-description = "A lightweight Markdown renderer with GitHub styling and Medium-like annotations"
 license = "Apache-2.0"
 repository = "https://github.com/kookyleo/markon"
 homepage = "https://github.com/kookyleo/markon"
-keywords = ["markdown", "preview", "github", "mermaid", "toc"]
-categories = ["command-line-utilities", "text-processing", "web-programming"]
-readme = "README.md"
-
-[lib]
-name = "markon"
-path = "src/lib.rs"
-
-[dependencies]
-# Search engine
-tantivy = "0.25"
-tantivy-jieba = "0.17"
-
-# Database for shared annotations
-rusqlite = { version = "0.37.0", features = ["bundled", "limits"] }
-
-clap = { version = "4.5.50", features = ["derive"] }
-axum = { version = "0.8.6", features = ["ws"] }
-futures-util = "0.3.31"
-futures = "0.3.31"
-tokio = { version = "1.48.0", features = ["full"] }
-tokio-stream = "0.1"
-log = "0.4.28"
-uuid = { version = "1.18.1", features = ["v4"] }
-pulldown-cmark = "0.13.0"
-syntect = "5.3.0"
-tower-http = { version = "0.6.6", features = ["fs", "trace"] }
-serde = { version = "1.0", features = ["derive"] }
-serde_json = "1.0"
-rust-embed = "8.8.0"
-tera = "1.20.0"
-emojis = "0.7.2"
-regex = "1.12.2"
-lazy_static = "1.5.0"
-html-escape = "0.2.13"
-urlencoding = "2.1.3"
-qr2term = "0.3.3"
-qrcode = "0.14.1"
-open = "5.3.2"
-dirs = "6.0.0"
-walkdir = "2.5.0"
-notify = "6.1.1"
-local-ip-address = "0.6"
-dialoguer = "0.11"
-
-[dev-dependencies]
-tempfile = "3.17"

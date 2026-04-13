@@ -54,8 +54,8 @@ jobs:
       - name: Check formatting
         run: cargo fmt --all -- --check
 
-  eslint:
-    name: ESLint
+  js:
+    name: JS Tests & Lint
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -68,5 +68,8 @@ jobs:
       - name: Install dependencies
         run: npm install
 
+      - name: Run tests
+        run: npm test
+
       - name: Run ESLint
-        run: npx eslint assets/js/**/*.js
+        run: npx eslint 'crates/core/assets/js/**/*.js'

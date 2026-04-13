@@ -1,0 +1,255 @@
+{
+    // ── Meta ─────────────────────────────────────────────────
+    "_meta.label": "English",
+
+    // ══════════════════════════════════════════════════════════
+    // GUI — Settings window
+    // ══════════════════════════════════════════════════════════
+
+    // ── Navigation ───────────────────────────────────────────
+    "nav.global":     "General",
+    "nav.workspaces": "Workspaces",
+    "nav.tips":       "Tips",
+    "nav.about":      "About",
+
+    // ── General — Server ─────────────────────────────────────
+    "sec.server":     "Server",
+    "pref.port":       "Port",
+    "port.auto":       "Auto",
+    "port.spec":       "Manual",
+    "port.auto.hint":  "Auto-assigned",
+    "pref.bind":       "Bind address",
+    "bind.local":      "127.0.0.1 — Localhost only",
+    "bind.lan":        "0.0.0.0",
+
+    // ── General — Appearance ─────────────────────────────────
+    "sec.appearance": "Appearance",
+    "pref.theme":      "Panel theme",
+    "theme.auto":      "Follow system",
+    "theme.light":     "Light",
+    "theme.dark":      "Dark",
+    "pref.lang":       "Panel language",
+    "lang.auto":       "Follow system",
+    "pref.web.theme":  "Viewer theme",
+    "pref.web.lang":   "Viewer language",
+    "web.auto":        "Follow panel",
+
+    // ── General — Behavior ───────────────────────────────────
+    "sec.behavior":   "Behavior",
+    "pref.tray.desc":  "Hide on window close instead of quitting; reopen via menu bar icon",
+    "sec.webstyles":        "Page styles",
+    "webstyles.reset":      "Reset to defaults",
+    "webstyles.primary":    "Primary",
+    "webstyles.primary.hint": "Links, buttons, TOC selection, accents",
+    "webstyles.muted":      "Muted",
+    "webstyles.muted.hint": "Toolbar text, separators, secondary info",
+    "webstyles.border":     "Border",
+    "webstyles.border.hint":"Heading underlines, panel borders",
+    "webstyles.subtle":     "Subtle",
+    "webstyles.subtle.hint":"Light area backgrounds",
+    "webstyles.ui-font":    "UI font",
+    "webstyles.ui-font-size": "UI font size",
+    "webstyles.panel-opacity": "Panel opacity",
+
+    "sec.shortcuts":        "Keyboard shortcuts",
+    "shortcuts.reset":      "Reset to defaults",
+    "shortcuts.record":     "Press new shortcut…",
+    "pref.autoupdate.desc": "Check GitHub for new versions when idle and install automatically",
+    "pref.channel.desc":    "Update channel (Stable = promoted releases only, RC = release candidates)",
+
+    // ── General — New workspace defaults ─────────────────────
+    "sec.defaults":         "Features enabled by default for new workspaces",
+    "pref.def.search":      "Search",
+    "pref.def.viewed":      "Viewed tracking",
+    "pref.def.edit":        "Edit",
+    "pref.def.shared":      "Shared notes",
+
+    // ── General — Database ───────────────────────────────────
+    "sec.database":   "Database",
+    "pref.dbpath.desc":"Persistent storage for annotations and viewed state (SQLite)",
+    "pref.dbpath.browse": "Browse…",
+    "pref.dbpath.clear":  "Reset",
+
+    // ── Auto-update status ───────────────────────────────────
+    "update.checking": "Checking…",
+    "update.latest":   "Up to date",
+    "update.found":    "New version v{v} found, installing…",
+    "update.done":     "Update installed, restart to apply",
+    "update.restart":  "Restart now",
+    "update.error":    "Check failed",
+    "update.unavailable": "No releases yet",
+
+    // ── Workspace list ───────────────────────────────────────
+    "ws.add.btn":     "Add workspace…",
+    "ws.open.tip":    "Open in browser",
+    "ws.remove":      "Remove from list",
+    "ws.flag.search": "Search",
+    "ws.flag.search.tip": "Build a full-text search index for file contents",
+    "ws.flag.search.ready": "Search index is ready",
+    "ws.flag.viewed": "Viewed tracking",
+    "ws.flag.viewed.tip": "Track reading progress at block level",
+    "ws.flag.edit":   "Edit",
+    "ws.flag.edit.tip": "Allow editing Markdown files in the browser",
+    "ws.flag.shared": "Shared notes",
+    "ws.flag.shared.tip": "Sync annotations and viewed state across devices (requires SQLite)",
+    "ws.empty.title": "No workspaces yet",
+    "ws.empty.desc":  "Click the button below to pick a folder, or open one from Finder",
+    "ws.update.fail": "Update failed",
+    "ws.add.fail":    "Add failed",
+
+    // ── Tips — Quick start ───────────────────────────────────
+    "tips.search.placeholder": "Search tips…",
+    "tips.quickstart": "Quick start",
+    "tips.quickstart.1": "1. Click the + button in Workspaces to add a folder with Markdown files",
+    "tips.quickstart.2": "2. Click the ↗ icon to view rendered output in your browser",
+    "tips.quickstart.help": "2.1 Press {key} in the browser page to see all keyboard shortcuts and available features",
+    "tips.quickstart.3": "3. Configure default features for new workspaces in General",
+
+
+    // ── Tips — Command builder ───────────────────────────────
+    "tips.cli":        "Command builder",
+    "cli.lbl.path":    "Target dir/file",
+    "cli.lbl.server":  "Listen",
+    "cli.lbl.entry":   "Entry",
+    "cli.lbl.theme":   "Page theme",
+    "cli.lbl.features":"Features",
+    "cli.path.ph":     "Directory or file path",
+    "cli.entry.tip":   "Proxy domain / public IP for QR code & external access (optional)",
+    "cli.search":      "Search",
+    "cli.viewed":      "Viewed tracking",
+    "cli.edit":        "Edit",
+    "cli.shared":      "Shared notes",
+    "cli.open":        "Auto-open browser",
+
+    // ── Tips — Desktop integration ───────────────────────────
+    "tips.gui":        "Desktop integration",
+    "tips.gui.mac.title": "macOS",
+    "tips.gui.mac.1":  "· Drag Markon.app to the Finder toolbar — click to open the current folder",
+    "tips.gui.mac.2":  "· Right-click a .md file → Open With → Markon to preview in browser",
+    "tips.gui.mac.3":  "· Drag a folder onto the Markon icon in the Dock to add it quickly",
+    "tips.gui.mac.4":  "· Menu bar resident mode: close window but keep the menu bar icon active",
+    "tips.gui.win.title": "Windows",
+    "tips.gui.win.1":  "· Right-click a .md file → Open With → choose Markon",
+    "tips.gui.win.2":  "· After install, use the \"Preview with Markon\" context menu entry",
+
+    // ── Tips — Key features ──────────────────────────────────
+    "tips.features":   "Key features",
+    "tips.feat.search.title": "Full-text search",
+    "tips.feat.search.desc":  "Tantivy-based index with CJK tokenization. Press / in the browser to search file contents in real time",
+    "tips.feat.viewed.title": "Viewed tracking",
+    "tips.feat.viewed.desc":  "Tracks reading progress at block level, auto-saved. Jumps to last position when reopening a document",
+    "tips.feat.edit.title":   "Live editing",
+    "tips.feat.edit.desc":    "Edit Markdown source files directly in the browser. Syntax highlighting + live preview, changes saved on the fly",
+    "tips.feat.shared.title": "Shared notes",
+    "tips.feat.shared.desc":  "Sync annotations and viewed state via SQLite DB. Ideal for multi-device setups or team collaboration",
+
+    // ── About ────────────────────────────────────────────────
+    "about.slogan":   "Turn your markdown on.",
+    "about.desc":     "A lightweight Markdown renderer with GitHub-style layout, full-text search, annotations and multi-device sync.",
+    "about.icon.credit": "Icon by brajaomar_j — Flaticon",
+    "about.star":     "Star on GitHub",
+
+    // ── Feedback buttons ─────────────────────────────────────
+    "feedback.bug.label": "Bug",
+    "feedback.bug.tip":   "Report a crash or incorrect behavior",
+    "feedback.idea.label": "Idea",
+    "feedback.idea.tip":   "Suggest a new feature or improvement",
+    "feedback.ask.label": "Ask",
+    "feedback.ask.tip":   "Questions, usage help",
+
+    // ── Issue / Discussion templates (placeholders: {app_version} {os} {os_version} {arch} {ua})
+    "tpl.bug": "## Description\n<!-- A clear description of the bug -->\n\n\n## Steps to reproduce\n1.\n2.\n3.\n\n## Expected behavior\n\n\n## Actual behavior\n\n\n## Environment\n- **Markon**: v{app_version}\n- **OS**: {os} {os_version} ({arch})\n- **UA**: {ua}\n",
+    "tpl.idea": "## Summary\n<!-- What would you like to see? -->\n\n\n## Motivation / Use case\n<!-- What problem does this solve for you? -->\n\n\n## Possible implementation (optional)\n\n\n---\n*Markon v{app_version} · {os} {os_version}*\n",
+    "tpl.ask": "## Question\n\n\n\n## What have you tried (optional)\n\n\n\n---\n*Markon v{app_version} · {os} {os_version}*\n",
+    "tpl.title.bug":  "[Bug] ",
+    "tpl.title.idea": "",
+    "tpl.title.ask":  "",
+
+    // ── System tray menu ─────────────────────────────────────
+    "tray.show": "Show Main Window…",
+    "tray.quit":     "Quit Markon",
+
+    // ══════════════════════════════════════════════════════════
+    // Web — Browser-side rendered pages
+    // ══════════════════════════════════════════════════════════
+
+    // ── Page structure ───────────────────────────────────────
+    "web.title.dir":       "Directory Listing - markon",
+    "web.dir.heading":     "Directory Listing",
+    "web.dir.current":     "Current directory:",
+    "web.toc.title":       "Table of Contents",
+    "web.back":            "← Back to file list",
+    "web.search":          "Search",
+    "web.search.placeholder": "Search…",
+    "web.search.noresult": "No results found",
+    "web.search.esc":     "to close",
+    "web.kbd.link":        "Keyboard Shortcuts (?)",
+    "web.footer":          "(L) Generated by AI, Gently approved by kookyleo 👀",
+
+    // ── Annotations / Highlights ─────────────────────────────
+    "web.annot.unhighlight": "Unhighlight",
+    "web.annot.note":       "Note",
+    "web.annot.orange":     "Orange",
+    "web.annot.green":      "Green",
+    "web.annot.yellow":     "Yellow",
+    "web.annot.strike":     "Strike",
+    "web.annot.clear":      "Clear Annotations in this page",
+    "web.note.edit":        "Edit note",
+    "web.note.delete":      "Delete note",
+
+    // ── Modals ───────────────────────────────────────────────
+    "web.modal.note.placeholder": "Enter your note…",
+    "web.modal.cancel":     "Cancel",
+    "web.modal.save":       "Save",
+    "web.modal.ok":         "OK",
+    "web.modal.confirm":    "Are you sure?",
+
+    // ── Editor ───────────────────────────────────────────────
+    "web.editor.save":      "Save Changes",
+    "web.editor.save.tip":  "Save Changes (Ctrl+S)",
+    "web.editor.close.tip": "Close (Esc)",
+    "web.editor.err.readonly":  "Cannot save: File is read-only. Please check file permissions.",
+    "web.editor.err.denied":   "Cannot save: Access denied. File is outside allowed directory.",
+    "web.editor.err.disabled": "Edit feature is not enabled. Please start server with --enable-edit.",
+    "web.editor.err.notmd":    "Only Markdown files (.md) can be edited.",
+    "web.editor.err.save":     "Save failed: ",
+
+    // ── Viewed tracking ──────────────────────────────────────
+    "web.viewed":           "Viewed",
+    "web.viewed.mark":      "Mark as viewed to collapse this section",
+    "web.viewed.all":       "All Viewed",
+    "web.viewed.all.tip":   "Mark all sections as viewed",
+    "web.viewed.collapse":  "Collapse",
+    "web.viewed.expand":    "Expand",
+    "web.viewed.collapseall": "Collapse All",
+    "web.viewed.expandall": "Expand All",
+    "web.viewed.print":     "Print",
+    "web.viewed.print.tip": "Print this section",
+    "web.viewed.print.blocked":    "The browser blocked auto-print.\n\nClick OK to retry, or Cancel to close.",
+    "web.viewed.print.popup":      "Please allow popups to print sections.\n\nOr use the browser menu Print to print the full page.",
+    "web.viewed.print.failed":     "Could not open print window. Please use the browser menu Print.",
+
+    // ── Keyboard shortcuts panel ─────────────────────────────
+    "web.kbd.title":        "Keyboard Shortcuts",
+    "web.kbd.cat.core":     "Core",
+    "web.kbd.cat.nav":      "Navigation",
+    "web.kbd.cat.search":   "Search (when enabled)",
+    "web.kbd.cat.edit":     "Edit (when enabled)",
+    "web.kbd.cat.viewed":   "Viewed (when enabled)",
+    "web.kbd.footer":       "Press ESC or ? to close",
+    "web.kbd.undo":         "Undo last operation",
+    "web.kbd.redo":         "Redo last undone operation",
+    "web.kbd.redo.alt":     "Redo (alternative)",
+    "web.kbd.escape":       "Close popups/Clear selection",
+    "web.kbd.toc":          "Toggle/Focus TOC",
+    "web.kbd.help":         "Show keyboard shortcuts help",
+    "web.kbd.search":       "Open search",
+    "web.kbd.prevheading":  "Jump to previous heading",
+    "web.kbd.nextheading":  "Jump to next heading",
+    "web.kbd.prevanno":     "Jump to previous annotation",
+    "web.kbd.nextanno":     "Jump to next annotation",
+    "web.kbd.scroll":       "Scroll 1/3 page down (ESC to stop)",
+    "web.kbd.collapse":     "Toggle current section collapse/expand",
+    "web.kbd.viewed":       "Toggle current section viewed state",
+    "web.kbd.edit":         "Edit current Markdown file"
+}

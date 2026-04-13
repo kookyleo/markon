@@ -1,0 +1,1534 @@
+<!DOCTYPE html>
+<html lang="en" dir="auto">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="file-path" content="{{ file_path }}">
+    <meta name="workspace-id" content="{{ workspace_id }}">
+    <meta name="shared-annotation" content="{{ shared_annotation }}">
+    <meta name="enable-viewed" content="{{ enable_viewed }}">
+    <meta name="enable-search" content="{{ enable_search }}">
+    <meta name="enable-edit" content="{{ enable_edit }}">
+    <title>{{ title }}</title>
+    <link rel="icon" type="image/svg+xml" href="/_/favicon.svg">
+    <link rel="alternate icon" href="/_/favicon.ico">
+    {% if theme == "auto" %}
+    <link rel="stylesheet" href="/_/css/github-markdown-light.css" media="(prefers-color-scheme: light)">
+    <link rel="stylesheet" href="/_/css/github-markdown-dark.css" media="(prefers-color-scheme: dark)">
+    {% else %}
+    <link rel="stylesheet" href="/_/css/github-markdown-{{ theme }}.css">
+    {% endif %}
+    <link rel="stylesheet" href="/_/css/github-print.css" media="print">
+    <link rel="stylesheet" href="/_/css/editor.css">
+    <style>
+        /* ========================================
+           BASE LAYOUT
+           ======================================== */
+        body {
+            box-sizing: border-box;
+            min-width: 200px;
+            max-width: 980px;
+            margin: 0 auto;
+            padding: 45px;
+        }
+
+        @media (max-width: 768px) {
+            body {
+                padding: 45px 20px;
+            }
+        }
+
+        a:visited {
+            color: inherit;
+        }
+
+        /* Body theme colors */
+        {% if theme == "dark" %}
+        body {
+            background-color: #0d1117;
+            color: #f0f6fc;
+        }
+        @media (min-width: 1401px) {
+            #main-content { background-color: #0d1117; }
+        }
+        {% elif theme == "light" %}
+        body {
+            background-color: #ffffff;
+            color: #1f2328;
+        }
+        @media (min-width: 1401px) {
+            #main-content { background-color: #ffffff; }
+        }
+        {% else %}
+        @media (prefers-color-scheme: dark) {
+            body {
+                background-color: #0d1117;
+                color: #f0f6fc;
+            }
+        }
+        @media (prefers-color-scheme: light) {
+            body {
+                background-color: #ffffff;
+                color: #1f2328;
+            }
+        }
+        @media (prefers-color-scheme: dark) and (min-width: 1401px) {
+            #main-content { background-color: #0d1117; }
+        }
+        @media (prefers-color-scheme: light) and (min-width: 1401px) {
+            #main-content { background-color: #ffffff; }
+        }
+        {% endif %}
+
+        /* ========================================
+           NAVIGATION COMPONENTS
+           ======================================== */
+
+        /* Back Link */
+        .back-link {
+            margin-bottom: 20px;
+            display: block;
+        }
+
+        .back-link a {
+            color: #0969da;
+            text-decoration: none;
+        }
+
+        .back-link a:hover {
+            text-decoration: underline;
+        }
+
+        {% if theme == "dark" %}
+        .back-link a {
+            color: #58a6ff;
+        }
+        {% endif %}
+
+        /* Footer */
+        .footer {
+            margin-top: 10px;
+            padding-top: 20px;
+            font-size: 0.9rem;
+            text-align: left;
+            margin-left: -1px;
+        }
+
+        .footer a {
+            text-decoration: none;
+            color: #8b949e;
+        }
+
+        .footer a:visited {
+            color: #8b949e;
+        }
+
+        .footer a:hover {
+            text-decoration: underline;
+        }
+
+        .footer-separator {
+            color: #8b949e;
+            margin: 0 8px;
+        }
+
+        .footer-clear-link {
+            color: #8b949e;
+            text-decoration: none;
+            cursor: pointer;
+            transition: color 0.2s;
+        }
+
+        .footer-clear-link:visited {
+            color: #8b949e;
+        }
+
+        .footer-clear-link:hover {
+            color: #dc3545;
+            text-decoration: underline;
+        }
+
+        {% if theme == "dark" %}
+        .footer {
+            color: #8b949e;
+        }
+        .footer a,
+        .footer a:visited {
+            color: #8b949e;
+        }
+        {% elif theme == "light" %}
+        .footer {
+            color: #656d76;
+        }
+        .footer a,
+        .footer a:visited {
+            color: #656d76;
+        }
+        {% else %}
+        @media (prefers-color-scheme: dark) {
+            .footer {
+                color: #8b949e;
+            }
+            .footer a,
+            .footer a:visited {
+                color: #8b949e;
+            }
+        }
+        @media (prefers-color-scheme: light) {
+            .footer {
+                color: #656d76;
+            }
+            .footer a,
+            .footer a:visited {
+                color: #656d76;
+            }
+        }
+        {% endif %}
+
+        /* ========================================
+           TABLE OF CONTENTS
+           ======================================== */
+
+        /* TOC Base Styles */
+        .toc {
+            padding: 15px;
+            border-radius: 6px;
+            font-size: 0.85rem;
+            opacity: var(--markon-panel-opacity, 0.9);
+        }
+
+        .toc-title {
+            font-weight: 600;
+            margin-bottom: 10px;
+            font-size: 0.9rem;
+        }
+
+        .toc-list {
+            list-style: none;
+            padding: 0 0 40vh 0;
+            margin: 0;
+        }
+
+        .toc-item {
+            padding: 4px 0;
+        }
+
+        .toc-item a {
+            text-decoration: none;
+            display: block;
+            padding: 2px 0;
+            transition: none;
+        }
+
+        .toc-item a:hover {
+            text-decoration: underline;
+        }
+
+        /* Viewport highlight: rendered as an absolute overlay that slides smoothly */
+        .toc-list {
+            position: relative;
+        }
+        .toc-viewport-highlight {
+            position: absolute;
+            left: 0; right: 0;
+            background-color: var(--markon-primary-bg);
+            transition: top 0.25s ease, height 0.25s ease;
+            pointer-events: none;
+            z-index: 0;
+        }
+        .toc-item {
+            position: relative;
+            z-index: 1;
+        }
+        /* User-selected section */
+        .toc-item a.active {
+            color: var(--markon-primary);
+        }
+
+        /* Indent based on heading level */
+        .toc-level-1 { padding-left: 0; }
+        .toc-level-2 { padding-left: 12px; }
+        .toc-level-3 { padding-left: 24px; }
+        .toc-level-4 { padding-left: 36px; }
+        .toc-level-5 { padding-left: 48px; }
+        .toc-level-6 { padding-left: 60px; }
+
+        /* TOC Responsive Layout */
+        @media (min-width: 1401px) {
+            .toc {
+                position: fixed;
+                left: 0;
+                top: 0;
+                width: 280px;
+                max-height: 100vh;
+                overflow-y: auto;
+                border: 1px solid transparent; /* Always have border for consistent width */
+            }
+        }
+
+        @media (max-width: 1400px) {
+            .toc {
+                position: relative;
+                margin-bottom: 30px;
+                max-width: 100%;
+            }
+        }
+
+        /* Z-index stacking: article and #toc-container are siblings in body,
+           competing directly in the root stacking context. Cursor location wins. */
+        @media (min-width: 1401px) {
+            article.markdown-body {
+                position: relative;
+                z-index: 2;
+            }
+            #toc-container {
+                position: relative;
+                z-index: 1;
+            }
+            #toc-container:hover {
+                z-index: 3;
+            }
+        }
+
+        /* TOC Theme Colors */
+        {% if theme == "dark" %}
+        .toc-title {
+            color: #f0f6fc;
+        }
+        .toc-item a {
+            color: #8b949e;
+        }
+        .toc-item a:hover {
+            color: #58a6ff;
+        }
+        }
+        {% elif theme == "light" %}
+        .toc-title {
+            color: #1f2328;
+        }
+        .toc-item a {
+            color: #656d76;
+        }
+        .toc-item a:hover {
+            color: #0969da;
+        }
+        }
+        {% else %}
+        @media (prefers-color-scheme: dark) {
+            .toc-title {
+                color: #f0f6fc;
+            }
+            .toc-item a {
+                color: #8b949e;
+            }
+            .toc-item a:hover {
+                color: #58a6ff;
+            }
+            }
+        }
+        @media (prefers-color-scheme: light) {
+            .toc-title {
+                color: #1f2328;
+            }
+            .toc-item a {
+                color: #656d76;
+            }
+            .toc-item a:hover {
+                color: #0969da;
+            }
+            }
+        }
+        {% endif %}
+
+        /* TOC Icon & Floating Menu (Narrow Screens) */
+        {% if theme == "dark" %}
+        #toc-icon {
+            background-color: #2d333b;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.5);
+        }
+        #toc-icon span {
+            background-color: #adbac7;
+        }
+        /* Floating TOC menu on narrow screens */
+        @media (max-width: 1400px) {
+            .toc {
+                background-color: #22272e;
+                border: 1px solid #444c56;
+                box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
+            }
+        }
+        /* TOC background on wide screens (matches body, ensures overlap is clean) */
+        @media (min-width: 1401px) {
+            .toc {
+                background-color: #0d1117;
+            }
+            #toc-container.toc-nav-active .toc {
+                background-color: #22272e;
+                border: 1px solid #444c56;
+                box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
+                border-radius: 6px;
+            }
+        }
+        {% elif theme == "light" %}
+        #toc-icon {
+            background-color: #f6f8fa;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.2);
+        }
+        #toc-icon span {
+            background-color: #1f2328;
+        }
+        /* Floating TOC menu on narrow screens - keep light background */
+        @media (max-width: 1400px) {
+            .toc {
+                background-color: #ffffff;
+                border: 1px solid #d0d7de;
+                box-shadow: 0 8px 24px rgba(140, 149, 159, 0.2);
+            }
+        }
+        /* TOC background on wide screens (matches body, ensures overlap is clean) */
+        @media (min-width: 1401px) {
+            .toc {
+                background-color: #ffffff;
+            }
+            #toc-container.toc-nav-active .toc {
+                background-color: #ffffff;
+                border: 1px solid #d0d7de;
+                box-shadow: 0 8px 24px rgba(140, 149, 159, 0.2);
+                border-radius: 6px;
+            }
+        }
+        {% else %}
+        /* Auto theme */
+        @media (prefers-color-scheme: dark) {
+            #toc-icon {
+                background-color: #2d333b;
+                box-shadow: 0 2px 10px rgba(0, 0, 0, 0.5);
+            }
+            #toc-icon span {
+                background-color: #adbac7;
+            }
+        }
+        @media (prefers-color-scheme: light) {
+            #toc-icon {
+                background-color: #f6f8fa;
+                box-shadow: 0 2px 10px rgba(0, 0, 0, 0.2);
+            }
+            #toc-icon span {
+                background-color: #1f2328;
+            }
+        }
+        /* Floating TOC menu on narrow screens */
+        @media (prefers-color-scheme: dark) and (max-width: 1400px) {
+            .toc {
+                background-color: #22272e;
+                border: 1px solid #444c56;
+                box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
+            }
+        }
+        @media (prefers-color-scheme: light) and (max-width: 1400px) {
+            .toc {
+                background-color: #ffffff;
+                border: 1px solid #d0d7de;
+                box-shadow: 0 8px 24px rgba(140, 149, 159, 0.2);
+            }
+        }
+        /* TOC background on wide screens (matches body, ensures overlap is clean) */
+        @media (prefers-color-scheme: dark) and (min-width: 1401px) {
+            .toc {
+                background-color: #0d1117;
+            }
+            #toc-container.toc-nav-active .toc {
+                background-color: #22272e;
+                border: 1px solid #444c56;
+                box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
+                border-radius: 6px;
+            }
+        }
+        @media (prefers-color-scheme: light) and (min-width: 1401px) {
+            .toc {
+                background-color: #ffffff;
+            }
+            #toc-container.toc-nav-active .toc {
+                background-color: #ffffff;
+                border: 1px solid #d0d7de;
+                box-shadow: 0 8px 24px rgba(140, 149, 159, 0.2);
+                border-radius: 6px;
+            }
+        }
+        {% endif %}
+
+        /* ========================================
+           EDITOR UI COMPONENTS (Theme Overrides)
+           Note: Base styles are in editor.css
+           ======================================== */
+
+        {% if theme == "dark" %}
+        /* Selection Popover */
+        .selection-popover {
+            background-color: #21262d;
+            color: #f0f6fc;
+            box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+        }
+        .selection-popover button {
+            color: #f0f6fc;
+        }
+        .selection-popover button:hover {
+            background-color: #30363d;
+        }
+        .popover-separator {
+            color: #484f58;
+        }
+
+        /* Note input modal */
+        .note-input-modal {
+            background: #161b22;
+            border: 1px solid #30363d;
+            box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+        }
+        .note-textarea {
+            background: #0d1117;
+            border: 1px solid #30363d;
+            color: #f0f6fc;
+        }
+        .note-textarea:focus {
+            border-color: #58a6ff;
+            box-shadow: 0 0 0 3px rgba(88, 166, 255, 0.15);
+        }
+        .note-input-actions button {
+            background: #21262d;
+            border: 1px solid #30363d;
+            color: #f0f6fc;
+        }
+        .note-input-actions button:hover {
+            background: #30363d;
+        }
+        .note-save {
+            background: #238636 !important;
+            border-color: #238636 !important;
+        }
+        .note-save:hover {
+            background: #2ea043 !important;
+        }
+
+        /* Note cards */
+        .note-card-margin {
+            background: #161b22;
+            border-left: 3px solid #58a6ff;
+            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
+        }
+        .note-card-margin:hover {
+            background: #1c2128;
+            border-left-color: #58a6ff;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.4);
+        }
+        .note-card-margin.highlight-active {
+            border: 2px solid #58a6ff;
+            border-left: 3px solid #58a6ff;
+            box-shadow: 0 0 0 3px rgba(88, 166, 255, 0.15);
+        }
+        .note-content {
+            color: #f0f6fc;
+        }
+
+        /* Confirm dialog */
+        .confirm-dialog {
+            background: #161b22;
+            border: 1px solid #30363d;
+            box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+        }
+        .confirm-message {
+            color: #f0f6fc;
+        }
+        .confirm-actions button {
+            background: #21262d;
+            border: 1px solid #30363d;
+            color: #f0f6fc;
+        }
+        .confirm-actions button:hover {
+            background: #30363d;
+        }
+
+        /* Note popup */
+        .note-popup {
+            background: #161b22;
+            border: 1px solid #58a6ff;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
+        }
+
+        /* Has-note highlight */
+        .has-note {
+            background-color: rgba(187, 128, 9, 0.15);
+            border-bottom: 2px dotted rgba(187, 128, 9, 0.4);
+        }
+        .has-note:hover {
+            background-color: rgba(187, 128, 9, 0.25);
+            border-bottom-color: rgba(187, 128, 9, 0.6);
+        }
+        .has-note.highlight-active {
+            background-color: rgba(88, 166, 255, 0.15);
+            border-bottom: 2px solid #58a6ff;
+            box-shadow: 0 0 0 2px rgba(88, 166, 255, 0.15);
+        }
+
+        /* Highlight colors for dark mode - softer, more readable */
+        .highlight-orange {
+            background-color: rgba(224, 108, 43, 0.35);
+        }
+        .highlight-green {
+            background-color: rgba(46, 160, 67, 0.35);
+        }
+        .highlight-yellow {
+            background-color: rgba(187, 128, 9, 0.35);
+        }
+
+        /* Link colors in markdown body */
+        .markdown-body a:link,
+        .markdown-body a:visited,
+        .markdown-body a:hover,
+        .markdown-body a:active,
+        .markdown-body a:focus {
+            color: #58a6ff !important;
+        }
+
+        /* Viewed toolbar - dark theme */
+        .viewed-toolbar {
+            border-color: #30363d;
+            color: #8b949e;
+        }
+        .viewed-toolbar a {
+            color: #58a6ff;
+        }
+
+        /* Remove H1 bottom margin when followed by viewed toolbar */
+        .markdown-body h1:has(+ .viewed-toolbar) {
+            margin-bottom: 0;
+        }
+
+        /* Editor modal - dark theme */
+        .editor-modal {
+            background-color: #0d1117;
+        }
+        .editor-header {
+            background-color: #161b22;
+            border-color: #30363d;
+        }
+        .editor-close {
+            color: #8b949e;
+        }
+        .editor-file-name {
+            color: #f0f6fc;
+        }
+        .editor-close:hover {
+            color: #f0f6fc;
+        }
+        .editor-line-numbers {
+            background-color: #0d1117;
+            border-right-color: #30363d;
+            color: #6e7681;
+        }
+        .editor-highlight-layer {
+            background-color: #0d1117;
+            color: #f0f6fc;
+        }
+        .editor-textarea {
+            background-color: transparent;
+            color: transparent;
+            caret-color: #f0f6fc;
+        }
+        .editor-textarea::selection {
+            background-color: rgba(31, 111, 235, 0.6);
+            color: transparent;
+        }
+        .editor-status {
+            color: #8b949e;
+        }
+
+        {% elif theme == "light" %}
+        /* Light Theme: Override dark defaults */
+
+        /* Editor modal - light theme */
+        .editor-modal {
+            background-color: #ffffff;
+        }
+        .editor-header {
+            background-color: #f6f8fa;
+            border-color: #d0d7de;
+        }
+        .editor-close {
+            color: #656d76;
+        }
+        .editor-file-name {
+            color: #1f2328;
+        }
+        .editor-close:hover {
+            color: #1f2328;
+        }
+        .editor-line-numbers {
+            background-color: #f6f8fa;
+            border-right-color: #d0d7de;
+            color: #656d76;
+        }
+        .editor-highlight-layer {
+            background-color: #ffffff;
+            color: #1f2328;
+        }
+        .editor-textarea {
+            background-color: transparent;
+            color: transparent;
+            caret-color: #1f2328;
+        }
+        .editor-textarea::selection {
+            background-color: rgba(173, 214, 255, 0.6);
+            color: transparent;
+        }
+        .editor-status {
+            color: #656d76;
+        }
+
+        /* Remove H1 bottom margin when followed by viewed toolbar */
+        .markdown-body h1:has(+ .viewed-toolbar) {
+            margin-bottom: 0;
+        }
+
+        {% else %}
+        /* Auto Theme: Respond to system preference */
+        @media (prefers-color-scheme: dark) {
+            /* Selection Popover */
+            .selection-popover {
+                background-color: #21262d;
+                color: #f0f6fc;
+                box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+            }
+            .selection-popover button {
+                color: #f0f6fc;
+            }
+            .selection-popover button:hover {
+                background-color: #30363d;
+            }
+            .popover-separator {
+                color: #484f58;
+            }
+
+            /* Note input modal */
+            .note-input-modal {
+                background: #161b22;
+                border: 1px solid #30363d;
+                box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+            }
+            .note-textarea {
+                background: #0d1117;
+                border: 1px solid #30363d;
+                color: #f0f6fc;
+            }
+            .note-textarea:focus {
+                border-color: #58a6ff;
+                box-shadow: 0 0 0 3px rgba(88, 166, 255, 0.15);
+            }
+            .note-input-actions button {
+                background: #21262d;
+                border: 1px solid #30363d;
+                color: #f0f6fc;
+            }
+            .note-input-actions button:hover {
+                background: #30363d;
+            }
+            .note-save {
+                background: #238636 !important;
+                border-color: #238636 !important;
+            }
+            .note-save:hover {
+                background: #2ea043 !important;
+            }
+
+            /* Note cards */
+            .note-card-margin {
+                background: #161b22;
+                border-left: 3px solid #58a6ff;
+                box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
+            }
+            .note-card-margin:hover {
+                background: #1c2128;
+                border-left-color: #58a6ff;
+                box-shadow: 0 2px 8px rgba(0, 0, 0, 0.4);
+            }
+            .note-card-margin.highlight-active {
+                border: 2px solid #58a6ff;
+                border-left: 3px solid #58a6ff;
+                box-shadow: 0 0 0 3px rgba(88, 166, 255, 0.15);
+            }
+            .note-content {
+                color: #f0f6fc;
+            }
+
+            /* Confirm dialog */
+            .confirm-dialog {
+                background: #161b22;
+                border: 1px solid #30363d;
+                box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+            }
+            .confirm-message {
+                color: #f0f6fc;
+            }
+            .confirm-actions button {
+                background: #21262d;
+                border: 1px solid #30363d;
+                color: #f0f6fc;
+            }
+            .confirm-actions button:hover {
+                background: #30363d;
+            }
+
+            /* Note popup */
+            .note-popup {
+                background: #161b22;
+                border: 1px solid #58a6ff;
+                box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
+            }
+
+            /* Has-note highlight */
+            .has-note {
+                background-color: rgba(187, 128, 9, 0.15);
+                border-bottom: 2px dotted rgba(187, 128, 9, 0.4);
+            }
+            .has-note:hover {
+                background-color: rgba(187, 128, 9, 0.25);
+                border-bottom-color: rgba(187, 128, 9, 0.6);
+            }
+            .has-note.highlight-active {
+                background-color: rgba(88, 166, 255, 0.15);
+                border-bottom: 2px solid #58a6ff;
+                box-shadow: 0 0 0 2px rgba(88, 166, 255, 0.15);
+            }
+
+            /* Highlight colors for dark mode - softer, more readable */
+            .highlight-orange {
+                background-color: rgba(224, 108, 43, 0.35);
+            }
+            .highlight-green {
+                background-color: rgba(46, 160, 67, 0.35);
+            }
+            .highlight-yellow {
+                background-color: rgba(187, 128, 9, 0.35);
+            }
+
+            /* Link colors in markdown body */
+            .markdown-body a:link,
+            .markdown-body a:visited,
+            .markdown-body a:hover,
+            .markdown-body a:active,
+            .markdown-body a:focus {
+                color: #58a6ff !important;
+            }
+
+            /* Viewed toolbar - dark theme (auto mode) */
+            .viewed-toolbar {
+                border-color: #30363d;
+                color: #8b949e;
+            }
+            .viewed-toolbar a {
+                color: #58a6ff;
+            }
+
+            /* Remove H1 bottom margin when followed by viewed toolbar */
+            .markdown-body h1:has(+ .viewed-toolbar) {
+                margin-bottom: 0;
+            }
+
+            /* Editor modal - dark theme (auto mode) */
+            .editor-modal {
+                background-color: #0d1117;
+            }
+            .editor-header,
+            .editor-footer {
+                background-color: #161b22;
+                border-color: #30363d;
+            }
+            .editor-title,
+            .editor-close {
+                color: #8b949e;
+            }
+            .editor-file-name {
+                color: #f0f6fc;
+            }
+            .editor-close:hover {
+                color: #f0f6fc;
+            }
+            .editor-line-numbers {
+                background-color: #0d1117;
+                border-right-color: #30363d;
+                color: #6e7681;
+            }
+            .editor-textarea {
+                background-color: #0d1117;
+                color: #f0f6fc;
+            }
+            .editor-textarea::selection {
+                background-color: #1f6feb;
+            }
+            .editor-status {
+                color: #8b949e;
+            }
+        }
+        {% endif %}
+
+        /* ========================================
+           SEARCH MODAL
+           ======================================== */
+        .search-modal {
+            display: none;
+            position: fixed;
+            z-index: 10000;
+            left: 0;
+            top: 0;
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+        }
+
+        .search-modal-content {
+            width: 100%;
+            height: 100%;
+            display: flex;
+            flex-direction: column;
+            padding: 0;
+            margin: 0;
+        }
+
+        .search-input-container {
+            width: 100%;
+            display: flex;
+            justify-content: center;
+            flex-shrink: 0;
+        }
+
+        #search-input {
+            width: 100%;
+            max-width: 980px;
+            padding: 16px 45px;
+            font-size: 1.1em;
+            border: none;
+            outline: none;
+            box-sizing: border-box;
+        }
+
+        .search-results-container {
+            width: 100%;
+            flex: 1;
+            overflow-y: auto;
+            display: flex;
+            justify-content: center;
+        }
+
+        #search-results {
+            list-style: none;
+            padding: 0;
+            margin: 0;
+            width: 100%;
+            max-width: 980px;
+            box-sizing: border-box;
+        }
+
+        @media (max-width: 768px) {
+            #search-input {
+                padding: 16px 20px;
+            }
+        }
+
+        .search-result-item {
+            transition: all 0.15s ease;
+        }
+
+        .search-result-item.no-results {
+            padding: 40px 45px;
+            text-align: center;
+            opacity: 0.5;
+            font-size: 0.95em;
+        }
+
+        .search-result-item a {
+            display: block;
+            padding: 12px 45px;
+            text-decoration: none;
+            transition: all 0.15s ease;
+            border-left: 3px solid transparent;
+        }
+
+        @media (max-width: 768px) {
+            .search-result-item.no-results {
+                padding: 40px 20px;
+            }
+
+            .search-result-item a {
+                padding: 12px 20px;
+            }
+        }
+
+        .search-result-item.selected a {
+            border-left-width: 3px;
+        }
+
+        .search-result-title {
+            font-size: 0.95em;
+            font-weight: 600;
+            margin-bottom: 4px;
+        }
+
+        .search-result-path {
+            font-size: 0.8em;
+            opacity: 0.6;
+            margin-bottom: 6px;
+            font-family: 'SF Mono', Monaco, 'Cascadia Code', 'Roboto Mono', Consolas, 'Courier New', monospace;
+        }
+
+        .search-result-snippet {
+            font-size: 0.85em;
+            opacity: 0.75;
+            line-height: 1.5;
+            margin-top: 4px;
+        }
+
+        .search-result-snippet b {
+            font-weight: 600;
+            opacity: 1;
+        }
+
+        /* Light theme */
+        {% if theme == "light" %}
+        .search-modal {
+            background-color: #ffffff;
+        }
+
+        .search-modal-content {
+            background-color: #ffffff;
+        }
+
+        .search-input-container {
+            background: #f6f8fa;
+            border-bottom: 2px solid #d0d7de;
+        }
+
+        #search-input {
+            background: transparent;
+            color: #1f2328;
+        }
+
+        #search-input::placeholder {
+            color: #656d76;
+        }
+
+        .search-results-container {
+            background: #ffffff;
+        }
+
+        .search-result-item a {
+            color: #1f2328;
+            border-bottom: 1px solid #f6f8fa;
+        }
+
+        .search-result-item a:hover,
+        .search-result-item.selected a {
+            background-color: #f6f8fa;
+        }
+
+        .search-result-item.selected a {
+            border-left-color: #0969da;
+        }
+
+        .search-result-snippet b {
+            color: #0969da;
+        }
+
+        /* Dark theme */
+        {% elif theme == "dark" %}
+        .search-modal {
+            background-color: #0d1117;
+        }
+
+        .search-modal-content {
+            background-color: #0d1117;
+        }
+
+        .search-input-container {
+            background: #161b22;
+            border-bottom: 2px solid #30363d;
+        }
+
+        #search-input {
+            background: transparent;
+            color: #f0f6fc;
+        }
+
+        #search-input::placeholder {
+            color: #8b949e;
+        }
+
+        .search-results-container {
+            background: #0d1117;
+        }
+
+        .search-result-item a {
+            color: #f0f6fc;
+            border-bottom: 1px solid #161b22;
+        }
+
+        .search-result-item a:hover,
+        .search-result-item.selected a {
+            background-color: #161b22;
+        }
+
+        .search-result-item.selected a {
+            border-left-color: #58a6ff;
+        }
+
+        .search-result-snippet b {
+            color: #58a6ff;
+        }
+
+        /* Auto theme */
+        {% else %}
+        @media (prefers-color-scheme: light) {
+            .search-modal {
+                background-color: #ffffff;
+            }
+
+            .search-modal-content {
+                background-color: #ffffff;
+            }
+
+            .search-input-container {
+                background: #f6f8fa;
+                border-bottom: 2px solid #d0d7de;
+            }
+
+            #search-input {
+                background: transparent;
+                color: #1f2328;
+            }
+
+            #search-input::placeholder {
+                color: #656d76;
+            }
+
+            .search-results-container {
+                background: #ffffff;
+            }
+
+            .search-result-item a {
+                color: #1f2328;
+                border-bottom: 1px solid #f6f8fa;
+            }
+
+            .search-result-item a:hover,
+            .search-result-item.selected a {
+                background-color: #f6f8fa;
+            }
+
+            .search-result-item.selected a {
+                border-left-color: #0969da;
+            }
+
+            .search-result-snippet b {
+                color: #0969da;
+            }
+        }
+
+        @media (prefers-color-scheme: dark) {
+            .search-modal {
+                background-color: #0d1117;
+            }
+
+            .search-modal-content {
+                background-color: #0d1117;
+            }
+
+            .search-input-container {
+                background: #161b22;
+                border-bottom: 2px solid #30363d;
+            }
+
+            #search-input {
+                background: transparent;
+                color: #f0f6fc;
+            }
+
+            #search-input::placeholder {
+                color: #8b949e;
+            }
+
+            .search-results-container {
+                background: #0d1117;
+            }
+
+            .search-result-item a {
+                color: #f0f6fc;
+                border-bottom: 1px solid #161b22;
+            }
+
+            .search-result-item a:hover,
+            .search-result-item.selected a {
+                background-color: #161b22;
+            }
+
+            .search-result-item.selected a {
+                border-left-color: #58a6ff;
+            }
+
+            .search-result-snippet b {
+                color: #58a6ff;
+            }
+        }
+        {% endif %}
+
+        /* ========================================
+           SEARCH HIGHLIGHTING
+           ======================================== */
+        .search-highlight {
+            background-color: rgba(255, 235, 59, 0.4);
+            padding: 2px 0;
+            border-radius: 2px;
+            transition: all 0.3s ease;
+        }
+
+        .search-highlight-active {
+            background-color: rgba(255, 193, 7, 0.6);
+            animation: highlight-pulse 0.6s ease-in-out 3;
+            box-shadow: 0 0 0 3px rgba(255, 193, 7, 0.3);
+        }
+
+        @keyframes highlight-pulse {
+            0%, 100% {
+                background-color: rgba(255, 193, 7, 0.6);
+            }
+            50% {
+                background-color: rgba(255, 235, 59, 0.8);
+            }
+        }
+
+        {% if theme == "dark" %}
+        .search-highlight {
+            background-color: rgba(255, 193, 7, 0.25);
+        }
+
+        .search-highlight-active {
+            background-color: rgba(255, 193, 7, 0.4);
+            box-shadow: 0 0 0 3px rgba(255, 193, 7, 0.2);
+        }
+
+        @keyframes highlight-pulse {
+            0%, 100% {
+                background-color: rgba(255, 193, 7, 0.4);
+            }
+            50% {
+                background-color: rgba(255, 193, 7, 0.6);
+            }
+        }
+        {% elif theme == "auto" %}
+        @media (prefers-color-scheme: dark) {
+            .search-highlight {
+                background-color: rgba(255, 193, 7, 0.25);
+            }
+
+            .search-highlight-active {
+                background-color: rgba(255, 193, 7, 0.4);
+                box-shadow: 0 0 0 3px rgba(255, 193, 7, 0.2);
+            }
+
+            @keyframes highlight-pulse {
+                0%, 100% {
+                    background-color: rgba(255, 193, 7, 0.4);
+                }
+                50% {
+                    background-color: rgba(255, 193, 7, 0.6);
+                }
+            }
+        }
+        {% endif %}
+
+        /* ========================================
+           PRINT STYLES
+           ======================================== */
+        @media print {
+            .back-link {
+                display: none;
+            }
+            .toc {
+                display: none;
+            }
+            .search-highlight,
+            .search-highlight-active {
+                background-color: transparent !important;
+                box-shadow: none !important;
+            }
+        }
+    </style>
+    {% if styles_css %}<style>:root { {{ styles_css | safe }} }</style>{% endif %}
+    {% if shortcuts_json %}<script>window.__MARKON_SHORTCUTS__ = {{ shortcuts_json | safe }};</script>{% endif %}
+    {% if i18n_json %}<script>
+    window.__MARKON_I18N__ = (function(){
+        var all = {{ i18n_json | safe }};
+        var lang = "{{ i18n_lang | default(value='en') }}";
+        var dict = all[lang] || all.en;
+        return { lang: lang, t: function(k) { return dict[k] || all.en[k] || k; } };
+    })();
+    </script>{% endif %}
+</head>
+<body>
+    {% if toc and toc | length > 0 %}
+    <div id="toc-container">
+        <div id="toc-icon">
+            <span></span>
+            <span></span>
+            <span></span>
+        </div>
+        <nav class="toc">
+            <div class="toc-title" id="toc-title">Table of Contents</div>
+            <ul class="toc-list">
+                {% for item in toc %}
+                <li class="toc-item toc-level-{{ item.level }}">
+                    <a href="#{{ item.id }}">{{ item.text }}</a>
+                </li>
+                {% endfor %}
+            </ul>
+        </nav>
+    </div>
+    {% endif %}
+    <article class="markdown-body">
+        {% if show_back_link %}
+        <div class="back-link">
+            <a href="{{ back_link }}"><span id="back-link-text">← Back to file list</span></a>
+        </div>
+        {% endif %}
+        <div id="notes-sidebar"></div>
+        <div id="main-content">{{ content | safe }}</div>
+    </article>
+    <footer class="container footer">
+        <a href="https://github.com/kookyleo/markon" id="footer-text">(L) Generated by AI, Gently approved by kookyleo 👀</a>
+        <span class="footer-separator"> | </span>
+        <a href="#" class="footer-clear-link" id="clear-annot-text" onclick="clearPageAnnotations(event, window.ws, window.isSharedAnnotationMode); return false;">Clear Annotations in this page</a>
+        {% if enable_search %}
+        <span class="footer-separator"> | </span>
+        <a href="#" id="search-link-text" onclick="window.searchManager.show(); return false;">Search</a>
+        {% endif %}
+        <span class="footer-separator"> | </span>
+        <a href="#" id="kbd-link-text" onclick="window.shortcutsManager.showHelp(); return false;">Keyboard Shortcuts (?)</a>
+    </footer>
+
+    {% if enable_search %}
+    <div id="search-modal" class="search-modal">
+        <div class="search-modal-content">
+            <div class="search-input-container">
+                <input type="text" id="search-input" placeholder="Search..." autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false">
+            </div>
+            <div id="search-esc-hint" style="text-align:center;padding:8px 0 4px;font-size:12px;color:#8b949e"><kbd style="padding:1px 5px;border:1px solid #d0d7de;border-radius:3px;font-size:11px;font-family:monospace;background:#f6f8fa">ESC</kbd> <span id="search-esc-text">to close</span></div>
+            <div class="search-results-container">
+                <ul id="search-results"></ul>
+            </div>
+        </div>
+    </div>
+    {% endif %}
+
+    {% if has_mermaid %}
+    <script src="/_/js/mermaid.min.js"></script>
+    <script>
+        // Always use default light theme for better readability and print compatibility
+        mermaid.initialize({ startOnLoad: true, theme: 'default' });
+    </script>
+    {% endif %}
+
+    {% if enable_edit and markdown_content_json %}
+    <!-- Original Markdown content for editor (JSON-encoded, HTML-safe) -->
+    <script type="application/json" id="original-markdown-data">{{ markdown_content_json | safe }}</script>
+    {% endif %}
+
+    <script type="module" src="/_/js/main.js"></script>
+    <script src="/_/js/viewed.js"></script>
+    <script>
+        // TOC dual-state tracking:
+        // 1. "active"   = scroll position (which heading is at viewport top) — blue bg
+        // 2. "selected" = user-clicked section — left border accent
+        (function() {
+            const toc = document.querySelector('.toc');
+            if (!toc) return;
+
+            const tocLinks = toc.querySelectorAll('.toc-item a');
+            if (tocLinks.length === 0) return;
+
+            const headings = Array.from(document.querySelectorAll('h1[id], h2[id], h3[id], h4[id], h5[id], h6[id]'));
+            if (headings.length === 0) return;
+
+            // ── Cached section ranges (rebuilt on resize/DOM, not on scroll) ──
+            // ── Section position cache ─────────────────────────────
+            // Built once, rebuilt on resize / DOM changes. Scroll handler does pure arithmetic.
+            var sectionCache = [];
+            function rebuildCache() {
+                sectionCache = [];
+                var sy = window.scrollY;
+                for (var i = 0; i < headings.length; i++) {
+                    var h = headings[i];
+                    if (h.offsetHeight === 0) continue;
+                    var top = h.getBoundingClientRect().top + sy;
+                    var bottom = document.documentElement.scrollHeight;
+                    for (var j = i + 1; j < headings.length; j++) {
+                        if (headings[j].offsetHeight === 0) continue;
+                        bottom = headings[j].getBoundingClientRect().top + sy;
+                        break;
+                    }
+                    var href = '#' + h.id;
+                    var link = toc.querySelector('.toc-item a[href="' + CSS.escape(href) + '"]');
+                    if (link) {
+                        sectionCache.push({ id: h.id, li: link.closest('.toc-item'), link: link, top: top, bottom: bottom });
+                    }
+                }
+            }
+            rebuildCache();
+            window.addEventListener('resize', function() { setTimeout(function() { rebuildCache(); updateViewport(); }, 100); });
+            // Rebuild when sections collapse/expand (class changes on .heading-section)
+            new MutationObserver(function() { setTimeout(function() { rebuildCache(); updateViewport(); }, 50); })
+                .observe(document.querySelector('.markdown-body') || document.body, { attributes: true, subtree: true, attributeFilter: ['class'] });
+
+            // ── State 1: Viewport highlight (sliding overlay) ──────
+            // Create a single overlay element that slides to cover viewport items
+            var tocList = toc.querySelector('.toc-list');
+            var vpHighlight = document.createElement('div');
+            vpHighlight.className = 'toc-viewport-highlight';
+            vpHighlight.style.top = '0px';
+            vpHighlight.style.height = '0px';
+            if (tocList) tocList.appendChild(vpHighlight);
+
+            function updateViewport() {
+                var vpTop = window.scrollY;
+                var vpBottom = vpTop + window.innerHeight;
+                var firstVp = null, lastVp = null;
+                for (var i = 0; i < sectionCache.length; i++) {
+                    var s = sectionCache[i];
+                    var overlap = Math.min(s.bottom, vpBottom) - Math.max(s.top, vpTop);
+                    if (overlap > 30) {
+                        if (!firstVp) firstVp = s.li;
+                        lastVp = s.li;
+                    }
+                }
+                // Position the highlight overlay
+                if (firstVp && tocList) {
+                    var listRect = tocList.getBoundingClientRect();
+                    var firstRect = firstVp.getBoundingClientRect();
+                    var lastRect = lastVp.getBoundingClientRect();
+                    var top = firstRect.top - listRect.top + tocList.scrollTop;
+                    var height = lastRect.bottom - firstRect.top;
+                    vpHighlight.style.top = top + 'px';
+                    vpHighlight.style.height = height + 'px';
+                } else {
+                    vpHighlight.style.height = '0px';
+                }
+                // Keep viewport range visible in TOC panel
+                if (firstVp) {
+                    var tocRect = toc.getBoundingClientRect();
+                    var lineH = firstVp.offsetHeight || 24;
+                    var lastR = lastVp.getBoundingClientRect();
+                    if (lastR.bottom > tocRect.bottom - lineH * 4) {
+                        toc.scrollTop += (lastR.bottom - tocRect.bottom + lineH * 4);
+                    }
+                    var firstR = firstVp.getBoundingClientRect();
+                    if (firstR.top < tocRect.top + lineH * 3) {
+                        toc.scrollTop -= (tocRect.top + lineH * 3 - firstR.top);
+                    }
+                }
+            }
+
+            // ── Unified settle: update TOC only when main content stops moving ──
+            var pendingActiveId = null;
+            var settleTimer = null;
+            var isScrolling = false;
+
+            function onSettle() {
+                isScrolling = false;
+                updateViewport();
+                if (pendingActiveId) {
+                    for (var i = 0; i < sectionCache.length; i++)
+                        sectionCache[i].link.classList.toggle('active', sectionCache[i].id === pendingActiveId);
+                    pendingActiveId = null;
+                }
+            }
+
+            function resetSettleTimer() {
+                isScrolling = true;
+                if (settleTimer) clearTimeout(settleTimer);
+                settleTimer = setTimeout(onSettle, 20);
+            }
+
+            window.addEventListener('scroll', resetSettleTimer, { passive: true });
+            window.addEventListener('resize', function() {
+                setTimeout(function() { rebuildCache(); onSettle(); }, 100);
+            });
+            if ('onscrollend' in window) window.addEventListener('scrollend', onSettle);
+
+            // Initial render
+            updateViewport();
+
+            // ── State 2: .active scheduling ──────────────────────────
+            function scheduleActive(id) {
+                // Clear old .active immediately
+                for (var i = 0; i < sectionCache.length; i++)
+                    sectionCache[i].link.classList.remove('active');
+                pendingActiveId = id;
+                resetSettleTimer();
+            }
+
+            // ── TOC click: schedule selected + smooth scroll ────────
+            tocLinks.forEach(link => {
+                link.addEventListener('click', (e) => {
+                    const href = link.getAttribute('href');
+                    if (href && href.startsWith('#')) {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        const targetId = href.substring(1);
+                        const targetElement = document.getElementById(targetId);
+                        if (targetElement) {
+                            scheduleActive(targetId);
+                            const targetTop = targetElement.getBoundingClientRect().top + window.scrollY - 20;
+                            window.scrollTo({ top: targetTop, behavior: 'smooth' });
+                            history.pushState(null, '', href);
+                        }
+                    }
+                });
+            });
+
+            // ── Sync selected from content area clicks ──────────────
+            document.addEventListener('click', (e) => {
+                if (e.target.closest('.toc')) return;
+                // Find section heading from click target
+                const section = e.target.closest('.heading-section');
+                if (section) {
+                    const heading = section.querySelector(':scope > h1[id], :scope > h2[id], :scope > h3[id], :scope > h4[id], :scope > h5[id], :scope > h6[id]');
+                    if (heading && heading.id) { scheduleActive(heading.id); return; }
+                }
+                const heading = e.target.closest('h1[id], h2[id], h3[id], h4[id], h5[id], h6[id]');
+                if (heading && heading.id) { scheduleActive(heading.id); return; }
+                const link = e.target.closest('a[href^="#"]');
+                if (link) {
+                    const id = link.getAttribute('href').substring(1);
+                    if (id) scheduleActive(id);
+                }
+            }, true);
+
+            // Expose for j/k and main.js
+            window.__markonTocSetSelected = scheduleActive;
+        })();
+    </script>
+    <script>
+    (function(){
+      var t = window.__MARKON_I18N__ && window.__MARKON_I18N__.t || function(k){return k;};
+      var m = {
+        'toc-title': 'web.toc.title',
+        'back-link-text': 'web.back',
+        'footer-text': 'web.footer',
+        'clear-annot-text': 'web.annot.clear',
+        'search-link-text': 'web.search',
+        'kbd-link-text': 'web.kbd.link'
+      };
+      for(var id in m){ var el=document.getElementById(id); if(el) el.textContent=t(m[id]); }
+      var si=document.getElementById('search-input'); if(si) si.placeholder=t('web.search.placeholder');
+      var se=document.getElementById('search-esc-text'); if(se) se.textContent=t('web.search.esc');
+    })();
+    </script>
+</body>
+</html>

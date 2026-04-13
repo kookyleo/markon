@@ -5,12 +5,20 @@
   "description": "A lightweight Markdown renderer with GitHub styling, written in Rust.",
   "main": "index.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "test": "vitest run",
+    "test:watch": "vitest"
   },
-  "keywords": ["markdown", "renderer", "github", "annotation"],
+  "keywords": [
+    "markdown",
+    "renderer",
+    "github",
+    "annotation"
+  ],
   "author": "kookyleo",
   "license": "Apache-2.0",
   "devDependencies": {
-    "eslint": "^9.37.0"
+    "eslint": "^9.37.0",
+    "jsdom": "^29.0.2",
+    "vitest": "^4.1.4"
   }
 }
