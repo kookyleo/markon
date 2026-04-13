@@ -6,6 +6,13 @@ on:
     - cron: '0 8 * * *'
   workflow_dispatch: {}
 
+env:
+  # Minimum age (in minutes) before an RC can be auto-promoted.
+  # Production value: 10080 (7 days). Set lower for testing.
+  PROMOTE_MIN_MINUTES: "14"
+  # Open issues with this label block auto-promotion.
+  BLOCKER_LABEL: "release-blocker"
+
 jobs:
   check-and-promote:
     runs-on: ubuntu-latest
@@ -33,7 +40,6 @@ jobs:
 
           # Extract base version: v0.9.0-rc.2 → v0.9.0
           STABLE_TAG=$(echo "$RC_TAG" | sed 's/-rc\.[0-9]*//')
-          STABLE_VER="${STABLE_TAG#v}"
 
           # Check if stable release already exists
           if gh release view "$STABLE_TAG" >/dev/null 2>&1; then
@@ -42,31 +48,30 @@ jobs:
             exit 0
           fi
 
-          # Check age: must be at least 7 days old
+          # Check age
           PUBLISHED=$(gh release view "$RC_TAG" --json publishedAt -q '.publishedAt')
-          AGE_SECONDS=$(( $(date +%s) - $(date -d "$PUBLISHED" +%s) ))
-          AGE_DAYS=$(( AGE_SECONDS / 86400 ))
-          echo "Age: ${AGE_DAYS} days"
+          AGE_MINUTES=$(( ($(date +%s) - $(date -d "$PUBLISHED" +%s)) / 60 ))
+          echo "Age: ${AGE_MINUTES} minutes (need ${PROMOTE_MIN_MINUTES})"
 
-          if [ "$AGE_DAYS" -lt 7 ]; then
-            echo "RC is only ${AGE_DAYS} days old, need 7"
+          if [ "$AGE_MINUTES" -lt "$PROMOTE_MIN_MINUTES" ]; then
+            echo "Too young, skipping"
             echo "promote=false" >> "$GITHUB_OUTPUT"
             exit 0
           fi
 
-          # Check for open issues mentioning this version
-          ISSUE_COUNT=$(gh issue list --state open --search "$STABLE_VER" --json number -q 'length')
-          echo "Open issues mentioning $STABLE_VER: $ISSUE_COUNT"
+          # Check for open issues with blocker label
+          BLOCKER_COUNT=$(gh issue list --state open --label "$BLOCKER_LABEL" --json number -q 'length')
+          echo "Open issues with '$BLOCKER_LABEL' label: $BLOCKER_COUNT"
 
-          if [ "$ISSUE_COUNT" -gt 0 ]; then
-            echo "Open issues found, skipping promotion"
+          if [ "$BLOCKER_COUNT" -gt 0 ]; then
+            echo "Release blockers found, skipping promotion"
+            gh issue list --state open --label "$BLOCKER_LABEL" --json number,title -q '.[] | "#\(.number): \(.title)"'
             echo "promote=false" >> "$GITHUB_OUTPUT"
             exit 0
           fi
 
           echo "promote=true" >> "$GITHUB_OUTPUT"
           echo "rc_tag=$RC_TAG" >> "$GITHUB_OUTPUT"
-          echo "stable_tag=$STABLE_TAG" >> "$GITHUB_OUTPUT"
           echo "Ready to promote $RC_TAG → $STABLE_TAG"
 
       - name: Trigger promotion
