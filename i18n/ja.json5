@@ -125,8 +125,8 @@
     // ── Tips — Desktop integration ───────────────────────────
     "tips.gui":        "デスクトップ連携",
     "tips.gui.1":  ".md ファイルを右クリック → プログラムから開く → Markon でブラウザプレビュー",
-    "tips.gui.2":  "(macOS) Markon.app を Finder ツールバーにドラッグ — アイコンをクリックで現在のフォルダをワークスペースに追加",
-    "tips.gui.3":  "(Windows) ワークスペースフォルダを右クリック → Markon でプレビュー",
+    "tips.gui.2":  "Markon.app を Finder ツールバーにドラッグ — アイコンをクリックで現在のフォルダをワークスペースに追加",
+    "tips.gui.3":  "ワークスペースフォルダを右クリック → Markon でプレビュー",
 
     // ── Tips — Key features ──────────────────────────────────
     "tips.features":   "主な機能",
