@@ -107,7 +107,7 @@
     "tips.quickstart.3": "3. 在浏览器页面中按下 {key} 查看完整快捷键列表，了解更多功能",
 
     // ── 小贴士 — 命令行构建器 ────────────────────────────────
-    "tips.cli":        "使用命令行构建器生成 cli 命令，在服务器等环境中粘贴使用",
+    "tips.cli":        "使用命令行构建器生成 Cli 命令, 粘贴使用",
     "cli.lbl.path":    "目标目录/文件",
     "cli.lbl.server":  "监听",
     "cli.lbl.entry":   "入口",
@@ -122,25 +122,25 @@
     "cli.open":        "自动打开浏览器",
 
     // ── 小贴士 — 桌面集成 ────────────────────────────────────
-    "tips.gui":    "桌面环境可以直接在文件或目录操作",
+    "tips.gui":    "桌面集成",
     "tips.gui.1":  "在 .md 文件上点击右键 → 打开方式 → Markon，即可直接在浏览器查看",
     "tips.gui.2":  "将 Markon.app 拖入 Finder 工具栏，以后点击图标即可将当前目录加入工作区并打开",
     "tips.gui.3":  "在工作区目录上点击右键 → 使用 markon 打开",
 
     // ── 小贴士 — 其它功能 ────────────────────────────────────
-    "tips.features":   "其它",
+    "tips.features":   "更多",
     "tips.feat.search.title": "全文搜索",
-    "tips.feat.search.desc":  "基于 Tantivy 构建索引，支持中日英分词。浏览器中按 / 打开搜索框，实时匹配文件内容",
+    "tips.feat.search.desc":  "支持中日英分词。浏览器中按 / 打开搜索框，实时匹配文件内容",
     "tips.feat.viewed.title": "已读追踪",
-    "tips.feat.viewed.desc":  "受 Github PR Review 功能启发, 按段落级别标记阅读进度，自动记录。重新打开文档时可跳转到上次阅读位置",
+    "tips.feat.viewed.desc":  "受 Gh PR Reviewed 标记启发, 按段落级别标记阅读进度，自动记录",
     "tips.feat.edit.title":   "在线编辑",
-    "tips.feat.edit.desc":    "按下 e, 在浏览器中直接编辑 Markdown 源文件，语法高亮 + 实时预览，修改即保存",
+    "tips.feat.edit.desc":    "按下 e 键，在浏览器中直接编辑 Markdown 源文件，语法高亮 + 实时预览，修改即保存",
     "tips.feat.shared.title": "共享标记、便条和已读状态",
-    "tips.feat.shared.desc":  "通过 SQLite 数据库同步批注和已读状态。适用于多设备共享同一目录或团队协作场景",
+    "tips.feat.shared.desc":  "适用于个人多设备阅读或团队协作场景",
     "tips.feat.annot.title":  "标注与高亮",
-    "tips.feat.annot.desc":   "选中文本即可高亮（橙/绿/黄）、添加删除线或便条。宽屏显示在右侧边栏，窄屏以弹窗呈现",
+    "tips.feat.annot.desc":   "选中文本标记颜色、添加删除线或添加便条",
     "tips.feat.print.title":  "章节打印",
-    "tips.feat.print.desc":   "标题旁的打印按钮，仅打印当前章节内容，保持 GitHub 风格排版",
+    "tips.feat.print.desc":   "点击标题旁的打印链接，则仅打印当前章节内容",
 
     // ── 关于页 ───────────────────────────────────────────────
     "about.slogan":   "Turn your markdown on.",
