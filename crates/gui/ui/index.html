@@ -417,18 +417,19 @@
     .tip-feature { }
     .platform-badge { display: inline-block; margin-left: 6px; vertical-align: -2px; opacity: 0.55; }
     .platform-badge svg { width: 14px; height: 14px; fill: currentColor; }
-    .tip-feature-icon { display: inline-block; vertical-align: -2px; margin-left: 5px; opacity: 0.4; }
+    .tip-feature-icon { display: inline-block; vertical-align: -2px; margin-left: 5px; opacity: 0.35; }
     .tip-feature-icon svg { width: 13px; height: 13px; }
     .tip-feature-title {
       display: inline;
       font-size: 12.5px;
       font-weight: normal;
-      color: var(--text);
-    }
-    .tip-feature p:not(.tip-feature-title) {
-      font-size: 11.5px;
       color: var(--text-2);
-      line-height: 1.5;
+    }
+    .tip-feature p:not(:has(.tip-feature-title)) {
+      font-size: 12.5px;
+      color: var(--text-2);
+      opacity: 0.75;
+      line-height: 1.6;
     }
 
     /* CLI builder — flat form, no nested borders */
@@ -437,8 +438,8 @@
       flex-wrap: wrap;
       gap: 0;
       padding: 0;
-      font-size: 13px;
-      color: var(--text);
+      font-size: 12.5px;
+      color: var(--text-2);
       align-items: center;
     }
     .cli-field {
@@ -458,7 +459,7 @@
       border-bottom: 1px solid var(--border);
       border-radius: 0;
       background: transparent;
-      color: var(--text);
+      color: var(--text-2);
       font-size: 12px;
       font-family: 'SF Mono', Monaco, Menlo, monospace;
       outline: none;
@@ -514,8 +515,8 @@
       gap: 6px;
     }
     .cli-term-row + .cli-term-row { border-top: 1px solid var(--border); }
-    .cli-term-row .prompt { color: var(--text-3); flex-shrink: 0; font-size: 11px; }
-    .cli-term-row code { flex: 1; min-width: 0; color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; -webkit-user-select: text; user-select: text; }
+    .cli-term-row .prompt { color: var(--text-2); flex-shrink: 0; font-size: 11px; font-style: italic; }
+    .cli-term-row code { flex: 1; min-width: 0; color: var(--text-2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; -webkit-user-select: text; user-select: text; }
     .cli-term-row .tips-copy { position: static; transform: none; width: 22px; height: 22px; }
 
     /* Web styles editor */
