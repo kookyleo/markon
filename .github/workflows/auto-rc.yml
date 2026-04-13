@@ -1,0 +1,56 @@
+name: Auto RC
+
+on:
+  push:
+    branches: [main]
+    paths: ['Cargo.toml']
+
+jobs:
+  tag-rc:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
+
+      - name: Detect version change
+        id: ver
+        run: |
+          NEW=$(grep -m1 '^version' Cargo.toml | sed 's/.*"\(.*\)"/\1/')
+          OLD=$(git show HEAD~1:Cargo.toml 2>/dev/null | grep -m1 '^version' | sed 's/.*"\(.*\)"/\1/' || echo "")
+          echo "old=$OLD" >> "$GITHUB_OUTPUT"
+          echo "new=$NEW" >> "$GITHUB_OUTPUT"
+          if [ "$NEW" != "$OLD" ] && [ -n "$NEW" ]; then
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Determine RC number
+        if: steps.ver.outputs.changed == 'true'
+        id: rc
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          VER="${{ steps.ver.outputs.new }}"
+          # Find existing rc tags for this version
+          LAST=$(gh release list --limit 100 --json tagName -q \
+            "[.[].tagName | select(startswith(\"v${VER}-rc.\"))] | sort | last // empty")
+          if [ -n "$LAST" ]; then
+            N=$(echo "$LAST" | grep -o 'rc\.[0-9]*' | grep -o '[0-9]*')
+            NEXT=$((N + 1))
+          else
+            NEXT=1
+          fi
+          TAG="v${VER}-rc.${NEXT}"
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+          echo "Tagging: $TAG"
+
+      - name: Create and push tag
+        if: steps.ver.outputs.changed == 'true'
+        run: |
+          TAG="${{ steps.rc.outputs.tag }}"
+          git tag "$TAG"
+          git push origin "$TAG"
