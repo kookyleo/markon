@@ -138,6 +138,10 @@
     "tips.feat.edit.desc":    "Edit Markdown source files directly in the browser. Syntax highlighting + live preview, changes saved on the fly",
     "tips.feat.shared.title": "Shared notes",
     "tips.feat.shared.desc":  "Sync annotations and viewed state via SQLite DB. Ideal for multi-device setups or team collaboration",
+    "tips.feat.annot.title":  "Annotations & Highlights",
+    "tips.feat.annot.desc":   "Select text to highlight (orange/green/yellow), strikethrough, or add notes. Sidebar cards on wide screens, popups on narrow",
+    "tips.feat.print.title":  "Section Print",
+    "tips.feat.print.desc":   "Print button next to each heading — prints only that section with GitHub-style layout",
 
     // ── About ────────────────────────────────────────────────
     "about.slogan":   "Turn your markdown on.",

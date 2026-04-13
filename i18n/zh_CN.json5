@@ -123,9 +123,9 @@
 
     // ── 小贴士 — 桌面集成 ────────────────────────────────────
     "tips.gui":    "桌面环境可以直接在文件或目录操作",
-    "tips.gui.1":  "在 .md 文件上点击右键 → 打开方式 → Markon，即可直接在浏览器查看",
-    "tips.gui.2":  "(macOS) 将 Markon.app 拖入 Finder 工具栏，以后点击图标即可将当前目录加入工作区并打开",
-    "tips.gui.3":  "(Windows) 在工作区目录上点击右键 → 使用 markon 打开",
+    "tips.gui.1":  "macOS / Windows：在 .md 文件上点击右键 → 打开方式 → Markon，即可直接在浏览器查看",
+    "tips.gui.2":  "macOS：将 Markon.app 拖入 Finder 工具栏，以后点击图标即可将当前目录加入工作区并打开",
+    "tips.gui.3":  "Windows：在工作区目录上点击右键 → 使用 markon 打开",
 
     // ── 小贴士 — 其它功能 ────────────────────────────────────
     "tips.features":   "其它",
@@ -137,6 +137,10 @@
     "tips.feat.edit.desc":    "按下 e, 在浏览器中直接编辑 Markdown 源文件，语法高亮 + 实时预览，修改即保存",
     "tips.feat.shared.title": "共享标记、便条和已读状态",
     "tips.feat.shared.desc":  "通过 SQLite 数据库同步批注和已读状态。适用于多设备共享同一目录或团队协作场景",
+    "tips.feat.annot.title":  "标注与高亮",
+    "tips.feat.annot.desc":   "选中文本即可高亮（橙/绿/黄）、添加删除线或便条。宽屏显示在右侧边栏，窄屏以弹窗呈现",
+    "tips.feat.print.title":  "章节打印",
+    "tips.feat.print.desc":   "标题旁的打印按钮，仅打印当前章节内容，保持 GitHub 风格排版",
 
     // ── 关于页 ───────────────────────────────────────────────
     "about.slogan":   "Turn your markdown on.",
