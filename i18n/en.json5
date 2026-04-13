@@ -36,7 +36,7 @@
 
     // ── General — Behavior ───────────────────────────────────
     "sec.behavior":   "Behavior",
-    "pref.tray.desc":  "Hide on window close instead of quitting; reopen via menu bar icon",
+    "pref.tray":  "Hide on window close instead of quitting; reopen via menu bar icon",
     "sec.webstyles":        "Page styles",
     "webstyles.reset":      "Reset to defaults",
     "webstyles.primary":    "Primary",
@@ -54,8 +54,8 @@
     "sec.shortcuts":        "Keyboard shortcuts",
     "shortcuts.reset":      "Reset to defaults",
     "shortcuts.record":     "Press new shortcut…",
-    "pref.autoupdate.desc": "Check GitHub for new versions when idle and install automatically",
-    "pref.channel.desc":    "Update channel — Stable is more reliable, RC gets updates sooner",
+    "pref.autoupdate": "Check GitHub for new versions when idle and install automatically",
+    "pref.channel":    "Update channel — Stable is more reliable, RC gets updates sooner",
     "pref.channel.stable":  "Stable",
     "pref.channel.rc":      "RC",
 
@@ -68,7 +68,7 @@
 
     // ── General — Database ───────────────────────────────────
     "sec.database":   "Database",
-    "pref.dbpath.desc":"Persistent storage for annotations and viewed state (SQLite)",
+    "pref.dbpath":"Persistent storage for annotations and viewed state (SQLite)",
     "pref.dbpath.browse": "Browse…",
     "pref.dbpath.clear":  "Reset",
 
