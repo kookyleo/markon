@@ -55,7 +55,7 @@
     "shortcuts.reset":      "Reset to defaults",
     "shortcuts.record":     "Press new shortcut…",
     "pref.autoupdate.desc": "Check GitHub for new versions when idle and install automatically",
-    "pref.channel.desc":    "Update channel",
+    "pref.channel.desc":    "Update channel — Stable is more reliable, RC gets updates sooner",
     "pref.channel.stable":  "Stable",
     "pref.channel.rc":      "RC",
 
@@ -104,8 +104,7 @@
     "tips.quickstart": "Quick start",
     "tips.quickstart.1": "1. Click the + button in Workspaces to add a folder with Markdown files",
     "tips.quickstart.2": "2. Click the ↗ icon to view rendered output in your browser",
-    "tips.quickstart.help": "2.1 Press {key} in the browser page to see all keyboard shortcuts and available features",
-    "tips.quickstart.3": "3. Configure default features for new workspaces in General",
+    "tips.quickstart.3": "3. Press {key} in the browser page to see all keyboard shortcuts and available features",
 
 
     // ── Tips — Command builder ───────────────────────────────
@@ -125,14 +124,9 @@
 
     // ── Tips — Desktop integration ───────────────────────────
     "tips.gui":        "Desktop integration",
-    "tips.gui.mac.title": "macOS",
-    "tips.gui.mac.1":  "· Drag Markon.app to the Finder toolbar — click to open the current folder",
-    "tips.gui.mac.2":  "· Right-click a .md file → Open With → Markon to preview in browser",
-    "tips.gui.mac.3":  "· Drag a folder onto the Markon icon in the Dock to add it quickly",
-    "tips.gui.mac.4":  "· Menu bar resident mode: close window but keep the menu bar icon active",
-    "tips.gui.win.title": "Windows",
-    "tips.gui.win.1":  "· Right-click a .md file → Open With → choose Markon",
-    "tips.gui.win.2":  "· After install, use the \"Preview with Markon\" context menu entry",
+    "tips.gui.1":  "Right-click a .md file → Open With → Markon to preview in browser",
+    "tips.gui.2":  "(macOS) Drag Markon.app to the Finder toolbar — click the icon to add the current folder as a workspace",
+    "tips.gui.3":  "(Windows) Right-click a workspace folder → Preview with Markon",
 
     // ── Tips — Key features ──────────────────────────────────
     "tips.features":   "Key features",

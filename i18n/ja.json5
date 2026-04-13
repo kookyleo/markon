@@ -55,7 +55,7 @@
     "shortcuts.reset":      "デフォルトに戻す",
     "shortcuts.record":     "新しいキーを押してください…",
     "pref.autoupdate.desc": "アイドル時に GitHub で新バージョンを確認し、自動的にインストール",
-    "pref.channel.desc":    "更新チャンネル",
+    "pref.channel.desc":    "更新チャンネル — 正式版はより安定、候補版は更新が早い",
     "pref.channel.stable":  "正式版",
     "pref.channel.rc":      "候補版",
 
@@ -104,8 +104,7 @@
     "tips.quickstart": "クイックスタート",
     "tips.quickstart.1": "1.「ワークスペース」タブで + ボタンをクリックし、Markdown ファイルのあるフォルダを選択",
     "tips.quickstart.2": "2. ↗ アイコンをクリックしてブラウザでレンダリング結果を確認",
-    "tips.quickstart.help": "2.1 ブラウザページで {key} を押すと、すべてのショートカットキーと利用可能な機能を確認できます",
-    "tips.quickstart.3": "3.「全般」タブで新規ワークスペースのデフォルト機能を設定",
+    "tips.quickstart.3": "3. ブラウザページで {key} を押すと、すべてのショートカットキーと利用可能な機能を確認できます",
 
 
     // ── Tips — Command builder ───────────────────────────────
@@ -125,14 +124,9 @@
 
     // ── Tips — Desktop integration ───────────────────────────
     "tips.gui":        "デスクトップ連携",
-    "tips.gui.mac.title": "macOS",
-    "tips.gui.mac.1":  "· Markon.app を Finder ツールバーにドラッグすると、現在のフォルダをワンクリックで開けます",
-    "tips.gui.mac.2":  "· .md ファイルを右クリック → このアプリケーションで開く → Markon でブラウザプレビュー",
-    "tips.gui.mac.3":  "· フォルダを Dock の Markon アイコンにドラッグして素早く追加",
-    "tips.gui.mac.4":  "· メニューバー常駐モード: ウィンドウを閉じてもメニューバーアイコンから再度開けます",
-    "tips.gui.win.title": "Windows",
-    "tips.gui.win.1":  "· .md ファイルを右クリック → プログラムから開く → Markon を選択",
-    "tips.gui.win.2":  "· インストール後、右クリックメニューの「Markon でプレビュー」から素早く開けます",
+    "tips.gui.1":  ".md ファイルを右クリック → プログラムから開く → Markon でブラウザプレビュー",
+    "tips.gui.2":  "(macOS) Markon.app を Finder ツールバーにドラッグ — アイコンをクリックで現在のフォルダをワークスペースに追加",
+    "tips.gui.3":  "(Windows) ワークスペースフォルダを右クリック → Markon でプレビュー",
 
     // ── Tips — Key features ──────────────────────────────────
     "tips.features":   "主な機能",
