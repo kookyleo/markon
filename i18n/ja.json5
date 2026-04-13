@@ -108,7 +108,7 @@
 
 
     // ── Tips — Command builder ───────────────────────────────
-    "tips.cli":        "コマンドビルダー",
+    "tips.cli":        "コマンドビルダーで CLI コマンドを生成、コピーして使用",
     "cli.lbl.path":    "対象ディレクトリ/ファイル",
     "cli.lbl.server":  "リッスン",
     "cli.lbl.entry":   "エントリ",
@@ -129,19 +129,19 @@
     "tips.gui.3":  "ワークスペースフォルダを右クリック → Markon でプレビュー",
 
     // ── Tips — Key features ──────────────────────────────────
-    "tips.features":   "主な機能",
+    "tips.features":   "その他",
     "tips.feat.search.title": "全文検索",
-    "tips.feat.search.desc":  "Tantivy ベースのインデックスで CJK 分かち書きに対応。ブラウザで / を押すとファイル内容をリアルタイム検索",
+    "tips.feat.search.desc":  "CJK 対応の分かち書き。ブラウザで / を押すとファイル内容をリアルタイム検索",
     "tips.feat.viewed.title": "既読トラッキング",
-    "tips.feat.viewed.desc":  "ブロック単位で閲読の進捗を記録し、自動保存。ドキュメントを再度開くと前回の位置にジャンプ",
+    "tips.feat.viewed.desc":  "GitHub PR レビューに着想を得た、ブロック単位の閲読進捗マーク。自動保存",
     "tips.feat.edit.title":   "オンライン編集",
-    "tips.feat.edit.desc":    "ブラウザ上で Markdown ソースファイルを直接編集。シンタックスハイライト + ライブプレビュー、変更は即座に保存",
-    "tips.feat.shared.title": "共有ノート",
-    "tips.feat.shared.desc":  "SQLite DB を介して注釈と既読状態を同期。複数デバイスでの共有やチームコラボレーションに最適",
+    "tips.feat.edit.desc":    "e キーで Markdown ソースを直接編集。シンタックスハイライト + ライブプレビュー",
     "tips.feat.annot.title":  "注釈とハイライト",
-    "tips.feat.annot.desc":   "テキストを選択してハイライト（オレンジ/グリーン/イエロー）、取り消し線、またはノートを追加。ワイド画面ではサイドバー、狭い画面ではポップアップ表示",
+    "tips.feat.annot.desc":   "テキストを選択してハイライト、取り消し線、またはノートを追加",
+    "tips.feat.shared.title": "共有ノートと既読状態",
+    "tips.feat.shared.desc":  "マルチデバイス閲読やチームコラボレーションに最適",
     "tips.feat.print.title":  "セクション印刷",
-    "tips.feat.print.desc":   "見出し横の印刷ボタンで、そのセクションだけを GitHub スタイルのレイアウトで印刷",
+    "tips.feat.print.desc":   "見出し横の印刷リンクをクリックで、そのセクションだけを印刷",
 
     // ── About ────────────────────────────────────────────────
     "about.slogan":   "Turn your markdown on.",
