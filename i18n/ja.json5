@@ -36,7 +36,7 @@
 
     // ── General — Behavior ───────────────────────────────────
     "sec.behavior":   "動作",
-    "pref.tray.desc":  "ウィンドウを閉じても終了せず非表示にし、メニューバーアイコンから再表示",
+    "pref.tray":  "ウィンドウを閉じても終了せず非表示にし、メニューバーアイコンから再表示",
     "sec.webstyles":        "ページスタイル",
     "webstyles.reset":      "デフォルトに戻す",
     "webstyles.primary":    "メインカラー",
@@ -54,8 +54,8 @@
     "sec.shortcuts":        "ショートカットキー",
     "shortcuts.reset":      "デフォルトに戻す",
     "shortcuts.record":     "新しいキーを押してください…",
-    "pref.autoupdate.desc": "アイドル時に GitHub で新バージョンを確認し、自動的にインストール",
-    "pref.channel.desc":    "更新チャンネル — 正式版はより安定、候補版は更新が早い",
+    "pref.autoupdate": "アイドル時に GitHub で新バージョンを確認し、自動的にインストール",
+    "pref.channel":    "更新チャンネル — 正式版はより安定、候補版は更新が早い",
     "pref.channel.stable":  "正式版",
     "pref.channel.rc":      "候補版",
 
@@ -68,7 +68,7 @@
 
     // ── General — Database ───────────────────────────────────
     "sec.database":   "データベース",
-    "pref.dbpath.desc":"注釈と既読状態の永続化ストレージ (SQLite)",
+    "pref.dbpath":"注釈と既読状態の永続化ストレージ (SQLite)",
     "pref.dbpath.browse": "参照…",
     "pref.dbpath.clear":  "リセット",
 
