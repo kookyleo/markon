@@ -125,8 +125,8 @@
     // ── Tips — Desktop integration ───────────────────────────
     "tips.gui":        "Desktop integration",
     "tips.gui.1":  "Right-click a .md file → Open With → Markon to preview in browser",
-    "tips.gui.2":  "(macOS) Drag Markon.app to the Finder toolbar — click the icon to add the current folder as a workspace",
-    "tips.gui.3":  "(Windows) Right-click a workspace folder → Preview with Markon",
+    "tips.gui.2":  "Drag Markon.app to the Finder toolbar — click the icon to add the current folder as a workspace",
+    "tips.gui.3":  "Right-click a workspace folder → Preview with Markon",
 
     // ── Tips — Key features ──────────────────────────────────
     "tips.features":   "Key features",
