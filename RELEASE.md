@@ -20,7 +20,7 @@ Cargo.toml version change → push to main
    Upload latest-rc.json to "updater" release
         │
         ▼
-   7 days, no issues, no newer RC
+   7 days, no release-blocker issues
         │
         ▼
    Auto Promote (auto-promote.yml, daily cron)
@@ -35,7 +35,7 @@ Cargo.toml version change → push to main
 
 ### 1. Bump version
 
-Edit `Cargo.toml` (single source of truth):
+Edit `Cargo.toml` (single source of truth, `tauri.conf.json` reads from it automatically):
 
 ```toml
 [workspace.package]
@@ -48,10 +48,22 @@ Push to `main`. That's it — CI handles the rest.
 
 1. **auto-rc.yml** detects the version change, creates tag `v0.9.0-rc.1`
 2. **release.yml** builds all 3 platforms (macOS/Linux/Windows), creates a prerelease, uploads `latest-rc.json` to the permanent `updater` release
-3. **auto-promote.yml** runs daily — if the RC is ≥7 days old with no open `release-blocker` issues, it triggers promotion
+3. **auto-promote.yml** runs daily at 08:00 UTC — checks the latest RC against promotion criteria (see below), triggers promotion if all pass
 4. **promote.yml** copies all RC assets to a new stable release `v0.9.0` and uploads `latest.json`
 
-### 3. Manual override
+### 3. Auto-promote criteria
+
+All conditions must be met:
+
+- RC is ≥ 7 days old
+- No open issues with `release-blocker` label
+- No stable release for the same version already exists
+
+### 4. Blocking a release
+
+Add the `release-blocker` label to any open GitHub issue to prevent auto-promotion. This is a manual decision — when you see a critical bug report, add the label. Remove it (or close the issue) when the fix is in.
+
+### 5. Manual override
 
 Promote an RC immediately without waiting 7 days:
 
@@ -77,6 +89,13 @@ Clients check for updates from a permanent GitHub release tagged `updater`:
 | **RC** | `updater/latest-rc.json` | Opt-in testers |
 
 Users switch channels in Settings → Preferences → Update channel.
+
+### Client update behavior
+
+- When idle, the app checks the updater manifest for the configured channel
+- If a newer version is found, it downloads and installs silently
+- The About page shows "Update installed, restart to apply" with a "Restart now" link
+- If the user doesn't restart, the update takes effect on the next app launch
 
 ## Signing
 
