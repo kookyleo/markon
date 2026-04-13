@@ -507,10 +507,13 @@
     .cli-pill:hover { border-color: var(--accent); color: var(--accent); }
     .cli-pill.on { background: var(--accent); color: #fff; border-color: var(--accent); }
     .cli-pill input { display: none; }
-    /* Terminal output block */
+    /* Terminal output block — sits inside .section-body as the bottom region */
     .cli-terminal {
-      margin-top: 8px;
-      border-radius: var(--radius);
+      margin: 10px -10px -10px;
+      padding: 0;
+      background: var(--bg);
+      border-top: 1px solid var(--border);
+      border-radius: 0 0 var(--radius) var(--radius);
       overflow: hidden;
       font-family: 'SF Mono', Monaco, Menlo, monospace;
       font-size: 12px;
@@ -520,13 +523,8 @@
       align-items: center;
       padding: 7px 10px;
       gap: 6px;
-      background: var(--bg);
-      border: 1px solid var(--border);
-      border-bottom: none;
     }
-    .cli-term-row:first-child { border-radius: var(--radius) var(--radius) 0 0; }
-    .cli-term-row:last-child { border-bottom: 1px solid var(--border); border-radius: 0 0 var(--radius) var(--radius); }
-    .cli-term-row:only-child { border-radius: var(--radius); border-bottom: 1px solid var(--border); }
+    .cli-term-row + .cli-term-row { border-top: 1px solid var(--border); }
     .cli-term-row .prompt { color: var(--text-3); flex-shrink: 0; font-size: 11px; }
     .cli-term-row code { flex: 1; min-width: 0; color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; -webkit-user-select: text; user-select: text; }
     .cli-term-row .tips-copy { position: static; transform: none; width: 22px; height: 22px; }
@@ -943,17 +941,17 @@
               <label class="cli-pill"><input type="checkbox" id="cli-shared"><span data-i18n="cli.shared"></span></label>
               <label class="cli-pill"><input type="checkbox" id="cli-open"><span data-i18n="cli.open"></span></label>
             </div>
-          </div>
-          <div class="cli-terminal">
-            <div class="cli-term-row">
-              <span class="prompt">$</span>
-              <code id="cli-output">markon .</code>
-              <button class="tips-copy" id="cli-copy"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg></button>
-            </div>
-            <div class="cli-term-row">
-              <span class="prompt">alias</span>
-              <code id="cli-alias-output"></code>
-              <button class="tips-copy" id="cli-alias-copy"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg></button>
+            <div class="cli-terminal">
+              <div class="cli-term-row">
+                <span class="prompt">$</span>
+                <code id="cli-output">markon .</code>
+                <button class="tips-copy" id="cli-copy"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg></button>
+              </div>
+              <div class="cli-term-row">
+                <span class="prompt">alias</span>
+                <code id="cli-alias-output"></code>
+                <button class="tips-copy" id="cli-alias-copy"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg></button>
+              </div>
             </div>
           </div>
         </div>
