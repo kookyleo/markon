@@ -9,7 +9,7 @@ codegen-units = 1
 opt-level = "s"
 
 [workspace.dependencies]
-markon-core = { path = "crates/core", version = "0.9.0" }
+markon-core = { path = "crates/core", version = "0.9" }
 
 [workspace.package]
 version = "0.9.0"
