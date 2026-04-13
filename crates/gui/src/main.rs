@@ -140,6 +140,7 @@ fn main() {
 
     let app = tauri::Builder::default()
         .plugin(tauri_plugin_updater::Builder::new().build())
+        .plugin(tauri_plugin_process::init())
         .plugin(tauri_plugin_single_instance::init(|app, args, _cwd| {
             if let Some(path_str) = args.get(1) {
                 handle_open_path(app, Path::new(path_str));

@@ -2979,7 +2979,7 @@ checksum = "c41e0c4fef86961ac6d6f8a82609f55f31b05e4fce149ac5710e439df7619ba4"
 
 [[package]]
 name = "markon"
-version = "0.9.0-rc.1"
+version = "0.8.0"
 dependencies = [
  "clap",
  "dialoguer",
@@ -2993,7 +2993,7 @@ dependencies = [
 
 [[package]]
 name = "markon-core"
-version = "0.9.0-rc.1"
+version = "0.8.0"
 dependencies = [
  "axum",
  "dirs",
@@ -3029,7 +3029,7 @@ dependencies = [
 
 [[package]]
 name = "markon-gui"
-version = "0.9.0-rc.1"
+version = "0.8.0"
 dependencies = [
  "dirs",
  "markon-core",
@@ -3040,6 +3040,7 @@ dependencies = [
  "sys-locale",
  "tauri",
  "tauri-build",
+ "tauri-plugin-process",
  "tauri-plugin-single-instance",
  "tauri-plugin-updater",
  "tokio",
@@ -5804,6 +5805,16 @@ dependencies = [
  "tauri-utils",
  "toml 0.9.12+spec-1.1.0",
  "walkdir",
+]
+
+[[package]]
+name = "tauri-plugin-process"
+version = "2.3.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d55511a7bf6cd70c8767b02c97bf8134fa434daf3926cfc1be0a0f94132d165a"
+dependencies = [
+ "tauri",
+ "tauri-plugin",
 ]
 
 [[package]]

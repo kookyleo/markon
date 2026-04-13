@@ -54,7 +54,7 @@
     "sec.shortcuts":        "Keyboard shortcuts",
     "shortcuts.reset":      "Reset to defaults",
     "shortcuts.record":     "Press new shortcut…",
-    "pref.autoupdate.desc": "Check GitHub for new versions on launch and install automatically",
+    "pref.autoupdate.desc": "Check GitHub for new versions when idle and install automatically",
     "pref.channel.desc":    "Update channel (Stable = promoted releases only, RC = release candidates)",
 
     // ── General — New workspace defaults ─────────────────────
@@ -75,6 +75,7 @@
     "update.latest":   "Up to date",
     "update.found":    "New version v{v} found, installing…",
     "update.done":     "Update installed, restart to apply",
+    "update.restart":  "Restart now",
     "update.error":    "Check failed",
 
     // ── Workspace list ───────────────────────────────────────

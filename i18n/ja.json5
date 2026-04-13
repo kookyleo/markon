@@ -54,7 +54,7 @@
     "sec.shortcuts":        "ショートカットキー",
     "shortcuts.reset":      "デフォルトに戻す",
     "shortcuts.record":     "新しいキーを押してください…",
-    "pref.autoupdate.desc": "起動時に GitHub で新バージョンを確認し、自動的にインストール",
+    "pref.autoupdate.desc": "アイドル時に GitHub で新バージョンを確認し、自動的にインストール",
     "pref.channel.desc":    "更新チャンネル（Stable = 正式版のみ、RC = リリース候補）",
 
     // ── General — New workspace defaults ─────────────────────
@@ -75,6 +75,7 @@
     "update.latest":   "最新バージョンです",
     "update.found":    "新バージョン v{v} が見つかりました。インストール中…",
     "update.done":     "アップデート完了、再起動で適用されます",
+    "update.restart":  "今すぐ再起動",
     "update.error":    "確認に失敗しました",
 
     // ── Workspace list ───────────────────────────────────────
