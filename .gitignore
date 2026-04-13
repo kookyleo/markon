@@ -16,9 +16,14 @@ package-lock.json
 .DS_Store
 Thumbs.db
 
-# SQLite databases (optional - comment out if you want to track them)
+# Build artifacts
+*.dmg
+*.exe
+*.pdb
+*.pem
+dist/
+
+# SQLite
 *.db
 *.db-shm
 *.db-wal
-.dmg
-*.dmg

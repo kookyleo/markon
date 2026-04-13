@@ -117,7 +117,7 @@ cargo install markon
 ### 从源码安装
 
 ```bash
-cargo install --path .
+cargo install --path crates/cli
 ```
 
 ### 从 GitHub Releases 安装
@@ -422,9 +422,10 @@ cargo build --release
 
 # 运行测试
 cargo test
+npm test
 
 # JavaScript lint
-npx eslint assets/js/**/*.js
+npx eslint 'crates/core/assets/js/**/*.js'
 
 # 运行
 ./target/debug/markon README.md
@@ -446,11 +447,10 @@ npx eslint assets/js/**/*.js
 
 ### 提交 PR 前
 
-- 运行 `cargo test` - 确保所有测试通过
+- 运行 `cargo test` 和 `npm test` - 确保所有测试通过
 - 运行 `cargo clippy` - 检查代码质量
 - 运行 `cargo fmt` - 格式化代码
-- 运行 `npx eslint assets/js/**/*.js` - 检查 JavaScript 代码
-- 手动测试更改
+- 运行 `npx eslint 'crates/core/assets/js/**/*.js'` - 检查 JavaScript 代码
 
 ## 许可证
 

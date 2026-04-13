@@ -117,7 +117,7 @@ cargo install markon
 ### From source
 
 ```bash
-cargo install --path .
+cargo install --path crates/cli
 ```
 
 ### Run directly without installing
@@ -379,9 +379,10 @@ cargo build --release
 
 # Run tests
 cargo test
+npm test
 
 # JavaScript lint
-npx eslint assets/js/**/*.js
+npx eslint 'crates/core/assets/js/**/*.js'
 
 # Run
 ./target/debug/markon README.md
@@ -403,10 +404,10 @@ Contributions are welcome! Whether it's bug reports, feature requests, or code i
 
 ### Before Submitting PR
 
-- Run `cargo test` - Ensure all tests pass
+- Run `cargo test` and `npm test` - Ensure all tests pass
 - Run `cargo clippy` - Check code quality
 - Run `cargo fmt` - Format code
-- Run `npx eslint assets/js/**/*.js` - Lint JavaScript code
+- Run `npx eslint 'crates/core/assets/js/**/*.js'` - Lint JavaScript code
 - Test the changes manually
 
 ## License
