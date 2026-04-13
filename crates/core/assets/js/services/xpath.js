@@ -1,16 +1,7 @@
 /**
  * XPath service - pure technical, no business logic
  */
-import { CONFIG } from '../core/config.js';
-
-const shouldSkip = (el) => {
-    if (el.nodeType !== 1) return false;
-    if (el.id && CONFIG.SKIP_ELEMENTS.IDS.has(el.id)) return true;
-    if (el.className && typeof el.className === 'string') {
-        return el.className.split(' ').some(cls => CONFIG.SKIP_ELEMENTS.CLASSES.has(cls));
-    }
-    return false;
-};
+import { DOM } from './dom.js';
 
 export const XPath = {
     // Generate simple XPath
@@ -20,7 +11,7 @@ export const XPath = {
         while (current && current.nodeName !== 'ARTICLE') {
             let index = 1;
             for (let sibling = current.previousSibling; sibling; sibling = sibling.previousSibling) {
-                if (sibling.nodeName === current.nodeName && !shouldSkip(sibling)) index++;
+                if (sibling.nodeName === current.nodeName && !DOM.shouldSkip(sibling)) index++;
             }
             parts.unshift(`${current.nodeName}[${index}]`);
             current = current.parentNode;
@@ -28,7 +19,7 @@ export const XPath = {
         return parts.length === 0 ? '//article[1]' : `//article[1]/${parts.join('/')}`;
     },
 
-    // 通过XPathGetNode
+    // Resolve an XPath string back to a DOM node
     resolve(path) {
         const match = path.match(/^\/\/article\[1\](?:\/(.+))?$/);
         if (!match) return null;
@@ -44,7 +35,7 @@ export const XPath = {
             let count = 0, found = null;
 
             for (const child of current.childNodes) {
-                if (child.nodeName === tagName && !shouldSkip(child) && ++count === parseInt(targetIndex)) {
+                if (child.nodeName === tagName && !DOM.shouldSkip(child) && ++count === parseInt(targetIndex)) {
                     found = child;
                     break;
                 }
@@ -55,7 +46,7 @@ export const XPath = {
         return current;
     },
 
-    // Calculate绝对偏移
+    // Calculate absolute text offset within a parent element
     getAbsoluteOffset(container, offset) {
         const target = container.nodeType === 3 ? container.parentNode : container;
         let absoluteOffset = 0;
@@ -78,7 +69,7 @@ export const XPath = {
         return absoluteOffset;
     },
 
-    // 从绝对偏移FindNode
+    // Find the text node and relative offset from an absolute offset
     findNode(element, absoluteOffset) {
         let currentOffset = 0, targetNode = null, relativeOffset = 0, lastTextNode = null;
 

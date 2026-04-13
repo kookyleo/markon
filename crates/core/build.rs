@@ -27,9 +27,9 @@ fn generate_langs_registry() {
     entries.sort_by(|a, b| a.0.cmp(&b.0));
 
     let mut code = String::from(
-        "struct LangEntry { value: &'static str, key: &'static str, data: &'static str }\n\n"
+        "struct LangEntry { value: &'static str, key: &'static str, data: &'static str }\n\n",
     );
-    code.push_str(&format!("const LANGS: &[LangEntry] = &[\n"));
+    code.push_str("const LANGS: &[LangEntry] = &[\n");
     for (value, key, path) in &entries {
         // Use forward slashes so the path works in Rust string literals on Windows.
         let path_str = path.to_string_lossy().replace('\\', "/");

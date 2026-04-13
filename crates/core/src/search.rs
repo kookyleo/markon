@@ -262,7 +262,6 @@ impl SearchIndex {
     }
 }
 
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -517,5 +516,62 @@ mod tests {
 
         let results = index.search("Common", 20).unwrap();
         assert_eq!(results.len(), 10);
+    }
+
+    #[test]
+    fn test_subdirectory_relative_paths() {
+        let temp_dir = TempDir::new().unwrap();
+        let sub = temp_dir.path().join("notes").join("deep");
+        fs::create_dir_all(&sub).unwrap();
+        create_test_file(&sub, "nested.md", "# Nested\nDeep content here").unwrap();
+
+        let index = SearchIndex::new(temp_dir.path()).unwrap();
+        let results = index.search("Deep", 10).unwrap();
+        assert_eq!(results.len(), 1);
+        // Path should be relative, using forward slashes
+        let path = &results[0].file_path;
+        assert!(
+            path.starts_with("notes"),
+            "expected relative path, got: {path}"
+        );
+        assert!(
+            path.contains("nested"),
+            "expected file name in path, got: {path}"
+        );
+        assert!(
+            !path.starts_with('/'),
+            "path should be relative, got: {path}"
+        );
+    }
+
+    #[test]
+    fn test_update_file_ignores_non_markdown() {
+        let temp_dir = TempDir::new().unwrap();
+        create_test_file(temp_dir.path(), "test.md", "# Original\nMarkdown").unwrap();
+        let index = SearchIndex::new(temp_dir.path()).unwrap();
+
+        // Write a .txt file and try to update — should be no-op
+        let txt_path = temp_dir.path().join("notes.txt");
+        fs::write(&txt_path, "Some text content").unwrap();
+        // Should not error
+        index.update_file(&txt_path).unwrap();
+
+        // Searching for the txt content should yield nothing
+        let results = index.search("Some text content", 10).unwrap();
+        assert!(results.is_empty());
+    }
+
+    #[test]
+    fn test_update_file_no_extension() {
+        let temp_dir = TempDir::new().unwrap();
+        create_test_file(temp_dir.path(), "test.md", "# Doc\nContent").unwrap();
+        let index = SearchIndex::new(temp_dir.path()).unwrap();
+
+        let no_ext = temp_dir.path().join("README");
+        fs::write(&no_ext, "Plain text").unwrap();
+        index.update_file(&no_ext).unwrap();
+
+        let results = index.search("Plain text", 10).unwrap();
+        assert!(results.is_empty());
     }
 }

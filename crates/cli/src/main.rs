@@ -7,8 +7,14 @@ use std::path::Path;
 
 fn get_available_hosts() -> Vec<(String, String)> {
     let mut hosts = vec![
-        ("127.0.0.1".to_string(), "Localhost (local only)".to_string()),
-        ("0.0.0.0".to_string(), "All interfaces (LAN accessible)".to_string()),
+        (
+            "127.0.0.1".to_string(),
+            "Localhost (local only)".to_string(),
+        ),
+        (
+            "0.0.0.0".to_string(),
+            "All interfaces (LAN accessible)".to_string(),
+        ),
     ];
     if let Ok(ifaces) = list_afinet_netifas() {
         for (name, ip) in ifaces {
@@ -169,7 +175,10 @@ async fn main() {
         }
     } else {
         // No argument → use current working directory.
-        (std::env::current_dir().expect("Cannot determine working directory"), None)
+        (
+            std::env::current_dir().expect("Cannot determine working directory"),
+            None,
+        )
     };
 
     // Check if a server is already running.
@@ -205,14 +214,21 @@ async fn main() {
         None => "127.0.0.1".to_string(),
         Some(ref h) if h == "select" => match select_host() {
             Ok(h) => h,
-            Err(e) => { eprintln!("Failed to select host: {e}"); return; }
+            Err(e) => {
+                eprintln!("Failed to select host: {e}");
+                return;
+            }
         },
         Some(h) => h,
     };
 
     // Determine open_browser: if no explicit flag, auto-open when there's a file arg.
     let open_browser = cli.open_browser.or_else(|| {
-        if cli.file.is_some() { Some("local".to_string()) } else { None }
+        if cli.file.is_some() {
+            Some("local".to_string())
+        } else {
+            None
+        }
     });
 
     let ws_init = WorkspaceInit {

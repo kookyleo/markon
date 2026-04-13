@@ -11,8 +11,8 @@ pub struct ServerManager {
     pub registry: Arc<WorkspaceRegistry>,
 }
 
-impl ServerManager {
-    pub fn new() -> Self {
+impl Default for ServerManager {
+    fn default() -> Self {
         Self {
             abort_tx: None,
             thread: None,
@@ -20,6 +20,12 @@ impl ServerManager {
             running: false,
             registry: Arc::new(WorkspaceRegistry::new("markon:0".into())),
         }
+    }
+}
+
+impl ServerManager {
+    pub fn new() -> Self {
+        Self::default()
     }
 
     pub fn start(&mut self, mut config: ServerConfig) {
@@ -35,7 +41,10 @@ impl ServerManager {
         let bind_addr = format!("{}:{}", config.host, config.port);
         let (config, actual_port) = match std::net::TcpListener::bind(&bind_addr) {
             Ok(listener) => {
-                let actual_port = listener.local_addr().map(|a| a.port()).unwrap_or(config.port);
+                let actual_port = listener
+                    .local_addr()
+                    .map(|a| a.port())
+                    .unwrap_or(config.port);
                 let mut c = config;
                 c.port = actual_port;
                 c.bound_listener = Some(listener);

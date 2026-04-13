@@ -228,7 +228,8 @@ impl MarkdownRenderer {
     fn add_heading_ids_and_extract_toc(&self, html: &str) -> (String, Vec<TocItem>) {
         let mut toc = Vec::new();
         let mut headings = Vec::new();
-        let mut id_counts: std::collections::HashMap<String, u32> = std::collections::HashMap::new();
+        let mut id_counts: std::collections::HashMap<String, u32> =
+            std::collections::HashMap::new();
 
         // First pass: collect all headings with their positions
         for caps in HEADING_REGEX.captures_iter(html) {
@@ -239,7 +240,11 @@ impl MarkdownRenderer {
                 let base_id = self.generate_slug(content);
                 // Deduplicate: append -1, -2, etc. for repeated headings
                 let count = id_counts.entry(base_id.clone()).or_insert(0);
-                let id = if *count == 0 { base_id.clone() } else { format!("{}-{}", base_id, count) };
+                let id = if *count == 0 {
+                    base_id.clone()
+                } else {
+                    format!("{}-{}", base_id, count)
+                };
                 *id_counts.get_mut(&base_id).unwrap() += 1;
                 let text = HTML_TAG_REGEX.replace_all(content, "").to_string();
 

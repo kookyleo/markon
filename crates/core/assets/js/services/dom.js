@@ -14,7 +14,7 @@ export const DOM = {
         return null;
     },
 
-    // Find最后一个TextNode
+    // Find the last non-empty text node in a subtree
     findLastTextNode(element) {
         let lastText = null;
         const walk = (node) => {
@@ -28,7 +28,7 @@ export const DOM = {
         return lastText;
     },
 
-    // CheckElement是否应Skip
+    // Check if element should be skipped (TOC, popovers, etc.)
     shouldSkip(element) {
         if (element.nodeType !== 1) return false;
         if (element.id && CONFIG.SKIP_ELEMENTS.IDS.has(element.id)) return true;
@@ -38,7 +38,7 @@ export const DOM = {
         return false;
     },
 
-    // 安全Get高度
+    // Get element height with fallback
     getHeight(element, fallback = 80) {
         const height = element.offsetHeight;
         return height > 0 ? height : fallback;

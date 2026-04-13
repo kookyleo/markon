@@ -1,14 +1,10 @@
 /**
- * UndoManager - Undo/Redo manager
- * Supports undo and redo for annotation operations
+ * UndoManager - Undo/Redo stack for annotation operations.
  */
 
 import { CONFIG } from '../core/config.js';
 import { Logger } from '../core/utils.js';
 
-/**
- * UndoManagement器类
- */
 export class UndoManager {
     #undoStack = [];
     #redoStack = [];
@@ -19,100 +15,48 @@ export class UndoManager {
     }
 
     /**
-     * 记录一个操作
-     * @param {Object} operation - 操作Object
-     * @param {string} operation.type - 操作Type（add_annotation、delete_annotation、clear_annotations）
-     * @param {*} operation.data - 操作Data
+     * Record an operation.
+     * @param {Object} operation - { type: string, data: any }
      */
     push(operation) {
-        this.#undoStack.push({
-            ...operation,
-            timestamp: Date.now()
-        });
+        this.#undoStack.push({ ...operation, timestamp: Date.now() });
 
-        // 限制栈Size
         if (this.#undoStack.length > this.#maxStackSize) {
             this.#undoStack.shift();
         }
 
-        // ClearRedo栈（新操作后不能再Redo）
+        // New operation invalidates redo history
         this.#redoStack = [];
 
         Logger.log('UndoManager', `Pushed operation: ${operation.type}`);
     }
 
-    /**
-     * Undo上一个操作
-     * @returns {Object|null} 被Undo的操作
-     */
+    /** @returns {Object|null} The undone operation, or null if stack is empty. */
     undo() {
-        if (this.#undoStack.length === 0) {
-            Logger.log('UndoManager', 'Nothing to undo');
-            return null;
-        }
-
+        if (this.#undoStack.length === 0) return null;
         const operation = this.#undoStack.pop();
         this.#redoStack.push(operation);
-
         Logger.log('UndoManager', `Undid operation: ${operation.type}`);
         return operation;
     }
 
-    /**
-     * Redo上一个Undo的操作
-     * @returns {Object|null} 被Redo的操作
-     */
+    /** @returns {Object|null} The redone operation, or null if stack is empty. */
     redo() {
-        if (this.#redoStack.length === 0) {
-            Logger.log('UndoManager', 'Nothing to redo');
-            return null;
-        }
-
+        if (this.#redoStack.length === 0) return null;
         const operation = this.#redoStack.pop();
         this.#undoStack.push(operation);
-
         Logger.log('UndoManager', `Redid operation: ${operation.type}`);
         return operation;
     }
 
-    /**
-     * Check是否可以Undo
-     * @returns {boolean}
-     */
-    canUndo() {
-        return this.#undoStack.length > 0;
-    }
+    canUndo() { return this.#undoStack.length > 0; }
+    canRedo() { return this.#redoStack.length > 0; }
 
-    /**
-     * Check是否可以Redo
-     * @returns {boolean}
-     */
-    canRedo() {
-        return this.#redoStack.length > 0;
-    }
-
-    /**
-     * Clear所有栈
-     */
     clear() {
         this.#undoStack = [];
         this.#redoStack = [];
-        Logger.log('UndoManager', 'Cleared all stacks');
     }
 
-    /**
-     * GetUndo栈Size
-     * @returns {number}
-     */
-    getUndoStackSize() {
-        return this.#undoStack.length;
-    }
-
-    /**
-     * GetRedo栈Size
-     * @returns {number}
-     */
-    getRedoStackSize() {
-        return this.#redoStack.length;
-    }
+    getUndoStackSize() { return this.#undoStack.length; }
+    getRedoStackSize() { return this.#redoStack.length; }
 }

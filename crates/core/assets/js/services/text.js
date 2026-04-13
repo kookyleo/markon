@@ -8,7 +8,7 @@ export const Text = {
         return text.replace(/\s+/g, ' ').trim();
     },
 
-    // HTML 实体Decode
+    // Decode HTML entities
     decodeEntities(text) {
         return text
             .replace(/&lt;/g, '<')
@@ -18,7 +18,7 @@ export const Text = {
             .replace(/&#39;/g, '\'');
     },
 
-    // HTML 转义
+    // Escape HTML special characters
     escape(text) {
         const div = document.createElement('div');
         div.textContent = text;

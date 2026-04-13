@@ -59,16 +59,23 @@ fn handle_open_path(app: &tauri::AppHandle, path: &Path) {
     // Read default feature flags from settings.
     let (def_search, def_viewed, def_edit, def_shared) = {
         let settings = state.settings.lock().unwrap();
-        (settings.default_search, settings.default_viewed, settings.default_edit, settings.default_shared_annotation)
+        (
+            settings.default_search,
+            settings.default_viewed,
+            settings.default_edit,
+            settings.default_shared_annotation,
+        )
     };
 
-    let id = server.registry.add(markon_core::workspace::WorkspaceConfig {
-        path: ws_root,
-        enable_search: def_search,
-        enable_viewed: def_viewed,
-        enable_edit: def_edit,
-        shared_annotation: def_shared,
-    });
+    let id = server
+        .registry
+        .add(markon_core::workspace::WorkspaceConfig {
+            path: ws_root,
+            enable_search: def_search,
+            enable_viewed: def_viewed,
+            enable_edit: def_edit,
+            shared_annotation: def_shared,
+        });
     let port = server.port();
     drop(server);
 
@@ -132,7 +139,6 @@ fn finder_front_directory() -> Option<String> {
     None
 }
 
-
 // ── Main ──────────────────────────────────────────────────────────────────────
 
 fn main() {
@@ -151,7 +157,11 @@ fn main() {
         .setup(move |app| {
             use crate::settings::PortMode;
 
-            let port = if settings.port_mode == PortMode::Auto { 0 } else { settings.port };
+            let port = if settings.port_mode == PortMode::Auto {
+                0
+            } else {
+                settings.port
+            };
             let config = settings.to_server_config(port);
 
             let tray_resident_init = settings.tray_resident;
@@ -170,17 +180,20 @@ fn main() {
             // ── System tray ───────────────────────────────────────────────
             let icon = tauri::include_image!("icons/tray.png");
 
-            let i18n_data = commands::get_lang_data(&language_init);
+            let i18n_data = markon_core::i18n::get_lang_data(&language_init);
             let label_settings = i18n_data["tray.show"]
-                .as_str().unwrap_or("Settings…").to_string();
+                .as_str()
+                .unwrap_or("Settings…")
+                .to_string();
             let label_quit = i18n_data["tray.quit"]
-                .as_str().unwrap_or("Quit Markon").to_string();
+                .as_str()
+                .unwrap_or("Quit Markon")
+                .to_string();
 
             let item_settings =
                 MenuItem::with_id(app, "settings", label_settings, true, None::<&str>)?;
             let sep = PredefinedMenuItem::separator(app)?;
-            let item_quit =
-                MenuItem::with_id(app, "quit", label_quit, true, None::<&str>)?;
+            let item_quit = MenuItem::with_id(app, "quit", label_quit, true, None::<&str>)?;
 
             let menu = Menu::with_items(app, &[&item_settings, &sep, &item_quit])?;
 
