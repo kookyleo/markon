@@ -1,7 +1,6 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
   "productName": "Markon",
-  "version": "0.9.0-rc.2",
   "identifier": "dev.kookyleo.markon",
   "build": {
     "frontendDist": "ui"
