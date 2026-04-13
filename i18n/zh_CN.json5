@@ -77,6 +77,7 @@
     "update.done":     "更新完成,重启生效",
     "update.restart":  "立即重启",
     "update.error":    "检查失败",
+    "update.unavailable": "暂无发布版本",
 
     // ── 工作区列表 ───────────────────────────────────────────
     "ws.add.btn":     "添加工作区…",

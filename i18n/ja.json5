@@ -77,6 +77,7 @@
     "update.done":     "アップデート完了、再起動で適用されます",
     "update.restart":  "今すぐ再起動",
     "update.error":    "確認に失敗しました",
+    "update.unavailable": "まだリリースがありません",
 
     // ── Workspace list ───────────────────────────────────────
     "ws.add.btn":     "ワークスペースを追加…",

@@ -1016,7 +1016,7 @@
 
         <h2>markon</h2>
         <div class="ver">
-          <span id="ver-label">v0.8.0</span>
+          <span id="ver-label"></span>
           <span id="update-status" style="margin-left:6px"></span>
           <a id="update-restart" href="#" style="display:none;margin-left:4px;color:var(--accent);text-decoration:underline;cursor:default;font-size:12px" data-i18n="update.restart"></a>
           <button id="update-retry" style="display:none;border:none;background:transparent;color:var(--text-2);cursor:default;padding:2px;border-radius:4px;vertical-align:middle;margin-left:2px" title="">
@@ -1492,6 +1492,7 @@
   (async () => {
     try {
       const info = await invoke('get_system_info');
+      document.getElementById('ver-label').textContent = `v${info.app_version}`;
       systemLocale = info.locale;
       // Respect saved language setting; fallback to system locale.
       const s = await invoke('get_settings');
@@ -1847,9 +1848,11 @@
     try {
       const r = await invoke('check_for_update');
       if (r.error) {
-        statusEl.textContent = T('update.error');
-        statusEl.style.color = 'var(--danger)';
-        retryBtn.style.display = 'inline';
+        const is404 = /404|not found/i.test(r.error);
+        statusEl.textContent = is404 ? T('update.unavailable') : T('update.error');
+        statusEl.title = r.error;
+        statusEl.style.color = is404 ? 'var(--text-3)' : 'var(--danger)';
+        retryBtn.style.display = is404 ? 'none' : 'inline';
       } else if (r.available && r.installed) {
         statusEl.textContent = T('update.done');
         statusEl.style.color = 'var(--accent)';
