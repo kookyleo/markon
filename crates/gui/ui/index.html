@@ -895,8 +895,7 @@
           <div class="section-body tips-body">
             <p data-i18n="tips.quickstart.1"></p>
             <p data-i18n="tips.quickstart.2"></p>
-            <p id="tips-quickstart-help"></p>
-            <p data-i18n="tips.quickstart.3"></p>
+            <p id="tips-quickstart-3" data-i18n="tips.quickstart.3"></p>
           </div>
         </div>
 
@@ -951,14 +950,9 @@
         <div class="section tips-section">
           <div class="section-title" data-i18n="tips.gui"></div>
           <div class="section-body tips-body">
-            <p style="font-weight:500;color:var(--text);margin-bottom:2px" data-i18n="tips.gui.mac.title"></p>
-            <p data-i18n="tips.gui.mac.1"></p>
-            <p data-i18n="tips.gui.mac.2"></p>
-            <p data-i18n="tips.gui.mac.3"></p>
-            <p data-i18n="tips.gui.mac.4"></p>
-            <p style="font-weight:500;color:var(--text);margin-top:8px;margin-bottom:2px" data-i18n="tips.gui.win.title"></p>
-            <p data-i18n="tips.gui.win.1"></p>
-            <p data-i18n="tips.gui.win.2"></p>
+            <p data-i18n="tips.gui.1"></p>
+            <p data-i18n="tips.gui.2"></p>
+            <p data-i18n="tips.gui.3"></p>
           </div>
         </div>
 
@@ -1769,8 +1763,8 @@
 
   function renderHelpTip() {
     const helpSc = { ...DEFAULT_SHORTCUTS.HELP, ...(currentShortcuts.HELP || {}) };
-    const el = document.getElementById('tips-quickstart-help');
-    if (el) el.innerHTML = T('tips.quickstart.help').replace('{key}', `<kbd>${formatKey(helpSc)}</kbd>`);
+    const el = document.getElementById('tips-quickstart-3');
+    if (el) el.innerHTML = T('tips.quickstart.3').replace('{key}', `<kbd>${formatKey(helpSc)}</kbd>`);
   }
 
   function renderShortcuts() {
