@@ -87,9 +87,9 @@ pub fn add_workspace(
     } else {
         PathBuf::from(&normalized)
     };
-    let canonical = expanded
-        .canonicalize()
-        .map_err(|e| format!("Invalid path: {e}"))?;
+    // Use dunce::canonicalize to avoid Windows \\?\ verbatim prefix —
+    // that prefix leaks into settings.json and into the UI otherwise.
+    let canonical = dunce::canonicalize(&expanded).map_err(|e| format!("Invalid path: {e}"))?;
 
     let canonical_str = canonical.to_string_lossy().to_string();
 
@@ -378,44 +378,33 @@ pub fn get_i18n() -> serde_json::Value {
 }
 
 /// List available system font families.
+///
+/// Uses `font-kit`, which goes through the platform-native font APIs:
+/// DirectWrite on Windows, Core Text on macOS, fontconfig on Linux. This
+/// replaces the earlier subprocess-based implementation that shelled out to
+/// `powershell` / `osascript` / `fc-list` — those had encoding quirks and a
+/// noticeable startup latency, and on Windows returned nothing useful at all
+/// in some environments.
 #[tauri::command]
 pub fn list_fonts() -> Vec<String> {
-    let output = if cfg!(target_os = "macos") {
-        std::process::Command::new("osascript")
-            .args([
-                "-l",
-                "JavaScript",
-                "-e",
-                "ObjC.import('AppKit');\
-                 var a=$.NSFontManager.sharedFontManager.availableFontFamilies;\
-                 var r=[];for(var i=0;i<a.count;i++)r.push(a.objectAtIndex(i).js);\
-                 r.sort().join('\\n');",
-            ])
-            .output()
-    } else if cfg!(target_os = "windows") {
-        std::process::Command::new("powershell")
-            .args(["-c", r#"(New-Object System.Drawing.Text.InstalledFontCollection).Families | ForEach-Object { $_.Name }"#])
-            .output()
-    } else {
-        std::process::Command::new("fc-list")
-            .args([":", "family"])
-            .output()
+    use font_kit::source::SystemSource;
+
+    let families = match SystemSource::new().all_families() {
+        Ok(f) => f,
+        Err(e) => {
+            eprintln!("list_fonts: SystemSource::all_families failed: {e}");
+            return Vec::new();
+        }
     };
 
-    match output {
-        Ok(o) if o.status.success() => {
-            let text = String::from_utf8_lossy(&o.stdout);
-            let mut fonts: Vec<String> = text
-                .lines()
-                .map(|l| l.trim().to_string())
-                .filter(|l| !l.is_empty())
-                .collect();
-            fonts.sort();
-            fonts.dedup();
-            fonts
-        }
-        _ => Vec::new(),
-    }
+    let mut fonts: Vec<String> = families
+        .into_iter()
+        .map(|f| f.trim().to_string())
+        .filter(|f| !f.is_empty())
+        .collect();
+    fonts.sort();
+    fonts.dedup();
+    fonts
 }
 
 // ── GitHub star via `gh` CLI ─────────────────────────────────────────────

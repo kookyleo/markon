@@ -160,7 +160,9 @@ async fn main() {
     // Resolve the workspace directory from the file/dir argument.
     let (ws_root, initial_path) = if let Some(ref file_str) = cli.file {
         let path = Path::new(file_str);
-        let canonical = match path.canonicalize() {
+        // dunce::canonicalize avoids the Windows \\?\ verbatim prefix on the
+        // printed URL / startup banner.
+        let canonical = match dunce::canonicalize(path) {
             Ok(p) => p,
             Err(_) => {
                 eprintln!("Error: Path '{file_str}' not found.");

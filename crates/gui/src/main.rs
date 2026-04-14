@@ -29,7 +29,9 @@ pub struct AppState {
 // ── Path-open logic ───────────────────────────────────────────────────────────
 
 fn handle_open_path(app: &tauri::AppHandle, path: &Path) {
-    let canonical = match path.canonicalize() {
+    // dunce::canonicalize strips the Windows \\?\ verbatim prefix so the
+    // path shown in the workspace list matches what the user typed.
+    let canonical = match dunce::canonicalize(path) {
         Ok(p) => p,
         Err(e) => {
             eprintln!("Warning: cannot resolve path {}: {}", path.display(), e);
@@ -178,7 +180,15 @@ fn main() {
             app.manage(state);
 
             // ── System tray ───────────────────────────────────────────────
+            // macOS uses a template icon (monochrome + alpha) that the system
+            // auto-tints against the menu bar. Windows and Linux trays do not
+            // have this concept, so we ship a separately-styled colored icon
+            // for them — otherwise the white template PNG is invisible on a
+            // light Windows taskbar.
+            #[cfg(target_os = "macos")]
             let icon = tauri::include_image!("icons/tray.png");
+            #[cfg(not(target_os = "macos"))]
+            let icon = tauri::include_image!("icons/tray-colored.png");
 
             let i18n_data = markon_core::i18n::get_lang_data(&language_init);
             let label_settings = i18n_data["tray.show"]
@@ -199,7 +209,7 @@ fn main() {
 
             TrayIconBuilder::with_id("main")
                 .icon(icon)
-                .icon_as_template(true)
+                .icon_as_template(cfg!(target_os = "macos"))
                 .menu(&menu)
                 .on_menu_event(|app, event| match event.id.as_ref() {
                     "settings" => show_settings_window(app),

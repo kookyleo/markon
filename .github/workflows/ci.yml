@@ -23,6 +23,7 @@ jobs:
             libwebkit2gtk-4.1-dev \
             libappindicator3-dev \
             librsvg2-dev \
+            libfontconfig1-dev \
             patchelf
 
       - name: Setup Rust
@@ -46,6 +47,7 @@ jobs:
             libwebkit2gtk-4.1-dev \
             libappindicator3-dev \
             librsvg2-dev \
+            libfontconfig1-dev \
             patchelf
 
       - name: Setup Rust

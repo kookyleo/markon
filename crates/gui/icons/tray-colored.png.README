@@ -1,0 +1,17 @@
+tray-colored.png — PLACEHOLDER
+
+This PNG is currently a copy of tray.png (white fill, designed for macOS
+template rendering). It is used on Windows and Linux where the system tray
+does not auto-invert colors.
+
+Please replace with a proper colored/dark variant before shipping. Suggested
+workflow:
+
+  1. Edit tray.svg (viewBox "2 4 28 24"), change fill="#ffffff" to a dark
+     neutral like "#2d2d2d" or a brand color.
+  2. Export to PNG at 64×64 (or higher, e.g. 256×256 for HiDPI).
+  3. Save over crates/gui/icons/tray-colored.png.
+  4. Delete this README file.
+
+Code reference: crates/gui/src/main.rs — TrayIconBuilder picks this file on
+non-macOS platforms via #[cfg(not(target_os = "macos"))].
