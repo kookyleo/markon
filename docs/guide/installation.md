@@ -4,52 +4,31 @@ Markon 提供桌面应用（GUI）和命令行（CLI）两种形态。
 
 ## 桌面版
 
+<DownloadButton mode="all" />
+
 ### macOS
 
-从 [Releases](https://github.com/kookyleo/markon/releases/latest) 选择对应芯片的安装包，双击挂载后拖到 Applications 目录：
+下载对应芯片的 `.dmg`，双击挂载后拖到 Applications 目录。
 
-- Apple Silicon（M 系列）：`Markon_x.x.x_aarch64.dmg`
-- Intel：`Markon_x.x.x_x64.dmg`
-
-首次启动可能需要在 **系统设置 → 隐私与安全性** 点击 "仍要打开"（因为应用使用的是 ad-hoc 签名）。
+首次启动可能需要在 **系统设置 → 隐私与安全性** 点击 "仍要打开"（应用使用 ad-hoc 签名）。
 
 ### Windows
 
-从 Releases 选择对应 CPU 的安装包，双击运行安装：
-
-- x64（绝大多数 Windows 设备）：`Markon_x.x.x_x64-setup.exe`
-- ARM64（Surface Pro X、骁龙 PC 等）：`Markon_x.x.x_arm64-setup.exe`
+下载对应 CPU 的 `-setup.exe`，双击运行安装。
 
 ### Linux
 
-**Debian / Ubuntu（amd64）**：
+下载 `.deb` 后安装：
 
 ```bash
-wget https://github.com/kookyleo/markon/releases/latest/download/Markon_amd64.deb
-sudo dpkg -i Markon_amd64.deb
+sudo dpkg -i Markon_*.deb
 ```
 
-**Debian / Ubuntu（arm64，树莓派 / Graviton 等）**：
+或下载 `.AppImage` 直接运行：
 
 ```bash
-wget https://github.com/kookyleo/markon/releases/latest/download/Markon_arm64.deb
-sudo dpkg -i Markon_arm64.deb
-```
-
-**通用 AppImage（x86_64）**：
-
-```bash
-wget https://github.com/kookyleo/markon/releases/latest/download/Markon_amd64.AppImage
-chmod +x Markon_amd64.AppImage
-./Markon_amd64.AppImage
-```
-
-**通用 AppImage（aarch64）**：
-
-```bash
-wget https://github.com/kookyleo/markon/releases/latest/download/Markon_aarch64.AppImage
-chmod +x Markon_aarch64.AppImage
-./Markon_aarch64.AppImage
+chmod +x Markon_*.AppImage
+./Markon_*.AppImage
 ```
 
 ### 自动更新

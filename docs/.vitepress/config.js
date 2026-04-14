@@ -1,5 +1,40 @@
 import { defineConfig } from 'vitepress';
 
+// Pulled at build time so the homepage and install page can link to the actual
+// latest release (Tauri bundles are versioned, so /releases/latest/download/X
+// would 404 — we need the real asset names).
+const release = await fetchLatestRelease();
+
+async function fetchLatestRelease() {
+  const url = 'https://api.github.com/repos/kookyleo/markon/releases/latest';
+  const headers = { Accept: 'application/vnd.github+json' };
+  if (process.env.GITHUB_TOKEN) headers.Authorization = `Bearer ${process.env.GITHUB_TOKEN}`;
+  try {
+    const res = await fetch(url, { headers });
+    if (!res.ok) {
+      console.warn(`[markon] release fetch ${res.status}; download buttons will fall back to /releases`);
+      return null;
+    }
+    const data = await res.json();
+    // Drop updater-only artifacts (sigs, archives, manifests) from user-facing lists.
+    const userAssets = data.assets.filter(a =>
+      !a.name.endsWith('.sig') &&
+      !a.name.endsWith('.json') &&
+      !/\.(app|AppImage|nsis)\.(tar\.gz|zip)$/.test(a.name)
+    );
+    return {
+      tag: data.tag_name,
+      version: data.tag_name.replace(/^v/, ''),
+      htmlUrl: data.html_url,
+      publishedAt: data.published_at,
+      assets: userAssets.map(a => ({ name: a.name, url: a.browser_download_url, size: a.size })),
+    };
+  } catch (err) {
+    console.warn(`[markon] release fetch error: ${err.message}`);
+    return null;
+  }
+}
+
 export default defineConfig({
   title: 'Markon',
   description: 'Turn your markdown on. — A lightweight Markdown renderer with GitHub styling.',
@@ -16,6 +51,8 @@ export default defineConfig({
     socialLinks: [
       { icon: 'github', link: 'https://github.com/kookyleo/markon' },
     ],
+    // Consumed by docs/.vitepress/theme/components/DownloadButton.vue.
+    markonRelease: release,
   },
 
   // Chinese is the default language, served at the root path.

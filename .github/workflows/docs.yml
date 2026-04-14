@@ -6,6 +6,10 @@ on:
     paths:
       - 'docs/**'
       - '.github/workflows/docs.yml'
+  # Rebuild when a stable release ships so the homepage / install page pick
+  # up the new version (config.js fetches the latest release at build time).
+  release:
+    types: [released]
   workflow_dispatch:
 
 permissions:

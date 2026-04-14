@@ -52,19 +52,14 @@ features:
 
 ## 即刻开始
 
-::: code-group
+<DownloadButton />
 
-```bash [macOS / Linux / Windows]
-# 桌面版：从 GitHub Releases 下载对应平台安装包
-# https://github.com/kookyleo/markon/releases
-```
+或通过 [Cargo](https://crates.io/crates/markon) 安装命令行版本：
 
-```bash [CLI via Cargo]
+```bash
 cargo install markon
 markon README.md
 ```
-
-:::
 
 ## 运行截图
 
