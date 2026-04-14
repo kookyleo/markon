@@ -22,6 +22,8 @@ Thumbs.db
 *.pdb
 *.pem
 dist/
+docs/.vitepress/dist/
+docs/.vitepress/cache/
 
 # SQLite
 *.db
