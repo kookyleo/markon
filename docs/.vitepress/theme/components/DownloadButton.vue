@@ -80,35 +80,48 @@ const platformLabel = computed(() => {
   return a ? `${o} · ${a}` : o;
 });
 
+// Canonical platform matrix. mode='os' / mode='all' iterate this so the
+// install-page reference always lists every supported target, even if the
+// current release happens to be missing one (older releases predate the
+// expanded build matrix). Missing entries render muted instead of vanishing.
+const MATRIX = {
+  macos: [
+    { variant: 'Apple Silicon', match: a => /\.dmg$/.test(a) && /aarch64/.test(a) },
+    { variant: 'Intel',         match: a => /\.dmg$/.test(a) && /(x86_64|x64)/.test(a) },
+  ],
+  windows: [
+    { variant: 'x64',   match: a => /setup\.exe$/.test(a) && /x64/.test(a) },
+    { variant: 'ARM64', match: a => /setup\.exe$/.test(a) && /arm64/.test(a) },
+  ],
+  linux: [
+    { variant: 'AppImage · amd64',  match: a => /\.AppImage$/.test(a) && /amd64/.test(a) },
+    { variant: 'AppImage · aarch64', match: a => /\.AppImage$/.test(a) && /aarch64/.test(a) },
+    { variant: 'deb · amd64',       match: a => /\.deb$/.test(a) && /amd64/.test(a) },
+    { variant: 'deb · arm64',       match: a => /\.deb$/.test(a) && /(arm64|aarch64)/.test(a) },
+  ],
+};
+
+function expandMatrix(osKey) {
+  const rows = MATRIX[osKey] || [];
+  const assets = release.value?.assets || [];
+  return rows.map(row => {
+    const asset = assets.find(a => row.match(a.name));
+    return asset
+      ? { variant: row.variant, name: asset.name, url: asset.url, size: asset.size, available: true }
+      : { variant: row.variant, name: null, url: null, size: 0, available: false };
+  });
+}
+
 const grouped = computed(() => {
   if (!release.value) return [];
-  const groups = {
-    macos:   { label: 'macOS',   items: [] },
-    windows: { label: 'Windows', items: [] },
-    linux:   { label: 'Linux',   items: [] },
-  };
-  for (const a of release.value.assets) {
-    if (/\.dmg$/.test(a.name)) {
-      groups.macos.items.push({ ...a, variant: /aarch64/.test(a.name) ? 'Apple Silicon' : 'Intel' });
-    } else if (/setup\.exe$/.test(a.name)) {
-      groups.windows.items.push({ ...a, variant: /arm64/.test(a.name) ? 'ARM64' : 'x64' });
-    } else if (/\.AppImage$/.test(a.name)) {
-      groups.linux.items.push({ ...a, variant: /aarch64/.test(a.name) ? 'AppImage · arm64' : 'AppImage · amd64' });
-    } else if (/\.deb$/.test(a.name)) {
-      groups.linux.items.push({ ...a, variant: /aarch64|arm64/.test(a.name) ? 'deb · arm64' : 'deb · amd64' });
-    }
-  }
-  return Object.values(groups).filter(g => g.items.length);
+  return [
+    { label: 'macOS',   items: expandMatrix('macos') },
+    { label: 'Windows', items: expandMatrix('windows') },
+    { label: 'Linux',   items: expandMatrix('linux') },
+  ];
 });
 
-// Items for a single OS — used by mode='os' and mode='primary' (no headers).
-const osItems = computed(() => {
-  if (!release.value || !props.os) return [];
-  const found = grouped.value.find(g =>
-    g.label.toLowerCase() === props.os.toLowerCase()
-  );
-  return found ? found.items : [];
-});
+const osItems = computed(() => props.os ? expandMatrix(props.os.toLowerCase()) : []);
 
 function formatBytes(n) {
   if (!n) return '';
@@ -148,9 +161,10 @@ const showAll = ref(false);
       <div v-for="g in grouped" :key="g.label" class="markon-dl-group">
         <div class="markon-dl-group-label">{{ g.label }}</div>
         <ul>
-          <li v-for="a in g.items" :key="a.name">
-            <a :href="a.url">{{ a.variant }}</a>
-            <span class="markon-dl-name">{{ a.name }}</span>
+          <li v-for="a in g.items" :key="a.variant" :class="{ unavailable: !a.available }">
+            <a v-if="a.available" :href="a.url">{{ a.variant }}</a>
+            <span v-else class="markon-dl-disabled">{{ a.variant }}</span>
+            <span class="markon-dl-name">{{ a.available ? a.name : '此版本未发布' }}</span>
             <span class="markon-dl-size">{{ formatBytes(a.size) }}</span>
           </li>
         </ul>
@@ -160,9 +174,10 @@ const showAll = ref(false);
 
   <div v-else-if="mode === 'os'" class="markon-dl-list">
     <ul>
-      <li v-for="a in osItems" :key="a.name">
-        <a :href="a.url">{{ a.variant }}</a>
-        <span class="markon-dl-name">{{ a.name }}</span>
+      <li v-for="a in osItems" :key="a.variant" :class="{ unavailable: !a.available }">
+        <a v-if="a.available" :href="a.url">{{ a.variant }}</a>
+        <span v-else class="markon-dl-disabled">{{ a.variant }}</span>
+        <span class="markon-dl-name">{{ a.available ? a.name : '此版本未发布' }}</span>
         <span class="markon-dl-size">{{ formatBytes(a.size) }}</span>
       </li>
     </ul>
@@ -210,6 +225,8 @@ const showAll = ref(false);
 .markon-dl-group a { font-weight: 500; }
 .markon-dl-name { color: var(--vp-c-text-2); font-family: var(--vp-font-family-mono); font-size: 12px; }
 .markon-dl-size { color: var(--vp-c-text-3); margin-left: auto; font-size: 12px; }
+.markon-dl-group li.unavailable { opacity: 0.45; }
+.markon-dl-disabled { font-weight: 500; color: var(--vp-c-text-2); }
 
 .markon-dl-fallback { padding: 12px 0; }
 </style>
