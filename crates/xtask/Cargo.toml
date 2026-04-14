@@ -1,0 +1,16 @@
+[package]
+name = "xtask"
+version = "0.0.0"
+edition = "2021"
+publish = false
+
+[dependencies]
+anyhow = "1"
+serde = { version = "1", features = ["derive"] }
+toml = "0.8"
+resvg = "0.44"
+tiny-skia = "0.11"
+usvg = "0.44"
+png = "0.17"
+ico = "0.4"
+icns = "0.3"

@@ -76,6 +76,26 @@ jobs:
       - name: Check formatting
         run: cargo fmt --all -- --check
 
+  icons:
+    name: Brand Icons
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Rust
+        uses: actions-rust-lang/setup-rust-toolchain@v1
+        with:
+          toolchain: stable
+
+      - name: Cache Rust dependencies
+        uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: ci-icons
+          workspaces: ". -> target"
+
+      - name: Verify generated icons are up to date
+        run: cargo xtask icons --check
+
   js:
     name: JS Tests & Lint
     runs-on: ubuntu-latest

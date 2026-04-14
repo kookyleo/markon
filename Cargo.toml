@@ -1,5 +1,9 @@
 [workspace]
-members = ["crates/core", "crates/cli", "crates/gui"]
+members = ["crates/core", "crates/cli", "crates/gui", "crates/xtask"]
+# xtask is a build-time helper (icon generation etc.) — exclude it from the
+# default workspace so `cargo build` / `cargo test` do not pull in resvg and
+# friends. Run it explicitly via the `cargo xtask …` alias in .cargo/config.toml.
+default-members = ["crates/core", "crates/cli", "crates/gui"]
 resolver = "2"
 
 [profile.release]
