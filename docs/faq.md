@@ -10,7 +10,7 @@ Markon 使用 ad-hoc 签名（免费签名方式）。首次启动时：
 2. 前往 **系统设置 → 隐私与安全性**，滚动到底部
 3. 在 "已阻止打开 'Markon'" 一行点 **仍要打开**，再次确认即可
 
-<!-- TODO: add screenshots/macos-gatekeeper.png -->
+![macOS Gatekeeper：在系统设置点 Open Anyway，确认放行 Markon](/screenshots/macos-gatekeeper.png)
 
 之后启动就不会再提示。
 

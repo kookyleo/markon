@@ -10,7 +10,9 @@ Markon 提供桌面应用（GUI）和命令行（CLI）两种形态。
 
 下载对应芯片的 `.dmg`，双击挂载后拖到 Applications 目录。
 
-首次启动可能需要在 **系统设置 → 隐私与安全性** 点击 "仍要打开"（应用使用 ad-hoc 签名）。
+首次启动时，macOS Gatekeeper 会拒绝打开（因为应用使用的是 ad-hoc 签名，而非 Apple 颁发的证书）。打开 **系统设置 → 隐私与安全性**，滚动到下方 _Security_ 区，点击 **"Markon" was blocked to protect your Mac** 旁的 **Open Anyway**；再次确认即可。之后启动不会再提示。
+
+![macOS Gatekeeper：在系统设置点 Open Anyway，确认放行 Markon](/screenshots/macos-gatekeeper.png)
 
 ### Windows
 
