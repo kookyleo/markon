@@ -6,29 +6,50 @@ Markon 提供桌面应用（GUI）和命令行（CLI）两种形态。
 
 ### macOS
 
-从 [Releases](https://github.com/kookyleo/markon/releases/latest) 下载 `Markon_x.x.x_aarch64.dmg`，双击挂载后拖到 Applications 目录。
+从 [Releases](https://github.com/kookyleo/markon/releases/latest) 选择对应芯片的安装包，双击挂载后拖到 Applications 目录：
+
+- Apple Silicon（M 系列）：`Markon_x.x.x_aarch64.dmg`
+- Intel：`Markon_x.x.x_x64.dmg`
 
 首次启动可能需要在 **系统设置 → 隐私与安全性** 点击 "仍要打开"（因为应用使用的是 ad-hoc 签名）。
 
 ### Windows
 
-从 Releases 下载 `Markon_x.x.x_x64-setup.exe`，双击运行安装。
+从 Releases 选择对应 CPU 的安装包，双击运行安装：
+
+- x64（绝大多数 Windows 设备）：`Markon_x.x.x_x64-setup.exe`
+- ARM64（Surface Pro X、骁龙 PC 等）：`Markon_x.x.x_arm64-setup.exe`
 
 ### Linux
 
-**Debian / Ubuntu**：
+**Debian / Ubuntu（amd64）**：
 
 ```bash
 wget https://github.com/kookyleo/markon/releases/latest/download/Markon_amd64.deb
 sudo dpkg -i Markon_amd64.deb
 ```
 
-**通用 AppImage**：
+**Debian / Ubuntu（arm64，树莓派 / Graviton 等）**：
+
+```bash
+wget https://github.com/kookyleo/markon/releases/latest/download/Markon_arm64.deb
+sudo dpkg -i Markon_arm64.deb
+```
+
+**通用 AppImage（x86_64）**：
 
 ```bash
 wget https://github.com/kookyleo/markon/releases/latest/download/Markon_amd64.AppImage
 chmod +x Markon_amd64.AppImage
 ./Markon_amd64.AppImage
+```
+
+**通用 AppImage（aarch64）**：
+
+```bash
+wget https://github.com/kookyleo/markon/releases/latest/download/Markon_aarch64.AppImage
+chmod +x Markon_aarch64.AppImage
+./Markon_aarch64.AppImage
 ```
 
 ### 自动更新
@@ -81,10 +102,14 @@ markon --version
 cargo uninstall markon
 ```
 
-用户数据（工作区配置、标注数据库）存储在：
+用户数据统一存放在用户主目录下的 `.markon/`：
 
-- macOS：`~/Library/Application Support/dev.kookyleo.markon/`
-- Linux：`~/.local/share/markon/`
-- Windows：`%APPDATA%\dev.kookyleo.markon\`
+- macOS / Linux：`~/.markon/`
+- Windows：`%USERPROFILE%\.markon\`
 
-这些目录卸载时不会自动删除，如需清理请手动移除。
+目录内主要文件：
+
+- `settings.json` — GUI 偏好与工作区列表
+- `annotation.sqlite` — 共享标注数据库（默认；可被 `MARKON_SQLITE_PATH` 覆盖）
+
+这些文件卸载时不会自动删除，如需清理请手动移除。

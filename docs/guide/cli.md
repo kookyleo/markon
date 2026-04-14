@@ -107,8 +107,8 @@ markon --theme auto     # 跟随系统（默认）
 
 启用 `--shared-annotation` 时，SQLite 数据库默认存储在：
 
-- **Linux/macOS**：`~/.local/share/markon/annotations.db`
-- **Windows**：`%APPDATA%\markon\annotations.db`
+- **Linux/macOS**：`~/.markon/annotation.sqlite`
+- **Windows**：`%USERPROFILE%\.markon\annotation.sqlite`
 
 自定义路径：
 

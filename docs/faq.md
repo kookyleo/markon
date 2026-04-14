@@ -6,15 +6,22 @@
 
 Markon 使用 ad-hoc 签名（免费签名方式）。首次启动时：
 
-1. 前往 **系统设置 → 隐私与安全性**
-2. 拉到底部找到 "Markon 因为不是来自已识别的开发者..."
-3. 点击 **仍要打开**
+1. 双击 `Markon.app`，会弹出"无法打开 'Markon'…" 对话框 — 点 **关闭**
+2. 前往 **系统设置 → 隐私与安全性**，滚动到底部
+3. 在 "已阻止打开 'Markon'" 一行点 **仍要打开**，再次确认即可
+
+![macOS GateKeeper 提示](/screenshots/macos-gatekeeper.png)
 
 之后启动就不会再提示。
 
 ### Windows 提示"Windows 已保护你的电脑"？
 
-类似 macOS，签名问题。点击 **更多信息 → 仍要运行** 即可。
+NSIS 安装包未做代码签名，会触发 SmartScreen：
+
+1. 在弹窗中点左下角 **更多信息**
+2. 展开后点 **仍要运行**
+
+![Windows SmartScreen 提示](/screenshots/windows-smartscreen.png)
 
 ### `cargo install markon` 编译失败？
 
@@ -36,8 +43,8 @@ sudo apt install pkg-config libssl-dev  # Debian/Ubuntu
 
 - **默认（本地模式）**：浏览器 LocalStorage，每个浏览器独立
 - **共享模式（`--shared-annotation`）**：SQLite 数据库
-  - macOS/Linux：`~/.local/share/markon/annotations.db`
-  - Windows：`%APPDATA%\markon\annotations.db`
+  - macOS/Linux：`~/.markon/annotation.sqlite`
+  - Windows：`%USERPROFILE%\.markon\annotation.sqlite`
   - 自定义：`MARKON_SQLITE_PATH=/path/to/db`
 
 ### 怎么让其他设备也能访问？

@@ -1,0 +1,14 @@
+PLACEHOLDER — replace with a real screenshot.
+
+Filename target: macos-gatekeeper.png
+Referenced from: docs/faq.md  (### macOS 提示"无法验证开发者"怎么办？)
+
+How to capture:
+  1. Build a fresh dmg with `scripts/build-dmg.sh`, install Markon.app to /Applications.
+  2. Double-click Markon.app — the "无法打开 'Markon'…" dialog will appear. Close it.
+  3. Open System Settings → Privacy & Security, scroll to the bottom.
+  4. The "Markon was blocked…" row with the [仍要打开 / Open Anyway] button will appear.
+  5. Screenshot just that section (Cmd+Shift+4, then Space, click the panel) and save as macos-gatekeeper.png in this directory.
+  6. Delete this .tbd file.
+
+Recommended size: ~1200px wide, retina (2x) preferred.

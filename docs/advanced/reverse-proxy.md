@@ -116,7 +116,7 @@ ExecStart=/usr/local/bin/markon \
   -b https://docs.example.com \
   --qr https://docs.example.com
 Restart=on-failure
-Environment="MARKON_SQLITE_PATH=/var/lib/markon/annotations.db"
+Environment="MARKON_SQLITE_PATH=/var/lib/markon/annotation.sqlite"
 
 [Install]
 WantedBy=multi-user.target

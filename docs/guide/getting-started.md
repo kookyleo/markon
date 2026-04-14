@@ -11,9 +11,13 @@
 | 平台 | 文件 |
 |------|------|
 | macOS (Apple Silicon) | `Markon_x.x.x_aarch64.dmg` |
-| Windows | `Markon_x.x.x_x64-setup.exe` |
-| Linux (Debian/Ubuntu) | `Markon_x.x.x_amd64.deb` |
-| Linux (通用) | `Markon_x.x.x_amd64.AppImage` |
+| macOS (Intel) | `Markon_x.x.x_x64.dmg` |
+| Windows (x64) | `Markon_x.x.x_x64-setup.exe` |
+| Windows (ARM64) | `Markon_x.x.x_arm64-setup.exe` |
+| Linux Debian/Ubuntu (amd64) | `Markon_x.x.x_amd64.deb` |
+| Linux Debian/Ubuntu (arm64) | `Markon_x.x.x_arm64.deb` |
+| Linux AppImage (x86_64) | `Markon_x.x.x_amd64.AppImage` |
+| Linux AppImage (aarch64) | `Markon_x.x.x_aarch64.AppImage` |
 
 ### 2. 添加工作区
 

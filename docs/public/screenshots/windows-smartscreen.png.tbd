@@ -1,0 +1,13 @@
+PLACEHOLDER — replace with a real screenshot.
+
+Filename target: windows-smartscreen.png
+Referenced from: docs/faq.md  (### Windows 提示"Windows 已保护你的电脑"？)
+
+How to capture:
+  1. Download Markon_x.x.x_x64-setup.exe (or arm64) from a fresh release on a clean Windows machine.
+  2. Double-click — Microsoft Defender SmartScreen pops "Windows 已保护你的电脑 / Windows protected your PC".
+  3. Click "更多信息 / More info" — the dialog expands to show the [仍要运行 / Run anyway] button.
+  4. Snip the expanded dialog (Win+Shift+S → rectangle) and save as windows-smartscreen.png in this directory.
+  5. Delete this .tbd file.
+
+Recommended size: ~1000px wide.

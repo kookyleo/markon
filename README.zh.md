@@ -264,8 +264,8 @@ Markon 使用 `/_/` 作为所有系统资源（CSS、JavaScript、WebSocket、fa
 启用 `--shared-annotation` 时：
 
 **数据库位置**：
-- Linux/macOS：`~/.local/share/markon/annotations.db`
-- Windows：`%APPDATA%\markon\annotations.db`
+- Linux/macOS：`~/.markon/annotation.sqlite`
+- Windows：`%USERPROFILE%\.markon\annotation.sqlite`
 - 自定义：设置 `MARKON_SQLITE_PATH` 环境变量
 
 **同步机制**：
@@ -353,8 +353,8 @@ markon -l 0.0.0.0 README.md
 **本地模式**（默认）：浏览器 LocalStorage（每个浏览器独立）
 
 **共享模式**（`--shared-annotation`）：SQLite 数据库
-- Linux/macOS：`~/.local/share/markon/annotations.db`
-- Windows：`%APPDATA%\markon\annotations.db`
+- Linux/macOS：`~/.markon/annotation.sqlite`
+- Windows：`%USERPROFILE%\.markon\annotation.sqlite`
 - 自定义：`MARKON_SQLITE_PATH=/path/to/db markon --shared-annotation`
 </details>
 
