@@ -1,6 +1,6 @@
-use crate::settings::{AppSettings, PortMode, WorkspaceSettings};
 use crate::AppState;
 use markon_core::i18n;
+use markon_core::settings::{AppSettings, PortMode, WorkspaceSettings};
 use markon_core::workspace::WorkspaceConfig;
 use std::path::PathBuf;
 use std::sync::atomic::Ordering;

@@ -2,6 +2,7 @@ use clap::Parser;
 use dialoguer::Select;
 use local_ip_address::list_afinet_netifas;
 use markon_core::server::{self, ServerConfig, WorkspaceInit};
+use markon_core::settings::AppSettings;
 use markon_core::workspace::ServerLock;
 use std::path::Path;
 
@@ -240,6 +241,10 @@ async fn main() {
         initial_path,
     };
 
+    // Load customizations (web styles, shortcuts, language) from the GUI's
+    // settings file if present. CLI arguments take precedence over the file.
+    let settings = AppSettings::load();
+
     if let Err(e) = server::start(ServerConfig {
         host,
         port: cli.port,
@@ -252,9 +257,9 @@ async fn main() {
         bound_listener: None,
         registry: None,
         management_token: None,
-        language: None,
-        shortcuts_json: None,
-        styles_css: None,
+        language: settings.effective_web_language(),
+        shortcuts_json: settings.render_shortcuts_json(),
+        styles_css: settings.render_styles_css(),
     })
     .await
     {

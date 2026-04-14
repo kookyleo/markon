@@ -1,4 +1,4 @@
-use markon_core::server::{ServerConfig, WorkspaceInit};
+use crate::server::{ServerConfig, WorkspaceInit};
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 
@@ -185,40 +185,63 @@ impl AppSettings {
             registry: None,
             management_token: None,
             language: Some(effective_web_lang),
-            styles_css: if self.web_styles.is_empty() {
-                None
+            styles_css: self.render_styles_css(),
+            shortcuts_json: self.render_shortcuts_json(),
+        }
+    }
+
+    /// Render `web_styles` as a single CSS string suitable for `ServerConfig::styles_css`.
+    /// Returns None when there are no custom styles configured.
+    pub fn render_styles_css(&self) -> Option<String> {
+        if self.web_styles.is_empty() {
+            return None;
+        }
+        let mut base = Vec::new();
+        let mut light = Vec::new();
+        let mut dark = Vec::new();
+        for (k, v) in &self.web_styles {
+            if let Some(name) = k.strip_suffix(".light") {
+                light.push(format!("--markon-{}: {};", name, v));
+            } else if let Some(name) = k.strip_suffix(".dark") {
+                dark.push(format!("--markon-{}: {};", name, v));
             } else {
-                // Split into base / light / dark CSS blocks
-                let mut base = Vec::new();
-                let mut light = Vec::new();
-                let mut dark = Vec::new();
-                for (k, v) in &self.web_styles {
-                    if let Some(name) = k.strip_suffix(".light") {
-                        light.push(format!("--markon-{}: {};", name, v));
-                    } else if let Some(name) = k.strip_suffix(".dark") {
-                        dark.push(format!("--markon-{}: {};", name, v));
-                    } else {
-                        base.push(format!("--markon-{}: {};", k, v));
-                    }
-                }
-                let mut css = String::new();
-                if !base.is_empty() || !light.is_empty() {
-                    css.push_str(&base.join(" "));
-                    css.push_str(&light.join(" "));
-                }
-                if !dark.is_empty() {
-                    css.push_str(&format!(
-                        "}} @media (prefers-color-scheme:dark) {{ :root {{ {}",
-                        dark.join(" ")
-                    ));
-                }
-                Some(css)
-            },
-            shortcuts_json: if self.shortcuts.is_empty() {
-                None
-            } else {
-                serde_json::to_string(&self.shortcuts).ok()
-            },
+                base.push(format!("--markon-{}: {};", k, v));
+            }
+        }
+        let mut css = String::new();
+        if !base.is_empty() || !light.is_empty() {
+            css.push_str(&base.join(" "));
+            css.push_str(&light.join(" "));
+        }
+        if !dark.is_empty() {
+            css.push_str(&format!(
+                "}} @media (prefers-color-scheme:dark) {{ :root {{ {}",
+                dark.join(" ")
+            ));
+        }
+        Some(css)
+    }
+
+    /// Serialize `shortcuts` as a JSON string suitable for `ServerConfig::shortcuts_json`.
+    pub fn render_shortcuts_json(&self) -> Option<String> {
+        if self.shortcuts.is_empty() {
+            None
+        } else {
+            serde_json::to_string(&self.shortcuts).ok()
+        }
+    }
+
+    /// Effective web language, falling back to `language` when `web_language` is "auto".
+    pub fn effective_web_language(&self) -> Option<String> {
+        let lang = if self.web_language == "auto" || self.web_language.is_empty() {
+            &self.language
+        } else {
+            &self.web_language
+        };
+        if lang.is_empty() || lang == "auto" {
+            None
+        } else {
+            Some(lang.clone())
         }
     }
 }
@@ -430,5 +453,101 @@ mod tests {
         assert!(!ws.enable_viewed);
         assert!(!ws.enable_edit);
         assert!(!ws.shared_annotation);
+    }
+
+    #[test]
+    fn render_styles_css_none_when_empty() {
+        assert!(AppSettings::default().render_styles_css().is_none());
+    }
+
+    #[test]
+    fn render_styles_css_base_only() {
+        let s = AppSettings {
+            web_styles: [("font-size".to_string(), "16px".to_string())]
+                .into_iter()
+                .collect(),
+            ..Default::default()
+        };
+        let css = s.render_styles_css().unwrap();
+        assert!(css.contains("--markon-font-size: 16px;"));
+        assert!(!css.contains("prefers-color-scheme"));
+    }
+
+    #[test]
+    fn render_styles_css_light_and_dark() {
+        let s = AppSettings {
+            web_styles: [
+                ("bg.light".to_string(), "#fff".to_string()),
+                ("bg.dark".to_string(), "#000".to_string()),
+            ]
+            .into_iter()
+            .collect(),
+            ..Default::default()
+        };
+        let css = s.render_styles_css().unwrap();
+        assert!(css.contains("--markon-bg: #fff;"));
+        assert!(css.contains("--markon-bg: #000;"));
+        assert!(css.contains("prefers-color-scheme:dark"));
+    }
+
+    #[test]
+    fn render_shortcuts_json_none_when_empty() {
+        assert!(AppSettings::default().render_shortcuts_json().is_none());
+    }
+
+    #[test]
+    fn render_shortcuts_json_serializes_content() {
+        let s = AppSettings {
+            shortcuts: [(
+                "UNDO".to_string(),
+                serde_json::json!({"key": "z", "ctrl": true}),
+            )]
+            .into_iter()
+            .collect(),
+            ..Default::default()
+        };
+        let json = s.render_shortcuts_json().unwrap();
+        assert!(json.contains("UNDO"));
+        assert!(json.contains("\"key\":\"z\""));
+    }
+
+    #[test]
+    fn effective_web_language_auto_inherits() {
+        let s = AppSettings {
+            language: "zh".into(),
+            web_language: "auto".into(),
+            ..Default::default()
+        };
+        assert_eq!(s.effective_web_language(), Some("zh".into()));
+    }
+
+    #[test]
+    fn effective_web_language_explicit() {
+        let s = AppSettings {
+            language: "zh".into(),
+            web_language: "en".into(),
+            ..Default::default()
+        };
+        assert_eq!(s.effective_web_language(), Some("en".into()));
+    }
+
+    #[test]
+    fn effective_web_language_both_auto_returns_none() {
+        let s = AppSettings {
+            language: "auto".into(),
+            web_language: "auto".into(),
+            ..Default::default()
+        };
+        assert_eq!(s.effective_web_language(), None);
+    }
+
+    #[test]
+    fn effective_web_language_both_empty_returns_none() {
+        let s = AppSettings {
+            language: String::new(),
+            web_language: String::new(),
+            ..Default::default()
+        };
+        assert_eq!(s.effective_web_language(), None);
     }
 }

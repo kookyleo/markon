@@ -2,10 +2,10 @@
 
 mod commands;
 mod server_manager;
-mod settings;
+// settings moved to markon_core::settings
 
+use markon_core::settings::AppSettings;
 use server_manager::ServerManager;
-use settings::AppSettings;
 use std::path::Path;
 use std::sync::{
     atomic::{AtomicBool, Ordering},
@@ -81,7 +81,7 @@ fn handle_open_path(app: &tauri::AppHandle, path: &Path) {
 
     // Persist to settings so the workspace survives restart and appears in the UI list.
     {
-        use crate::settings::WorkspaceSettings;
+        use markon_core::settings::WorkspaceSettings;
         let mut settings = state.settings.lock().unwrap();
         if !settings.workspaces.iter().any(|w| w.path == ws_root_str) {
             settings.workspaces.push(WorkspaceSettings {
@@ -155,7 +155,7 @@ fn main() {
             }
         }))
         .setup(move |app| {
-            use crate::settings::PortMode;
+            use markon_core::settings::PortMode;
 
             let port = if settings.port_mode == PortMode::Auto {
                 0
