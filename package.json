@@ -1,9 +1,8 @@
 {
-  "name": "markon",
-  "version": "0.9.0",
+  "name": "markon-dev",
+  "private": true,
   "type": "module",
-  "description": "A lightweight Markdown renderer with GitHub styling, written in Rust.",
-  "main": "index.js",
+  "description": "Dev-only tooling (vitest, eslint) for Markon. Real project is Cargo-based.",
   "scripts": {
     "test": "vitest run",
     "test:watch": "vitest"
