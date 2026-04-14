@@ -62,14 +62,23 @@ graph LR
 
 ### 1. 修改版本号
 
-编辑 `Cargo.toml`（唯一的版本来源，`tauri.conf.json` 自动读取）：
+使用 bump 脚本——它在更新版本前强制运行所有质量门（fmt / clippy / 测试 / eslint），
+零 warning 策略。任何一步失败则中止，确保提交的版本号对应的一定是干净代码。
 
-```toml
-[workspace.package]
-version = "0.9.0"
+```bash
+scripts/bump-version.sh 0.10.0
+git add -A && git commit -m 'chore: bump to 0.10.0' && git push
 ```
 
-推送到 `main` 即可，CI 自动完成后续所有步骤。
+脚本原子更新：
+- `Cargo.toml` → `workspace.package.version`（主版本来源）
+- `Cargo.toml` → `workspace.dependencies.markon-core.version`（MAJOR.MINOR 范围）
+- `Cargo.lock`（通过 `cargo check`）
+
+推送到 `main` 后，CI 自动完成后续所有步骤。
+
+> 也可以手动编辑（只需修改 `Cargo.toml` 中的 `workspace.package.version`），
+> 但推荐使用脚本以保证一致性和质量门。
 
 ### 2. 自动化流程
 

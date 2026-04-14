@@ -63,14 +63,24 @@ graph LR
 
 ### 1. Bump version
 
-Edit `Cargo.toml` (single source of truth, `tauri.conf.json` reads from it automatically):
+Use the bump script — it runs all quality gates (fmt / clippy / tests / eslint)
+with zero-warning enforcement before touching version fields. Any failure
+aborts the bump, so the committed version is guaranteed to be on clean code.
 
-```toml
-[workspace.package]
-version = "0.9.0"
+```bash
+scripts/bump-version.sh 0.10.0
+git add -A && git commit -m 'chore: bump to 0.10.0' && git push
 ```
 
-Push to `main`. That's it -- CI handles the rest.
+The script atomically updates:
+- `Cargo.toml` → `workspace.package.version` (primary source of truth)
+- `Cargo.toml` → `workspace.dependencies.markon-core.version` (MAJOR.MINOR range)
+- `Cargo.lock` (via `cargo check`)
+
+Once pushed to `main`, CI handles the rest.
+
+> Manual edit works too (just edit `workspace.package.version` in `Cargo.toml`),
+> but the script is recommended for consistency and quality enforcement.
 
 ### 2. What happens automatically
 
