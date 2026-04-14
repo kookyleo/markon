@@ -55,3 +55,80 @@ jobs:
             '.version = $v | walk(if type == "string" then gsub($rc; $st) else . end)' \
             /tmp/latest-rc.json > /tmp/latest.json
           gh release upload updater /tmp/latest.json --clobber
+
+  publish-crates:
+    needs: promote
+    runs-on: ubuntu-latest
+    # Skip gracefully when the token isn't configured (fork, first-time setup)
+    if: ${{ !cancelled() }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.inputs.rc_tag }}
+
+      - name: Install Linux system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libwebkit2gtk-4.1-dev \
+            libappindicator3-dev \
+            librsvg2-dev \
+            patchelf
+
+      - name: Setup Rust
+        uses: actions-rust-lang/setup-rust-toolchain@v1
+        with:
+          toolchain: stable
+
+      - name: Check CARGO_REGISTRY_TOKEN
+        id: token
+        env:
+          TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
+        run: |
+          if [ -z "$TOKEN" ]; then
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+            echo "::warning::CARGO_REGISTRY_TOKEN not set — skipping crates.io publish"
+          else
+            echo "skip=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Publish markon-core
+        if: steps.token.outputs.skip != 'true'
+        env:
+          CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
+        # Tolerate "already uploaded" when re-running
+        run: |
+          cargo publish -p markon-core || {
+            code=$?
+            if cargo search markon-core --limit 1 | grep -q "^markon-core"; then
+              CURRENT=$(cargo search markon-core --limit 1 | head -1 | sed -E 's/.*= "([^"]+)".*/\1/')
+              TARGET=$(grep -m1 '^version = "' Cargo.toml | sed -E 's/.*"([^"]+)".*/\1/')
+              if [ "$CURRENT" = "$TARGET" ]; then
+                echo "markon-core@$TARGET already on crates.io — OK"
+                exit 0
+              fi
+            fi
+            exit $code
+          }
+
+      - name: Wait for crates.io index propagation
+        if: steps.token.outputs.skip != 'true'
+        run: sleep 30
+
+      - name: Publish markon (CLI)
+        if: steps.token.outputs.skip != 'true'
+        env:
+          CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
+        run: |
+          cargo publish -p markon || {
+            code=$?
+            if cargo search markon --limit 1 | grep -q "^markon "; then
+              CURRENT=$(cargo search markon --limit 1 | head -1 | sed -E 's/.*= "([^"]+)".*/\1/')
+              TARGET=$(grep -m1 '^version = "' Cargo.toml | sed -E 's/.*"([^"]+)".*/\1/')
+              if [ "$CURRENT" = "$TARGET" ]; then
+                echo "markon@$TARGET already on crates.io — OK"
+                exit 0
+              fi
+            fi
+            exit $code
+          }

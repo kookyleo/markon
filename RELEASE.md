@@ -20,11 +20,13 @@ flowchart TD
     K --> L["Promote<br/>(promote.yml)"]
     L --> M["Copy RC assets → stable release v0.9.0"]
     M --> N["Upload latest.json<br/>to updater release"]
+    N --> P["Publish markon-core + markon<br/>to crates.io"]
 
     style A fill:#4a9eff,color:#fff
     style E fill:#f59e0b,color:#fff
     style L fill:#10b981,color:#fff
     style J fill:#f3f4f6,color:#333
+    style P fill:#ef4444,color:#fff
 ```
 
 > **Why dispatch?** GitHub Actions' built-in `GITHUB_TOKEN` cannot trigger other
@@ -57,7 +59,7 @@ graph LR
 | `auto-rc.yml` | Push to main (Cargo.toml changed) | Detect version change → tag RC → dispatch Release |
 | `release.yml` | `workflow_dispatch` or tag push `v*` | Build + sign + publish + upload updater manifest |
 | `auto-promote.yml` | Daily cron 08:00 UTC + manual | Check RC age & blockers → dispatch Promote |
-| `promote.yml` | `workflow_dispatch` (by auto-promote or manual) | Copy RC assets → create stable release → update manifest |
+| `promote.yml` | `workflow_dispatch` (by auto-promote or manual) | Copy RC assets → create stable release → update manifest → publish to crates.io |
 
 ## How to Release
 
@@ -145,24 +147,26 @@ gh workflow run release.yml -f tag=v0.9.0-rc.2
 
 ### 6. Publish to crates.io
 
-GitHub Release (binaries) and crates.io (library + CLI source) are independent.
-After the stable release is out on GitHub, optionally publish to crates.io so
-users can `cargo install markon`:
+Happens **automatically** at the end of `promote.yml` — after the stable
+GitHub release is created, a `publish-crates` job publishes `markon-core`
+and `markon` to crates.io in order, so users can `cargo install markon`.
+
+Auto-publish requires the `CARGO_REGISTRY_TOKEN` secret to be set in the
+GitHub repo settings. If the secret is absent, the job emits a warning and
+skips publish (safe for forks / first-time setup). Re-runs are idempotent:
+if a version is already on crates.io, the job treats it as success.
+
+`markon-gui` is marked `publish = false` and is distributed only via GitHub Release.
+
+**Manual publish** (e.g. outside the CI flow):
 
 ```bash
 scripts/publish-crates.sh
 ```
 
-The script:
-1. Verifies clean git tree
-2. Runs all quality gates (fmt / clippy / tests / eslint)
-3. Publishes `markon-core` (lib) first
-4. Waits 30s for crates.io index to propagate
-5. Publishes `markon` (CLI bin, depends on `markon-core` from registry)
-
-`markon-gui` is marked `publish = false` and is distributed only via GitHub Release.
-
-Requires `CARGO_REGISTRY_TOKEN` env var or prior `cargo login`.
+Same steps as the CI job, but runs locally — useful for hotfixes or first
+publish when CI isn't set up yet. Requires clean git tree and
+`CARGO_REGISTRY_TOKEN` env (or prior `cargo login`).
 
 ## Update Channels
 

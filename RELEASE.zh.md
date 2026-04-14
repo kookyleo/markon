@@ -20,11 +20,13 @@ flowchart TD
     K --> L["Promote<br/>(promote.yml)"]
     L --> M["复制 RC 资产 → 创建 stable release v0.9.0"]
     M --> N["上传 latest.json<br/>到 updater release"]
+    N --> P["发布 markon-core + markon<br/>到 crates.io"]
 
     style A fill:#4a9eff,color:#fff
     style E fill:#f59e0b,color:#fff
     style L fill:#10b981,color:#fff
     style J fill:#f3f4f6,color:#333
+    style P fill:#ef4444,color:#fff
 ```
 
 > **为什么用 dispatch？** GitHub Actions 内置的 `GITHUB_TOKEN` 推送 tag 时不会触发其他 workflow。
@@ -56,7 +58,7 @@ graph LR
 | `auto-rc.yml` | push main 且 Cargo.toml 变更 | 检测版本变化 → 打 RC tag → 触发 Release |
 | `release.yml` | `workflow_dispatch` 或 tag push `v*` | 构建 + 签名 + 发布 + 上传 updater manifest |
 | `auto-promote.yml` | 每日 08:00 UTC 定时 + 手动 | 检查 RC 时间和 blocker → 触发 Promote |
-| `promote.yml` | `workflow_dispatch`（由 auto-promote 或手动触发） | 复制 RC 资产 → 创建 stable release → 更新 manifest |
+| `promote.yml` | `workflow_dispatch`（由 auto-promote 或手动触发） | 复制 RC 资产 → 创建 stable release → 更新 manifest → 发布到 crates.io |
 
 ## 如何发布
 
@@ -143,23 +145,24 @@ gh workflow run release.yml -f tag=v0.9.0-rc.2
 
 ### 6. 发布到 crates.io
 
-GitHub Release（二进制包）和 crates.io（库 + CLI 源码）相互独立。
-在 GitHub stable release 发布后，可选择发布到 crates.io，让用户能 `cargo install markon`：
+在 `promote.yml` 晋升 stable 后**自动触发**——创建完 GitHub stable release，
+末尾的 `publish-crates` job 按顺序将 `markon-core` 和 `markon` 发布到 crates.io，
+用户即可通过 `cargo install markon` 安装。
+
+需要在 GitHub 仓库 Secrets 中配置 `CARGO_REGISTRY_TOKEN`。未配置时 job 会发出
+warning 并跳过（不影响 release 本身，方便 fork 和首次配置）。重跑幂等：
+如果版本已在 crates.io 上，job 视为成功。
+
+`markon-gui` 标记了 `publish = false`，仅通过 GitHub Release 分发。
+
+**手动发布**（如热修复或首次 CI 未就绪时）：
 
 ```bash
 scripts/publish-crates.sh
 ```
 
-脚本流程：
-1. 验证 git 工作区干净
-2. 运行所有质量门（fmt / clippy / 测试 / eslint）
-3. 先发布 `markon-core`（lib）
-4. 等待 30 秒让 crates.io index 同步
-5. 发布 `markon`（CLI bin，依赖 crates.io 上的 `markon-core`）
-
-`markon-gui` 标记了 `publish = false`，仅通过 GitHub Release 分发。
-
-需要设置 `CARGO_REGISTRY_TOKEN` 环境变量，或提前执行 `cargo login`。
+流程与 CI job 一致，本地运行。需要 git 工作区干净 +
+`CARGO_REGISTRY_TOKEN` 环境变量（或提前 `cargo login`）。
 
 ## 更新通道
 
