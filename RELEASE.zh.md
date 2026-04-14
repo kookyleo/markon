@@ -141,6 +141,26 @@ git push origin v0.9.0-rc.2
 gh workflow run release.yml -f tag=v0.9.0-rc.2
 ```
 
+### 6. 发布到 crates.io
+
+GitHub Release（二进制包）和 crates.io（库 + CLI 源码）相互独立。
+在 GitHub stable release 发布后，可选择发布到 crates.io，让用户能 `cargo install markon`：
+
+```bash
+scripts/publish-crates.sh
+```
+
+脚本流程：
+1. 验证 git 工作区干净
+2. 运行所有质量门（fmt / clippy / 测试 / eslint）
+3. 先发布 `markon-core`（lib）
+4. 等待 30 秒让 crates.io index 同步
+5. 发布 `markon`（CLI bin，依赖 crates.io 上的 `markon-core`）
+
+`markon-gui` 标记了 `publish = false`，仅通过 GitHub Release 分发。
+
+需要设置 `CARGO_REGISTRY_TOKEN` 环境变量，或提前执行 `cargo login`。
+
 ## 更新通道
 
 客户端从 GitHub 上一个固定的 `updater` release 检查更新：

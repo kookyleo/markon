@@ -143,6 +143,27 @@ git push origin v0.9.0-rc.2
 gh workflow run release.yml -f tag=v0.9.0-rc.2
 ```
 
+### 6. Publish to crates.io
+
+GitHub Release (binaries) and crates.io (library + CLI source) are independent.
+After the stable release is out on GitHub, optionally publish to crates.io so
+users can `cargo install markon`:
+
+```bash
+scripts/publish-crates.sh
+```
+
+The script:
+1. Verifies clean git tree
+2. Runs all quality gates (fmt / clippy / tests / eslint)
+3. Publishes `markon-core` (lib) first
+4. Waits 30s for crates.io index to propagate
+5. Publishes `markon` (CLI bin, depends on `markon-core` from registry)
+
+`markon-gui` is marked `publish = false` and is distributed only via GitHub Release.
+
+Requires `CARGO_REGISTRY_TOKEN` env var or prior `cargo login`.
+
 ## Update Channels
 
 Clients check for updates from a permanent GitHub release tagged `updater`:
