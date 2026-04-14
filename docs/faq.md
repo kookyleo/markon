@@ -10,7 +10,7 @@ Markon 使用 ad-hoc 签名（免费签名方式）。首次启动时：
 2. 前往 **系统设置 → 隐私与安全性**，滚动到底部
 3. 在 "已阻止打开 'Markon'" 一行点 **仍要打开**，再次确认即可
 
-![macOS GateKeeper 提示](/screenshots/macos-gatekeeper.png)
+<!-- TODO: add screenshots/macos-gatekeeper.png -->
 
 之后启动就不会再提示。
 
@@ -21,7 +21,7 @@ NSIS 安装包未做代码签名，会触发 SmartScreen：
 1. 在弹窗中点左下角 **更多信息**
 2. 展开后点 **仍要运行**
 
-![Windows SmartScreen 提示](/screenshots/windows-smartscreen.png)
+<!-- TODO: add screenshots/windows-smartscreen.png -->
 
 ### `cargo install markon` 编译失败？
 
