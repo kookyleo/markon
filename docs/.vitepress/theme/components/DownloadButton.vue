@@ -217,15 +217,22 @@ const showAll = ref(false);
 }
 .markon-dl-toggle:hover { color: var(--vp-c-brand-1); }
 
-.markon-dl-list { width: 100%; }
+.markon-dl-list { width: 100%; margin: 8px 0 16px; }
 .markon-dl-group { margin-top: 12px; }
 .markon-dl-group-label { font-weight: 600; margin-bottom: 6px; color: var(--vp-c-text-1); }
-.markon-dl-group ul { list-style: none; padding: 0; margin: 0; }
-.markon-dl-group li { display: flex; align-items: baseline; gap: 12px; padding: 4px 0; font-size: 13px; }
-.markon-dl-group a { font-weight: 500; }
+
+/* List rendering is shared across mode='os' / 'all' / 'primary' (collapsible).
+   Targets the wrapper so the same look applies whether the list sits under
+   a per-OS group label or directly under a markdown ### heading. */
+.markon-dl-list ul { list-style: none; padding: 0; margin: 0; }
+.markon-dl-list li {
+  display: flex; align-items: baseline; gap: 12px;
+  padding: 6px 0; font-size: 13px;
+}
+.markon-dl-list li.unavailable { opacity: 0.5; }
+.markon-dl-list a { font-weight: 500; }
 .markon-dl-name { color: var(--vp-c-text-2); font-family: var(--vp-font-family-mono); font-size: 12px; }
-.markon-dl-size { color: var(--vp-c-text-3); margin-left: auto; font-size: 12px; }
-.markon-dl-group li.unavailable { opacity: 0.45; }
+.markon-dl-size { color: var(--vp-c-text-3); margin-left: auto; font-size: 12px; white-space: nowrap; }
 .markon-dl-disabled { font-weight: 500; color: var(--vp-c-text-2); }
 
 .markon-dl-fallback { padding: 12px 0; }
