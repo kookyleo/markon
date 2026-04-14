@@ -1,5 +1,5 @@
 {
-  "name": "markon-dev",
+  "name": "markon",
   "private": true,
   "type": "module",
   "description": "Dev-only tooling (vitest, eslint) for Markon. Real project is Cargo-based.",
