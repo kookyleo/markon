@@ -11,7 +11,7 @@ export default defineConfig({
   ],
 
   themeConfig: {
-    logo: '/favicon.png',
+    logo: { light: '/logo-light.svg', dark: '/logo-dark.svg', alt: 'Markon' },
     search: { provider: 'local' },
     socialLinks: [
       { icon: 'github', link: 'https://github.com/kookyleo/markon' },

@@ -51,6 +51,8 @@ outputs = [
   { path = "crates/gui/icons/tray.png", size = 64 },
   # In-app About page (CSS mask — fill colour is irrelevant, alpha is used).
   { path = "crates/gui/ui/glyph.svg" },
+  # Docs site logo, dark-theme variant (white glyph on dark page).
+  { path = "docs/public/logo-dark.svg" },
 ]
 
 # ── Tray icon (Windows / Linux) ─────────────────────────────────────────────
@@ -64,4 +66,6 @@ wrap = "none"
 fg = "#000000"
 outputs = [
   { path = "crates/gui/icons/tray-colored.png", size = 64 },
+  # Docs site logo, light-theme variant (black glyph on light page).
+  { path = "docs/public/logo-light.svg" },
 ]

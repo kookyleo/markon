@@ -6,7 +6,8 @@ hero:
   text: Turn your markdown on.
   tagline: 轻量级 Markdown 渲染器，GitHub 风格排版，支持全文搜索、批注与多端同步
   image:
-    src: /favicon.png
+    light: /logo-light.svg
+    dark: /logo-dark.svg
     alt: Markon
   actions:
     - theme: brand
