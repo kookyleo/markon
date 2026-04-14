@@ -217,6 +217,7 @@
     // ── Viewed tracking ──────────────────────────────────────
     "web.viewed":           "Viewed",
     "web.viewed.mark":      "Mark as viewed to collapse this section",
+    "web.viewed.collapsed.hint": "Section collapsed — click to expand",
     "web.viewed.all":       "All Viewed",
     "web.viewed.all.tip":   "Mark all sections as viewed",
     "web.viewed.collapse":  "Collapse",

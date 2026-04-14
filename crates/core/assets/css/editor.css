@@ -718,6 +718,30 @@
     opacity: 1;
 }
 
+/* Placeholder row shown below a collapsed heading */
+.section-collapsed-placeholder {
+    cursor: pointer;
+    padding: 4px 10px;
+    margin: 2px 0 12px;
+    font-size: 12px;
+    color: var(--color-fg-muted, #6e7781);
+    font-style: italic;
+    opacity: 0.65;
+    transition: opacity 0.15s ease, background 0.15s ease;
+    border-radius: 4px;
+    -webkit-user-select: none;
+    user-select: none;
+}
+.section-collapsed-placeholder::before {
+    content: "⋯ ";
+    margin-right: 4px;
+    letter-spacing: 1px;
+}
+.section-collapsed-placeholder:hover {
+    opacity: 1;
+    background: var(--color-neutral-muted, rgba(175,184,193,0.15));
+}
+
 /* Hide section content when collapsed with smooth animation */
 .section-content-hidden {
     max-height: 0 !important;

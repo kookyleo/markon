@@ -216,6 +216,7 @@
     // ── 已读追踪 ─────────────────────────────────────────────
     "web.viewed":           "已读",
     "web.viewed.mark":      "标记为已读以折叠此章节",
+    "web.viewed.collapsed.hint": "本节已折叠，点击展开",
     "web.viewed.all":       "全部已读",
     "web.viewed.all.tip":   "将所有章节标记为已读",
     "web.viewed.collapse":  "折叠",

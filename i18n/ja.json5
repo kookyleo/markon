@@ -217,6 +217,7 @@
     // ── Viewed tracking ──────────────────────────────────────
     "web.viewed":           "既読",
     "web.viewed.mark":      "既読にしてこのセクションを折りたたむ",
+    "web.viewed.collapsed.hint": "このセクションは折りたたまれています — クリックして展開",
     "web.viewed.all":       "すべて既読",
     "web.viewed.all.tip":   "すべてのセクションを既読にする",
     "web.viewed.collapse":  "折りたたむ",

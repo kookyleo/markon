@@ -220,6 +220,30 @@ class SectionViewedManager {
             el.classList.add('section-content-hidden');
             el.classList.remove('section-content-temp-visible');
         });
+
+        this.ensureCollapsedPlaceholder(heading, headingId);
+    }
+
+    ensureCollapsedPlaceholder(heading, headingId) {
+        // Insert a clickable placeholder row right after the collapsed heading
+        // so the collapsed section doesn't look like an empty gap.
+        const next = heading.nextElementSibling;
+        if (next && next.classList && next.classList.contains('section-collapsed-placeholder')) {
+            return; // already present
+        }
+        const placeholder = document.createElement('div');
+        placeholder.className = 'section-collapsed-placeholder';
+        placeholder.dataset.headingId = headingId;
+        placeholder.textContent = _t('web.viewed.collapsed.hint');
+        placeholder.addEventListener('click', () => this.toggleTempExpand(headingId));
+        heading.insertAdjacentElement('afterend', placeholder);
+    }
+
+    removeCollapsedPlaceholder(heading) {
+        const next = heading.nextElementSibling;
+        if (next && next.classList && next.classList.contains('section-collapsed-placeholder')) {
+            next.remove();
+        }
     }
 
     expandSection(headingId) {
@@ -229,6 +253,7 @@ class SectionViewedManager {
         const content = this.getSectionContent(heading);
 
         heading.classList.remove('section-collapsed');
+        this.removeCollapsedPlaceholder(heading);
 
         // Ensure elements start in hidden state
         content.forEach(el => {
@@ -274,6 +299,7 @@ class SectionViewedManager {
         if (isCollapsed) {
             // Currently collapsed -> expand it
             heading.classList.remove('section-collapsed');
+            this.removeCollapsedPlaceholder(heading);
             content.forEach(el => {
                 el.classList.remove('section-content-hidden');
                 el.classList.add('section-content-temp-visible');
@@ -293,6 +319,7 @@ class SectionViewedManager {
                 toggleBtn.textContent = _t('web.viewed.expand');
             }
             this.tempExpandedState[headingId] = true;
+            this.ensureCollapsedPlaceholder(heading, headingId);
         }
     }
 
@@ -639,6 +666,7 @@ class SectionViewedManager {
         if (isCollapsed) {
             // Currently collapsed -> expand
             heading.classList.remove('section-collapsed');
+            this.removeCollapsedPlaceholder(heading);
             content.forEach(el => {
                 el.classList.remove('section-content-hidden');
                 el.classList.add('section-content-temp-visible');
@@ -650,6 +678,7 @@ class SectionViewedManager {
                 el.classList.add('section-content-hidden');
                 el.classList.remove('section-content-temp-visible');
             });
+            this.ensureCollapsedPlaceholder(heading, headingId);
         }
     }
 
