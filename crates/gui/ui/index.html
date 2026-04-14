@@ -598,8 +598,10 @@
     }
     .about-icon {
       width: 96px; height: 96px;
-      border-radius: 20px;
       margin-bottom: 16px;
+      background-color: var(--text);
+      -webkit-mask: url("glyph.svg") center / contain no-repeat;
+              mask: url("glyph.svg") center / contain no-repeat;
     }
     .about h2 { font-size: 22px; font-weight: 700; letter-spacing: -0.3px; }
     .about .ver { font-size: 12px; color: var(--text-2); margin: 4px 0 14px; }
@@ -984,7 +986,7 @@
     <div class="tab" id="tab-about">
       <div class="about">
 
-        <img class="about-icon" src="icon.png" alt="markon">
+        <div class="about-icon" role="img" aria-label="markon"></div>
 
         <h2>markon</h2>
         <div class="ver">

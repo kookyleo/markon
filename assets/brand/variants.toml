@@ -32,8 +32,6 @@ outputs = [
   { path = "crates/gui/icons/512x512.png", size = 512 },
   { path = "crates/gui/icons/icon.ico",   sizes = [16, 32, 48, 64, 128, 256] },
   { path = "crates/gui/icons/icon.icns",  sizes = [16, 32, 64, 128, 256, 512, 1024] },
-  # In-app About page (loaded by ui/index.html).
-  { path = "crates/gui/ui/icon.png", size = 256 },
   # HTTP server favicon (rust-embed: crates/core/assets/icons/).
   { path = "crates/core/assets/icons/favicon.svg" },
   # Docs site (VitePress public/).
@@ -51,6 +49,8 @@ fg = "#ffffff"
 outputs = [
   { path = "crates/gui/icons/tray.svg" },
   { path = "crates/gui/icons/tray.png", size = 64 },
+  # In-app About page (CSS mask — fill colour is irrelevant, alpha is used).
+  { path = "crates/gui/ui/glyph.svg" },
 ]
 
 # ── Tray icon (Windows / Linux) ─────────────────────────────────────────────
