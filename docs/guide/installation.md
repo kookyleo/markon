@@ -4,9 +4,9 @@ Markon 提供桌面应用（GUI）和命令行（CLI）两种形态。
 
 ## 桌面版
 
-<DownloadButton mode="all" />
-
 ### macOS
+
+<DownloadButton mode="os" os="macos" />
 
 下载对应芯片的 `.dmg`，双击挂载后拖到 Applications 目录。
 
@@ -14,9 +14,13 @@ Markon 提供桌面应用（GUI）和命令行（CLI）两种形态。
 
 ### Windows
 
+<DownloadButton mode="os" os="windows" />
+
 下载对应 CPU 的 `-setup.exe`，双击运行安装。
 
 ### Linux
+
+<DownloadButton mode="os" os="linux" />
 
 下载 `.deb` 后安装：
 

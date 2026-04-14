@@ -4,8 +4,11 @@ import { useData } from 'vitepress';
 
 const props = defineProps({
   // 'primary': big auto-detected button + collapsible others
-  // 'all':     full per-OS list
+  // 'all':     full per-OS list (groups have headers)
+  // 'os':      single-OS list, no header (use under a section heading)
   mode: { type: String, default: 'primary' },
+  // Required when mode='os': 'macos' | 'windows' | 'linux'
+  os: { type: String, default: null },
 });
 
 const { theme } = useData();
@@ -98,6 +101,15 @@ const grouped = computed(() => {
   return Object.values(groups).filter(g => g.items.length);
 });
 
+// Items for a single OS — used by mode='os' and mode='primary' (no headers).
+const osItems = computed(() => {
+  if (!release.value || !props.os) return [];
+  const found = grouped.value.find(g =>
+    g.label.toLowerCase() === props.os.toLowerCase()
+  );
+  return found ? found.items : [];
+});
+
 function formatBytes(n) {
   if (!n) return '';
   const mb = n / 1024 / 1024;
@@ -144,6 +156,16 @@ const showAll = ref(false);
         </ul>
       </div>
     </div>
+  </div>
+
+  <div v-else-if="mode === 'os'" class="markon-dl-list">
+    <ul>
+      <li v-for="a in osItems" :key="a.name">
+        <a :href="a.url">{{ a.variant }}</a>
+        <span class="markon-dl-name">{{ a.name }}</span>
+        <span class="markon-dl-size">{{ formatBytes(a.size) }}</span>
+      </li>
+    </ul>
   </div>
 
   <div v-else class="markon-dl-list">
