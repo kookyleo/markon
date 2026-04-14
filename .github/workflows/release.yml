@@ -26,8 +26,10 @@ jobs:
             args: --bundles dmg --target aarch64-apple-darwin
             updater_bundle: target/aarch64-apple-darwin/release/bundle/macos/Markon.app
             updater_archive: Markon-aarch64.app.tar.gz
-          # macOS Intel (x86_64)
-          - platform: macos-13
+          # macOS Intel (x86_64) — cross-compiled on the arm64 runner because
+          # GitHub no longer offers macos-13 as a free standard runner. The
+          # macOS SDK on macos-latest supports both architectures natively.
+          - platform: macos-latest
             target: x86_64-apple-darwin
             args: --bundles dmg --target x86_64-apple-darwin
             updater_bundle: target/x86_64-apple-darwin/release/bundle/macos/Markon.app
@@ -72,7 +74,9 @@ jobs:
       - name: Cache Rust dependencies
         uses: Swatinem/rust-cache@v2
         with:
-          shared-key: tauri-${{ matrix.platform }}
+          # Key on target, not platform — two macOS jobs now share the same
+          # platform but build for different architectures.
+          shared-key: tauri-${{ matrix.target }}
 
       - name: Install cargo-binstall
         run: curl -L --proto '=https' --tlsv1.2 -sSf https://raw.githubusercontent.com/cargo-bins/cargo-binstall/main/install-from-binstall-release.sh | bash
