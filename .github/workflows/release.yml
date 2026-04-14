@@ -143,7 +143,13 @@ jobs:
           fi
 
           echo "Signing: $ARCHIVE"
-          cargo binstall tauri-cli --no-confirm 2>/dev/null || cargo install tauri-cli --version "^2"
+          # Try binstall first for speed, but verify cargo-tauri is actually
+          # on PATH afterwards — a cached registry entry can make binstall
+          # report "already installed" without the binary actually being
+          # deployed into $CARGO_HOME/bin. Fall back to `cargo install` when
+          # the binary is missing, regardless of binstall's exit code.
+          cargo binstall tauri-cli --no-confirm 2>/dev/null || true
+          command -v cargo-tauri >/dev/null 2>&1 || cargo install tauri-cli --version "^2" --locked
           cargo tauri signer sign -k "$TAURI_SIGNING_PRIVATE_KEY" -p "" "$ARCHIVE"
 
           echo "Created:"
