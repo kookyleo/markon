@@ -29,7 +29,7 @@ jobs:
 
       - name: Install dependencies
         working-directory: docs
-        run: npm ci
+        run: npm install --no-audit --no-fund
 
       - name: Build VitePress
         working-directory: docs
