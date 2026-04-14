@@ -20,18 +20,42 @@ jobs:
       fail-fast: false
       matrix:
         include:
+          # macOS Apple Silicon (arm64)
           - platform: macos-latest
-            bundles: dmg
-            updater_bundle: target/release/bundle/macos/Markon.app
-            updater_archive: Markon.app.tar.gz
+            target: aarch64-apple-darwin
+            args: --bundles dmg --target aarch64-apple-darwin
+            updater_bundle: target/aarch64-apple-darwin/release/bundle/macos/Markon.app
+            updater_archive: Markon-aarch64.app.tar.gz
+          # macOS Intel (x86_64)
+          - platform: macos-13
+            target: x86_64-apple-darwin
+            args: --bundles dmg --target x86_64-apple-darwin
+            updater_bundle: target/x86_64-apple-darwin/release/bundle/macos/Markon.app
+            updater_archive: Markon-x86_64.app.tar.gz
+          # Linux x86_64
           - platform: ubuntu-22.04
-            bundles: deb,appimage
-            updater_bundle: target/release/bundle/appimage/*.AppImage
-            updater_archive: Markon.AppImage.tar.gz
+            target: x86_64-unknown-linux-gnu
+            args: --bundles deb,appimage --target x86_64-unknown-linux-gnu
+            updater_bundle: target/x86_64-unknown-linux-gnu/release/bundle/appimage/*.AppImage
+            updater_archive: Markon-x86_64.AppImage.tar.gz
+          # Linux ARM64
+          - platform: ubuntu-22.04-arm
+            target: aarch64-unknown-linux-gnu
+            args: --bundles deb,appimage --target aarch64-unknown-linux-gnu
+            updater_bundle: target/aarch64-unknown-linux-gnu/release/bundle/appimage/*.AppImage
+            updater_archive: Markon-aarch64.AppImage.tar.gz
+          # Windows x86_64
           - platform: windows-latest
-            bundles: nsis
-            updater_bundle: target/release/bundle/nsis/*-setup.exe
-            updater_archive: Markon-setup.nsis.zip
+            target: x86_64-pc-windows-msvc
+            args: --bundles nsis --target x86_64-pc-windows-msvc
+            updater_bundle: target/x86_64-pc-windows-msvc/release/bundle/nsis/*-setup.exe
+            updater_archive: Markon-x86_64-setup.nsis.zip
+          # Windows ARM64
+          - platform: windows-11-arm
+            target: aarch64-pc-windows-msvc
+            args: --bundles nsis --target aarch64-pc-windows-msvc
+            updater_bundle: target/aarch64-pc-windows-msvc/release/bundle/nsis/*-setup.exe
+            updater_archive: Markon-aarch64-setup.nsis.zip
 
     runs-on: ${{ matrix.platform }}
 
@@ -42,6 +66,8 @@ jobs:
 
       - name: Setup Rust
         uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
 
       - name: Cache Rust dependencies
         uses: Swatinem/rust-cache@v2
@@ -52,13 +78,14 @@ jobs:
         run: curl -L --proto '=https' --tlsv1.2 -sSf https://raw.githubusercontent.com/cargo-bins/cargo-binstall/main/install-from-binstall-release.sh | bash
 
       - name: Install Linux system dependencies
-        if: matrix.platform == 'ubuntu-22.04'
+        if: startsWith(matrix.platform, 'ubuntu-')
         run: |
           sudo apt-get update
           sudo apt-get install -y \
             libwebkit2gtk-4.1-dev \
             libappindicator3-dev \
             librsvg2-dev \
+            libfontconfig1-dev \
             patchelf
 
       - name: Build installer
@@ -73,7 +100,7 @@ jobs:
           releaseName: Markon ${{ env.RELEASE_TAG }}
           releaseDraft: true
           includeUpdaterJson: false
-          args: --bundles ${{ matrix.bundles }}
+          args: ${{ matrix.args }}
 
       # Create updater archive + signature ourselves since tauri-action
       # doesn't reliably upload them.
@@ -87,7 +114,7 @@ jobs:
 
           # macOS: .app is cleaned after DMG bundling — extract from DMG
           if [[ "$BUNDLE" == *.app ]] && [ ! -d "$BUNDLE" ]; then
-            DMG=$(find target/release/bundle/dmg -name "*.dmg" 2>/dev/null | head -1)
+            DMG=$(find target -path "*/release/bundle/dmg/*.dmg" 2>/dev/null | head -1)
             if [ -n "$DMG" ]; then
               echo "Extracting .app from DMG: $DMG"
               hdiutil attach "$DMG" -mountpoint /tmp/dmg-mount -nobrowse -quiet
@@ -192,9 +219,12 @@ jobs:
             sig=$(cat "$sig_file")
 
             case "$name" in
-              *.app.tar.gz)          key="darwin-aarch64" ;;
-              *.AppImage.tar.gz)     key="linux-x86_64" ;;
-              *.nsis.zip)            key="windows-x86_64" ;;
+              *aarch64*.app.tar.gz)        key="darwin-aarch64" ;;
+              *x86_64*.app.tar.gz)         key="darwin-x86_64" ;;
+              *aarch64*.AppImage.tar.gz)   key="linux-aarch64" ;;
+              *x86_64*.AppImage.tar.gz)    key="linux-x86_64" ;;
+              *aarch64*setup.nsis.zip)     key="windows-aarch64" ;;
+              *x86_64*setup.nsis.zip)      key="windows-x86_64" ;;
               *) echo "Skip: $name"; continue ;;
             esac
 

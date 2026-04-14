@@ -10,7 +10,7 @@ flowchart TD
     B --> C["Tag: v0.9.0-rc.1"]
     C --> D["gh workflow run release.yml<br/><i>dispatch trigger</i>"]
     D --> E["Release<br/>(release.yml)"]
-    E --> F["Build 3 platforms<br/>macOS / Linux / Windows"]
+    E --> F["Build 6 targets<br/>macOS / Linux / Windows × (x86_64 + aarch64)"]
     F --> G["Sign updater archives"]
     G --> H["Publish as prerelease"]
     H --> I["Upload latest-rc.json<br/>to updater release"]
@@ -99,7 +99,7 @@ sequenceDiagram
     GH->>RC: trigger
     RC->>GH: git tag v0.9.0-rc.1 && git push
     RC->>Rel: gh workflow run release.yml
-    Rel->>GH: build 3 platforms
+    Rel->>GH: build 6 targets
     Rel->>GH: publish prerelease + latest-rc.json
 
     Note over AP: daily cron 08:00 UTC
@@ -111,7 +111,7 @@ sequenceDiagram
 ```
 
 1. **auto-rc.yml** detects the version change, creates tag `v0.9.0-rc.1`, dispatches Release
-2. **release.yml** builds all 3 platforms (macOS/Linux/Windows), signs updater archives, creates a prerelease, uploads `latest-rc.json` to the permanent `updater` release
+2. **release.yml** builds all 6 targets (macOS / Linux / Windows, each in x86_64 and aarch64), signs updater archives, creates a prerelease, uploads `latest-rc.json` to the permanent `updater` release
 3. **auto-promote.yml** runs daily at 08:00 UTC -- checks the latest RC against promotion criteria (see below), dispatches Promote if all pass
 4. **promote.yml** copies all RC assets to a new stable release `v0.9.0` and uploads `latest.json`
 

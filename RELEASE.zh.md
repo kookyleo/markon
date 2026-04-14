@@ -10,7 +10,7 @@ flowchart TD
     B --> C["打 Tag: v0.9.0-rc.1"]
     C --> D["gh workflow run release.yml<br/><i>dispatch 触发</i>"]
     D --> E["Release<br/>(release.yml)"]
-    E --> F["三平台构建<br/>macOS / Linux / Windows"]
+    E --> F["六目标构建<br/>macOS / Linux / Windows × (x86_64 + aarch64)"]
     F --> G["签名 updater 归档"]
     G --> H["发布为 prerelease"]
     H --> I["上传 latest-rc.json<br/>到 updater release"]
@@ -97,7 +97,7 @@ sequenceDiagram
     GH->>RC: 触发
     RC->>GH: git tag v0.9.0-rc.1 && git push
     RC->>Rel: gh workflow run release.yml
-    Rel->>GH: 构建三平台
+    Rel->>GH: 构建六目标
     Rel->>GH: 发布 prerelease + latest-rc.json
 
     Note over AP: 每日 08:00 UTC 定时
@@ -109,7 +109,7 @@ sequenceDiagram
 ```
 
 1. **auto-rc.yml** 检测版本变化，创建 tag `v0.9.0-rc.1`，dispatch 触发 Release
-2. **release.yml** 构建三平台（macOS/Linux/Windows），签名 updater 归档，创建 prerelease，上传 `latest-rc.json` 到永久的 `updater` release
+2. **release.yml** 构建六目标（macOS / Linux / Windows 各自 x86_64 + aarch64），签名 updater 归档，创建 prerelease，上传 `latest-rc.json` 到永久的 `updater` release
 3. **auto-promote.yml** 每天 08:00 UTC 运行，检查最新 RC 是否满足晋升条件（见下），满足则 dispatch 触发 Promote
 4. **promote.yml** 复制 RC 全部资产到新的 stable release `v0.9.0`，上传 `latest.json`
 
