@@ -70,7 +70,7 @@ markon -b https://docs.example.com --qr https://docs.example.com
 
 当 Markon 部署在反向代理后面时，`-b` 和 `--qr` 分别指定浏览器打开的 URL 和 QR 码编码的 URL。
 
-→ 配置细节见 [反向代理](/zh/advanced/reverse-proxy)
+→ 配置细节见 [反向代理](/advanced/reverse-proxy)
 
 ### 启用所有功能
 

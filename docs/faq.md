@@ -115,7 +115,7 @@ markon --host 0.0.0.0 README.md
 
 ### 能打印 PDF 吗？
 
-打印对话框选择 "另存为 PDF" 即可。Markon 的 [章节打印](/zh/features/print) 只导出选定章节，适合做 PDF 切片。
+打印对话框选择 "另存为 PDF" 即可。Markon 的 [章节打印](/features/print) 只导出选定章节，适合做 PDF 切片。
 
 ### 能导出成 HTML 吗？
 

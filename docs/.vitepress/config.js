@@ -1,6 +1,5 @@
 import { defineConfig } from 'vitepress';
 
-// Shared config across all locales.
 export default defineConfig({
   title: 'Markon',
   description: 'Turn your markdown on. — A lightweight Markdown renderer with GitHub styling.',
@@ -19,64 +18,53 @@ export default defineConfig({
     ],
   },
 
-  // All three languages live at parallel sub-paths (/zh/, /en/, /ja/).
-  // The root (`/`) is a minimal language-picker landing page.
+  // Chinese is the default language, served at the root path.
+  // English and Japanese live at /en/ and /ja/.
+  // The language switcher shows exactly three options — no extra "root" entry.
   locales: {
     root: {
-      label: '🌐',
-      lang: 'en',
-      themeConfig: {
-        nav: [
-          { text: '简体中文', link: '/zh/' },
-          { text: 'English', link: '/en/' },
-          { text: '日本語', link: '/ja/' },
-        ],
-      },
-    },
-    zh: {
       label: '简体中文',
       lang: 'zh-CN',
-      link: '/zh/',
       themeConfig: {
         nav: [
-          { text: '指南', link: '/zh/guide/getting-started' },
-          { text: '功能', link: '/zh/features/search' },
-          { text: '进阶', link: '/zh/advanced/shared-annotations' },
-          { text: '常见问题', link: '/zh/faq' },
-          { text: 'GitHub Release', link: 'https://github.com/kookyleo/markon/releases' },
+          { text: '指南', link: '/guide/getting-started' },
+          { text: '功能', link: '/features/search' },
+          { text: '进阶', link: '/advanced/shared-annotations' },
+          { text: '常见问题', link: '/faq' },
+          { text: 'Release', link: 'https://github.com/kookyleo/markon/releases' },
         ],
         sidebar: {
-          '/zh/guide/': [
+          '/guide/': [
             {
               text: '入门',
               items: [
-                { text: '简介', link: '/zh/guide/introduction' },
-                { text: '快速上手', link: '/zh/guide/getting-started' },
-                { text: '安装', link: '/zh/guide/installation' },
-                { text: '命令行选项', link: '/zh/guide/cli' },
+                { text: '简介', link: '/guide/introduction' },
+                { text: '快速上手', link: '/guide/getting-started' },
+                { text: '安装', link: '/guide/installation' },
+                { text: '命令行选项', link: '/guide/cli' },
               ],
             },
           ],
-          '/zh/features/': [
+          '/features/': [
             {
               text: '核心功能',
               items: [
-                { text: '全文搜索', link: '/zh/features/search' },
-                { text: '已读追踪', link: '/zh/features/viewed' },
-                { text: '在线编辑', link: '/zh/features/edit' },
-                { text: '标注与高亮', link: '/zh/features/annotations' },
-                { text: '章节打印', link: '/zh/features/print' },
+                { text: '全文搜索', link: '/features/search' },
+                { text: '已读追踪', link: '/features/viewed' },
+                { text: '在线编辑', link: '/features/edit' },
+                { text: '标注与高亮', link: '/features/annotations' },
+                { text: '章节打印', link: '/features/print' },
               ],
             },
           ],
-          '/zh/advanced/': [
+          '/advanced/': [
             {
               text: '进阶用法',
               items: [
-                { text: '共享标注', link: '/zh/advanced/shared-annotations' },
-                { text: '反向代理', link: '/zh/advanced/reverse-proxy' },
-                { text: '自定义样式', link: '/zh/advanced/custom-styles' },
-                { text: '键盘快捷键', link: '/zh/advanced/shortcuts' },
+                { text: '共享标注', link: '/advanced/shared-annotations' },
+                { text: '反向代理', link: '/advanced/reverse-proxy' },
+                { text: '自定义样式', link: '/advanced/custom-styles' },
+                { text: '键盘快捷键', link: '/advanced/shortcuts' },
               ],
             },
           ],

@@ -42,7 +42,7 @@ markon README.md       # 渲染单个文件
 markon                 # 浏览当前目录
 ```
 
-→ 查看 [命令行选项](/zh/guide/cli)
+→ 查看 [命令行选项](/guide/cli)
 
 ## 架构概览
 

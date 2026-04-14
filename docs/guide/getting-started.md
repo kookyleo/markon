@@ -71,12 +71,12 @@ markon --host
 markon --host 0.0.0.0 --qr
 ```
 
-→ 完整选项见 [命令行选项](/zh/guide/cli)
+→ 完整选项见 [命令行选项](/guide/cli)
 
 ---
 
 ## 下一步
 
-- 了解 [核心功能](/zh/features/search) — 全文搜索、已读追踪、在线编辑、标注与高亮、章节打印
-- 配置 [共享标注](/zh/advanced/shared-annotations) 实现多端同步
-- 查看 [键盘快捷键](/zh/advanced/shortcuts) 提升效率
+- 了解 [核心功能](/features/search) — 全文搜索、已读追踪、在线编辑、标注与高亮、章节打印
+- 配置 [共享标注](/advanced/shared-annotations) 实现多端同步
+- 查看 [键盘快捷键](/advanced/shortcuts) 提升效率

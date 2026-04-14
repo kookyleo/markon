@@ -52,7 +52,7 @@ H1 标题下方有一个工具栏：
 | **本地** | 默认 | 浏览器 LocalStorage | 单设备 |
 | **共享** | `--shared-annotation` | SQLite 数据库 | 多设备实时同步 |
 
-→ 共享模式详见 [共享标注](/zh/advanced/shared-annotations)
+→ 共享模式详见 [共享标注](/advanced/shared-annotations)
 
 ## 典型场景
 
