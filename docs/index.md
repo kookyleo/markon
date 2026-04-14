@@ -37,7 +37,7 @@ features:
     details: 三色高亮、删除线、便条笔记，宽屏以右侧栏卡片显示，窄屏以弹窗呈现
   - icon: 🔄
     title: 多端同步
-    details: 通过 SQLite 数据库同步批注与已读状态，适用于个人多设备阅读或团队协作场景
+    details: 通过 WebSocket 实时广播批注与已读状态变更，适用于个人多设备阅读或小团队协作
   - icon: 🖨️
     title: 章节打印
     details: 标题旁的打印按钮，仅打印当前章节内容，保持 GitHub 风格排版
