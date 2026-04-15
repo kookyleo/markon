@@ -13,13 +13,6 @@ canvas = 512
 margin = 32       # gap between canvas edge and wrapper rect
 radius = 88       # wrapper corner radius
 
-# Edge-to-edge variant — no outer transparent margin. Used by the tray
-# icon so the pill fills the full Windows tile instead of sitting inside
-# our own padding + Windows' chrome padding (double inset looked small).
-[wrap.tight]
-canvas = 512
-margin = 0
-radius = 88
 
 # ── App icon ────────────────────────────────────────────────────────────────
 # Black glyph on white rounded square. Used for: Tauri bundle (all platforms),
@@ -53,7 +46,7 @@ outputs = [
 # dark taskbars without needing two variants.
 [[variant]]
 name = "tray-accent"
-wrap = "tight"
+wrap = "rounded"
 fg = "#ffffff"
 bg = "#0A84FF"
 outputs = [
@@ -94,5 +87,9 @@ outputs = [
   # white rim was visible as a hairline border at 16x16 titlebar size;
   # the bare glyph already has its own rounded-rect silhouette built
   # into the path, so it reads cleaner without the extra wrap.
-  { path = "crates/gui/icons/icon.ico", sizes = [16, 32, 48, 64, 128, 256] },
+  #
+  # 20 and 24 are included so Windows titlebar on 125 % / 150 % DPI
+  # monitors can pick an exact-match raster instead of up-scaling the
+  # 16x16 slot (which came out very fuzzy on high-DPI screens).
+  { path = "crates/gui/icons/icon.ico", sizes = [16, 20, 24, 32, 48, 64, 128, 256] },
 ]

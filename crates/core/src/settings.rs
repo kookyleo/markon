@@ -118,7 +118,24 @@ impl AppSettings {
         let path = Self::settings_path();
         if path.exists() {
             if let Ok(content) = std::fs::read_to_string(&path) {
-                if let Ok(settings) = serde_json::from_str(&content) {
+                if let Ok(mut settings) = serde_json::from_str::<Self>(&content) {
+                    // One-time self-heal for paths persisted by older builds
+                    // that didn't strip Windows' \\?\ verbatim prefix before
+                    // writing to settings.json. dunce::canonicalize is a
+                    // no-op for already-clean paths.
+                    let mut changed = false;
+                    for ws in &mut settings.workspaces {
+                        if let Ok(clean) = dunce::canonicalize(&ws.path) {
+                            let clean_str = clean.to_string_lossy().to_string();
+                            if clean_str != ws.path {
+                                ws.path = clean_str;
+                                changed = true;
+                            }
+                        }
+                    }
+                    if changed {
+                        let _ = settings.save();
+                    }
                     return settings;
                 }
             }

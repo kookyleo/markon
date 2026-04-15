@@ -169,6 +169,9 @@
     "tray.show": "Show Main Window…",
     "tray.quit":     "Quit Markon",
 
+    // ── Windows Explorer right-click menu ────────────────────
+    "shell.open": "Open with Markon",
+
     // ══════════════════════════════════════════════════════════
     // Web — Browser-side rendered pages
     // ══════════════════════════════════════════════════════════

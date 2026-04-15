@@ -168,6 +168,13 @@ fn main() {
 
             let tray_resident_init = settings.tray_resident;
             let language_init = settings.language.clone();
+
+            // Windows Explorer right-click menu labels follow the app language.
+            // NSIS writes a fixed (zh-CN) label on install; this rewrites it
+            // to match the user's current choice on every launch.
+            #[cfg(target_os = "windows")]
+            commands::sync_shell_context_menu(&language_init);
+
             let state = AppState {
                 settings: Mutex::new(settings),
                 server: Mutex::new(ServerManager::new()),

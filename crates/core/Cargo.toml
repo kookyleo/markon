@@ -41,6 +41,7 @@ qr2term = "0.3.3"
 qrcode = "0.14.1"
 open = "5.3.2"
 dirs = "6.0.0"
+dunce.workspace = true
 walkdir = "2.5.0"
 notify = "6.1.1"
 sys-locale = "0.3"

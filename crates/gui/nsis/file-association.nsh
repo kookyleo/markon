@@ -10,14 +10,14 @@
 !macro NSIS_HOOK_POSTINSTALL
   ; ── .md / .markdown context menu ────────────────────────────────────────
   WriteRegStr HKCU "Software\Classes\.md\shell\open_with_markon" \
-    "" "用 Markon 打开"
+    "" "Open with Markon"
   WriteRegStr HKCU "Software\Classes\.md\shell\open_with_markon" \
     "Icon" "$INSTDIR\markon-gui.exe,0"
   WriteRegStr HKCU "Software\Classes\.md\shell\open_with_markon\command" \
     "" '"$INSTDIR\markon-gui.exe" "%1"'
 
   WriteRegStr HKCU "Software\Classes\.markdown\shell\open_with_markon" \
-    "" "用 Markon 打开"
+    "" "Open with Markon"
   WriteRegStr HKCU "Software\Classes\.markdown\shell\open_with_markon" \
     "Icon" "$INSTDIR\markon-gui.exe,0"
   WriteRegStr HKCU "Software\Classes\.markdown\shell\open_with_markon\command" \
@@ -25,7 +25,7 @@
 
   ; ── Directory right-click (folder icon) ──────────────────────────────────
   WriteRegStr HKCU "Software\Classes\Directory\shell\open_with_markon" \
-    "" "用 Markon 打开"
+    "" "Open with Markon"
   WriteRegStr HKCU "Software\Classes\Directory\shell\open_with_markon" \
     "Icon" "$INSTDIR\markon-gui.exe,0"
   WriteRegStr HKCU "Software\Classes\Directory\shell\open_with_markon\command" \
@@ -33,7 +33,7 @@
 
   ; ── Directory background right-click (inside folder, on empty area) ──────
   WriteRegStr HKCU "Software\Classes\Directory\Background\shell\open_with_markon" \
-    "" "用 Markon 打开"
+    "" "Open with Markon"
   WriteRegStr HKCU "Software\Classes\Directory\Background\shell\open_with_markon" \
     "Icon" "$INSTDIR\markon-gui.exe,0"
   WriteRegStr HKCU "Software\Classes\Directory\Background\shell\open_with_markon\command" \

@@ -3226,6 +3226,7 @@ version = "0.9.10"
 dependencies = [
  "axum",
  "dirs",
+ "dunce",
  "emojis",
  "futures",
  "futures-util",

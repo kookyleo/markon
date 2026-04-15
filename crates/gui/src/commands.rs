@@ -42,6 +42,50 @@ pub fn get_settings(state: State<AppState>) -> AppSettings {
     state.settings.lock().unwrap().clone()
 }
 
+/// Rewrite the HKCU context-menu registry entries with labels in the user's
+/// chosen language. The NSIS installer writes a default (zh-CN) on install;
+/// this runs on every app start and on language change so the menu text
+/// follows the in-app setting rather than the installer-time locale.
+#[cfg(target_os = "windows")]
+pub fn sync_shell_context_menu(language: &str) {
+    let data = i18n::get_lang_data(language);
+    let label = data["shell.open"]
+        .as_str()
+        .unwrap_or("Open with Markon")
+        .to_string();
+    let Ok(exe) = std::env::current_exe() else {
+        return;
+    };
+    let exe = exe.to_string_lossy().to_string();
+
+    // (registry_base, command_arg)
+    let entries: &[(&str, &str)] = &[
+        (r"Software\Classes\.md\shell\open_with_markon", "%1"),
+        (r"Software\Classes\.markdown\shell\open_with_markon", "%1"),
+        (r"Software\Classes\Directory\shell\open_with_markon", "%1"),
+        (r"Software\Classes\Directory\Background\shell\open_with_markon", "%W"),
+    ];
+    for (base, arg) in entries {
+        let base_key = format!(r"HKCU\{base}");
+        let cmd_key = format!(r"{base_key}\command");
+        let _ = silent_command("reg")
+            .args(["add", &base_key, "/f", "/ve", "/t", "REG_SZ", "/d", &label])
+            .output();
+        let _ = silent_command("reg")
+            .args([
+                "add", &base_key, "/f", "/v", "Icon", "/t", "REG_SZ",
+                "/d", &format!("{exe},0"),
+            ])
+            .output();
+        let _ = silent_command("reg")
+            .args([
+                "add", &cmd_key, "/f", "/ve", "/t", "REG_SZ",
+                "/d", &format!(r#""{exe}" "{arg}""#),
+            ])
+            .output();
+    }
+}
+
 #[tauri::command]
 pub fn save_settings(
     settings: AppSettings,
@@ -55,6 +99,10 @@ pub fn save_settings(
 
     // Update tray menu labels if language changed.
     update_tray_language(&app, &settings.language);
+
+    // Windows Explorer context-menu labels follow the app language.
+    #[cfg(target_os = "windows")]
+    sync_shell_context_menu(&settings.language);
 
     settings.save()?;
     let port = if settings.port_mode == PortMode::Auto {
