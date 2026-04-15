@@ -2,7 +2,9 @@
 
 > 需要启用：桌面版在工作区设置中勾选"搜索"；CLI 用 `--enable-search`
 
-基于 [Tantivy](https://github.com/quickwit-oss/tantivy) 引擎构建的全文搜索，支持中日英分词。
+Markon 是一款基于 Rust 的轻量级 Markdown 阅览器。最初的出发点很朴素 —— 在**无 GUI 的服务器**上，把一整个目录的文档变成可读、可检索、可审阅的"阅读工作台"；之后逐步长出章节打印、多终端同步标注、在线编辑，以及跨平台桌面版本。
+
+搜索是这条脉络上最能体现"工作台"定位的功能：工作区里散落着成百上千个 `.md`，从敲下关键词到结果高亮，全部在本地秒级完成。底层由 [Tantivy](https://github.com/quickwit-oss/tantivy) 倒排索引驱动，配合 [Jieba](https://github.com/baoyachi/tantivy-jieba) 分词，中日英开箱即用；文件改动由 notify 监听，索引实时增量更新，不用手动刷新。
 
 ## 使用
 
