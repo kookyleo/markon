@@ -14,6 +14,27 @@ Markon 提供桌面应用（GUI）和命令行（CLI）两种形态。
 
 ![macOS Gatekeeper：在系统设置点 Open Anyway，确认放行 Markon](/screenshots/macos-gatekeeper.png)
 
+#### 通过 Homebrew 安装
+
+个人 tap（跟随 Markon 稳定版自动更新）：
+
+```bash
+brew tap kookyleo/markon https://github.com/kookyleo/markon
+brew install --cask markon
+```
+
+后续升级：
+
+```bash
+brew upgrade --cask markon
+```
+
+首次启动仍会遇到上面的 Gatekeeper 提示 —— brew 本身只校验下载完整性，不管签名类型。想完全跳过提示，安装时加 `--no-quarantine`：
+
+```bash
+brew install --cask --no-quarantine markon
+```
+
 ### Windows
 
 <DownloadButton mode="os" os="windows" />

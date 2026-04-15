@@ -56,6 +56,51 @@ jobs:
             /tmp/latest-rc.json > /tmp/latest.json
           gh release upload updater /tmp/latest.json --clobber
 
+      # Bump Casks/markon.rb so `brew upgrade --cask markon` pulls the new
+      # stable. The file doubles as the personal tap content — users install
+      # via `brew tap kookyleo/markon https://github.com/kookyleo/markon`.
+      - name: Update Homebrew cask
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          STABLE="${{ steps.ver.outputs.stable }}"
+          VER="${STABLE#v}"
+
+          ARM_DMG="/tmp/assets/Markon_${VER}_aarch64.dmg"
+          X64_DMG="/tmp/assets/Markon_${VER}_x64.dmg"
+
+          if [ ! -f "$ARM_DMG" ] || [ ! -f "$X64_DMG" ]; then
+            echo "::warning::Missing macOS DMG for $VER — skipping cask update"
+            ls -la /tmp/assets/ || true
+            exit 0
+          fi
+
+          ARM_SHA=$(sha256sum "$ARM_DMG" | awk '{print $1}')
+          X64_SHA=$(sha256sum "$X64_DMG" | awk '{print $1}')
+          echo "arm=$ARM_SHA"
+          echo "x64=$X64_SHA"
+
+          python3 - <<PY
+          from pathlib import Path
+          import re
+          p = Path("Casks/markon.rb")
+          text = p.read_text()
+          text = re.sub(r'version "[^"]*"', f'version "$VER"', text, count=1)
+          text = re.sub(r'(sha256 arm:\s+)"[^"]*"', rf'\g<1>"$ARM_SHA"', text, count=1)
+          text = re.sub(r'(\s+intel:\s+)"[^"]*"', rf'\g<1>"$X64_SHA"', text, count=1)
+          p.write_text(text)
+          PY
+
+          git config user.name  "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add Casks/markon.rb
+          if git diff --cached --quiet; then
+            echo "Cask already up to date"
+          else
+            git commit -m "cask: bump markon to $VER"
+            git push
+          fi
+
   publish-crates:
     needs: promote
     runs-on: ubuntu-latest
