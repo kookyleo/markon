@@ -18,29 +18,32 @@ use tauri::{
 };
 
 // Point the Win32 HWND at the multi-size icon embedded in the .exe resource
-// so the titlebar slot picks the exact native raster from our .ico (16/20/
-// 24/32/48/…) rather than getting a bilinear downscale of Tauri's single
-// 32x32 PNG. This mirrors what Gitbutler / Spacedrive do — the default
-// Tauri → tao path calls SendMessage(WM_SETICON) with one HICON built from
-// one RGBA buffer, which Windows then stretches for ICON_SMALL.
+// so the titlebar slot picks the exact native raster from our .ico (16 /
+// 20 / 24 / 32 / 48 / …) instead of getting a bilinear downscale of the
+// single PNG Tauri's default path passes to tao (see tauri-apps/tauri
+// #14596 — tao only takes one RGBA frame out of an .ico and stretches
+// it for both ICON_SMALL and ICON_BIG).
 //
-// Uses SM_CXSMICON / SM_CXICON so Windows returns DPI-scaled sizes on
-// Per-Monitor-V2 aware processes (Tauri default) — at 125 % DPI that's
-// 20 px, at 150 % it's 24 px, both native rasters we ship in icon.ico.
+// Resource id 32512 (IDI_APPLICATION) is what tauri-winres bakes the app
+// icon under — **not** 1, despite it looking like the obvious default.
+// `LoadImageW` silently returns NULL for a wrong id, so the bug is
+// invisible at runtime; the code falls through and tao's blurry original
+// stays. Probe a few common ids defensively.
 #[cfg(target_os = "windows")]
 fn install_exe_window_icon(window: &tauri::WebviewWindow) {
     use windows_sys::Win32::Foundation::{HWND, LPARAM, WPARAM};
     use windows_sys::Win32::System::LibraryLoader::GetModuleHandleW;
     use windows_sys::Win32::UI::WindowsAndMessaging::{
         GetSystemMetrics, LoadImageW, SendMessageW, ICON_BIG, ICON_SMALL, IMAGE_ICON,
-        LR_DEFAULTCOLOR, LR_SHARED, SM_CXICON, SM_CXSMICON, SM_CYICON, SM_CYSMICON, WM_SETICON,
+        LR_DEFAULTCOLOR, SM_CXICON, SM_CXSMICON, SM_CYICON, SM_CYSMICON, WM_SETICON,
     };
 
     let Ok(hwnd) = window.hwnd() else { return };
     let hwnd: HWND = hwnd.0 as HWND;
 
-    // tauri-bundler emits the .ico as resource id 1 on Windows.
-    let icon_res_id = 1 as *const u16;
+    // Known ids used by Tauri toolchains for the app icon resource.
+    const CANDIDATE_IDS: &[u16] = &[32512, 1, 2];
+
     unsafe {
         let hinstance = GetModuleHandleW(std::ptr::null());
         let slots = [
@@ -56,21 +59,23 @@ fn install_exe_window_icon(window: &tauri::WebviewWindow) {
             ),
         ];
         for (msg_param, w, h) in slots {
-            let hicon = LoadImageW(
-                hinstance,
-                icon_res_id,
-                IMAGE_ICON,
-                w,
-                h,
-                LR_SHARED | LR_DEFAULTCOLOR,
-            );
-            if !hicon.is_null() {
-                SendMessageW(
-                    hwnd,
-                    WM_SETICON,
-                    msg_param as WPARAM,
-                    hicon as isize as LPARAM,
+            let mut hicon: isize = 0;
+            for &id in CANDIDATE_IDS {
+                let handle = LoadImageW(
+                    hinstance,
+                    id as *const u16,
+                    IMAGE_ICON,
+                    w,
+                    h,
+                    LR_DEFAULTCOLOR,
                 );
+                if !handle.is_null() {
+                    hicon = handle as isize;
+                    break;
+                }
+            }
+            if hicon != 0 {
+                SendMessageW(hwnd, WM_SETICON, msg_param as WPARAM, hicon as LPARAM);
             }
         }
     }
