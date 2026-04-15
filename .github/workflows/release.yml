@@ -137,11 +137,14 @@ jobs:
             tar czf "$ARCHIVE" -C "$(dirname "$BUNDLE")" "$(basename "$BUNDLE")"
           elif [[ "$BUNDLE" == *.exe ]]; then
             cd "$(dirname "$BUNDLE")"
-            # Force standard PKZIP Deflate. 7z's default for .zip picks
-            # Deflate64 on larger payloads, which tauri-plugin-updater's
-            # zip reader rejects with "unsupported Zip archive:
-            # Compression method not supported" on the client side.
-            7z a -tzip -mm=Deflate "$ARCHIVE" "$(basename "$BUNDLE")"
+            # Store the .exe uncompressed (method=Copy). tauri-plugin-updater
+            # 2.9.0 declares its zip dependency with `default-features = false`
+            # (see its Cargo.toml), which disables the deflate feature — the
+            # client zip reader can only decode Stored entries. Using Deflate
+            # (or Deflate64) makes it fail with "unsupported Zip archive:
+            # Compression method not supported". NSIS payloads are already
+            # compressed internally, so Deflate saved < 0.3% anyway.
+            7z a -tzip -mm=Copy "$ARCHIVE" "$(basename "$BUNDLE")"
           else
             tar czf "$ARCHIVE" -C "$(dirname "$BUNDLE")" "$(basename "$BUNDLE")"
           fi
