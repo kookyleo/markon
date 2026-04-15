@@ -38,10 +38,16 @@ struct Variant {
     #[serde(default)]
     bg: Option<String>,
     // When set, render just the M↓ marks (glyph-marks.svg) in this colour
-    // instead of the full glyph-with-cutouts — producing "wrapper rect fg +
-    // marks marks_fg on top", a single-layer pill instead of the ring look.
+    // instead of the full glyph-with-cutouts — producing "pill shape (fg) +
+    // marks on top (marks_fg)", a single-layer design instead of the
+    // evenodd ring. With wrap="none" the pill is the native glyph body
+    // squircle; with a rect wrap it's the wrapper rect.
     #[serde(default)]
     marks_fg: Option<String>,
+    // Optional marks scale around the 32-viewBox centre. Default 1.0 =
+    // natural size. Use >1.0 to make M↓ larger within the body.
+    #[serde(default)]
+    marks_scale: Option<f32>,
     #[serde(default, rename = "viewBox")]
     view_box: Option<String>,
     outputs: Vec<Output>,
@@ -95,10 +101,18 @@ fn workspace_root() -> Result<PathBuf> {
 
 fn run_icons(check: bool) -> Result<()> {
     let root = workspace_root()?;
-    let full_inner = extract_inner(&fs::read_to_string(root.join("assets/brand/glyph.svg"))
-        .context("read assets/brand/glyph.svg")?)?;
-    let marks_inner = extract_inner(&fs::read_to_string(root.join("assets/brand/glyph-marks.svg"))
-        .context("read assets/brand/glyph-marks.svg")?)?;
+    let full_inner = extract_inner(
+        &fs::read_to_string(root.join("assets/brand/glyph.svg"))
+            .context("read assets/brand/glyph.svg")?,
+    )?;
+    let body_inner = extract_inner(
+        &fs::read_to_string(root.join("assets/brand/glyph-body.svg"))
+            .context("read assets/brand/glyph-body.svg")?,
+    )?;
+    let marks_inner = extract_inner(
+        &fs::read_to_string(root.join("assets/brand/glyph-marks.svg"))
+            .context("read assets/brand/glyph-marks.svg")?,
+    )?;
 
     let manifest: Manifest = toml::from_str(
         &fs::read_to_string(root.join("assets/brand/variants.toml"))
@@ -109,7 +123,7 @@ fn run_icons(check: bool) -> Result<()> {
     let mut drift = Vec::<PathBuf>::new();
 
     for v in &manifest.variant {
-        let svg = compose_svg(&full_inner, &marks_inner, v, &manifest)?;
+        let svg = compose_svg(&full_inner, &body_inner, &marks_inner, v, &manifest)?;
         for out in &v.outputs {
             let abs = root.join(&out.path);
             let bytes = render_output(&svg, out)?;
@@ -170,31 +184,54 @@ fn strip_currentcolor_fill(inner: &str) -> String {
 ///   icon reads as a single flat pill with M↓ in the second colour.
 fn compose_svg(
     full_inner: &str,
+    body_inner: &str,
     marks_inner: &str,
     v: &Variant,
     m: &Manifest,
 ) -> Result<String> {
-    // Two-colour path — wrapper rect as the pill, marks as the logo mark.
+    // Two-colour path.
+    //
+    // - wrap = "none": draw the native glyph-body squircle (from
+    //   glyph-body.svg) filled in fg, then glyph-marks on top in marks_fg.
+    //   Gives the organic "MD↓" shape with its built-in generous corner
+    //   curve.
+    // - wrap = "<rect profile>": draw a wrapper rect in fg, marks on top in
+    //   marks_fg. Use when a clean rounded square is wanted regardless of
+    //   the glyph's shape.
     if let Some(marks_fg) = &v.marks_fg {
+        let marks_scale = v.marks_scale.unwrap_or(1.0);
+        let marks_body = strip_currentcolor_fill(marks_inner);
+        if v.wrap == "none" {
+            let body = strip_currentcolor_fill(body_inner);
+            let tx = 16.0 - 16.0 * marks_scale;
+            let vb = v.view_box.as_deref().unwrap_or("0 0 32 32");
+            return Ok(format!(
+                r#"<svg xmlns="http://www.w3.org/2000/svg" viewBox="{vb}"><g fill="{fg}">{body}</g><g transform="translate({tx},{tx}) scale({s})" fill="{mfg}">{marks}</g></svg>"#,
+                vb = vb,
+                fg = v.fg,
+                body = body,
+                tx = tx,
+                s = marks_scale,
+                mfg = marks_fg,
+                marks = marks_body,
+            ));
+        }
         let w = m.wrap.get(&v.wrap).with_context(|| {
-            format!(
-                "variant `{}` has marks_fg but references wrap `{}` which is not a rect wrap",
-                v.name, v.wrap
-            )
+            format!("variant `{}` references unknown wrap `{}`", v.name, v.wrap)
         })?;
         let rect_size = w.canvas - 2 * w.margin;
-        let glyph_origin = w.margin + w.inner_pad;
         let glyph_box = w.canvas - 2 * (w.margin + w.inner_pad);
-        let scale = glyph_box as f32 / 32.0;
-        let marks_body = strip_currentcolor_fill(marks_inner);
+        let scale = glyph_box as f32 / 32.0 * marks_scale;
+        let offset = w.canvas as f32 / 2.0 - 16.0 * scale;
         return Ok(format!(
-            r#"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 {c} {c}"><rect x="{i}" y="{i}" width="{rs}" height="{rs}" rx="{r}" fill="{fg}"/><g transform="translate({t},{t}) scale({s})" fill="{mfg}">{body}</g></svg>"#,
+            r#"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 {c} {c}"><rect x="{i}" y="{i}" width="{rs}" height="{rs}" rx="{r}" fill="{fg}"/><g transform="translate({ox},{oy}) scale({s})" fill="{mfg}">{body}</g></svg>"#,
             c = w.canvas,
             i = w.margin,
             rs = rect_size,
             r = w.radius,
             fg = v.fg,
-            t = glyph_origin,
+            ox = offset,
+            oy = offset,
             s = scale,
             mfg = marks_fg,
             body = marks_body,

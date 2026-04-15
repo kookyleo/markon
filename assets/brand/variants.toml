@@ -41,17 +41,17 @@ outputs = [
 ]
 
 # ── Blue pill (Windows titlebar + tray) ─────────────────────────────────────
-# Single-layer accent-blue rounded rect with a flat white M↓ mark on top.
-# `marks_fg` tells xtask to drop the evenodd ring and just paint the marks
-# in that colour, so there's no visible "inner rect" — the wrapper rect is
-# the only rect. Used for both the Windows .exe resource icon (read by
-# WM_SETICON for the titlebar / taskbar) and the system tray on
-# Windows + Linux, giving a consistent branded look across both.
+# Uses the native glyph-body squircle as the pill shape (wrap="none"), not
+# a plain rounded rect — gives the organic MD↓ silhouette the brand wants.
+# `marks_fg` drops the evenodd ring so the body is a solid blue pill with
+# the M↓ painted on top in white. `marks_scale` grows the M↓ so they read
+# clearly at small ICO sizes instead of floating in the middle.
 [[variant]]
 name = "pill-accent"
-wrap = "rounded"
+wrap = "none"
 fg = "#0A84FF"
 marks_fg = "#ffffff"
+marks_scale = 1.35
 outputs = [
   { path = "crates/gui/icons/icon.ico", sizes = [16, 20, 24, 32, 48, 64, 128, 256] },
   { path = "crates/gui/icons/tray-colored.png", size = 64 },
