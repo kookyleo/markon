@@ -63,7 +63,10 @@ pub fn sync_shell_context_menu(language: &str) {
         (r"Software\Classes\.md\shell\open_with_markon", "%1"),
         (r"Software\Classes\.markdown\shell\open_with_markon", "%1"),
         (r"Software\Classes\Directory\shell\open_with_markon", "%1"),
-        (r"Software\Classes\Directory\Background\shell\open_with_markon", "%W"),
+        (
+            r"Software\Classes\Directory\Background\shell\open_with_markon",
+            "%W",
+        ),
     ];
     for (base, arg) in entries {
         let base_key = format!(r"HKCU\{base}");
@@ -73,14 +76,27 @@ pub fn sync_shell_context_menu(language: &str) {
             .output();
         let _ = silent_command("reg")
             .args([
-                "add", &base_key, "/f", "/v", "Icon", "/t", "REG_SZ",
-                "/d", &format!("{exe},0"),
+                "add",
+                &base_key,
+                "/f",
+                "/v",
+                "Icon",
+                "/t",
+                "REG_SZ",
+                "/d",
+                &format!("{exe},0"),
             ])
             .output();
         let _ = silent_command("reg")
             .args([
-                "add", &cmd_key, "/f", "/ve", "/t", "REG_SZ",
-                "/d", &format!(r#""{exe}" "{arg}""#),
+                "add",
+                &cmd_key,
+                "/f",
+                "/ve",
+                "/t",
+                "REG_SZ",
+                "/d",
+                &format!(r#""{exe}" "{arg}""#),
             ])
             .output();
     }
