@@ -18,14 +18,22 @@ use tauri::{
 };
 
 // Point the Win32 HWND at the multi-size icon embedded in the .exe resource
-// so the titlebar slot picks the exact raster (16/20/24 native) rather than
-// getting a bilinear downscale of Tauri's single 32x32 PNG.
+// so the titlebar slot picks the exact native raster from our .ico (16/20/
+// 24/32/48/…) rather than getting a bilinear downscale of Tauri's single
+// 32x32 PNG. This mirrors what Gitbutler / Spacedrive do — the default
+// Tauri → tao path calls SendMessage(WM_SETICON) with one HICON built from
+// one RGBA buffer, which Windows then stretches for ICON_SMALL.
+//
+// Uses SM_CXSMICON / SM_CXICON so Windows returns DPI-scaled sizes on
+// Per-Monitor-V2 aware processes (Tauri default) — at 125 % DPI that's
+// 20 px, at 150 % it's 24 px, both native rasters we ship in icon.ico.
 #[cfg(target_os = "windows")]
 fn install_exe_window_icon(window: &tauri::WebviewWindow) {
     use windows_sys::Win32::Foundation::{HWND, LPARAM, WPARAM};
     use windows_sys::Win32::System::LibraryLoader::GetModuleHandleW;
     use windows_sys::Win32::UI::WindowsAndMessaging::{
-        ICON_BIG, ICON_SMALL, IMAGE_ICON, LR_SHARED, LoadImageW, SendMessageW, WM_SETICON,
+        GetSystemMetrics, LoadImageW, SendMessageW, ICON_BIG, ICON_SMALL, IMAGE_ICON,
+        LR_DEFAULTCOLOR, LR_SHARED, SM_CXICON, SM_CXSMICON, SM_CYICON, SM_CYSMICON, WM_SETICON,
     };
 
     let Ok(hwnd) = window.hwnd() else { return };
@@ -35,8 +43,27 @@ fn install_exe_window_icon(window: &tauri::WebviewWindow) {
     let icon_res_id = 1 as *const u16;
     unsafe {
         let hinstance = GetModuleHandleW(std::ptr::null());
-        for (msg_param, w, h) in [(ICON_SMALL, 16, 16), (ICON_BIG, 32, 32)] {
-            let hicon = LoadImageW(hinstance, icon_res_id, IMAGE_ICON, w, h, LR_SHARED);
+        let slots = [
+            (
+                ICON_SMALL,
+                GetSystemMetrics(SM_CXSMICON),
+                GetSystemMetrics(SM_CYSMICON),
+            ),
+            (
+                ICON_BIG,
+                GetSystemMetrics(SM_CXICON),
+                GetSystemMetrics(SM_CYICON),
+            ),
+        ];
+        for (msg_param, w, h) in slots {
+            let hicon = LoadImageW(
+                hinstance,
+                icon_res_id,
+                IMAGE_ICON,
+                w,
+                h,
+                LR_SHARED | LR_DEFAULTCOLOR,
+            );
             if !hicon.is_null() {
                 SendMessageW(
                     hwnd,
