@@ -20,6 +20,10 @@ Markon 提供桌面应用（GUI）和命令行（CLI）两种形态。
 
 下载对应 CPU 的 `-setup.exe`，双击运行安装。
 
+NSIS 安装包未做代码签名，会触发 SmartScreen。在 "Windows protected your PC" 弹窗中点左下角 **More info**，展开后点右下角 **Run anyway** 即可。
+
+![Windows SmartScreen：点 More info 展开后选择 Run anyway](/screenshots/windows-smartscreen.png)
+
 ### Linux
 
 <DownloadButton mode="os" os="linux" />

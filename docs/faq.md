@@ -21,7 +21,7 @@ NSIS 安装包未做代码签名，会触发 SmartScreen：
 1. 在弹窗中点左下角 **更多信息**
 2. 展开后点 **仍要运行**
 
-<!-- TODO: add screenshots/windows-smartscreen.png -->
+![Windows SmartScreen：点 More info 展开后选择 Run anyway](/screenshots/windows-smartscreen.png)
 
 ### `cargo install markon` 编译失败？
 
