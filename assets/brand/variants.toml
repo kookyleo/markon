@@ -51,6 +51,11 @@ name = "pill-accent"
 wrap = "none"
 fg = "#0A84FF"
 marks_fg = "#ffffff"
+# body_scale 1.14 blows the native 28x24 glyph body up to fill the 32-unit
+# canvas horizontally — the earlier 1.0 left ~14 % transparent margin that
+# made the icon look tiny next to Office / Edge in the Windows tray. Marks
+# size stays unchanged by keeping marks_scale at what it was before.
+body_scale = 1.14
 marks_scale = 1.35
 outputs = [
   { path = "crates/gui/icons/icon.ico", sizes = [16, 20, 24, 32, 48, 64, 128, 256] },

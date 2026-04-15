@@ -48,6 +48,13 @@ struct Variant {
     // natural size. Use >1.0 to make M↓ larger within the body.
     #[serde(default)]
     marks_scale: Option<f32>,
+    // Optional body scale (for wrap="none" + marks_fg). Lets the pill fill
+    // more of the canvas without affecting the marks — the native body
+    // bbox is ~28x24 in a 32 viewBox, i.e. only ~87% wide, so on the
+    // Windows tray it looked small next to Office/Edge which fill their
+    // tile. Default 1.0.
+    #[serde(default)]
+    body_scale: Option<f32>,
     #[serde(default, rename = "viewBox")]
     view_box: Option<String>,
     outputs: Vec<Output>,
@@ -203,15 +210,19 @@ fn compose_svg(
         let marks_body = strip_currentcolor_fill(marks_inner);
         if v.wrap == "none" {
             let body = strip_currentcolor_fill(body_inner);
-            let tx = 16.0 - 16.0 * marks_scale;
+            let body_scale = v.body_scale.unwrap_or(1.0);
+            let body_tx = 16.0 - 16.0 * body_scale;
+            let marks_tx = 16.0 - 16.0 * marks_scale;
             let vb = v.view_box.as_deref().unwrap_or("0 0 32 32");
             return Ok(format!(
-                r#"<svg xmlns="http://www.w3.org/2000/svg" viewBox="{vb}"><g fill="{fg}">{body}</g><g transform="translate({tx},{tx}) scale({s})" fill="{mfg}">{marks}</g></svg>"#,
+                r#"<svg xmlns="http://www.w3.org/2000/svg" viewBox="{vb}"><g transform="translate({btx},{btx}) scale({bs})" fill="{fg}">{body}</g><g transform="translate({mtx},{mtx}) scale({ms})" fill="{mfg}">{marks}</g></svg>"#,
                 vb = vb,
+                btx = body_tx,
+                bs = body_scale,
                 fg = v.fg,
                 body = body,
-                tx = tx,
-                s = marks_scale,
+                mtx = marks_tx,
+                ms = marks_scale,
                 mfg = marks_fg,
                 marks = marks_body,
             ));
