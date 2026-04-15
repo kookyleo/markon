@@ -17,7 +17,7 @@ markon-core = { path = "crates/core", version = "0.9" }
 dunce = "1.0"
 
 [workspace.package]
-version = "0.9.16"
+version = "0.9.17"
 edition = "2021"
 authors = ["kookyleo"]
 license = "Apache-2.0"
