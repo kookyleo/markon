@@ -11,6 +11,15 @@ on:
 
 env:
   RELEASE_TAG: ${{ github.event.inputs.tag || github.ref_name }}
+  # Route rustc through sccache, backed by the GHA cache service. This
+  # shares compiled crate artefacts across all matrix jobs (and across
+  # successive RC runs), so the second time a given (crate, target,
+  # flags) tuple is seen the object files come straight from cache.
+  SCCACHE_GHA_ENABLED: "true"
+  RUSTC_WRAPPER: "sccache"
+  # Incremental + sccache don't compose cleanly; release builds default
+  # to incremental=0 anyway, set it explicitly for clarity.
+  CARGO_INCREMENTAL: "0"
 
 jobs:
   build:
@@ -74,11 +83,17 @@ jobs:
         with:
           targets: ${{ matrix.target }}
 
+      - name: Setup sccache
+        uses: mozilla-actions/sccache-action@v0.0.9
+
       - name: Cache Rust dependencies
         uses: Swatinem/rust-cache@v2
         with:
           # Key on target, not platform — two macOS jobs now share the same
-          # platform but build for different architectures.
+          # platform but build for different architectures. Kept alongside
+          # sccache: rust-cache preserves the registry index / git db /
+          # target dir within a job; sccache shares compile outputs across
+          # jobs. They're complementary, not redundant.
           shared-key: tauri-${{ matrix.target }}
 
       - name: Install cargo-binstall
