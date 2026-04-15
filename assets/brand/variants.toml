@@ -14,16 +14,18 @@ margin = 32       # gap between canvas edge and wrapper rect
 radius = 88       # wrapper corner radius
 
 
-# ── App icon ────────────────────────────────────────────────────────────────
-# Black glyph on white rounded square. Used for: Tauri bundle (all platforms),
-# in-app About page, HTTP server favicon, docs site favicon.
+# ── App icon (macOS + Linux) ────────────────────────────────────────────────
+# Black glyph on white rounded square — the classic "wrapped" look used by
+# macOS Dock and Linux launcher thumbnails. Not used for Windows .exe any
+# more: at 16/20/24 px titlebar sizes the two-layer design (white wrapper
+# + black ring) reads as a blurry nested blob. Windows uses `pill-accent`
+# below, which Tauri's WM_SETICON path picks up out of the .exe resource.
 [[variant]]
 name = "app"
 wrap = "rounded"
 fg = "#000000"
 bg = "#ffffff"
 
-# Tauri bundle icons (paths listed in crates/gui/tauri.conf.json).
 outputs = [
   { path = "crates/gui/icons/icon.svg" },
   { path = "crates/gui/icons/icon.png", size = 512 },
@@ -31,13 +33,6 @@ outputs = [
   { path = "crates/gui/icons/128x128.png", size = 128 },
   { path = "crates/gui/icons/256x256.png", size = 256 },
   { path = "crates/gui/icons/512x512.png", size = 512 },
-  # Windows resource icon (embedded in the .exe — titlebar, Start Menu,
-  # Explorer thumbnails, pinned taskbar). Uses the wrapped design: at
-  # 16x16 / 20x20 / 24x24 the bare-glyph variant rendered as blurry path
-  # antialiasing, whereas the wrapped white-rounded-rect gives a crisp
-  # solid silhouette the eye can latch onto. 20 and 24 rasters cover
-  # 125%/150% DPI titlebar sizes without upscaling the 16x16 slot.
-  { path = "crates/gui/icons/icon.ico", sizes = [16, 20, 24, 32, 48, 64, 128, 256] },
   { path = "crates/gui/icons/icon.icns",  sizes = [16, 32, 64, 128, 256, 512, 1024] },
   # HTTP server favicon (rust-embed: crates/core/assets/icons/).
   { path = "crates/core/assets/icons/favicon.svg" },
@@ -45,17 +40,20 @@ outputs = [
   { path = "docs/public/favicon.png", size = 256 },
 ]
 
-# ── Tray icon (Windows / Linux) — accent-coloured ───────────────────────────
-# Windows has no template-image auto-tint; a monochrome glyph blends into
-# either taskbar theme. Use the app's accent blue (matches the About page
-# --accent) behind a white glyph — vivid enough to pop on both light and
-# dark taskbars without needing two variants.
+# ── Blue pill (Windows titlebar + tray) ─────────────────────────────────────
+# Single-layer accent-blue rounded rect with a flat white M↓ mark on top.
+# `marks_fg` tells xtask to drop the evenodd ring and just paint the marks
+# in that colour, so there's no visible "inner rect" — the wrapper rect is
+# the only rect. Used for both the Windows .exe resource icon (read by
+# WM_SETICON for the titlebar / taskbar) and the system tray on
+# Windows + Linux, giving a consistent branded look across both.
 [[variant]]
-name = "tray-accent"
+name = "pill-accent"
 wrap = "rounded"
-fg = "#ffffff"
-bg = "#0A84FF"
+fg = "#0A84FF"
+marks_fg = "#ffffff"
 outputs = [
+  { path = "crates/gui/icons/icon.ico", sizes = [16, 20, 24, 32, 48, 64, 128, 256] },
   { path = "crates/gui/icons/tray-colored.png", size = 64 },
 ]
 
