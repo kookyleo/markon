@@ -23,13 +23,14 @@ radius = 88       # wrapper corner radius
 [[variant]]
 name = "app"
 wrap = "rounded"
-fg = "#000000"
-bg = "#ffffff"
-
+fg = "#ffffff"       # white rounded square wrapper
+body_fg = "#000000"  # black glyph body (pill shape) inside
+marks_fg = "#ffffff" # white M↓ marks on top
 outputs = [
   { path = "crates/gui/icons/icon.svg" },
-  { path = "crates/gui/icons/icon.png", size = 512 },
+  { path = "crates/gui/icons/icon.png", size = 1024 },
   { path = "crates/gui/icons/32x32.png",  size = 32 },
+  { path = "crates/gui/icons/32x32@2x.png", size = 64 },
   { path = "crates/gui/icons/128x128.png", size = 128 },
   { path = "crates/gui/icons/256x256.png", size = 256 },
   { path = "crates/gui/icons/512x512.png", size = 512 },
@@ -37,7 +38,7 @@ outputs = [
   # HTTP server favicon (rust-embed: crates/core/assets/icons/).
   { path = "crates/core/assets/icons/favicon.svg" },
   # Docs site (VitePress public/).
-  { path = "docs/public/favicon.png", size = 256 },
+  { path = "docs/public/favicon.png", size = 512 },
 ]
 
 # ── Blue pill (Windows titlebar + tray) ─────────────────────────────────────

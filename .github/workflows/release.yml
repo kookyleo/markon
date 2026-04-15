@@ -281,3 +281,45 @@ jobs:
           MANIFEST="${{ steps.meta.outputs.manifest }}"
           cp /tmp/latest.json "/tmp/${MANIFEST}"
           gh release upload updater "/tmp/${MANIFEST}" --clobber
+
+      - name: Update Homebrew Cask
+        if: steps.meta.outputs.is_rc == 'false'
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          TAG="${{ env.RELEASE_TAG }}"
+          VER="${TAG#v}"
+
+          # 1. Download DMGs to calculate SHA256
+          mkdir -p /tmp/cask
+          gh release download "$TAG" -p "*.dmg" -D /tmp/cask --clobber
+
+          # 2. Calculate SHAs for both architectures
+          SHA_ARM=$(shasum -a 256 /tmp/cask/*_aarch64.dmg | awk '{print $1}')
+          SHA_INTEL=$(shasum -a 256 /tmp/cask/*_x64.dmg | awk '{print $1}')
+
+          echo "Updating Cask to version $VER"
+          echo "ARM SHA: $SHA_ARM"
+          echo "Intel SHA: $SHA_INTEL"
+
+          # 3. Update Casks/markon.rb using python for precision
+          python3 - <<EOF
+          import re
+          path = 'Casks/markon.rb'
+          with open(path, 'r') as f:
+              content = f.read()
+
+          content = re.sub(r'version ".*?"', f'version "{VER}"', content)
+          content = re.sub(r'sha256 arm:\s+".*?"', f'sha256 arm:   "{SHA_ARM}"', content)
+          content = re.sub(r'intel:\s+".*?"', f'intel: "{SHA_INTEL}"', content)
+
+          with open(path, 'w') as f:
+              f.write(content)
+          EOF
+
+          # 4. Commit and push back to main
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add Casks/markon.rb
+          git commit -m "chore: update cask to $TAG [skip ci]" || echo "No changes to commit"
+          git push origin HEAD:main

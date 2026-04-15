@@ -44,6 +44,11 @@ struct Variant {
     // squircle; with a rect wrap it's the wrapper rect.
     #[serde(default)]
     marks_fg: Option<String>,
+    /// Optional colour for the glyph body (glyph-body.svg) when marks_fg is
+    /// set. If omitted, the body is skipped in wrapped variants (drawing
+    /// marks directly on the wrapper rect).
+    #[serde(default)]
+    body_fg: Option<String>,
     // Optional marks scale around the 32-viewBox centre. Default 1.0 =
     // natural size. Use >1.0 to make M↓ larger within the body.
     #[serde(default)]
@@ -214,12 +219,13 @@ fn compose_svg(
             let body_tx = 16.0 - 16.0 * body_scale;
             let marks_tx = 16.0 - 16.0 * marks_scale;
             let vb = v.view_box.as_deref().unwrap_or("0 0 32 32");
+            let bfg = v.body_fg.as_ref().unwrap_or(&v.fg);
             return Ok(format!(
-                r#"<svg xmlns="http://www.w3.org/2000/svg" viewBox="{vb}"><g transform="translate({btx},{btx}) scale({bs})" fill="{fg}">{body}</g><g transform="translate({mtx},{mtx}) scale({ms})" fill="{mfg}">{marks}</g></svg>"#,
+                r#"<svg xmlns="http://www.w3.org/2000/svg" viewBox="{vb}"><g transform="translate({btx},{btx}) scale({bs})" fill="{bfg}">{body}</g><g transform="translate({mtx},{mtx}) scale({ms})" fill="{mfg}">{marks}</g></svg>"#,
                 vb = vb,
                 btx = body_tx,
                 bs = body_scale,
-                fg = v.fg,
+                bfg = bfg,
                 body = body,
                 mtx = marks_tx,
                 ms = marks_scale,
@@ -232,20 +238,39 @@ fn compose_svg(
         })?;
         let rect_size = w.canvas - 2 * w.margin;
         let glyph_box = w.canvas - 2 * (w.margin + w.inner_pad);
-        let scale = glyph_box as f32 / 32.0 * marks_scale;
+        let scale = glyph_box as f32 / 32.0;
         let offset = w.canvas as f32 / 2.0 - 16.0 * scale;
+
+        let mut inner = String::new();
+        if let Some(body_fg) = &v.body_fg {
+            let body = strip_currentcolor_fill(body_inner);
+            inner.push_str(&format!(
+                r#"<g transform="translate({ox},{oy}) scale({s})" fill="{bfg}">{body}</g>"#,
+                ox = offset,
+                oy = offset,
+                s = scale,
+                bfg = body_fg,
+                body = body,
+            ));
+        }
+        let marks_offset = w.canvas as f32 / 2.0 - 16.0 * scale * marks_scale;
+        inner.push_str(&format!(
+            r#"<g transform="translate({ox},{oy}) scale({s})" fill="{mfg}">{marks}</g>"#,
+            ox = marks_offset,
+            oy = marks_offset,
+            s = scale * marks_scale,
+            mfg = marks_fg,
+            marks = marks_body,
+        ));
+
         return Ok(format!(
-            r#"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 {c} {c}"><rect x="{i}" y="{i}" width="{rs}" height="{rs}" rx="{r}" fill="{fg}"/><g transform="translate({ox},{oy}) scale({s})" fill="{mfg}">{body}</g></svg>"#,
+            r#"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 {c} {c}"><rect x="{i}" y="{i}" width="{rs}" height="{rs}" rx="{r}" fill="{fg}"/>{inner}</svg>"#,
             c = w.canvas,
             i = w.margin,
             rs = rect_size,
             r = w.radius,
             fg = v.fg,
-            ox = offset,
-            oy = offset,
-            s = scale,
-            mfg = marks_fg,
-            body = marks_body,
+            inner = inner,
         ));
     }
 

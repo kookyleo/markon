@@ -1,9 +1,9 @@
 cask "markon" do
   arch arm: "aarch64", intel: "x64"
 
-  version "0.0.0"
-  sha256 arm:   "0000000000000000000000000000000000000000000000000000000000000000",
-         intel: "0000000000000000000000000000000000000000000000000000000000000000"
+  version "0.9.1"
+  sha256 arm:   "4974d43ef1a89c364bf434d749b7a8c151630caf043a0213e00f0e1e17f59696",
+         intel: :no_check
 
   url "https://github.com/kookyleo/markon/releases/download/v#{version}/Markon_#{version}_#{arch}.dmg",
       verified: "github.com/kookyleo/markon/"
