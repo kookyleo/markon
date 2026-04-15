@@ -29,3 +29,6 @@ docs/.vitepress/cache/
 *.db
 *.db-shm
 *.db-wal
+
+# Claude Code local overrides
+.claude/

@@ -238,7 +238,17 @@ fn pack_ico(svg: &str, sizes: &[u32]) -> Result<Vec<u8>> {
     for &size in sizes {
         let png = rasterize(svg, size)?;
         let img = ico::IconImage::read_png(&png[..]).context("decode png for ico")?;
-        dir.add_entry(ico::IconDirEntry::encode(&img).context("encode ico entry")?);
+        // Windows Shell (taskbar, Explorer) reliably renders BMP entries at
+        // every size but has historical bugs rendering PNG-encoded entries
+        // below 256x256 — the taskbar icon can come out blank or corrupted.
+        // Keep PNG only for the 256 slot, BMP for everything smaller.
+        let entry = if size >= 256 {
+            ico::IconDirEntry::encode_as_png(&img)
+        } else {
+            ico::IconDirEntry::encode_as_bmp(&img)
+        }
+        .context("encode ico entry")?;
+        dir.add_entry(entry);
     }
     let mut buf = Vec::new();
     dir.write(&mut buf).context("write ico")?;

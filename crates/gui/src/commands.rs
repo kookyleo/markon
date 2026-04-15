@@ -8,6 +8,35 @@ use tauri::menu::{Menu, MenuItem, PredefinedMenuItem};
 use tauri::State;
 use tauri_plugin_updater::UpdaterExt;
 
+// Spawning a console program from a GUI app on Windows pops up a cmd window
+// unless CREATE_NO_WINDOW is set. These helpers centralise the cfg dance so
+// call sites look identical across platforms.
+#[cfg(target_os = "windows")]
+const CREATE_NO_WINDOW: u32 = 0x08000000;
+
+#[cfg(target_os = "windows")]
+fn silent_command(program: &str) -> std::process::Command {
+    use std::os::windows::process::CommandExt;
+    let mut cmd = std::process::Command::new(program);
+    cmd.creation_flags(CREATE_NO_WINDOW);
+    cmd
+}
+#[cfg(not(target_os = "windows"))]
+fn silent_command(program: &str) -> std::process::Command {
+    std::process::Command::new(program)
+}
+
+#[cfg(target_os = "windows")]
+fn silent_tokio_command(program: &str) -> tokio::process::Command {
+    let mut cmd = tokio::process::Command::new(program);
+    cmd.creation_flags(CREATE_NO_WINDOW);
+    cmd
+}
+#[cfg(not(target_os = "windows"))]
+fn silent_tokio_command(program: &str) -> tokio::process::Command {
+    tokio::process::Command::new(program)
+}
+
 #[tauri::command]
 pub fn get_settings(state: State<AppState>) -> AppSettings {
     state.settings.lock().unwrap().clone()
@@ -269,7 +298,7 @@ fn os_version_string() -> String {
 
 #[cfg(target_os = "windows")]
 fn os_version_string() -> String {
-    std::process::Command::new("cmd")
+    silent_command("cmd")
         .args(["/C", "ver"])
         .output()
         .ok()
@@ -413,7 +442,7 @@ const MARKON_REPO: &str = "kookyleo/markon";
 
 /// Check if `gh` CLI is installed and authenticated.
 fn gh_available() -> bool {
-    std::process::Command::new("gh")
+    silent_command("gh")
         .args(["auth", "status"])
         .output()
         .map(|o| o.status.success())
@@ -427,7 +456,7 @@ pub async fn star_repo() -> bool {
     if !gh_available() {
         return false;
     }
-    let result = tokio::process::Command::new("gh")
+    let result = silent_tokio_command("gh")
         .args(["api", "-X", "PUT", &format!("user/starred/{MARKON_REPO}")])
         .output()
         .await;
