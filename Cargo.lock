@@ -3207,7 +3207,7 @@ checksum = "c41e0c4fef86961ac6d6f8a82609f55f31b05e4fce149ac5710e439df7619ba4"
 
 [[package]]
 name = "markon"
-version = "0.9.12"
+version = "0.9.13"
 dependencies = [
  "clap",
  "dialoguer",
@@ -3222,7 +3222,7 @@ dependencies = [
 
 [[package]]
 name = "markon-core"
-version = "0.9.12"
+version = "0.9.13"
 dependencies = [
  "axum",
  "dirs",
@@ -3259,7 +3259,7 @@ dependencies = [
 
 [[package]]
 name = "markon-gui"
-version = "0.9.12"
+version = "0.9.13"
 dependencies = [
  "dirs",
  "dunce",
