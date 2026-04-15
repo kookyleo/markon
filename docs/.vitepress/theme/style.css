@@ -1,0 +1,9 @@
+/* Hero tagline shouldn't leave a single word ('on.') dangling on its own
+   line. `text-wrap: balance` lets the browser distribute words evenly
+   across available lines, keeping short orphan tails with their
+   neighbour. Falls back to normal wrapping on browsers that don't
+   support it yet. */
+.VPHero .name,
+.VPHero .text {
+  text-wrap: balance;
+}

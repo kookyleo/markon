@@ -1,5 +1,6 @@
 import DefaultTheme from 'vitepress/theme';
 import DownloadButton from './components/DownloadButton.vue';
+import './style.css';
 
 export default {
   extends: DefaultTheme,
