@@ -19,15 +19,29 @@
 | Linux AppImage (x86_64) | `Markon_x.x.x_amd64.AppImage` |
 | Linux AppImage (aarch64) | `Markon_x.x.x_aarch64.AppImage` |
 
-### 2. 添加工作区
+### 2. 打开 Markdown
 
-启动 Markon 后，在 **工作区** 标签页点击左下角 ➕ 按钮，选择任意包含 Markdown 文件的目录。
+Markon 有两种使用场景，按需选择。
+
+#### 场景 A：临时打开一个文件
+
+只是想看一眼某个 `.md` 的渲染效果 —— 不需要加入工作区。
+
+- **macOS / Windows**：右键文件 → **打开方式 → Markon**，浏览器直接出结果。
+
+#### 场景 B：把一个目录加为工作区
+
+适合要长期浏览、搜索、标注一整个项目文档的场景。加入的工作区会常驻在 Markon 的 **工作区** 标签页，下次一键打开。几种方式任选：
+
+- **macOS — Finder 工具栏**：把 `/Applications/Markon.app` 拖到 Finder 窗口顶部的工具栏，之后进入任意目录点一下图标，就把当前目录加入并打开。
+- **Windows — 右键菜单**：在资源管理器里右键文件夹 → **使用 markon 打开**。
+- **从 markon 开始**：启动 Markon，在 **工作区** 标签页点左下角 ➕，手选目录。
 
 <!-- TODO: screenshot: 添加工作区 (/screenshots/add-workspace.png) -->
 
 ### 3. 在浏览器中查看
 
-点击工作区条目的 ↗ 图标，Markon 会在默认浏览器中打开渲染好的页面。
+桌面集成入口（Finder 工具栏 / Windows 右键菜单）会直接把浏览器打开。如果是从 Markon 里手动加的工作区，事后点工作区条目的 ↗ 图标即可。
 
 ### 4. 探索功能
 
