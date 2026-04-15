@@ -36,6 +36,12 @@ outputs = [
   { path = "crates/core/assets/icons/favicon.svg" },
   # Docs site (VitePress public/).
   { path = "docs/public/favicon.png", size = 256 },
+  # Windows / Linux tray — reuse the full wrapped icon instead of a bare
+  # glyph. Windows has no template-image auto-tint, so the pill-shaped
+  # white+black design reads reliably on both light and dark taskbars.
+  # The rounded square stays visible even when the glyph becomes a few
+  # pixels at 16x16 display size.
+  { path = "crates/gui/icons/tray-colored.png", size = 64 },
 ]
 
 # ── Tray icon (macOS template) ──────────────────────────────────────────────
@@ -55,17 +61,16 @@ outputs = [
   { path = "docs/public/logo-dark.svg" },
 ]
 
-# ── Tray icon (Windows / Linux) ─────────────────────────────────────────────
-# Windows and Linux trays do not understand macOS-style template images, so
-# a white-on-transparent PNG would be invisible on a light taskbar. Render
-# in black instead — the surrounding chrome is usually light or dark enough
-# for it to read either way.
+# ── Bare glyph, dark (docs light-theme logo) ────────────────────────────────
+# The Windows / Linux tray icon used to come from this variant. It's moved
+# to the wrapped `app` variant above — a flat black glyph was nearly
+# invisible on Windows 11's dark taskbar and looked weak on any taskbar
+# without the auto-tint macOS provides.
 [[variant]]
-name = "tray-colored"
+name = "glyph-dark"
 wrap = "none"
 fg = "#000000"
 outputs = [
-  { path = "crates/gui/icons/tray-colored.png", size = 64 },
   # Docs site logo, light-theme variant (black glyph on light page).
   { path = "docs/public/logo-light.svg" },
 ]
