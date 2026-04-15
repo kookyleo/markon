@@ -32,3 +32,14 @@ tauri-plugin-process = "2"
 url = "2"
 font-kit = "0.14"
 dunce.workspace = true
+
+# Raw Win32 for SetIcon — Tauri's set_icon path goes through winit with a
+# single scaled PNG, which bilinears horribly into the 16 px titlebar slot.
+# WM_SETICON with LoadImage from the .exe resource lets Windows pick the
+# exact-size raster from our multi-slot icon.ico instead.
+[target.'cfg(target_os = "windows")'.dependencies]
+windows-sys = { version = "0.60", features = [
+    "Win32_Foundation",
+    "Win32_System_LibraryLoader",
+    "Win32_UI_WindowsAndMessaging",
+] }
