@@ -36,11 +36,19 @@ outputs = [
   { path = "crates/core/assets/icons/favicon.svg" },
   # Docs site (VitePress public/).
   { path = "docs/public/favicon.png", size = 256 },
-  # Windows / Linux tray — reuse the full wrapped icon instead of a bare
-  # glyph. Windows has no template-image auto-tint, so the pill-shaped
-  # white+black design reads reliably on both light and dark taskbars.
-  # The rounded square stays visible even when the glyph becomes a few
-  # pixels at 16x16 display size.
+]
+
+# ── Tray icon (Windows / Linux) — accent-coloured ───────────────────────────
+# Windows has no template-image auto-tint; a monochrome glyph blends into
+# either taskbar theme. Use the app's accent blue (matches the About page
+# --accent) behind a white glyph — vivid enough to pop on both light and
+# dark taskbars without needing two variants.
+[[variant]]
+name = "tray-accent"
+wrap = "rounded"
+fg = "#ffffff"
+bg = "#0A84FF"
+outputs = [
   { path = "crates/gui/icons/tray-colored.png", size = 64 },
 ]
 
