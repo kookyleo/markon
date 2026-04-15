@@ -13,6 +13,14 @@ canvas = 512
 margin = 32       # gap between canvas edge and wrapper rect
 radius = 88       # wrapper corner radius
 
+# Edge-to-edge variant — no outer transparent margin. Used by the tray
+# icon so the pill fills the full Windows tile instead of sitting inside
+# our own padding + Windows' chrome padding (double inset looked small).
+[wrap.tight]
+canvas = 512
+margin = 0
+radius = 88
+
 # ── App icon ────────────────────────────────────────────────────────────────
 # Black glyph on white rounded square. Used for: Tauri bundle (all platforms),
 # in-app About page, HTTP server favicon, docs site favicon.
@@ -30,7 +38,7 @@ outputs = [
   { path = "crates/gui/icons/128x128.png", size = 128 },
   { path = "crates/gui/icons/256x256.png", size = 256 },
   { path = "crates/gui/icons/512x512.png", size = 512 },
-  { path = "crates/gui/icons/icon.ico",   sizes = [16, 32, 48, 64, 128, 256] },
+  # icon.ico moved to the bare-glyph variant below — see note there.
   { path = "crates/gui/icons/icon.icns",  sizes = [16, 32, 64, 128, 256, 512, 1024] },
   # HTTP server favicon (rust-embed: crates/core/assets/icons/).
   { path = "crates/core/assets/icons/favicon.svg" },
@@ -45,7 +53,7 @@ outputs = [
 # dark taskbars without needing two variants.
 [[variant]]
 name = "tray-accent"
-wrap = "rounded"
+wrap = "tight"
 fg = "#ffffff"
 bg = "#0A84FF"
 outputs = [
@@ -81,4 +89,10 @@ fg = "#000000"
 outputs = [
   # Docs site logo, light-theme variant (black glyph on light page).
   { path = "docs/public/logo-light.svg" },
+  # Windows resource icon (embedded in the .exe — titlebar, Start Menu,
+  # Explorer thumbnails, pinned taskbar). The wrapped app variant's
+  # white rim was visible as a hairline border at 16x16 titlebar size;
+  # the bare glyph already has its own rounded-rect silhouette built
+  # into the path, so it reads cleaner without the extra wrap.
+  { path = "crates/gui/icons/icon.ico", sizes = [16, 32, 48, 64, 128, 256] },
 ]
