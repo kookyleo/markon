@@ -31,7 +31,13 @@ outputs = [
   { path = "crates/gui/icons/128x128.png", size = 128 },
   { path = "crates/gui/icons/256x256.png", size = 256 },
   { path = "crates/gui/icons/512x512.png", size = 512 },
-  # icon.ico moved to the bare-glyph variant below — see note there.
+  # Windows resource icon (embedded in the .exe — titlebar, Start Menu,
+  # Explorer thumbnails, pinned taskbar). Uses the wrapped design: at
+  # 16x16 / 20x20 / 24x24 the bare-glyph variant rendered as blurry path
+  # antialiasing, whereas the wrapped white-rounded-rect gives a crisp
+  # solid silhouette the eye can latch onto. 20 and 24 rasters cover
+  # 125%/150% DPI titlebar sizes without upscaling the 16x16 slot.
+  { path = "crates/gui/icons/icon.ico", sizes = [16, 20, 24, 32, 48, 64, 128, 256] },
   { path = "crates/gui/icons/icon.icns",  sizes = [16, 32, 64, 128, 256, 512, 1024] },
   # HTTP server favicon (rust-embed: crates/core/assets/icons/).
   { path = "crates/core/assets/icons/favicon.svg" },
@@ -82,14 +88,4 @@ fg = "#000000"
 outputs = [
   # Docs site logo, light-theme variant (black glyph on light page).
   { path = "docs/public/logo-light.svg" },
-  # Windows resource icon (embedded in the .exe — titlebar, Start Menu,
-  # Explorer thumbnails, pinned taskbar). The wrapped app variant's
-  # white rim was visible as a hairline border at 16x16 titlebar size;
-  # the bare glyph already has its own rounded-rect silhouette built
-  # into the path, so it reads cleaner without the extra wrap.
-  #
-  # 20 and 24 are included so Windows titlebar on 125 % / 150 % DPI
-  # monitors can pick an exact-match raster instead of up-scaling the
-  # 16x16 slot (which came out very fuzzy on high-DPI screens).
-  { path = "crates/gui/icons/icon.ico", sizes = [16, 20, 24, 32, 48, 64, 128, 256] },
 ]
