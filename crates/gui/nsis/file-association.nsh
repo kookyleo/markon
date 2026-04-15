@@ -1,8 +1,13 @@
-; Markon NSIS installer hooks
-; Tauri calls these functions at install/uninstall time.
-; Ref: tauri-plugin-deep-link NSIS hook pattern.
+; Markon NSIS installer hooks.
+;
+; Tauri's NSIS template (tauri-bundler 2.x) invokes macros named
+; NSIS_HOOK_{PRE,POST}INSTALL / NSIS_HOOK_{PRE,POST}UNINSTALL — NOT the
+; electron-builder-style customInstall / customUninstall. Using the wrong
+; names makes Tauri silently include this file and then never call the
+; macros, which is why earlier 0.9.x installs had no right-click menu
+; entries despite this file existing.
 
-!macro customInstall
+!macro NSIS_HOOK_POSTINSTALL
   ; ── .md / .markdown context menu ────────────────────────────────────────
   WriteRegStr HKCU "Software\Classes\.md\shell\open_with_markon" \
     "" "用 Markon 打开"
@@ -37,7 +42,7 @@
   System::Call 'shell32::SHChangeNotify(i 0x08000000, i 0, p 0, p 0)'
 !macroend
 
-!macro customUninstall
+!macro NSIS_HOOK_PREUNINSTALL
   DeleteRegKey HKCU "Software\Classes\.md\shell\open_with_markon"
   DeleteRegKey HKCU "Software\Classes\.markdown\shell\open_with_markon"
   DeleteRegKey HKCU "Software\Classes\Directory\shell\open_with_markon"
