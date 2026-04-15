@@ -233,7 +233,11 @@ pub async fn start(config: ServerConfig) -> Result<(), String> {
         } else {
             raw
         };
-        let path = expanded.canonicalize().unwrap_or(expanded);
+        // dunce::canonicalize strips Windows' \\?\ verbatim prefix whenever
+        // possible — std::fs::canonicalize adds it back even if settings.json
+        // had a clean path, so the registry (and the GUI workspace list that
+        // reads from it) ended up showing \\?\C:\... to users.
+        let path = dunce::canonicalize(&expanded).unwrap_or(expanded);
         let id = registry.add(WorkspaceConfig {
             path,
             enable_search: ws_init.enable_search,

@@ -121,16 +121,19 @@ impl AppSettings {
                 if let Ok(mut settings) = serde_json::from_str::<Self>(&content) {
                     // One-time self-heal for paths persisted by older builds
                     // that didn't strip Windows' \\?\ verbatim prefix before
-                    // writing to settings.json. dunce::canonicalize is a
-                    // no-op for already-clean paths.
+                    // writing to settings.json. Use dunce::simplified (pure
+                    // string work) rather than canonicalize, which requires
+                    // the path to still exist on disk — otherwise the cleanup
+                    // silently skips any workspace whose directory is gone.
+                    use std::path::Path;
                     let mut changed = false;
                     for ws in &mut settings.workspaces {
-                        if let Ok(clean) = dunce::canonicalize(&ws.path) {
-                            let clean_str = clean.to_string_lossy().to_string();
-                            if clean_str != ws.path {
-                                ws.path = clean_str;
-                                changed = true;
-                            }
+                        let simplified = dunce::simplified(Path::new(&ws.path))
+                            .to_string_lossy()
+                            .to_string();
+                        if simplified != ws.path {
+                            ws.path = simplified;
+                            changed = true;
                         }
                     }
                     if changed {
