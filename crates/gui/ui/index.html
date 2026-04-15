@@ -1035,16 +1035,28 @@
   const { invoke } = window.__TAURI__.core;
 
   // ── Tab navigation ──────────────────────────────────────────────────────
+  function activateTab(name) {
+    const item = document.querySelector(`.nav-item[data-tab="${name}"]`);
+    if (!item) return;
+    document.querySelectorAll('.nav-item').forEach(i => i.classList.remove('active'));
+    document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+    item.classList.add('active');
+    document.getElementById(`tab-${name}`).classList.add('active');
+    // FAB only visible on workspaces tab
+    document.getElementById('ws-add-btn').style.display = name === 'workspaces' ? '' : 'none';
+    if (name === 'workspaces') refreshWorkspaces();
+  }
   document.querySelectorAll('.nav-item').forEach(item => {
-    item.addEventListener('click', () => {
-      document.querySelectorAll('.nav-item').forEach(i => i.classList.remove('active'));
-      document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
-      item.classList.add('active');
-      document.getElementById(`tab-${item.dataset.tab}`).classList.add('active');
-      // FAB only visible on workspaces tab
-      document.getElementById('ws-add-btn').style.display = item.dataset.tab === 'workspaces' ? '' : 'none';
-      if (item.dataset.tab === 'workspaces') refreshWorkspaces();
-    });
+    item.addEventListener('click', () => activateTab(item.dataset.tab));
+  });
+  // Ctrl/Cmd+1..4 jump to each tab — primarily for automated UI tests that
+  // drive the app via WinAppDriver (which can send keys but can't reach
+  // elements inside the WebView's accessibility tree).
+  window.addEventListener('keydown', (e) => {
+    if (!(e.ctrlKey || e.metaKey) || e.altKey || e.shiftKey) return;
+    const map = { '1': 'global', '2': 'workspaces', '3': 'tips', '4': 'about' };
+    const tab = map[e.key];
+    if (tab) { e.preventDefault(); activateTab(tab); }
   });
 
   // ── Live-apply framework ────────────────────────────────────────────────
