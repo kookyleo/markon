@@ -34,6 +34,9 @@ jobs:
             args: --bundles dmg --target x86_64-apple-darwin
             updater_bundle: target/x86_64-apple-darwin/release/bundle/macos/Markon.app
             updater_archive: Markon-x86_64.app.tar.gz
+          # Windows bundles have no updater_archive — we sign the raw
+          # *-setup.exe in place (plugins-workspace#1521). The matrix rows
+          # below keep updater_archive empty for Windows entries.
           # Linux x86_64
           - platform: ubuntu-22.04
             target: x86_64-unknown-linux-gnu
@@ -46,18 +49,18 @@ jobs:
             args: --bundles deb,appimage --target aarch64-unknown-linux-gnu
             updater_bundle: target/aarch64-unknown-linux-gnu/release/bundle/appimage/*.AppImage
             updater_archive: Markon-aarch64.AppImage.tar.gz
-          # Windows x86_64
+          # Windows x86_64 — updater signs raw .exe (no zip wrapper).
           - platform: windows-latest
             target: x86_64-pc-windows-msvc
             args: --bundles nsis --target x86_64-pc-windows-msvc
             updater_bundle: target/x86_64-pc-windows-msvc/release/bundle/nsis/*-setup.exe
-            updater_archive: Markon-x86_64-setup.nsis.zip
-          # Windows ARM64
+            updater_archive: ""
+          # Windows ARM64 — updater signs raw .exe (no zip wrapper).
           - platform: windows-11-arm
             target: aarch64-pc-windows-msvc
             args: --bundles nsis --target aarch64-pc-windows-msvc
             updater_bundle: target/aarch64-pc-windows-msvc/release/bundle/nsis/*-setup.exe
-            updater_archive: Markon-aarch64-setup.nsis.zip
+            updater_archive: ""
 
     runs-on: ${{ matrix.platform }}
 
@@ -102,15 +105,22 @@ jobs:
           includeUpdaterJson: false
           args: ${{ matrix.args }}
 
-      # Create updater archive + signature ourselves since tauri-action
-      # doesn't reliably upload them.
+      # Create updater signature ourselves since tauri-action doesn't
+      # reliably upload them.
+      #
+      # macOS / Linux wrap in .tar.gz then sign the archive. Windows ships
+      # the raw .exe — tauri-plugin-updater 2.9.0 hard-codes
+      # `default-features = false` on its zip dep so Deflate can't be read
+      # (see plugins-workspace#1329). Raw exe is the intended path per
+      # plugins-workspace#1521 and works for both current and 0.9.1 clients.
       - name: Create updater archive and sign
         shell: bash
         env:
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
+          TAG="${{ env.RELEASE_TAG }}"
           BUNDLE=$(echo ${{ matrix.updater_bundle }})
-          ARCHIVE="/tmp/${{ matrix.updater_archive }}"
 
           # macOS: .app is cleaned after DMG bundling — extract from DMG
           if [[ "$BUNDLE" == *.app ]] && [ ! -d "$BUNDLE" ]; then
@@ -132,48 +142,29 @@ jobs:
             exit 0
           fi
 
-          echo "Creating archive from: $BUNDLE"
-          if [[ "$BUNDLE" == *.app ]]; then
-            tar czf "$ARCHIVE" -C "$(dirname "$BUNDLE")" "$(basename "$BUNDLE")"
-          elif [[ "$BUNDLE" == *.exe ]]; then
-            cd "$(dirname "$BUNDLE")"
-            # Store the .exe uncompressed (method=Copy). tauri-plugin-updater
-            # 2.9.0 declares its zip dependency with `default-features = false`
-            # (see its Cargo.toml), which disables the deflate feature — the
-            # client zip reader can only decode Stored entries. Using Deflate
-            # (or Deflate64) makes it fail with "unsupported Zip archive:
-            # Compression method not supported". NSIS payloads are already
-            # compressed internally, so Deflate saved < 0.3% anyway.
-            7z a -tzip -mm=Copy "$ARCHIVE" "$(basename "$BUNDLE")"
-          else
-            tar czf "$ARCHIVE" -C "$(dirname "$BUNDLE")" "$(basename "$BUNDLE")"
-          fi
-
-          echo "Signing: $ARCHIVE"
-          # Try binstall first for speed, but verify cargo-tauri is actually
-          # on PATH afterwards — a cached registry entry can make binstall
-          # report "already installed" without the binary actually being
-          # deployed into $CARGO_HOME/bin. Fall back to `cargo install` when
-          # the binary is missing, regardless of binstall's exit code.
+          # Install cargo-tauri once — prefer binstall, fall back to source
+          # build if the binary isn't on PATH afterwards.
           cargo binstall tauri-cli --no-confirm 2>/dev/null || true
           command -v cargo-tauri >/dev/null 2>&1 || cargo install tauri-cli --version "^2" --locked
-          cargo tauri signer sign -k "$TAURI_SIGNING_PRIVATE_KEY" -p "" "$ARCHIVE"
 
-          echo "Created:"
-          ls -la "$ARCHIVE" "${ARCHIVE}.sig"
-
-      - name: Upload updater artifacts
-        shell: bash
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          TAG="${{ env.RELEASE_TAG }}"
-          ARCHIVE="/tmp/${{ matrix.updater_archive }}"
-          if [ -f "$ARCHIVE" ]; then
-            gh release upload "$TAG" "$ARCHIVE" --clobber && echo "Uploaded: $ARCHIVE"
-            gh release upload "$TAG" "${ARCHIVE}.sig" --clobber && echo "Uploaded: ${ARCHIVE}.sig"
+          if [[ "$BUNDLE" == *.exe ]]; then
+            # Windows: sign the raw installer. The .exe itself is already
+            # uploaded to the release by tauri-action, so we only push the
+            # new .sig.
+            echo "Signing raw installer: $BUNDLE"
+            cargo tauri signer sign -k "$TAURI_SIGNING_PRIVATE_KEY" -p "" "$BUNDLE"
+            gh release upload "$TAG" "${BUNDLE}.sig" --clobber
+            echo "Uploaded: ${BUNDLE}.sig"
           else
-            echo "No updater archive to upload (platform may have failed)"
+            # macOS / Linux: wrap in tar.gz, sign the archive, upload both.
+            ARCHIVE="/tmp/${{ matrix.updater_archive }}"
+            echo "Creating archive from: $BUNDLE"
+            tar czf "$ARCHIVE" -C "$(dirname "$BUNDLE")" "$(basename "$BUNDLE")"
+            echo "Signing: $ARCHIVE"
+            cargo tauri signer sign -k "$TAURI_SIGNING_PRIVATE_KEY" -p "" "$ARCHIVE"
+            gh release upload "$TAG" "$ARCHIVE" --clobber
+            gh release upload "$TAG" "${ARCHIVE}.sig" --clobber
+            echo "Uploaded: $ARCHIVE (+ .sig)"
           fi
 
   publish:
@@ -236,8 +227,8 @@ jobs:
               *x86_64*.app.tar.gz)         key="darwin-x86_64" ;;
               *aarch64*.AppImage.tar.gz)   key="linux-aarch64" ;;
               *x86_64*.AppImage.tar.gz)    key="linux-x86_64" ;;
-              *aarch64*setup.nsis.zip)     key="windows-aarch64" ;;
-              *x86_64*setup.nsis.zip)      key="windows-x86_64" ;;
+              *arm64-setup.exe)            key="windows-aarch64" ;;
+              *x64-setup.exe)              key="windows-x86_64" ;;
               *) echo "Skip: $name"; continue ;;
             esac
 
