@@ -1823,15 +1823,10 @@
       const r = await invoke('check_for_update');
       if (r.error) {
         const is404 = /404|not found/i.test(r.error);
-        // Surface the underlying error inline — hiding it in the title
-        // tooltip made the "Check failed" banner useless for debugging.
-        statusEl.textContent = is404
-          ? T('update.unavailable')
-          : `${T('update.error')}: ${r.error}`;
+        statusEl.textContent = is404 ? T('update.unavailable') : T('update.error');
         statusEl.title = r.error;
         statusEl.style.color = is404 ? 'var(--text-3)' : 'var(--danger)';
         retryBtn.style.display = is404 ? 'none' : 'inline';
-        console.warn('[markon] update check failed:', r.error);
       } else if (r.available && r.installed) {
         statusEl.textContent = T('update.done');
         statusEl.style.color = 'var(--accent)';
