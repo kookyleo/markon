@@ -45,6 +45,23 @@ NSIS 安装包未做代码签名，会触发 SmartScreen。在 "Windows protecte
 
 ![Windows SmartScreen：点 More info 展开后选择 Run anyway](/screenshots/windows-smartscreen.png)
 
+#### 通过 Scoop 安装
+
+如果你已经安装了 [Scoop](https://scoop.sh/)：
+
+```powershell
+scoop bucket add kookyleo https://github.com/kookyleo/markon
+scoop install kookyleo/markon
+```
+
+没装过 Scoop 的话，一行 PowerShell 即可：
+
+```powershell
+irm get.scoop.sh | iex
+```
+
+（首次可能需要先 `Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope CurrentUser`）
+
 ### Linux
 
 <DownloadButton mode="os" os="linux" />

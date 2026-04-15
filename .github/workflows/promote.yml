@@ -101,6 +101,51 @@ jobs:
             git push
           fi
 
+      # Bump bucket/markon.json so `scoop update markon` pulls the new
+      # stable. Same tap-in-source pattern as the cask.
+      - name: Update Scoop manifest
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          STABLE="${{ steps.ver.outputs.stable }}"
+          VER="${STABLE#v}"
+
+          X64_EXE="/tmp/assets/Markon_${VER}_x64-setup.exe"
+          ARM64_EXE="/tmp/assets/Markon_${VER}_arm64-setup.exe"
+
+          if [ ! -f "$X64_EXE" ] || [ ! -f "$ARM64_EXE" ]; then
+            echo "::warning::Missing Windows setup.exe for $VER — skipping Scoop update"
+            ls -la /tmp/assets/ || true
+            exit 0
+          fi
+
+          X64_SHA=$(sha256sum "$X64_EXE"   | awk '{print $1}')
+          ARM64_SHA=$(sha256sum "$ARM64_EXE" | awk '{print $1}')
+
+          VER="$VER" X64_SHA="$X64_SHA" ARM64_SHA="$ARM64_SHA" python3 - <<'PY'
+          import json, os
+          from pathlib import Path
+          p = Path("bucket/markon.json")
+          m = json.loads(p.read_text())
+          ver = os.environ["VER"]
+          m["version"] = ver
+          x64 = m["architecture"]["64bit"]
+          arm = m["architecture"]["arm64"]
+          x64["url"]  = f"https://github.com/kookyleo/markon/releases/download/v{ver}/Markon_{ver}_x64-setup.exe"
+          x64["hash"] = os.environ["X64_SHA"]
+          arm["url"]  = f"https://github.com/kookyleo/markon/releases/download/v{ver}/Markon_{ver}_arm64-setup.exe"
+          arm["hash"] = os.environ["ARM64_SHA"]
+          p.write_text(json.dumps(m, indent=4) + "\n")
+          PY
+
+          git add bucket/markon.json
+          if git diff --cached --quiet; then
+            echo "Scoop manifest already up to date"
+          else
+            git commit -m "scoop: bump markon to $VER"
+            git push
+          fi
+
   publish-crates:
     needs: promote
     runs-on: ubuntu-latest
