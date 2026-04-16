@@ -387,7 +387,7 @@ pub async fn start(config: ServerConfig) -> Result<(), String> {
     if let Some(ref base_opt) = open_browser {
         let url = make_url(base_opt, &first_workspace_url_path);
         if let Err(e) = open::that(&url) {
-            eprintln!("Failed to open browser: {e}");
+            eprintln!("[info] Best-effort browser open failed: {e}");
         }
     }
 

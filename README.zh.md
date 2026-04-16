@@ -130,11 +130,20 @@ cargo install --path crates/cli
 ### 基本用法
 
 ```bash
-# 渲染单个文件
+# 渲染单个文件（并自动尝试打开浏览器）
 markon README.md
 
 # 目录浏览模式
 markon
+
+# 追加工作区：若服务已在运行，再次运行会自动添加并打开
+markon docs/
+
+# 列出活跃工作区
+markon ls
+
+# 移除工作区（支持序号或 ID）
+markon detach 1
 
 # 自定义端口
 markon -p 8080
@@ -144,9 +153,6 @@ markon --host 0.0.0.0 README.md
 
 # 局域网访问 - 交互式选择
 markon --host README.md
-
-# 自动打开浏览器
-markon -b README.md
 ```
 
 ### 命令行选项
@@ -156,8 +162,8 @@ markon -b README.md
 | `<FILE>` | 要渲染的 Markdown 文件 | `markon README.md` |
 | `-p, --port <PORT>` | HTTP 服务器端口（默认：6419） | `markon -p 8080` |
 | `--host [IP]` | 绑定地址（用于局域网访问）<br>- 不指定：仅本地 (127.0.0.1)<br>- `--host`：交互式选择<br>- `--host 0.0.0.0`：所有接口<br>- `--host <IP>`：指定 IP | `markon --host 0.0.0.0` |
-| `-b, --browser [URL]` | 启动后自动打开浏览器 | `markon -b` |
-| `--qr [URL]` | 生成 QR 码用于移动访问 | `markon --qr` |
+| `-b, --browser [BASE]` | 尝试打开浏览器（尽力而为） | `markon -b` |
+| `--entry, --qr [PREFIX]` | 指定外部访问地址前缀（生成二维码） | `markon --entry http://{IP}:6419` |
 | `--theme <THEME>` | 颜色主题：light/dark/auto | `markon --theme dark` |
 | `--shared-annotation` | 启用共享标注（SQLite + WebSocket） | `markon --shared-annotation` |
 | `--enable-viewed` | 启用 Section Viewed 功能 | `markon --enable-viewed` |
@@ -167,35 +173,20 @@ markon -b README.md
 ### 常用示例
 
 ```bash
-# 带 QR 码的目录浏览
-markon --qr
+# 带二维码的目录浏览
+markon --entry http://192.168.1.100:6419
 
-# 局域网访问 + QR 码（方便移动设备和团队访问）
-markon --host 0.0.0.0 --qr http://192.168.1.100:6419
+# 局域网访问 + 二维码（方便移动设备和团队访问）
+markon --host 0.0.0.0 --entry http://192.168.1.100:6419 --shared-annotation --enable-viewed
 
 # 局域网访问 - 交互式选择网络接口
 markon --host
 
-# 局域网访问 - 指定具体 IP
-markon --host 192.168.1.100 README.md
-
-# 自动打开浏览器，使用自定义 URL（反向代理）
-markon -b http://docs.example.com
-
-# 启用共享标注（多设备同步）
-markon --shared-annotation README.md
-
-# 启用 viewed 功能（跟踪阅读进度）
-markon --enable-viewed README.md
-
 # 启用全文搜索
 markon --enable-search
 
-# 启用 Markdown 编辑
-markon --enable-edit README.md
-
-# 全功能：QR + 浏览器 + 共享 + viewed + 搜索 + 编辑
-markon --qr -b --shared-annotation --enable-viewed --enable-search --enable-edit README.md
+# 全功能：二维码 + 共享标注 + 进度追踪 + 全文搜索 + 在线编辑
+markon --entry {YOUR_URL} --shared-annotation --enable-viewed --enable-search --enable-edit README.md
 ```
 
 ### 功能指南
@@ -339,13 +330,13 @@ markon -b http://docs.example.com --qr http://docs.example.com
 <details>
 <summary><strong>如何从其他设备访问？</strong></summary>
 
-在服务器上使用 `-l 0.0.0.0` 绑定所有接口：
+在服务器上使用 `--host 0.0.0.0` 绑定所有接口：
 
 ```bash
-markon -l 0.0.0.0 README.md
+markon --host 0.0.0.0 README.md
 ```
 
-然后从任何设备打开 `http://server-ip:6419`。使用 `--qr` 生成移动访问 QR 码。
+然后从任何设备打开 `http://{IP}:6419`。使用 `--entry` 生成移动访问二维码。
 </details>
 
 <details>

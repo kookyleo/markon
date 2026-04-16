@@ -43,10 +43,14 @@ fn select_host() -> Result<String, Box<dyn std::error::Error>> {
 #[derive(Parser, Debug)]
 #[command(author, version, about, long_about = None)]
 struct Cli {
+    /// Subcommand for workspace management.
+    #[command(subcommand)]
+    command: Option<Commands>,
+
     /// The markdown file or directory to open.
     file: Option<String>,
 
-    /// Port for the server (used when starting a new server).
+    /// Port for the server (default: 6419).
     #[arg(short, long, default_value_t = 6419)]
     port: u16,
 
@@ -58,11 +62,11 @@ struct Cli {
     #[arg(short = 't', long, default_value = "auto")]
     theme: String,
 
-    /// Public entry URL (proxy/domain). Used as QR code base and browser open URL.
-    #[arg(long, alias = "qr", value_name = "URL", action = clap::ArgAction::Set, num_args = 0..=1, default_missing_value = "missing")]
+    /// Public entry URL prefix (proxy/domain). Used for QR code and "accessible at" logs.
+    #[arg(long, alias = "qr", value_name = "URL_PREFIX", action = clap::ArgAction::Set, num_args = 0..=1, default_missing_value = "missing")]
     entry: Option<String>,
 
-    /// Automatically open browser after starting the server.
+    /// Automatically open browser (best-effort). Default is true if a path is provided.
     #[arg(short = 'b', long, value_name = "BASE_URL", action = clap::ArgAction::Set, num_args = 0..=1, default_missing_value = "local")]
     open_browser: Option<String>,
 
@@ -85,6 +89,79 @@ struct Cli {
     /// Enable Markdown file editing for the workspace.
     #[arg(long, action = clap::ArgAction::SetTrue)]
     enable_edit: bool,
+}
+
+#[derive(clap::Subcommand, Debug)]
+enum Commands {
+    /// List all active workspaces in the running server.
+    Ls,
+    /// Remove a workspace from the running server by ID or index.
+    Detach {
+        /// Workspace ID or index (from 'markon ls').
+        target: String,
+    },
+}
+
+fn list_workspaces(port: u16, token: &str) -> Result<(), Box<dyn std::error::Error>> {
+    let client = reqwest::blocking::Client::new();
+    let workspaces: serde_json::Value = client
+        .get(format!("http://127.0.0.1:{port}/api/workspaces"))
+        .header("X-Markon-Token", token)
+        .send()?
+        .error_for_status()?
+        .json()?;
+
+    let arr = workspaces
+        .as_array()
+        .ok_or("Invalid response from server")?;
+    if arr.is_empty() {
+        println!("No active workspaces.");
+        return Ok(());
+    }
+
+    println!("{:<4} {:<10} PATH", "#", "ID");
+    println!("{:-<4} {:-<10} {:-<20}", "", "", "");
+    for (i, ws) in arr.iter().enumerate() {
+        let id = ws["id"].as_str().unwrap_or("?");
+        let path = ws["path"].as_str().unwrap_or("?");
+        println!("{:<4} {:<10} {}", i + 1, id, path);
+    }
+    Ok(())
+}
+
+fn detach_workspace(
+    port: u16,
+    token: &str,
+    target: &str,
+) -> Result<(), Box<dyn std::error::Error>> {
+    let client = reqwest::blocking::Client::new();
+    let workspaces: serde_json::Value = client
+        .get(format!("http://127.0.0.1:{port}/api/workspaces"))
+        .header("X-Markon-Token", token)
+        .send()?
+        .error_for_status()?
+        .json()?;
+
+    let arr = workspaces
+        .as_array()
+        .ok_or("Invalid response from server")?;
+    let id = if let Ok(idx) = target.parse::<usize>() {
+        if idx == 0 || idx > arr.len() {
+            return Err(format!("Index {idx} out of range (1-{})", arr.len()).into());
+        }
+        arr[idx - 1]["id"].as_str().ok_or("Workspace has no id")?
+    } else {
+        target
+    };
+
+    client
+        .delete(format!("http://127.0.0.1:{port}/api/workspace/{id}"))
+        .header("X-Markon-Token", token)
+        .send()?
+        .error_for_status()?;
+
+    println!("Workspace '{id}' detached.");
+    Ok(())
 }
 
 /// Add or update a workspace in a running server.
@@ -149,6 +226,28 @@ async fn main() {
     let cli = Cli::parse();
     println!("Markon v{}", env!("CARGO_PKG_VERSION"));
 
+    // Handle subcommands for workspace management.
+    if let Some(cmd) = cli.command {
+        let lock = ServerLock::read();
+        let (port, token) = match lock {
+            Some(ref l) if l.is_alive() => (l.port, l.token.clone()),
+            _ => {
+                eprintln!("Error: No running Markon server found.");
+                return;
+            }
+        };
+
+        let res = match cmd {
+            Commands::Ls => list_workspaces(port, &token),
+            Commands::Detach { target } => detach_workspace(port, &token, &target),
+        };
+
+        if let Err(e) = res {
+            eprintln!("Error: {e}");
+        }
+        return;
+    }
+
     let theme = match cli.theme.as_str() {
         "light" | "dark" | "auto" => cli.theme.clone(),
         _ => {
@@ -184,10 +283,20 @@ async fn main() {
         )
     };
 
+    // Determine if we should attempt to open the browser.
+    // Default: auto-open when there's a file/dir argument, unless overridden.
+    let open_browser_target = cli.open_browser.clone().or_else(|| {
+        if cli.file.is_some() {
+            Some("local".to_string())
+        } else {
+            None
+        }
+    });
+
     // Check if a server is already running.
     if let Some(lock) = ServerLock::read() {
         if lock.is_alive() {
-            // Add workspace to running server and open browser.
+            // Add workspace to running server and open browser (if requested).
             match add_or_update_workspace(
                 lock.port,
                 &lock.token,
@@ -201,9 +310,11 @@ async fn main() {
                         Some(p) => format!("{}{}", url.trim_end_matches('/'), p),
                         None => url,
                     };
-                    println!("Added workspace, opening {open_url}");
-                    if let Err(e) = open::that(&open_url) {
-                        eprintln!("Failed to open browser: {e}");
+                    println!("Added workspace: {open_url}");
+                    if open_browser_target.is_some() {
+                        if let Err(e) = open::that(&open_url) {
+                            eprintln!("[info] Best-effort browser open failed: {e}");
+                        }
                     }
                 }
                 Err(e) => eprintln!("Failed to add workspace to running server: {e}"),
@@ -225,15 +336,6 @@ async fn main() {
         Some(h) => h,
     };
 
-    // Determine open_browser: if no explicit flag, auto-open when there's a file arg.
-    let open_browser = cli.open_browser.or_else(|| {
-        if cli.file.is_some() {
-            Some("local".to_string())
-        } else {
-            None
-        }
-    });
-
     let ws_init = WorkspaceInit {
         path: ws_root,
         enable_search: cli.enable_search,
@@ -252,7 +354,7 @@ async fn main() {
         port: cli.port,
         theme,
         qr: cli.entry,
-        open_browser,
+        open_browser: open_browser_target,
         shared_annotation: cli.shared_annotation,
         salt: cli.salt,
         initial_workspaces: vec![ws_init],

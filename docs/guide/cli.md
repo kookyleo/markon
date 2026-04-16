@@ -16,8 +16,8 @@ markon [FILE] [OPTIONS]
 |------|------|------|
 | `-p, --port <PORT>` | HTTP 服务器端口 | `6419` |
 | `--host [IP]` | 绑定地址，省略值时交互式选择 | `127.0.0.1` |
-| `-b, --browser [URL]` | 启动后自动打开浏览器 | 否 |
-| `--qr [URL]` | 生成 QR 码，可指定公网 URL | — |
+| `-b, --browser [BASE]` | 尝试打开浏览器（尽力而为） | 是 (若提供路径) |
+| `--entry, --qr [PREFIX]` | 指定外部访问地址前缀（生成二维码） | — |
 | `-t, --theme <THEME>` | 配色主题：`light` / `dark` / `auto` | `auto` |
 | `--enable-search` | 启用全文搜索（Tantivy 索引） | false |
 | `--enable-viewed` | 启用 Section Viewed 复选框 | false |
@@ -25,20 +25,52 @@ markon [FILE] [OPTIONS]
 | `--shared-annotation` | 启用共享标注（SQLite 同步） | false |
 | `--salt <STRING>` | 自定义 workspace ID salt | — |
 
+## 工作区管理
+
+Markon 支持在同一个服务实例中管理多个工作区。你可以通过以下命令进行维护：
+
+### 列出活跃工作区
+
+```bash
+markon ls
+```
+
+输出示例：
+```text
+#    ID         PATH
+---  ---        ----
+1    abc12345   /Users/me/project-a
+2    def67890   /Users/me/project-b
+```
+
+### 移除工作区
+
+你可以通过 `ls` 命令输出的序号或 ID 来移除不再需要的工作区：
+
+```bash
+markon detach 1          # 通过序号移除
+markon detach abc12345   # 通过 ID 移除
+```
+
+## 常用场景
+
+
+Markon 采用 **“单服务 + 多工作区”** 模型。当你多次运行 `markon <路径>` 命令时，后续运行的实例会自动检测已存在的后台服务，并将新路径作为工作区追加到该服务中，同时尝试在默认浏览器中打开。
+
 ## 常用场景
 
 ### 个人本地阅读
 
 ```bash
-markon README.md -b
+markon README.md
 ```
 
-最简单的用法：渲染一个文件并自动打开浏览器。
+最简单的用法：渲染一个文件。程序会尝试自动打开浏览器。
 
 ### 浏览整个项目的文档
 
 ```bash
-markon docs/ --enable-search -b
+markon docs/ --enable-search
 ```
 
 以目录为工作区，启用全文搜索。
@@ -46,11 +78,11 @@ markon docs/ --enable-search -b
 ### 局域网共享给团队
 
 ```bash
-markon --host 0.0.0.0 --qr --shared-annotation --enable-viewed
+markon --host 0.0.0.0 --entry http://192.168.1.100:6419 --shared-annotation --enable-viewed
 ```
 
 - `--host 0.0.0.0` — 绑定所有网络接口，局域网可访问
-- `--qr` — 终端打印 QR 码方便移动端扫码
+- `--entry` — 指定外部访问地址前缀，终端将打印完整的工作区二维码
 - `--shared-annotation` — 启用 SQLite 数据库共享标注和已读状态
 - `--enable-viewed` — 启用 Section Viewed 功能
 
@@ -65,12 +97,13 @@ markon --host
 ### 经反向代理暴露
 
 ```bash
-markon -b https://docs.example.com --qr https://docs.example.com
+markon --entry https://docs.example.com
 ```
 
-当 Markon 部署在反向代理后面时，`-b` 和 `--qr` 分别指定浏览器打开的 URL 和 QR 码编码的 URL。
+当 Markon 部署在反向代理后面时，使用 `--entry` 指定外部访问的前缀。Markon 会在该前缀后自动追加具体工作区的 ID。
 
 → 配置细节见 [反向代理](/advanced/reverse-proxy)
+
 
 ### 启用所有功能
 
