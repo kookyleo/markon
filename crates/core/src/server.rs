@@ -34,6 +34,7 @@ pub struct WorkspaceInit {
     pub enable_search: bool,
     pub enable_viewed: bool,
     pub enable_edit: bool,
+    pub enable_live: bool,
     pub shared_annotation: bool,
     /// Path within this workspace to open in the browser (e.g. "notes/file.md").
     pub initial_path: Option<String>,
@@ -85,6 +86,8 @@ pub struct AppState {
     pub styles_css: Arc<String>,
     /// Shutdown channel.
     pub shutdown_tx: mpsc::Sender<()>,
+    /// System hostname.
+    pub hostname: Arc<String>,
 }
 
 async fn shutdown_handler(State(state): State<AppState>) -> impl IntoResponse {
@@ -137,6 +140,8 @@ enum WebSocketMessage {
     ViewedState { state: serde_json::Value },
     #[serde(rename = "update_viewed_state")]
     UpdateViewedState { state: serde_json::Value },
+    #[serde(rename = "live_action")]
+    LiveAction { data: serde_json::Value },
 }
 
 pub async fn start(config: ServerConfig) -> Result<(), String> {
@@ -250,6 +255,7 @@ pub async fn start(config: ServerConfig) -> Result<(), String> {
             enable_search: ws_init.enable_search,
             enable_viewed: ws_init.enable_viewed,
             enable_edit: ws_init.enable_edit,
+            enable_live: ws_init.enable_live,
             shared_annotation: ws_init.shared_annotation,
         });
         if first_workspace_url_path.is_none() {
@@ -262,6 +268,10 @@ pub async fn start(config: ServerConfig) -> Result<(), String> {
     }
 
     let token = Arc::new(management_token.unwrap_or_else(generate_token));
+
+    let system_hostname = std::env::var("HOSTNAME")
+        .or_else(|_| std::env::var("COMPUTERNAME"))
+        .unwrap_or_else(|_| "markon-user".to_string());
 
     let (shutdown_tx, mut shutdown_rx) = mpsc::channel::<()>(1);
 
@@ -278,6 +288,7 @@ pub async fn start(config: ServerConfig) -> Result<(), String> {
         shortcuts_json: Arc::new(shortcuts_json.unwrap_or_default()),
         styles_css: Arc::new(styles_css.unwrap_or_default()),
         shutdown_tx,
+        hostname: Arc::new(system_hostname),
     };
 
     // Management API: requires loopback source IP + valid token header.
@@ -668,6 +679,16 @@ async fn handle_socket(socket: WebSocket, state: AppState) {
                             .send(serde_json::to_string(&broadcast_msg).unwrap())
                             .unwrap();
                     }
+                    WebSocketMessage::LiveAction { data } => {
+                        // LiveAction is purely dynamic, no DB persistence. Just broadcast.
+                        let broadcast_msg = WebSocketMessage::LiveAction { data };
+                        state
+                            .tx
+                            .as_ref()
+                            .unwrap()
+                            .send(serde_json::to_string(&broadcast_msg).unwrap())
+                            .unwrap();
+                    }
                     _ => {}
                 }
             }
@@ -743,6 +764,8 @@ struct AddWorkspaceRequest {
     #[serde(default)]
     enable_edit: bool,
     #[serde(default)]
+    enable_live: bool,
+    #[serde(default)]
     shared_annotation: bool,
 }
 
@@ -766,6 +789,7 @@ async fn add_workspace_handler(
         enable_search: req.enable_search,
         enable_viewed: req.enable_viewed,
         enable_edit: req.enable_edit,
+        enable_live: req.enable_live,
         shared_annotation: req.shared_annotation,
     });
     Json(AddWorkspaceResponse { id }).into_response()
@@ -791,6 +815,8 @@ struct UpdateWorkspaceRequest {
     #[serde(default)]
     enable_edit: bool,
     #[serde(default)]
+    enable_live: bool,
+    #[serde(default)]
     shared_annotation: bool,
 }
 
@@ -804,6 +830,7 @@ async fn update_workspace_handler(
         req.enable_search,
         req.enable_viewed,
         req.enable_edit,
+        req.enable_live,
         req.shared_annotation,
     ) {
         StatusCode::OK
@@ -896,6 +923,7 @@ fn render_markdown_file(
             context.insert("enable_viewed", &ws.enable_viewed);
             context.insert("enable_search", &ws.enable_search);
             context.insert("enable_edit", &ws.enable_edit);
+            context.insert("enable_live", &ws.enable_live);
 
             if ws.enable_edit.load(std::sync::atomic::Ordering::Relaxed) {
                 // JSON-encode and HTML-escape so </script> in content can't break the page.
@@ -911,6 +939,7 @@ fn render_markdown_file(
             context.insert("i18n_lang", state.i18n_lang.as_str());
             context.insert("shortcuts_json", state.shortcuts_json.as_str());
             context.insert("styles_css", state.styles_css.as_str());
+            context.insert("hostname", state.hostname.as_str());
 
             match state.tera.render("layout.html", &context) {
                 Ok(html) => Html(html).into_response(),
@@ -938,6 +967,7 @@ fn render_markdown_file(
             context.insert("i18n_lang", state.i18n_lang.as_str());
             context.insert("shortcuts_json", state.shortcuts_json.as_str());
             context.insert("styles_css", state.styles_css.as_str());
+            context.insert("hostname", state.hostname.as_str());
 
             match state.tera.render("layout.html", &context) {
                 Ok(html) => Html(html).into_response(),
@@ -1070,6 +1100,7 @@ fn render_directory_listing(
     context.insert("i18n_lang", state.i18n_lang.as_str());
     context.insert("shortcuts_json", state.shortcuts_json.as_str());
     context.insert("styles_css", state.styles_css.as_str());
+    context.insert("hostname", state.hostname.as_str());
 
     match state.tera.render("directory.html", &context) {
         Ok(html) => Html(html).into_response(),
@@ -1286,5 +1317,48 @@ async fn save_file_handler(
             message: format!("Failed to save: {e}"),
         })
         .into_response(),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+
+    #[test]
+    fn test_websocket_message_serialization() {
+        let msg = WebSocketMessage::LiveAction {
+            data: json!({
+                "clientId": "test-id",
+                "action": "scroll_to",
+                "xpath": "/p[1]",
+                "offset": 0.5
+            }),
+        };
+        let serialized = serde_json::to_string(&msg).unwrap();
+        assert!(serialized.contains("\"type\":\"live_action\""));
+        assert!(serialized.contains("\"clientId\":\"test-id\""));
+    }
+
+    #[test]
+    fn test_app_state_identity() {
+        let (tx, _) = tokio::sync::mpsc::channel(1);
+        let registry = Arc::new(crate::workspace::WorkspaceRegistry::new("salt".into()));
+        let state = AppState {
+            theme: Arc::new("dark".into()),
+            tera: Arc::new(Tera::default()),
+            shared_annotation: true,
+            db: None,
+            tx: None,
+            workspace_registry: registry,
+            management_token: Arc::new("token".into()),
+            i18n_json: Arc::new("{}".into()),
+            i18n_lang: Arc::new("zh".into()),
+            shortcuts_json: Arc::new("{}".into()),
+            styles_css: Arc::new("".into()),
+            shutdown_tx: tx,
+            hostname: Arc::new("test-host".into()),
+        };
+        assert_eq!(state.hostname.as_str(), "test-host");
     }
 }

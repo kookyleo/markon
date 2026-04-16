@@ -123,12 +123,13 @@ fn handle_open_path(app: &tauri::AppHandle, path: &Path) {
     let ws_root_str = ws_root.to_string_lossy().to_string();
 
     // Read default feature flags from settings.
-    let (def_search, def_viewed, def_edit, def_shared) = {
+    let (def_search, def_viewed, def_edit, def_live, def_shared) = {
         let settings = state.settings.lock().unwrap();
         (
             settings.default_search,
             settings.default_viewed,
             settings.default_edit,
+            settings.default_live,
             settings.default_shared_annotation,
         )
     };
@@ -140,6 +141,7 @@ fn handle_open_path(app: &tauri::AppHandle, path: &Path) {
             enable_search: def_search,
             enable_viewed: def_viewed,
             enable_edit: def_edit,
+            enable_live: def_live,
             shared_annotation: def_shared,
         });
     let port = server.port();
@@ -155,6 +157,7 @@ fn handle_open_path(app: &tauri::AppHandle, path: &Path) {
                 enable_search: def_search,
                 enable_viewed: def_viewed,
                 enable_edit: def_edit,
+                enable_live: def_live,
                 shared_annotation: def_shared,
             });
             settings.save().ok();

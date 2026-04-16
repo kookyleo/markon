@@ -125,6 +125,7 @@ export const CONFIG = {
         SHARED_ANNOTATION: 'shared-annotation',
         ENABLE_VIEWED: 'enable-viewed',
         ENABLE_EDIT: 'enable-edit',
+        ENABLE_LIVE: 'enable-live',
     },
 
     // WebSocket Message types
@@ -135,6 +136,21 @@ export const CONFIG = {
         CLEAR_ANNOTATIONS: 'clear_annotations',
         VIEWED_STATE: 'viewed_state',
         UPDATE_VIEWED_STATE: 'update_viewed_state',
+        LIVE_ACTION: 'live_action',
+    },
+
+    // Collaboration Configuration
+    COLLABORATION: {
+        COLORS: [
+            '#3451B2', // Markon Blue
+            '#E64560', // Rose
+            '#27AE60', // Emerald
+            '#F39C12', // Orange
+            '#8E44AD', // Purple
+            '#2C3E50', // Dark
+        ],
+        RIPPLE_DURATION: 1500, // Visual guide duration
+        SYNC_DEBOUNCE: 100,    // Broadcast debounce
     },
 
     // Annotation types
@@ -178,5 +194,6 @@ Object.freeze(CONFIG.SELECTORS);
 Object.freeze(CONFIG.SKIP_ELEMENTS);
 Object.freeze(CONFIG.META_TAGS);
 Object.freeze(CONFIG.WS_MESSAGE_TYPES);
+Object.freeze(CONFIG.COLLABORATION);
 Object.freeze(CONFIG.ANNOTATION_TYPES);
 Object.freeze(CONFIG.HTML_TAGS);

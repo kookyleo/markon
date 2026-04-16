@@ -86,6 +86,10 @@ struct Cli {
     #[arg(long, action = clap::ArgAction::SetTrue)]
     enable_viewed: bool,
 
+    /// Enable live collaboration (view sync).
+    #[arg(long, action = clap::ArgAction::SetTrue)]
+    enable_live: bool,
+
     /// Enable Markdown file editing for the workspace.
     #[arg(long, action = clap::ArgAction::SetTrue)]
     enable_edit: bool,
@@ -182,9 +186,6 @@ fn shutdown_server(port: u16, token: &str) -> Result<(), Box<dyn std::error::Err
     Ok(())
 }
 
-/// Add or update a workspace in a running server.
-/// If the path is already registered, updates its flags; otherwise adds it.
-/// Returns the workspace URL.
 fn add_or_update_workspace(
     port: u16,
     token: &str,
@@ -192,6 +193,7 @@ fn add_or_update_workspace(
     enable_search: bool,
     enable_viewed: bool,
     enable_edit: bool,
+    enable_live: bool,
 ) -> Result<String, Box<dyn std::error::Error>> {
     let client = reqwest::blocking::Client::new();
 
@@ -216,6 +218,7 @@ fn add_or_update_workspace(
                 "enable_search": enable_search,
                 "enable_viewed": enable_viewed,
                 "enable_edit": enable_edit,
+                "enable_live": enable_live,
             }))
             .send()?
             .error_for_status()?;
@@ -231,6 +234,7 @@ fn add_or_update_workspace(
             "enable_search": enable_search,
             "enable_viewed": enable_viewed,
             "enable_edit": enable_edit,
+            "enable_live": enable_live,
         }))
         .send()?
         .error_for_status()?
@@ -278,8 +282,6 @@ async fn main() {
     // Resolve the workspace directory from the file/dir argument.
     let (ws_root, initial_path) = if let Some(ref file_str) = cli.file {
         let path = Path::new(file_str);
-        // dunce::canonicalize avoids the Windows \\?\ verbatim prefix on the
-        // printed URL / startup banner.
         let canonical = match dunce::canonicalize(path) {
             Ok(p) => p,
             Err(_) => {
@@ -295,20 +297,18 @@ async fn main() {
             (parent, Some(filename))
         }
     } else {
-        // No argument → use current working directory.
         (
             std::env::current_dir().expect("Cannot determine working directory"),
             None,
         )
     };
 
-    // Determine if we should attempt to open the browser.
-    // Default: auto-open when there's a file/dir argument, unless overridden.
     let ws_init = WorkspaceInit {
         path: ws_root.clone(),
         enable_search: cli.enable_search,
         enable_viewed: cli.enable_viewed,
         enable_edit: cli.enable_edit,
+        enable_live: cli.enable_live,
         shared_annotation: cli.shared_annotation,
         initial_path: initial_path.clone(),
     };
@@ -336,10 +336,8 @@ async fn main() {
         }
     });
 
-    // Check if a server is already running.
     if let Some(lock) = ServerLock::read() {
         if lock.is_alive() {
-            // Add workspace to running server and open browser (if requested).
             match add_or_update_workspace(
                 lock.port,
                 &lock.token,
@@ -347,6 +345,7 @@ async fn main() {
                 cli.enable_search,
                 cli.enable_viewed,
                 cli.enable_edit,
+                cli.enable_live,
             ) {
                 Ok(url) => {
                     println!("Added workspace: {url}");
@@ -362,7 +361,6 @@ async fn main() {
         }
     }
 
-    // No running server — start one in background if not already daemonized.
     if !cli.daemon_internal {
         let current_exe = std::env::current_exe().expect("Failed to get current executable");
         let mut args: Vec<String> = std::env::args().skip(1).collect();
@@ -391,8 +389,6 @@ async fn main() {
         }
     }
 
-    // Load customizations (web styles, shortcuts, language) from the GUI's
-    // settings file if present. CLI arguments take precedence over the file.
     let settings = AppSettings::load();
 
     if let Err(e) = server::start(ServerConfig {

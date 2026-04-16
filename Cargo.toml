@@ -13,11 +13,11 @@ codegen-units = 1
 opt-level = "s"
 
 [workspace.dependencies]
-markon-core = { path = "crates/core", version = "0.9" }
+markon-core = { path = "crates/core", version = "0.10" }
 dunce = "1.0"
 
 [workspace.package]
-version = "0.9.31"
+version = "0.10.0"
 edition = "2021"
 authors = ["kookyleo"]
 license = "Apache-2.0"

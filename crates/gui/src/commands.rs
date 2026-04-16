@@ -161,6 +161,7 @@ pub fn add_workspace(
     enable_search: bool,
     enable_viewed: bool,
     enable_edit: bool,
+    enable_live: bool,
     shared_annotation: bool,
     state: State<AppState>,
 ) -> Result<serde_json::Value, String> {
@@ -180,10 +181,7 @@ pub fn add_workspace(
     } else {
         PathBuf::from(&normalized)
     };
-    // Use dunce::canonicalize to avoid Windows \\?\ verbatim prefix —
-    // that prefix leaks into settings.json and into the UI otherwise.
     let canonical = dunce::canonicalize(&expanded).map_err(|e| format!("Invalid path: {e}"))?;
-
     let canonical_str = canonical.to_string_lossy().to_string();
 
     let server = state.server.lock().unwrap();
@@ -192,12 +190,13 @@ pub fn add_workspace(
         enable_search,
         enable_viewed,
         enable_edit,
+        enable_live,
         shared_annotation,
     });
     let port = server.port();
     let url = format!("http://127.0.0.1:{port}/{id}/");
 
-    // Persist to settings (use canonical path so restarts don't break)
+    // Persist to settings
     drop(server);
     let mut settings = state.settings.lock().unwrap();
     settings.workspaces.push(WorkspaceSettings {
@@ -205,6 +204,7 @@ pub fn add_workspace(
         enable_search,
         enable_viewed,
         enable_edit,
+        enable_live,
         shared_annotation,
     });
     settings.save().ok();
@@ -212,13 +212,14 @@ pub fn add_workspace(
     Ok(serde_json::json!({ "id": id, "url": url }))
 }
 
-/// Update feature flags for an existing workspace (takes effect immediately, persists to settings).
+/// Update feature flags for an existing workspace.
 #[tauri::command]
 pub fn update_workspace(
     id: String,
     enable_search: bool,
     enable_viewed: bool,
     enable_edit: bool,
+    enable_live: bool,
     shared_annotation: bool,
     state: State<AppState>,
 ) -> Result<(), String> {
@@ -233,6 +234,7 @@ pub fn update_workspace(
         enable_search,
         enable_viewed,
         enable_edit,
+        enable_live,
         shared_annotation,
     );
     drop(server);
@@ -242,6 +244,7 @@ pub fn update_workspace(
         entry.enable_search = enable_search;
         entry.enable_viewed = enable_viewed;
         entry.enable_edit = enable_edit;
+        entry.enable_live = enable_live;
         entry.shared_annotation = shared_annotation;
     }
     settings.save().ok();
@@ -252,7 +255,6 @@ pub fn update_workspace(
 #[tauri::command]
 pub fn remove_workspace(id: String, state: State<AppState>) -> Result<(), String> {
     let server = state.server.lock().unwrap();
-    // Look up the path before removing, so we can remove from settings too.
     let ws_path = server
         .registry
         .get(&id)
@@ -264,7 +266,6 @@ pub fn remove_workspace(id: String, state: State<AppState>) -> Result<(), String
         return Err(format!("Workspace {id} not found"));
     }
 
-    // Remove from persisted settings.
     if let Some(path) = ws_path {
         let mut settings = state.settings.lock().unwrap();
         settings.workspaces.retain(|w| w.path != path);
@@ -291,6 +292,7 @@ pub fn get_workspaces(state: State<AppState>) -> Vec<serde_json::Value> {
                 "enable_search": info.enable_search,
                 "enable_viewed": info.enable_viewed,
                 "enable_edit": info.enable_edit,
+                "enable_live": info.enable_live,
                 "shared_annotation": info.shared_annotation,
                 "search_ready": info.search_ready,
             })
@@ -316,8 +318,6 @@ pub fn open_url(url: String) -> Result<(), String> {
     open::that(url).map_err(|e| e.to_string())
 }
 
-/// Show a native folder picker and return the selected path, or None if cancelled.
-/// Uses rfd's async API so the UI dispatch is handled correctly on macOS.
 #[tauri::command]
 pub async fn pick_workspace_dir() -> Option<String> {
     rfd::AsyncFileDialog::new()
@@ -327,8 +327,6 @@ pub async fn pick_workspace_dir() -> Option<String> {
         .map(|h| h.path().to_string_lossy().to_string())
 }
 
-/// Returns system/app info used to prefill a GitHub issue template
-/// and to drive UI i18n.
 #[tauri::command]
 pub fn get_system_info() -> serde_json::Value {
     let os = std::env::consts::OS;
@@ -389,7 +387,6 @@ fn os_version_string() -> String {
         .unwrap_or_else(|| "unknown".to_string())
 }
 
-/// Show a native file dialog to pick (or create) a SQLite database file.
 #[tauri::command]
 pub async fn pick_db_path() -> Option<String> {
     rfd::AsyncFileDialog::new()
@@ -401,8 +398,6 @@ pub async fn pick_db_path() -> Option<String> {
         .map(|h| h.path().to_string_lossy().to_string())
 }
 
-/// Resolve the updater endpoint URL for the given channel.
-/// Both manifests are hosted under a permanent "updater" release tag.
 fn updater_endpoint(channel: &str) -> String {
     let file = if channel.eq_ignore_ascii_case("rc") {
         "latest-rc.json"
@@ -412,8 +407,6 @@ fn updater_endpoint(channel: &str) -> String {
     format!("https://github.com/kookyleo/markon/releases/download/updater/{file}")
 }
 
-/// Check for updates and return status. If an update is available, download & install it.
-/// Returns a JSON with { available, current, latest, channel, error? }.
 #[tauri::command]
 pub async fn check_for_update(
     app: tauri::AppHandle,
@@ -443,7 +436,6 @@ pub async fn check_for_update(
         Err(e) => return Ok(serde_json::json!({ "available": false, "error": e.to_string() })),
     };
     let latest = update.version.clone();
-    // Download and install
     match update.download_and_install(|_, _| {}, || {}).await {
         Ok(()) => Ok(serde_json::json!({
             "available": true,
@@ -463,25 +455,14 @@ pub async fn check_for_update(
     }
 }
 
-/// Return all i18n translations for the frontend, plus a _languages list
-/// derived automatically from the LANGS registry.
 #[tauri::command]
 pub fn get_i18n() -> serde_json::Value {
     i18n::all_i18n_with_languages()
 }
 
-/// List available system font families.
-///
-/// Uses `font-kit`, which goes through the platform-native font APIs:
-/// DirectWrite on Windows, Core Text on macOS, fontconfig on Linux. This
-/// replaces the earlier subprocess-based implementation that shelled out to
-/// `powershell` / `osascript` / `fc-list` — those had encoding quirks and a
-/// noticeable startup latency, and on Windows returned nothing useful at all
-/// in some environments.
 #[tauri::command]
 pub fn list_fonts() -> Vec<String> {
     use font_kit::source::SystemSource;
-
     let families = match SystemSource::new().all_families() {
         Ok(f) => f,
         Err(e) => {
@@ -489,7 +470,6 @@ pub fn list_fonts() -> Vec<String> {
             return Vec::new();
         }
     };
-
     let mut fonts: Vec<String> = families
         .into_iter()
         .map(|f| f.trim().to_string())
@@ -500,11 +480,8 @@ pub fn list_fonts() -> Vec<String> {
     fonts
 }
 
-// ── GitHub star via `gh` CLI ─────────────────────────────────────────────
-
 const MARKON_REPO: &str = "kookyleo/markon";
 
-/// Check if `gh` CLI is installed and authenticated.
 fn gh_available() -> bool {
     silent_command("gh")
         .args(["auth", "status"])
@@ -513,8 +490,6 @@ fn gh_available() -> bool {
         .unwrap_or(false)
 }
 
-/// Star the repo via `gh` CLI. Returns true on success, false on failure.
-/// If `gh` is unavailable, the frontend should fallback to opening the repo URL in browser.
 #[tauri::command]
 pub async fn star_repo() -> bool {
     if !gh_available() {
@@ -527,7 +502,6 @@ pub async fn star_repo() -> bool {
     matches!(result, Ok(output) if output.status.success())
 }
 
-/// Toggle tray-resident setting: persists, updates AtomicBool, and applies tray visibility.
 #[tauri::command]
 pub fn set_tray_resident(
     value: bool,
@@ -539,7 +513,6 @@ pub fn set_tray_resident(
     settings.tray_resident = value;
     settings.save()?;
     drop(settings);
-
     if let Some(tray) = app.tray_by_id("main") {
         tray.set_visible(value).map_err(|e| e.to_string())?;
     }

@@ -24,6 +24,7 @@ pub struct WorkspaceSettings {
     pub enable_search: bool,
     pub enable_viewed: bool,
     pub enable_edit: bool,
+    pub enable_live: bool,
     pub shared_annotation: bool,
 }
 
@@ -53,6 +54,8 @@ pub struct AppSettings {
     pub default_search: bool,
     #[serde(default = "default_true")]
     pub default_viewed: bool,
+    #[serde(default)]
+    pub default_live: bool,
     #[serde(default)]
     pub default_edit: bool,
     #[serde(default)]
@@ -94,6 +97,7 @@ impl Default for AppSettings {
             tray_resident: true,
             default_search: true,
             default_viewed: true,
+            default_live: false,
             default_edit: false,
             default_shared_annotation: false,
             web_styles: std::collections::HashMap::new(),
@@ -172,6 +176,7 @@ impl AppSettings {
                 enable_search: w.enable_search,
                 enable_viewed: w.enable_viewed,
                 enable_edit: w.enable_edit,
+                enable_live: w.enable_live,
                 shared_annotation: w.shared_annotation,
                 initial_path: None,
             })
@@ -282,6 +287,7 @@ mod tests {
         assert!(s.tray_resident);
         assert!(s.default_search);
         assert!(s.default_viewed);
+        assert!(!s.default_live);
         assert!(!s.default_edit);
         assert!(!s.default_shared_annotation);
         assert!(s.auto_update);
@@ -472,6 +478,7 @@ mod tests {
         assert!(!ws.enable_search);
         assert!(!ws.enable_viewed);
         assert!(!ws.enable_edit);
+        assert!(!ws.enable_live);
         assert!(!ws.shared_annotation);
     }
 

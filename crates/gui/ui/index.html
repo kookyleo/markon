@@ -816,6 +816,11 @@
             <label class="switch"><input type="checkbox" id="default_edit"><div class="switch-track"></div></label>
           </div>
           <div class="pref-row">
+            <span class="pref-label" data-i18n="pref.def.live"></span>
+            <label class="switch"><input type="checkbox" id="default_live"><div class="switch-track"></div></label>
+          </div>
+
+          <div class="pref-row">
             <span class="pref-label" data-i18n="pref.def.shared"></span>
             <label class="switch"><input type="checkbox" id="default_shared"><div class="switch-track"></div></label>
           </div>
@@ -1131,6 +1136,7 @@
       default_search: document.getElementById('default_search').checked,
       default_viewed: document.getElementById('default_viewed').checked,
       default_edit: document.getElementById('default_edit').checked,
+      default_live: document.getElementById('default_live').checked,
       default_shared_annotation: document.getElementById('default_shared').checked,
       web_styles: currentWebStyles,
       shortcuts: currentShortcuts,
@@ -1284,7 +1290,8 @@
               enableSearch:     checks[0].checked,
               enableViewed:     checks[1].checked,
               enableEdit:       checks[2].checked,
-              sharedAnnotation: checks[3].checked,
+              enableLive:       checks[3].checked,
+              sharedAnnotation: checks[4].checked,
             });
             // Update label style immediately
             checks.forEach(c => {
@@ -1316,6 +1323,7 @@
         enableSearch:     document.getElementById('default_search').checked,
         enableViewed:     document.getElementById('default_viewed').checked,
         enableEdit:       document.getElementById('default_edit').checked,
+        enableLive:       document.getElementById('default_live').checked,
         sharedAnnotation: document.getElementById('default_shared').checked,
       });
       refreshWorkspaces();
@@ -1877,3 +1885,4 @@
 </script>
 </body>
 </html>
+l>

@@ -17,6 +17,7 @@ import { KeyboardShortcutsManager } from './managers/keyboard-shortcuts.js';
 import { SearchManager } from './managers/search-manager.js';
 import { HighlightManager } from './managers/highlight-manager.js';
 import { EditorManager } from './managers/editor-manager.js';
+import { CollaborationManager } from './managers/collaboration-manager.js';
 import { TOCNavigator } from './navigators/toc-navigator.js';
 import { AnnotationNavigator } from './navigators/annotation-navigator.js';
 import { ModalManager, showConfirmDialog } from './components/modal.js';
@@ -35,6 +36,7 @@ export class MarkonApp {
     #shortcutsManager;
     #searchManager;
     #editorManager;
+    #collaboration;
     #tocNavigator;
     #annotationNavigator;
 
@@ -44,6 +46,7 @@ export class MarkonApp {
     #isSharedMode;
     #enableSearch;
     #enableEdit;
+    #enableLive;
 
     // Scroll control
     #scrollAnimationId = null;
@@ -108,6 +111,9 @@ export class MarkonApp {
 
         // 9. Update clear button text
         this.#updateClearButtonText();
+
+        // 10. Start collaboration
+        this.#collaboration.init();
 
         Logger.log('MarkonApp', 'Initialization complete');
     }
@@ -175,6 +181,9 @@ export class MarkonApp {
         // Navigators
         this.#tocNavigator = new TOCNavigator();
         this.#annotationNavigator = new AnnotationNavigator();
+
+        // Collaboration
+        this.#collaboration = new CollaborationManager(this);
 
         // Setup popover action callbacks
         this.#popoverManager.onAction((action, data) => {
@@ -1123,6 +1132,11 @@ export class MarkonApp {
         return meta ? meta.getAttribute('content') : window.location.pathname;
     }
 
+    #getFlagFromMeta(name) {
+        const meta = document.querySelector(`meta[name="${name}"]`);
+        return meta ? meta.getAttribute('content') === 'true' : false;
+    }
+
     /**
      * Clear当前页面的所有注解
      * @param {Event} event - TriggerEvent（用于定位Confirm对话框）
@@ -1254,15 +1268,6 @@ document.addEventListener('DOMContentLoaded', () => {
     });
 
     const enableEditMeta = document.querySelector('meta[name="enable-edit"]');
-
-    const app = new MarkonApp({
-        filePath: filePathMeta?.getAttribute('content'),
-        isSharedMode: isSharedMode,
-        enableSearch: enableSearchMeta?.getAttribute('content') === 'true',
-        enableEdit: enableEditMeta?.getAttribute('content') === 'true',
-    });
-
-    app.init();
 
     // 暴露到全局（用于Debug和向后兼容）
     window.markonApp = app;
