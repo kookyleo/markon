@@ -1,6 +1,8 @@
 # Markon
 
-基于 Rust 开发的轻量级 Markdown 渲染器，提供 GitHub 风格样式和类似 Medium 的标注功能。
+基于 Rust 开发的高性能 Markdown 阅览与审校工作台。
+
+它最初是为无 GUI 的 Server 场景而生 —— 旨在将远程机器上的文档目录转化为可检索、可标注、可深度阅读的专业工作台。侧重极致的阅读体验与审校效率，支持 GitHub 风格渲染、全文检索、章节打印及已读管理。现已推出全平台桌面版本。
 
 ![Markon Banner](banner.png)
 

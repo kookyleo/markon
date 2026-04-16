@@ -8,7 +8,7 @@ cask "markon" do
   url "https://github.com/kookyleo/markon/releases/download/v#{version}/Markon_#{version}_#{arch}.dmg",
       verified: "github.com/kookyleo/markon/"
   name "Markon"
-  desc "Lightweight Markdown renderer with GitHub styling"
+  desc "High-performance Markdown reader and review workbench"
   homepage "https://github.com/kookyleo/markon"
 
   livecheck do
