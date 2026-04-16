@@ -55,7 +55,7 @@ sudo apt install pkg-config libssl-dev  # Debian/Ubuntu
 markon --host 0.0.0.0 README.md
 ```
 
-然后从其他设备访问 `http://{IP}:6419`（将 `{IP}` 替换为服务器的实际 IP）。如果希望在终端显示二维码以便手机扫描，可以使用 `--entry`（或 `--qr`）指定**访问地址前缀**（包含协议、IP 和端口）：
+然后从其他设备访问 `http://{IP}:{PORT}`（默认为 6419 端口）。如果希望在终端显示二维码以便手机扫描，可以使用 `--entry`（或 `--qr`）指定**访问地址前缀**（包含协议、IP 和端口）：
 
 ```bash
 # 示例：假设你的电脑局域网 IP 是 192.168.1.100
