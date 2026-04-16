@@ -35,6 +35,16 @@ outputs = [
   { path = "crates/gui/icons/256x256.png", size = 256 },
   { path = "crates/gui/icons/512x512.png", size = 512 },
   { path = "crates/gui/icons/icon.icns",  sizes = [16, 32, 64, 128, 256, 512, 1024] },
+]
+
+# ── Favicon (Browser / Web) ─────────────────────────────────────────────────
+# Organic pill shape without the white square wrapper.
+[[variant]]
+name = "favicon"
+wrap = "none"
+fg = "#000000"
+marks_fg = "#ffffff"
+outputs = [
   # HTTP server favicon (rust-embed: crates/core/assets/icons/).
   { path = "crates/core/assets/icons/favicon.svg" },
   # Docs site (VitePress public/).
