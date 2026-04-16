@@ -92,6 +92,8 @@
     "ws.flag.viewed.tip": "ブロック単位で閲読の進捗を追跡",
     "ws.flag.edit":   "編集",
     "ws.flag.edit.tip": "ブラウザで Markdown ファイルを編集可能にする",
+    "ws.flag.live":   "Live",
+    "ws.flag.live.tip": "リアルタイムの視点同期を有効にする (スクロールと選択の同期)",
     "ws.flag.shared": "共有ノート",
     "ws.flag.shared.tip": "デバイス間で注釈と既読状態を同期 (SQLite が必要)",
     "ws.empty.title": "ワークスペースがありません",

@@ -92,6 +92,8 @@
     "ws.flag.viewed.tip": "Track reading progress at block level",
     "ws.flag.edit":   "Edit",
     "ws.flag.edit.tip": "Allow editing Markdown files in the browser",
+    "ws.flag.live":   "Live",
+    "ws.flag.live.tip": "Enable real-time viewport sync (scroll & selection)",
     "ws.flag.shared": "Shared notes",
     "ws.flag.shared.tip": "Sync annotations and viewed state across devices (requires SQLite)",
     "ws.empty.title": "No workspaces yet",
