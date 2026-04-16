@@ -938,6 +938,7 @@
               <label class="cli-pill"><input type="checkbox" id="cli-search"><span data-i18n="cli.search"></span></label>
               <label class="cli-pill"><input type="checkbox" id="cli-viewed"><span data-i18n="cli.viewed"></span></label>
               <label class="cli-pill"><input type="checkbox" id="cli-edit"><span data-i18n="cli.edit"></span></label>
+              <label class="cli-pill"><input type="checkbox" id="cli-live"><span data-i18n="cli.live"></span></label>
               <label class="cli-pill"><input type="checkbox" id="cli-shared"><span data-i18n="cli.shared"></span></label>
               <label class="cli-pill"><input type="checkbox" id="cli-open"><span data-i18n="cli.open"></span></label>
             </div>
@@ -1102,9 +1103,9 @@
     document.getElementById('port').value = s.port;
     document.getElementById('host').value = s.host;
     document.getElementById('theme').value = s.theme;
-    document.getElementById('language').value = s.language ?? 'auto';
-    document.getElementById('web_theme').value = s.web_theme ?? 'auto';
-    document.getElementById('web_language').value = s.web_language ?? 'auto';
+    document.getElementById('language').value = s.language || 'auto';
+    document.getElementById('web_theme').value = s.web_theme || 'auto';
+    document.getElementById('web_language').value = s.web_language || 'auto';
     updateDbPathDisplay(s.db_path ?? '');
     document.getElementById('tray_resident').checked = s.tray_resident ?? true;
     document.getElementById('default_search').checked = s.default_search ?? true;
@@ -1235,6 +1236,7 @@
         { key: 'search',     label: T('ws.flag.search'), tip: ws.enable_search && ws.search_ready ? T('ws.flag.search.ready') : T('ws.flag.search.tip'), checked: ws.enable_search },
         { key: 'viewed',     label: T('ws.flag.viewed'), tip: T('ws.flag.viewed.tip'), checked: ws.enable_viewed },
         { key: 'edit',       label: T('ws.flag.edit'),   tip: T('ws.flag.edit.tip'),   checked: ws.enable_edit },
+        { key: 'live',       label: T('ws.flag.live'),   tip: T('ws.flag.live.tip'),   checked: ws.enable_live },
         { key: 'annotation', label: T('ws.flag.shared'), tip: T('ws.flag.shared.tip'), checked: ws.shared_annotation },
       ];
 
@@ -1542,7 +1544,7 @@
   });
 
   // ── CLI command builder ──────────────────────────────────────────────
-  const cliIds = ['cli-path','cli-port','cli-host','cli-theme','cli-qr','cli-search','cli-viewed','cli-edit','cli-shared','cli-open'];
+  const cliIds = ['cli-path','cli-port','cli-host','cli-theme','cli-qr','cli-search','cli-viewed','cli-edit','cli-live','cli-shared','cli-open'];
   const cliOutput = document.getElementById('cli-output');
   const cliAliasOutput = document.getElementById('cli-alias-output');
 
@@ -1560,6 +1562,7 @@
     if (document.getElementById('cli-search').checked) parts.push('--enable-search');
     if (document.getElementById('cli-viewed').checked) parts.push('--enable-viewed');
     if (document.getElementById('cli-edit').checked)   parts.push('--enable-edit');
+    if (document.getElementById('cli-live').checked)   parts.push('--enable-live');
     if (document.getElementById('cli-shared').checked) parts.push('--shared-annotation');
     if (document.getElementById('cli-open').checked)   parts.push('-b');
     parts.push(path);

@@ -64,6 +64,7 @@
     "pref.def.search":      "Search",
     "pref.def.viewed":      "Viewed tracking",
     "pref.def.edit":        "Edit",
+    "pref.def.live":        "Live view sync",
     "pref.def.shared":      "Shared notes",
 
     // ── General — Database ───────────────────────────────────
@@ -121,6 +122,7 @@
     "cli.search":      "Search",
     "cli.viewed":      "Viewed tracking",
     "cli.edit":        "Edit",
+    "cli.live":        "Live view sync",
     "cli.shared":      "Shared notes",
     "cli.open":        "Auto-open browser",
 
@@ -242,6 +244,7 @@
     "web.kbd.cat.search":   "Search (when enabled)",
     "web.kbd.cat.edit":     "Edit (when enabled)",
     "web.kbd.cat.viewed":   "Viewed (when enabled)",
+    "web.kbd.cat.live":     "Live (when enabled)",
     "web.kbd.footer":       "Press ESC or ? to close",
     "web.kbd.undo":         "Undo last operation",
     "web.kbd.redo":         "Redo last undone operation",
@@ -257,5 +260,13 @@
     "web.kbd.scroll":       "Scroll 1/3 page down (ESC to stop)",
     "web.kbd.collapse":     "Toggle current section collapse/expand",
     "web.kbd.viewed":       "Toggle current section viewed state",
-    "web.kbd.edit":         "Edit current Markdown file"
+    "web.kbd.edit":         "Edit current Markdown file",
+    "web.kbd.live.active":  "Toggle Broadcast ⇄ Follow",
+    "web.kbd.live.off":     "Toggle Off ⇄ last active mode",
+    "web.live.mode":        "Mode",
+    "web.live.off":         "Off",
+    "web.live.broadcast":   "Broadcast",
+    "web.live.follow":      "Follow",
+    "web.live.color.prompt": "Pick your color",
+    "web.live.color.desc":   "Your broadcast color"
 }

@@ -1,6 +1,22 @@
 <!DOCTYPE html>
-<html lang="en" dir="auto">
+<html lang="en" dir="auto" data-theme="{{ theme }}">
 <head>
+    <script>
+    // Resolve Markon's theme to a concrete light/dark value before stylesheets
+    // apply. All theme CSS targets html[data-theme="light|dark"] so the choice
+    // is under app control (not tied to prefers-color-scheme).
+    (function(){
+        var root = document.documentElement;
+        var apply = function(t){ root.setAttribute('data-theme', t); };
+        if (root.getAttribute('data-theme') === 'auto') {
+            var mql = window.matchMedia('(prefers-color-scheme: dark)');
+            apply(mql.matches ? 'dark' : 'light');
+            mql.addEventListener && mql.addEventListener('change', function(e){
+                apply(e.matches ? 'dark' : 'light');
+            });
+        }
+    })();
+    </script>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta name="file-path" content="{{ file_path }}">
@@ -191,18 +207,24 @@
            TABLE OF CONTENTS
            ======================================== */
 
-        /* TOC Base Styles */
+        /* TOC Base Styles — border-radius = sphere radius (20px) so the
+           narrow-screen icon morphs into a panel whose corner arc matches the
+           icon's circle. */
         .toc {
             padding: 15px;
-            border-radius: 6px;
+            border-radius: 20px;
             font-size: 0.85rem;
             opacity: var(--markon-panel-opacity, 0.9);
+            -webkit-user-select: none;
+            user-select: none;
         }
 
         .toc-title {
             font-weight: 600;
             margin-bottom: 10px;
             font-size: 0.9rem;
+            -webkit-user-select: none;
+            user-select: none;
         }
 
         .toc-list {
@@ -348,15 +370,18 @@
             background-color: #2d333b;
             box-shadow: 0 2px 10px rgba(0, 0, 0, 0.5);
         }
-        #toc-icon span {
+        #toc-icon .toc-bar {
             background-color: #adbac7;
         }
-        /* Floating TOC menu on narrow screens */
+        #toc-icon .toc-close {
+            color: #adbac7;
+        }
+        /* Floating TOC menu on narrow screens — same surface + shadow as icon */
         @media (max-width: 1400px) {
             .toc {
-                background-color: #22272e;
-                border: 1px solid #444c56;
-                box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
+                background-color: #2d333b;
+                border: none;
+                box-shadow: 0 2px 10px rgba(0, 0, 0, 0.5);
             }
         }
         /* TOC background on wide screens (matches body, ensures overlap is clean) */
@@ -365,10 +390,10 @@
                 background-color: #0d1117;
             }
             #toc-container.toc-nav-active .toc {
-                background-color: #22272e;
-                border: 1px solid #444c56;
-                box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
-                border-radius: 6px;
+                background-color: #2d333b;
+                border: none;
+                box-shadow: 0 2px 10px rgba(0, 0, 0, 0.5);
+                border-radius: 20px;
             }
         }
         {% elif theme == "light" %}
@@ -376,15 +401,18 @@
             background-color: #f6f8fa;
             box-shadow: 0 2px 10px rgba(0, 0, 0, 0.2);
         }
-        #toc-icon span {
+        #toc-icon .toc-bar {
             background-color: #1f2328;
         }
-        /* Floating TOC menu on narrow screens - keep light background */
+        #toc-icon .toc-close {
+            color: #1f2328;
+        }
+        /* Floating TOC menu on narrow screens — same surface + shadow as icon */
         @media (max-width: 1400px) {
             .toc {
-                background-color: #ffffff;
-                border: 1px solid #d0d7de;
-                box-shadow: 0 8px 24px rgba(140, 149, 159, 0.2);
+                background-color: #f6f8fa;
+                border: none;
+                box-shadow: 0 2px 10px rgba(0, 0, 0, 0.2);
             }
         }
         /* TOC background on wide screens (matches body, ensures overlap is clean) */
@@ -393,10 +421,10 @@
                 background-color: #ffffff;
             }
             #toc-container.toc-nav-active .toc {
-                background-color: #ffffff;
-                border: 1px solid #d0d7de;
-                box-shadow: 0 8px 24px rgba(140, 149, 159, 0.2);
-                border-radius: 6px;
+                background-color: #f6f8fa;
+                border: none;
+                box-shadow: 0 2px 10px rgba(0, 0, 0, 0.2);
+                border-radius: 20px;
             }
         }
         {% else %}
@@ -406,32 +434,30 @@
                 background-color: #2d333b;
                 box-shadow: 0 2px 10px rgba(0, 0, 0, 0.5);
             }
-            #toc-icon span {
-                background-color: #adbac7;
-            }
+            #toc-icon .toc-bar    { background-color: #adbac7; }
+            #toc-icon .toc-close  { color: #adbac7; }
         }
         @media (prefers-color-scheme: light) {
             #toc-icon {
                 background-color: #f6f8fa;
                 box-shadow: 0 2px 10px rgba(0, 0, 0, 0.2);
             }
-            #toc-icon span {
-                background-color: #1f2328;
-            }
+            #toc-icon .toc-bar    { background-color: #1f2328; }
+            #toc-icon .toc-close  { color: #1f2328; }
         }
-        /* Floating TOC menu on narrow screens */
+        /* Floating TOC menu on narrow screens — match icon surface + shadow */
         @media (prefers-color-scheme: dark) and (max-width: 1400px) {
             .toc {
-                background-color: #22272e;
-                border: 1px solid #444c56;
-                box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
+                background-color: #2d333b;
+                border: none;
+                box-shadow: 0 2px 10px rgba(0, 0, 0, 0.5);
             }
         }
         @media (prefers-color-scheme: light) and (max-width: 1400px) {
             .toc {
-                background-color: #ffffff;
-                border: 1px solid #d0d7de;
-                box-shadow: 0 8px 24px rgba(140, 149, 159, 0.2);
+                background-color: #f6f8fa;
+                border: none;
+                box-shadow: 0 2px 10px rgba(0, 0, 0, 0.2);
             }
         }
         /* TOC background on wide screens (matches body, ensures overlap is clean) */
@@ -440,10 +466,10 @@
                 background-color: #0d1117;
             }
             #toc-container.toc-nav-active .toc {
-                background-color: #22272e;
-                border: 1px solid #444c56;
-                box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
-                border-radius: 6px;
+                background-color: #2d333b;
+                border: none;
+                box-shadow: 0 2px 10px rgba(0, 0, 0, 0.5);
+                border-radius: 20px;
             }
         }
         @media (prefers-color-scheme: light) and (min-width: 1401px) {
@@ -451,10 +477,10 @@
                 background-color: #ffffff;
             }
             #toc-container.toc-nav-active .toc {
-                background-color: #ffffff;
-                border: 1px solid #d0d7de;
-                box-shadow: 0 8px 24px rgba(140, 149, 159, 0.2);
-                border-radius: 6px;
+                background-color: #f6f8fa;
+                border: none;
+                box-shadow: 0 2px 10px rgba(0, 0, 0, 0.2);
+                border-radius: 20px;
             }
         }
         {% endif %}
@@ -1271,7 +1297,6 @@
         var dict = all[lang] || all.en;
         return { lang: lang, t: function(k) { return dict[k] || all.en[k] || k; } };
     })();
-    window.__MARKON_HOSTNAME__ = "{{ hostname }}";
     window.__MARKON_SHORTCUTS__ = {{ shortcuts_json | safe }};
     </script>
 {% endif %}
@@ -1279,10 +1304,13 @@
 <body>
     {% if toc and toc | length > 0 %}
     <div id="toc-container">
-        <div id="toc-icon">
-            <span></span>
-            <span></span>
-            <span></span>
+        <div id="toc-icon" title="Table of contents">
+            <span class="toc-bar"></span>
+            <span class="toc-bar"></span>
+            <span class="toc-bar"></span>
+            <svg class="toc-close" viewBox="0 0 24 24" width="20" height="20" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+                <path d="M7 7 L17 17 M17 7 L7 17" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"/>
+            </svg>
         </div>
         <nav class="toc">
             <div class="toc-title" id="toc-title">Table of Contents</div>

@@ -5,6 +5,7 @@
 
 import { CONFIG } from './core/config.js';
 import { Logger } from './core/utils.js';
+import { Meta } from './services/dom.js';
 import { Position } from './services/position.js';
 import { Text } from './services/text.js';
 import { StorageManager } from './managers/storage-manager.js';
@@ -57,6 +58,9 @@ export class MarkonApp {
         this.#isSharedMode = config.isSharedMode || false;
         this.#enableSearch = config.enableSearch || false;
         this.#enableEdit = config.enableEdit || false;
+        this.#enableLive = config.enableLive || false;
+        // Public mirrors so managers can read flags without reaching into privates.
+        this.enableLive = this.#enableLive;
         this.#markdownBody = document.querySelector(CONFIG.SELECTORS.MARKDOWN_BODY);
 
         if (!this.#markdownBody) {
@@ -123,41 +127,38 @@ export class MarkonApp {
      * @private
      */
     async #initStorage() {
-        if (this.#isSharedMode) {
-            // Shared mode: initialize WebSocket
+        // WebSocket is needed by either shared-annotation persistence or Live
+        // broadcast. Establish one connection in either case.
+        if (this.#isSharedMode || this.#enableLive) {
             this.#wsManager = new WebSocketManager(this.#filePath);
+            // Public alias so managers (e.g. CollaborationManager) can reach it.
+            this.ws = this.#wsManager;
 
             try {
                 await this.#wsManager.connect();
                 Logger.log('MarkonApp', 'WebSocket connected');
 
-                // Expose native WebSocket object for viewed.js
                 window.ws = this.#wsManager.getWebSocket();
-                Logger.log('MarkonApp', 'Exposed WebSocket to window.ws for viewed.js');
 
-                // If viewedManager already exists, update its configuration
                 if (window.viewedManager) {
-                    // Update isSharedMode (may be false during initialization)
-                    if (!window.viewedManager.isSharedMode) {
+                    if (this.#isSharedMode && !window.viewedManager.isSharedMode) {
                         window.viewedManager.isSharedMode = true;
-                        Logger.log('MarkonApp', 'Updated viewedManager.isSharedMode to true');
                     }
-                    // Update WebSocket connection
                     if (!window.viewedManager.ws) {
                         window.viewedManager.ws = window.ws;
                         window.viewedManager.setupWebSocketListeners();
-                        Logger.log('MarkonApp', 'Updated viewedManager with WebSocket connection');
                     }
                 }
             } catch (error) {
                 Logger.error('MarkonApp', 'WebSocket connection failed:', error);
             }
 
-            // Setup WebSocket message handlers
-            this.#setupWebSocketHandlers();
+            // Shared-annotation message handlers only when that feature is on.
+            if (this.#isSharedMode) {
+                this.#setupWebSocketHandlers();
+            }
         }
 
-        // Create storage manager (auto-select strategy)
         this.#storage = new StorageManager(this.#filePath, this.#isSharedMode, this.#wsManager);
     }
 
@@ -268,8 +269,7 @@ export class MarkonApp {
         // 鼠标点击章节聚焦
         this.#setupHeadingClickFocus();
 
-        // 双击HeadingToggle折叠/展开（viewed Mode启用时）
-        if (document.querySelector('meta[name="enable-viewed"]')) {
+        if (Meta.flag(CONFIG.META_TAGS.ENABLE_VIEWED)) {
             this.#setupHeadingDoubleClick();
         }
 
@@ -385,8 +385,7 @@ export class MarkonApp {
             this.#smoothScrollBy(window.innerHeight / 3, 500);
         });
 
-        // Viewed 快捷键（如果启用）
-        if (document.querySelector('meta[name="enable-viewed"]')) {
+        if (Meta.flag(CONFIG.META_TAGS.ENABLE_VIEWED)) {
             this.#shortcutsManager.register('TOGGLE_VIEWED', () => {
                 this.#toggleCurrentSectionViewed();
             });
@@ -400,6 +399,18 @@ export class MarkonApp {
         if (this.#enableEdit) {
             this.#shortcutsManager.register('EDIT', () => {
                 this.#openEditor();
+            });
+        }
+
+        // Live mode (if enabled):
+        //   L       — toggle Broadcast ⇄ Follow (bypasses Off even from Off).
+        //   Shift+L — toggle Off ⇄ last active mode.
+        if (this.#enableLive && this.#collaboration) {
+            this.#shortcutsManager.register('TOGGLE_LIVE_ACTIVE', () => {
+                this.#collaboration.toggleActiveMode();
+            });
+            this.#shortcutsManager.register('TOGGLE_LIVE_OFF', () => {
+                this.#collaboration.toggleOff();
             });
         }
 
@@ -900,6 +911,13 @@ export class MarkonApp {
             return;
         }
 
+        // Close the expanded Live panel if it's open.
+        const liveContainer = document.getElementById('markon-live-container');
+        if (liveContainer && liveContainer.classList.contains('expanded')) {
+            this.#collaboration?.collapse?.();
+            return;
+        }
+
         // Close TOC
         const tocContainer = document.querySelector(CONFIG.SELECTORS.TOC_CONTAINER);
         if (tocContainer && tocContainer.classList.contains('active')) {
@@ -1128,13 +1146,7 @@ export class MarkonApp {
      * @private
      */
     #getFilePathFromMeta() {
-        const meta = document.querySelector('meta[name="file-path"]');
-        return meta ? meta.getAttribute('content') : window.location.pathname;
-    }
-
-    #getFlagFromMeta(name) {
-        const meta = document.querySelector(`meta[name="${name}"]`);
-        return meta ? meta.getAttribute('content') === 'true' : false;
+        return Meta.get(CONFIG.META_TAGS.FILE_PATH) ?? window.location.pathname;
     }
 
     /**
@@ -1153,8 +1165,7 @@ export class MarkonApp {
             this.#noteManager.clear();
             Logger.log('MarkonApp', 'Notes cleared');
 
-            // 同时Clear已读State（如果启用）
-            if (document.querySelector('meta[name="enable-viewed"]')) {
+            if (Meta.flag(CONFIG.META_TAGS.ENABLE_VIEWED)) {
                 await this.#storage.clearViewedState();
                 Logger.log('MarkonApp', 'Viewed state cleared from storage');
 
@@ -1235,14 +1246,8 @@ window.clearPageAnnotations = function(event, ws, isSharedAnnotationMode) {
     }
 };
 
-// Apply入口
 document.addEventListener('DOMContentLoaded', () => {
-    const filePathMeta = document.querySelector('meta[name="file-path"]');
-    const sharedAnnotationMeta = document.querySelector('meta[name="shared-annotation"]');
-    const enableSearchMeta = document.querySelector('meta[name="enable-search"]');
-    const isSharedMode = sharedAnnotationMeta?.getAttribute('content') === 'true';
-
-    // Settings全局变量供 viewed.js 使用
+    const isSharedMode = Meta.flag(CONFIG.META_TAGS.SHARED_ANNOTATION);
     window.isSharedAnnotationMode = isSharedMode;
 
     // 拦截 TOC 锚点Link点击，使用平滑滚动
@@ -1267,9 +1272,16 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     });
 
-    const enableEditMeta = document.querySelector('meta[name="enable-edit"]');
+    const app = new MarkonApp({
+        filePath: Meta.get(CONFIG.META_TAGS.FILE_PATH),
+        isSharedMode,
+        enableSearch: Meta.flag(CONFIG.META_TAGS.ENABLE_SEARCH),
+        enableEdit: Meta.flag(CONFIG.META_TAGS.ENABLE_EDIT),
+        enableLive: Meta.flag(CONFIG.META_TAGS.ENABLE_LIVE),
+    });
 
-    // 暴露到全局（用于Debug和向后兼容）
+    app.init();
+
     window.markonApp = app;
     window.undoManager = app.getManagers().undoManager;
     window.tocNavigator = app.getManagers().tocNavigator;
@@ -1279,14 +1291,27 @@ document.addEventListener('DOMContentLoaded', () => {
     Logger.log('MarkonApp', 'Application started successfully');
 
     // Connect to per-workspace WebSocket — reload page when config flags change.
-    const wsId = document.querySelector('meta[name="workspace-id"]')?.content;
+    const wsId = Meta.get(CONFIG.META_TAGS.WORKSPACE_ID);
     if (wsId) {
         const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
+        let reconnectTimer = null;
+        let attempt = 0;
+        let stopped = false;
         const connectConfigWs = () => {
+            if (stopped) return;
             const sock = new WebSocket(`${proto}//${location.host}/_/ws/${wsId}`);
+            sock.onopen = () => { attempt = 0; };
             sock.onmessage = () => window.location.reload();
-            sock.onclose = () => setTimeout(connectConfigWs, 3000); // reconnect on drop
+            sock.onclose = () => {
+                if (stopped) return;
+                const delay = Math.min(30000, 1000 * 2 ** attempt++);
+                reconnectTimer = setTimeout(connectConfigWs, delay);
+            };
         };
         connectConfigWs();
+        window.addEventListener('beforeunload', () => {
+            stopped = true;
+            if (reconnectTimer) clearTimeout(reconnectTimer);
+        });
     }
 });

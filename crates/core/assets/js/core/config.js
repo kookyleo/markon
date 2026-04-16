@@ -75,12 +75,23 @@ export const CONFIG = {
 
         // Edit functionality (requires enabling)
         EDIT: { key: 'e', ctrl: false, shift: false, desc: _t('web.kbd.edit') },
+
+        // Live mode (requires enable_live):
+        //   L        — toggle Broadcast ⇄ Follow (even if currently Off, this
+        //              enters the cycle directly, never lands on Off).
+        //   Shift+L  — toggle Off ⇄ last active mode.
+        TOGGLE_LIVE_ACTIVE: { key: 'l', ctrl: false, shift: false, desc: _t('web.kbd.live.active') },
+        TOGGLE_LIVE_OFF:    { key: 'l', ctrl: false, shift: true,  desc: _t('web.kbd.live.off') },
     },
 
     // Storage keys
     STORAGE_KEYS: {
         ANNOTATIONS: (filePath) => `markon-annotations-${filePath}`,
         VIEWED: (filePath) => `markon-viewed-${filePath}`,
+        LIVE_POS: 'markon-live-pos',
+        LIVE_COLOR: 'markon-user-color',
+        LIVE_MODE: 'markon-live-mode',
+        CLIENT_ID: 'markon-client-id',
     },
 
     // DOM Selectors
@@ -123,6 +134,7 @@ export const CONFIG = {
         FILE_PATH: 'file-path',
         WORKSPACE_ID: 'workspace-id',
         SHARED_ANNOTATION: 'shared-annotation',
+        ENABLE_SEARCH: 'enable-search',
         ENABLE_VIEWED: 'enable-viewed',
         ENABLE_EDIT: 'enable-edit',
         ENABLE_LIVE: 'enable-live',
@@ -139,17 +151,20 @@ export const CONFIG = {
         LIVE_ACTION: 'live_action',
     },
 
-    // Collaboration Configuration
+    // Collaboration Configuration — 8 bright, saturated colors. Greys and
+    // near-black tones are deliberately excluded so they never collide with
+    // the disabled/OFF state's muted ring. Index = user-facing label 1..8.
     COLLABORATION: {
         COLORS: [
-            '#3451B2', // Markon Blue
-            '#E64560', // Rose
-            '#27AE60', // Emerald
-            '#F39C12', // Orange
-            '#8E44AD', // Purple
-            '#2C3E50', // Dark
+            '#3451B2', // 1 Blue
+            '#E64560', // 2 Rose
+            '#27AE60', // 3 Green
+            '#F39C12', // 4 Orange
+            '#8E44AD', // 5 Purple
+            '#0EA5E9', // 6 Sky
+            '#EC4899', // 7 Pink
+            '#14B8A6', // 8 Teal
         ],
-        RIPPLE_DURATION: 1500, // Visual guide duration
         SYNC_DEBOUNCE: 100,    // Broadcast debounce
     },
 

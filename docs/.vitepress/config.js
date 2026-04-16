@@ -87,11 +87,13 @@ export default defineConfig({
               text: '核心功能',
               items: [
                 { text: '全文搜索', link: '/features/search' },
-                { text: '已读追踪', link: '/features/viewed' },
+                { text: '已读追踪 (Viewed)', link: '/features/viewed' },
                 { text: '在线编辑', link: '/features/edit' },
-                { text: '标注与高亮', link: '/features/annotations' },
+                { text: '深度标注', link: '/features/annotations' },
+                { text: '实时协作 (Live)', link: '/features/live' },
                 { text: '章节打印', link: '/features/print' },
               ],
+
             },
           ],
           '/advanced/': [

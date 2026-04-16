@@ -64,6 +64,7 @@
     "pref.def.search":      "検索",
     "pref.def.viewed":      "既読トラッキング",
     "pref.def.edit":        "編集",
+    "pref.def.live":        "ビュー同期 (Live)",
     "pref.def.shared":      "共有ノート",
 
     // ── General — Database ───────────────────────────────────
@@ -121,6 +122,7 @@
     "cli.search":      "検索",
     "cli.viewed":      "既読トラッキング",
     "cli.edit":        "編集",
+    "cli.live":        "ビュー同期 (Live)",
     "cli.shared":      "共有ノート",
     "cli.open":        "ブラウザを自動で開く",
 
@@ -242,6 +244,7 @@
     "web.kbd.cat.search":   "検索 (有効時)",
     "web.kbd.cat.edit":     "編集 (有効時)",
     "web.kbd.cat.viewed":   "既読トラッキング (有効時)",
+    "web.kbd.cat.live":     "Live (有効時)",
     "web.kbd.footer":       "ESC または ? で閉じる",
     "web.kbd.undo":         "操作を元に戻す",
     "web.kbd.redo":         "やり直し",
@@ -257,5 +260,13 @@
     "web.kbd.scroll":       "1/3 ページ分下へスクロール (ESC で停止)",
     "web.kbd.collapse":     "現在のセクションの折りたたみ/展開を切り替え",
     "web.kbd.viewed":       "現在のセクションの既読状態を切り替え",
-    "web.kbd.edit":         "現在の Markdown ファイルを編集"
+    "web.kbd.edit":         "現在の Markdown ファイルを編集",
+    "web.kbd.live.active":  "送信 ⇄ 受信を切替",
+    "web.kbd.live.off":     "オフ ⇄ 直前のアクティブモードを切替",
+    "web.live.mode":        "モード",
+    "web.live.off":         "オフ",
+    "web.live.broadcast":   "送信",
+    "web.live.follow":      "受信",
+    "web.live.color.prompt": "カラーを選択",
+    "web.live.color.desc":   "送信カラー"
 }

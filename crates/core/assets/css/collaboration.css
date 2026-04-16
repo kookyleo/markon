@@ -1,165 +1,388 @@
-/* markon-live styles */
+/* markon-live — the sphere morphs into the settings panel in-place on click. */
 
-.markon-live-sphere {
-    width: 50px;
-    height: 50px;
+/* Collapsed sphere matches the narrow-screen TOC icon: neutral surface color,
+   foreground used for the letter. User's broadcast color lives in the panel
+   picker and on remote peers' ripples, not on the local sphere. */
+.markon-live-container {
+    position: fixed;
+    z-index: 10000;
+    width: 40px;
+    height: 40px;
     border-radius: 50%;
-    color: white;
+    cursor: default;
+    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.2);
+    overflow: hidden;
+    background-color: #f6f8fa;
+    color: #1f2328;
+    user-select: none;
     display: flex;
     align-items: center;
     justify-content: center;
-    cursor: move;
-    box-shadow: 0 4px 12px rgba(0,0,0,0.2);
-    transition: transform 0.2s, box-shadow 0.2s, background-color 0.3s;
-    user-select: none;
+}
+
+html[data-theme="dark"] .markon-live-container {
+    background-color: #2d333b;
+    color: #adbac7;
+    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.5);
+}
+
+/* Broadcasting (speaker) — a 2px ring in the user's color. Shown on both
+   the collapsed sphere and the expanded panel so the indicator is
+   persistent regardless of state. `box-shadow` layers an inset-looking
+   outline that follows border-radius for free, and a second layer keeps
+   the original drop shadow. */
+.markon-live-container.broadcasting {
+    box-shadow: 0 0 0 2px var(--markon-live-user, transparent),
+                0 2px 10px rgba(0, 0, 0, 0.2);
+}
+
+html[data-theme="dark"] .markon-live-container.broadcasting {
+    box-shadow: 0 0 0 2px var(--markon-live-user, transparent),
+                0 2px 10px rgba(0, 0, 0, 0.5);
+}
+
+/* Expanded (panel) state — sphere becomes the panel rectangle in-place.
+   Inherits the sphere's surface and text color so clicking feels like a
+   pure geometric transform, not a skin swap. Border-radius = sphere radius
+   (20px) so the anchor corner visually continues the sphere's curvature. */
+.markon-live-container.expanded {
+    width: 260px;
+    height: auto;
+    max-width: calc(100vw - 16px);
+    max-height: calc(100vh - 16px);
+    border-radius: 20px;
+    cursor: default;
+    display: block;
+}
+
+/* Sphere face — live icon when collapsed, close (X) icon when expanded.
+   Clicking the face always toggles the panel, so a second click at the same
+   spot is the exact reverse of the first. */
+.markon-live-face {
     position: relative;
+    width: 100%;
+    height: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
 }
 
-.markon-live-sphere:hover {
-    transform: scale(1.1);
-}
-
-.markon-live-sphere .initial {
-    font-size: 20px;
-    font-weight: bold;
+.markon-live-face .icon-live,
+.markon-live-face .icon-close {
     pointer-events: none;
 }
 
-.markon-live-sphere.broadcasting::after {
+.markon-live-face .icon-close {
+    display: none;
+}
+
+.markon-live-container.expanded .markon-live-face .icon-live {
+    display: none;
+}
+
+.markon-live-container.expanded .markon-live-face .icon-close {
+    display: block;
+}
+
+/* The three face icons (live, off, close) are stacked at the same center so
+   OFF can overlay its prohibited sign on top of the live icon, and the X
+   (expanded state) replaces everything. */
+.markon-live-face .icon-live,
+.markon-live-face .icon-off,
+.markon-live-face .icon-close {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    pointer-events: none;
+}
+
+.markon-live-face .icon-off {
+    display: none;
+}
+/* OFF mode: keep the live icon visible, overlay the prohibited sign on top. */
+.markon-live-container.live-off .markon-live-face .icon-off {
+    display: block;
+}
+/* Expanded: X replaces both — X is later in DOM so it overlays naturally. */
+.markon-live-container.expanded .markon-live-face .icon-live,
+.markon-live-container.expanded .markon-live-face .icon-off {
+    display: none;
+}
+
+/* OFF mode: container's box-shadow is the ring of the prohibited sign,
+   the SVG draws only the slash. Ring and slash share the same disabled
+   color and the same stroke width (2.5px — slightly heavier than the
+   Broadcast ring so "disabled" reads as a stronger visual state). */
+.markon-live-container.live-off {
+    --markon-disabled: rgba(107, 114, 128, 0.75);
+    box-shadow: 0 0 0 2.5px var(--markon-disabled),
+                0 2px 10px rgba(0, 0, 0, 0.2);
+}
+html[data-theme="dark"] .markon-live-container.live-off {
+    --markon-disabled: rgba(180, 188, 200, 0.55);
+    box-shadow: 0 0 0 2.5px var(--markon-disabled),
+                0 2px 10px rgba(0, 0, 0, 0.5);
+}
+.markon-live-container.live-off .icon-off {
+    color: var(--markon-disabled);
+}
+
+/* When expanded, face becomes a 40×40 button pinned to the panel's
+   top-left corner — the exact position the sphere occupied before expand. */
+.markon-live-container.expanded .markon-live-face {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 40px;
+    height: 40px;
+    z-index: 2;
+    border-radius: 20px 0 0 0;
+}
+
+/* Hover spin on the X close button — playful affordance confirming the
+   button is interactive. Rotation is on the icon only so the 40×40 hit
+   area and hover detection stay unchanged. */
+.markon-live-container.expanded .markon-live-face .icon-close {
+    transition: transform 0.35s ease;
+}
+.markon-live-container.expanded .markon-live-face:hover .icon-close {
+    transform: translate(-50%, -50%) rotate(180deg);
+}
+
+.markon-live-container.broadcasting .markon-live-face::after {
     content: '';
     position: absolute;
-    top: -5px;
-    left: -5px;
-    right: -5px;
-    bottom: -5px;
+    inset: -5px;
     border-radius: 50%;
     border: 2px solid currentColor;
     animation: markon-live-pulse 2s infinite;
 }
 
+/* Broadcasting pulse makes no sense once the face is a small corner button. */
+.markon-live-container.expanded.broadcasting .markon-live-face::after {
+    display: none;
+}
+
 @keyframes markon-live-pulse {
-    0% { transform: scale(1); opacity: 1; }
+    0%   { transform: scale(1);   opacity: 1; }
     100% { transform: scale(1.4); opacity: 0; }
 }
 
-.markon-live-sphere .leader-info {
+/* Leader indicator — a colored dot above the sphere when following. Identity
+   is the speaker's color, nothing else (no names). */
+.markon-live-face .leader-info {
     position: absolute;
-    bottom: 60px;
-    right: 0;
-    background: rgba(0,0,0,0.8);
-    color: white;
-    padding: 4px 12px;
-    border-radius: 16px;
-    font-size: 12px;
-    white-space: nowrap;
+    bottom: 48px;
+    right: 6px;
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    background: var(--leader-color, currentColor);
+    box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.9);
     opacity: 0;
-    transform: translateY(10px);
-    transition: all 0.3s;
+    transform: translateY(4px);
+    transition: opacity 0.2s, transform 0.2s;
     pointer-events: none;
 }
 
-.markon-live-sphere .leader-info.show {
+html[data-theme="dark"] .markon-live-face .leader-info {
+    box-shadow: 0 0 0 2px rgba(0, 0, 0, 0.6);
+}
+
+.markon-live-face .leader-info.show {
     opacity: 1;
     transform: translateY(0);
 }
 
-.markon-live-panel {
-    position: absolute;
-    bottom: 65px;
-    right: 0;
-    width: 220px;
-    background: var(--surface, #ffffff);
-    border: 1px solid var(--border, #d1d1d6);
-    border-radius: 12px;
-    box-shadow: 0 8px 24px rgba(0,0,0,0.15);
-    padding: 12px;
+/* Body — panel content. display-swapped with the face like the TOC menu.
+   Gap is the single source of vertical rhythm between rows; individual
+   rows don't carry their own padding so the spacing stays uniform. */
+.markon-live-body {
     display: none;
+    padding: 0 16px 14px;
+    box-sizing: border-box;
     flex-direction: column;
-    gap: 8px;
+    gap: 14px;
 }
 
-.markon-live-panel.show {
+.markon-live-container.expanded .markon-live-body {
     display: flex;
 }
 
-.markon-live-panel .panel-header {
+/* Header occupies the same 40px top band as the X face, so the title sits
+   on the same visual row as the close button instead of a line below it. */
+.markon-live-body .panel-header {
     font-weight: bold;
     font-size: 14px;
-    margin-bottom: 4px;
+    height: 30px;
+    line-height: 30px;
+    text-align: center;
+    margin: 0;
 }
 
-.markon-live-panel .panel-row {
+.markon-live-body .panel-row {
     display: flex;
     align-items: center;
     justify-content: space-between;
     font-size: 13px;
-    padding: 4px 0;
 }
 
-.markon-live-panel .panel-row.clickable {
-    cursor: pointer;
-}
-
-.markon-live-panel .color-picker {
+/* Mode row: single centered pill. The pill itself is the mode selector; no
+   separate label — three self-describing buttons plus the panel title
+   "Live" above is enough context. Centered so Broadcast's midpoint (middle
+   button of an Off/Follow-symmetric pill) coincides with the panel center. */
+.markon-live-body .panel-row-mode {
     display: flex;
-    gap: 6px;
+    justify-content: center;
+    align-items: center;
 }
 
-.markon-live-panel .color-dot {
-    width: 16px;
-    height: 16px;
+/* Color picker is a sub-option of the Mode row, only meaningful when the
+   current mode is Broadcast. The ↳ glyph + small centered label express the
+   dependency; the whole row dims and becomes non-interactive otherwise. */
+.markon-live-body .panel-row-color {
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+    gap: 6px;
+    opacity: 0.4;
+    pointer-events: none;
+    transition: opacity 0.15s;
+}
+
+.markon-live-body .panel-row-color[aria-disabled="false"] {
+    opacity: 1;
+    pointer-events: auto;
+}
+
+.markon-live-body .panel-row-label {
+    text-align: center;
+    font-size: 10px;
+    opacity: 0.55;
+    line-height: 1.2;
+    letter-spacing: 0.02em;
+    padding: 5px 0;
+}
+
+/* Picker centers on the panel center ⇒ same center as the Broadcast button
+   above. Fixed gap (instead of space-between) so the active dot can steal
+   a couple of pixels from its neighbors to pay for its outline ring. */
+.markon-live-body .color-picker {
+    display: flex;
+    justify-content: center;
+    gap: 6px;
+    flex-wrap: nowrap;
+}
+
+.markon-live-body .color-dot {
+    width: 21px;
+    height: 21px;
     border-radius: 50%;
     cursor: pointer;
-    border: 2px solid transparent;
+    box-sizing: border-box;
+    flex: 0 0 auto;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: #fff;
+    font-size: 10px;
+    font-weight: 600;
+    line-height: 1;
+    user-select: none;
+    /* Slight shadow for legibility on lighter backgrounds. */
+    text-shadow: 0 1px 1px rgba(0, 0, 0, 0.3);
 }
 
-.markon-live-panel .color-dot.active {
-    border-color: #333;
+/* Active indicator: thin ring hugging the dot in the dot's own color
+   (piped through the --dot-color custom property that's set inline per
+   swatch). Width stays the same as before; only the color changes so the
+   active state reads as "this swatch, underlined in itself". */
+.markon-live-body .color-dot.active {
+    outline: 1.5px solid var(--dot-color, rgba(0, 0, 0, 0.7));
+    outline-offset: 1px;
+    /* Reserve extra horizontal space so the ring doesn't steal from the
+       neighbor dots' visual gap; only the active dot pays this cost so the
+       row still feels evenly distributed around it. */
+    margin: 0 3px;
 }
 
-.markon-live-panel .switch {
-    width: 32px;
-    height: 18px;
-    background: #ccc;
-    border-radius: 9px;
-    position: relative;
-    transition: 0.3s;
+/* Segmented mode picker: Off | Broadcast | Follow. Fixed group width +
+   flex share makes Off and Follow render at identical widths regardless of
+   font rendering, which is what guarantees Broadcast's center equals the
+   group's center — and thus the panel's center. */
+.markon-live-body .mode-group {
+    display: flex;
+    width: 220px;
+    border-radius: 999px;
+    overflow: hidden;
+    background: rgba(0, 0, 0, 0.06);
 }
 
-.markon-live-panel .switch::after {
-    content: '';
-    width: 14px;
-    height: 14px;
-    background: white;
-    border-radius: 50%;
-    position: absolute;
-    top: 2px;
-    left: 2px;
-    transition: 0.3s;
+html[data-theme="dark"] .markon-live-body .mode-group {
+    background: rgba(255, 255, 255, 0.08);
 }
 
-.markon-live-panel .switch.on {
+.markon-live-body .mode-btn {
+    appearance: none;
+    border: none;
+    background: transparent;
+    color: inherit;
+    padding: 7px 14px;
+    font: inherit;
+    font-size: 12px;
+    font-weight: 500;
+    line-height: 1;
+    cursor: pointer;
+    border-radius: 999px;
+    transition: background-color 0.12s, color 0.12s;
+    text-align: center;
+    white-space: nowrap;
+}
+
+/* Broadcast keeps its natural content width; Off and Follow split whatever
+   remains in the group equally. Symmetry is structural, not dependent on a
+   min-width guess against the current font. */
+.markon-live-body .mode-btn[data-mode="broadcast"] {
+    flex: 0 0 auto;
+}
+.markon-live-body .mode-btn[data-mode="off"],
+.markon-live-body .mode-btn[data-mode="follow"] {
+    flex: 1 1 0;
+    min-width: 0;
+}
+
+.markon-live-body .mode-btn:hover {
+    background: rgba(0, 0, 0, 0.05);
+}
+
+html[data-theme="dark"] .markon-live-body .mode-btn:hover {
+    background: rgba(255, 255, 255, 0.06);
+}
+
+.markon-live-body .mode-btn.active {
     background: #3451B2;
+    color: #fff;
 }
 
-.markon-live-panel .switch.on::after {
-    left: 16px;
-}
-
-/* Ripple effect */
-.markon-live-ripple {
+/* Breathing pulse on the focused heading-section. Starts as a ring in the
+   speaker's color (injected via --live-pulse-color) and fades out.
+   Implemented via ::after so the pulse's box-shadow paints on top of the
+   parent's border (a plain box-shadow on the element itself would render
+   behind the border and look dimmed). */
+.markon-live-focus-pulse::after {
+    content: '';
     position: absolute;
-    width: 100px;
-    height: 100px;
-    border: 4px solid;
-    border-radius: 50%;
-    transform: translate(-50%, -50%) scale(0);
+    inset: 0;
+    border-radius: inherit;
     pointer-events: none;
-    z-index: 10000;
-    animation: markon-live-ripple-anim 1.5s cubic-bezier(0, 0.2, 0.8, 1) forwards;
+    z-index: 2;
+    animation: markon-live-focus-pulse 1.4s ease-out;
 }
 
-@keyframes markon-live-ripple-anim {
-    0% { transform: translate(-50%, -50%) scale(0); opacity: 1; }
-    100% { transform: translate(-50%, -50%) scale(3); opacity: 0; }
+@keyframes markon-live-focus-pulse {
+    0%   { box-shadow: 0 0 0 5px var(--live-pulse-color, rgba(9, 105, 218, 0.55)); }
+    60%  { box-shadow: 0 0 0 3px var(--live-pulse-color, rgba(9, 105, 218, 0.28)); }
+    100% { box-shadow: 0 0 0 0 transparent; }
 }

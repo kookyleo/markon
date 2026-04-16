@@ -5,6 +5,7 @@
 
 import { CONFIG } from '../core/config.js';
 import { PlatformUtils, Logger } from '../core/utils.js';
+import { Meta } from '../services/dom.js';
 
 const _t = (window.__MARKON_I18N__ && window.__MARKON_I18N__.t) || (k => k);
 
@@ -157,7 +158,8 @@ export class KeyboardShortcutsManager {
             [_t('web.kbd.cat.nav')]: ['SCROLL_HALF_PAGE_DOWN', 'PREV_HEADING', 'NEXT_HEADING', 'PREV_ANNOTATION', 'NEXT_ANNOTATION'],
             [_t('web.kbd.cat.search')]: ['SEARCH'],
             [_t('web.kbd.cat.edit')]: ['EDIT'],
-            [_t('web.kbd.cat.viewed')]: ['TOGGLE_VIEWED', 'TOGGLE_SECTION_COLLAPSE']
+            [_t('web.kbd.cat.viewed')]: ['TOGGLE_VIEWED', 'TOGGLE_SECTION_COLLAPSE'],
+            [_t('web.kbd.cat.live')]: ['TOGGLE_LIVE_ACTIVE', 'TOGGLE_LIVE_OFF']
         };
 
         let html = '<div class="shortcuts-help-overlay"></div>';
@@ -168,18 +170,17 @@ export class KeyboardShortcutsManager {
         html += '<div class="shortcuts-help-content">';
 
         for (const [category, shortcutNames] of Object.entries(categories)) {
-            // Skip Search Category（如果未启用）
-            if (shortcutNames.includes('SEARCH') && !document.querySelector('meta[name="enable-search"]')) {
+            if (shortcutNames.includes('SEARCH') && !Meta.flag(CONFIG.META_TAGS.ENABLE_SEARCH)) {
                 continue;
             }
-
-            // Skip Edit Category（如果未启用）
-            if (shortcutNames.includes('EDIT') && !document.querySelector('meta[name="enable-edit"]')) {
+            if (shortcutNames.includes('EDIT') && !Meta.flag(CONFIG.META_TAGS.ENABLE_EDIT)) {
                 continue;
             }
-
-            // Skip Viewed Category（如果未启用）
-            if (shortcutNames.includes('TOGGLE_VIEWED') && !document.querySelector('meta[name="enable-viewed"]')) {
+            if (shortcutNames.includes('TOGGLE_VIEWED') && !Meta.flag(CONFIG.META_TAGS.ENABLE_VIEWED)) {
+                continue;
+            }
+            if ((shortcutNames.includes('TOGGLE_LIVE_ACTIVE') || shortcutNames.includes('TOGGLE_LIVE_OFF'))
+                    && !Meta.flag(CONFIG.META_TAGS.ENABLE_LIVE)) {
                 continue;
             }
 

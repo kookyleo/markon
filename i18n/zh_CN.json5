@@ -93,6 +93,8 @@
     "ws.flag.viewed.tip": "按段落级别追踪阅读进度",
     "ws.flag.edit":   "编辑",
     "ws.flag.edit.tip": "允许在浏览器中编辑 Markdown 文件",
+    "ws.flag.live":   "Live",
+    "ws.flag.live.tip": "启用实时视角同步（滚动和选区广播）",
     "ws.flag.shared": "共享标记、便条和已读状态",
     "ws.flag.shared.tip": "启用多端同步标记、便条与已读状态 (需要 SQLite 数据库)",
     "ws.empty.title": "尚无工作区",
@@ -119,6 +121,7 @@
     "cli.search":      "搜索",
     "cli.viewed":      "已读追踪",
     "cli.edit":        "编辑",
+    "cli.live":        "实时视角同步",
     "cli.shared":      "共享标记、便条和已读状态",
     "cli.open":        "自动打开浏览器",
 
@@ -255,7 +258,13 @@
     "web.kbd.scroll":       "向下滚动 1/3 页 (ESC 停止)",
     "web.kbd.collapse":     "切换当前章节折叠/展开",
     "web.kbd.viewed":       "切换当前章节已读状态",
-    "web.kbd.edit":         "编辑当前 Markdown 文件"
-}
-eb.kbd.edit":         "编辑当前 Markdown 文件"
+    "web.kbd.edit":         "编辑当前 Markdown 文件",
+    "web.kbd.live.active":  "主控 ⇄ 被控切换",
+    "web.kbd.live.off":     "关闭 ⇄ 上一次激活模式切换",
+    "web.live.mode":        "模式",
+    "web.live.off":         "关闭",
+    "web.live.broadcast":   "主控",
+    "web.live.follow":      "被控",
+    "web.live.color.prompt": "选择你的代表色",
+    "web.live.color.desc":   "你的广播色"
 }
