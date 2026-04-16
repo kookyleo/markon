@@ -1,8 +1,6 @@
 # Markon
 
-High-performance Markdown reader and review workbench built with Rust.
-
-Originally born for headless server environments, Markon transforms remote document directories into searchable, annotatable, and deeply readable professional workstations. Focused on extreme reading experience and review efficiency, it features native GitHub-style rendering, full-text search, print-ready layout, and viewed status tracking. Now available as a cross-platform desktop application.
+High-performance Markdown reader and review workbench built with Rust. Born for server environments, optimized for reading and review efficiency.
 
 ![Markon Banner](banner.png)
 
