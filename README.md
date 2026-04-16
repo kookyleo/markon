@@ -131,6 +131,8 @@ cargo run -- [OPTIONS] [FILE]
 
 **Quick Start**: `markon [FILE]` - Render a Markdown file or browse current directory.
 
+Markon CLI runs in **background daemon** mode by default. The first launch starts the server and releases the terminal; subsequent runs append new workspaces to the existing server.
+
 ### Command Line Options
 
 ```

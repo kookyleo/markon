@@ -89,6 +89,10 @@ struct Cli {
     /// Enable Markdown file editing for the workspace.
     #[arg(long, action = clap::ArgAction::SetTrue)]
     enable_edit: bool,
+
+    /// Internal flag for daemonization.
+    #[arg(long, hide = true)]
+    daemon_internal: bool,
 }
 
 #[derive(clap::Subcommand, Debug)]
@@ -100,6 +104,8 @@ enum Commands {
         /// Workspace ID or index (from 'markon ls').
         target: String,
     },
+    /// Shutdown the background Markon server.
+    Shutdown,
 }
 
 fn list_workspaces(port: u16, token: &str) -> Result<(), Box<dyn std::error::Error>> {
@@ -161,6 +167,18 @@ fn detach_workspace(
         .error_for_status()?;
 
     println!("Workspace '{id}' detached.");
+    Ok(())
+}
+
+fn shutdown_server(port: u16, token: &str) -> Result<(), Box<dyn std::error::Error>> {
+    let client = reqwest::blocking::Client::new();
+    client
+        .post(format!("http://127.0.0.1:{port}/api/shutdown"))
+        .header("X-Markon-Token", token)
+        .send()?
+        .error_for_status()?;
+
+    println!("Markon server is shutting down.");
     Ok(())
 }
 
@@ -240,6 +258,7 @@ async fn main() {
         let res = match cmd {
             Commands::Ls => list_workspaces(port, &token),
             Commands::Detach { target } => detach_workspace(port, &token, &target),
+            Commands::Shutdown => shutdown_server(port, &token),
         };
 
         if let Err(e) = res {
@@ -285,6 +304,30 @@ async fn main() {
 
     // Determine if we should attempt to open the browser.
     // Default: auto-open when there's a file/dir argument, unless overridden.
+    let ws_init = WorkspaceInit {
+        path: ws_root.clone(),
+        enable_search: cli.enable_search,
+        enable_viewed: cli.enable_viewed,
+        enable_edit: cli.enable_edit,
+        shared_annotation: cli.shared_annotation,
+        initial_path: initial_path.clone(),
+    };
+
+    let effective_salt = cli
+        .salt
+        .clone()
+        .unwrap_or_else(|| format!("markon:{}", cli.port));
+    let id = markon_core::workspace::hash_id(&ws_root, &effective_salt);
+    let workspace_url = match &initial_path {
+        Some(p) => format!(
+            "http://127.0.0.1:{}/{}/{}",
+            cli.port,
+            id,
+            p.trim_start_matches('/')
+        ),
+        None => format!("http://127.0.0.1:{}/{}/", cli.port, id),
+    };
+
     let open_browser_target = cli.open_browser.clone().or_else(|| {
         if cli.file.is_some() {
             Some("local".to_string())
@@ -306,13 +349,9 @@ async fn main() {
                 cli.enable_edit,
             ) {
                 Ok(url) => {
-                    let open_url = match &initial_path {
-                        Some(p) => format!("{}{}", url.trim_end_matches('/'), p),
-                        None => url,
-                    };
-                    println!("Added workspace: {open_url}");
+                    println!("Added workspace: {url}");
                     if open_browser_target.is_some() {
-                        if let Err(e) = open::that(&open_url) {
+                        if let Err(e) = open::that(&url) {
                             eprintln!("[info] Best-effort browser open failed: {e}");
                         }
                     }
@@ -323,40 +362,57 @@ async fn main() {
         }
     }
 
-    // No running server — start one.
-    let host = match cli.host {
-        None => "127.0.0.1".to_string(),
-        Some(ref h) if h == "select" => match select_host() {
-            Ok(h) => h,
-            Err(e) => {
-                eprintln!("Failed to select host: {e}");
-                return;
-            }
-        },
-        Some(h) => h,
-    };
+    // No running server — start one in background if not already daemonized.
+    if !cli.daemon_internal {
+        let current_exe = std::env::current_exe().expect("Failed to get current executable");
+        let mut args: Vec<String> = std::env::args().skip(1).collect();
+        args.push("--daemon-internal".to_string());
 
-    let ws_init = WorkspaceInit {
-        path: ws_root,
-        enable_search: cli.enable_search,
-        enable_viewed: cli.enable_viewed,
-        enable_edit: cli.enable_edit,
-        shared_annotation: cli.shared_annotation,
-        initial_path,
-    };
+        #[cfg(unix)]
+        {
+            use std::process::Stdio;
+            let res = std::process::Command::new(current_exe)
+                .args(&args)
+                .stdin(Stdio::null())
+                .stdout(Stdio::null())
+                .stderr(Stdio::null())
+                .spawn();
+
+            match res {
+                Ok(_) => {
+                    println!("Starting Markon server in background...");
+                    println!("Added workspace: {workspace_url}");
+                    return;
+                }
+                Err(e) => {
+                    eprintln!("Failed to daemonize: {e}. Falling back to foreground.");
+                }
+            }
+        }
+    }
 
     // Load customizations (web styles, shortcuts, language) from the GUI's
     // settings file if present. CLI arguments take precedence over the file.
     let settings = AppSettings::load();
 
     if let Err(e) = server::start(ServerConfig {
-        host,
+        host: match cli.host {
+            None => "127.0.0.1".to_string(),
+            Some(ref h) if h == "select" => match select_host() {
+                Ok(h) => h,
+                Err(e) => {
+                    eprintln!("Failed to select host: {e}");
+                    return;
+                }
+            },
+            Some(h) => h,
+        },
         port: cli.port,
         theme,
         qr: cli.entry,
         open_browser: open_browser_target,
         shared_annotation: cli.shared_annotation,
-        salt: cli.salt,
+        salt: Some(effective_salt),
         initial_workspaces: vec![ws_init],
         bound_listener: None,
         registry: None,

@@ -65,7 +65,7 @@ pub struct WorkspaceRegistry {
 /// Stable workspace ID: hash(path + salt).
 /// When salt includes the port (default), the same directory on the same port
 /// always produces the same ID — bookmarks and shared links survive restarts.
-fn hash_id(path: &std::path::Path, salt: &str) -> String {
+pub fn hash_id(path: &std::path::Path, salt: &str) -> String {
     use std::collections::hash_map::DefaultHasher;
     use std::hash::{Hash, Hasher};
     let mut h = DefaultHasher::new();

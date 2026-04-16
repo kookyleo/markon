@@ -18,7 +18,7 @@ use std::net::SocketAddr;
 use std::sync::{Arc, Mutex};
 use tera::Tera;
 use tokio::net::TcpListener;
-use tokio::sync::broadcast;
+use tokio::sync::{broadcast, mpsc};
 
 use crate::assets::{CssAssets, IconAssets, JsAssets, Templates};
 use crate::i18n;
@@ -83,6 +83,13 @@ pub struct AppState {
     pub shortcuts_json: Arc<String>,
     /// CSS variable overrides string.
     pub styles_css: Arc<String>,
+    /// Shutdown channel.
+    pub shutdown_tx: mpsc::Sender<()>,
+}
+
+async fn shutdown_handler(State(state): State<AppState>) -> impl IntoResponse {
+    let _ = state.shutdown_tx.send(()).await;
+    StatusCode::OK
 }
 
 fn detect_lang(override_lang: &Option<String>) -> String {
@@ -256,6 +263,8 @@ pub async fn start(config: ServerConfig) -> Result<(), String> {
 
     let token = Arc::new(management_token.unwrap_or_else(generate_token));
 
+    let (shutdown_tx, mut shutdown_rx) = mpsc::channel::<()>(1);
+
     let state = AppState {
         theme: Arc::new(theme),
         tera: Arc::new(tera),
@@ -268,6 +277,7 @@ pub async fn start(config: ServerConfig) -> Result<(), String> {
         i18n_lang: Arc::new(detect_lang(&language)),
         shortcuts_json: Arc::new(shortcuts_json.unwrap_or_default()),
         styles_css: Arc::new(styles_css.unwrap_or_default()),
+        shutdown_tx,
     };
 
     // Management API: requires loopback source IP + valid token header.
@@ -279,6 +289,7 @@ pub async fn start(config: ServerConfig) -> Result<(), String> {
         )
         .route("/api/workspaces", get(list_workspaces_handler))
         .route("/api/save", post(save_file_handler))
+        .route("/api/shutdown", post(shutdown_handler))
         .layer(axum::middleware::from_fn_with_state(
             state.clone(),
             require_local_and_token,
@@ -395,6 +406,10 @@ pub async fn start(config: ServerConfig) -> Result<(), String> {
         listener,
         app.into_make_service_with_connect_info::<std::net::SocketAddr>(),
     )
+    .with_graceful_shutdown(async move {
+        shutdown_rx.recv().await;
+        println!("Shutting down...");
+    })
     .await
     .map_err(|e| format!("Server error: {e}"))?;
     Ok(())

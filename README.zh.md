@@ -129,8 +129,10 @@ cargo install --path crates/cli
 
 ### 基本用法
 
+Markon CLI 默认以**后台驻留**模式运行。第一次启动时它会自动转入后台并释放终端，后续运行会自动将新工作区追加到已有服务中。
+
 ```bash
-# 渲染单个文件（并自动尝试打开浏览器）
+# 渲染单个文件（并在后台启动服务，自动尝试打开浏览器）
 markon README.md
 
 # 目录浏览模式
@@ -144,6 +146,9 @@ markon ls
 
 # 移除工作区（支持序号或 ID）
 markon detach 1
+
+# 关闭后台服务
+markon shutdown
 
 # 自定义端口
 markon -p 8080
