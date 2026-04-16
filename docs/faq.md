@@ -55,7 +55,12 @@ sudo apt install pkg-config libssl-dev  # Debian/Ubuntu
 markon --host 0.0.0.0 README.md
 ```
 
-然后从其他设备访问 `http://服务器-IP:6419`。加 `--qr` 可以打印 QR 码方便手机扫。
+然后从其他设备访问 `http://{IP}:6419`（将 `{IP}` 替换为服务器的实际 IP）。如果希望在终端显示二维码以便手机扫描，可以使用 `--entry`（或 `--qr`）并指定完整的外部访问 URL：
+
+```bash
+# 示例：假设你的电脑局域网 IP 是 192.168.1.100
+markon --host 0.0.0.0 --entry http://192.168.1.100:6419
+```
 
 ### 能同时打开多个文件/目录吗？
 
