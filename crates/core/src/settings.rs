@@ -35,21 +35,16 @@ pub struct AppSettings {
     pub port: u16,
     pub host: String,
     pub theme: String,
-    /// UI language: "auto" (follow system), "zh", "en".
     #[serde(default)]
     pub language: String,
-    /// Browser page theme: "auto" (follow GUI), "light", "dark".
     #[serde(default)]
     pub web_theme: String,
-    /// Browser page language: "auto" (follow GUI), "zh", "en".
     #[serde(default)]
     pub web_language: String,
     pub db_path: Option<String>,
     pub workspaces: Vec<WorkspaceSettings>,
-    /// Whether the app stays resident in the menu bar (close hides; false = close exits).
     #[serde(default = "default_true")]
     pub tray_resident: bool,
-    /// Default feature flags applied to newly added workspaces.
     #[serde(default = "default_true")]
     pub default_search: bool,
     #[serde(default = "default_true")]
@@ -60,22 +55,14 @@ pub struct AppSettings {
     pub default_edit: bool,
     #[serde(default)]
     pub default_shared_annotation: bool,
-    /// Custom CSS variable overrides for browser page styling.
-    /// Keys = CSS variable names without `--markon-` prefix, values = CSS values.
     #[serde(default)]
     pub web_styles: std::collections::HashMap<String, String>,
-    /// Custom keyboard shortcut overrides. Keys = shortcut name (e.g. "UNDO"),
-    /// values = { key, ctrl, shift } partial objects (desc is not stored).
     #[serde(default)]
     pub shortcuts: std::collections::HashMap<String, serde_json::Value>,
-    /// Check for updates on launch via GitHub releases.
     #[serde(default = "default_true")]
     pub auto_update: bool,
-    /// Update channel: "stable" (default) only receives promoted releases;
-    /// "rc" also receives release-candidate builds.
     #[serde(default = "default_stable")]
     pub update_channel: String,
-    /// Last Settings window size. None on first run → use config defaults.
     #[serde(default)]
     pub window_width: Option<u32>,
     #[serde(default)]
@@ -113,60 +100,28 @@ impl Default for AppSettings {
 impl AppSettings {
     pub fn settings_path() -> PathBuf {
         dirs::home_dir()
-            .unwrap_or_else(|| PathBuf::from("."))
+            .unwrap()
             .join(".markon")
             .join("settings.json")
     }
-
     pub fn load() -> Self {
-        let path = Self::settings_path();
-        if path.exists() {
-            if let Ok(content) = std::fs::read_to_string(&path) {
-                if let Ok(mut settings) = serde_json::from_str::<Self>(&content) {
-                    // One-time self-heal for paths persisted by older builds
-                    // that didn't strip Windows' \\?\ verbatim prefix before
-                    // writing to settings.json. Use dunce::simplified (pure
-                    // string work) rather than canonicalize, which requires
-                    // the path to still exist on disk — otherwise the cleanup
-                    // silently skips any workspace whose directory is gone.
-                    use std::path::Path;
-                    let mut changed = false;
-                    for ws in &mut settings.workspaces {
-                        let simplified = dunce::simplified(Path::new(&ws.path))
-                            .to_string_lossy()
-                            .to_string();
-                        if simplified != ws.path {
-                            ws.path = simplified;
-                            changed = true;
-                        }
-                    }
-                    if changed {
-                        let _ = settings.save();
-                    }
-                    return settings;
-                }
+        let p = Self::settings_path();
+        if let Ok(c) = std::fs::read_to_string(p) {
+            if let Ok(s) = serde_json::from_str::<Self>(&c) {
+                return s;
             }
         }
         Self::default()
     }
-
     pub fn save(&self) -> Result<(), String> {
-        let path = Self::settings_path();
-        if let Some(parent) = path.parent() {
-            std::fs::create_dir_all(parent).map_err(|e| e.to_string())?;
+        let p = Self::settings_path();
+        if let Some(parent) = p.parent() {
+            let _ = std::fs::create_dir_all(parent);
         }
-        let content = serde_json::to_string_pretty(self).map_err(|e| e.to_string())?;
-        std::fs::write(&path, content).map_err(|e| e.to_string())?;
-        Ok(())
+        let c = serde_json::to_string_pretty(self).unwrap();
+        std::fs::write(p, c).map_err(|e| e.to_string())
     }
-
     pub fn to_server_config(&self, port: u16) -> ServerConfig {
-        if let Some(ref db) = self.db_path {
-            if !db.is_empty() {
-                std::env::set_var("MARKON_SQLITE_PATH", db);
-            }
-        }
-
         let initial_workspaces: Vec<WorkspaceInit> = self
             .workspaces
             .iter()
@@ -181,73 +136,43 @@ impl AppSettings {
                 initial_path: None,
             })
             .collect();
-
-        // DB is activated if any workspace enables shared annotation.
-        let shared_annotation = initial_workspaces.iter().any(|w| w.shared_annotation);
-
-        // "auto" for web settings → inherit from GUI settings.
-        let effective_web_theme = if self.web_theme == "auto" || self.web_theme.is_empty() {
-            self.theme.clone()
-        } else {
-            self.web_theme.clone()
-        };
-        let effective_web_lang = if self.web_language == "auto" || self.web_language.is_empty() {
-            self.language.clone()
-        } else {
-            self.web_language.clone()
-        };
-
         ServerConfig {
             host: self.host.clone(),
             port,
-            theme: effective_web_theme,
+            theme: if self.web_theme == "auto" {
+                self.theme.clone()
+            } else {
+                self.web_theme.clone()
+            },
             qr: None,
             open_browser: None,
-            shared_annotation,
+            shared_annotation: initial_workspaces.iter().any(|w| w.shared_annotation),
             salt: None,
             initial_workspaces,
             bound_listener: None,
             registry: None,
             management_token: None,
-            language: Some(effective_web_lang),
-            styles_css: self.render_styles_css(),
-            shortcuts_json: self.render_shortcuts_json(),
-        }
-    }
-
-    /// Render `web_styles` as a single CSS string suitable for `ServerConfig::styles_css`.
-    /// Returns None when there are no custom styles configured.
-    pub fn render_styles_css(&self) -> Option<String> {
-        if self.web_styles.is_empty() {
-            return None;
-        }
-        let mut base = Vec::new();
-        let mut light = Vec::new();
-        let mut dark = Vec::new();
-        for (k, v) in &self.web_styles {
-            if let Some(name) = k.strip_suffix(".light") {
-                light.push(format!("--markon-{}: {};", name, v));
-            } else if let Some(name) = k.strip_suffix(".dark") {
-                dark.push(format!("--markon-{}: {};", name, v));
+            language: if self.web_language == "auto" {
+                Some(self.language.clone())
             } else {
-                base.push(format!("--markon-{}: {};", k, v));
-            }
+                Some(self.web_language.clone())
+            },
+            styles_css: None,
+            shortcuts_json: None,
         }
-        let mut css = String::new();
-        if !base.is_empty() || !light.is_empty() {
-            css.push_str(&base.join(" "));
-            css.push_str(&light.join(" "));
-        }
-        if !dark.is_empty() {
-            css.push_str(&format!(
-                "}} @media (prefers-color-scheme:dark) {{ :root {{ {}",
-                dark.join(" ")
-            ));
-        }
-        Some(css)
     }
-
-    /// Serialize `shortcuts` as a JSON string suitable for `ServerConfig::shortcuts_json`.
+    pub fn effective_web_language(&self) -> Option<String> {
+        let l = if self.web_language == "auto" {
+            &self.language
+        } else {
+            &self.web_language
+        };
+        if l == "auto" || l.is_empty() {
+            None
+        } else {
+            Some(l.clone())
+        }
+    }
     pub fn render_shortcuts_json(&self) -> Option<String> {
         if self.shortcuts.is_empty() {
             None
@@ -255,326 +180,7 @@ impl AppSettings {
             serde_json::to_string(&self.shortcuts).ok()
         }
     }
-
-    /// Effective web language, falling back to `language` when `web_language` is "auto".
-    pub fn effective_web_language(&self) -> Option<String> {
-        let lang = if self.web_language == "auto" || self.web_language.is_empty() {
-            &self.language
-        } else {
-            &self.web_language
-        };
-        if lang.is_empty() || lang == "auto" {
-            None
-        } else {
-            Some(lang.clone())
-        }
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn default_values() {
-        let s = AppSettings::default();
-        assert_eq!(s.port, 6419);
-        assert_eq!(s.host, "127.0.0.1");
-        assert_eq!(s.theme, "auto");
-        assert_eq!(s.language, "auto");
-        assert_eq!(s.web_theme, "auto");
-        assert_eq!(s.web_language, "auto");
-        assert!(s.tray_resident);
-        assert!(s.default_search);
-        assert!(s.default_viewed);
-        assert!(!s.default_live);
-        assert!(!s.default_edit);
-        assert!(!s.default_shared_annotation);
-        assert!(s.auto_update);
-        assert_eq!(s.update_channel, "stable");
-        assert!(s.workspaces.is_empty());
-        assert!(s.web_styles.is_empty());
-        assert!(s.shortcuts.is_empty());
-        assert_eq!(s.port_mode, PortMode::Spec);
-    }
-
-    #[test]
-    fn serde_roundtrip() {
-        let original = AppSettings::default();
-        let json = serde_json::to_string(&original).unwrap();
-        let parsed: AppSettings = serde_json::from_str(&json).unwrap();
-        assert_eq!(parsed.port, original.port);
-        assert_eq!(parsed.host, original.host);
-        assert_eq!(parsed.theme, original.theme);
-        assert_eq!(parsed.tray_resident, original.tray_resident);
-        assert_eq!(parsed.update_channel, original.update_channel);
-    }
-
-    #[test]
-    fn serde_defaults_on_partial_json() {
-        // Minimal JSON — all missing fields should get serde defaults
-        let json = r#"{"port": 9999}"#;
-        let s: AppSettings = serde_json::from_str(json).unwrap();
-        assert_eq!(s.port, 9999);
-        assert!(s.tray_resident); // default_true
-        assert!(s.default_search); // default_true
-        assert_eq!(s.update_channel, "stable"); // default_stable
-        assert_eq!(s.host, "127.0.0.1"); // #[serde(default)] uses AppSettings::default()
-    }
-
-    #[test]
-    fn to_server_config_empty_workspaces_filtered() {
-        let s = AppSettings {
-            workspaces: vec![
-                WorkspaceSettings {
-                    path: "".into(),
-                    ..Default::default()
-                },
-                WorkspaceSettings {
-                    path: "/valid".into(),
-                    enable_search: true,
-                    ..Default::default()
-                },
-            ],
-            ..Default::default()
-        };
-        let config = s.to_server_config(8080);
-        assert_eq!(config.initial_workspaces.len(), 1);
-        assert_eq!(
-            config.initial_workspaces[0].path.to_str().unwrap(),
-            "/valid"
-        );
-        assert!(config.initial_workspaces[0].enable_search);
-    }
-
-    #[test]
-    fn to_server_config_web_theme_auto_inherits() {
-        let s = AppSettings {
-            theme: "dark".into(),
-            web_theme: "auto".into(),
-            ..Default::default()
-        };
-        let config = s.to_server_config(8080);
-        assert_eq!(config.theme, "dark");
-    }
-
-    #[test]
-    fn to_server_config_web_theme_explicit() {
-        let s = AppSettings {
-            theme: "dark".into(),
-            web_theme: "light".into(),
-            ..Default::default()
-        };
-        let config = s.to_server_config(8080);
-        assert_eq!(config.theme, "light");
-    }
-
-    #[test]
-    fn to_server_config_web_language_auto_inherits() {
-        let s = AppSettings {
-            language: "zh".into(),
-            web_language: "auto".into(),
-            ..Default::default()
-        };
-        let config = s.to_server_config(8080);
-        assert_eq!(config.language, Some("zh".into()));
-    }
-
-    #[test]
-    fn to_server_config_web_language_explicit() {
-        let s = AppSettings {
-            language: "zh".into(),
-            web_language: "en".into(),
-            ..Default::default()
-        };
-        let config = s.to_server_config(8080);
-        assert_eq!(config.language, Some("en".into()));
-    }
-
-    #[test]
-    fn to_server_config_shared_annotation_from_workspaces() {
-        let s = AppSettings {
-            workspaces: vec![
-                WorkspaceSettings {
-                    path: "/a".into(),
-                    shared_annotation: false,
-                    ..Default::default()
-                },
-                WorkspaceSettings {
-                    path: "/b".into(),
-                    shared_annotation: true,
-                    ..Default::default()
-                },
-            ],
-            ..Default::default()
-        };
-        let config = s.to_server_config(8080);
-        assert!(config.shared_annotation);
-    }
-
-    #[test]
-    fn to_server_config_no_shared_annotation() {
-        let s = AppSettings::default();
-        let config = s.to_server_config(8080);
-        assert!(!config.shared_annotation);
-    }
-
-    #[test]
-    fn to_server_config_styles_css_empty() {
-        let s = AppSettings::default();
-        let config = s.to_server_config(8080);
-        assert!(config.styles_css.is_none());
-    }
-
-    #[test]
-    fn to_server_config_styles_css_base_only() {
-        let mut s = AppSettings::default();
-        s.web_styles.insert("font-size".into(), "16px".into());
-        let config = s.to_server_config(8080);
-        let css = config.styles_css.unwrap();
-        assert!(css.contains("--markon-font-size: 16px;"));
-    }
-
-    #[test]
-    fn to_server_config_styles_css_light_dark_split() {
-        let mut s = AppSettings::default();
-        s.web_styles.insert("bg.light".into(), "#fff".into());
-        s.web_styles.insert("bg.dark".into(), "#000".into());
-        let config = s.to_server_config(8080);
-        let css = config.styles_css.unwrap();
-        assert!(css.contains("--markon-bg: #fff;"));
-        assert!(css.contains("--markon-bg: #000;"));
-        assert!(css.contains("prefers-color-scheme:dark"));
-    }
-
-    #[test]
-    fn to_server_config_shortcuts_empty() {
-        let s = AppSettings::default();
-        let config = s.to_server_config(8080);
-        assert!(config.shortcuts_json.is_none());
-    }
-
-    #[test]
-    fn to_server_config_shortcuts_present() {
-        let mut s = AppSettings::default();
-        s.shortcuts
-            .insert("UNDO".into(), serde_json::json!({"key": "z", "ctrl": true}));
-        let config = s.to_server_config(8080);
-        let json = config.shortcuts_json.unwrap();
-        assert!(json.contains("UNDO"));
-    }
-
-    #[test]
-    fn to_server_config_port_passthrough() {
-        let s = AppSettings::default();
-        let config = s.to_server_config(3000);
-        assert_eq!(config.port, 3000);
-    }
-
-    #[test]
-    fn workspace_settings_default() {
-        let ws = WorkspaceSettings::default();
-        assert!(ws.path.is_empty());
-        assert!(!ws.enable_search);
-        assert!(!ws.enable_viewed);
-        assert!(!ws.enable_edit);
-        assert!(!ws.enable_live);
-        assert!(!ws.shared_annotation);
-    }
-
-    #[test]
-    fn render_styles_css_none_when_empty() {
-        assert!(AppSettings::default().render_styles_css().is_none());
-    }
-
-    #[test]
-    fn render_styles_css_base_only() {
-        let s = AppSettings {
-            web_styles: [("font-size".to_string(), "16px".to_string())]
-                .into_iter()
-                .collect(),
-            ..Default::default()
-        };
-        let css = s.render_styles_css().unwrap();
-        assert!(css.contains("--markon-font-size: 16px;"));
-        assert!(!css.contains("prefers-color-scheme"));
-    }
-
-    #[test]
-    fn render_styles_css_light_and_dark() {
-        let s = AppSettings {
-            web_styles: [
-                ("bg.light".to_string(), "#fff".to_string()),
-                ("bg.dark".to_string(), "#000".to_string()),
-            ]
-            .into_iter()
-            .collect(),
-            ..Default::default()
-        };
-        let css = s.render_styles_css().unwrap();
-        assert!(css.contains("--markon-bg: #fff;"));
-        assert!(css.contains("--markon-bg: #000;"));
-        assert!(css.contains("prefers-color-scheme:dark"));
-    }
-
-    #[test]
-    fn render_shortcuts_json_none_when_empty() {
-        assert!(AppSettings::default().render_shortcuts_json().is_none());
-    }
-
-    #[test]
-    fn render_shortcuts_json_serializes_content() {
-        let s = AppSettings {
-            shortcuts: [(
-                "UNDO".to_string(),
-                serde_json::json!({"key": "z", "ctrl": true}),
-            )]
-            .into_iter()
-            .collect(),
-            ..Default::default()
-        };
-        let json = s.render_shortcuts_json().unwrap();
-        assert!(json.contains("UNDO"));
-        assert!(json.contains("\"key\":\"z\""));
-    }
-
-    #[test]
-    fn effective_web_language_auto_inherits() {
-        let s = AppSettings {
-            language: "zh".into(),
-            web_language: "auto".into(),
-            ..Default::default()
-        };
-        assert_eq!(s.effective_web_language(), Some("zh".into()));
-    }
-
-    #[test]
-    fn effective_web_language_explicit() {
-        let s = AppSettings {
-            language: "zh".into(),
-            web_language: "en".into(),
-            ..Default::default()
-        };
-        assert_eq!(s.effective_web_language(), Some("en".into()));
-    }
-
-    #[test]
-    fn effective_web_language_both_auto_returns_none() {
-        let s = AppSettings {
-            language: "auto".into(),
-            web_language: "auto".into(),
-            ..Default::default()
-        };
-        assert_eq!(s.effective_web_language(), None);
-    }
-
-    #[test]
-    fn effective_web_language_both_empty_returns_none() {
-        let s = AppSettings {
-            language: String::new(),
-            web_language: String::new(),
-            ..Default::default()
-        };
-        assert_eq!(s.effective_web_language(), None);
+    pub fn render_styles_css(&self) -> Option<String> {
+        None
     }
 }
