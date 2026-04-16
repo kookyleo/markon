@@ -3,8 +3,8 @@ layout: home
 
 hero:
   name: Markon
-  text: Turn your markdown on.
-  tagline: 轻量级 Markdown 渲染器，GitHub 风格排版，支持全文搜索、批注与多端同步
+  text: 轻量级 Markdown 阅览与审校工作台
+  tagline: 开源、免费、完全本地。专为极致的阅读与审校效率而生。
   image:
     light: /logo-light.svg
     dark: /logo-dark.svg
@@ -34,8 +34,8 @@ features:
     title: 在线编辑
     details: 按 <kbd>e</kbd> 直接在浏览器编辑 Markdown 源文件，语法高亮 + 实时预览，<kbd>Ctrl+S</kbd> 保存
   - icon: 🏷️
-    title: 标注与高亮
-    details: 三色高亮、删除线、便条笔记，宽屏以右侧栏卡片显示，窄屏以弹窗呈现
+    title: 深度标注与审校
+    details: Medium 风格三色高亮、删除线、便条笔记，支持以侧边栏卡片或弹窗形式呈现
   - icon: 🔄
     title: 多端同步
     details: 通过 WebSocket 实时广播批注与已读状态变更，适用于个人多设备阅读或小团队协作

@@ -143,8 +143,8 @@
     "tips.feat.print.desc":   "点击标题旁的打印链接，则仅打印当前章节内容",
 
     // ── 关于页 ───────────────────────────────────────────────
-    "about.slogan":   "Turn your markdown on.",
-    "about.desc":     "轻量级 Markdown 渲染器，GitHub 风格排版，支持全文搜索、批注与多端注释同步",
+    "about.slogan":   "轻量级 Markdown 阅览与审校工作台",
+    "about.desc":     "开源、免费、完全本地。专为极致的阅读与审校效率而生。",
     "about.icon.credit": "Icon by brajaomar_j — Flaticon",
     "about.star":     "Star 支持项目",
 
