@@ -50,7 +50,7 @@ outputs = [
 [[variant]]
 name = "pill-accent"
 wrap = "none"
-fg = "#0A84FF"
+fg = "#3451B2"
 marks_fg = "#ffffff"
 # body_scale 1.14 blows the native 28x24 glyph body up to fill the 32-unit
 # canvas horizontally — the earlier 1.0 left ~14 % transparent margin that
