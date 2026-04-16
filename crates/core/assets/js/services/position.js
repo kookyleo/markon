@@ -17,10 +17,13 @@ export const Position = {
         };
     },
 
-    // 约束到视口内
-    constrainToViewport(left, top, width, height, margin = 10) {
-        const scrollX = window.scrollX || window.pageXOffset;
-        const scrollY = window.scrollY || window.pageYOffset;
+    // Clamp a rect into the viewport. `opts.fixed=true` works in viewport
+    // coordinates (for CSS `position: fixed` elements); default uses document
+    // coordinates (absolute/static elements that need scroll offset).
+    constrainToViewport(left, top, width, height, opts = {}) {
+        const margin = opts.margin ?? 10;
+        const scrollX = opts.fixed ? 0 : (window.scrollX || window.pageXOffset);
+        const scrollY = opts.fixed ? 0 : (window.scrollY || window.pageYOffset);
         let newLeft = left, newTop = top;
 
         if (newLeft < scrollX + margin) newLeft = scrollX + margin;

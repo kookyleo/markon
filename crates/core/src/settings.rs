@@ -1,12 +1,17 @@
 use crate::server::{ServerConfig, WorkspaceInit};
+use crate::workspace::{PersistHook, WorkspaceFlags, WorkspaceRegistry};
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
+use std::sync::{Arc, Mutex};
 
 fn default_true() -> bool {
     true
 }
 fn default_stable() -> String {
     "stable".to_string()
+}
+fn default_auto() -> String {
+    "auto".to_string()
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
@@ -18,14 +23,10 @@ pub enum PortMode {
 }
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
-#[serde(default)]
 pub struct WorkspaceSettings {
     pub path: String,
-    pub enable_search: bool,
-    pub enable_viewed: bool,
-    pub enable_edit: bool,
-    pub enable_live: bool,
-    pub shared_annotation: bool,
+    #[serde(flatten, default)]
+    pub flags: WorkspaceFlags,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -35,11 +36,11 @@ pub struct AppSettings {
     pub port: u16,
     pub host: String,
     pub theme: String,
-    #[serde(default)]
+    #[serde(default = "default_auto")]
     pub language: String,
-    #[serde(default)]
+    #[serde(default = "default_auto")]
     pub web_theme: String,
-    #[serde(default)]
+    #[serde(default = "default_auto")]
     pub web_language: String,
     pub db_path: Option<String>,
     pub workspaces: Vec<WorkspaceSettings>,
@@ -107,11 +108,27 @@ impl AppSettings {
     pub fn load() -> Self {
         let p = Self::settings_path();
         if let Ok(c) = std::fs::read_to_string(p) {
-            if let Ok(s) = serde_json::from_str::<Self>(&c) {
+            if let Ok(mut s) = serde_json::from_str::<Self>(&c) {
+                s.normalize();
                 return s;
             }
         }
         Self::default()
+    }
+
+    /// Clean up settings loaded from disk:
+    /// - drop duplicate workspaces (keep first occurrence, preserving its flags)
+    /// - coerce empty language/theme strings to "auto" so existing files written
+    ///   before the auto-default fix don't show blank dropdowns
+    fn normalize(&mut self) {
+        use std::collections::HashSet;
+        let mut seen = HashSet::new();
+        self.workspaces.retain(|w| seen.insert(w.path.clone()));
+        for field in [&mut self.language, &mut self.web_theme, &mut self.web_language] {
+            if field.is_empty() {
+                *field = "auto".to_string();
+            }
+        }
     }
     pub fn save(&self) -> Result<(), String> {
         let p = Self::settings_path();
@@ -128,11 +145,7 @@ impl AppSettings {
             .filter(|w| !w.path.is_empty())
             .map(|w| WorkspaceInit {
                 path: PathBuf::from(&w.path),
-                enable_search: w.enable_search,
-                enable_viewed: w.enable_viewed,
-                enable_edit: w.enable_edit,
-                enable_live: w.enable_live,
-                shared_annotation: w.shared_annotation,
+                flags: w.flags,
                 initial_path: None,
             })
             .collect();
@@ -146,7 +159,7 @@ impl AppSettings {
             },
             qr: None,
             open_browser: None,
-            shared_annotation: initial_workspaces.iter().any(|w| w.shared_annotation),
+            shared_annotation: initial_workspaces.iter().any(|w| w.flags.shared_annotation),
             salt: None,
             initial_workspaces,
             bound_listener: None,
@@ -157,8 +170,8 @@ impl AppSettings {
             } else {
                 Some(self.web_language.clone())
             },
-            styles_css: None,
-            shortcuts_json: None,
+            styles_css: self.render_styles_css(),
+            shortcuts_json: self.render_shortcuts_json(),
         }
     }
     pub fn effective_web_language(&self) -> Option<String> {
@@ -173,6 +186,18 @@ impl AppSettings {
             Some(l.clone())
         }
     }
+    /// Build a registry persist-hook that mirrors every registry mutation
+    /// back into the shared `AppSettings` and writes to disk. CLI daemon and
+    /// GUI both wire this so workspace changes initiated from either side
+    /// end up with the same persistent state.
+    pub fn persist_hook(settings: Arc<Mutex<AppSettings>>) -> PersistHook {
+        Arc::new(move |reg| {
+            let mut s = settings.lock().unwrap();
+            s.sync_from_registry(reg);
+            let _ = s.save();
+        })
+    }
+
     pub fn render_shortcuts_json(&self) -> Option<String> {
         if self.shortcuts.is_empty() {
             None
@@ -180,7 +205,28 @@ impl AppSettings {
             serde_json::to_string(&self.shortcuts).ok()
         }
     }
+    /// Overwrite `workspaces` with the current registry contents.
+    pub fn sync_from_registry(&mut self, registry: &WorkspaceRegistry) {
+        self.workspaces = registry
+            .info_list()
+            .into_iter()
+            .map(|info| WorkspaceSettings {
+                path: info.path,
+                flags: info.flags,
+            })
+            .collect();
+    }
+
     pub fn render_styles_css(&self) -> Option<String> {
-        None
+        if self.web_styles.is_empty() {
+            return None;
+        }
+        Some(
+            self.web_styles
+                .iter()
+                .map(|(k, v)| format!("{k}: {v};"))
+                .collect::<Vec<_>>()
+                .join(" "),
+        )
     }
 }

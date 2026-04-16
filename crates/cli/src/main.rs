@@ -3,8 +3,9 @@ use dialoguer::Select;
 use local_ip_address::list_afinet_netifas;
 use markon_core::server::{self, ServerConfig, WorkspaceInit};
 use markon_core::settings::AppSettings;
-use markon_core::workspace::ServerLock;
+use markon_core::workspace::{ServerLock, WorkspaceFlags, WorkspaceRegistry};
 use std::path::Path;
+use std::sync::{Arc, Mutex};
 
 fn get_available_hosts() -> Vec<(String, String)> {
     let mut hosts = vec![
@@ -190,10 +191,7 @@ fn add_or_update_workspace(
     port: u16,
     token: &str,
     ws_path: &str,
-    enable_search: bool,
-    enable_viewed: bool,
-    enable_edit: bool,
-    enable_live: bool,
+    flags: WorkspaceFlags,
 ) -> Result<String, Box<dyn std::error::Error>> {
     let client = reqwest::blocking::Client::new();
 
@@ -209,32 +207,26 @@ fn add_or_update_workspace(
         .as_array()
         .and_then(|arr| arr.iter().find(|w| w["path"].as_str() == Some(ws_path)))
     {
-        // Already registered — update flags in-place.
         let id = existing["id"].as_str().ok_or("no id in workspace")?;
         client
             .put(format!("http://127.0.0.1:{port}/api/workspace/{id}"))
             .header("X-Markon-Token", token)
-            .json(&serde_json::json!({
-                "enable_search": enable_search,
-                "enable_viewed": enable_viewed,
-                "enable_edit": enable_edit,
-                "enable_live": enable_live,
-            }))
+            .json(&flags)
             .send()?
             .error_for_status()?;
         return Ok(format!("http://127.0.0.1:{port}/{id}/"));
     }
 
-    // Not registered — add as new workspace.
     let resp: serde_json::Value = client
         .post(format!("http://127.0.0.1:{port}/api/workspace"))
         .header("X-Markon-Token", token)
         .json(&serde_json::json!({
             "path": ws_path,
-            "enable_search": enable_search,
-            "enable_viewed": enable_viewed,
-            "enable_edit": enable_edit,
-            "enable_live": enable_live,
+            "enable_search": flags.enable_search,
+            "enable_viewed": flags.enable_viewed,
+            "enable_edit": flags.enable_edit,
+            "enable_live": flags.enable_live,
+            "shared_annotation": flags.shared_annotation,
         }))
         .send()?
         .error_for_status()?
@@ -303,13 +295,16 @@ async fn main() {
         )
     };
 
-    let ws_init = WorkspaceInit {
-        path: ws_root.clone(),
+    let flags = WorkspaceFlags {
         enable_search: cli.enable_search,
         enable_viewed: cli.enable_viewed,
         enable_edit: cli.enable_edit,
         enable_live: cli.enable_live,
         shared_annotation: cli.shared_annotation,
+    };
+    let ws_init = WorkspaceInit {
+        path: ws_root.clone(),
+        flags,
         initial_path: initial_path.clone(),
     };
 
@@ -338,15 +333,8 @@ async fn main() {
 
     if let Some(lock) = ServerLock::read() {
         if lock.is_alive() {
-            match add_or_update_workspace(
-                lock.port,
-                &lock.token,
-                &ws_root.to_string_lossy(),
-                cli.enable_search,
-                cli.enable_viewed,
-                cli.enable_edit,
-                cli.enable_live,
-            ) {
+            match add_or_update_workspace(lock.port, &lock.token, &ws_root.to_string_lossy(), flags)
+            {
                 Ok(url) => {
                     println!("Added workspace: {url}");
                     if open_browser_target.is_some() {
@@ -389,7 +377,22 @@ async fn main() {
         }
     }
 
-    let settings = AppSettings::load();
+    let settings = Arc::new(Mutex::new(AppSettings::load()));
+
+    // Share one registry with a persist hook so HTTP API mutations
+    // (e.g. `markon <dir>` into the running daemon) land in settings.json
+    // exactly like GUI-initiated changes do.
+    let registry = Arc::new(WorkspaceRegistry::new(effective_salt.clone()));
+    registry.set_persist_hook(AppSettings::persist_hook(settings.clone()));
+
+    let (language, shortcuts_json, styles_css) = {
+        let s = settings.lock().unwrap();
+        (
+            s.effective_web_language(),
+            s.render_shortcuts_json(),
+            s.render_styles_css(),
+        )
+    };
 
     if let Err(e) = server::start(ServerConfig {
         host: match cli.host {
@@ -411,11 +414,11 @@ async fn main() {
         salt: Some(effective_salt),
         initial_workspaces: vec![ws_init],
         bound_listener: None,
-        registry: None,
+        registry: Some(registry),
         management_token: None,
-        language: settings.effective_web_language(),
-        shortcuts_json: settings.render_shortcuts_json(),
-        styles_css: settings.render_styles_css(),
+        language,
+        shortcuts_json,
+        styles_css,
     })
     .await
     {

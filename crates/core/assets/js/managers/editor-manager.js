@@ -5,6 +5,8 @@
 
 import { CONFIG } from '../core/config.js';
 import { Logger } from '../core/utils.js';
+import { Meta } from '../services/dom.js';
+import { Text } from '../services/text.js';
 
 const _t = (window.__MARKON_I18N__ && window.__MARKON_I18N__.t) || (k => k);
 
@@ -124,7 +126,7 @@ export class EditorManager {
         try {
             this.#setSaving(true);
 
-            const workspaceId = document.querySelector('meta[name="workspace-id"]')?.content ?? '';
+            const workspaceId = Meta.get(CONFIG.META_TAGS.WORKSPACE_ID) ?? '';
             const response = await fetch('/api/save', {
                 method: 'POST',
                 headers: {
@@ -184,7 +186,7 @@ export class EditorManager {
         modal.innerHTML = `
             <div class="editor-header">
                 <button class="editor-close" title="${_t('web.editor.close.tip')}">✕</button>
-                <span class="editor-file-name">${this.#escapeHtml(this.#filePath)}</span>
+                <span class="editor-file-name">${Text.escape(this.#filePath)}</span>
                 <button class="editor-save-btn" style="display: none;">${_t('web.editor.save')}</button>
             </div>
             <div class="editor-body">
@@ -250,13 +252,24 @@ export class EditorManager {
             }
         });
 
-        // Monitor content changes
+        // Coalesce expensive updates to one per animation frame: typing-storm
+        // inputs fire 5-10× per frame, but we only need to repaint once.
+        let rafId = null;
+        let lastLineCount = -1;
         this.#textarea.addEventListener('input', () => {
             this.#isDirty = true;
             this.#updateSaveButtonState();
             this.#updateTitleDirtyIndicator();
-            this.#updateLineNumbers();
-            this.#updateSyntaxHighlight();
+            if (rafId !== null) return;
+            rafId = requestAnimationFrame(() => {
+                rafId = null;
+                const lines = this.#textarea.value.split('\n').length;
+                if (lines !== lastLineCount) {
+                    lastLineCount = lines;
+                    this.#updateLineNumbers();
+                }
+                this.#updateSyntaxHighlight();
+            });
         });
     }
 
@@ -324,20 +337,6 @@ export class EditorManager {
             this.#saveButton.textContent = isSaving
                 ? 'Saving...'
                 : _t('web.editor.save.tip');
-        }
-    }
-
-    /**
-     * Update line count display
-     * @private
-     */
-    #updateLineCount() {
-        if (!this.#textarea) return;
-
-        const lines = this.#textarea.value.split('\n').length;
-        const lineCountEl = this.#editorModal.querySelector('.editor-line-count');
-        if (lineCountEl) {
-            lineCountEl.textContent = `${lines} lines`;
         }
     }
 
@@ -472,7 +471,7 @@ export class EditorManager {
         }
 
         // Normalize original text for comparison
-        const normalizedOriginal = this.#normalizeText(originalText);
+        const normalizedOriginal = Text.normalize(originalText);
         const originalLength = normalizedOriginal.length;
 
         // Search window: allow up to 3x the original length for Markdown syntax
@@ -529,7 +528,7 @@ export class EditorManager {
             sourceLength++;
 
             // Check if we've matched the original text
-            const normalizedRendered = this.#normalizeText(rendered);
+            const normalizedRendered = Text.normalize(rendered);
 
             // Exact match on normalized text
             if (normalizedRendered === normalizedOriginal) {
@@ -546,18 +545,6 @@ export class EditorManager {
         return Math.min(originalText.length, searchWindow.length);
     }
 
-    /**
-     * Normalize text for comparison (remove extra whitespace)
-     * @private
-     */
-    #normalizeText(text) {
-        return text.replace(/\s+/g, ' ').trim();
-    }
-
-    /**
-     * Escape special regex characters
-     * @private
-     */
     #escapeRegex(str) {
         return str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
     }
@@ -580,7 +567,7 @@ export class EditorManager {
      */
     #highlightMarkdown(text) {
         // Escape HTML first
-        text = this.#escapeHtml(text);
+        text = Text.escape(text);
 
         // Apply syntax highlighting (order matters!)
         text = text
@@ -610,13 +597,4 @@ export class EditorManager {
         return text;
     }
 
-    /**
-     * Escape HTML
-     * @private
-     */
-    #escapeHtml(text) {
-        const div = document.createElement('div');
-        div.textContent = text;
-        return div.innerHTML;
-    }
 }

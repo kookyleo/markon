@@ -57,46 +57,34 @@ class SectionViewedManager {
     setupWebSocketListeners() {
         if (!this.ws) return;
 
-        // Listen for viewed state updates from other clients
-        this.ws.addEventListener('message', (event) => {
+        if (this._wsMessageHandler) {
+            this.ws.removeEventListener('message', this._wsMessageHandler);
+        }
+        this._wsMessageHandler = (event) => {
             try {
                 const data = JSON.parse(event.data);
+                if (data.type !== 'viewed_state') return;
 
-                if (data.type === 'viewed_state') {
-                    // Received viewed state from server (initial load or update from other client)
-                    console.log('[ViewedManager] Received viewed_state:', JSON.stringify(data.state), 'keys:', Object.keys(data.state || {}).length);
-                    this.viewedState = data.state || {};
-                    this.stateLoaded = true;
+                this.viewedState = data.state || {};
+                this.stateLoaded = true;
 
-                    // If checkboxes are already injected, update their state
-                    if (document.querySelector('.viewed-checkbox')) {
-                        console.log('[ViewedManager] Updating checkboxes and applying state');
-                        this.updateCheckboxes();
-                        this.applyViewedState();
-                    } else {
-                        console.log('[ViewedManager] No checkboxes found yet');
-                    }
+                if (document.querySelector('.viewed-checkbox')) {
+                    this.updateCheckboxes();
+                    this.applyViewedState();
                 }
             } catch (e) {
                 // Not a viewed message, ignore
             }
-        });
+        };
+        this.ws.addEventListener('message', this._wsMessageHandler);
     }
 
     updateCheckboxes() {
-        // Update checkbox states based on viewedState
         const checkboxes = document.querySelectorAll('.viewed-checkbox');
-        console.log('[ViewedManager] updateCheckboxes: found', checkboxes.length, 'checkboxes, viewedState keys:', Object.keys(this.viewedState).length);
-
-        let uncheckedCount = 0;
         checkboxes.forEach(checkbox => {
             const headingId = checkbox.dataset.headingId;
-            const shouldBeChecked = !!this.viewedState[headingId];
-            if (!shouldBeChecked) uncheckedCount++;
-            checkbox.checked = shouldBeChecked;
+            checkbox.checked = !!this.viewedState[headingId];
         });
-
-        console.log('[ViewedManager] updateCheckboxes: unchecked', uncheckedCount, 'checkboxes');
     }
 
     injectCheckboxes() {
@@ -764,25 +752,14 @@ class SectionViewedManager {
     }
 
     saveState() {
-        console.log('[ViewedManager] saveState called:', {
-            isSharedMode: this.isSharedMode,
-            hasWs: !!this.ws,
-            wsState: this.ws?.readyState,
-            stateKeys: Object.keys(this.viewedState).length
-        });
-
         if (this.isSharedMode && this.ws && this.ws.readyState === WebSocket.OPEN) {
-            // Shared mode: send to server via WebSocket
-            console.log('[ViewedManager] Sending viewed state to server:', this.viewedState);
             this.ws.send(JSON.stringify({
                 type: 'update_viewed_state',
                 state: this.viewedState
             }));
         } else if (!this.isSharedMode) {
-            // Local mode: save to LocalStorage
             const key = `markon-viewed-${this.filePath}`;
             localStorage.setItem(key, JSON.stringify(this.viewedState));
-            console.log('[ViewedManager] Saved to localStorage:', key);
         } else {
             console.warn('[ViewedManager] Cannot save state - shared mode but no WebSocket connection');
         }

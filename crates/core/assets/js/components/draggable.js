@@ -4,6 +4,7 @@
  */
 
 import { Logger } from '../core/utils.js';
+import { Position } from '../services/position.js';
 
 /**
  * 拖拽Management器类
@@ -125,28 +126,12 @@ export class DraggableManager {
         let newLeft = this.#initialLeft + dx;
         let newTop = this.#initialTop + dy;
 
-        // 约束到视口范围内
-        const margin = 10;
-        const scrollX = window.pageXOffset || document.documentElement.scrollLeft;
-        const scrollY = window.pageYOffset || document.documentElement.scrollTop;
-        const viewportWidth = window.innerWidth;
-        const viewportHeight = window.innerHeight;
-        const elementWidth = this.#element.offsetWidth;
-        const elementHeight = this.#element.offsetHeight;
-
-        // 限制在视口内（使用Document坐标）
-        if (newLeft < scrollX + margin) {
-            newLeft = scrollX + margin;
-        }
-        if (newLeft + elementWidth > scrollX + viewportWidth - margin) {
-            newLeft = scrollX + viewportWidth - elementWidth - margin;
-        }
-        if (newTop < scrollY + margin) {
-            newTop = scrollY + margin;
-        }
-        if (newTop + elementHeight > scrollY + viewportHeight - margin) {
-            newTop = scrollY + viewportHeight - elementHeight - margin;
-        }
+        ({ left: newLeft, top: newTop } = Position.constrainToViewport(
+            newLeft,
+            newTop,
+            this.#element.offsetWidth,
+            this.#element.offsetHeight
+        ));
 
         this.#element.style.left = `${newLeft}px`;
         this.#element.style.top = `${newTop}px`;

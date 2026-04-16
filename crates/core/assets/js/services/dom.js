@@ -42,5 +42,27 @@ export const DOM = {
     getHeight(element, fallback = 80) {
         const height = element.offsetHeight;
         return height > 0 ? height : fallback;
+    },
+
+    // Detach-on-outside-click helper. Returns a disposer.
+    onOutsideClick(element, callback, { ignore } = {}) {
+        const handler = (e) => {
+            if (element.contains(e.target)) return;
+            if (ignore && ignore(e.target)) return;
+            callback(e);
+        };
+        const dispose = () => document.removeEventListener('click', handler, true);
+        document.addEventListener('click', handler, true);
+        return dispose;
+    }
+};
+
+// Read a <meta name="..."> tag inserted into layout.html by the server.
+export const Meta = {
+    get(name) {
+        return document.querySelector(`meta[name="${name}"]`)?.getAttribute('content') ?? null;
+    },
+    flag(name) {
+        return this.get(name) === 'true';
     }
 };

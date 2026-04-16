@@ -194,9 +194,6 @@ export class WebSocketManager {
     #handleMessage(event) {
         try {
             const message = JSON.parse(event.data);
-            Logger.log('WebSocket', `Received message: ${message.type}`);
-
-            // Trigger对应的Handle器
             if (this.#messageHandlers.has(message.type)) {
                 const handlers = this.#messageHandlers.get(message.type);
                 handlers.forEach(handler => {

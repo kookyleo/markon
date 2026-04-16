@@ -1,5 +1,6 @@
 import { CONFIG } from '../core/config.js';
 import { Logger } from '../core/utils.js';
+import { Meta } from '../services/dom.js';
 
 const _t = (window.__MARKON_I18N__ && window.__MARKON_I18N__.t) || (k => k);
 
@@ -105,7 +106,7 @@ export class SearchManager {
     }
 
     #getWorkspaceId() {
-        return document.querySelector('meta[name="workspace-id"]')?.content ?? '';
+        return Meta.get(CONFIG.META_TAGS.WORKSPACE_ID) ?? '';
     }
 
     #selectCurrent() {

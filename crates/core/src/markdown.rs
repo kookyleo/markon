@@ -19,6 +19,8 @@ lazy_static! {
         .expect("Failed to compile HTML_TAG_REGEX");
     static ref MULTI_HYPHEN_REGEX: Regex = Regex::new(r"-+")
         .expect("Failed to compile MULTI_HYPHEN_REGEX");
+    static ref SYNTAX_SET: SyntaxSet = SyntaxSet::load_defaults_newlines();
+    static ref THEME_SET: ThemeSet = ThemeSet::load_defaults();
 }
 
 #[derive(Debug, Clone, serde::Serialize)]
@@ -47,14 +49,13 @@ impl MarkdownRenderer {
         options.insert(Options::ENABLE_TASKLISTS);
         options.insert(Options::ENABLE_HEADING_ATTRIBUTES);
 
-        let ss = SyntaxSet::load_defaults_newlines();
-        let ts = ThemeSet::load_defaults();
+        let ss: &SyntaxSet = &SYNTAX_SET;
+        let ts: &ThemeSet = &THEME_SET;
 
-        // Select syntax highlighting theme based on user preference
         let theme_name = match self.theme.as_str() {
             "light" => "Solarized (light)",
             "dark" => "base16-ocean.dark",
-            _ => "base16-ocean.dark", // auto defaults to dark
+            _ => "base16-ocean.dark",
         };
         let theme = &ts.themes[theme_name];
 
@@ -93,7 +94,7 @@ impl MarkdownRenderer {
 
                             let mut highlighted_html = String::from("<pre><code>");
                             for line in LinesWithEndings::from(&code_buffer) {
-                                match highlighter.highlight_line(line, &ss) {
+                                match highlighter.highlight_line(line, ss) {
                                     Ok(ranges) => {
                                         match styled_line_to_highlighted_html(
                                             &ranges[..],

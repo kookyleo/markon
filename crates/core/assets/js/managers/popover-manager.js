@@ -77,49 +77,16 @@ export class PopoverManager {
             }
         }
 
-        // 约束到视口内
-        const margin = 10;
-        const viewportWidth = window.innerWidth;
-        const viewportHeight = window.innerHeight;
+        ({ left, top } = Position.constrainToViewport(left, top, popoverWidth, popoverHeight));
 
-        if (left < scrollX + margin) {
-            left = scrollX + margin;
-        }
-        if (left + popoverWidth > scrollX + viewportWidth - margin) {
-            left = scrollX + viewportWidth - popoverWidth - margin;
-        }
-        if (top < scrollY + margin) {
-            top = scrollY + margin;
-        }
-        if (top + popoverHeight > scrollY + viewportHeight - margin) {
-            top = scrollY + viewportHeight - popoverHeight - margin;
-        }
-
-        // Save原始位置（Apply偏移之前的位置）用于Calculate偏移量
         const originalLeft = left;
         const originalTop = top;
 
-        // ApplySave的偏移量
         const savedOffset = this.#getSavedOffset();
         if (savedOffset) {
             left += savedOffset.dx;
             top += savedOffset.dy;
-            Logger.log('PopoverManager', `Applied saved offset: dx=${savedOffset.dx}, dy=${savedOffset.dy}`);
-
-            // Apply偏移后再次Check边界，防止屏幕变小后Utility条超出视口
-            if (left < scrollX + margin) {
-                left = scrollX + margin;
-            }
-            if (left + popoverWidth > scrollX + viewportWidth - margin) {
-                left = scrollX + viewportWidth - popoverWidth - margin;
-            }
-            if (top < scrollY + margin) {
-                top = scrollY + margin;
-            }
-            if (top + popoverHeight > scrollY + viewportHeight - margin) {
-                top = scrollY + viewportHeight - popoverHeight - margin;
-            }
-            Logger.log('PopoverManager', `After boundary check: (${Math.round(left)}, ${Math.round(top)})`);
+            ({ left, top } = Position.constrainToViewport(left, top, popoverWidth, popoverHeight));
         }
 
         // Save原始位置（Apply偏移之前）供 DraggableManager Calculate偏移量
@@ -171,6 +138,18 @@ export class PopoverManager {
     handleSelection(event) {
         // Ignore弹出框内的点击
         if (this.#element.contains(event.target)) {
+            return;
+        }
+        // Clicks on floating UI widgets (TOC icon/menu, Live sphere/panel)
+        // shouldn't re-show the popover on a stale selection left in the
+        // article from an earlier interaction.
+        if (event.target && event.target.closest && event.target.closest('#toc-container, .markon-live-container')) {
+            return;
+        }
+        // When the current selection was applied by Markon Live (follower
+        // mirroring the speaker), suppress the annotation toolbar — followers
+        // shouldn't see highlight/note options for ranges they didn't make.
+        if (document.body.dataset.markonLiveRemote) {
             return;
         }
 
@@ -281,49 +260,16 @@ export class PopoverManager {
             }
         }
 
-        // 约束到视口内
-        const margin = 10;
-        const viewportWidth = window.innerWidth;
-        const viewportHeight = window.innerHeight;
+        ({ left, top } = Position.constrainToViewport(left, top, popoverWidth, popoverHeight));
 
-        if (left < scrollX + margin) {
-            left = scrollX + margin;
-        }
-        if (left + popoverWidth > scrollX + viewportWidth - margin) {
-            left = scrollX + viewportWidth - popoverWidth - margin;
-        }
-        if (top < scrollY + margin) {
-            top = scrollY + margin;
-        }
-        if (top + popoverHeight > scrollY + viewportHeight - margin) {
-            top = scrollY + viewportHeight - popoverHeight - margin;
-        }
-
-        // Save原始位置（Apply偏移之前的位置）用于Calculate偏移量
         const originalLeft = left;
         const originalTop = top;
 
-        // ApplySave的偏移量
         const savedOffset = this.#getSavedOffset();
         if (savedOffset) {
             left += savedOffset.dx;
             top += savedOffset.dy;
-            Logger.log('PopoverManager', `Applied saved offset: dx=${savedOffset.dx}, dy=${savedOffset.dy}`);
-
-            // Apply偏移后再次Check边界，防止屏幕变小后Utility条超出视口
-            if (left < scrollX + margin) {
-                left = scrollX + margin;
-            }
-            if (left + popoverWidth > scrollX + viewportWidth - margin) {
-                left = scrollX + viewportWidth - popoverWidth - margin;
-            }
-            if (top < scrollY + margin) {
-                top = scrollY + margin;
-            }
-            if (top + popoverHeight > scrollY + viewportHeight - margin) {
-                top = scrollY + viewportHeight - popoverHeight - margin;
-            }
-            Logger.log('PopoverManager', `After boundary check: (${Math.round(left)}, ${Math.round(top)})`);
+            ({ left, top } = Position.constrainToViewport(left, top, popoverWidth, popoverHeight));
         }
 
         // Save原始位置（Apply偏移之前）供 DraggableManager Calculate偏移量

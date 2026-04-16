@@ -87,24 +87,27 @@ impl SearchIndex {
     }
 
     fn index_directory(&self, dir: &Path) -> tantivy::Result<()> {
-        println!("Indexing markdown files in {:?}...", dir);
+        use rayon::prelude::*;
 
-        for entry in WalkDir::new(dir)
+        println!("Indexing markdown files in {dir:?}...");
+
+        let paths: Vec<PathBuf> = WalkDir::new(dir)
             .into_iter()
             .filter_map(Result::ok)
             .filter(|e| e.path().extension().is_some_and(|ext| ext == "md"))
-        {
-            let path = entry.path();
+            .map(|e| e.into_path())
+            .collect();
+
+        paths.par_iter().for_each(|path| {
             if let Ok(content) = fs::read_to_string(path) {
-                self.index_file(path, &content)?;
+                let _ = self.index_file(path, &content);
             }
-        }
+        });
 
         let mut writer = self.writer.lock().unwrap();
         writer.commit()?;
         drop(writer);
 
-        // Reload reader to see the committed changes
         self.reader.reload()?;
         println!("Indexing complete!");
 

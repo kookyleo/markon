@@ -45,6 +45,10 @@ dunce.workspace = true
 walkdir = "2.5.0"
 notify = "6.1.1"
 sys-locale = "0.3"
+sha2 = "0.10"
+mime_guess = "2.0"
+rayon = "1.10"
+arc-swap = "1.7"
 
 [dev-dependencies]
 tempfile = "3.17"

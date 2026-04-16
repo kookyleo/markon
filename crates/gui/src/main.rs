@@ -82,7 +82,7 @@ fn install_exe_window_icon(window: &tauri::WebviewWindow) {
 }
 
 pub struct AppState {
-    pub settings: Mutex<AppSettings>,
+    pub settings: Arc<Mutex<AppSettings>>,
     pub server: Mutex<ServerManager>,
     /// Set to true when RunEvent::Opened fires so Reopen doesn't override it with Settings.
     pub file_just_opened: Arc<AtomicBool>,
@@ -120,49 +120,27 @@ fn handle_open_path(app: &tauri::AppHandle, path: &Path) {
         return;
     }
 
-    let ws_root_str = ws_root.to_string_lossy().to_string();
-
-    // Read default feature flags from settings.
-    let (def_search, def_viewed, def_edit, def_live, def_shared) = {
+    let flags = {
         let settings = state.settings.lock().unwrap();
-        (
-            settings.default_search,
-            settings.default_viewed,
-            settings.default_edit,
-            settings.default_live,
-            settings.default_shared_annotation,
-        )
+        markon_core::workspace::WorkspaceFlags {
+            enable_search: settings.default_search,
+            enable_viewed: settings.default_viewed,
+            enable_edit: settings.default_edit,
+            enable_live: settings.default_live,
+            shared_annotation: settings.default_shared_annotation,
+        }
     };
 
+    // `registry.add` is idempotent on path and triggers the persist hook,
+    // which mirrors the change into AppSettings and writes settings.json.
     let id = server
         .registry
         .add(markon_core::workspace::WorkspaceConfig {
             path: ws_root,
-            enable_search: def_search,
-            enable_viewed: def_viewed,
-            enable_edit: def_edit,
-            enable_live: def_live,
-            shared_annotation: def_shared,
+            flags,
         });
     let port = server.port();
     drop(server);
-
-    // Persist to settings so the workspace survives restart and appears in the UI list.
-    {
-        use markon_core::settings::WorkspaceSettings;
-        let mut settings = state.settings.lock().unwrap();
-        if !settings.workspaces.iter().any(|w| w.path == ws_root_str) {
-            settings.workspaces.push(WorkspaceSettings {
-                path: ws_root_str,
-                enable_search: def_search,
-                enable_viewed: def_viewed,
-                enable_edit: def_edit,
-                enable_live: def_live,
-                shared_annotation: def_shared,
-            });
-            settings.save().ok();
-        }
-    }
 
     let url = match rel_path {
         Some(p) => format!("http://127.0.0.1:{port}/{id}/{p}"),
@@ -242,14 +220,16 @@ fn main() {
             #[cfg(target_os = "windows")]
             commands::sync_shell_context_menu(&language_init);
 
+            let settings_arc = Arc::new(Mutex::new(settings));
+            let persist_hook = AppSettings::persist_hook(settings_arc.clone());
             let state = AppState {
-                settings: Mutex::new(settings),
+                settings: settings_arc,
                 server: Mutex::new(ServerManager::new()),
                 file_just_opened: Arc::new(AtomicBool::new(false)),
                 tray_resident: Arc::new(AtomicBool::new(tray_resident_init)),
             };
             let mut server = state.server.lock().unwrap();
-            server.start(config);
+            server.start(config, Some(persist_hook));
             drop(server);
             app.manage(state);
 

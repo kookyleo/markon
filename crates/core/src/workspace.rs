@@ -1,24 +1,35 @@
 use crate::search::SearchIndex;
+use arc_swap::ArcSwapOption;
 use notify::{EventKind, RecursiveMode, Watcher};
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use std::{
     collections::HashMap,
-    path::PathBuf,
+    path::{Path, PathBuf},
     sync::{
         atomic::{AtomicBool, Ordering},
-        Arc, Mutex, RwLock,
+        Arc, RwLock,
     },
 };
 use tokio::sync::broadcast;
 
+#[derive(Clone, Copy, Debug, Default, Serialize, Deserialize)]
+pub struct WorkspaceFlags {
+    #[serde(default)]
+    pub enable_search: bool,
+    #[serde(default)]
+    pub enable_viewed: bool,
+    #[serde(default)]
+    pub enable_edit: bool,
+    #[serde(default)]
+    pub enable_live: bool,
+    #[serde(default)]
+    pub shared_annotation: bool,
+}
+
 #[derive(Clone)]
 pub struct WorkspaceConfig {
     pub path: PathBuf,
-    pub enable_search: bool,
-    pub enable_viewed: bool,
-    pub enable_edit: bool,
-    pub enable_live: bool,
-    pub shared_annotation: bool,
+    pub flags: WorkspaceFlags,
 }
 
 pub struct WorkspaceEntry {
@@ -30,12 +41,22 @@ pub struct WorkspaceEntry {
     pub enable_live: AtomicBool,
     pub shared_annotation: AtomicBool,
     pub config_tx: broadcast::Sender<()>,
-    pub search_index: Arc<Mutex<Option<Arc<SearchIndex>>>>,
+    pub search_index: ArcSwapOption<SearchIndex>,
 }
 
 impl WorkspaceEntry {
     pub fn search_ready(&self) -> bool {
-        self.enable_search.load(Ordering::Relaxed) && self.search_index.lock().unwrap().is_some()
+        self.enable_search.load(Ordering::Relaxed) && self.search_index.load().is_some()
+    }
+
+    pub fn flags(&self) -> WorkspaceFlags {
+        WorkspaceFlags {
+            enable_search: self.enable_search.load(Ordering::Relaxed),
+            enable_viewed: self.enable_viewed.load(Ordering::Relaxed),
+            enable_edit: self.enable_edit.load(Ordering::Relaxed),
+            enable_live: self.enable_live.load(Ordering::Relaxed),
+            shared_annotation: self.shared_annotation.load(Ordering::Relaxed),
+        }
     }
 }
 
@@ -43,26 +64,35 @@ impl WorkspaceEntry {
 pub struct WorkspaceInfo {
     pub id: String,
     pub path: String,
-    pub enable_search: bool,
-    pub enable_viewed: bool,
-    pub enable_edit: bool,
-    pub enable_live: bool,
-    pub shared_annotation: bool,
+    #[serde(flatten)]
+    pub flags: WorkspaceFlags,
     pub search_ready: bool,
 }
+
+/// Invoked whenever the registry mutates (add / update_flags / remove).
+/// The host (GUI or CLI daemon) wires this to persist workspaces to
+/// `~/.markon/settings.json` so CLI-driven and GUI-driven changes are
+/// treated identically.
+pub type PersistHook = Arc<dyn Fn(&WorkspaceRegistry) + Send + Sync>;
 
 pub struct WorkspaceRegistry {
     inner: RwLock<HashMap<String, Arc<WorkspaceEntry>>>,
     pub salt: String,
+    persist: RwLock<Option<PersistHook>>,
 }
 
-pub fn hash_id(path: &std::path::Path, salt: &str) -> String {
-    use std::collections::hash_map::DefaultHasher;
-    use std::hash::{Hash, Hasher};
-    let mut h = DefaultHasher::new();
-    salt.hash(&mut h);
-    path.hash(&mut h);
-    format!("{:08x}", h.finish() as u32)
+/// Stable workspace id: truncated SHA-256 of salt + path.
+pub fn hash_id(path: &Path, salt: &str) -> String {
+    use sha2::{Digest, Sha256};
+    let mut h = Sha256::new();
+    h.update(salt.as_bytes());
+    h.update(b"\0");
+    h.update(path.as_os_str().to_string_lossy().as_bytes());
+    let digest = h.finalize();
+    format!(
+        "{:02x}{:02x}{:02x}{:02x}",
+        digest[0], digest[1], digest[2], digest[3]
+    )
 }
 
 pub fn generate_token() -> String {
@@ -80,62 +110,101 @@ pub fn generate_token() -> String {
     )
 }
 
+/// Expand `~` / `～` and canonicalize (dunce strips the `\\?\` verbatim prefix
+/// on Windows so UI-visible paths stay clean).
+pub fn expand_and_canonicalize(raw: &str) -> std::io::Result<PathBuf> {
+    let normalized = if raw.starts_with('～') {
+        raw.replacen('～', "~", 1)
+    } else {
+        raw.to_string()
+    };
+    let expanded = if normalized.starts_with("~/") || normalized == "~" {
+        dirs::home_dir()
+            .map(|home| {
+                if normalized == "~" {
+                    home
+                } else {
+                    home.join(&normalized[2..])
+                }
+            })
+            .unwrap_or_else(|| PathBuf::from(&normalized))
+    } else {
+        PathBuf::from(&normalized)
+    };
+    dunce::canonicalize(&expanded).or(Ok(expanded))
+}
+
 impl WorkspaceRegistry {
     pub fn new(salt: String) -> Self {
         Self {
             inner: RwLock::new(HashMap::new()),
             salt,
+            persist: RwLock::new(None),
+        }
+    }
+    pub fn set_persist_hook(&self, hook: PersistHook) {
+        *self.persist.write().unwrap() = Some(hook);
+    }
+    fn notify_persist(&self) {
+        let hook = self.persist.read().unwrap().clone();
+        if let Some(hook) = hook {
+            hook(self);
         }
     }
     pub fn add(&self, config: WorkspaceConfig) -> String {
         let id = hash_id(&config.path, &self.salt);
-        let search_slot = Arc::new(Mutex::new(None));
+        // Idempotent: same path registered twice just updates flags on the
+        // existing entry instead of spawning a second indexer thread.
+        if self.inner.read().unwrap().contains_key(&id) {
+            self.update_flags(&id, config.flags);
+            return id;
+        }
         let (config_tx, _) = broadcast::channel(4);
         let entry = Arc::new(WorkspaceEntry {
             id: id.clone(),
             root: config.path.clone(),
-            enable_search: AtomicBool::new(config.enable_search),
-            enable_viewed: AtomicBool::new(config.enable_viewed),
-            enable_edit: AtomicBool::new(config.enable_edit),
-            enable_live: AtomicBool::new(config.enable_live),
-            shared_annotation: AtomicBool::new(config.shared_annotation),
+            enable_search: AtomicBool::new(config.flags.enable_search),
+            enable_viewed: AtomicBool::new(config.flags.enable_viewed),
+            enable_edit: AtomicBool::new(config.flags.enable_edit),
+            enable_live: AtomicBool::new(config.flags.enable_live),
+            shared_annotation: AtomicBool::new(config.flags.shared_annotation),
             config_tx,
-            search_index: search_slot.clone(),
+            search_index: ArcSwapOption::empty(),
         });
-        self.inner.write().unwrap().insert(id.clone(), entry);
-        if config.enable_search {
-            spawn_search_indexer(config.path, search_slot);
+        self.inner.write().unwrap().insert(id.clone(), entry.clone());
+        if config.flags.enable_search {
+            spawn_search_indexer(config.path, entry);
         }
+        self.notify_persist();
         id
     }
-    pub fn update_flags(
-        &self,
-        id: &str,
-        enable_search: bool,
-        enable_viewed: bool,
-        enable_edit: bool,
-        enable_live: bool,
-        shared_annotation: bool,
-    ) -> bool {
+    pub fn update_flags(&self, id: &str, flags: WorkspaceFlags) -> bool {
         let guard = self.inner.read().unwrap();
-        let Some(entry) = guard.get(id) else {
+        let Some(entry) = guard.get(id).cloned() else {
             return false;
         };
-        let was_search = entry.enable_search.swap(enable_search, Ordering::Relaxed);
-        entry.enable_viewed.store(enable_viewed, Ordering::Relaxed);
-        entry.enable_edit.store(enable_edit, Ordering::Relaxed);
-        entry.enable_live.store(enable_live, Ordering::Relaxed);
+        drop(guard);
+        let was_search = entry.enable_search.swap(flags.enable_search, Ordering::Relaxed);
+        entry.enable_viewed.store(flags.enable_viewed, Ordering::Relaxed);
+        entry.enable_edit.store(flags.enable_edit, Ordering::Relaxed);
+        entry.enable_live.store(flags.enable_live, Ordering::Relaxed);
         entry
             .shared_annotation
-            .store(shared_annotation, Ordering::Relaxed);
+            .store(flags.shared_annotation, Ordering::Relaxed);
         let _ = entry.config_tx.send(());
-        if enable_search && !was_search && entry.search_index.lock().unwrap().is_none() {
-            spawn_search_indexer(entry.root.clone(), entry.search_index.clone());
+        if flags.enable_search && !was_search && entry.search_index.load().is_none() {
+            let root = entry.root.clone();
+            spawn_search_indexer(root, entry);
         }
+        self.notify_persist();
         true
     }
     pub fn remove(&self, id: &str) -> bool {
-        self.inner.write().unwrap().remove(id).is_some()
+        let removed = self.inner.write().unwrap().remove(id).is_some();
+        if removed {
+            self.notify_persist();
+        }
+        removed
     }
     pub fn get(&self, id: &str) -> Option<Arc<WorkspaceEntry>> {
         self.inner.read().unwrap().get(id).cloned()
@@ -149,22 +218,18 @@ impl WorkspaceRegistry {
             .map(|e| WorkspaceInfo {
                 id: e.id.clone(),
                 path: e.root.to_string_lossy().to_string(),
-                enable_search: e.enable_search.load(Ordering::Relaxed),
-                enable_viewed: e.enable_viewed.load(Ordering::Relaxed),
-                enable_edit: e.enable_edit.load(Ordering::Relaxed),
-                enable_live: e.enable_live.load(Ordering::Relaxed),
-                shared_annotation: e.shared_annotation.load(Ordering::Relaxed),
+                flags: e.flags(),
                 search_ready: e.search_ready(),
             })
             .collect()
     }
 }
 
-fn spawn_search_indexer(root: PathBuf, slot: Arc<Mutex<Option<Arc<SearchIndex>>>>) {
+fn spawn_search_indexer(root: PathBuf, entry: Arc<WorkspaceEntry>) {
     std::thread::spawn(move || {
         if let Ok(idx) = SearchIndex::new(&root) {
             let idx = Arc::new(idx);
-            *slot.lock().unwrap() = Some(idx.clone());
+            entry.search_index.store(Some(idx.clone()));
             start_file_watcher(idx, root);
         }
     });
@@ -173,12 +238,13 @@ fn spawn_search_indexer(root: PathBuf, slot: Arc<Mutex<Option<Arc<SearchIndex>>>
 fn start_file_watcher(index: Arc<SearchIndex>, root: PathBuf) {
     std::thread::spawn(move || {
         let (tx, rx) = std::sync::mpsc::channel();
-        let mut watcher = notify::recommended_watcher(move |res| {
+        let Ok(mut watcher) = notify::recommended_watcher(move |res| {
             if let Ok(e) = res {
                 let _ = tx.send(e);
             }
-        })
-        .unwrap();
+        }) else {
+            return;
+        };
         let _ = watcher.watch(&root, RecursiveMode::Recursive);
         while let Ok(event) = rx.recv() {
             for path in event.paths {
@@ -238,5 +304,11 @@ mod tests {
     fn hash_id_is_deterministic() {
         let p = std::path::Path::new("/tmp/test");
         assert_eq!(hash_id(p, "s"), hash_id(p, "s"));
+    }
+
+    #[test]
+    fn hash_id_depends_on_salt() {
+        let p = std::path::Path::new("/tmp/test");
+        assert_ne!(hash_id(p, "a"), hash_id(p, "b"));
     }
 }

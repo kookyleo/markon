@@ -1,5 +1,5 @@
 use markon_core::server::ServerConfig;
-use markon_core::workspace::WorkspaceRegistry;
+use markon_core::workspace::{PersistHook, WorkspaceRegistry};
 use std::sync::Arc;
 
 pub struct ServerManager {
@@ -28,12 +28,15 @@ impl ServerManager {
         Self::default()
     }
 
-    pub fn start(&mut self, mut config: ServerConfig) {
+    pub fn start(&mut self, mut config: ServerConfig, persist: Option<PersistHook>) {
         self.stop();
 
         // Stable salt based on port — same dir+port = same workspace ID.
         let salt = format!("markon:{}", config.port);
         self.registry = Arc::new(WorkspaceRegistry::new(salt.clone()));
+        if let Some(hook) = persist {
+            self.registry.set_persist_hook(hook);
+        }
         config.salt = Some(salt);
         config.registry = Some(self.registry.clone());
 

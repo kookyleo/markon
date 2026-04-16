@@ -106,68 +106,23 @@ class BaseModal {
      */
     #positionNear(anchorElement) {
         const rect = anchorElement.getBoundingClientRect();
-
-        // 强制重排以Get准确的尺寸
         const modalWidth = this.#element.offsetWidth;
         const modalHeight = this.#element.offsetHeight;
-
-        // Check Modal 的 position Type
-        const position = getComputedStyle(this.#element).position;
-        const isFixed = position === 'fixed';
-
-        // Get滚动位置（仅在 absolute 定位时需要）
+        const isFixed = getComputedStyle(this.#element).position === 'fixed';
         const scrollX = isFixed ? 0 : (window.pageXOffset || document.documentElement.scrollLeft);
         const scrollY = isFixed ? 0 : (window.pageYOffset || document.documentElement.scrollTop);
 
-        // 默认位置：锚点下方
         let left = rect.left + scrollX;
         let top = rect.bottom + scrollY + 5;
 
-        // 调整位置以保持在视口内
-        const viewportWidth = window.innerWidth;
-        const viewportHeight = window.innerHeight;
-        const margin = 10;
-
-        if (left + modalWidth > viewportWidth - margin) {
-            left = viewportWidth - modalWidth - margin;
-        }
-        if (left < margin) {
-            left = margin;
-        }
-
-        // Check下方空间，如果不够则放在上方
-        const spaceBelow = viewportHeight - rect.bottom;
-        if (spaceBelow < modalHeight + 10) {
-            // 放在上方
+        // Flip to above if there's no room below.
+        if (window.innerHeight - rect.bottom < modalHeight + 10) {
             top = rect.top + scrollY - modalHeight - 5;
         }
 
-        // 确保不超出视口
-        if (isFixed) {
-            // Fixed 定位：使用视口坐标
-            if (top < margin) {
-                top = margin;
-            }
-            if (top + modalHeight > viewportHeight - margin) {
-                top = viewportHeight - modalHeight - margin;
-            }
-        } else {
-            // Absolute 定位：使用Document坐标
-            const viewportTop = scrollY;
-            const viewportBottom = scrollY + viewportHeight;
-
-            if (top < viewportTop + margin) {
-                top = viewportTop + margin;
-            }
-            if (top + modalHeight > viewportBottom - margin) {
-                top = viewportBottom - modalHeight - margin;
-            }
-        }
-
+        ({ left, top } = Position.constrainToViewport(left, top, modalWidth, modalHeight, { fixed: isFixed }));
         this.#element.style.left = `${left}px`;
         this.#element.style.top = `${top}px`;
-
-        Logger.log('Modal', `Positioned at (${Math.round(left)}, ${Math.round(top)}) [${position}] with scroll (${scrollX}, ${scrollY})`);
     }
 
     /**

@@ -1,8 +1,7 @@
 use crate::AppState;
 use markon_core::i18n;
-use markon_core::settings::{AppSettings, PortMode, WorkspaceSettings};
-use markon_core::workspace::WorkspaceConfig;
-use std::path::PathBuf;
+use markon_core::settings::{AppSettings, PortMode};
+use markon_core::workspace::{expand_and_canonicalize, WorkspaceConfig, WorkspaceFlags};
 use std::sync::atomic::Ordering;
 use tauri::menu::{Menu, MenuItem, PredefinedMenuItem};
 use tauri::State;
@@ -113,10 +112,8 @@ pub fn save_settings(
     let mut settings = settings;
     settings.workspaces = existing_workspaces;
 
-    // Update tray menu labels if language changed.
     update_tray_language(&app, &settings.language);
 
-    // Windows Explorer context-menu labels follow the app language.
     #[cfg(target_os = "windows")]
     sync_shell_context_menu(&settings.language);
 
@@ -128,7 +125,8 @@ pub fn save_settings(
     };
     let config = settings.to_server_config(port);
     *state.settings.lock().unwrap() = settings;
-    state.server.lock().unwrap().start(config);
+    let persist = AppSettings::persist_hook(state.settings.clone());
+    state.server.lock().unwrap().start(config, Some(persist));
     Ok(())
 }
 
@@ -154,7 +152,10 @@ fn update_tray_language(app: &tauri::AppHandle, language: &str) {
     }
 }
 
-/// Add a workspace directory to the running server. Returns the workspace ID and URL.
+// All three workspace commands below just drive the registry; persistence
+// to settings.json happens via the persist hook wired at server startup,
+// so CLI (HTTP API) and GUI (Tauri API) paths share a single flow.
+
 #[tauri::command]
 pub fn add_workspace(
     path: String,
@@ -165,54 +166,23 @@ pub fn add_workspace(
     shared_annotation: bool,
     state: State<AppState>,
 ) -> Result<serde_json::Value, String> {
-    // Expand leading ~ (ASCII) or ～ (full-width, macOS IME) to home directory.
-    let normalized = if path.starts_with('～') {
-        path.replacen('～', "~", 1)
-    } else {
-        path.clone()
+    let canonical = expand_and_canonicalize(&path).map_err(|e| format!("Invalid path: {e}"))?;
+    let flags = WorkspaceFlags {
+        enable_search,
+        enable_viewed,
+        enable_edit,
+        enable_live,
+        shared_annotation,
     };
-    let expanded = if normalized.starts_with("~/") || normalized == "~" {
-        let home = dirs::home_dir().ok_or("Cannot determine home directory")?;
-        if normalized == "~" {
-            home
-        } else {
-            home.join(&normalized[2..])
-        }
-    } else {
-        PathBuf::from(&normalized)
-    };
-    let canonical = dunce::canonicalize(&expanded).map_err(|e| format!("Invalid path: {e}"))?;
-    let canonical_str = canonical.to_string_lossy().to_string();
-
     let server = state.server.lock().unwrap();
     let id = server.registry.add(WorkspaceConfig {
         path: canonical,
-        enable_search,
-        enable_viewed,
-        enable_edit,
-        enable_live,
-        shared_annotation,
+        flags,
     });
-    let port = server.port();
-    let url = format!("http://127.0.0.1:{port}/{id}/");
-
-    // Persist to settings
-    drop(server);
-    let mut settings = state.settings.lock().unwrap();
-    settings.workspaces.push(WorkspaceSettings {
-        path: canonical_str,
-        enable_search,
-        enable_viewed,
-        enable_edit,
-        enable_live,
-        shared_annotation,
-    });
-    settings.save().ok();
-
+    let url = format!("http://127.0.0.1:{}/{id}/", server.port());
     Ok(serde_json::json!({ "id": id, "url": url }))
 }
 
-/// Update feature flags for an existing workspace.
 #[tauri::command]
 pub fn update_workspace(
     id: String,
@@ -223,53 +193,25 @@ pub fn update_workspace(
     shared_annotation: bool,
     state: State<AppState>,
 ) -> Result<(), String> {
-    let server = state.server.lock().unwrap();
-    let ws = server
-        .registry
-        .get(&id)
-        .ok_or_else(|| format!("Workspace {id} not found"))?;
-    let ws_path = ws.root.to_string_lossy().to_string();
-    server.registry.update_flags(
-        &id,
+    let flags = WorkspaceFlags {
         enable_search,
         enable_viewed,
         enable_edit,
         enable_live,
         shared_annotation,
-    );
-    drop(server);
-
-    let mut settings = state.settings.lock().unwrap();
-    if let Some(entry) = settings.workspaces.iter_mut().find(|w| w.path == ws_path) {
-        entry.enable_search = enable_search;
-        entry.enable_viewed = enable_viewed;
-        entry.enable_edit = enable_edit;
-        entry.enable_live = enable_live;
-        entry.shared_annotation = shared_annotation;
+    };
+    let server = state.server.lock().unwrap();
+    if !server.registry.update_flags(&id, flags) {
+        return Err(format!("Workspace {id} not found"));
     }
-    settings.save().ok();
     Ok(())
 }
 
-/// Remove a workspace from the running server and persist the change.
 #[tauri::command]
 pub fn remove_workspace(id: String, state: State<AppState>) -> Result<(), String> {
     let server = state.server.lock().unwrap();
-    let ws_path = server
-        .registry
-        .get(&id)
-        .map(|ws| ws.root.to_string_lossy().to_string());
-    let removed = server.registry.remove(&id);
-    drop(server);
-
-    if !removed {
+    if !server.registry.remove(&id) {
         return Err(format!("Workspace {id} not found"));
-    }
-
-    if let Some(path) = ws_path {
-        let mut settings = state.settings.lock().unwrap();
-        settings.workspaces.retain(|w| w.path != path);
-        settings.save().ok();
     }
     Ok(())
 }
@@ -289,11 +231,11 @@ pub fn get_workspaces(state: State<AppState>) -> Vec<serde_json::Value> {
                 "id": info.id,
                 "path": info.path,
                 "url": url,
-                "enable_search": info.enable_search,
-                "enable_viewed": info.enable_viewed,
-                "enable_edit": info.enable_edit,
-                "enable_live": info.enable_live,
-                "shared_annotation": info.shared_annotation,
+                "enable_search": info.flags.enable_search,
+                "enable_viewed": info.flags.enable_viewed,
+                "enable_edit": info.flags.enable_edit,
+                "enable_live": info.flags.enable_live,
+                "shared_annotation": info.flags.shared_annotation,
                 "search_ready": info.search_ready,
             })
         })

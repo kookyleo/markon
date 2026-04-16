@@ -25,17 +25,14 @@ use crate::i18n;
 use crate::markdown::MarkdownRenderer;
 use crate::search::{SearchQuery, SearchResult};
 use crate::workspace::{
-    generate_token, ServerLock, WorkspaceConfig, WorkspaceEntry, WorkspaceRegistry,
+    expand_and_canonicalize, generate_token, ServerLock, WorkspaceConfig, WorkspaceEntry,
+    WorkspaceFlags, WorkspaceRegistry,
 };
 
 /// Initial workspace for the server (one per CLI path / GUI workspace entry).
 pub struct WorkspaceInit {
     pub path: std::path::PathBuf,
-    pub enable_search: bool,
-    pub enable_viewed: bool,
-    pub enable_edit: bool,
-    pub enable_live: bool,
-    pub shared_annotation: bool,
+    pub flags: WorkspaceFlags,
     /// Path within this workspace to open in the browser (e.g. "notes/file.md").
     pub initial_path: Option<String>,
 }
@@ -86,8 +83,6 @@ pub struct AppState {
     pub styles_css: Arc<String>,
     /// Shutdown channel.
     pub shutdown_tx: mpsc::Sender<()>,
-    /// System hostname.
-    pub hostname: Arc<String>,
 }
 
 async fn shutdown_handler(State(state): State<AppState>) -> impl IntoResponse {
@@ -179,7 +174,12 @@ pub async fn start(config: ServerConfig) -> Result<(), String> {
         }
     }
 
-    let (db, tx) = if shared_annotation {
+    // A broadcast channel (for WebSocket fan-out) is needed whenever either
+    // shared_annotation or Live is active. The SQLite-backed annotation DB is
+    // only required by shared_annotation; Live is fire-and-forget broadcast.
+    let has_live = initial_workspaces.iter().any(|w| w.flags.enable_live);
+    let needs_ws = shared_annotation || has_live;
+    let db = if shared_annotation {
         let db_path = std::env::var("MARKON_SQLITE_PATH").unwrap_or_else(|_| {
             let home = dirs::home_dir().expect("Cannot find home directory");
             home.join(".markon/annotation.sqlite")
@@ -209,12 +209,11 @@ pub async fn start(config: ServerConfig) -> Result<(), String> {
             [],
         )
         .expect("Failed to create viewed_state table");
-        let db = Arc::new(Mutex::new(conn));
-        let tx = broadcast::channel(100).0;
-        (Some(db), Some(tx))
+        Some(Arc::new(Mutex::new(conn)))
     } else {
-        (None, None)
+        None
     };
+    let tx = needs_ws.then(|| broadcast::channel(100).0);
 
     // Build workspace registry and register initial workspaces.
     let effective_salt = salt.unwrap_or_else(|| format!("markon:{port}"));
@@ -224,39 +223,11 @@ pub async fn start(config: ServerConfig) -> Result<(), String> {
     let mut first_workspace_url_path: Option<String> = None;
 
     for ws_init in initial_workspaces {
-        // Expand leading ~ (ASCII) or ～ (full-width) before canonicalize.
-        let raw_str = ws_init.path.to_string_lossy().into_owned();
-        let normalized = if raw_str.starts_with('～') {
-            raw_str.replacen('～', "~", 1)
-        } else {
-            raw_str
-        };
-        let raw = std::path::PathBuf::from(&normalized);
-        let expanded = if normalized.starts_with("~/") || normalized == "~" {
-            if let Some(home) = dirs::home_dir() {
-                if normalized == "~" {
-                    home
-                } else {
-                    home.join(&normalized[2..])
-                }
-            } else {
-                raw
-            }
-        } else {
-            raw
-        };
-        // dunce::canonicalize strips Windows' \\?\ verbatim prefix whenever
-        // possible — std::fs::canonicalize adds it back even if settings.json
-        // had a clean path, so the registry (and the GUI workspace list that
-        // reads from it) ended up showing \\?\C:\... to users.
-        let path = dunce::canonicalize(&expanded).unwrap_or(expanded);
+        let path = expand_and_canonicalize(&ws_init.path.to_string_lossy())
+            .unwrap_or_else(|_| ws_init.path.clone());
         let id = registry.add(WorkspaceConfig {
             path,
-            enable_search: ws_init.enable_search,
-            enable_viewed: ws_init.enable_viewed,
-            enable_edit: ws_init.enable_edit,
-            enable_live: ws_init.enable_live,
-            shared_annotation: ws_init.shared_annotation,
+            flags: ws_init.flags,
         });
         if first_workspace_url_path.is_none() {
             let url_path = match ws_init.initial_path {
@@ -268,10 +239,6 @@ pub async fn start(config: ServerConfig) -> Result<(), String> {
     }
 
     let token = Arc::new(management_token.unwrap_or_else(generate_token));
-
-    let system_hostname = std::env::var("HOSTNAME")
-        .or_else(|_| std::env::var("COMPUTERNAME"))
-        .unwrap_or_else(|_| "markon-user".to_string());
 
     let (shutdown_tx, mut shutdown_rx) = mpsc::channel::<()>(1);
 
@@ -285,10 +252,12 @@ pub async fn start(config: ServerConfig) -> Result<(), String> {
         management_token: token.clone(),
         i18n_json: Arc::new(i18n::load_i18n()),
         i18n_lang: Arc::new(detect_lang(&language)),
-        shortcuts_json: Arc::new(shortcuts_json.unwrap_or_default()),
+        // Default to "null" (valid JS literal) so `= {{ shortcuts_json | safe }};`
+        // renders as `= null;` when no overrides; an empty string would produce
+        // `= ;`, a syntax error that silently breaks i18n and shortcut runtime.
+        shortcuts_json: Arc::new(shortcuts_json.unwrap_or_else(|| "null".to_string())),
         styles_css: Arc::new(styles_css.unwrap_or_default()),
         shutdown_tx,
-        hostname: Arc::new(system_hostname),
     };
 
     // Management API: requires loopback source IP + valid token header.
@@ -323,7 +292,7 @@ pub async fn start(config: ServerConfig) -> Result<(), String> {
         .fallback(|| async { StatusCode::NOT_FOUND })
         .merge(mgmt);
 
-    if shared_annotation {
+    if needs_ws {
         app = app.route("/_/ws", get(ws_handler));
     }
 
@@ -476,85 +445,177 @@ async fn ws_handler(ws: WebSocketUpgrade, State(state): State<AppState>) -> impl
     ws.on_upgrade(|socket| handle_socket(socket, state))
 }
 
+fn load_annotations(db: &Mutex<Connection>, file_path: &str) -> Vec<serde_json::Value> {
+    let db = db.lock().unwrap();
+    let mut stmt = match db.prepare("SELECT data FROM annotations WHERE file_path = ?1") {
+        Ok(s) => s,
+        Err(e) => {
+            eprintln!("[WebSocket] prepare failed: {e}");
+            return Vec::new();
+        }
+    };
+    let rows = match stmt.query_map([file_path], |row| row.get::<_, String>(0)) {
+        Ok(r) => r,
+        Err(e) => {
+            eprintln!("[WebSocket] query_map failed: {e}");
+            return Vec::new();
+        }
+    };
+    rows.filter_map(Result::ok)
+        .filter_map(|s| serde_json::from_str(&s).ok())
+        .collect()
+}
+
+fn load_viewed_state(db: &Mutex<Connection>, file_path: &str) -> serde_json::Value {
+    let db = db.lock().unwrap();
+    let state_json = db
+        .query_row(
+            "SELECT state FROM viewed_state WHERE file_path = ?1",
+            [file_path],
+            |row| row.get::<_, String>(0),
+        )
+        .unwrap_or_else(|_| "{}".to_string());
+    serde_json::from_str(&state_json).unwrap_or_else(|_| serde_json::json!({}))
+}
+
+async fn send_json(
+    sender: &mut futures_util::stream::SplitSink<WebSocket, Message>,
+    msg: &WebSocketMessage,
+) -> Result<(), ()> {
+    let Ok(encoded) = serde_json::to_string(msg) else {
+        return Err(());
+    };
+    sender.send(Message::Text(encoded.into())).await.map_err(|_| ())
+}
+
+fn broadcast_msg(tx: &broadcast::Sender<String>, msg: &WebSocketMessage) {
+    if let Ok(encoded) = serde_json::to_string(msg) {
+        let _ = tx.send(encoded);
+    }
+}
+
+fn handle_client_msg(
+    db: Option<&Mutex<Connection>>,
+    tx: &broadcast::Sender<String>,
+    file_path: &str,
+    msg: WebSocketMessage,
+) {
+    // LiveAction is pure broadcast — no DB needed. Handle it before the DB
+    // short-circuit so Live works in workspaces where shared_annotation is off.
+    if let WebSocketMessage::LiveAction { data } = msg {
+        broadcast_msg(tx, &WebSocketMessage::LiveAction { data });
+        return;
+    }
+    let Some(db) = db else { return };
+    let db = db.lock().unwrap();
+    match msg {
+        WebSocketMessage::NewAnnotation { annotation } => {
+            let Some(id) = annotation["id"].as_str().map(str::to_owned) else {
+                return;
+            };
+            let Ok(data) = serde_json::to_string(&annotation) else {
+                return;
+            };
+            if let Err(e) = db.execute(
+                "INSERT OR REPLACE INTO annotations (id, file_path, data) VALUES (?1, ?2, ?3)",
+                [id.as_str(), file_path, data.as_str()],
+            ) {
+                eprintln!("[WebSocket] insert annotation failed: {e}");
+                return;
+            }
+            broadcast_msg(tx, &WebSocketMessage::NewAnnotation { annotation });
+        }
+        WebSocketMessage::DeleteAnnotation { id } => {
+            if let Err(e) = db.execute(
+                "DELETE FROM annotations WHERE id = ?1 AND file_path = ?2",
+                [id.as_str(), file_path],
+            ) {
+                eprintln!("[WebSocket] delete annotation failed: {e}");
+                return;
+            }
+            broadcast_msg(tx, &WebSocketMessage::DeleteAnnotation { id });
+        }
+        WebSocketMessage::ClearAnnotations => {
+            eprintln!("[WebSocket] Clearing annotations for file_path: {file_path}");
+            if let Err(e) = db.execute(
+                "DELETE FROM annotations WHERE file_path = ?1",
+                [file_path],
+            ) {
+                eprintln!("[WebSocket] clear annotations failed: {e}");
+            }
+            if let Err(e) = db.execute(
+                "DELETE FROM viewed_state WHERE file_path = ?1",
+                [file_path],
+            ) {
+                eprintln!("[WebSocket] clear viewed_state failed: {e}");
+            }
+            broadcast_msg(tx, &WebSocketMessage::ClearAnnotations);
+            broadcast_msg(
+                tx,
+                &WebSocketMessage::ViewedState {
+                    state: serde_json::Value::Object(serde_json::Map::new()),
+                },
+            );
+        }
+        WebSocketMessage::UpdateViewedState { state: viewed } => {
+            let Ok(state_json) = serde_json::to_string(&viewed) else {
+                return;
+            };
+            if let Err(e) = db.execute(
+                "INSERT OR REPLACE INTO viewed_state (file_path, state, updated_at) VALUES (?1, ?2, CURRENT_TIMESTAMP)",
+                [file_path, state_json.as_str()],
+            ) {
+                eprintln!("[WebSocket] update viewed_state failed: {e}");
+                return;
+            }
+            broadcast_msg(tx, &WebSocketMessage::ViewedState { state: viewed });
+        }
+        _ => {}
+    }
+}
+
 async fn handle_socket(socket: WebSocket, state: AppState) {
     let (mut sender, mut receiver) = socket.split();
 
-    // Subscribe to the broadcast channel
-    let mut rx = state.tx.as_ref().unwrap().subscribe();
+    // tx is required (broadcast fan-out). db is optional — only present when
+    // shared_annotation is on; absent when only Live is active.
+    let Some(tx) = state.tx.clone() else {
+        return;
+    };
+    let db = state.db.clone();
+    let mut rx = tx.subscribe();
 
-    // Wait for the first message from client to get the file path
     let file_path = match receiver.next().await {
-        Some(Ok(Message::Text(text))) => {
-            // Expect first message to be file path
-            // Convert Utf8Bytes to String
-            text.to_string()
-        }
+        Some(Ok(Message::Text(text))) => text.to_string(),
         _ => {
             eprintln!("[WebSocket] Failed to receive file path from client");
             return;
         }
     };
 
-    // Send all existing annotations to the new client
-    let annotations = {
-        let db = state.db.as_ref().unwrap().lock().unwrap();
-        let mut stmt = db
-            .prepare("SELECT data FROM annotations WHERE file_path = ?1")
-            .unwrap();
-        let rows = stmt
-            .query_map([&file_path.as_str()], |row| row.get::<_, String>(0))
-            .unwrap();
-        let mut annotations = Vec::new();
-        for row in rows {
-            let data: serde_json::Value = serde_json::from_str(&row.unwrap()).unwrap();
-            annotations.push(data);
-        }
+    // Only send initial annotation/viewed state when a persistence layer exists.
+    if let Some(db) = db.as_ref() {
+        let annotations = load_annotations(db, &file_path);
         eprintln!(
             "[WebSocket] Sending {} annotations for file_path: {}",
             annotations.len(),
             file_path
         );
-        annotations
-    };
-
-    let initial_msg = WebSocketMessage::AllAnnotations { annotations };
-    if sender
-        .send(Message::Text(
-            serde_json::to_string(&initial_msg).unwrap().into(),
-        ))
-        .await
-        .is_err()
-    {
-        return;
+        if send_json(&mut sender, &WebSocketMessage::AllAnnotations { annotations })
+            .await
+            .is_err()
+        {
+            return;
+        }
+        let viewed = load_viewed_state(db, &file_path);
+        if send_json(&mut sender, &WebSocketMessage::ViewedState { state: viewed })
+            .await
+            .is_err()
+        {
+            return;
+        }
     }
 
-    // Send existing viewed state to the new client
-    let viewed_state = {
-        let db = state.db.as_ref().unwrap().lock().unwrap();
-        let state_json = db
-            .query_row(
-                "SELECT state FROM viewed_state WHERE file_path = ?1",
-                [&file_path.as_str()],
-                |row| row.get::<_, String>(0),
-            )
-            .unwrap_or_else(|_| "{}".to_string());
-        serde_json::from_str(&state_json).unwrap_or(serde_json::json!({}))
-    };
-
-    let viewed_msg = WebSocketMessage::ViewedState {
-        state: viewed_state,
-    };
-    if sender
-        .send(Message::Text(
-            serde_json::to_string(&viewed_msg).unwrap().into(),
-        ))
-        .await
-        .is_err()
-    {
-        return;
-    }
-
-    // Task to forward broadcast messages to the client
     let mut send_task = tokio::spawn(async move {
         while let Ok(msg) = rx.recv().await {
             if sender.send(Message::Text(msg.into())).await.is_err() {
@@ -563,139 +624,15 @@ async fn handle_socket(socket: WebSocket, state: AppState) {
         }
     });
 
-    // Task to handle incoming messages from the client
-    let mut recv_task = {
-        let state = state.clone();
-        tokio::spawn(async move {
-            while let Some(Ok(Message::Text(text))) = receiver.next().await {
-                let msg: WebSocketMessage = match serde_json::from_str(&text) {
-                    Ok(msg) => msg,
-                    Err(_) => continue,
-                };
+    let mut recv_task = tokio::spawn(async move {
+        while let Some(Ok(Message::Text(text))) = receiver.next().await {
+            let Ok(msg) = serde_json::from_str::<WebSocketMessage>(&text) else {
+                continue;
+            };
+            handle_client_msg(db.as_deref(), &tx, &file_path, msg);
+        }
+    });
 
-                let db = state.db.as_ref().unwrap().lock().unwrap();
-                match msg {
-                    WebSocketMessage::NewAnnotation { annotation } => {
-                        let id = annotation["id"].as_str().unwrap().to_string();
-                        let data = serde_json::to_string(&annotation).unwrap();
-                        db.execute(
-                            "INSERT OR REPLACE INTO annotations (id, file_path, data) VALUES (?1, ?2, ?3)",
-                            [&id.as_str(), &file_path.as_str(), &data.as_str()],
-                        )
-                        .unwrap();
-                        let broadcast_msg = WebSocketMessage::NewAnnotation { annotation };
-                        state
-                            .tx
-                            .as_ref()
-                            .unwrap()
-                            .send(serde_json::to_string(&broadcast_msg).unwrap())
-                            .unwrap();
-                    }
-                    WebSocketMessage::DeleteAnnotation { id } => {
-                        db.execute(
-                            "DELETE FROM annotations WHERE id = ?1 AND file_path = ?2",
-                            [&id.as_str(), &file_path.as_str()],
-                        )
-                        .unwrap();
-                        let broadcast_msg = WebSocketMessage::DeleteAnnotation { id };
-                        state
-                            .tx
-                            .as_ref()
-                            .unwrap()
-                            .send(serde_json::to_string(&broadcast_msg).unwrap())
-                            .unwrap();
-                    }
-                    WebSocketMessage::ClearAnnotations => {
-                        eprintln!("[WebSocket] Clearing annotations for file_path: {file_path}");
-
-                        // Clear annotations
-                        match db.execute(
-                            "DELETE FROM annotations WHERE file_path = ?1",
-                            [&file_path.as_str()],
-                        ) {
-                            Ok(affected_rows) => {
-                                eprintln!(
-                                    "[WebSocket] Deleted {affected_rows} annotation rows for file_path: {file_path}"
-                                );
-                            }
-                            Err(e) => {
-                                eprintln!("[WebSocket] Failed to clear annotations: {e}");
-                            }
-                        }
-
-                        // Also clear viewed state
-                        match db.execute(
-                            "DELETE FROM viewed_state WHERE file_path = ?1",
-                            [&file_path.as_str()],
-                        ) {
-                            Ok(affected_rows) => {
-                                eprintln!(
-                                    "[WebSocket] Deleted {affected_rows} viewed_state rows for file_path: {file_path}"
-                                );
-                            }
-                            Err(e) => {
-                                eprintln!("[WebSocket] Failed to clear viewed_state: {e}");
-                            }
-                        }
-
-                        // Broadcast clear_annotations message
-                        let broadcast_msg = WebSocketMessage::ClearAnnotations;
-                        state
-                            .tx
-                            .as_ref()
-                            .unwrap()
-                            .send(serde_json::to_string(&broadcast_msg).unwrap())
-                            .unwrap();
-
-                        // Broadcast empty viewed_state
-                        let empty_viewed_state = WebSocketMessage::ViewedState {
-                            state: serde_json::Value::Object(serde_json::Map::new()),
-                        };
-                        state
-                            .tx
-                            .as_ref()
-                            .unwrap()
-                            .send(serde_json::to_string(&empty_viewed_state).unwrap())
-                            .unwrap();
-                    }
-                    WebSocketMessage::UpdateViewedState {
-                        state: viewed_state,
-                    } => {
-                        let state_json = serde_json::to_string(&viewed_state).unwrap();
-                        db.execute(
-                            "INSERT OR REPLACE INTO viewed_state (file_path, state, updated_at) VALUES (?1, ?2, CURRENT_TIMESTAMP)",
-                            [&file_path.as_str(), &state_json.as_str()],
-                        )
-                        .unwrap();
-
-                        // Broadcast to other clients
-                        let broadcast_msg = WebSocketMessage::ViewedState {
-                            state: viewed_state,
-                        };
-                        state
-                            .tx
-                            .as_ref()
-                            .unwrap()
-                            .send(serde_json::to_string(&broadcast_msg).unwrap())
-                            .unwrap();
-                    }
-                    WebSocketMessage::LiveAction { data } => {
-                        // LiveAction is purely dynamic, no DB persistence. Just broadcast.
-                        let broadcast_msg = WebSocketMessage::LiveAction { data };
-                        state
-                            .tx
-                            .as_ref()
-                            .unwrap()
-                            .send(serde_json::to_string(&broadcast_msg).unwrap())
-                            .unwrap();
-                    }
-                    _ => {}
-                }
-            }
-        })
-    };
-
-    // Wait for either task to complete
     tokio::select! {
         _ = (&mut send_task) => recv_task.abort(),
         _ = (&mut recv_task) => send_task.abort(),
@@ -757,16 +694,8 @@ async fn handle_workspace_path(
 #[derive(Deserialize)]
 struct AddWorkspaceRequest {
     path: String,
-    #[serde(default)]
-    enable_search: bool,
-    #[serde(default)]
-    enable_viewed: bool,
-    #[serde(default)]
-    enable_edit: bool,
-    #[serde(default)]
-    enable_live: bool,
-    #[serde(default)]
-    shared_annotation: bool,
+    #[serde(flatten)]
+    flags: WorkspaceFlags,
 }
 
 #[derive(Serialize)]
@@ -778,19 +707,13 @@ async fn add_workspace_handler(
     State(state): State<AppState>,
     Json(req): Json<AddWorkspaceRequest>,
 ) -> impl IntoResponse {
-    use std::path::PathBuf;
-    let path = PathBuf::from(&req.path);
-    let path = match path.canonicalize() {
+    let path = match expand_and_canonicalize(&req.path) {
         Ok(p) => p,
         Err(e) => return (StatusCode::BAD_REQUEST, format!("Invalid path: {e}")).into_response(),
     };
     let id = state.workspace_registry.add(WorkspaceConfig {
         path,
-        enable_search: req.enable_search,
-        enable_viewed: req.enable_viewed,
-        enable_edit: req.enable_edit,
-        enable_live: req.enable_live,
-        shared_annotation: req.shared_annotation,
+        flags: req.flags,
     });
     Json(AddWorkspaceResponse { id }).into_response()
 }
@@ -806,33 +729,12 @@ async fn remove_workspace_handler(
     }
 }
 
-#[derive(Deserialize)]
-struct UpdateWorkspaceRequest {
-    #[serde(default)]
-    enable_search: bool,
-    #[serde(default)]
-    enable_viewed: bool,
-    #[serde(default)]
-    enable_edit: bool,
-    #[serde(default)]
-    enable_live: bool,
-    #[serde(default)]
-    shared_annotation: bool,
-}
-
 async fn update_workspace_handler(
     State(state): State<AppState>,
     AxumPath(id): AxumPath<String>,
-    Json(req): Json<UpdateWorkspaceRequest>,
+    Json(flags): Json<WorkspaceFlags>,
 ) -> impl IntoResponse {
-    if state.workspace_registry.update_flags(
-        &id,
-        req.enable_search,
-        req.enable_viewed,
-        req.enable_edit,
-        req.enable_live,
-        req.shared_annotation,
-    ) {
+    if state.workspace_registry.update_flags(&id, flags) {
         StatusCode::OK
     } else {
         StatusCode::NOT_FOUND
@@ -865,8 +767,7 @@ async fn search_handler(
     if !ws.enable_search.load(std::sync::atomic::Ordering::Relaxed) {
         return Json(Vec::new());
     }
-    let idx = ws.search_index.lock().unwrap().clone();
-    let Some(idx) = idx else {
+    let Some(idx) = ws.search_index.load_full() else {
         return Json(Vec::new()); // still indexing
     };
     let results = idx.search(&query.q.q, 20).unwrap_or_else(|e| {
@@ -915,17 +816,14 @@ fn render_markdown_file(
             context.insert("show_back_link", &true);
             context.insert("has_mermaid", &has_mermaid);
             context.insert("toc", &toc);
-            context.insert(
-                "shared_annotation",
-                &ws.shared_annotation
-                    .load(std::sync::atomic::Ordering::Relaxed),
-            );
-            context.insert("enable_viewed", &ws.enable_viewed);
-            context.insert("enable_search", &ws.enable_search);
-            context.insert("enable_edit", &ws.enable_edit);
-            context.insert("enable_live", &ws.enable_live);
+            let flags = ws.flags();
+            context.insert("shared_annotation", &flags.shared_annotation);
+            context.insert("enable_viewed", &flags.enable_viewed);
+            context.insert("enable_search", &flags.enable_search);
+            context.insert("enable_edit", &flags.enable_edit);
+            context.insert("enable_live", &flags.enable_live);
 
-            if ws.enable_edit.load(std::sync::atomic::Ordering::Relaxed) {
+            if flags.enable_edit {
                 // JSON-encode and HTML-escape so </script> in content can't break the page.
                 let json = serde_json::to_string(&markdown_input)
                     .unwrap_or_default()
@@ -939,7 +837,6 @@ fn render_markdown_file(
             context.insert("i18n_lang", state.i18n_lang.as_str());
             context.insert("shortcuts_json", state.shortcuts_json.as_str());
             context.insert("styles_css", state.styles_css.as_str());
-            context.insert("hostname", state.hostname.as_str());
 
             match state.tera.render("layout.html", &context) {
                 Ok(html) => Html(html).into_response(),
@@ -967,7 +864,6 @@ fn render_markdown_file(
             context.insert("i18n_lang", state.i18n_lang.as_str());
             context.insert("shortcuts_json", state.shortcuts_json.as_str());
             context.insert("styles_css", state.styles_css.as_str());
-            context.insert("hostname", state.hostname.as_str());
 
             match state.tera.render("layout.html", &context) {
                 Ok(html) => Html(html).into_response(),
@@ -1095,12 +991,14 @@ fn render_directory_listing(
     context.insert("entries", &entries);
     context.insert("show_parent", &show_parent);
     context.insert("parent_link", &parent_link);
-    context.insert("enable_search", &ws.enable_search);
+    context.insert(
+        "enable_search",
+        &ws.enable_search.load(std::sync::atomic::Ordering::Relaxed),
+    );
     context.insert("i18n_json", state.i18n_json.as_str());
     context.insert("i18n_lang", state.i18n_lang.as_str());
     context.insert("shortcuts_json", state.shortcuts_json.as_str());
     context.insert("styles_css", state.styles_css.as_str());
-    context.insert("hostname", state.hostname.as_str());
 
     match state.tera.render("directory.html", &context) {
         Ok(html) => Html(html).into_response(),
@@ -1151,13 +1049,10 @@ where
 fn serve_file(path: &std::path::Path) -> Response {
     match fs::read(path) {
         Ok(content) => {
-            // Detect MIME type based on file extension
-            let mime_type = path
-                .extension()
-                .and_then(|ext| ext.to_str())
-                .and_then(get_mime_type)
-                .unwrap_or("application/octet-stream");
-
+            let mime_type = mime_guess::from_path(path)
+                .first_or_octet_stream()
+                .essence_str()
+                .to_string();
             (StatusCode::OK, [(header::CONTENT_TYPE, mime_type)], content).into_response()
         }
         Err(e) => (
@@ -1165,48 +1060,6 @@ fn serve_file(path: &std::path::Path) -> Response {
             format!("Error reading file: {e}"),
         )
             .into_response(),
-    }
-}
-
-fn get_mime_type(ext: &str) -> Option<&'static str> {
-    match ext.to_lowercase().as_str() {
-        // Images
-        "png" => Some("image/png"),
-        "jpg" | "jpeg" => Some("image/jpeg"),
-        "gif" => Some("image/gif"),
-        "webp" => Some("image/webp"),
-        "svg" => Some("image/svg+xml"),
-        "ico" => Some("image/x-icon"),
-        "bmp" => Some("image/bmp"),
-
-        // Audio
-        "mp3" => Some("audio/mpeg"),
-        "wav" => Some("audio/wav"),
-        "ogg" => Some("audio/ogg"),
-        "m4a" => Some("audio/mp4"),
-        "flac" => Some("audio/flac"),
-
-        // Video
-        "mp4" => Some("video/mp4"),
-        "webm" => Some("video/webm"),
-        "ogv" => Some("video/ogg"),
-        "avi" => Some("video/x-msvideo"),
-        "mov" => Some("video/quicktime"),
-        "mkv" => Some("video/x-matroska"),
-
-        // Documents
-        "pdf" => Some("application/pdf"),
-        "txt" => Some("text/plain"),
-        "json" => Some("application/json"),
-        "xml" => Some("application/xml"),
-
-        // Archives
-        "zip" => Some("application/zip"),
-        "tar" => Some("application/x-tar"),
-        "gz" => Some("application/gzip"),
-        "7z" => Some("application/x-7z-compressed"),
-
-        _ => None,
     }
 }
 
@@ -1295,21 +1148,15 @@ async fn save_file_handler(
         })
         .into_response();
     }
-    if fs::metadata(&canonical)
-        .map(|m| m.permissions().readonly())
-        .unwrap_or(true)
-    {
-        return Json(SaveFileResponse {
-            success: false,
-            message: "File is read-only".into(),
-        })
-        .into_response();
-    }
-
     match fs::write(&canonical, &payload.content) {
         Ok(_) => Json(SaveFileResponse {
             success: true,
             message: "File saved successfully".into(),
+        })
+        .into_response(),
+        Err(e) if e.kind() == std::io::ErrorKind::PermissionDenied => Json(SaveFileResponse {
+            success: false,
+            message: "File is read-only".into(),
         })
         .into_response(),
         Err(e) => Json(SaveFileResponse {
@@ -1357,8 +1204,7 @@ mod tests {
             shortcuts_json: Arc::new("{}".into()),
             styles_css: Arc::new("".into()),
             shutdown_tx: tx,
-            hostname: Arc::new("test-host".into()),
         };
-        assert_eq!(state.hostname.as_str(), "test-host");
+        assert_eq!(state.management_token.as_str(), "token");
     }
 }

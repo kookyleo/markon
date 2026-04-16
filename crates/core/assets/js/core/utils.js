@@ -27,6 +27,20 @@ export function debounce(func, wait) {
     };
 }
 
+// Identifier generation. Prefers crypto.randomUUID (all modern browsers);
+// falls back for non-HTTPS contexts where randomUUID is unavailable.
+export const Ids = {
+    uuid() {
+        if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+            return crypto.randomUUID();
+        }
+        return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 11)}`;
+    },
+    short() {
+        return Math.random().toString(36).slice(2, 11);
+    }
+};
+
 // Log
 export class Logger {
     static #enabled = true;

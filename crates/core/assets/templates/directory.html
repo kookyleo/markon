@@ -1,6 +1,18 @@
 <!DOCTYPE html>
-<html lang="en" dir="auto">
+<html lang="en" dir="auto" data-theme="{{ theme }}">
 <head>
+    <script>
+    (function(){
+        var root = document.documentElement;
+        if (root.getAttribute('data-theme') === 'auto') {
+            var mql = window.matchMedia('(prefers-color-scheme: dark)');
+            root.setAttribute('data-theme', mql.matches ? 'dark' : 'light');
+            mql.addEventListener && mql.addEventListener('change', function(e){
+                root.setAttribute('data-theme', e.matches ? 'dark' : 'light');
+            });
+        }
+    })();
+    </script>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Directory Listing - markon</title>
@@ -520,7 +532,6 @@
         var dict = all[lang] || all.en;
         return { lang: lang, t: function(k) { return dict[k] || all.en[k] || k; } };
     })();
-    window.__MARKON_HOSTNAME__ = "{{ hostname }}";
     </script>
 {% endif %}
 </head>

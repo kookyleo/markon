@@ -4,7 +4,7 @@
  */
 
 import { CONFIG } from '../core/config.js';
-import { Logger } from '../core/utils.js';
+import { Ids, Logger } from '../core/utils.js';
 import { XPath } from '../services/xpath.js';
 import { Text } from '../services/text.js';
 
@@ -153,7 +153,7 @@ export class AnnotationManager {
         const endPath = XPath.create(getPathNode(range.endContainer));
 
         return {
-            id: `anno-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+            id: `anno-${Ids.uuid()}`,
             type: type,
             tagName: tagName,
             startPath: startPath,
