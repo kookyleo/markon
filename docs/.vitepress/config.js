@@ -37,7 +37,7 @@ async function fetchLatestRelease() {
 
 export default defineConfig({
   title: 'Markon',
-  description: 'Turn your markdown on. — A lightweight Markdown renderer with GitHub styling.',
+  description: 'Turn your markdown on. — 轻量级 Markdown 阅览与审校工作台。开源、免费、完全本地。',
   base: '/markon/',
   cleanUrls: true,
   lastUpdated: true,

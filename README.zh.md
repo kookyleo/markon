@@ -1,6 +1,7 @@
 # Markon
 
-基于 Rust 开发的高性能 Markdown 阅览与审校工作台。源于 Server 场景，专为极致的阅读与审校效率而生。
+Turn your markdown on.
+轻量级 Markdown 阅览与审校工作台。开源、免费、完全本地。
 
 ![Markon Banner](banner.png)
 

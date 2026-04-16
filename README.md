@@ -1,6 +1,7 @@
 # Markon
 
-High-performance Markdown reader and review workbench built with Rust. Born for server environments, optimized for reading and review efficiency.
+Turn your markdown on.
+High-performance Markdown review workbench. Open source, free, and fully local.
 
 ![Markon Banner](banner.png)
 
