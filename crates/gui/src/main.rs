@@ -195,11 +195,24 @@ fn main() {
         .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_process::init())
         .plugin(tauri_plugin_single_instance::init(|app, args, _cwd| {
+            // On macOS, file-open intents come through Apple Events
+            // (RunEvent::Opened), never argv. Older macOS passes Finder's
+            // current directory as argv[1] when launching an app that
+            // claims public.folder (see Info.plist), which used to get
+            // mistakenly added as a workspace (e.g. /Applications when
+            // the app is launched from the Applications folder). Ignore
+            // argv on macOS; Linux/Windows still rely on it for file
+            // associations.
+            #[cfg(not(target_os = "macos"))]
             if let Some(path_str) = args.get(1) {
                 handle_open_path(app, Path::new(path_str));
-            } else {
-                show_settings_window(app);
+                return;
             }
+            #[cfg(target_os = "macos")]
+            {
+                let _ = args;
+            }
+            show_settings_window(app);
         }))
         .setup(move |app| {
             use markon_core::settings::PortMode;
@@ -323,21 +336,29 @@ fn main() {
             }
 
             // ── Handle CLI / file-association launch arg ───────────────────
-            let args: Vec<String> = std::env::args().skip(1).collect();
-            if let Some(path_str) = args.first() {
-                handle_open_path(&app.app_handle().clone(), Path::new(path_str));
-            } else {
-                // Show Settings on launch when there's no file to open, UNLESS:
-                // macOS + tray_resident=true (tray is accessible; Reopen/Opened handle navigation).
-                // If tray_resident=false the tray is hidden, so Settings must show.
-                #[cfg(target_os = "macos")]
-                if !tray_resident_init {
-                    if let Some(w) = app.get_webview_window("settings") {
-                        let _ = w.show();
-                        let _ = w.set_focus();
-                    }
+            // On macOS this block is intentionally skipped: file-open
+            // intents always arrive through RunEvent::Opened (Apple
+            // Events), never argv. Older macOS versions would pass the
+            // Finder front window's directory as argv[1] for apps that
+            // claim public.folder in Info.plist, which caused the
+            // Applications folder to be silently added as a workspace
+            // on first launch. Linux/Windows still use argv for file
+            // associations.
+            #[cfg(not(target_os = "macos"))]
+            {
+                let args: Vec<String> = std::env::args().skip(1).collect();
+                if let Some(path_str) = args.first() {
+                    handle_open_path(&app.app_handle().clone(), Path::new(path_str));
+                } else if let Some(w) = app.get_webview_window("settings") {
+                    let _ = w.show();
+                    let _ = w.set_focus();
                 }
-                #[cfg(not(target_os = "macos"))]
+            }
+            #[cfg(target_os = "macos")]
+            if !tray_resident_init {
+                // Tray is hidden, so Settings must show for the app to be
+                // reachable on launch. With tray_resident=true the tray
+                // icon stays visible and Reopen/Opened cover navigation.
                 if let Some(w) = app.get_webview_window("settings") {
                     let _ = w.show();
                     let _ = w.set_focus();
