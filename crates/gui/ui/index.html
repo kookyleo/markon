@@ -1040,8 +1040,14 @@
   </div><!-- .content -->
 
 <script type="module">
-  import { i18n, availableLanguages } from './i18n.js';
+  import { i18n, availableLanguages, initI18n } from './i18n.js';
   const { invoke } = window.__TAURI__.core;
+
+  // Wrap the whole body in an async IIFE so we can await initI18n() before
+  // any code that reads i18n[...]. Avoids top-level await, which breaks
+  // WebKit < Safari 15 (old x86 Macs on Catalina/Big Sur point releases).
+  (async () => {
+  await initI18n();
 
   // ── Tab navigation ──────────────────────────────────────────────────────
   function activateTab(name) {
@@ -1885,6 +1891,8 @@
       if (s.auto_update !== false) doUpdateCheck();
     } catch (_) {}
   })();
+
+  })().catch(err => console.error('[markon] init failed:', err));
 </script>
 </body>
 </html>

@@ -1,7 +1,11 @@
 // Load translations from Rust backend (single source: /i18n/*.json5).
+//
+// Exposed via a one-shot initI18n() rather than top-level await so the
+// module parses on WebKit older than Safari 15 (macOS Big Sur 11.3+).
+// Older WebKit treats top-level await as a SyntaxError and aborts the
+// whole module, which also breaks every importing script.
 
 const { invoke } = window.__TAURI__.core;
-const raw = await invoke('get_i18n');
 
 function buildTemplateFunc(tplStr) {
   return (info) => tplStr
@@ -27,13 +31,27 @@ function buildLang(data) {
   return out;
 }
 
-// Available languages: [{ value: "zh_CN", key: "zh", label: "简体中文" }, ...]
-export const availableLanguages = raw._languages || [];
-
-// Build all languages dynamically from the registry — no hardcoded keys.
+// Mutable containers — filled in-place by initI18n() so existing imports
+// keep the same reference identity across the module graph.
+export const availableLanguages = [];
 export const i18n = {};
-for (const lang of availableLanguages) {
-  if (raw[lang.key]) {
-    i18n[lang.key] = buildLang(raw[lang.key]);
-  }
+
+let initialized = false;
+let initPromise = null;
+
+export function initI18n() {
+  if (initialized) return Promise.resolve();
+  if (initPromise) return initPromise;
+  initPromise = (async () => {
+    const raw = await invoke('get_i18n');
+    const langs = raw._languages || [];
+    availableLanguages.length = 0;
+    for (const l of langs) availableLanguages.push(l);
+    for (const k of Object.keys(i18n)) delete i18n[k];
+    for (const lang of langs) {
+      if (raw[lang.key]) i18n[lang.key] = buildLang(raw[lang.key]);
+    }
+    initialized = true;
+  })();
+  return initPromise;
 }

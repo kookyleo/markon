@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 
-// These functions are copied from i18n.js since the module has a top-level
-// await on window.__TAURI__ which prevents direct import in tests.
+// These functions are copied from i18n.js since the module reads
+// window.__TAURI__.core at import time, which is not available in jsdom.
 // If the source changes, these must stay in sync.
 
 function buildTemplateFunc(tplStr) {
