@@ -124,7 +124,11 @@ impl AppSettings {
         use std::collections::HashSet;
         let mut seen = HashSet::new();
         self.workspaces.retain(|w| seen.insert(w.path.clone()));
-        for field in [&mut self.language, &mut self.web_theme, &mut self.web_language] {
+        for field in [
+            &mut self.language,
+            &mut self.web_theme,
+            &mut self.web_language,
+        ] {
             if field.is_empty() {
                 *field = "auto".to_string();
             }

@@ -485,7 +485,10 @@ async fn send_json(
     let Ok(encoded) = serde_json::to_string(msg) else {
         return Err(());
     };
-    sender.send(Message::Text(encoded.into())).await.map_err(|_| ())
+    sender
+        .send(Message::Text(encoded.into()))
+        .await
+        .map_err(|_| ())
 }
 
 fn broadcast_msg(tx: &broadcast::Sender<String>, msg: &WebSocketMessage) {
@@ -537,16 +540,12 @@ fn handle_client_msg(
         }
         WebSocketMessage::ClearAnnotations => {
             eprintln!("[WebSocket] Clearing annotations for file_path: {file_path}");
-            if let Err(e) = db.execute(
-                "DELETE FROM annotations WHERE file_path = ?1",
-                [file_path],
-            ) {
+            if let Err(e) = db.execute("DELETE FROM annotations WHERE file_path = ?1", [file_path])
+            {
                 eprintln!("[WebSocket] clear annotations failed: {e}");
             }
-            if let Err(e) = db.execute(
-                "DELETE FROM viewed_state WHERE file_path = ?1",
-                [file_path],
-            ) {
+            if let Err(e) = db.execute("DELETE FROM viewed_state WHERE file_path = ?1", [file_path])
+            {
                 eprintln!("[WebSocket] clear viewed_state failed: {e}");
             }
             broadcast_msg(tx, &WebSocketMessage::ClearAnnotations);
@@ -601,16 +600,22 @@ async fn handle_socket(socket: WebSocket, state: AppState) {
             annotations.len(),
             file_path
         );
-        if send_json(&mut sender, &WebSocketMessage::AllAnnotations { annotations })
-            .await
-            .is_err()
+        if send_json(
+            &mut sender,
+            &WebSocketMessage::AllAnnotations { annotations },
+        )
+        .await
+        .is_err()
         {
             return;
         }
         let viewed = load_viewed_state(db, &file_path);
-        if send_json(&mut sender, &WebSocketMessage::ViewedState { state: viewed })
-            .await
-            .is_err()
+        if send_json(
+            &mut sender,
+            &WebSocketMessage::ViewedState { state: viewed },
+        )
+        .await
+        .is_err()
         {
             return;
         }

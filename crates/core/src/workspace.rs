@@ -171,7 +171,10 @@ impl WorkspaceRegistry {
             config_tx,
             search_index: ArcSwapOption::empty(),
         });
-        self.inner.write().unwrap().insert(id.clone(), entry.clone());
+        self.inner
+            .write()
+            .unwrap()
+            .insert(id.clone(), entry.clone());
         if config.flags.enable_search {
             spawn_search_indexer(config.path, entry);
         }
@@ -184,10 +187,18 @@ impl WorkspaceRegistry {
             return false;
         };
         drop(guard);
-        let was_search = entry.enable_search.swap(flags.enable_search, Ordering::Relaxed);
-        entry.enable_viewed.store(flags.enable_viewed, Ordering::Relaxed);
-        entry.enable_edit.store(flags.enable_edit, Ordering::Relaxed);
-        entry.enable_live.store(flags.enable_live, Ordering::Relaxed);
+        let was_search = entry
+            .enable_search
+            .swap(flags.enable_search, Ordering::Relaxed);
+        entry
+            .enable_viewed
+            .store(flags.enable_viewed, Ordering::Relaxed);
+        entry
+            .enable_edit
+            .store(flags.enable_edit, Ordering::Relaxed);
+        entry
+            .enable_live
+            .store(flags.enable_live, Ordering::Relaxed);
         entry
             .shared_annotation
             .store(flags.shared_annotation, Ordering::Relaxed);

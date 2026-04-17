@@ -3207,7 +3207,7 @@ checksum = "c41e0c4fef86961ac6d6f8a82609f55f31b05e4fce149ac5710e439df7619ba4"
 
 [[package]]
 name = "markon"
-version = "0.10.2"
+version = "0.11.0"
 dependencies = [
  "clap",
  "dialoguer",
@@ -3222,8 +3222,9 @@ dependencies = [
 
 [[package]]
 name = "markon-core"
-version = "0.10.2"
+version = "0.11.0"
 dependencies = [
+ "arc-swap",
  "axum",
  "dirs",
  "dunce",
@@ -3233,16 +3234,19 @@ dependencies = [
  "html-escape",
  "lazy_static",
  "log",
+ "mime_guess",
  "notify",
  "open",
  "pulldown-cmark",
  "qr2term",
  "qrcode",
+ "rayon",
  "regex",
  "rusqlite",
  "rust-embed",
  "serde",
  "serde_json",
+ "sha2",
  "syntect",
  "sys-locale",
  "tantivy",
@@ -3259,7 +3263,7 @@ dependencies = [
 
 [[package]]
 name = "markon-gui"
-version = "0.10.2"
+version = "0.11.0"
 dependencies = [
  "dirs",
  "dunce",
