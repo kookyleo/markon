@@ -30,5 +30,10 @@ docs/.vitepress/cache/
 *.db-shm
 *.db-wal
 
+# Tauri generated capability schemas — rebuilt by tauri_build on every
+# `cargo build`, platform-variant copies drift per host. Editors resolve
+# them from the local build, so tracking any of them only adds noise.
+crates/gui/gen/schemas/*-schema.json
+
 # Claude Code local overrides
 .claude/
