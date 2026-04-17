@@ -1,8 +1,8 @@
 /* markon-live — the sphere morphs into the settings panel in-place on click. */
 
 /* Collapsed sphere matches the narrow-screen TOC icon: neutral surface color,
-   foreground used for the letter. User's broadcast color lives in the panel
-   picker and on remote peers' ripples, not on the local sphere. */
+   foreground used for the icon. User's broadcast color lives in the panel
+   picker and on remote peers' focus pulse, not on the local sphere. */
 .markon-live-container {
     position: fixed;
     z-index: 10000;
@@ -201,7 +201,7 @@ html[data-theme="dark"] .markon-live-face .leader-info {
    rows don't carry their own padding so the spacing stays uniform. */
 .markon-live-body {
     display: none;
-    padding: 0 16px 14px;
+    padding: 6px 16px 14px;
     box-sizing: border-box;
     flex-direction: column;
     gap: 14px;

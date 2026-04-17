@@ -64,7 +64,7 @@
     "pref.def.search":      "在文件和目录中全文检索",
     "pref.def.viewed":      "已读追踪 (Viewed)",
     "pref.def.edit":        "编辑",
-    "pref.def.live":        "实时视角同步 (Live)",
+    "pref.def.live":        "Live",
     "pref.def.shared":      "共享标记、便条和已读状态",
 
     // ── 全局设置 — 数据库 ────────────────────────────────────
@@ -94,7 +94,7 @@
     "ws.flag.edit":   "编辑",
     "ws.flag.edit.tip": "允许在浏览器中编辑 Markdown 文件",
     "ws.flag.live":   "Live",
-    "ws.flag.live.tip": "启用实时视角同步（滚动和选区广播）",
+    "ws.flag.live.tip": "实时同步聚焦章节、文字选区与已读勾选",
     "ws.flag.shared": "共享标记、便条和已读状态",
     "ws.flag.shared.tip": "启用多端同步标记、便条与已读状态 (需要 SQLite 数据库)",
     "ws.empty.title": "尚无工作区",
@@ -121,7 +121,7 @@
     "cli.search":      "搜索",
     "cli.viewed":      "已读追踪",
     "cli.edit":        "编辑",
-    "cli.live":        "实时视角同步",
+    "cli.live":        "Live",
     "cli.shared":      "共享标记、便条和已读状态",
     "cli.open":        "自动打开浏览器",
 

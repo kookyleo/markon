@@ -64,7 +64,7 @@
     "pref.def.search":      "検索",
     "pref.def.viewed":      "既読トラッキング",
     "pref.def.edit":        "編集",
-    "pref.def.live":        "ビュー同期 (Live)",
+    "pref.def.live":        "Live",
     "pref.def.shared":      "共有ノート",
 
     // ── General — Database ───────────────────────────────────
@@ -94,7 +94,7 @@
     "ws.flag.edit":   "編集",
     "ws.flag.edit.tip": "ブラウザで Markdown ファイルを編集可能にする",
     "ws.flag.live":   "Live",
-    "ws.flag.live.tip": "リアルタイムの視点同期を有効にする (スクロールと選択の同期)",
+    "ws.flag.live.tip": "セクション・テキスト選択・既読状態をリアルタイムで同期",
     "ws.flag.shared": "共有ノート",
     "ws.flag.shared.tip": "デバイス間で注釈と既読状態を同期 (SQLite が必要)",
     "ws.empty.title": "ワークスペースがありません",
@@ -122,7 +122,7 @@
     "cli.search":      "検索",
     "cli.viewed":      "既読トラッキング",
     "cli.edit":        "編集",
-    "cli.live":        "ビュー同期 (Live)",
+    "cli.live":        "Live",
     "cli.shared":      "共有ノート",
     "cli.open":        "ブラウザを自動で開く",
 

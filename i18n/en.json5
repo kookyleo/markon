@@ -64,7 +64,7 @@
     "pref.def.search":      "Search",
     "pref.def.viewed":      "Viewed tracking",
     "pref.def.edit":        "Edit",
-    "pref.def.live":        "Live view sync",
+    "pref.def.live":        "Live",
     "pref.def.shared":      "Shared notes",
 
     // ── General — Database ───────────────────────────────────
@@ -94,7 +94,7 @@
     "ws.flag.edit":   "Edit",
     "ws.flag.edit.tip": "Allow editing Markdown files in the browser",
     "ws.flag.live":   "Live",
-    "ws.flag.live.tip": "Enable real-time viewport sync (scroll & selection)",
+    "ws.flag.live.tip": "Sync focused section, text selection, and viewed state in real time",
     "ws.flag.shared": "Shared notes",
     "ws.flag.shared.tip": "Sync annotations and viewed state across devices (requires SQLite)",
     "ws.empty.title": "No workspaces yet",
@@ -122,7 +122,7 @@
     "cli.search":      "Search",
     "cli.viewed":      "Viewed tracking",
     "cli.edit":        "Edit",
-    "cli.live":        "Live view sync",
+    "cli.live":        "Live",
     "cli.shared":      "Shared notes",
     "cli.open":        "Auto-open browser",
 
