@@ -14,13 +14,25 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          fetch-depth: 2
+          fetch-depth: 0  # need the full push range, not just HEAD~1
 
       - name: Detect version change
         id: ver
+        env:
+          BEFORE: ${{ github.event.before }}
+          AFTER: ${{ github.sha }}
         run: |
           NEW=$(grep -m1 '^version' Cargo.toml | sed 's/.*"\(.*\)"/\1/')
-          OLD=$(git show HEAD~1:Cargo.toml 2>/dev/null | grep -m1 '^version' | sed 's/.*"\(.*\)"/\1/' || echo "")
+          # Compare against the tip before this push (`github.event.before`),
+          # not just HEAD~1, so a bump commit that isn't the last commit in
+          # the push still registers. Fall back to HEAD~1 when BEFORE is a
+          # zero SHA (branch creation / initial push).
+          ZERO="0000000000000000000000000000000000000000"
+          if [ -n "$BEFORE" ] && [ "$BEFORE" != "$ZERO" ]; then
+            OLD=$(git show "$BEFORE:Cargo.toml" 2>/dev/null | grep -m1 '^version' | sed 's/.*"\(.*\)"/\1/' || echo "")
+          else
+            OLD=$(git show HEAD~1:Cargo.toml 2>/dev/null | grep -m1 '^version' | sed 's/.*"\(.*\)"/\1/' || echo "")
+          fi
           echo "old=$OLD" >> "$GITHUB_OUTPUT"
           echo "new=$NEW" >> "$GITHUB_OUTPUT"
           if [ "$NEW" != "$OLD" ] && [ -n "$NEW" ]; then
