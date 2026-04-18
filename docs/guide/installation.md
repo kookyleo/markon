@@ -35,6 +35,14 @@ brew install --cask --no-quarantine markon
 
 ![macOS Gatekeeper：在系统设置点 Open Anyway，确认放行 Markon](/screenshots/macos-gatekeeper.png)
 
+::: details 较老版本 macOS（Monterey 及更早）
+
+如果系统设置中**没有** "Open Anyway" 按钮，请改用右键方式：在 Finder 的 Applications 目录中，**右键**（或 Control+点击）Markon.app → 选择 **Open**，弹出的确认框中再点 **Open** 即可放行。
+
+![macOS 较老版本：右键打开放行 Markon](/screenshots/macos-gatekeeper-legacy.png)
+
+:::
+
 ### Windows
 
 <DownloadButton mode="os" os="windows" />

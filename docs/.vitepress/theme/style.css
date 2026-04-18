@@ -5,3 +5,22 @@
 .VPHero .text {
   white-space: nowrap;
 }
+
+.vp-doc details summary {
+  list-style: none;
+}
+.vp-doc details summary::marker,
+.vp-doc details summary::-webkit-details-marker {
+  display: none;
+}
+.vp-doc details summary::before {
+  content: '›';
+  display: inline-block;
+  width: 1em;
+  text-align: center;
+}
+.vp-doc details[open] summary::before {
+  content: '⌄';
+  position: relative;
+  top: -0.25em;
+}

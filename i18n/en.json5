@@ -150,7 +150,7 @@
     // ── About ────────────────────────────────────────────────
     "about.slogan":   "Turn your markdown on.",
     "about.desc":     "A lightweight Markdown renderer with GitHub-style layout, full-text search, annotations and multi-device sync.",
-    "about.icon.credit": "Icon by brajaomar_j — Flaticon",
+    "about.icon.credit": "Some icons by brajaomar_j — Flaticon",
     "about.star":     "Star on GitHub",
 
     // ── Feedback buttons ─────────────────────────────────────
@@ -268,5 +268,5 @@
     "web.live.broadcast":   "Broadcast",
     "web.live.follow":      "Follow",
     "web.live.color.prompt": "Pick your color",
-    "web.live.color.desc":   "Your broadcast color"
+    "web.live.color.desc":   "Pick your broadcast color"
 }

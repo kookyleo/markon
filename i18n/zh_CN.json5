@@ -149,7 +149,7 @@
     // ── 关于页 ───────────────────────────────────────────────
     "about.slogan":   "Turn your markdown on.",
     "about.desc":     "轻量级 Markdown 阅览与审校工作台。开源、免费、完全本地。",
-    "about.icon.credit": "Icon by brajaomar_j — Flaticon",
+    "about.icon.credit": "Some icons by brajaomar_j — Flaticon",
     "about.star":     "Star 支持项目",
 
     // ── 反馈按钮 ─────────────────────────────────────────────
@@ -266,5 +266,5 @@
     "web.live.broadcast":   "主控",
     "web.live.follow":      "被控",
     "web.live.color.prompt": "选择你的代表色",
-    "web.live.color.desc":   "你的广播色"
+    "web.live.color.desc":   "选择你的广播色"
 }

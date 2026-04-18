@@ -29,6 +29,7 @@ export class EditorManager {
      * Open the editor
      * @param {Object} options - Optional configuration
      * @param {string} options.selectedText - Text to find and select in editor
+     * @param {number} options.line - Line number to jump to (1-based)
      */
     async open(options = {}) {
         // Fetch current file content
@@ -44,8 +45,10 @@ export class EditorManager {
         this.#setupEventListeners();
         this.#updateLineNumbers();
 
-        // If selectedText provided, find and select it
-        if (options.selectedText && options.selectedText.trim()) {
+        // If line number provided, jump to that line
+        if (options.line && options.line > 0) {
+            this.#gotoLine(options.line);
+        } else if (options.selectedText && options.selectedText.trim()) {
             this.#selectText(options.selectedText.trim());
         } else {
             this.#focusEditor();
@@ -127,10 +130,12 @@ export class EditorManager {
             this.#setSaving(true);
 
             const workspaceId = Meta.get(CONFIG.META_TAGS.WORKSPACE_ID) ?? '';
+            const token = Meta.get('mgmt-token') ?? '';
             const response = await fetch('/api/save', {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
+                    'X-Markon-Token': token,
                 },
                 body: JSON.stringify({
                     workspace_id: workspaceId,
@@ -138,6 +143,13 @@ export class EditorManager {
                     content: content,
                 }),
             });
+
+            if (!response.ok) {
+                const text = await response.text();
+                Logger.error('EditorManager', 'Save failed:', response.status, text);
+                this.#showErrorAlert(text || `Server error (${response.status})`);
+                return false;
+            }
 
             const result = await response.json();
 
@@ -414,6 +426,28 @@ export class EditorManager {
                 notification.remove();
             }, 3000);
         }
+    }
+
+    /**
+     * Jump to a specific line number in the editor
+     * @private
+     */
+    #gotoLine(lineNum) {
+        if (!this.#textarea) return;
+        const lines = this.#textarea.value.split('\n');
+        const targetLine = Math.min(lineNum, lines.length);
+        const pos = lines.slice(0, targetLine - 1).reduce((sum, l) => sum + l.length + 1, 0);
+        const endPos = pos + (lines[targetLine - 1] || '').length;
+
+        this.#textarea.focus();
+        this.#textarea.setSelectionRange(pos, endPos);
+
+        const lineHeight = 22.4;
+        this.#textarea.scrollTop = Math.max(0, (targetLine - 3) * lineHeight);
+        if (this.#lineNumbers) {
+            this.#lineNumbers.scrollTop = this.#textarea.scrollTop;
+        }
+        Logger.log('EditorManager', `Jumped to line ${targetLine}`);
     }
 
     /**

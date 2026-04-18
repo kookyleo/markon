@@ -25,6 +25,7 @@
     <meta name="enable-viewed" content="{{ enable_viewed }}">
     <meta name="enable-search" content="{{ enable_search }}">
     <meta name="enable-edit" content="{{ enable_edit }}">
+    {% if management_token %}<meta name="mgmt-token" content="{{ management_token }}">{% endif %}
     <meta name="enable-live" content="{{ enable_live }}">
     <title>{{ title }}</title>
     <link rel="icon" type="image/svg+xml" href="/_/favicon.svg">

@@ -14,6 +14,14 @@ Markon 使用 ad-hoc 签名（免费签名方式）。首次启动时：
 
 之后启动就不会再提示。
 
+::: details 较老版本 macOS（Monterey 及更早）
+
+如果系统设置中没有 "Open Anyway" 按钮，请在 Finder 的 Applications 目录中 **右键**（或 Control+点击）Markon.app → 选择 **Open**，弹出确认框后再点 **Open** 即可。
+
+![macOS 较老版本：右键打开放行 Markon](/screenshots/macos-gatekeeper-legacy.png)
+
+:::
+
 ### Windows 提示"Windows 已保护你的电脑"？
 
 NSIS 安装包未做代码签名，会触发 SmartScreen：

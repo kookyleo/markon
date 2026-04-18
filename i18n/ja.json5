@@ -150,7 +150,7 @@
     // ── About ────────────────────────────────────────────────
     "about.slogan":   "Turn your markdown on.",
     "about.desc":     "軽量な Markdown レンダラー。GitHub スタイルのレイアウト、全文検索、注釈、マルチデバイス同期に対応。",
-    "about.icon.credit": "Icon by brajaomar_j — Flaticon",
+    "about.icon.credit": "Some icons by brajaomar_j — Flaticon",
     "about.star":     "GitHub でスターする",
 
     // ── Feedback buttons ─────────────────────────────────────
@@ -268,5 +268,5 @@
     "web.live.broadcast":   "送信",
     "web.live.follow":      "受信",
     "web.live.color.prompt": "カラーを選択",
-    "web.live.color.desc":   "送信カラー"
+    "web.live.color.desc":   "送信カラーを選択"
 }

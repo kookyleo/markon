@@ -1220,6 +1220,17 @@ export class MarkonApp {
         this.#editorManager.open();
     }
 
+    openEditorAtLine(line) {
+        if (!this.#enableEdit) {
+            Logger.warn('MarkonApp', 'Edit feature is not enabled');
+            return;
+        }
+        if (!this.#editorManager) {
+            this.#editorManager = new EditorManager(this.#filePath);
+        }
+        this.#editorManager.open({ line });
+    }
+
     /**
      * GetManagement器（用于Debug）
      */
@@ -1240,6 +1251,12 @@ export class MarkonApp {
 }
 
 // 全局函数（向后兼容）
+window.openEditorAtLine = function(line) {
+    if (window.markonApp) {
+        window.markonApp.openEditorAtLine(line);
+    }
+};
+
 window.clearPageAnnotations = function(event, ws, isSharedAnnotationMode) {
     if (window.markonApp) {
         window.markonApp.clearAllAnnotations(event);

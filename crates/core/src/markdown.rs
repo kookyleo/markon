@@ -7,6 +7,13 @@ use syntect::html::{styled_line_to_highlighted_html, IncludeBackground};
 use syntect::parsing::SyntaxSet;
 use syntect::util::LinesWithEndings;
 
+#[derive(Debug)]
+struct FenceWarning {
+    line: usize,
+    outer_start: usize,
+    backtick_count: usize,
+}
+
 lazy_static! {
     static ref EMOJI_REGEX: Regex = Regex::new(r":([a-zA-Z0-9_+-]+):")
         .expect("Failed to compile EMOJI_REGEX");
@@ -143,6 +150,15 @@ impl MarkdownRenderer {
 
         // Add heading IDs and extract table of contents
         let (html_output, toc) = self.add_heading_ids_and_extract_toc(&html_output);
+
+        // Validate code fences and prepend warnings
+        let fence_warnings = Self::detect_fence_issues(markdown);
+        let warnings_html = Self::build_fence_warnings_html(&fence_warnings);
+        let html_output = if warnings_html.is_empty() {
+            html_output
+        } else {
+            format!("{warnings_html}{html_output}")
+        };
 
         (html_output, has_mermaid, toc)
     }
@@ -306,6 +322,95 @@ impl MarkdownRenderer {
         }
 
         (result, toc)
+    }
+
+    fn detect_fence_issues(markdown: &str) -> Vec<FenceWarning> {
+        let mut warnings = Vec::new();
+        let lines: Vec<&str> = markdown.lines().collect();
+        let mut i = 0;
+
+        while i < lines.len() {
+            let trimmed = lines[i].trim_start();
+            let (ch, count) = Self::count_fence_chars(trimmed);
+
+            if count >= 3 {
+                let has_info = trimmed[ch.len_utf8() * count..].trim().len() > 0;
+                if has_info {
+                    let outer_start = i + 1;
+                    let outer_count = count;
+                    let outer_char = ch;
+                    let mut saw_inner_open = false;
+                    i += 1;
+
+                    while i < lines.len() {
+                        let inner = lines[i].trim_start();
+                        let (ic, icount) = Self::count_fence_chars(inner);
+
+                        if ic == outer_char && icount >= outer_count {
+                            let inner_has_info = inner[ic.len_utf8() * icount..].trim().len() > 0;
+                            if inner_has_info {
+                                saw_inner_open = true;
+                            } else if saw_inner_open {
+                                // This closing fence matches the outer block.
+                                // Check if content continues after (suggesting premature close).
+                                let mut j = i + 1;
+                                while j < lines.len() && lines[j].trim().is_empty() {
+                                    j += 1;
+                                }
+                                if j < lines.len() {
+                                    let next = lines[j].trim_start();
+                                    if next.starts_with('#') {
+                                        warnings.push(FenceWarning {
+                                            line: i + 1,
+                                            outer_start,
+                                            backtick_count: outer_count,
+                                        });
+                                    }
+                                }
+                                break;
+                            } else {
+                                break;
+                            }
+                        }
+                        i += 1;
+                    }
+                }
+            }
+            i += 1;
+        }
+
+        warnings
+    }
+
+    fn count_fence_chars(line: &str) -> (char, usize) {
+        let first = match line.chars().next() {
+            Some(c @ '`') | Some(c @ '~') => c,
+            _ => return (' ', 0),
+        };
+        let count = line.chars().take_while(|&c| c == first).count();
+        (first, count)
+    }
+
+    fn build_fence_warnings_html(warnings: &[FenceWarning]) -> String {
+        if warnings.is_empty() {
+            return String::new();
+        }
+        let mut html = String::new();
+        for w in warnings {
+            html.push_str(&format!(
+                r#"<div class="markdown-alert markdown-alert-warning">
+<p class="markdown-alert-title">
+<svg class="octicon octicon-alert mr-2" viewBox="0 0 16 16" version="1.1" width="16" height="16" aria-hidden="true"><path d="M6.457 1.047c.659-1.234 2.427-1.234 3.086 0l6.082 11.378A1.75 1.75 0 0 1 14.082 15H1.918a1.75 1.75 0 0 1-1.543-2.575Zm1.763.707a.25.25 0 0 0-.44 0L1.698 13.132a.25.25 0 0 0 .22.368h12.164a.25.25 0 0 0 .22-.368Zm.53 3.996v2.5a.75.75 0 0 1-1.5 0v-2.5a.75.75 0 0 1 1.5 0ZM9 11a1 1 0 1 1-2 0 1 1 0 0 1 2 0Z"></path></svg>Markdown Warning
+</p>
+<p>Line {line}: code fence closed prematurely — the code block starting at line {outer} uses {count} backticks, but an inner fence with the same count closes it early. Use {fix} backticks for the outer fence to fix this. <a href="javascript:void(0)" onclick="openEditorAtLine({line})" style="text-decoration:underline;cursor:pointer">Edit line {line}</a></p>
+</div>"#,
+                line = w.line,
+                outer = w.outer_start,
+                count = w.backtick_count,
+                fix = w.backtick_count + 1,
+            ));
+        }
+        html
     }
 
     fn generate_slug(&self, text: &str) -> String {

@@ -836,6 +836,7 @@ fn render_markdown_file(
                     .replace('>', "\\u003e")
                     .replace('&', "\\u0026");
                 context.insert("markdown_content_json", &json);
+                context.insert("management_token", state.management_token.as_str());
             }
 
             context.insert("i18n_json", state.i18n_json.as_str());
@@ -1117,7 +1118,12 @@ async fn save_file_handler(
         }
     };
 
-    let full_path = ws.root.join(decoded.trim_start_matches('/'));
+    let decoded_path = std::path::Path::new(decoded.as_ref());
+    let full_path = if decoded_path.is_absolute() {
+        decoded_path.to_path_buf()
+    } else {
+        ws.root.join(decoded.trim_start_matches('/'))
+    };
     let canonical = match full_path.canonicalize() {
         Ok(p) => p,
         Err(_) => {
