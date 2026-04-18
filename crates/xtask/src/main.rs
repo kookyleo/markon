@@ -265,16 +265,32 @@ fn compose_svg(
 
         let border = if let Some(bg) = &v.bg {
             let border_inset = w.margin.max(4);
-            let outer = squircle_path(w.canvas as f32 / 2.0, w.canvas as f32 / 2.0,
-                                       w.canvas as f32 / 2.0, w.canvas as f32 / 2.0);
-            let inner_sq = squircle_path(w.canvas as f32 / 2.0, w.canvas as f32 / 2.0,
-                                          w.canvas as f32 / 2.0 - border_inset as f32,
-                                          w.canvas as f32 / 2.0 - border_inset as f32);
-            format!(r#"<path d="{outer}" fill="{bg}"/><path d="{inner_sq}" fill="{fg}"/>"#,
-                    outer = outer, bg = bg, inner_sq = inner_sq, fg = v.fg)
+            let outer = squircle_path(
+                w.canvas as f32 / 2.0,
+                w.canvas as f32 / 2.0,
+                w.canvas as f32 / 2.0,
+                w.canvas as f32 / 2.0,
+            );
+            let inner_sq = squircle_path(
+                w.canvas as f32 / 2.0,
+                w.canvas as f32 / 2.0,
+                w.canvas as f32 / 2.0 - border_inset as f32,
+                w.canvas as f32 / 2.0 - border_inset as f32,
+            );
+            format!(
+                r#"<path d="{outer}" fill="{bg}"/><path d="{inner_sq}" fill="{fg}"/>"#,
+                outer = outer,
+                bg = bg,
+                inner_sq = inner_sq,
+                fg = v.fg
+            )
         } else {
-            let sq = squircle_path(w.canvas as f32 / 2.0, w.canvas as f32 / 2.0,
-                                    rect_size as f32 / 2.0, rect_size as f32 / 2.0);
+            let sq = squircle_path(
+                w.canvas as f32 / 2.0,
+                w.canvas as f32 / 2.0,
+                rect_size as f32 / 2.0,
+                rect_size as f32 / 2.0,
+            );
             format!(r#"<path d="{sq}" fill="{fg}"/>"#, sq = sq, fg = v.fg)
         };
 

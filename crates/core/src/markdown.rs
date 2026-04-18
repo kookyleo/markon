@@ -334,7 +334,7 @@ impl MarkdownRenderer {
             let (ch, count) = Self::count_fence_chars(trimmed);
 
             if count >= 3 {
-                let has_info = trimmed[ch.len_utf8() * count..].trim().len() > 0;
+                let has_info = !trimmed[ch.len_utf8() * count..].trim().is_empty();
                 if has_info {
                     let outer_start = i + 1;
                     let outer_count = count;
@@ -347,7 +347,7 @@ impl MarkdownRenderer {
                         let (ic, icount) = Self::count_fence_chars(inner);
 
                         if ic == outer_char && icount >= outer_count {
-                            let inner_has_info = inner[ic.len_utf8() * icount..].trim().len() > 0;
+                            let inner_has_info = !inner[ic.len_utf8() * icount..].trim().is_empty();
                             if inner_has_info {
                                 saw_inner_open = true;
                             } else if saw_inner_open {
