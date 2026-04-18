@@ -85,9 +85,11 @@ markon --host 0.0.0.0 README.md
 # 交互式选择网络接口
 markon --host
 
-# 生成 QR 码方便移动端扫码
-markon --host 0.0.0.0 --qr
+# 通过 --entry 指定外部访问地址，终端会显示 QR 码方便移动端扫码
+markon --host 0.0.0.0 --entry https://example.com/
 ```
+
+![CLI 启动后显示访问链接和 QR 码，移动端扫码即可打开](/screenshots/cli-qr.png)
 
 → 完整选项见 [命令行选项](/guide/cli)
 

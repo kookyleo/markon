@@ -10,6 +10,12 @@ markon [FILE] [OPTIONS]
 
 - **`FILE`** — 要渲染的 Markdown 文件或目录（可选）。省略时使用当前目录。
 
+::: tip 桌面版用户
+桌面版内置了可视化的 CLI 命令生成器——打开 **Tips** 标签页，勾选需要的功能，即可一键复制完整命令或生成 shell alias。
+
+![GUI 内置的 CLI 命令生成器](/screenshots/gui-cli-builder.png)
+:::
+
 ## 选项速查
 
 | 选项 | 说明 | 默认 |
@@ -101,6 +107,8 @@ markon --host 0.0.0.0 --entry http://192.168.1.100:6419 --shared-annotation --en
 - `--entry` — 指定外部访问地址前缀，终端将打印完整的工作区二维码
 - `--shared-annotation` — 启用 SQLite 数据库共享标注和已读状态
 - `--enable-viewed` — 启用 Section Viewed 功能
+
+![CLI 启动后显示访问链接和 QR 码，移动端扫码即可打开](/screenshots/cli-qr.png)
 
 ### 交互式选择网络接口
 

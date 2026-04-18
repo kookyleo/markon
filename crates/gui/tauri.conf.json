@@ -11,10 +11,10 @@
       {
         "label": "settings",
         "title": "markon",
-        "width": 600,
-        "height": 520,
-        "minWidth": 520,
-        "minHeight": 420,
+        "width": 800,
+        "height": 600,
+        "minWidth": 600,
+        "minHeight": 480,
         "resizable": true,
         "visible": false
       }

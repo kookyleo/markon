@@ -263,13 +263,25 @@ fn compose_svg(
             marks = marks_body,
         ));
 
+        let border = if let Some(bg) = &v.bg {
+            let border_inset = w.margin.max(4);
+            let outer = squircle_path(w.canvas as f32 / 2.0, w.canvas as f32 / 2.0,
+                                       w.canvas as f32 / 2.0, w.canvas as f32 / 2.0);
+            let inner_sq = squircle_path(w.canvas as f32 / 2.0, w.canvas as f32 / 2.0,
+                                          w.canvas as f32 / 2.0 - border_inset as f32,
+                                          w.canvas as f32 / 2.0 - border_inset as f32);
+            format!(r#"<path d="{outer}" fill="{bg}"/><path d="{inner_sq}" fill="{fg}"/>"#,
+                    outer = outer, bg = bg, inner_sq = inner_sq, fg = v.fg)
+        } else {
+            let sq = squircle_path(w.canvas as f32 / 2.0, w.canvas as f32 / 2.0,
+                                    rect_size as f32 / 2.0, rect_size as f32 / 2.0);
+            format!(r#"<path d="{sq}" fill="{fg}"/>"#, sq = sq, fg = v.fg)
+        };
+
         return Ok(format!(
-            r#"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 {c} {c}"><rect x="{i}" y="{i}" width="{rs}" height="{rs}" rx="{r}" fill="{fg}"/>{inner}</svg>"#,
+            r#"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 {c} {c}">{border}{inner}</svg>"#,
             c = w.canvas,
-            i = w.margin,
-            rs = rect_size,
-            r = w.radius,
-            fg = v.fg,
+            border = border,
             inner = inner,
         ));
     }
@@ -308,6 +320,28 @@ fn compose_svg(
             body = body,
         ))
     }
+}
+
+/// Generate an Apple-style squircle (superellipse n≈4.5) as an SVG path.
+/// `cx`,`cy` = center; `rx`,`ry` = half-width/height.
+fn squircle_path(cx: f32, cy: f32, rx: f32, ry: f32) -> String {
+    let n = 4.5_f32; // exponent — Apple icons use ~4–5
+    let steps = 64;
+    let mut d = String::new();
+    for i in 0..steps {
+        let t = std::f32::consts::TAU * i as f32 / steps as f32;
+        let cos_t = t.cos();
+        let sin_t = t.sin();
+        let x = cx + cos_t.abs().powf(2.0 / n) * cos_t.signum() * rx;
+        let y = cy + sin_t.abs().powf(2.0 / n) * sin_t.signum() * ry;
+        if i == 0 {
+            d.push_str(&format!("M{:.1},{:.1}", x, y));
+        } else {
+            d.push_str(&format!("L{:.1},{:.1}", x, y));
+        }
+    }
+    d.push('Z');
+    d
 }
 
 /// Dispatch on file extension: SVG passthrough, PNG raster, ICO/ICNS multi-pack.

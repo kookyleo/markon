@@ -10,8 +10,9 @@
 
 [wrap.rounded]
 canvas = 512
-margin = 32       # gap between canvas edge and wrapper rect
-radius = 88       # wrapper corner radius
+margin = 16       # border inset when bg is set (squircle border thickness)
+radius = 120      # wrapper corner radius (larger to approximate macOS squircle)
+inner_pad = 0     # no extra glyph inset (default 48 made the pill too small)
 
 
 # ── App icon (macOS + Linux) ────────────────────────────────────────────────
@@ -23,8 +24,8 @@ radius = 88       # wrapper corner radius
 [[variant]]
 name = "app"
 wrap = "rounded"
-fg = "#ffffff"       # white rounded square wrapper
-body_fg = "#000000"  # black glyph body (pill shape) inside
+bg = "#ffffff"       # squircle border color
+fg = "#27ae60"       # green background (for visual testing)
 marks_fg = "#ffffff" # white M↓ marks on top
 outputs = [
   { path = "crates/gui/icons/icon.svg" },
@@ -42,7 +43,7 @@ outputs = [
 [[variant]]
 name = "favicon"
 wrap = "none"
-fg = "#000000"
+fg = "#27ae60"
 marks_fg = "#ffffff"
 outputs = [
   # HTTP server favicon (rust-embed: crates/core/assets/icons/).
@@ -60,7 +61,7 @@ outputs = [
 [[variant]]
 name = "pill-accent"
 wrap = "none"
-fg = "#3451B2"
+fg = "#27ae60"
 marks_fg = "#ffffff"
 # body_scale 1.14 blows the native 28x24 glyph body up to fill the 32-unit
 # canvas horizontally — the earlier 1.0 left ~14 % transparent margin that
@@ -81,6 +82,7 @@ outputs = [
 name = "tray-template"
 wrap = "none"
 fg = "#ffffff"
+viewBox = "2 2 28 28"
 outputs = [
   { path = "crates/gui/icons/tray.svg" },
   { path = "crates/gui/icons/tray.png", size = 64 },
@@ -98,7 +100,7 @@ outputs = [
 [[variant]]
 name = "glyph-dark"
 wrap = "none"
-fg = "#000000"
+fg = "#27ae60"
 outputs = [
   # Docs site logo, light-theme variant (black glyph on light page).
   { path = "docs/public/logo-light.svg" },
