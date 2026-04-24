@@ -59,7 +59,7 @@ export default defineConfig({
       { icon: 'github', link: 'https://github.com/kookyleo/markon' },
     ],
     // Consumed by docs/.vitepress/theme/components/DownloadButton.vue.
-    markonRelease: release,
+    markonRelease: null,
   },
 
   // Chinese is the default language, served at the root path.
