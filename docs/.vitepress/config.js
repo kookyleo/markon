@@ -6,8 +6,9 @@ import { defineConfig } from 'vitepress';
 
 // const release = await fetchLatestRelease();
 
-const isEO = process.env.EO === 'true'
-const base = isEO ? '/' : '/markon/'
+// const isEO = process.env.EO === 'true'
+// const base = isEO ? '/' : '/markon/'
+const base = '/'
 
 async function fetchLatestRelease() {
   const url = 'https://api.github.com/repos/kookyleo/markon/releases/latest';
