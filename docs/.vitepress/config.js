@@ -5,6 +5,9 @@ import { defineConfig } from 'vitepress';
 // would 404 — we need the real asset names).
 const release = await fetchLatestRelease();
 
+console.log('EO =', process.env.EO);
+console.log('base =', process.env.EO === 'true' ? '/' : '/markon/');
+
 async function fetchLatestRelease() {
   const url = 'https://api.github.com/repos/kookyleo/markon/releases/latest';
   const headers = { Accept: 'application/vnd.github+json' };
