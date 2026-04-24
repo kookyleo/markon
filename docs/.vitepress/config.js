@@ -38,7 +38,10 @@ async function fetchLatestRelease() {
 export default defineConfig({
   title: 'Markon',
   description: 'Turn your markdown on. — 轻量级 Markdown 阅览与审校工作台。开源、免费、完全本地。',
-  base: '/markon/',
+  
+  // base: '/markon/',
+  base: process.env.EO === 'true' ? '/' : '/markon/',
+  
   cleanUrls: true,
   lastUpdated: true,
   head: [
