@@ -3,12 +3,7 @@ import { defineConfig } from 'vitepress';
 // Pulled at build time so the homepage and install page can link to the actual
 // latest release (Tauri bundles are versioned, so /releases/latest/download/X
 // would 404 — we need the real asset names).
-
-// const release = await fetchLatestRelease();
-
-// const isEO = process.env.EO === 'true'
-// const base = isEO ? '/' : '/markon/'
-const base = '/'
+const release = await fetchLatestRelease();
 
 async function fetchLatestRelease() {
   const url = 'https://api.github.com/repos/kookyleo/markon/releases/latest';
@@ -44,12 +39,13 @@ export default defineConfig({
   title: 'Markon',
   description: 'Turn your markdown on. — 轻量级 Markdown 阅览与审校工作台。开源、免费、完全本地。',
   
-  base,
-
+  // base: '/markon/',
+  base: process.env.EO === 'true' ? '/' : '/markon/',
+  
   cleanUrls: true,
   lastUpdated: true,
   head: [
-    ['link', { rel: 'icon', type: 'image/png', href: `${base}favicon.png` }],
+    ['link', { rel: 'icon', type: 'image/png', href: '/markon/favicon.png' }],
   ],
 
   themeConfig: {
@@ -59,7 +55,7 @@ export default defineConfig({
       { icon: 'github', link: 'https://github.com/kookyleo/markon' },
     ],
     // Consumed by docs/.vitepress/theme/components/DownloadButton.vue.
-    markonRelease: null,
+    markonRelease: release,
   },
 
   // Chinese is the default language, served at the root path.
