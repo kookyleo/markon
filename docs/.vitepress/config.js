@@ -3,7 +3,8 @@ import { defineConfig } from 'vitepress';
 // Pulled at build time so the homepage and install page can link to the actual
 // latest release (Tauri bundles are versioned, so /releases/latest/download/X
 // would 404 — we need the real asset names).
-const release = await fetchLatestRelease();
+
+// const release = await fetchLatestRelease();
 
 const isEO = process.env.EO === 'true'
 
