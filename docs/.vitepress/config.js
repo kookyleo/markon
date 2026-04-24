@@ -4,6 +4,7 @@ import { defineConfig } from 'vitepress';
 // latest release (Tauri bundles are versioned, so /releases/latest/download/X
 // would 404 — we need the real asset names).
 const release = await fetchLatestRelease();
+const base = process.env.EO === 'true' ? '/' : '/markon/';
 
 async function fetchLatestRelease() {
   const url = 'https://api.github.com/repos/kookyleo/markon/releases/latest';
@@ -39,13 +40,12 @@ export default defineConfig({
   title: 'Markon',
   description: 'Turn your markdown on. — 轻量级 Markdown 阅览与审校工作台。开源、免费、完全本地。',
   
-  // base: '/markon/',
-  base: process.env.EO === 'true' ? '/' : '/markon/',
-  
+  base,
+
   cleanUrls: true,
   lastUpdated: true,
   head: [
-    ['link', { rel: 'icon', type: 'image/png', href: '/markon/favicon.png' }],
+    ['link', { rel: 'icon', type: 'image/png', href: `${base}favicon.png` }],
   ],
 
   themeConfig: {
