@@ -5,8 +5,7 @@ import { defineConfig } from 'vitepress';
 // would 404 — we need the real asset names).
 const release = await fetchLatestRelease();
 
-console.log('EO =', process.env.EO);
-console.log('base =', process.env.EO === 'true' ? '/' : '/markon/');
+const isEO = process.env.EO === 'true'
 
 async function fetchLatestRelease() {
   const url = 'https://api.github.com/repos/kookyleo/markon/releases/latest';
@@ -43,7 +42,7 @@ export default defineConfig({
   description: 'Turn your markdown on. — 轻量级 Markdown 阅览与审校工作台。开源、免费、完全本地。',
   
   // base: '/markon/',
-  base: process.env.EO === 'true' ? '/' : '/markon/',
+  base: isEO ? '/' : '/markon/',
   
   cleanUrls: true,
   lastUpdated: true,
