@@ -26,6 +26,20 @@ for arg in "$@"; do
   esac
 done
 
+sync_dev_bundle_icon() {
+  local src="crates/gui/icons/icon.icns"
+  local dst="target/debug/Contents/Resources/icon.icns"
+  local plist="target/debug/Contents/Info.plist"
+
+  [[ -f "$src" ]] || return 0
+
+  mkdir -p "$(dirname "$dst")"
+  cp -f "$src" "$dst"
+
+  # Nudge LaunchServices/Dock to notice the dev bundle changed.
+  [[ -f "$plist" ]] && touch "$plist"
+}
+
 # ── 1. Kill any running Markon instance ──────────────────────────────────────
 echo "▶ Killing running Markon instances…"
 pkill -x "markon-gui" 2>/dev/null || true
@@ -36,6 +50,7 @@ sleep 0.3
 
 # ── 2. Hot-reload mode (cargo tauri dev) ─────────────────────────────────────
 if [[ $WATCH -eq 1 ]]; then
+  sync_dev_bundle_icon
   echo "▶ Starting cargo tauri dev (hot reload)…"
   exec cargo tauri dev
 fi
@@ -54,6 +69,8 @@ if [[ ! -x "$BIN" ]]; then
   echo "✗ Binary not found at $BIN" >&2
   exit 1
 fi
+
+sync_dev_bundle_icon
 
 # ── 4. Launch ────────────────────────────────────────────────────────────────
 echo "▶ Launching $BIN"

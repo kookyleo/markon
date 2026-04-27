@@ -24,6 +24,8 @@ struct WrapDef {
     radius: u32,
     #[serde(default = "default_inner_pad")]
     inner_pad: u32,
+    #[serde(default)]
+    border_width: Option<u32>,
 }
 
 fn default_inner_pad() -> u32 {
@@ -264,18 +266,27 @@ fn compose_svg(
         ));
 
         let border = if let Some(bg) = &v.bg {
-            let border_inset = w.margin.max(4);
+            let border_width = w.border_width.unwrap_or(w.margin.max(4));
+            let border_span = border_width
+                .checked_mul(2)
+                .context("border_width overflow")?;
+            let inner_rect_size = rect_size.checked_sub(border_span).with_context(|| {
+                format!(
+                    "variant `{}` border_width {} exceeds wrapped size {}",
+                    v.name, border_width, rect_size
+                )
+            })?;
             let outer = squircle_path(
                 w.canvas as f32 / 2.0,
                 w.canvas as f32 / 2.0,
-                w.canvas as f32 / 2.0,
-                w.canvas as f32 / 2.0,
+                rect_size as f32 / 2.0,
+                rect_size as f32 / 2.0,
             );
             let inner_sq = squircle_path(
                 w.canvas as f32 / 2.0,
                 w.canvas as f32 / 2.0,
-                w.canvas as f32 / 2.0 - border_inset as f32,
-                w.canvas as f32 / 2.0 - border_inset as f32,
+                inner_rect_size as f32 / 2.0,
+                inner_rect_size as f32 / 2.0,
             );
             format!(
                 r#"<path d="{outer}" fill="{bg}"/><path d="{inner_sq}" fill="{fg}"/>"#,

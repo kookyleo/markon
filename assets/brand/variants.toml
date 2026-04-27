@@ -7,12 +7,15 @@
 # Geometry: wrapped variants render in 512x512 with the glyph centered inside
 # a rounded square. The wrap parameters mirror Apple/Google launcher icon
 # guidelines (~88px corner radius, ~32px outer margin on a 512 canvas).
+# `margin` is the transparent outer padding; `border_width` is only used by
+# wrapped two-colour variants that draw a contrasting outer shell via `bg`.
 
 [wrap.rounded]
 canvas = 512
-margin = 16       # border inset when bg is set (squircle border thickness)
+margin = 32       # transparent outer padding around the Dock silhouette
 radius = 120      # wrapper corner radius (larger to approximate macOS squircle)
-inner_pad = 0     # no extra glyph inset (default 48 made the pill too small)
+inner_pad = 16    # keep the M↓ marks inside the inset green body
+border_width = 16 # white ring thickness for bg-backed wrapped variants
 
 
 # ── App icon (macOS + Linux) ────────────────────────────────────────────────
