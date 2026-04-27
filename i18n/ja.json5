@@ -84,6 +84,7 @@
 
     // ── Workspace list ───────────────────────────────────────
     "ws.add.btn":     "ワークスペースを追加…",
+    "ws.add.hint":    "新しいワークスペース",
     "ws.open.tip":    "ブラウザで開く",
     "ws.remove":      "リストから削除",
     "ws.flag.search": "検索",

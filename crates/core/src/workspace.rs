@@ -12,7 +12,7 @@ use std::{
 };
 use tokio::sync::broadcast;
 
-#[derive(Clone, Copy, Debug, Default, Serialize, Deserialize)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct WorkspaceFlags {
     #[serde(default)]
     pub enable_search: bool,

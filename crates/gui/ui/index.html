@@ -12,6 +12,10 @@
       --surface-2: #ebebf0;
       --accent: #3451B2;
       --accent-hover: #283D86;
+      --accent-soft: rgba(52, 81, 178, 0.14);
+      --accent-soft-hover: rgba(52, 81, 178, 0.22);
+      --accent-border: rgba(52, 81, 178, 0.18);
+      --accent-border-hover: rgba(52, 81, 178, 0.28);
 
       --text: #1c1c1e;
       --text-2: #6c6c70;
@@ -28,6 +32,10 @@
       --surface-2: #3a3a3c;
       --accent: #3451B2;
       --accent-hover: #4B65C5;
+      --accent-soft: rgba(75, 101, 197, 0.24);
+      --accent-soft-hover: rgba(75, 101, 197, 0.34);
+      --accent-border: rgba(75, 101, 197, 0.3);
+      --accent-border-hover: rgba(75, 101, 197, 0.42);
 
       --text: #f2f2f7;
       --text-2: #8e8e93;
@@ -43,6 +51,10 @@
         --surface-2: #3a3a3c;
         --accent: #3451B2;
         --accent-hover: #4B65C5;
+        --accent-soft: rgba(75, 101, 197, 0.24);
+        --accent-soft-hover: rgba(75, 101, 197, 0.34);
+        --accent-border: rgba(75, 101, 197, 0.3);
+        --accent-border-hover: rgba(75, 101, 197, 0.42);
 
         --text: #f2f2f7;
         --text-2: #8e8e93;
@@ -570,26 +582,74 @@
       position: fixed;
       bottom: 18px;
       left: 18px;
-      width: 40px;
-      height: 40px;
+      width: 44px;
+      height: 44px;
       border-radius: 50%;
-      border: none;
-      background: var(--accent);
-      color: #fff;
+      border: 1px solid var(--accent-border);
+      background: var(--accent-soft);
+      color: var(--accent);
       display: flex;
       align-items: center;
       justify-content: center;
       cursor: default;
-      box-shadow: 0 2px 10px rgba(0,0,0,0.25);
-      transition: background 0.12s, transform 0.12s, box-shadow 0.12s;
+      box-shadow: none;
+      transition: background 0.12s, transform 0.12s, border-color 0.12s, color 0.12s;
       z-index: 50;
     }
     .ws-fab:hover {
-      background: var(--accent-hover);
-      transform: scale(1.08);
-      box-shadow: 0 4px 16px rgba(0,0,0,0.3);
+      background: var(--accent);
+      border-color: var(--accent);
+      color: #fff;
+      transform: scale(1.02);
     }
-    .ws-fab:active { transform: scale(0.96); }
+    .ws-fab:active {
+      background: var(--accent-hover);
+      border-color: var(--accent-hover);
+      transform: scale(0.98);
+    }
+    .ws-fab:focus-visible {
+      outline: none;
+      box-shadow: 0 0 0 3px rgba(52, 81, 178, 0.16);
+    }
+    .ws-fab-tip {
+      position: fixed;
+      left: 72px;
+      bottom: 20px;
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 8px 10px;
+      border-radius: 999px;
+      border: 1px solid var(--border);
+      background: var(--surface);
+      color: var(--text);
+      box-shadow: 0 8px 20px rgba(28, 28, 30, 0.08);
+      opacity: 0;
+      transform: translateX(-6px);
+      transition: opacity 0.14s, transform 0.14s;
+      pointer-events: none;
+      white-space: nowrap;
+      z-index: 49;
+    }
+    .ws-fab:hover + .ws-fab-tip,
+    .ws-fab:focus-visible + .ws-fab-tip {
+      opacity: 1;
+      transform: translateX(0);
+    }
+    .ws-fab-tip-label {
+      font-size: 12.5px;
+      font-weight: 600;
+      letter-spacing: -0.01em;
+    }
+    .ws-fab-tip-key {
+      padding: 2px 7px;
+      border-radius: 999px;
+      background: var(--surface-2);
+      color: var(--text-2);
+      font-size: 11px;
+      font-weight: 600;
+      font-family: 'SF Mono', Monaco, Menlo, monospace;
+    }
 
     /* ── About ───────────────────────────────────────────────────────────── */
     .about {
@@ -876,6 +936,7 @@
           <line x1="5" y1="12" x2="19" y2="12"/>
         </svg>
       </button>
+      <div class="ws-fab-tip" id="ws-add-tip" aria-hidden="true"></div>
     </div>
 
     <!-- ── 使用帮助 ────────────────────────────────────────────────────── -->
@@ -1072,6 +1133,22 @@
     const map = { '1': 'global', '2': 'workspaces', '3': 'tips', '4': 'about' };
     const tab = map[e.key];
     if (tab) { e.preventDefault(); activateTab(tab); }
+  });
+
+  window.addEventListener('keydown', (e) => {
+    const shortcut = getShortcut('NEW_WORKSPACE');
+    if (!isShortcutPressed(e, shortcut)) return;
+    const target = e.target;
+    const isEditable = target instanceof HTMLElement && (
+      target.tagName === 'INPUT' ||
+      target.tagName === 'TEXTAREA' ||
+      target.tagName === 'SELECT' ||
+      target.isContentEditable ||
+      target.closest('.sc-key.recording')
+    );
+    if (isEditable) return;
+    e.preventDefault();
+    addWorkspace();
   });
 
   // ── Live-apply framework ────────────────────────────────────────────────
@@ -1360,6 +1437,16 @@
 
   function T(key) {
     return (t[key] ?? i18n.en[key] ?? key);
+  }
+
+  function renderWorkspaceAddTip() {
+    const tip = document.getElementById('ws-add-tip');
+    if (!tip) return;
+    const shortcut = getShortcut('NEW_WORKSPACE');
+    tip.innerHTML = `
+      <span class="ws-fab-tip-label">${T('ws.add.hint')}</span>
+      <span class="ws-fab-tip-key">${formatKey(shortcut)}</span>
+    `;
   }
 
   function applyI18n() {
@@ -1737,6 +1824,7 @@
     ESCAPE:         { key: 'Escape', ctrl: false, shift: false },
     TOGGLE_TOC:     { key: '\\', ctrl: true, shift: false },
     HELP:           { key: '?', ctrl: false, shift: false },
+    NEW_WORKSPACE:  { key: 'n', ctrl: true, shift: false },
     SEARCH:         { key: '/', ctrl: false, shift: false },
     PREV_HEADING:   { key: 'k', ctrl: false, shift: false },
     NEXT_HEADING:   { key: 'j', ctrl: false, shift: false },
@@ -1752,6 +1840,7 @@
   const SHORTCUT_DESC_KEYS = {
     UNDO: 'web.kbd.undo', REDO: 'web.kbd.redo', REDO_ALT: 'web.kbd.redo.alt',
     ESCAPE: 'web.kbd.escape', TOGGLE_TOC: 'web.kbd.toc', HELP: 'web.kbd.help',
+    NEW_WORKSPACE: 'ws.add.hint',
     SEARCH: 'web.kbd.search', PREV_HEADING: 'web.kbd.prevheading',
     NEXT_HEADING: 'web.kbd.nextheading', PREV_ANNOTATION: 'web.kbd.prevanno',
     NEXT_ANNOTATION: 'web.kbd.nextanno', SCROLL_HALF_PAGE_DOWN: 'web.kbd.scroll',
@@ -1773,8 +1862,21 @@
     return parts.join(' + ');
   }
 
+  function getShortcut(name) {
+    return { ...DEFAULT_SHORTCUTS[name], ...(currentShortcuts[name] || {}) };
+  }
+
+  function isShortcutPressed(e, sc) {
+    if (e.altKey) return false;
+    if (!!(e.metaKey || e.ctrlKey) !== !!sc.ctrl) return false;
+    if (!!e.shiftKey !== !!sc.shift) return false;
+    const pressed = e.key.length === 1 ? e.key.toLowerCase() : e.key;
+    const expected = sc.key.length === 1 ? sc.key.toLowerCase() : sc.key;
+    return pressed === expected;
+  }
+
   function renderHelpTip() {
-    const helpSc = { ...DEFAULT_SHORTCUTS.HELP, ...(currentShortcuts.HELP || {}) };
+    const helpSc = getShortcut('HELP');
     const el = document.getElementById('tips-quickstart-3');
     if (el) el.innerHTML = T('tips.quickstart.3').replace('{key}', `<kbd>${formatKey(helpSc)}</kbd>`);
   }
@@ -1782,8 +1884,8 @@
   function renderShortcuts() {
     const list = document.getElementById('shortcuts-list');
     list.innerHTML = '';
-    for (const [name, defaults] of Object.entries(DEFAULT_SHORTCUTS)) {
-      const current = { ...defaults, ...(currentShortcuts[name] || {}) };
+    for (const name of Object.keys(DEFAULT_SHORTCUTS)) {
+      const current = getShortcut(name);
       const row = document.createElement('div');
       row.className = 'shortcut-row';
       row.innerHTML = `
@@ -1806,13 +1908,14 @@
       });
       list.appendChild(row);
     }
+    renderWorkspaceAddTip();
   }
 
   function startRecording(el, name) {
     document.querySelectorAll('.sc-key.recording').forEach(k => {
       k.classList.remove('recording');
       const n = k.dataset.name;
-      const cur = { ...DEFAULT_SHORTCUTS[n], ...(currentShortcuts[n] || {}) };
+      const cur = getShortcut(n);
       k.textContent = formatKey(cur);
     });
     el.classList.add('recording');
@@ -1831,8 +1934,9 @@
       }
       saveSettings();
     }
-    const cur = { ...DEFAULT_SHORTCUTS[name], ...(currentShortcuts[name] || {}) };
+    const cur = getShortcut(name);
     el.textContent = formatKey(cur);
+    renderWorkspaceAddTip();
   }
 
   document.getElementById('shortcuts-reset').addEventListener('click', () => {

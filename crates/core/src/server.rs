@@ -97,7 +97,23 @@ fn detect_lang(override_lang: &Option<String>) -> String {
     }
 }
 
-fn print_compact_qr(data: &str) -> Result<(), Box<dyn std::error::Error>> {
+pub fn workspace_url_path(workspace_id: &str, initial_path: Option<&str>) -> String {
+    match initial_path {
+        Some(path) => format!("/{workspace_id}/{}", path.trim_start_matches('/')),
+        None => format!("/{workspace_id}/"),
+    }
+}
+
+pub fn build_workspace_url(base: &str, workspace_path: &str) -> String {
+    let suffix = if workspace_path.starts_with('/') {
+        workspace_path.to_string()
+    } else {
+        format!("/{workspace_path}")
+    };
+    format!("{}{}", base.trim_end_matches('/'), suffix)
+}
+
+pub fn print_compact_qr(data: &str) -> Result<(), Box<dyn std::error::Error>> {
     // Use low error correction level for smaller QR codes
     let code = QrCode::with_error_correction_level(data.as_bytes(), EcLevel::L)?;
 
@@ -230,10 +246,7 @@ pub async fn start(config: ServerConfig) -> Result<(), String> {
             flags: ws_init.flags,
         });
         if first_workspace_url_path.is_none() {
-            let url_path = match ws_init.initial_path {
-                Some(ref p) => format!("/{id}/{}", p.trim_start_matches('/')),
-                None => format!("/{id}/"),
-            };
+            let url_path = workspace_url_path(&id, ws_init.initial_path.as_deref());
             first_workspace_url_path = Some(url_path);
         }
     }
@@ -347,7 +360,7 @@ pub async fn start(config: ServerConfig) -> Result<(), String> {
             base_option.to_string()
         };
         match ws_path {
-            Some(p) => format!("{}{}", base.trim_end_matches('/'), p),
+            Some(p) => build_workspace_url(&base, p),
             None => format!("{}/", base.trim_end_matches('/')),
         }
     };

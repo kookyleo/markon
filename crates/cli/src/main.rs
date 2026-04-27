@@ -4,6 +4,8 @@ use local_ip_address::list_afinet_netifas;
 use markon_core::server::{self, ServerConfig, WorkspaceInit};
 use markon_core::settings::AppSettings;
 use markon_core::workspace::{ServerLock, WorkspaceFlags, WorkspaceRegistry};
+use serde::Deserialize;
+use std::io::IsTerminal;
 use std::path::Path;
 use std::sync::{Arc, Mutex};
 
@@ -103,7 +105,11 @@ struct Cli {
 #[derive(clap::Subcommand, Debug)]
 enum Commands {
     /// List all active workspaces in the running server.
-    Ls,
+    Ls {
+        /// Output format.
+        #[arg(long, value_enum, default_value_t = WorkspaceListFormat::Cards)]
+        format: WorkspaceListFormat,
+    },
     /// Remove a workspace from the running server by ID or index.
     Detach {
         /// Workspace ID or index (from 'markon ls').
@@ -113,29 +119,382 @@ enum Commands {
     Shutdown,
 }
 
-fn list_workspaces(port: u16, token: &str) -> Result<(), Box<dyn std::error::Error>> {
+#[derive(Debug, Clone, Copy, PartialEq, Eq, clap::ValueEnum)]
+enum WorkspaceListFormat {
+    Cards,
+    Table,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct WorkspaceAccessSummary {
+    workspace_path: String,
+    flags: WorkspaceFlags,
+    local_url: String,
+    public_url: Option<String>,
+    qr_url: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+struct WorkspaceListEntry {
+    id: String,
+    path: String,
+    #[serde(flatten)]
+    flags: WorkspaceFlags,
+    #[serde(default)]
+    search_ready: bool,
+}
+
+#[derive(Debug, Clone, Copy)]
+struct CliColors {
+    enabled: bool,
+}
+
+impl CliColors {
+    fn detect() -> Self {
+        let enabled = std::io::stdout().is_terminal()
+            && std::env::var_os("NO_COLOR").is_none()
+            && std::env::var("TERM")
+                .map(|term| term != "dumb")
+                .unwrap_or(true);
+        Self { enabled }
+    }
+
+    #[cfg(test)]
+    fn plain() -> Self {
+        Self { enabled: false }
+    }
+
+    fn paint(&self, text: &str, code: &str) -> String {
+        if self.enabled {
+            format!("\x1b[{code}m{text}\x1b[0m")
+        } else {
+            text.to_string()
+        }
+    }
+
+    fn title(&self, text: &str) -> String {
+        self.paint(text, "1;36")
+    }
+
+    fn path(&self, text: &str) -> String {
+        self.paint(text, "1")
+    }
+
+    fn id(&self, text: &str) -> String {
+        self.paint(text, "1;34")
+    }
+
+    fn enabled_flag(&self, text: &str) -> String {
+        self.paint(text, "1;32")
+    }
+
+    fn disabled_flag(&self, text: &str) -> String {
+        self.paint(text, "2")
+    }
+
+    fn local_url(&self, text: &str) -> String {
+        self.paint(text, "36")
+    }
+
+    fn public_url(&self, text: &str) -> String {
+        self.paint(text, "35")
+    }
+}
+
+fn display_workspace_path(path: &Path) -> String {
+    if let Some(home) = std::env::var_os("HOME") {
+        let home = std::path::PathBuf::from(home);
+        if let Ok(rest) = path.strip_prefix(&home) {
+            return if rest.as_os_str().is_empty() {
+                "~".to_string()
+            } else {
+                format!("~/{}", rest.to_string_lossy())
+            };
+        }
+    }
+    path.to_string_lossy().to_string()
+}
+
+fn format_workspace_flags(flags: WorkspaceFlags, colors: CliColors) -> String {
+    [
+        (flags.enable_search, "Search"),
+        (flags.enable_viewed, "Viewed tracking"),
+        (flags.enable_edit, "Edit"),
+        (flags.enable_live, "Live"),
+        (flags.shared_annotation, "Shared notes"),
+    ]
+    .into_iter()
+    .map(|(enabled, label)| {
+        let plain = format!("[{}] {label}", if enabled { "x" } else { " " });
+        if enabled {
+            colors.enabled_flag(&plain)
+        } else {
+            colors.disabled_flag(&plain)
+        }
+    })
+    .collect::<Vec<_>>()
+    .join("  ")
+}
+
+fn format_workspace_list_flags(
+    flags: WorkspaceFlags,
+    search_ready: bool,
+    colors: CliColors,
+) -> String {
+    let search_label = if flags.enable_search && search_ready {
+        "Search (ready)"
+    } else {
+        "Search"
+    };
+    [
+        (flags.enable_search, search_label),
+        (flags.enable_viewed, "Viewed tracking"),
+        (flags.enable_edit, "Edit"),
+        (flags.enable_live, "Live"),
+        (flags.shared_annotation, "Shared notes"),
+    ]
+    .into_iter()
+    .map(|(enabled, label)| {
+        let plain = format!("[{}] {label}", if enabled { "x" } else { " " });
+        if enabled {
+            colors.enabled_flag(&plain)
+        } else {
+            colors.disabled_flag(&plain)
+        }
+    })
+    .collect::<Vec<_>>()
+    .join("  ")
+}
+
+fn format_workspace_feature_tags(flags: WorkspaceFlags, search_ready: bool) -> String {
+    let mut features = Vec::new();
+    if flags.enable_search {
+        features.push(if search_ready {
+            "Search ready".to_string()
+        } else {
+            "Search".to_string()
+        });
+    }
+    if flags.enable_viewed {
+        features.push("Viewed".to_string());
+    }
+    if flags.enable_edit {
+        features.push("Edit".to_string());
+    }
+    if flags.enable_live {
+        features.push("Live".to_string());
+    }
+    if flags.shared_annotation {
+        features.push("Shared notes".to_string());
+    }
+    if features.is_empty() {
+        "-".to_string()
+    } else {
+        features.join(" | ")
+    }
+}
+
+fn pad_right(text: &str, width: usize) -> String {
+    let pad = width.saturating_sub(text.chars().count());
+    format!("{text}{}", " ".repeat(pad))
+}
+
+fn build_workspace_access_summary(
+    workspace_root: &Path,
+    flags: WorkspaceFlags,
+    local_base: &str,
+    workspace_id: &str,
+    initial_path: Option<&str>,
+    entry: Option<&str>,
+) -> WorkspaceAccessSummary {
+    let workspace_path = server::workspace_url_path(workspace_id, initial_path);
+    let local_url = server::build_workspace_url(local_base, &workspace_path);
+    let public_url = entry
+        .filter(|base| *base != "missing")
+        .map(|base| server::build_workspace_url(base, &workspace_path));
+    let qr_url = entry.map(|base| {
+        if base == "missing" {
+            local_url.clone()
+        } else {
+            server::build_workspace_url(base, &workspace_path)
+        }
+    });
+
+    WorkspaceAccessSummary {
+        workspace_path: display_workspace_path(workspace_root),
+        flags,
+        local_url,
+        public_url,
+        qr_url,
+    }
+}
+
+fn build_browser_target_url(
+    local_base: &str,
+    workspace_id: &str,
+    initial_path: Option<&str>,
+    open_browser: Option<&str>,
+) -> Option<String> {
+    let workspace_path = server::workspace_url_path(workspace_id, initial_path);
+    open_browser.map(|base| {
+        if base == "local" {
+            server::build_workspace_url(local_base, &workspace_path)
+        } else {
+            server::build_workspace_url(base, &workspace_path)
+        }
+    })
+}
+
+fn resolve_workspace_list_base(port: u16, entry: Option<&str>) -> (String, bool) {
+    match entry.filter(|base| *base != "missing") {
+        Some(base) => (base.to_string(), true),
+        None => (format!("http://127.0.0.1:{port}"), false),
+    }
+}
+
+fn print_workspace_access_summary(summary: &WorkspaceAccessSummary) {
+    let colors = CliColors::detect();
+    println!(
+        "{} {}",
+        colors.title("Added workspace:"),
+        colors.path(&summary.workspace_path)
+    );
+    println!("{}", format_workspace_flags(summary.flags, colors));
+    println!();
+    println!("{}", colors.local_url(&summary.local_url));
+    if let Some(public_url) = summary.public_url.as_ref() {
+        println!("{}", colors.public_url(public_url));
+    }
+    if let Some(qr_url) = summary.qr_url.as_ref() {
+        println!();
+        if let Err(e) = server::print_compact_qr(qr_url) {
+            eprintln!("Failed to generate QR code: {e}");
+        }
+    }
+}
+
+fn list_workspaces(
+    port: u16,
+    token: &str,
+    format: WorkspaceListFormat,
+    entry: Option<&str>,
+) -> Result<(), Box<dyn std::error::Error>> {
     let client = reqwest::blocking::Client::new();
-    let workspaces: serde_json::Value = client
+    let workspaces: Vec<WorkspaceListEntry> = client
         .get(format!("http://127.0.0.1:{port}/api/workspaces"))
         .header("X-Markon-Token", token)
         .send()?
         .error_for_status()?
         .json()?;
 
-    let arr = workspaces
-        .as_array()
-        .ok_or("Invalid response from server")?;
-    if arr.is_empty() {
+    if workspaces.is_empty() {
         println!("No active workspaces.");
         return Ok(());
     }
 
-    println!("{:<4} {:<10} PATH", "#", "ID");
-    println!("{:-<4} {:-<10} {:-<20}", "", "", "");
-    for (i, ws) in arr.iter().enumerate() {
-        let id = ws["id"].as_str().unwrap_or("?");
-        let path = ws["path"].as_str().unwrap_or("?");
-        println!("{:<4} {:<10} {}", i + 1, id, path);
+    let colors = CliColors::detect();
+    let (url_base, use_entry_url) = resolve_workspace_list_base(port, entry);
+    match format {
+        WorkspaceListFormat::Cards => {
+            for (i, ws) in workspaces.iter().enumerate() {
+                let path = display_workspace_path(Path::new(&ws.path));
+                let url = server::build_workspace_url(
+                    &url_base,
+                    &server::workspace_url_path(&ws.id, None),
+                );
+                println!(
+                    "{} {}  {}",
+                    colors.title(&format!("{}.", i + 1)),
+                    colors.id(&ws.id),
+                    colors.path(&path)
+                );
+                println!(
+                    "   {}",
+                    format_workspace_list_flags(ws.flags, ws.search_ready, colors)
+                );
+                let rendered_url = if use_entry_url {
+                    colors.public_url(&url)
+                } else {
+                    colors.local_url(&url)
+                };
+                println!("   {rendered_url}");
+                if i + 1 < workspaces.len() {
+                    println!();
+                }
+            }
+        }
+        WorkspaceListFormat::Table => {
+            let rows = workspaces
+                .iter()
+                .enumerate()
+                .map(|(i, ws)| {
+                    let path = display_workspace_path(Path::new(&ws.path));
+                    let features = format_workspace_feature_tags(ws.flags, ws.search_ready);
+                    let url = server::build_workspace_url(
+                        &url_base,
+                        &server::workspace_url_path(&ws.id, None),
+                    );
+                    (i + 1, ws.id.clone(), path, features, url)
+                })
+                .collect::<Vec<_>>();
+            let idx_width = rows.len().to_string().chars().count().max(1);
+            let id_width = rows
+                .iter()
+                .map(|(_, id, _, _, _)| id.chars().count())
+                .max()
+                .unwrap_or(2)
+                .max(2);
+            let path_width = rows
+                .iter()
+                .map(|(_, _, path, _, _)| path.chars().count())
+                .max()
+                .unwrap_or(4)
+                .max(4);
+            let feature_width = rows
+                .iter()
+                .map(|(_, _, _, features, _)| features.chars().count())
+                .max()
+                .unwrap_or(8)
+                .max(8);
+
+            println!(
+                "{}  {}  {}  {}  {}",
+                pad_right("#", idx_width),
+                pad_right("ID", id_width),
+                pad_right("PATH", path_width),
+                pad_right("FEATURES", feature_width),
+                "URL"
+            );
+            println!(
+                "{}  {}  {}  {}  {}",
+                "-".repeat(idx_width),
+                "-".repeat(id_width),
+                "-".repeat(path_width),
+                "-".repeat(feature_width),
+                "---"
+            );
+
+            for (idx, id, path, features, url) in rows {
+                let features_colored = if features == "-" {
+                    colors.disabled_flag(&pad_right(&features, feature_width))
+                } else {
+                    colors.enabled_flag(&pad_right(&features, feature_width))
+                };
+                let url_colored = if use_entry_url {
+                    colors.public_url(&url)
+                } else {
+                    colors.local_url(&url)
+                };
+                println!(
+                    "{}  {}  {}  {}  {}",
+                    pad_right(&idx.to_string(), idx_width),
+                    colors.id(&pad_right(&id, id_width)),
+                    colors.path(&pad_right(&path, path_width)),
+                    features_colored,
+                    url_colored
+                );
+            }
+        }
     }
     Ok(())
 }
@@ -214,7 +573,7 @@ fn add_or_update_workspace(
             .json(&flags)
             .send()?
             .error_for_status()?;
-        return Ok(format!("http://127.0.0.1:{port}/{id}/"));
+        return Ok(id.to_string());
     }
 
     let resp: serde_json::Value = client
@@ -232,12 +591,13 @@ fn add_or_update_workspace(
         .error_for_status()?
         .json()?;
     let id = resp["id"].as_str().ok_or("no id in response")?;
-    Ok(format!("http://127.0.0.1:{port}/{id}/"))
+    Ok(id.to_string())
 }
 
 #[tokio::main]
 async fn main() {
     let cli = Cli::parse();
+    let cli_entry = cli.entry.clone();
     println!("Markon v{}", env!("CARGO_PKG_VERSION"));
 
     // Handle subcommands for workspace management.
@@ -252,7 +612,7 @@ async fn main() {
         };
 
         let res = match cmd {
-            Commands::Ls => list_workspaces(port, &token),
+            Commands::Ls { format } => list_workspaces(port, &token, format, cli_entry.as_deref()),
             Commands::Detach { target } => detach_workspace(port, &token, &target),
             Commands::Shutdown => shutdown_server(port, &token),
         };
@@ -313,15 +673,6 @@ async fn main() {
         .clone()
         .unwrap_or_else(|| format!("markon:{}", cli.port));
     let id = markon_core::workspace::hash_id(&ws_root, &effective_salt);
-    let workspace_url = match &initial_path {
-        Some(p) => format!(
-            "http://127.0.0.1:{}/{}/{}",
-            cli.port,
-            id,
-            p.trim_start_matches('/')
-        ),
-        None => format!("http://127.0.0.1:{}/{}/", cli.port, id),
-    };
 
     let open_browser_target = cli.open_browser.clone().or_else(|| {
         if cli.file.is_some() {
@@ -335,10 +686,24 @@ async fn main() {
         if lock.is_alive() {
             match add_or_update_workspace(lock.port, &lock.token, &ws_root.to_string_lossy(), flags)
             {
-                Ok(url) => {
-                    println!("Added workspace: {url}");
-                    if open_browser_target.is_some() {
-                        if let Err(e) = open::that(&url) {
+                Ok(workspace_id) => {
+                    let local_base = format!("http://127.0.0.1:{}", lock.port);
+                    let summary = build_workspace_access_summary(
+                        &ws_root,
+                        flags,
+                        &local_base,
+                        &workspace_id,
+                        initial_path.as_deref(),
+                        cli.entry.as_deref(),
+                    );
+                    print_workspace_access_summary(&summary);
+                    if let Some(browser_url) = build_browser_target_url(
+                        &local_base,
+                        &workspace_id,
+                        initial_path.as_deref(),
+                        open_browser_target.as_deref(),
+                    ) {
+                        if let Err(e) = open::that(&browser_url) {
                             eprintln!("[info] Best-effort browser open failed: {e}");
                         }
                     }
@@ -366,8 +731,17 @@ async fn main() {
 
             match res {
                 Ok(_) => {
+                    let local_base = format!("http://127.0.0.1:{}", cli.port);
+                    let summary = build_workspace_access_summary(
+                        &ws_root,
+                        flags,
+                        &local_base,
+                        &id,
+                        initial_path.as_deref(),
+                        cli.entry.as_deref(),
+                    );
                     println!("Starting Markon server in background...");
-                    println!("Added workspace: {workspace_url}");
+                    print_workspace_access_summary(&summary);
                     return;
                 }
                 Err(e) => {
@@ -424,5 +798,137 @@ async fn main() {
     {
         eprintln!("Error: {e}");
         std::process::exit(1);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn workspace_summary_lists_local_and_public_urls() {
+        let flags = WorkspaceFlags {
+            enable_search: true,
+            enable_viewed: true,
+            enable_edit: true,
+            enable_live: true,
+            shared_annotation: false,
+        };
+        let summary = build_workspace_access_summary(
+            Path::new("/tmp/Downloads"),
+            flags,
+            "http://127.0.0.1:5050",
+            "30c52d3e",
+            None,
+            Some("http://md.s17.kookyleo.space/"),
+        );
+
+        assert_eq!(summary.workspace_path, "/tmp/Downloads");
+        assert_eq!(
+            format_workspace_flags(summary.flags, CliColors::plain()),
+            "[x] Search  [x] Viewed tracking  [x] Edit  [x] Live  [ ] Shared notes"
+        );
+        assert_eq!(summary.local_url, "http://127.0.0.1:5050/30c52d3e/");
+        assert_eq!(
+            summary.public_url.as_deref(),
+            Some("http://md.s17.kookyleo.space/30c52d3e/")
+        );
+        assert_eq!(
+            summary.qr_url.as_deref(),
+            Some("http://md.s17.kookyleo.space/30c52d3e/")
+        );
+    }
+
+    #[test]
+    fn workspace_summary_uses_workspace_url_for_local_qr() {
+        let flags = WorkspaceFlags {
+            enable_search: false,
+            enable_viewed: true,
+            enable_edit: false,
+            enable_live: false,
+            shared_annotation: true,
+        };
+        let summary = build_workspace_access_summary(
+            Path::new("/tmp/notes"),
+            flags,
+            "http://127.0.0.1:5050",
+            "30c52d3e",
+            Some("notes/demo.md"),
+            Some("missing"),
+        );
+
+        assert_eq!(
+            format_workspace_flags(summary.flags, CliColors::plain()),
+            "[ ] Search  [x] Viewed tracking  [ ] Edit  [ ] Live  [x] Shared notes"
+        );
+        assert_eq!(
+            summary.local_url,
+            "http://127.0.0.1:5050/30c52d3e/notes/demo.md"
+        );
+        assert_eq!(summary.public_url, None);
+        assert_eq!(
+            summary.qr_url.as_deref(),
+            Some("http://127.0.0.1:5050/30c52d3e/notes/demo.md")
+        );
+    }
+
+    #[test]
+    fn workspace_flags_are_plain_without_color() {
+        let flags = WorkspaceFlags {
+            enable_search: true,
+            enable_viewed: false,
+            enable_edit: true,
+            enable_live: false,
+            shared_annotation: false,
+        };
+
+        assert_eq!(
+            format_workspace_flags(flags, CliColors::plain()),
+            "[x] Search  [ ] Viewed tracking  [x] Edit  [ ] Live  [ ] Shared notes"
+        );
+    }
+
+    #[test]
+    fn workspace_list_flags_show_ready_search_state() {
+        let flags = WorkspaceFlags {
+            enable_search: true,
+            enable_viewed: true,
+            enable_edit: false,
+            enable_live: false,
+            shared_annotation: false,
+        };
+
+        assert_eq!(
+            format_workspace_list_flags(flags, true, CliColors::plain()),
+            "[x] Search (ready)  [x] Viewed tracking  [ ] Edit  [ ] Live  [ ] Shared notes"
+        );
+    }
+
+    #[test]
+    fn workspace_feature_tags_are_compact() {
+        let flags = WorkspaceFlags {
+            enable_search: true,
+            enable_viewed: true,
+            enable_edit: false,
+            enable_live: true,
+            shared_annotation: false,
+        };
+
+        assert_eq!(
+            format_workspace_feature_tags(flags, true),
+            "Search ready | Viewed | Live"
+        );
+    }
+
+    #[test]
+    fn workspace_list_base_prefers_entry_when_present() {
+        assert_eq!(
+            resolve_workspace_list_base(6419, Some("http://docs.example.com")),
+            ("http://docs.example.com".to_string(), true)
+        );
+        assert_eq!(
+            resolve_workspace_list_base(6419, Some("missing")),
+            ("http://127.0.0.1:6419".to_string(), false)
+        );
     }
 }

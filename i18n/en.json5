@@ -84,6 +84,7 @@
 
     // ── Workspace list ───────────────────────────────────────
     "ws.add.btn":     "Add workspace…",
+    "ws.add.hint":    "New workspace",
     "ws.open.tip":    "Open in browser",
     "ws.remove":      "Remove from list",
     "ws.flag.search": "Search",
