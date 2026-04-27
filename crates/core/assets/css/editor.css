@@ -1607,75 +1607,83 @@ html[data-theme="dark"] .shortcuts-help-footer kbd {
 .editor-layout-toggle {
     display: flex;
     align-items: center;
-    gap: 2px;
-    background-color: #3e3e3e;
+    gap: 1px;
+    background: none;
     border-radius: 4px;
-    padding: 2px;
+    padding: 0;
     flex-shrink: 0;
 }
 
 .editor-layout-btn {
     background: none;
-    border: none;
-    color: #999999;
+    border: 1px solid transparent;
+    color: #777777;
     padding: 4px 7px;
     cursor: pointer;
     border-radius: 3px;
     display: flex;
     align-items: center;
     justify-content: center;
-    transition: color 0.15s, background-color 0.15s;
+    transition: color 0.15s, background-color 0.15s, border-color 0.15s;
     line-height: 1;
 }
 
 .editor-layout-btn:hover {
-    color: #cccccc;
-    background-color: #505050;
+    color: #aaaaaa;
+    background-color: rgba(255, 255, 255, 0.06);
+    border-color: transparent;
 }
 
 .editor-layout-btn.active {
-    color: #ffffff;
-    background-color: #0e639c;
+    color: #4dabf7;
+    background-color: rgba(14, 99, 156, 0.15);
+    border-color: rgba(14, 99, 156, 0.6);
 }
 
 /* Light theme overrides */
 @media (prefers-color-scheme: light) {
     .editor-layout-toggle {
-        background-color: #e0e0e0;
+        background: none;
     }
 
     .editor-layout-btn {
-        color: #666666;
+        color: #888888;
+        border-color: transparent;
     }
 
     .editor-layout-btn:hover {
-        color: #333333;
-        background-color: #cccccc;
+        color: #444444;
+        background-color: rgba(0, 0, 0, 0.06);
+        border-color: transparent;
     }
 
     .editor-layout-btn.active {
-        color: #ffffff;
-        background-color: #0e639c;
+        color: #0e639c;
+        background-color: rgba(14, 99, 156, 0.10);
+        border-color: rgba(14, 99, 156, 0.5);
     }
 }
 
 /* Dark theme (html[data-theme="dark"]) */
 html[data-theme="dark"] .editor-layout-toggle {
-    background-color: #30363d;
+    background: none;
 }
 
 html[data-theme="dark"] .editor-layout-btn {
-    color: #8b949e;
+    color: #6e7681;
+    border-color: transparent;
 }
 
 html[data-theme="dark"] .editor-layout-btn:hover {
-    color: #f0f6fc;
-    background-color: #3d444d;
+    color: #b0b8c1;
+    background-color: rgba(240, 246, 252, 0.06);
+    border-color: transparent;
 }
 
 html[data-theme="dark"] .editor-layout-btn.active {
-    color: #ffffff;
-    background-color: #1f6feb;
+    color: #79c0ff;
+    background-color: rgba(31, 111, 235, 0.15);
+    border-color: rgba(31, 111, 235, 0.5);
 }
 
 /* ============================================================
