@@ -11,6 +11,7 @@ import { Text } from '../services/text.js';
 const _t = (window.__MARKON_I18N__ && window.__MARKON_I18N__.t) || (k => k);
 
 const SPLIT_KEY = 'markon.editor.split';
+const LAYOUT_KEY = 'markon.editor.layout'; // 'split' | 'full'
 
 export class EditorManager {
     #filePath;
@@ -25,6 +26,7 @@ export class EditorManager {
     #previewDebounceId = null;
     #activeTab = 'edit'; // 'edit' | 'preview' — narrow-screen tab state
     #mermaidLoaded = false;
+    #layout = 'split'; // 'split' | 'full'
 
     constructor(filePath) {
         this.#filePath = filePath;
@@ -214,6 +216,19 @@ export class EditorManager {
                     <button class="editor-tab editor-tab-edit active" data-tab="edit">Edit</button>
                     <button class="editor-tab editor-tab-preview" data-tab="preview">Preview</button>
                 </div>
+                <div class="editor-layout-toggle" title="Toggle layout">
+                    <button class="editor-layout-btn" data-layout="split" title="Split view">
+                        <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+                            <rect x="1" y="2" width="6" height="12" rx="1" stroke="currentColor" stroke-width="1.5"/>
+                            <rect x="9" y="2" width="6" height="12" rx="1" stroke="currentColor" stroke-width="1.5"/>
+                        </svg>
+                    </button>
+                    <button class="editor-layout-btn" data-layout="full" title="Full-width editor">
+                        <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+                            <rect x="1" y="2" width="14" height="12" rx="1" stroke="currentColor" stroke-width="1.5"/>
+                        </svg>
+                    </button>
+                </div>
                 <button class="editor-save-btn" style="display: none;">${_t('web.editor.save')}</button>
             </div>
             <div class="editor-body">
@@ -261,6 +276,10 @@ export class EditorManager {
 
         // Initial preview render
         this.#schedulePreviewUpdate(0);
+
+        // Restore layout preference and setup toggle
+        this.#restoreLayout();
+        this.#setupLayoutToggle();
     }
 
     /**
@@ -781,6 +800,76 @@ export class EditorManager {
                     }
                 }
             });
+        });
+    }
+
+    /**
+     * Restore saved layout preference from localStorage
+     * @private
+     */
+    #restoreLayout() {
+        const saved = localStorage.getItem(LAYOUT_KEY);
+        this.#layout = (saved === 'full') ? 'full' : 'split';
+        this.#applyLayout(this.#layout);
+    }
+
+    /**
+     * Apply layout mode to the editor DOM
+     * @private
+     */
+    #applyLayout(mode) {
+        if (!this.#editorModal) return;
+        const split = this.#editorModal.querySelector('.editor-split');
+        const divider = this.#editorModal.querySelector('.editor-split-divider');
+        const previewPane = this.#editorModal.querySelector('.editor-pane-preview');
+        const sourcePane = this.#editorModal.querySelector('.editor-pane-source');
+
+        if (mode === 'full') {
+            if (split) split.classList.add('editor-layout-full');
+            // On wide screens, hide preview + divider; on narrow screens, CSS handles it
+            if (window.innerWidth > 768) {
+                if (divider) divider.style.display = 'none';
+                if (previewPane) previewPane.style.display = 'none';
+                if (sourcePane) sourcePane.style.width = '100%';
+            }
+        } else {
+            if (split) split.classList.remove('editor-layout-full');
+            if (window.innerWidth > 768) {
+                if (divider) divider.style.display = '';
+                if (previewPane) previewPane.style.display = '';
+                if (sourcePane) sourcePane.style.width = '';
+            }
+        }
+
+        // Sync toggle button active state
+        this.#editorModal.querySelectorAll('.editor-layout-btn').forEach(btn => {
+            btn.classList.toggle('active', btn.dataset.layout === mode);
+        });
+    }
+
+    /**
+     * Setup layout toggle buttons
+     * @private
+     */
+    #setupLayoutToggle() {
+        const btns = this.#editorModal.querySelectorAll('.editor-layout-btn');
+        btns.forEach(btn => {
+            btn.addEventListener('click', () => {
+                const mode = btn.dataset.layout;
+                if (mode === this.#layout) return;
+                this.#layout = mode;
+                localStorage.setItem(LAYOUT_KEY, mode);
+                this.#applyLayout(mode);
+                // Trigger preview refresh when switching to split so pane is up-to-date
+                if (mode === 'split') {
+                    this.#schedulePreviewUpdate(0);
+                }
+            });
+        });
+
+        // Re-apply on resize (handles crossing the 768px breakpoint)
+        window.addEventListener('resize', () => {
+            this.#applyLayout(this.#layout);
         });
     }
 

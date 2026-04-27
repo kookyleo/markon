@@ -1600,12 +1600,96 @@ html[data-theme="dark"] .shortcuts-help-footer kbd {
 }
 
 /* ============================================================
+   EDITOR LAYOUT TOGGLE
+   Segmented control for split ↔ full-width layout
+   ============================================================ */
+
+.editor-layout-toggle {
+    display: flex;
+    align-items: center;
+    gap: 2px;
+    background-color: #3e3e3e;
+    border-radius: 4px;
+    padding: 2px;
+    flex-shrink: 0;
+}
+
+.editor-layout-btn {
+    background: none;
+    border: none;
+    color: #999999;
+    padding: 4px 7px;
+    cursor: pointer;
+    border-radius: 3px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: color 0.15s, background-color 0.15s;
+    line-height: 1;
+}
+
+.editor-layout-btn:hover {
+    color: #cccccc;
+    background-color: #505050;
+}
+
+.editor-layout-btn.active {
+    color: #ffffff;
+    background-color: #0e639c;
+}
+
+/* Light theme overrides */
+@media (prefers-color-scheme: light) {
+    .editor-layout-toggle {
+        background-color: #e0e0e0;
+    }
+
+    .editor-layout-btn {
+        color: #666666;
+    }
+
+    .editor-layout-btn:hover {
+        color: #333333;
+        background-color: #cccccc;
+    }
+
+    .editor-layout-btn.active {
+        color: #ffffff;
+        background-color: #0e639c;
+    }
+}
+
+/* Dark theme (html[data-theme="dark"]) */
+html[data-theme="dark"] .editor-layout-toggle {
+    background-color: #30363d;
+}
+
+html[data-theme="dark"] .editor-layout-btn {
+    color: #8b949e;
+}
+
+html[data-theme="dark"] .editor-layout-btn:hover {
+    color: #f0f6fc;
+    background-color: #3d444d;
+}
+
+html[data-theme="dark"] .editor-layout-btn.active {
+    color: #ffffff;
+    background-color: #1f6feb;
+}
+
+/* ============================================================
    RESPONSIVE: narrow screens (≤768px)
    Single pane + top tab bar
    ============================================================ */
 @media (max-width: 768px) {
     .editor-tab-bar {
         display: flex;
+    }
+
+    /* Hide layout toggle on narrow screens — tab bar takes over */
+    .editor-layout-toggle {
+        display: none;
     }
 
     .editor-split {
