@@ -1,7 +1,7 @@
 # Markon
 
 Turn your markdown on.
-轻量级 Markdown 阅览与审校工作台。开源、免费、完全本地。
+轻量级的 Markdown 阅览与审校工作台。开源、免费，完全本地。
 
 ![Markon Banner](banner.png)
 

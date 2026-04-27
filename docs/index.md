@@ -4,7 +4,7 @@ layout: home
 hero:
   name: Markon
   text: Turn your markdown on.
-  tagline: 轻量级 Markdown 阅览与审校工作台。开源、免费、完全本地。
+  tagline: 轻量级的 Markdown 阅览与审校工作台。开源、免费，完全本地。
   image:
     light: /logo-light.svg
     dark: /logo-dark.svg
