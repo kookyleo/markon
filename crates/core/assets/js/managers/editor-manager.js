@@ -27,6 +27,8 @@ export class EditorManager {
     #activeTab = 'edit'; // 'edit' | 'preview' — narrow-screen tab state
     #mermaidLoaded = false;
     #layout = 'split'; // 'split' | 'full'
+    #isSyncingScroll = false;
+    #scrollSyncCleanup = null; // function to remove scroll listeners
 
     constructor(filePath) {
         this.#filePath = filePath;
@@ -78,6 +80,10 @@ export class EditorManager {
 
             // Clean up event listeners
             document.removeEventListener('keydown', this.#handleEscapeKey);
+            if (this.#scrollSyncCleanup) {
+                this.#scrollSyncCleanup();
+                this.#scrollSyncCleanup = null;
+            }
 
             if (this.#previewDebounceId !== null) {
                 clearTimeout(this.#previewDebounceId);
@@ -280,6 +286,8 @@ export class EditorManager {
         // Restore layout preference and setup toggle
         this.#restoreLayout();
         this.#setupLayoutToggle();
+        // Setup proportional scroll sync (split mode only)
+        this.#setupScrollSync();
     }
 
     /**
@@ -860,6 +868,8 @@ export class EditorManager {
                 this.#layout = mode;
                 localStorage.setItem(LAYOUT_KEY, mode);
                 this.#applyLayout(mode);
+                // Re-attach scroll sync (only active in split mode)
+                this.#setupScrollSync();
                 // Trigger preview refresh when switching to split so pane is up-to-date
                 if (mode === 'split') {
                     this.#schedulePreviewUpdate(0);
@@ -870,7 +880,55 @@ export class EditorManager {
         // Re-apply on resize (handles crossing the 768px breakpoint)
         window.addEventListener('resize', () => {
             this.#applyLayout(this.#layout);
+            // Re-attach/remove scroll sync when crossing the breakpoint
+            this.#setupScrollSync();
         });
+    }
+
+    /**
+     * Setup proportional scroll sync between source and preview panes.
+     * Only active in split mode on wide screens (>768 px).
+     * Anti-loop mechanism: sets #isSyncingScroll = true before programmatic
+     * scrollTo, clears it in the next requestAnimationFrame so the responding
+     * listener can detect and bail out.
+     * @private
+     */
+    #setupScrollSync() {
+        // Tear down any previous listeners first
+        if (this.#scrollSyncCleanup) {
+            this.#scrollSyncCleanup();
+            this.#scrollSyncCleanup = null;
+        }
+
+        // Only run in split mode on wide screens
+        if (this.#layout !== 'split' || window.innerWidth <= 768) return;
+
+        const sourcePane = this.#editorModal?.querySelector('.editor-pane-source');
+        const previewPane = this.#editorModal?.querySelector('.editor-pane-preview');
+        if (!sourcePane || !previewPane) return;
+
+        const syncFrom = (from, to) => {
+            if (this.#isSyncingScroll) return;
+            const fromMax = from.scrollHeight - from.clientHeight;
+            if (fromMax <= 0) return;
+            const ratio = from.scrollTop / fromMax;
+            const toMax = to.scrollHeight - to.clientHeight;
+            if (toMax <= 0) return;
+            this.#isSyncingScroll = true;
+            to.scrollTop = ratio * toMax;
+            requestAnimationFrame(() => { this.#isSyncingScroll = false; });
+        };
+
+        const onSourceScroll = () => syncFrom(sourcePane, previewPane);
+        const onPreviewScroll = () => syncFrom(previewPane, sourcePane);
+
+        sourcePane.addEventListener('scroll', onSourceScroll, { passive: true });
+        previewPane.addEventListener('scroll', onPreviewScroll, { passive: true });
+
+        this.#scrollSyncCleanup = () => {
+            sourcePane.removeEventListener('scroll', onSourceScroll);
+            previewPane.removeEventListener('scroll', onPreviewScroll);
+        };
     }
 
     /**
