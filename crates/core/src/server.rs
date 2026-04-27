@@ -296,8 +296,9 @@ pub async fn start(config: ServerConfig) -> Result<(), String> {
         .route("/_/css/{filename}", get(serve_css))
         .route("/_/js/{*path}", get(serve_js))
         .route("/_/ws/{workspace_id}", get(config_ws_handler))
-        // Search API (read-only, no auth needed)
+        // Read-only public APIs
         .route("/search", get(search_handler))
+        .route("/api/preview", post(preview_handler))
         // Workspace content routes
         .route("/{workspace_id}/", get(handle_workspace_root))
         .route("/{workspace_id}/{*path}", get(handle_workspace_path))
@@ -1189,6 +1190,28 @@ async fn save_file_handler(
         })
         .into_response(),
     }
+}
+
+// ── Markdown preview API ──────────────────────────────────────────────────────
+
+#[derive(Deserialize)]
+struct PreviewRequest {
+    content: String,
+}
+
+#[derive(Serialize)]
+struct PreviewResponse {
+    html: String,
+    has_mermaid: bool,
+}
+
+async fn preview_handler(
+    State(state): State<AppState>,
+    Json(payload): Json<PreviewRequest>,
+) -> impl IntoResponse {
+    let renderer = MarkdownRenderer::new(&state.theme);
+    let (html, has_mermaid, _toc) = renderer.render(&payload.content);
+    Json(PreviewResponse { html, has_mermaid }).into_response()
 }
 
 #[cfg(test)]

@@ -671,6 +671,13 @@
         .editor-status {
             color: #8b949e;
         }
+        .editor-split-divider { background-color: #30363d; }
+        .editor-split-divider:hover, .editor-split-divider:active { background-color: #58a6ff; }
+        .editor-preview-content { background-color: #0d1117; color: #f0f6fc; }
+        .editor-pane-preview { background-color: #0d1117; }
+        .editor-tab { color: #8b949e; }
+        .editor-tab:hover { color: #f0f6fc; }
+        .editor-tab.active { color: #f0f6fc; border-bottom-color: #58a6ff; }
 
         {% elif theme == "light" %}
         /* Light Theme: Override dark defaults */
@@ -713,6 +720,13 @@
         .editor-status {
             color: #656d76;
         }
+        .editor-split-divider { background-color: #d0d7de; }
+        .editor-split-divider:hover, .editor-split-divider:active { background-color: #0969da; }
+        .editor-preview-content { background-color: #ffffff; color: #1f2328; }
+        .editor-pane-preview { background-color: #ffffff; }
+        .editor-tab { color: #656d76; }
+        .editor-tab:hover { color: #1f2328; }
+        .editor-tab.active { color: #1f2328; border-bottom-color: #0969da; }
 
         /* Remove H1 bottom margin when followed by viewed toolbar */
         .markdown-body h1:has(+ .viewed-toolbar) {
@@ -897,6 +911,12 @@
             .editor-status {
                 color: #8b949e;
             }
+            .editor-split-divider { background-color: #30363d; }
+            .editor-split-divider:hover, .editor-split-divider:active { background-color: #58a6ff; }
+            .editor-preview-content { background-color: #0d1117; color: #f0f6fc; }
+            .editor-pane-preview { background-color: #0d1117; }
+            .editor-tab { color: #8b949e; }
+            .editor-tab.active { color: #f0f6fc; border-bottom-color: #58a6ff; }
         }
         {% endif %}
 

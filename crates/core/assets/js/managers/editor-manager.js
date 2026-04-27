@@ -10,6 +10,8 @@ import { Text } from '../services/text.js';
 
 const _t = (window.__MARKON_I18N__ && window.__MARKON_I18N__.t) || (k => k);
 
+const SPLIT_KEY = 'markon.editor.split';
+
 export class EditorManager {
     #filePath;
     #editorModal = null;
@@ -19,6 +21,10 @@ export class EditorManager {
     #saveButton = null;
     #closeButton = null;
     #isDirty = false;
+    #previewPane = null;
+    #previewDebounceId = null;
+    #activeTab = 'edit'; // 'edit' | 'preview' — narrow-screen tab state
+    #mermaidLoaded = false;
 
     constructor(filePath) {
         this.#filePath = filePath;
@@ -71,12 +77,17 @@ export class EditorManager {
             // Clean up event listeners
             document.removeEventListener('keydown', this.#handleEscapeKey);
 
+            if (this.#previewDebounceId !== null) {
+                clearTimeout(this.#previewDebounceId);
+                this.#previewDebounceId = null;
+            }
             this.#editorModal.remove();
             this.#editorModal = null;
             this.#textarea = null;
             this.#lineNumbers = null;
             this.#saveButton = null;
             this.#closeButton = null;
+            this.#previewPane = null;
             this.#isDirty = false;
 
             // Reload page to return to view mode
@@ -199,14 +210,26 @@ export class EditorManager {
             <div class="editor-header">
                 <button class="editor-close" title="${_t('web.editor.close.tip')}">✕</button>
                 <span class="editor-file-name">${Text.escape(this.#filePath)}</span>
+                <div class="editor-tab-bar">
+                    <button class="editor-tab editor-tab-edit active" data-tab="edit">Edit</button>
+                    <button class="editor-tab editor-tab-preview" data-tab="preview">Preview</button>
+                </div>
                 <button class="editor-save-btn" style="display: none;">${_t('web.editor.save')}</button>
             </div>
             <div class="editor-body">
-                <div class="editor-container">
-                    <div class="editor-line-numbers"></div>
-                    <div class="editor-text-container">
-                        <pre class="editor-highlight-layer"><code></code></pre>
-                        <textarea class="editor-textarea" spellcheck="false"></textarea>
+                <div class="editor-split">
+                    <div class="editor-pane editor-pane-source">
+                        <div class="editor-container">
+                            <div class="editor-line-numbers"></div>
+                            <div class="editor-text-container">
+                                <pre class="editor-highlight-layer"><code></code></pre>
+                                <textarea class="editor-textarea" spellcheck="false"></textarea>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="editor-split-divider" title="Drag to resize"></div>
+                    <div class="editor-pane editor-pane-preview">
+                        <div class="editor-preview-content markdown-body"></div>
                     </div>
                 </div>
             </div>
@@ -219,12 +242,25 @@ export class EditorManager {
         this.#highlightLayer = modal.querySelector('.editor-highlight-layer code');
         this.#saveButton = modal.querySelector('.editor-save-btn');
         this.#closeButton = modal.querySelector('.editor-close');
+        this.#previewPane = modal.querySelector('.editor-preview-content');
 
         // Set textarea content (no HTML escaping needed for textarea.value)
         this.#textarea.value = content;
 
+        // Restore saved split position
+        this.#restoreSplit();
+
+        // Setup draggable divider
+        this.#setupDivider();
+
+        // Setup narrow-screen tabs
+        this.#setupTabs();
+
         // Initialize syntax highlighting
         this.#updateSyntaxHighlight();
+
+        // Initial preview render
+        this.#schedulePreviewUpdate(0);
     }
 
     /**
@@ -282,6 +318,8 @@ export class EditorManager {
                 }
                 this.#updateSyntaxHighlight();
             });
+            // Schedule preview update with debounce
+            this.#schedulePreviewUpdate(150);
         });
     }
 
@@ -581,6 +619,169 @@ export class EditorManager {
 
     #escapeRegex(str) {
         return str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    }
+
+    /**
+     * Schedule a preview pane update with debounce
+     * @private
+     */
+    #schedulePreviewUpdate(delay = 150) {
+        if (this.#previewDebounceId !== null) {
+            clearTimeout(this.#previewDebounceId);
+        }
+        this.#previewDebounceId = setTimeout(() => {
+            this.#previewDebounceId = null;
+            this.#updatePreview();
+        }, delay);
+    }
+
+    /**
+     * Update the preview pane by calling /api/preview
+     * @private
+     */
+    async #updatePreview() {
+        if (!this.#previewPane || !this.#textarea) return;
+
+        const content = this.#textarea.value;
+        try {
+            const response = await fetch('/api/preview', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ content }),
+            });
+            if (!response.ok) return;
+            const result = await response.json();
+            this.#previewPane.innerHTML = result.html;
+
+            // Re-run Mermaid if diagrams present
+            if (result.has_mermaid) {
+                this.#renderMermaid();
+            }
+        } catch (err) {
+            Logger.warn('EditorManager', 'Preview update failed:', err);
+        }
+    }
+
+    /**
+     * Render mermaid diagrams in the preview pane
+     * @private
+     */
+    #renderMermaid() {
+        if (typeof window.mermaid !== 'undefined') {
+            try {
+                window.mermaid.run({ nodes: this.#previewPane.querySelectorAll('.language-mermaid') });
+            } catch (e) {
+                // mermaid may not expose .run on older bundled versions; fall back
+                try { window.mermaid.init(undefined, this.#previewPane.querySelectorAll('.language-mermaid')); } catch (_) { /* ignore */ }
+            }
+        }
+    }
+
+    /**
+     * Restore saved split ratio from localStorage
+     * @private
+     */
+    #restoreSplit() {
+        const split = this.#editorModal.querySelector('.editor-split');
+        if (!split) return;
+        const saved = localStorage.getItem(SPLIT_KEY);
+        const pct = saved ? parseFloat(saved) : 50;
+        const clamped = Math.min(80, Math.max(20, pct));
+        split.style.setProperty('--editor-split-left', `${clamped}%`);
+    }
+
+    /**
+     * Setup draggable split divider
+     * @private
+     */
+    #setupDivider() {
+        const divider = this.#editorModal.querySelector('.editor-split-divider');
+        const split = this.#editorModal.querySelector('.editor-split');
+        if (!divider || !split) return;
+
+        let dragging = false;
+
+        const onMove = (clientX) => {
+            if (!dragging) return;
+            const rect = split.getBoundingClientRect();
+            let pct = ((clientX - rect.left) / rect.width) * 100;
+            pct = Math.min(80, Math.max(20, pct));
+            split.style.setProperty('--editor-split-left', `${pct}%`);
+            localStorage.setItem(SPLIT_KEY, pct.toString());
+        };
+
+        divider.addEventListener('mousedown', (e) => {
+            dragging = true;
+            document.body.style.cursor = 'col-resize';
+            document.body.style.userSelect = 'none';
+            e.preventDefault();
+        });
+
+        document.addEventListener('mousemove', (e) => onMove(e.clientX));
+        document.addEventListener('mouseup', () => {
+            if (dragging) {
+                dragging = false;
+                document.body.style.cursor = '';
+                document.body.style.userSelect = '';
+            }
+        });
+
+        // Touch support
+        divider.addEventListener('touchstart', (e) => {
+            dragging = true;
+            e.preventDefault();
+        }, { passive: false });
+        document.addEventListener('touchmove', (e) => {
+            if (dragging && e.touches.length > 0) onMove(e.touches[0].clientX);
+        }, { passive: true });
+        document.addEventListener('touchend', () => { dragging = false; });
+    }
+
+    /**
+     * Setup narrow-screen tab switching
+     * @private
+     */
+    #setupTabs() {
+        const tabs = this.#editorModal.querySelectorAll('.editor-tab');
+        const sourcePane = this.#editorModal.querySelector('.editor-pane-source');
+        const previewPane = this.#editorModal.querySelector('.editor-pane-preview');
+
+        // Set initial narrow-screen state: source visible, preview hidden
+        if (window.innerWidth <= 768) {
+            sourcePane.style.display = 'flex';
+            previewPane.style.display = 'none';
+        }
+
+        // Clear inline display overrides when resizing to wide screen
+        window.addEventListener('resize', () => {
+            if (window.innerWidth > 768) {
+                sourcePane.style.display = '';
+                previewPane.style.display = '';
+            } else if (this.#activeTab === 'edit') {
+                sourcePane.style.display = 'flex';
+                previewPane.style.display = 'none';
+            } else {
+                sourcePane.style.display = 'none';
+                previewPane.style.display = 'flex';
+            }
+        });
+
+        tabs.forEach(tab => {
+            tab.addEventListener('click', () => {
+                this.#activeTab = tab.dataset.tab;
+                tabs.forEach(t => t.classList.toggle('active', t.dataset.tab === this.#activeTab));
+                if (window.innerWidth <= 768) {
+                    if (this.#activeTab === 'edit') {
+                        sourcePane.style.display = 'flex';
+                        previewPane.style.display = 'none';
+                    } else {
+                        sourcePane.style.display = 'none';
+                        previewPane.style.display = 'flex';
+                        this.#schedulePreviewUpdate(0);
+                    }
+                }
+            });
+        });
     }
 
     /**
