@@ -1233,6 +1233,81 @@ html[data-theme="dark"] .shortcuts-help-footer kbd {
 .editor-body {
     flex: 1;
     overflow: hidden;
+    min-height: 0;
+}
+
+/* Split layout */
+.editor-split {
+    display: flex;
+    height: 100%;
+    overflow: hidden;
+    --editor-split-left: 50%;
+}
+
+.editor-pane {
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    min-width: 0;
+}
+
+.editor-pane-source {
+    width: var(--editor-split-left);
+    flex-shrink: 0;
+}
+
+.editor-pane-preview {
+    flex: 1;
+    overflow-y: auto;
+    background-color: #ffffff;
+}
+
+.editor-split-divider {
+    width: 5px;
+    flex-shrink: 0;
+    background-color: #3e3e3e;
+    cursor: col-resize;
+    transition: background-color 0.15s;
+}
+
+.editor-split-divider:hover,
+.editor-split-divider:active {
+    background-color: #0e639c;
+}
+
+/* Preview content: reset body styles, use markdown-body */
+.editor-preview-content {
+    padding: 20px 24px;
+    box-sizing: border-box;
+    min-height: 100%;
+    background-color: #ffffff;
+    color: #1f2328;
+}
+
+/* Narrow-screen tab bar */
+.editor-tab-bar {
+    display: none;
+    gap: 0;
+}
+
+.editor-tab {
+    background: none;
+    border: none;
+    border-bottom: 2px solid transparent;
+    color: #cccccc;
+    font-size: 13px;
+    padding: 4px 14px;
+    cursor: pointer;
+    transition: color 0.15s, border-color 0.15s;
+}
+
+.editor-tab:hover {
+    color: #ffffff;
+}
+
+.editor-tab.active {
+    color: #ffffff;
+    border-bottom-color: #0e639c;
 }
 
 .editor-container {
@@ -1512,4 +1587,160 @@ html[data-theme="dark"] .shortcuts-help-footer kbd {
     .editor-status {
         color: #656d76;
     }
+
+    /* Light preview pane stays white regardless of color-scheme */
+    .editor-preview-content {
+        background-color: #ffffff;
+        color: #1f2328;
+    }
+
+    .editor-pane-preview {
+        background-color: #ffffff;
+    }
+}
+
+/* ============================================================
+   EDITOR LAYOUT TOGGLE
+   Segmented control for split ↔ full-width layout
+   ============================================================ */
+
+.editor-layout-toggle {
+    display: flex;
+    align-items: center;
+    gap: 2px;
+    background-color: #3e3e3e;
+    border-radius: 4px;
+    padding: 2px;
+    flex-shrink: 0;
+}
+
+.editor-layout-btn {
+    background: none;
+    border: none;
+    color: #999999;
+    padding: 4px 7px;
+    cursor: pointer;
+    border-radius: 3px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: color 0.15s, background-color 0.15s;
+    line-height: 1;
+}
+
+.editor-layout-btn:hover {
+    color: #cccccc;
+    background-color: #505050;
+}
+
+.editor-layout-btn.active {
+    color: #ffffff;
+    background-color: #0e639c;
+}
+
+/* Light theme overrides */
+@media (prefers-color-scheme: light) {
+    .editor-layout-toggle {
+        background-color: #e0e0e0;
+    }
+
+    .editor-layout-btn {
+        color: #666666;
+    }
+
+    .editor-layout-btn:hover {
+        color: #333333;
+        background-color: #cccccc;
+    }
+
+    .editor-layout-btn.active {
+        color: #ffffff;
+        background-color: #0e639c;
+    }
+}
+
+/* Dark theme (html[data-theme="dark"]) */
+html[data-theme="dark"] .editor-layout-toggle {
+    background-color: #30363d;
+}
+
+html[data-theme="dark"] .editor-layout-btn {
+    color: #8b949e;
+}
+
+html[data-theme="dark"] .editor-layout-btn:hover {
+    color: #f0f6fc;
+    background-color: #3d444d;
+}
+
+html[data-theme="dark"] .editor-layout-btn.active {
+    color: #ffffff;
+    background-color: #1f6feb;
+}
+
+/* ============================================================
+   RESPONSIVE: narrow screens (≤768px)
+   Single pane + top tab bar
+   ============================================================ */
+@media (max-width: 768px) {
+    .editor-tab-bar {
+        display: flex;
+    }
+
+    /* Hide layout toggle on narrow screens — tab bar takes over */
+    .editor-layout-toggle {
+        display: none;
+    }
+
+    .editor-split {
+        flex-direction: column;
+    }
+
+    .editor-split-divider {
+        display: none;
+    }
+
+    .editor-pane-source {
+        width: 100%;
+        flex: 1;
+    }
+
+    .editor-pane-preview {
+        flex: 1;
+        display: none; /* shown via JS when tab=preview */
+    }
+}
+
+/* ============================================================
+   DARK THEME: preview pane overrides
+   ============================================================ */
+html[data-theme="dark"] .editor-preview-content {
+    background-color: #0d1117;
+    color: #f0f6fc;
+}
+
+html[data-theme="dark"] .editor-pane-preview {
+    background-color: #0d1117;
+}
+
+html[data-theme="dark"] .editor-split-divider {
+    background-color: #30363d;
+}
+
+html[data-theme="dark"] .editor-split-divider:hover,
+html[data-theme="dark"] .editor-split-divider:active {
+    background-color: #58a6ff;
+}
+
+html[data-theme="dark"] .editor-tab {
+    color: #8b949e;
+}
+
+html[data-theme="dark"] .editor-tab:hover {
+    color: #f0f6fc;
+}
+
+html[data-theme="dark"] .editor-tab.active {
+    color: #f0f6fc;
+    border-bottom-color: #58a6ff;
 }
