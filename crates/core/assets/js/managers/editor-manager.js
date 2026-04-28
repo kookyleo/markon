@@ -22,6 +22,7 @@ export class EditorManager {
     #saveButton = null;
     #closeButton = null;
     #isDirty = false;
+    #baselineContent = ''; // last-saved (or initially loaded) content for dirty comparison
     #previewPane = null;
     #previewDebounceId = null;
     #activeTab = 'edit'; // 'edit' | 'preview' — narrow-screen tab state
@@ -49,6 +50,9 @@ export class EditorManager {
             alert('Failed to load file content. Please ensure edit feature is enabled.');
             return;
         }
+
+        // Capture the loaded content as the dirty-comparison baseline
+        this.#baselineContent = content;
 
         // Create editor UI
         this.#createEditorUI(content);
@@ -97,6 +101,7 @@ export class EditorManager {
             this.#closeButton = null;
             this.#previewPane = null;
             this.#isDirty = false;
+            this.#baselineContent = '';
 
             // Reload page to return to view mode
             window.location.reload();
@@ -115,6 +120,8 @@ export class EditorManager {
         const success = await this.#saveToServer(content);
 
         if (success) {
+            // Saved content becomes the new baseline; further edits compare against it
+            this.#baselineContent = content;
             this.#isDirty = false;
             this.#updateSaveButtonState();
             this.#updateTitleDirtyIndicator();
@@ -332,7 +339,8 @@ export class EditorManager {
         let rafId = null;
         let lastLineCount = -1;
         this.#textarea.addEventListener('input', () => {
-            this.#isDirty = true;
+            // Compare against baseline so reverting edits clears the dirty state
+            this.#isDirty = this.#textarea.value !== this.#baselineContent;
             this.#updateSaveButtonState();
             this.#updateTitleDirtyIndicator();
             if (rafId !== null) return;
@@ -903,9 +911,11 @@ export class EditorManager {
         // Only run in split mode on wide screens
         if (this.#layout !== 'split' || window.innerWidth <= 768) return;
 
-        const sourcePane = this.#editorModal?.querySelector('.editor-pane-source');
+        // Source side scrolls on the textarea itself, not on .editor-pane-source
+        // (which is overflow:hidden). Preview side scrolls on .editor-pane-preview.
+        const sourceEl = this.#textarea;
         const previewPane = this.#editorModal?.querySelector('.editor-pane-preview');
-        if (!sourcePane || !previewPane) return;
+        if (!sourceEl || !previewPane) return;
 
         const syncFrom = (from, to) => {
             if (this.#isSyncingScroll) return;
@@ -919,14 +929,14 @@ export class EditorManager {
             requestAnimationFrame(() => { this.#isSyncingScroll = false; });
         };
 
-        const onSourceScroll = () => syncFrom(sourcePane, previewPane);
-        const onPreviewScroll = () => syncFrom(previewPane, sourcePane);
+        const onSourceScroll = () => syncFrom(sourceEl, previewPane);
+        const onPreviewScroll = () => syncFrom(previewPane, sourceEl);
 
-        sourcePane.addEventListener('scroll', onSourceScroll, { passive: true });
+        sourceEl.addEventListener('scroll', onSourceScroll, { passive: true });
         previewPane.addEventListener('scroll', onPreviewScroll, { passive: true });
 
         this.#scrollSyncCleanup = () => {
-            sourcePane.removeEventListener('scroll', onSourceScroll);
+            sourceEl.removeEventListener('scroll', onSourceScroll);
             previewPane.removeEventListener('scroll', onPreviewScroll);
         };
     }
