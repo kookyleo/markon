@@ -1,0 +1,79 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 800" width="800" height="800">
+  <defs>
+    <filter id="sh" x="-20%" y="-20%" width="140%" height="140%">
+      <feGaussianBlur in="SourceAlpha" stdDeviation="6"/>
+      <feOffset dy="6"/>
+      <feComponentTransfer><feFuncA type="linear" slope="0.10"/></feComponentTransfer>
+      <feMerge><feMergeNode/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+  </defs>
+  <rect width="800" height="800" fill="#FAFAF7"/>
+
+  <!-- main card -->
+  <g filter="url(#sh)">
+    <rect x="120" y="130" width="500" height="600" rx="16" fill="#FFFFFF" stroke="#E5E7EB"/>
+    <rect x="150" y="160" rx="3" width="200" height="14" fill="#111827"/>
+
+    <!-- section 1 viewed -->
+    <g>
+      <rect x="156" y="200" width="22" height="22" rx="5" fill="#16A34A"/>
+      <path d="M161 211 L167 217 L174 207" stroke="#FFFFFF" stroke-width="2.5" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+      <rect x="194" y="202" rx="2" width="380" height="8" fill="#9CA3AF"/>
+      <rect x="194" y="216" rx="2" width="320" height="8" fill="#9CA3AF"/>
+    </g>
+    <!-- section 2 viewed -->
+    <g>
+      <rect x="156" y="262" width="22" height="22" rx="5" fill="#16A34A"/>
+      <path d="M161 273 L167 279 L174 269" stroke="#FFFFFF" stroke-width="2.5" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+      <rect x="194" y="264" rx="2" width="400" height="8" fill="#9CA3AF"/>
+      <rect x="194" y="278" rx="2" width="280" height="8" fill="#9CA3AF"/>
+    </g>
+    <!-- section 3 viewed -->
+    <g>
+      <rect x="156" y="324" width="22" height="22" rx="5" fill="#16A34A"/>
+      <path d="M161 335 L167 341 L174 331" stroke="#FFFFFF" stroke-width="2.5" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+      <rect x="194" y="326" rx="2" width="350" height="8" fill="#9CA3AF"/>
+      <rect x="194" y="340" rx="2" width="380" height="8" fill="#9CA3AF"/>
+    </g>
+
+    <!-- section 4 current focus -->
+    <g>
+      <rect x="142" y="380" width="466" height="100" rx="10" fill="#EFF6FF" stroke="#3B82F6" stroke-width="1.5"/>
+      <rect x="156" y="402" width="22" height="22" rx="5" fill="#FFFFFF" stroke="#3B82F6" stroke-width="2"/>
+      <rect x="194" y="404" rx="2" width="380" height="8" fill="#374151"/>
+      <rect x="194" y="418" rx="2" width="340" height="8" fill="#374151"/>
+      <rect x="194" y="432" rx="2" width="380" height="8" fill="#374151"/>
+      <rect x="194" y="446" rx="2" width="240" height="8" fill="#374151"/>
+    </g>
+
+    <!-- section 5 unread -->
+    <g opacity="0.45">
+      <rect x="156" y="510" width="22" height="22" rx="5" fill="#FFFFFF" stroke="#9CA3AF" stroke-width="2"/>
+      <rect x="194" y="512" rx="2" width="380" height="8" fill="#9CA3AF"/>
+      <rect x="194" y="526" rx="2" width="320" height="8" fill="#9CA3AF"/>
+    </g>
+    <!-- section 6 unread -->
+    <g opacity="0.45">
+      <rect x="156" y="572" width="22" height="22" rx="5" fill="#FFFFFF" stroke="#9CA3AF" stroke-width="2"/>
+      <rect x="194" y="574" rx="2" width="350" height="8" fill="#9CA3AF"/>
+      <rect x="194" y="588" rx="2" width="370" height="8" fill="#9CA3AF"/>
+    </g>
+    <!-- section 7 unread -->
+    <g opacity="0.45">
+      <rect x="156" y="634" width="22" height="22" rx="5" fill="#FFFFFF" stroke="#9CA3AF" stroke-width="2"/>
+      <rect x="194" y="636" rx="2" width="400" height="8" fill="#9CA3AF"/>
+      <rect x="194" y="650" rx="2" width="260" height="8" fill="#9CA3AF"/>
+    </g>
+  </g>
+
+  <!-- progress ring top right -->
+  <g transform="translate(660 180)" filter="url(#sh)">
+    <circle cx="0" cy="0" r="64" fill="#FFFFFF"/>
+    <circle cx="0" cy="0" r="50" fill="none" stroke="#E5E7EB" stroke-width="10"/>
+    <!-- 60% arc, starts at top, sweeps clockwise -->
+    <circle cx="0" cy="0" r="50" fill="none" stroke="#16A34A" stroke-width="10"
+            stroke-dasharray="188.4 314" stroke-dashoffset="0"
+            transform="rotate(-90)"/>
+    <text x="0" y="6" font-family="ui-sans-serif, system-ui" font-size="22" font-weight="700" fill="#111827" text-anchor="middle">3/7</text>
+  </g>
+</svg>

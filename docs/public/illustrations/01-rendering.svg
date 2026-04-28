@@ -1,0 +1,79 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 800" width="800" height="800">
+  <defs>
+    <filter id="sh" x="-20%" y="-20%" width="140%" height="140%">
+      <feGaussianBlur in="SourceAlpha" stdDeviation="6"/>
+      <feOffset dy="6"/>
+      <feComponentTransfer><feFuncA type="linear" slope="0.10"/></feComponentTransfer>
+      <feMerge><feMergeNode/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+    <marker id="arr" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#3B82F6"/>
+    </marker>
+  </defs>
+  <rect width="800" height="800" fill="#FAFAF7"/>
+
+  <g transform="rotate(-5 230 400)">
+    <rect x="60" y="180" width="340" height="460" rx="14" fill="#0F172A" filter="url(#sh)"/>
+    <g font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="16" fill="#94A3B8">
+      <text x="85" y="222" fill="#FB7185"># Release Process</text>
+      <text x="85" y="252">## Overview</text>
+      <text x="85" y="292" fill="#60A5FA">&gt; [!NOTE]</text>
+      <text x="85" y="314">&gt; Markon uses dual</text>
+      <text x="85" y="354" fill="#FCD34D">```mermaid</text>
+      <text x="85" y="376">flowchart TD</text>
+      <text x="105" y="398">A --&gt; B</text>
+      <text x="85" y="420" fill="#FCD34D">```</text>
+      <text x="85" y="454">| col | val |</text>
+      <text x="85" y="476">|-----|-----|</text>
+      <text x="85" y="498">| foo | bar |</text>
+    </g>
+  </g>
+
+  <g filter="url(#sh)">
+    <rect x="240" y="100" width="490" height="600" rx="16" fill="#FFFFFF" stroke="#E5E7EB"/>
+    <circle cx="265" cy="128" r="6" fill="#FF5F57"/>
+    <circle cx="285" cy="128" r="6" fill="#FEBC2E"/>
+    <circle cx="305" cy="128" r="6" fill="#28C840"/>
+    <line x1="240" y1="156" x2="730" y2="156" stroke="#E5E7EB"/>
+
+    <rect x="270" y="180" rx="3" width="240" height="14" fill="#111827"/>
+    <rect x="270" y="208" rx="2" width="180" height="8" fill="#9CA3AF"/>
+
+    <rect x="380" y="252" rx="8" width="180" height="42" fill="#F8FAFC" stroke="#3B82F6" stroke-width="1.5"/>
+    <rect x="410" y="270" rx="2" width="120" height="10" fill="#3B82F6" opacity="0.55"/>
+    <line x1="470" y1="294" x2="345" y2="328" stroke="#3B82F6" stroke-width="1.5" marker-end="url(#arr)"/>
+    <line x1="470" y1="294" x2="595" y2="328" stroke="#3B82F6" stroke-width="1.5" marker-end="url(#arr)"/>
+    <rect x="280" y="334" rx="8" width="130" height="36" fill="#F8FAFC" stroke="#3B82F6" stroke-width="1.5"/>
+    <rect x="305" y="349" rx="2" width="80" height="8" fill="#3B82F6" opacity="0.55"/>
+    <rect x="540" y="334" rx="8" width="130" height="36" fill="#F8FAFC" stroke="#3B82F6" stroke-width="1.5"/>
+    <rect x="565" y="349" rx="2" width="80" height="8" fill="#3B82F6" opacity="0.55"/>
+
+    <rect x="270" y="412" rx="6" width="430" height="64" fill="#EFF6FF"/>
+    <rect x="270" y="412" width="4" height="64" fill="#3B82F6"/>
+    <circle cx="298" cy="430" r="8" fill="#3B82F6"/>
+    <text x="298" y="434" font-family="ui-sans-serif, system-ui" font-size="11" font-weight="700" fill="#FFFFFF" text-anchor="middle">i</text>
+    <text x="316" y="434" font-family="ui-sans-serif, system-ui" font-size="13" font-weight="700" fill="#1D4ED8">NOTE</text>
+    <rect x="290" y="446" rx="2" width="380" height="8" fill="#93C5FD"/>
+    <rect x="290" y="460" rx="2" width="260" height="8" fill="#93C5FD"/>
+
+    <rect x="270" y="500" width="430" height="160" fill="#FFFFFF" stroke="#E5E7EB"/>
+    <rect x="270" y="500" width="430" height="36" fill="#F3F4F6"/>
+    <line x1="270" y1="536" x2="700" y2="536" stroke="#E5E7EB"/>
+    <line x1="270" y1="572" x2="700" y2="572" stroke="#E5E7EB"/>
+    <line x1="270" y1="608" x2="700" y2="608" stroke="#E5E7EB"/>
+    <line x1="412" y1="500" x2="412" y2="660" stroke="#E5E7EB"/>
+    <line x1="557" y1="500" x2="557" y2="660" stroke="#E5E7EB"/>
+    <rect x="290" y="514" rx="2" width="80" height="9" fill="#6B7280"/>
+    <rect x="432" y="514" rx="2" width="80" height="9" fill="#6B7280"/>
+    <rect x="577" y="514" rx="2" width="80" height="9" fill="#6B7280"/>
+    <rect x="290" y="552" rx="2" width="60" height="8" fill="#9CA3AF"/>
+    <rect x="432" y="552" rx="2" width="100" height="8" fill="#9CA3AF"/>
+    <rect x="577" y="552" rx="2" width="60" height="8" fill="#9CA3AF"/>
+    <rect x="290" y="588" rx="2" width="80" height="8" fill="#9CA3AF"/>
+    <rect x="432" y="588" rx="2" width="70" height="8" fill="#9CA3AF"/>
+    <rect x="577" y="588" rx="2" width="90" height="8" fill="#9CA3AF"/>
+    <rect x="290" y="624" rx="2" width="50" height="8" fill="#9CA3AF"/>
+    <rect x="432" y="624" rx="2" width="110" height="8" fill="#9CA3AF"/>
+    <rect x="577" y="624" rx="2" width="70" height="8" fill="#9CA3AF"/>
+  </g>
+</svg>

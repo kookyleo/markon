@@ -172,6 +172,27 @@ const showAll = ref(false);
     </div>
   </div>
 
+  <a
+    v-else-if="mode === 'nav' && primary"
+    :href="primary.url"
+    class="markon-dl-nav"
+    :title="`Markon ${release.version} · ${platformLabel} · ${formatBytes(primary.size)}`"
+  >
+    <span class="markon-dl-nav-arrow">↓</span>
+    <span>下载 {{ platformLabel || '' }}</span>
+  </a>
+  <a
+    v-else-if="mode === 'nav'"
+    :href="release.htmlUrl"
+    class="markon-dl-nav"
+    target="_blank"
+    rel="noopener"
+    :title="`Markon ${release.version} · 所有平台`"
+  >
+    <span class="markon-dl-nav-arrow">↓</span>
+    <span>下载</span>
+  </a>
+
   <div v-else-if="mode === 'os'" class="markon-dl-list">
     <ul>
       <li v-for="a in osItems" :key="a.variant" :class="{ unavailable: !a.available }">
@@ -202,10 +223,10 @@ const showAll = ref(false);
 .markon-dl-primary {
   display: inline-flex; align-items: center; gap: 14px;
   padding: 14px 22px; border-radius: 12px;
-  background: var(--vp-c-brand-1); color: var(--vp-c-white) !important;
+  background: var(--vp-button-brand-bg); color: var(--vp-button-brand-text) !important;
   text-decoration: none !important; transition: background 0.15s;
 }
-.markon-dl-primary:hover { background: var(--vp-c-brand-2); }
+.markon-dl-primary:hover { background: var(--vp-button-brand-hover-bg); }
 .markon-dl-arrow { font-size: 24px; line-height: 1; }
 .markon-dl-stack { display: flex; flex-direction: column; align-items: flex-start; line-height: 1.3; }
 .markon-dl-title { font-size: 16px; font-weight: 600; }
@@ -216,6 +237,36 @@ const showAll = ref(false);
   font-size: 13px; color: var(--vp-c-text-2); cursor: pointer;
 }
 .markon-dl-toggle:hover { color: var(--vp-c-brand-1); }
+
+/* nav: tinted brand pill that lives in the top navbar via
+   `nav-bar-content-before` (sits next to the site title, ahead of the menu).
+   Calm brand-soft fill + brand-color text — lighter than a solid CTA but still
+   clearly the primary action, distinct from the neutral nav links beside it. */
+.markon-dl-nav {
+  display: inline-flex; align-items: center; gap: 6px;
+  height: 30px; padding: 0 14px;
+  margin: 0 24px;
+  border: 1px solid transparent;
+  border-radius: 16px;
+  background: var(--vp-c-brand-soft);
+  color: var(--vp-c-brand-1) !important;
+  font-size: 13px; font-weight: 600;
+  text-decoration: none !important;
+  transition: background-color .15s, border-color .15s;
+  white-space: nowrap;
+}
+.markon-dl-nav:hover {
+  border-color: var(--vp-c-brand-1);
+}
+.markon-dl-nav-arrow {
+  font-size: 14px; line-height: 1;
+}
+
+@media (max-width: 768px) {
+  /* On small screens the navbar collapses; hide the nav pill to avoid
+     squeezing — users can still reach the download via hamburger menu / hero. */
+  .markon-dl-nav { display: none; }
+}
 
 .markon-dl-list { width: 100%; margin: 8px 0 16px; }
 .markon-dl-group { margin-top: 12px; }

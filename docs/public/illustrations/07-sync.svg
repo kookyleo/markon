@@ -1,0 +1,86 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 800" width="800" height="800">
+  <defs>
+    <filter id="sh" x="-20%" y="-20%" width="140%" height="140%">
+      <feGaussianBlur in="SourceAlpha" stdDeviation="6"/>
+      <feOffset dy="6"/>
+      <feComponentTransfer><feFuncA type="linear" slope="0.10"/></feComponentTransfer>
+      <feMerge><feMergeNode/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+  </defs>
+  <rect width="800" height="800" fill="#FAFAF7"/>
+
+  <g transform="translate(-70 -134) scale(1.2)">
+  <!-- arc — wider span (240) for a more relaxed sweep, low crest -->
+  <path d="M 260 370 Q 380 270 490 350" fill="none" stroke="#3B82F6" stroke-width="2" stroke-dasharray="8 8" opacity="0.5"/>
+
+  <!-- traveling annotations — staggered, sitting clearly above the arc rather than glued to it -->
+  <g transform="translate(320 305)">
+    <rect x="-32" y="-14" width="64" height="20" rx="4" fill="#FFE066" stroke="#EAB308" stroke-width="1" filter="url(#sh)"/>
+    <rect x="-26" y="-10" width="36" height="6" rx="2" fill="#92400E"/>
+  </g>
+  <g transform="translate(385 275)">
+    <rect x="-22" y="-12" width="44" height="20" rx="4" fill="#FFFBEB" stroke="#EAB308" stroke-width="1" filter="url(#sh)"/>
+    <rect x="-16" y="-6" width="20" height="5" rx="2" fill="#16A34A"/>
+    <rect x="-16" y="2" width="14" height="4" rx="2" fill="#9CA3AF"/>
+  </g>
+  <g transform="translate(455 295)">
+    <rect x="-32" y="-14" width="64" height="20" rx="4" fill="#86E5A4" stroke="#16A34A" stroke-width="1" filter="url(#sh)"/>
+    <rect x="-26" y="-10" width="36" height="6" rx="2" fill="#14532D"/>
+  </g>
+
+  <!-- MacBook -->
+  <g transform="translate(160 380)" filter="url(#sh)">
+    <rect x="0" y="0" width="280" height="180" rx="10" fill="#1F2937"/>
+    <rect x="10" y="10" width="260" height="160" rx="4" fill="#FFFFFF"/>
+    <!-- inner page mini -->
+    <rect x="24" y="26" rx="2" width="100" height="8" fill="#111827"/>
+    <rect x="24" y="44" rx="2" width="220" height="6" fill="#9CA3AF"/>
+    <rect x="24" y="58" rx="2" width="200" height="6" fill="#9CA3AF"/>
+    <rect x="24" y="58" rx="2" width="80" height="10" fill="#FFE066" opacity="0.85"/>
+    <rect x="24" y="74" rx="2" width="220" height="6" fill="#9CA3AF"/>
+    <rect x="24" y="92" rx="2" width="200" height="6" fill="#9CA3AF"/>
+    <rect x="24" y="106" rx="2" width="220" height="6" fill="#9CA3AF"/>
+    <rect x="24" y="124" rx="2" width="160" height="6" fill="#9CA3AF"/>
+    <rect x="60" y="120" rx="2" width="120" height="10" fill="#86E5A4" opacity="0.75"/>
+    <rect x="24" y="142" rx="2" width="180" height="6" fill="#9CA3AF"/>
+  </g>
+  <!-- MacBook base -->
+  <g>
+    <path d="M 130 562 L 470 562 L 480 580 L 120 580 Z" fill="#1F2937"/>
+    <rect x="270" y="562" width="60" height="6" rx="3" fill="#0F172A"/>
+  </g>
+
+  <!-- Phone — illustration style: thin bezel, no notch / status bar / home indicator; tilted 8° CW; sits to the right of the laptop with breathing room -->
+  <g transform="rotate(8 550 490)">
+    <g transform="translate(480 360)" filter="url(#sh)">
+      <rect x="0" y="0" width="140" height="260" rx="24" fill="#1F2937"/>
+      <rect x="3" y="3" width="134" height="254" rx="21" fill="#FFFFFF"/>
+
+      <!-- title -->
+      <rect x="18" y="32" rx="2" width="74" height="9" fill="#111827"/>
+
+      <!-- paragraph + yellow highlight -->
+      <rect x="18" y="58" rx="2" width="104" height="5" fill="#9CA3AF"/>
+      <rect x="18" y="70" rx="2" width="86" height="5" fill="#9CA3AF"/>
+      <rect x="18" y="70" rx="2" width="60" height="9" fill="#FFE066" opacity="0.85"/>
+      <rect x="18" y="84" rx="2" width="104" height="5" fill="#9CA3AF"/>
+      <rect x="18" y="96" rx="2" width="78" height="5" fill="#9CA3AF"/>
+
+      <!-- paragraph + green highlight -->
+      <rect x="18" y="124" rx="2" width="104" height="5" fill="#9CA3AF"/>
+      <rect x="18" y="136" rx="2" width="100" height="5" fill="#9CA3AF"/>
+      <rect x="42" y="132" rx="2" width="76" height="9" fill="#86E5A4" opacity="0.75"/>
+      <rect x="18" y="150" rx="2" width="104" height="5" fill="#9CA3AF"/>
+
+      <!-- closing paragraph -->
+      <rect x="18" y="178" rx="2" width="104" height="5" fill="#9CA3AF"/>
+      <rect x="18" y="190" rx="2" width="80" height="5" fill="#9CA3AF"/>
+      <rect x="18" y="202" rx="2" width="104" height="5" fill="#9CA3AF"/>
+      <rect x="18" y="214" rx="2" width="60" height="5" fill="#9CA3AF"/>
+    </g>
+  </g>
+
+  <!-- ground line -->
+  <line x1="80" y1="660" x2="720" y2="660" stroke="#E5E7EB" stroke-width="1"/>
+  </g>
+</svg>

@@ -1,0 +1,70 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 800" width="800" height="800">
+  <defs>
+    <filter id="sh" x="-20%" y="-20%" width="140%" height="140%">
+      <feGaussianBlur in="SourceAlpha" stdDeviation="6"/>
+      <feOffset dy="6"/>
+      <feComponentTransfer><feFuncA type="linear" slope="0.10"/></feComponentTransfer>
+      <feMerge><feMergeNode/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+  </defs>
+  <rect width="800" height="800" fill="#FAFAF7"/>
+
+  <g transform="translate(0 50)">
+  <!-- Back card: full document with sections -->
+  <g filter="url(#sh)" opacity="0.55">
+    <rect x="100" y="120" width="380" height="460" rx="14" fill="#FFFFFF" stroke="#E5E7EB"/>
+    <!-- section 1 -->
+    <rect x="130" y="150" rx="3" width="160" height="12" fill="#111827"/>
+    <rect x="130" y="172" rx="2" width="320" height="6" fill="#9CA3AF"/>
+    <rect x="130" y="184" rx="2" width="280" height="6" fill="#9CA3AF"/>
+    <rect x="130" y="196" rx="2" width="320" height="6" fill="#9CA3AF"/>
+    <!-- section 2 (the one being printed) -->
+    <rect x="130" y="234" rx="3" width="180" height="12" fill="#111827"/>
+    <rect x="130" y="256" rx="2" width="320" height="6" fill="#9CA3AF"/>
+    <rect x="130" y="268" rx="2" width="320" height="6" fill="#9CA3AF"/>
+    <rect x="130" y="280" rx="2" width="240" height="6" fill="#9CA3AF"/>
+    <rect x="130" y="292" rx="2" width="320" height="6" fill="#9CA3AF"/>
+    <rect x="130" y="304" rx="2" width="200" height="6" fill="#9CA3AF"/>
+    <!-- cut dashed line around section 2 -->
+    <rect x="118" y="222" width="346" height="108" rx="6" fill="none" stroke="#3B82F6" stroke-width="1.5" stroke-dasharray="6 5"/>
+    <!-- section 3 -->
+    <rect x="130" y="358" rx="3" width="140" height="12" fill="#111827"/>
+    <rect x="130" y="380" rx="2" width="320" height="6" fill="#9CA3AF"/>
+    <rect x="130" y="392" rx="2" width="280" height="6" fill="#9CA3AF"/>
+    <!-- section 4 -->
+    <rect x="130" y="430" rx="3" width="170" height="12" fill="#111827"/>
+    <rect x="130" y="452" rx="2" width="320" height="6" fill="#9CA3AF"/>
+    <rect x="130" y="464" rx="2" width="280" height="6" fill="#9CA3AF"/>
+    <rect x="130" y="476" rx="2" width="320" height="6" fill="#9CA3AF"/>
+    <!-- section 5 -->
+    <rect x="130" y="514" rx="3" width="160" height="12" fill="#111827"/>
+    <rect x="130" y="536" rx="2" width="320" height="6" fill="#9CA3AF"/>
+    <rect x="130" y="548" rx="2" width="240" height="6" fill="#9CA3AF"/>
+  </g>
+
+  <!-- A4 sheet output, slightly tilted -->
+  <g transform="rotate(4 600 460)" filter="url(#sh)">
+    <rect x="430" y="240" width="280" height="380" rx="6" fill="#FFFFFF" stroke="#E5E7EB"/>
+    <rect x="460" y="278" rx="3" width="180" height="14" fill="#111827"/>
+    <rect x="460" y="306" rx="2" width="220" height="7" fill="#9CA3AF"/>
+    <rect x="460" y="320" rx="2" width="220" height="7" fill="#9CA3AF"/>
+    <rect x="460" y="334" rx="2" width="180" height="7" fill="#9CA3AF"/>
+    <rect x="460" y="348" rx="2" width="220" height="7" fill="#9CA3AF"/>
+    <rect x="460" y="362" rx="2" width="160" height="7" fill="#9CA3AF"/>
+    <rect x="460" y="376" rx="2" width="220" height="7" fill="#9CA3AF"/>
+    <rect x="460" y="390" rx="2" width="200" height="7" fill="#9CA3AF"/>
+    <!-- footer page no -->
+    <rect x="600" y="592" rx="2" width="40" height="6" fill="#D1D5DB"/>
+  </g>
+
+  <!-- Printer icon top right -->
+  <g transform="translate(640 140)" filter="url(#sh)">
+    <rect x="-44" y="-10" width="88" height="50" rx="8" fill="#3B82F6"/>
+    <rect x="-30" y="-32" width="60" height="22" rx="3" fill="#FFFFFF" stroke="#3B82F6" stroke-width="2"/>
+    <rect x="-30" y="22" width="60" height="30" rx="2" fill="#FFFFFF" stroke="#3B82F6" stroke-width="2"/>
+    <rect x="-22" y="30" width="44" height="3" rx="1" fill="#9CA3AF"/>
+    <rect x="-22" y="38" width="32" height="3" rx="1" fill="#9CA3AF"/>
+    <circle cx="28" cy="6" r="3" fill="#FFE066"/>
+  </g>
+  </g>
+</svg>

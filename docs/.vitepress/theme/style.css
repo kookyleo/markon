@@ -6,6 +6,16 @@
   white-space: nowrap;
 }
 
+/* The VitePress navbar exposes only `nav-bar-content-before` (puts our
+   download pill at the very start of the right region, ahead of search) and
+   `nav-bar-content-after` (after every native control). Neither matches the
+   slot we want — between search and the menu. Swap `.search` to flex order
+   -1 so it visually moves ahead of the slotted pill while the pill stays at
+   the default order, landing it as the first item before the menu. */
+.VPNavBar .content-body .search {
+  order: -1;
+}
+
 .vp-doc details summary {
   list-style: none;
 }
