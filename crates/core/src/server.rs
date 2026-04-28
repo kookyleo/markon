@@ -193,9 +193,18 @@ pub async fn start(config: ServerConfig) -> Result<(), String> {
     // A broadcast channel (for WebSocket fan-out) is needed whenever either
     // shared_annotation or Live is active. The SQLite-backed annotation DB is
     // only required by shared_annotation; Live is fire-and-forget broadcast.
+    //
+    // GUI mode (`registry: Some`) lets the user toggle these flags after the
+    // server has started, but axum's Router is immutable once built. To avoid
+    // a "404 on /_/ws" the moment the user enables Live or Shared notes from
+    // the tray, GUI mode wires the WebSocket route and broadcast channel up
+    // front and lazily opens the annotation DB regardless of the initial
+    // flag values.
+    let is_gui_mode = registry.is_some();
     let has_live = initial_workspaces.iter().any(|w| w.flags.enable_live);
-    let needs_ws = shared_annotation || has_live;
-    let db = if shared_annotation {
+    let needs_ws = is_gui_mode || shared_annotation || has_live;
+    let needs_db = is_gui_mode || shared_annotation;
+    let db = if needs_db {
         let db_path = std::env::var("MARKON_SQLITE_PATH").unwrap_or_else(|_| {
             let home = dirs::home_dir().expect("Cannot find home directory");
             home.join(".markon/annotation.sqlite")
