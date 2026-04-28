@@ -415,7 +415,18 @@ Contributions are welcome! Whether it's bug reports, feature requests, or code i
 
 ## License
 
-Apache License 2.0
+Copyright 2025-present kookyleo. Released under the [Apache License 2.0](LICENSE).
+
+Per Apache-2.0 §4, redistributions and derivative works **must** preserve the
+[`NOTICE`](NOTICE) file, the original copyright headers, and clearly mark
+modified files. See the LICENSE for the authoritative terms.
+
+### Name & marks
+
+`"Markon"` is a trademark of the author. Per Apache-2.0 §6, this license does
+**not** grant rights to use the `"Markon"` name, logo, or related marks to
+name, brand, or promote derivative works or products. Forks and derivatives
+should pick a distinct name.
 
 ## Acknowledgments
 

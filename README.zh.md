@@ -451,7 +451,16 @@ npx eslint 'crates/core/assets/js/**/*.js'
 
 ## 许可证
 
-Apache License 2.0
+版权所有 © 2025-至今 kookyleo。基于 [Apache License 2.0](LICENSE) 开源发布。
+
+依据 Apache-2.0 第 4 条，任何再分发或衍生作品**必须**保留 [`NOTICE`](NOTICE)
+文件、原始版权信息，并对修改过的文件作出显著标注。具体条款以 LICENSE 为准。
+
+### 名称与标识
+
+`"Markon"` 名称及标识为作者所有。依据 Apache-2.0 第 6 条，本授权**不包含**将
+`"Markon"` 名称、徽标或相关标识用于衍生作品、产品命名或宣传推广的权利。
+Fork 与衍生项目请使用与本项目区分的名称。
 
 ## 致谢
 
