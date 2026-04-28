@@ -458,20 +458,18 @@ fn list_workspaces(
                 .max(8);
 
             println!(
-                "{}  {}  {}  {}  {}",
+                "{}  {}  {}  {}  URL",
                 pad_right("#", idx_width),
                 pad_right("ID", id_width),
                 pad_right("PATH", path_width),
-                pad_right("FEATURES", feature_width),
-                "URL"
+                pad_right("FEATURES", feature_width)
             );
             println!(
-                "{}  {}  {}  {}  {}",
+                "{}  {}  {}  {}  ---",
                 "-".repeat(idx_width),
                 "-".repeat(id_width),
                 "-".repeat(path_width),
-                "-".repeat(feature_width),
-                "---"
+                "-".repeat(feature_width)
             );
 
             for (idx, id, path, features, url) in rows {
