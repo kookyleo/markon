@@ -36,18 +36,25 @@
 }
 
 /* Hero illustration at the top of feature/guide pages — same artwork as
-   the matching FeatureGallery card on the home page, sized down so it
-   reads as a chapter mark rather than dominating the page. */
+   the matching FeatureGallery card on the home page. Left-aligned with
+   generous vertical breathing room so it reads as a chapter mark
+   anchored to the body text, not a centered banner. */
 .feature-illustration {
-  margin: 8px auto 24px;
-  max-width: 280px;
+  margin: 32px auto 40px 0;
+  max-width: 420px;
   background: #FAFAF7;
   border: 1px solid var(--vp-c-divider);
-  border-radius: 10px;
+  border-radius: 12px;
   overflow: hidden;
 }
 .feature-illustration img {
   display: block;
   width: 100%;
   height: auto;
+}
+@media (max-width: 640px) {
+  .feature-illustration {
+    margin: 20px auto 28px 0;
+    max-width: 320px;
+  }
 }
