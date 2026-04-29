@@ -90,6 +90,7 @@ export default defineConfig({
               text: '核心功能',
               items: [
                 { text: '全文搜索', link: '/features/search' },
+                { text: '与文档对话', link: '/features/chat' },
                 { text: '已读追踪 (Viewed)', link: '/features/viewed' },
                 { text: '快捷编辑', link: '/features/edit' },
                 { text: '注解与笔记', link: '/features/annotations' },

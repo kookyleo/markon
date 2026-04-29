@@ -112,7 +112,10 @@
 
     /* ── Content ─────────────────────────────────────────────────────────── */
     .content { flex: 1; overflow-y: auto; background: var(--bg); position: relative; }
-    .tab { display: none; padding: 18px 20px; }
+    /* Cap tab content width so wide windows don't end up with huge gaps
+       between row labels and their controls — extra space goes to the margins
+       instead of the middle of the row. */
+    .tab { display: none; padding: 18px 20px; max-width: 760px; margin: 0 auto; }
     .tab.active { display: block; }
 
     /* ── Preference sections ─────────────────────────────────────────────── */
@@ -195,6 +198,144 @@
     }
     input[type="text"].full { width: 100%; }
 
+    /* ── Password / textarea (used by AI Chat config) ────────────────────── */
+    input[type="password"] {
+      padding: 4px 8px;
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      background: var(--surface);
+      color: var(--text);
+      font-size: 13px;
+      font-family: inherit;
+      outline: none;
+      transition: border-color 0.15s, box-shadow 0.15s;
+    }
+    input[type="password"]:focus {
+      border-color: var(--accent);
+      box-shadow: 0 0 0 3px rgba(0,122,255,0.15);
+    }
+    textarea {
+      padding: 6px 8px;
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      background: var(--surface);
+      color: var(--text);
+      font-size: 13px;
+      font-family: inherit;
+      outline: none;
+      width: 100%;
+      box-sizing: border-box;
+      resize: vertical;
+      transition: border-color 0.15s, box-shadow 0.15s;
+    }
+    textarea:focus {
+      border-color: var(--accent);
+      box-shadow: 0 0 0 3px rgba(0,122,255,0.15);
+    }
+    /* Toast — bottom-anchored notification. WKWebView (Tauri) silently drops
+       window.alert() calls, so we render our own ephemeral banner instead. */
+    .mk-toast {
+      position: fixed; left: 50%; top: 64px;
+      transform: translateX(-50%) translateY(-20px);
+      background: var(--surface); border: 1px solid var(--border); color: var(--text);
+      padding: 10px 14px; border-radius: var(--radius-sm); font-size: 13px;
+      box-shadow: 0 8px 24px rgba(0,0,0,0.18);
+      opacity: 0; transition: opacity 0.2s, transform 0.2s;
+      white-space: pre-wrap; max-width: 540px; z-index: 9999;
+      pointer-events: none;
+    }
+    .mk-toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+    .mk-toast-ok  { border-color: rgba(52,199,89,0.45); background: rgba(52,199,89,0.12); }
+    .mk-toast-err { border-color: rgba(255,69,58,0.45); background: rgba(255,69,58,0.12); }
+    /* Inline status text — sits inside .key-row before the input, fades after
+       a few seconds. Used for non-blocking per-row feedback. */
+    .inline-hint {
+      font-size: 12px;
+      color: var(--text-2);
+      margin-right: 4px;
+      opacity: 0;
+      transition: opacity 0.2s;
+      white-space: nowrap;
+      pointer-events: none;
+    }
+    .inline-hint.show { opacity: 1; pointer-events: auto; }
+    .inline-hint.ok  { color: rgb(52,199,89); }
+    .inline-hint.err { color: rgb(255,69,58); }
+    /* Custom suggestion popup for the model field — bypasses native <datalist>
+       so the menu can size to the longest id rather than the input width.
+       Uses position:fixed and is reparented to <body> at wire time so the
+       enclosing .section-body { overflow:hidden } can't clip it. */
+    .model-popup {
+      position: fixed;
+      margin-top: 2px;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      box-shadow: 0 8px 24px rgba(0,0,0,0.18);
+      max-height: 260px;
+      overflow-y: auto;
+      z-index: 1000;
+      display: none;
+      width: max-content;
+      font-size: 12px;
+    }
+    .model-popup.open { display: block; }
+    .model-popup-item {
+      padding: 6px 12px;
+      cursor: pointer;
+      white-space: nowrap;
+      color: var(--text);
+    }
+    .model-popup-item:hover,
+    .model-popup-item.active { background: var(--border); }
+    /* Small inline reveal button for password fields. */
+    .key-row { display: flex; gap: 6px; align-items: center; flex: 1; min-width: 0; justify-content: flex-end; }
+    .key-row input { flex: 1; min-width: 0; }
+    /* Ghost-style inline accessory buttons (e.g. eye, test). No border so they
+       sit visually flush next to the input — only a subtle hover highlight. */
+    .btn-tiny {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 4px;
+      font-size: 12px;
+      padding: 4px 8px;
+      border: none;
+      border-radius: var(--radius-sm);
+      background: transparent;
+      color: var(--text-2);
+      cursor: pointer;
+      flex-shrink: 0;
+      transition: background 0.15s, color 0.15s;
+    }
+    .btn-tiny:hover { background: var(--border); color: var(--text); }
+    .btn-eye { padding: 4px 6px; }
+    /* Embed an icon button inside the input's trailing padding so it reads as
+       part of the field, like browser/keychain UI conventions. Used for both
+       the password eye toggle and the model-list refresh icon. */
+    .input-eye { position: relative; display: inline-flex; align-items: center; }
+    .input-eye > input { width: 100%; padding-right: 30px; }
+    /* Hide WebKit's built-in datalist dropdown arrow; it lives in the same
+       trailing-padding region and would steal clicks from .btn-eye. */
+    .input-eye > input[list]::-webkit-calendar-picker-indicator { display: none !important; }
+    .input-eye > input[list]::-webkit-list-button { display: none !important; }
+    .input-eye > .btn-eye {
+      position: absolute;
+      right: 3px;
+      top: 50%;
+      transform: translateY(-50%);
+      padding: 3px 5px;
+      z-index: 1;
+    }
+    /* Stacked rows for full-width fields inside the chat card. */
+    .pref-row.stacked {
+      flex-direction: column;
+      align-items: stretch;
+      gap: 4px;
+    }
+    .pref-row.stacked > .pref-label { flex: 0 0 auto; }
+    .pref-row.stacked > .pref-control,
+    .pref-row.stacked > .key-row { width: 100%; }
     /* ── Toggle switch ───────────────────────────────────────────────────── */
     .switch { position: relative; display: inline-block; width: 38px; height: 22px; flex-shrink: 0; }
     .switch input { display: none; }
@@ -576,6 +717,19 @@
       border-color: var(--accent);
       color: var(--accent);
     }
+    .shortcut-row .sc-actions { display: flex; align-items: center; gap: 6px; }
+    /* Per-row "undo to default" button — shared by shortcuts + webstyles +
+       chat base URL. Adds a subtle outline so it reads as a button rather
+       than a bare icon, while .btn-tiny stays ghost for in-field toggles. */
+    .row-reset {
+      opacity: 1;
+      transition: opacity 0.15s, background 0.15s, border-color 0.15s;
+      flex-shrink: 0;
+      border: 1px solid var(--border);
+      background: var(--surface);
+    }
+    .row-reset.is-default { opacity: 0.25; }
+    .row-reset.is-default:hover { opacity: 0.6; }
 
     /* FAB — floating add button, pinned at bottom-left */
     .ws-fab {
@@ -826,6 +980,146 @@
       </div>
 
       <div class="section">
+        <div class="section-title" data-i18n="sec.webstyles"></div>
+        <div class="section-body" id="webstyles-editor">
+          <div id="webstyles-list"></div>
+          <div class="pref-row">
+            <span class="pref-label"></span>
+            <button class="btn" id="webstyles-reset" data-i18n="webstyles.reset_all" style="font-size:12px;padding:6px 22px"></button>
+          </div>
+        </div>
+      </div>
+
+      <div class="section">
+        <div class="section-title" data-i18n="sec.defaults"></div>
+        <div class="section-body">
+          <div class="pref-row">
+            <span class="pref-label" data-i18n="pref.def.search"></span>
+            <label class="switch"><input type="checkbox" id="default_search"><div class="switch-track"></div></label>
+          </div>
+          <div class="pref-row">
+            <span class="pref-label" data-i18n="pref.def.viewed"></span>
+            <label class="switch"><input type="checkbox" id="default_viewed"><div class="switch-track"></div></label>
+          </div>
+          <div class="pref-row">
+            <span class="pref-label" data-i18n="pref.def.edit"></span>
+            <label class="switch"><input type="checkbox" id="default_edit"><div class="switch-track"></div></label>
+          </div>
+          <div class="pref-row">
+            <span class="pref-label" data-i18n="pref.def.live"></span>
+            <label class="switch"><input type="checkbox" id="default_live"><div class="switch-track"></div></label>
+          </div>
+          <div class="pref-row">
+            <span class="pref-label" data-i18n="pref.def.chat"></span>
+            <label class="switch"><input type="checkbox" id="default_chat"><div class="switch-track"></div></label>
+          </div>
+          <div class="pref-row">
+            <span class="pref-label" data-i18n="pref.def.shared"></span>
+            <label class="switch"><input type="checkbox" id="default_shared"><div class="switch-track"></div></label>
+          </div>
+        </div>
+      </div>
+
+      <!-- ── AI Chat configuration ─────────────────────────────────────── -->
+      <div class="section">
+        <div class="section-title" data-i18n="settings.chat.title"></div>
+        <div class="section-body">
+          <div class="pref-row">
+            <span class="pref-label" data-i18n="settings.chat.provider"></span>
+            <div class="pref-control">
+              <select id="chat_provider" style="width:170px">
+                <option value="anthropic">Anthropic</option>
+                <option value="openai">OpenAI</option>
+              </select>
+            </div>
+          </div>
+          <!-- Anthropic block ─────────────────────────────────────────── -->
+          <div class="pref-row" data-chat-provider="anthropic">
+            <span class="pref-label" data-i18n="settings.chat.anthropic_base"></span>
+            <div class="key-row">
+              <input type="text" id="chat_anthropic_base" style="flex:0 0 300px">
+              <button type="button" class="btn-tiny row-reset" id="chat_anthropic_base_reset" data-i18n-title="settings.chat.base.reset">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M9 14 4 9l5-5"/><path d="M4 9h10.5a5.5 5.5 0 0 1 0 11H11"/></svg>
+              </button>
+            </div>
+          </div>
+          <div class="pref-row" data-chat-provider="anthropic">
+            <span class="pref-label" data-i18n="settings.chat.anthropic_key"></span>
+            <div class="key-row">
+              <div class="input-eye" style="flex:0 0 300px">
+                <input type="password" id="chat_anthropic_key" autocomplete="off" spellcheck="false">
+                <button type="button" class="btn-tiny btn-eye" id="chat_anthropic_key_toggle" data-i18n-title="settings.chat.show">
+                  <svg class="icon-eye"     width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z"/><circle cx="12" cy="12" r="3"/></svg>
+                  <svg class="icon-eye-off" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" style="display:none"><path d="M9.88 9.88a3 3 0 1 0 4.24 4.24"/><path d="M10.73 5.08A10.4 10.4 0 0 1 12 5c7 0 10 7 10 7a13.2 13.2 0 0 1-1.67 2.68"/><path d="M6.61 6.61A13.5 13.5 0 0 0 2 12s3 7 10 7a9.7 9.7 0 0 0 5.39-1.61"/><line x1="2" y1="2" x2="22" y2="22"/></svg>
+                </button>
+              </div>
+            </div>
+          </div>
+          <div class="pref-row" data-chat-provider="anthropic">
+            <span class="pref-label" data-i18n="settings.chat.model"></span>
+            <div class="key-row">
+              <span class="inline-hint" id="chat_anthropic_model_hint"></span>
+              <div class="input-eye" style="flex:0 0 150px">
+                <input type="text" id="chat_anthropic_model" data-i18n-placeholder="settings.chat.anthropic_model.placeholder" autocomplete="off">
+                <datalist id="chat_anthropic_models_list" hidden></datalist>
+                <div class="model-popup" id="chat_anthropic_models_popup"></div>
+                <button type="button" class="btn-tiny btn-eye" id="chat_anthropic_models_refresh" data-i18n-title="settings.chat.models.refresh">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-3-6.7L21 8"/><path d="M21 3v5h-5"/></svg>
+                </button>
+              </div>
+            </div>
+          </div>
+          <!-- OpenAI block ─────────────────────────────────────────────── -->
+          <div class="pref-row" data-chat-provider="openai">
+            <span class="pref-label" data-i18n="settings.chat.openai_base"></span>
+            <div class="key-row">
+              <input type="text" id="chat_openai_base" style="flex:0 0 300px">
+              <button type="button" class="btn-tiny row-reset" id="chat_openai_base_reset" data-i18n-title="settings.chat.base.reset">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M9 14 4 9l5-5"/><path d="M4 9h10.5a5.5 5.5 0 0 1 0 11H11"/></svg>
+              </button>
+            </div>
+          </div>
+          <div class="pref-row" data-chat-provider="openai">
+            <span class="pref-label" data-i18n="settings.chat.openai_key"></span>
+            <div class="key-row">
+              <div class="input-eye" style="flex:0 0 300px">
+                <input type="password" id="chat_openai_key" autocomplete="off" spellcheck="false">
+                <button type="button" class="btn-tiny btn-eye" id="chat_openai_key_toggle" data-i18n-title="settings.chat.show">
+                  <svg class="icon-eye"     width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z"/><circle cx="12" cy="12" r="3"/></svg>
+                  <svg class="icon-eye-off" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" style="display:none"><path d="M9.88 9.88a3 3 0 1 0 4.24 4.24"/><path d="M10.73 5.08A10.4 10.4 0 0 1 12 5c7 0 10 7 10 7a13.2 13.2 0 0 1-1.67 2.68"/><path d="M6.61 6.61A13.5 13.5 0 0 0 2 12s3 7 10 7a9.7 9.7 0 0 0 5.39-1.61"/><line x1="2" y1="2" x2="22" y2="22"/></svg>
+                </button>
+              </div>
+            </div>
+          </div>
+          <div class="pref-row" data-chat-provider="openai">
+            <span class="pref-label" data-i18n="settings.chat.model"></span>
+            <div class="key-row">
+              <span class="inline-hint" id="chat_openai_model_hint"></span>
+              <div class="input-eye" style="flex:0 0 150px">
+                <input type="text" id="chat_openai_model" data-i18n-placeholder="settings.chat.openai_model.placeholder" autocomplete="off">
+                <datalist id="chat_openai_models_list" hidden></datalist>
+                <div class="model-popup" id="chat_openai_models_popup"></div>
+                <button type="button" class="btn-tiny btn-eye" id="chat_openai_models_refresh" data-i18n-title="settings.chat.models.refresh">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-3-6.7L21 8"/><path d="M21 3v5h-5"/></svg>
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="section">
+        <div class="section-title" data-i18n="sec.shortcuts"></div>
+        <div class="section-body" id="shortcuts-editor">
+          <div id="shortcuts-list"></div>
+          <div class="pref-row">
+            <span class="pref-label"></span>
+            <button class="btn" id="shortcuts-reset" data-i18n="shortcuts.reset_all" style="font-size:12px;padding:6px 22px"></button>
+          </div>
+        </div>
+      </div>
+
+      <div class="section">
         <div class="section-title" data-i18n="sec.behavior"></div>
         <div class="section-body">
           <div class="pref-row">
@@ -857,39 +1151,6 @@
               <label for="ch_rc" data-i18n="pref.channel.rc"></label>
             </div>
           </div>
-        </div>
-      </div>
-
-      <div class="section">
-        <div class="section-title" data-i18n="sec.defaults"></div>
-        <div class="section-body">
-          <div class="pref-row">
-            <span class="pref-label" data-i18n="pref.def.search"></span>
-            <label class="switch"><input type="checkbox" id="default_search"><div class="switch-track"></div></label>
-          </div>
-          <div class="pref-row">
-            <span class="pref-label" data-i18n="pref.def.viewed"></span>
-            <label class="switch"><input type="checkbox" id="default_viewed"><div class="switch-track"></div></label>
-          </div>
-          <div class="pref-row">
-            <span class="pref-label" data-i18n="pref.def.edit"></span>
-            <label class="switch"><input type="checkbox" id="default_edit"><div class="switch-track"></div></label>
-          </div>
-          <div class="pref-row">
-            <span class="pref-label" data-i18n="pref.def.live"></span>
-            <label class="switch"><input type="checkbox" id="default_live"><div class="switch-track"></div></label>
-          </div>
-
-          <div class="pref-row">
-            <span class="pref-label" data-i18n="pref.def.shared"></span>
-            <label class="switch"><input type="checkbox" id="default_shared"><div class="switch-track"></div></label>
-          </div>
-        </div>
-      </div>
-
-      <div class="section">
-        <div class="section-title" data-i18n="sec.database"></div>
-        <div class="section-body">
           <div class="pref-row" style="flex-wrap:wrap">
             <div class="pref-label" style="flex:1;min-width:0">
               <span data-i18n="pref.dbpath"></span>
@@ -899,28 +1160,6 @@
               <button class="btn" id="db_path_browse" data-i18n="pref.dbpath.browse" style="font-size:12px"></button>
               <button class="btn" id="db_path_clear" data-i18n="pref.dbpath.clear" style="font-size:12px;display:none"></button>
             </div>
-          </div>
-        </div>
-      </div>
-
-      <div class="section">
-        <div class="section-title" data-i18n="sec.webstyles"></div>
-        <div class="section-body" id="webstyles-editor">
-          <div id="webstyles-list"></div>
-          <div class="pref-row">
-            <span class="pref-label"></span>
-            <button class="btn" id="webstyles-reset" data-i18n="webstyles.reset" style="font-size:11px"></button>
-          </div>
-        </div>
-      </div>
-
-      <div class="section">
-        <div class="section-title" data-i18n="sec.shortcuts"></div>
-        <div class="section-body" id="shortcuts-editor">
-          <div id="shortcuts-list"></div>
-          <div class="pref-row">
-            <span class="pref-label"></span>
-            <button class="btn" id="shortcuts-reset" data-i18n="shortcuts.reset" style="font-size:11px"></button>
           </div>
         </div>
       </div>
@@ -1194,7 +1433,28 @@
     document.getElementById('default_search').checked = s.default_search ?? true;
     document.getElementById('default_viewed').checked = s.default_viewed ?? true;
     document.getElementById('default_edit').checked = s.default_edit ?? false;
+    document.getElementById('default_live').checked = s.default_live ?? false;
     document.getElementById('default_shared').checked = s.default_shared_annotation ?? false;
+    // AI Chat — default + provider config (single source of truth, see ChatSettings).
+    const c = s.chat || {};
+    const ca = c.anthropic || {};
+    const co = c.openai || {};
+    document.getElementById('default_chat').checked         = s.default_chat ?? false;
+    document.getElementById('chat_provider').value          = c.provider || 'anthropic';
+    document.getElementById('chat_anthropic_model').value = ca.model    || '';
+    document.getElementById('chat_anthropic_key').value   = ca.api_key  || '';
+    document.getElementById('chat_anthropic_base').value  = ca.base_url || 'https://api.anthropic.com';
+    document.getElementById('chat_openai_model').value    = co.model    || '';
+    document.getElementById('chat_openai_key').value      = co.api_key  || '';
+    document.getElementById('chat_openai_base').value     = co.base_url || 'https://api.openai.com';
+    fillModelDatalist('chat_anthropic_models_list', ca.models || []);
+    fillModelDatalist('chat_openai_models_list',    co.models || []);
+    // Programmatic .value sets don't fire 'input' — nudge the base-URL reset
+    // buttons so their dim state reflects the loaded value.
+    ['chat_anthropic_base', 'chat_openai_base'].forEach(id =>
+      document.getElementById(id).dispatchEvent(new Event('input'))
+    );
+    applyChatProviderVisibility();
     document.getElementById('auto_update').checked = s.auto_update ?? true;
     const ch = s.update_channel ?? 'stable';
     const chRadio = document.querySelector(`input[name="update_channel"][value="${ch}"]`);
@@ -1221,7 +1481,23 @@
       default_viewed: document.getElementById('default_viewed').checked,
       default_edit: document.getElementById('default_edit').checked,
       default_live: document.getElementById('default_live').checked,
+      default_chat: document.getElementById('default_chat').checked,
       default_shared_annotation: document.getElementById('default_shared').checked,
+      chat: {
+        provider: document.getElementById('chat_provider').value,
+        anthropic: {
+          api_key:  document.getElementById('chat_anthropic_key').value,
+          model:    document.getElementById('chat_anthropic_model').value,
+          base_url: document.getElementById('chat_anthropic_base').value,
+          models:   readDatalistOptions('chat_anthropic_models_list'),
+        },
+        openai: {
+          api_key:  document.getElementById('chat_openai_key').value,
+          model:    document.getElementById('chat_openai_model').value,
+          base_url: document.getElementById('chat_openai_base').value,
+          models:   readDatalistOptions('chat_openai_models_list'),
+        },
+      },
       web_styles: currentWebStyles,
       shortcuts: currentShortcuts,
       auto_update: document.getElementById('auto_update').checked,
@@ -1285,9 +1561,185 @@
   document.getElementById('tray_resident').addEventListener('change', e => {
     invoke('set_tray_resident', { value: e.target.checked });
   });
-  ['default_search', 'default_viewed', 'default_edit', 'default_shared', 'auto_update'].forEach(id =>
+  [
+    'default_search', 'default_viewed', 'default_edit', 'default_live', 'default_shared',
+    'default_chat', 'chat_provider',
+    'chat_anthropic_model', 'chat_anthropic_key', 'chat_anthropic_base',
+    'chat_openai_model',    'chat_openai_key',    'chat_openai_base',
+    'auto_update',
+  ].forEach(id =>
     document.getElementById(id).addEventListener('change', saveSettings)
   );
+  // Eye-icon button toggles password visibility — local UI state only.
+  function wireKeyEyeBtn(inputId, btnId) {
+    const input = document.getElementById(inputId);
+    const btn = document.getElementById(btnId);
+    const eye = btn.querySelector('.icon-eye');
+    const eyeOff = btn.querySelector('.icon-eye-off');
+    btn.addEventListener('click', () => {
+      const showing = input.type === 'text';
+      input.type = showing ? 'password' : 'text';
+      eye.style.display    = showing ? '' : 'none';
+      eyeOff.style.display = showing ? 'none' : '';
+      btn.title = T(showing ? 'settings.chat.show' : 'settings.chat.hide');
+    });
+  }
+  wireKeyEyeBtn('chat_anthropic_key', 'chat_anthropic_key_toggle');
+  wireKeyEyeBtn('chat_openai_key',    'chat_openai_key_toggle');
+  // Show only the rows for the selected provider; the unselected provider's
+  // saved values stay in the DOM (and in settings.json) so switching back
+  // doesn't lose anything.
+  function applyChatProviderVisibility() {
+    const sel = document.getElementById('chat_provider');
+    const active = sel ? sel.value : 'anthropic';
+    document.querySelectorAll('[data-chat-provider]').forEach(row => {
+      row.style.display = (row.dataset.chatProvider === active) ? '' : 'none';
+    });
+  }
+  document.getElementById('chat_provider').addEventListener('change', () => {
+    applyChatProviderVisibility();
+    saveSettings();
+  });
+  // Datalist <option> helpers — used both at load (hydrate from cache) and
+  // refresh (replace from API). Keeping the cached models inside the DOM lets
+  // saveSettings re-read them without a parallel JS variable.
+  function fillModelDatalist(listId, ids) {
+    const dl = document.getElementById(listId);
+    dl.innerHTML = '';
+    for (const id of ids) {
+      const opt = document.createElement('option');
+      opt.value = id;
+      dl.appendChild(opt);
+    }
+  }
+  function readDatalistOptions(listId) {
+    return Array.from(document.getElementById(listId).options).map(o => o.value);
+  }
+  // Refresh button: hit the provider's /v1/models with the current key and
+  // base URL, replace the datalist, and persist. Unrecoverable failures
+  // (missing key, network, 4xx) surface as an alert with the server message
+  // so the user can fix proxies / typos.
+  // Tauri's WKWebView silently drops window.alert() — render our own toast so
+  // refresh feedback (success/error) is actually visible.
+  function toast(msg, kind = 'info') {
+    const t = document.createElement('div');
+    t.className = `mk-toast mk-toast-${kind}`;
+    t.textContent = msg;
+    document.body.appendChild(t);
+    requestAnimationFrame(() => requestAnimationFrame(() => t.classList.add('show')));
+    const ttl = kind === 'err' ? 6000 : 3500;
+    setTimeout(() => {
+      t.classList.remove('show');
+      setTimeout(() => t.remove(), 250);
+    }, ttl);
+  }
+  // Per-row inline hint: short text next to the input that fades after a few
+  // seconds. Full detail (e.g. error body) goes into title for hover.
+  function showInlineHint(elId, text, kind, detail) {
+    const el = document.getElementById(elId);
+    if (!el) return;
+    el.textContent = text;
+    el.title = detail || text;
+    el.className = `inline-hint show ${kind || ''}`;
+    clearTimeout(el._hintTimer);
+    el._hintTimer = setTimeout(() => el.classList.remove('show'), kind === 'err' ? 6000 : 3500);
+  }
+  async function refreshModels(provider) {
+    const keyInput  = document.getElementById(`chat_${provider}_key`);
+    const baseInput = document.getElementById(`chat_${provider}_base`);
+    const btn       = document.getElementById(`chat_${provider}_models_refresh`);
+    const hintId    = `chat_${provider}_model_hint`;
+    if (!keyInput.value.trim()) {
+      showInlineHint(hintId, T('settings.chat.models.need_key'), 'err');
+      return;
+    }
+    btn.disabled = true;
+    showInlineHint(hintId, '…', '');
+    try {
+      const ids = await invoke('list_chat_models', {
+        provider,
+        apiKey: keyInput.value,
+        baseUrl: baseInput.value,
+      });
+      fillModelDatalist(`chat_${provider}_models_list`, ids);
+      saveSettings();
+      showInlineHint(hintId, `✓ ${ids.length} models`, 'ok');
+    } catch (e) {
+      showInlineHint(hintId, `✗ ${T('settings.chat.models.failed')}`, 'err', `${e}`);
+    } finally {
+      btn.disabled = false;
+    }
+  }
+  document.getElementById('chat_anthropic_models_refresh')
+    .addEventListener('click', () => refreshModels('anthropic'));
+  document.getElementById('chat_openai_models_refresh')
+    .addEventListener('click', () => refreshModels('openai'));
+  // Self-rolled suggestion popup for the model field. Native <datalist> forces
+  // its menu to the input's width (long ids get clipped); ours sizes to
+  // max-content so users can read full ids like claude-3-5-sonnet-20241022.
+  function wireModelPopup(provider) {
+    const input = document.getElementById(`chat_${provider}_model`);
+    const popup = document.getElementById(`chat_${provider}_models_popup`);
+    // Reparent so ancestor overflow:hidden can't clip the popup.
+    document.body.appendChild(popup);
+    function position() {
+      const r = input.getBoundingClientRect();
+      // Anchor right edge to input's right edge; popup grows leftwards via
+      // width:max-content so it can be wider than the 150px input.
+      popup.style.top   = `${r.bottom + 2}px`;
+      popup.style.right = `${Math.max(8, window.innerWidth - r.right)}px`;
+      popup.style.left  = 'auto';
+    }
+    function render(filter) {
+      const ids = readDatalistOptions(`chat_${provider}_models_list`);
+      const f = (filter || '').trim().toLowerCase();
+      const matches = f ? ids.filter(id => id.toLowerCase().includes(f)) : ids;
+      popup.innerHTML = '';
+      if (matches.length === 0) { popup.classList.remove('open'); return; }
+      for (const id of matches) {
+        const item = document.createElement('div');
+        item.className = 'model-popup-item';
+        item.textContent = id;
+        // mousedown (not click) so we beat the input's blur event.
+        item.addEventListener('mousedown', e => {
+          e.preventDefault();
+          input.value = id;
+          popup.classList.remove('open');
+          saveSettings();
+        });
+        popup.appendChild(item);
+      }
+      position();
+      popup.classList.add('open');
+    }
+    input.addEventListener('focus', () => render(input.value));
+    input.addEventListener('input', () => render(input.value));
+    input.addEventListener('blur',  () => setTimeout(() => popup.classList.remove('open'), 120));
+    // Page scroll/resize would leave the popup floating in the wrong spot;
+    // simplest is to close it.
+    window.addEventListener('scroll', () => popup.classList.remove('open'), { passive: true, capture: true });
+    window.addEventListener('resize', () => popup.classList.remove('open'));
+  }
+  wireModelPopup('anthropic');
+  wireModelPopup('openai');
+  // Reset base URL to the official endpoint, and keep the button dimmed
+  // whenever the field is already at its default — same pattern as the
+  // shortcut/webstyle row-reset buttons.
+  function wireBaseReset(provider, defaultUrl) {
+    const input = document.getElementById(`chat_${provider}_base`);
+    const btn = document.getElementById(`chat_${provider}_base_reset`);
+    const sync = () => btn.classList.toggle('is-default', input.value === defaultUrl);
+    input.addEventListener('input', sync);
+    btn.addEventListener('click', () => {
+      if (input.value === defaultUrl) return;
+      input.value = defaultUrl;
+      saveSettings();
+      sync();
+    });
+    sync();
+  }
+  wireBaseReset('anthropic', 'https://api.anthropic.com');
+  wireBaseReset('openai',    'https://api.openai.com');
   document.querySelectorAll('input[name="update_channel"]').forEach(r =>
     r.addEventListener('change', saveSettings)
   );
@@ -1323,6 +1775,7 @@
         { key: 'viewed',     label: T('ws.flag.viewed'), tip: T('ws.flag.viewed.tip'), checked: ws.enable_viewed },
         { key: 'edit',       label: T('ws.flag.edit'),   tip: T('ws.flag.edit.tip'),   checked: ws.enable_edit },
         { key: 'live',       label: T('ws.flag.live'),   tip: T('ws.flag.live.tip'),   checked: ws.enable_live },
+        { key: 'chat',       label: T('ws.flag.chat'),   tip: T('ws.flag.chat.tip'),   checked: ws.enable_chat },
         { key: 'annotation', label: T('ws.flag.shared'), tip: T('ws.flag.shared.tip'), checked: ws.shared_annotation },
       ];
 
@@ -1379,7 +1832,8 @@
               enableViewed:     checks[1].checked,
               enableEdit:       checks[2].checked,
               enableLive:       checks[3].checked,
-              sharedAnnotation: checks[4].checked,
+              enableChat:       checks[4].checked,
+              sharedAnnotation: checks[5].checked,
             });
             // Update label style immediately
             checks.forEach(c => {
@@ -1387,7 +1841,7 @@
             });
             // Re-render to update search_ready indicator
             refreshWorkspaces();
-          } catch (e) { alert(T('ws.update.fail') + ': ' + e); }
+          } catch (e) { toast(T('ws.update.fail') + ': ' + e, 'err'); }
         });
       });
 
@@ -1401,7 +1855,7 @@
     try {
       path = await invoke('pick_workspace_dir');
     } catch (e) {
-      alert(T('ws.add.fail') + ': ' + e);
+      toast(T('ws.add.fail') + ': ' + e, 'err');
       return;
     }
     if (!path) return; // user cancelled
@@ -1412,11 +1866,12 @@
         enableViewed:     document.getElementById('default_viewed').checked,
         enableEdit:       document.getElementById('default_edit').checked,
         enableLive:       document.getElementById('default_live').checked,
+        enableChat:       document.getElementById('default_chat').checked,
         sharedAnnotation: document.getElementById('default_shared').checked,
       });
       refreshWorkspaces();
     } catch (e) {
-      alert(T('ws.add.fail') + ': ' + e);
+      toast(T('ws.add.fail') + ': ' + e, 'err');
     }
   }
 
@@ -1716,9 +2171,40 @@
 
   let currentWebStyles = {};
 
+  function isStyleAtDefault(d) {
+    if (d.type === 'duocolor') {
+      return !(`${d.key}.light` in currentWebStyles) && !(`${d.key}.dark` in currentWebStyles);
+    }
+    return !(d.key in currentWebStyles);
+  }
+
+  function resetStyleRow(d) {
+    if (d.type === 'duocolor') {
+      delete currentWebStyles[`${d.key}.light`];
+      delete currentWebStyles[`${d.key}.dark`];
+    } else {
+      delete currentWebStyles[d.key];
+    }
+    saveSettings();
+    renderWebStyles();
+  }
+
   function renderWebStyles() {
     const list = document.getElementById('webstyles-list');
     list.innerHTML = '';
+    const undoSvg = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M9 14 4 9l5-5"/><path d="M4 9h10.5a5.5 5.5 0 0 1 0 11H11"/></svg>';
+    function appendResetBtn(row, d) {
+      const btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = 'btn-tiny row-reset ' + (isStyleAtDefault(d) ? 'is-default' : '');
+      btn.title = T('webstyles.reset.row');
+      btn.innerHTML = undoSvg;
+      btn.addEventListener('click', () => {
+        if (isStyleAtDefault(d)) return;
+        resetStyleRow(d);
+      });
+      row.appendChild(btn);
+    }
     for (const d of STYLE_DEFS) {
       const row = document.createElement('div');
       row.className = 'style-row';
@@ -1742,8 +2228,10 @@
             const def = mode === 'light' ? d.defLight : d.defDark;
             if (inp.value === def) { delete currentWebStyles[k]; } else { currentWebStyles[k] = inp.value; }
             saveSettings();
+            row.querySelector('.row-reset')?.classList.toggle('is-default', isStyleAtDefault(d));
           });
         });
+        appendResetBtn(row, d);
         list.appendChild(row);
         continue;
       }
@@ -1807,8 +2295,10 @@
             currentWebStyles[k] = v;
           }
           saveSettings();
+          row.querySelector('.row-reset')?.classList.toggle('is-default', isStyleAtDefault(d));
         });
       });
+      appendResetBtn(row, d);
       list.appendChild(row);
     }
   }
@@ -1884,16 +2374,28 @@
     if (el) el.innerHTML = T('tips.quickstart.3').replace('{key}', `<kbd>${formatKey(helpSc)}</kbd>`);
   }
 
+  function isShortcutAtDefault(name) {
+    const cur = currentShortcuts[name];
+    if (!cur) return true;
+    const def = DEFAULT_SHORTCUTS[name];
+    return cur.key === def.key && !!cur.ctrl === !!def.ctrl && !!cur.shift === !!def.shift;
+  }
+
   function renderShortcuts() {
     const list = document.getElementById('shortcuts-list');
     list.innerHTML = '';
+    const undoSvg = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M9 14 4 9l5-5"/><path d="M4 9h10.5a5.5 5.5 0 0 1 0 11H11"/></svg>';
     for (const name of Object.keys(DEFAULT_SHORTCUTS)) {
       const current = getShortcut(name);
       const row = document.createElement('div');
       row.className = 'shortcut-row';
+      const atDefault = isShortcutAtDefault(name);
       row.innerHTML = `
         <span class="sc-name">${T(SHORTCUT_DESC_KEYS[name] || name)}</span>
-        <div class="sc-key" tabindex="0" data-name="${name}">${formatKey(current)}</div>
+        <div class="sc-actions">
+          <div class="sc-key" tabindex="0" data-name="${name}">${formatKey(current)}</div>
+          <button type="button" class="btn-tiny row-reset ${atDefault ? 'is-default' : ''}" title="${T('shortcuts.reset.row')}">${undoSvg}</button>
+        </div>
       `;
       const keyEl = row.querySelector('.sc-key');
       keyEl.addEventListener('click', () => startRecording(keyEl, name));
@@ -1908,6 +2410,16 @@
         }
         const sc = { key: e.key, ctrl: e.metaKey || e.ctrlKey, shift: e.shiftKey };
         stopRecording(keyEl, name, sc);
+      });
+      const resetBtn = row.querySelector('.row-reset');
+      resetBtn.addEventListener('click', () => {
+        if (isShortcutAtDefault(name)) return;
+        delete currentShortcuts[name];
+        saveSettings();
+        keyEl.textContent = formatKey(getShortcut(name));
+        resetBtn.classList.add('is-default');
+        renderHelpTip();
+        renderWorkspaceAddTip();
       });
       list.appendChild(row);
     }
@@ -1939,6 +2451,9 @@
     }
     const cur = getShortcut(name);
     el.textContent = formatKey(cur);
+    // Sync the per-row reset-button dim state.
+    const resetBtn = el.closest('.shortcut-row')?.querySelector('.row-reset');
+    if (resetBtn) resetBtn.classList.toggle('is-default', isShortcutAtDefault(name));
     renderWorkspaceAddTip();
   }
 

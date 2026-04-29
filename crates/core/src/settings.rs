@@ -29,6 +29,53 @@ pub struct WorkspaceSettings {
     pub flags: WorkspaceFlags,
 }
 
+/// Per-provider configuration block. Each provider keeps its own complete
+/// set of fields so switching the active provider doesn't lose values.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct ChatProviderSettings {
+    #[serde(default)]
+    pub api_key: String,
+    /// Override model id; empty = use provider's built-in default.
+    #[serde(default)]
+    pub model: String,
+    /// Override API base URL (proxies / compatible servers); empty = official.
+    #[serde(default)]
+    pub base_url: String,
+    /// Cached chat-model ids fetched from the provider's `/v1/models` endpoint.
+    /// Refreshed by the GUI on demand; surfaced to the model picker as
+    /// autocomplete options. Empty until the user clicks "refresh".
+    #[serde(default)]
+    pub models: Vec<String>,
+}
+
+/// Chat (AI assistant) configuration shared across CLI / GUI / server.
+/// `provider` selects the active block; both `anthropic` and `openai` keep
+/// their own complete settings so switching back doesn't lose values.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ChatSettings {
+    /// "anthropic" | "openai".
+    #[serde(default = "default_provider")]
+    pub provider: String,
+    #[serde(default)]
+    pub anthropic: ChatProviderSettings,
+    #[serde(default)]
+    pub openai: ChatProviderSettings,
+}
+
+fn default_provider() -> String {
+    "anthropic".to_string()
+}
+
+impl Default for ChatSettings {
+    fn default() -> Self {
+        Self {
+            provider: default_provider(),
+            anthropic: ChatProviderSettings::default(),
+            openai: ChatProviderSettings::default(),
+        }
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(default)]
 pub struct AppSettings {
@@ -61,7 +108,11 @@ pub struct AppSettings {
     #[serde(default)]
     pub default_edit: bool,
     #[serde(default)]
+    pub default_chat: bool,
+    #[serde(default)]
     pub default_shared_annotation: bool,
+    #[serde(default)]
+    pub chat: ChatSettings,
     #[serde(default)]
     pub web_styles: std::collections::HashMap<String, String>,
     #[serde(default)]
@@ -94,7 +145,9 @@ impl Default for AppSettings {
             default_viewed: true,
             default_live: false,
             default_edit: false,
+            default_chat: false,
             default_shared_annotation: false,
+            chat: ChatSettings::default(),
             web_styles: std::collections::HashMap::new(),
             shortcuts: std::collections::HashMap::new(),
             auto_update: true,

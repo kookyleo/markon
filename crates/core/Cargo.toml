@@ -49,6 +49,15 @@ sha2 = "0.10"
 mime_guess = "2.0"
 rayon = "1.12"
 arc-swap = "1.9"
+ignore = "0.4"
+globset = "0.4"
+grep-searcher = "0.1"
+grep-regex = "0.1"
+grep-matcher = "0.1"
+reqwest = { version = "0.12", default-features = false, features = ["json", "stream", "rustls-tls"] }
+bytes = "1"
+async-trait = "0.1"
+thiserror = "2"
 
 [dev-dependencies]
 tempfile = "3.27"

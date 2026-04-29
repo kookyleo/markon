@@ -10,12 +10,12 @@ const groups = [
         title: 'GitHub 风格渲染',
         desc: '原生 GitHub Markdown 样式：GFM 表格、任务列表、Alerts、Mermaid、40+ 语言语法高亮。',
       },
-      // TODO: 与文档对话 — 功能尚未开发，先隐藏卡片
-      // {
-      //   image: 'illustrations/12-chat.svg',
-      //   title: '与文档对话',
-      //   desc: '直接向文档发问，AI 引用原文回答，让长篇资料也能"问出来"。',
-      // },
+      {
+        image: 'illustrations/12-chat.svg',
+        title: '与文档对话',
+        desc: '直接向文档发问，AI 引用原文回答，让长篇资料也能"问出来"。',
+        link: '/features/chat',
+      },
       {
         image: 'illustrations/02-search.svg',
         title: '全文搜索',

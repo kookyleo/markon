@@ -1,4 +1,5 @@
 use crate::AppState;
+use markon_core::chat::{config::ProviderKind, models};
 use markon_core::i18n;
 use markon_core::settings::{AppSettings, PortMode};
 use markon_core::workspace::{expand_and_canonicalize, WorkspaceConfig, WorkspaceFlags};
@@ -163,6 +164,7 @@ pub fn add_workspace(
     enable_viewed: bool,
     enable_edit: bool,
     enable_live: bool,
+    enable_chat: bool,
     shared_annotation: bool,
     state: State<AppState>,
 ) -> Result<serde_json::Value, String> {
@@ -172,6 +174,7 @@ pub fn add_workspace(
         enable_viewed,
         enable_edit,
         enable_live,
+        enable_chat,
         shared_annotation,
     };
     let server = state.server.lock().unwrap();
@@ -191,6 +194,7 @@ pub fn update_workspace(
     enable_viewed: bool,
     enable_edit: bool,
     enable_live: bool,
+    enable_chat: bool,
     shared_annotation: bool,
     state: State<AppState>,
 ) -> Result<(), String> {
@@ -199,6 +203,7 @@ pub fn update_workspace(
         enable_viewed,
         enable_edit,
         enable_live,
+        enable_chat,
         shared_annotation,
     };
     let server = state.server.lock().unwrap();
@@ -236,6 +241,7 @@ pub fn get_workspaces(state: State<AppState>) -> Vec<serde_json::Value> {
                 "enable_viewed": info.flags.enable_viewed,
                 "enable_edit": info.flags.enable_edit,
                 "enable_live": info.flags.enable_live,
+                "enable_chat": info.flags.enable_chat,
                 "shared_annotation": info.flags.shared_annotation,
                 "search_ready": info.search_ready,
             })
@@ -443,6 +449,18 @@ pub async fn star_repo() -> bool {
         .output()
         .await;
     matches!(result, Ok(output) if output.status.success())
+}
+
+/// Fetch the list of chat-capable models from the configured provider.
+/// Used by the settings panel's "refresh" button next to the model field.
+#[tauri::command]
+pub async fn list_chat_models(
+    provider: String,
+    api_key: String,
+    base_url: String,
+) -> Result<Vec<String>, String> {
+    let kind = ProviderKind::parse(&provider);
+    models::list_models(kind, &api_key, &base_url).await
 }
 
 #[tauri::command]

@@ -138,6 +138,7 @@ export const CONFIG = {
         ENABLE_VIEWED: 'enable-viewed',
         ENABLE_EDIT: 'enable-edit',
         ENABLE_LIVE: 'enable-live',
+        ENABLE_CHAT: 'enable-chat',
     },
 
     // WebSocket Message types

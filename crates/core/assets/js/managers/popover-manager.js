@@ -22,10 +22,12 @@ export class PopoverManager {
     #onAction = null;
     #draggable = null;
     #enableEdit;
+    #enableChat;
 
     constructor(markdownBody, options = {}) {
         this.#markdownBody = markdownBody;
         this.#enableEdit = options.enableEdit || false;
+        this.#enableChat = options.enableChat || false;
         this.#createElement();
     }
 
@@ -315,20 +317,26 @@ export class PopoverManager {
         const editButton = this.#enableEdit && hasSelection
             ? '<span class="popover-separator">|</span><button data-action="edit">Edit</button>'
             : '';
+        // "Ask AI" only makes sense with text actually selected — otherwise
+        // there's no quote to attach. Cluster it with Edit on the right edge.
+        const askAiButton = this.#enableChat && hasSelection
+            ? `<span class="popover-separator">|</span><button data-action="ask-ai">${_t('web.chat.ask')}</button>`
+            : '';
 
         // Drag handle on the left edge — the only region that initiates a drag.
         const dragHandle = '<span class="popover-drag-handle" aria-hidden="true"></span>';
 
         if (highlightedElement) {
             if (hasSelection) {
-                // Highlighted with selection: show Unhighlight + Note + Edit
-                Logger.log('PopoverManager', 'Showing: Unhighlight + Note + Edit');
+                // Highlighted with selection: show Unhighlight + Note + Edit + Ask AI
+                Logger.log('PopoverManager', 'Showing: Unhighlight + Note + Edit + AskAI');
                 this.#element.innerHTML = `
                     ${dragHandle}
                     <button data-action="unhighlight">${_t('web.annot.unhighlight')}</button>
                     <span class="popover-separator">|</span>
                     <button data-action="add-note">${_t('web.annot.note')}</button>
                     ${editButton}
+                    ${askAiButton}
                 `;
             } else {
                 // Highlighted without selection (just click): show only Unhighlight
@@ -336,7 +344,7 @@ export class PopoverManager {
                 this.#element.innerHTML = `${dragHandle}<button data-action="unhighlight">${_t('web.annot.unhighlight')}</button>`;
             }
         } else {
-            // Not highlighted: show annotation buttons + Edit
+            // Not highlighted: show annotation buttons + Edit + Ask AI
             this.#element.innerHTML = `
                 ${dragHandle}
                 <button data-action="highlight-orange">${_t('web.annot.orange')}</button>
@@ -346,6 +354,7 @@ export class PopoverManager {
                 <span class="popover-separator">|</span>
                 <button data-action="add-note">${_t('web.annot.note')}</button>
                 ${editButton}
+                ${askAiButton}
             `;
         }
     }

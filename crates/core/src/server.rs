@@ -207,8 +207,9 @@ pub async fn start(config: ServerConfig) -> Result<(), String> {
     // flag values.
     let is_gui_mode = registry.is_some();
     let has_live = initial_workspaces.iter().any(|w| w.flags.enable_live);
+    let has_chat = initial_workspaces.iter().any(|w| w.flags.enable_chat);
     let needs_ws = is_gui_mode || shared_annotation || has_live;
-    let needs_db = is_gui_mode || shared_annotation;
+    let needs_db = is_gui_mode || shared_annotation || has_chat;
     let db = if needs_db {
         let db_path = std::env::var("MARKON_SQLITE_PATH").unwrap_or_else(|_| {
             let home = dirs::home_dir().expect("Cannot find home directory");
@@ -239,6 +240,8 @@ pub async fn start(config: ServerConfig) -> Result<(), String> {
             [],
         )
         .expect("Failed to create viewed_state table");
+        crate::chat::storage::ChatStorage::init(&conn)
+            .expect("Failed to create chat tables");
         Some(Arc::new(Mutex::new(conn)))
     } else {
         None
@@ -329,6 +332,11 @@ pub async fn start(config: ServerConfig) -> Result<(), String> {
     if needs_ws {
         app = app.route("/_/ws", get(ws_handler));
     }
+
+    // Chat endpoints: SSE chat stream + thread/file REST. Each handler
+    // checks `enable_chat` per-workspace and 403s otherwise, so it's safe
+    // to register unconditionally.
+    let app = app.merge(crate::chat::routes::router());
 
     let app = app.with_state(state);
 
@@ -880,6 +888,7 @@ fn render_markdown_file(
             context.insert("enable_search", &flags.enable_search);
             context.insert("enable_edit", &flags.enable_edit);
             context.insert("enable_live", &flags.enable_live);
+            context.insert("enable_chat", &flags.enable_chat);
 
             if flags.enable_edit {
                 // JSON-encode and HTML-escape so </script> in content can't break the page.

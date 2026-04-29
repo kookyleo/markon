@@ -97,6 +97,10 @@ struct Cli {
     #[arg(long, action = clap::ArgAction::SetTrue)]
     enable_edit: bool,
 
+    /// Enable AI chat (read-only assistant) for the workspace.
+    #[arg(long, action = clap::ArgAction::SetTrue)]
+    enable_chat: bool,
+
     /// Internal flag for daemonization.
     #[arg(long, hide = true)]
     daemon_internal: bool,
@@ -221,6 +225,7 @@ fn format_workspace_flags(flags: WorkspaceFlags, colors: CliColors) -> String {
         (flags.enable_viewed, "Viewed tracking"),
         (flags.enable_edit, "Edit"),
         (flags.enable_live, "Live"),
+        (flags.enable_chat, "Chat"),
         (flags.shared_annotation, "Shared notes"),
     ]
     .into_iter()
@@ -251,6 +256,7 @@ fn format_workspace_list_flags(
         (flags.enable_viewed, "Viewed tracking"),
         (flags.enable_edit, "Edit"),
         (flags.enable_live, "Live"),
+        (flags.enable_chat, "Chat"),
         (flags.shared_annotation, "Shared notes"),
     ]
     .into_iter()
@@ -283,6 +289,9 @@ fn format_workspace_feature_tags(flags: WorkspaceFlags, search_ready: bool) -> S
     }
     if flags.enable_live {
         features.push("Live".to_string());
+    }
+    if flags.enable_chat {
+        features.push("Chat".to_string());
     }
     if flags.shared_annotation {
         features.push("Shared notes".to_string());
@@ -583,6 +592,7 @@ fn add_or_update_workspace(
             "enable_viewed": flags.enable_viewed,
             "enable_edit": flags.enable_edit,
             "enable_live": flags.enable_live,
+            "enable_chat": flags.enable_chat,
             "shared_annotation": flags.shared_annotation,
         }))
         .send()?
@@ -658,6 +668,7 @@ async fn main() {
         enable_viewed: cli.enable_viewed,
         enable_edit: cli.enable_edit,
         enable_live: cli.enable_live,
+        enable_chat: cli.enable_chat,
         shared_annotation: cli.shared_annotation,
     };
     let ws_init = WorkspaceInit {
@@ -810,6 +821,7 @@ mod tests {
             enable_viewed: true,
             enable_edit: true,
             enable_live: true,
+            enable_chat: false,
             shared_annotation: false,
         };
         let summary = build_workspace_access_summary(
@@ -824,7 +836,7 @@ mod tests {
         assert_eq!(summary.workspace_path, "/tmp/Downloads");
         assert_eq!(
             format_workspace_flags(summary.flags, CliColors::plain()),
-            "[x] Search  [x] Viewed tracking  [x] Edit  [x] Live  [ ] Shared notes"
+            "[x] Search  [x] Viewed tracking  [x] Edit  [x] Live  [ ] Chat  [ ] Shared notes"
         );
         assert_eq!(summary.local_url, "http://127.0.0.1:5050/30c52d3e/");
         assert_eq!(
@@ -844,6 +856,7 @@ mod tests {
             enable_viewed: true,
             enable_edit: false,
             enable_live: false,
+            enable_chat: false,
             shared_annotation: true,
         };
         let summary = build_workspace_access_summary(
@@ -857,7 +870,7 @@ mod tests {
 
         assert_eq!(
             format_workspace_flags(summary.flags, CliColors::plain()),
-            "[ ] Search  [x] Viewed tracking  [ ] Edit  [ ] Live  [x] Shared notes"
+            "[ ] Search  [x] Viewed tracking  [ ] Edit  [ ] Live  [ ] Chat  [x] Shared notes"
         );
         assert_eq!(
             summary.local_url,
@@ -877,12 +890,13 @@ mod tests {
             enable_viewed: false,
             enable_edit: true,
             enable_live: false,
+            enable_chat: false,
             shared_annotation: false,
         };
 
         assert_eq!(
             format_workspace_flags(flags, CliColors::plain()),
-            "[x] Search  [ ] Viewed tracking  [x] Edit  [ ] Live  [ ] Shared notes"
+            "[x] Search  [ ] Viewed tracking  [x] Edit  [ ] Live  [ ] Chat  [ ] Shared notes"
         );
     }
 
@@ -893,12 +907,13 @@ mod tests {
             enable_viewed: true,
             enable_edit: false,
             enable_live: false,
+            enable_chat: false,
             shared_annotation: false,
         };
 
         assert_eq!(
             format_workspace_list_flags(flags, true, CliColors::plain()),
-            "[x] Search (ready)  [x] Viewed tracking  [ ] Edit  [ ] Live  [ ] Shared notes"
+            "[x] Search (ready)  [x] Viewed tracking  [ ] Edit  [ ] Live  [ ] Chat  [ ] Shared notes"
         );
     }
 
@@ -909,6 +924,7 @@ mod tests {
             enable_viewed: true,
             enable_edit: false,
             enable_live: true,
+            enable_chat: false,
             shared_annotation: false,
         };
 

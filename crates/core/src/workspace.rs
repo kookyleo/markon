@@ -24,6 +24,8 @@ pub struct WorkspaceFlags {
     #[serde(default)]
     pub enable_live: bool,
     #[serde(default)]
+    pub enable_chat: bool,
+    #[serde(default)]
     pub shared_annotation: bool,
 }
 
@@ -45,6 +47,7 @@ pub struct WorkspaceEntry {
     pub enable_viewed: AtomicBool,
     pub enable_edit: AtomicBool,
     pub enable_live: AtomicBool,
+    pub enable_chat: AtomicBool,
     pub shared_annotation: AtomicBool,
     pub config_tx: broadcast::Sender<()>,
     pub search_index: ArcSwapOption<SearchIndex>,
@@ -68,6 +71,7 @@ impl WorkspaceEntry {
             enable_viewed: self.enable_viewed.load(Ordering::Relaxed),
             enable_edit: self.enable_edit.load(Ordering::Relaxed),
             enable_live: self.enable_live.load(Ordering::Relaxed),
+            enable_chat: self.enable_chat.load(Ordering::Relaxed),
             shared_annotation: self.shared_annotation.load(Ordering::Relaxed),
         }
     }
@@ -223,6 +227,7 @@ impl WorkspaceRegistry {
             enable_viewed: AtomicBool::new(config.flags.enable_viewed),
             enable_edit: AtomicBool::new(config.flags.enable_edit),
             enable_live: AtomicBool::new(config.flags.enable_live),
+            enable_chat: AtomicBool::new(config.flags.enable_chat),
             shared_annotation: AtomicBool::new(config.flags.shared_annotation),
             config_tx,
             search_index: ArcSwapOption::empty(),
@@ -269,6 +274,9 @@ impl WorkspaceRegistry {
         entry
             .enable_live
             .store(flags.enable_live, Ordering::Relaxed);
+        entry
+            .enable_chat
+            .store(flags.enable_chat, Ordering::Relaxed);
         entry
             .shared_annotation
             .store(flags.shared_annotation, Ordering::Relaxed);

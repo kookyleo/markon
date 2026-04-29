@@ -149,6 +149,7 @@ fn handle_open_path(app: &tauri::AppHandle, path: &Path) {
             enable_viewed: settings.default_viewed,
             enable_edit: settings.default_edit,
             enable_live: settings.default_live,
+            enable_chat: settings.default_chat,
             shared_annotation: settings.default_shared_annotation,
         }
     };
@@ -428,6 +429,7 @@ fn main() {
             commands::check_for_update,
             commands::get_i18n,
             commands::list_fonts,
+            commands::list_chat_models,
             commands::star_repo,
         ])
         .build(tauri::generate_context!())

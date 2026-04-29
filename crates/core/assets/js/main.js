@@ -19,6 +19,7 @@ import { SearchManager } from './managers/search-manager.js';
 import { HighlightManager } from './managers/highlight-manager.js';
 import { EditorManager } from './managers/editor-manager.js';
 import { CollaborationManager } from './managers/collaboration-manager.js';
+import { ChatManager } from './managers/chat-manager.js';
 import { TOCNavigator } from './navigators/toc-navigator.js';
 import { AnnotationNavigator } from './navigators/annotation-navigator.js';
 import { ModalManager, showConfirmDialog } from './components/modal.js';
@@ -119,6 +120,13 @@ export class MarkonApp {
         // 10. Start collaboration
         this.#collaboration.init();
 
+        // 11. Start chat (gated internally on Meta.flag('enable-chat'))
+        if (Meta.flag(CONFIG.META_TAGS.ENABLE_CHAT)) {
+            const chat = new ChatManager(this);
+            chat.init();
+            window.chatManager = chat;
+        }
+
         Logger.log('MarkonApp', 'Initialization complete');
     }
 
@@ -202,7 +210,10 @@ export class MarkonApp {
         this.#noteManager = new NoteManager(this.#annotationManager, this.#markdownBody);
 
         // Popover manager
-        this.#popoverManager = new PopoverManager(this.#markdownBody, { enableEdit: this.#enableEdit });
+        this.#popoverManager = new PopoverManager(this.#markdownBody, {
+            enableEdit: this.#enableEdit,
+            enableChat: Meta.flag(CONFIG.META_TAGS.ENABLE_CHAT),
+        });
 
         // Undo manager
         this.#undoManager = new UndoManager();
@@ -509,6 +520,16 @@ export class MarkonApp {
             }
             this.#editorManager.open({ selectedText: selectedText });
             return; // Don't clear selection until editor opens
+        } else if (action === 'ask-ai') {
+            const selectedText = selection.toString().trim();
+            if (window.chatManager && selectedText) {
+                window.chatManager.openWithSelection({
+                    text: selectedText,
+                    currentDoc: this.#filePath,
+                });
+            }
+            // Drop the selection after handing it to the chat — it's now a
+            // quote pill in the input box.
         }
 
         // ClearSelect（add-note 和 edit 操作除外）
