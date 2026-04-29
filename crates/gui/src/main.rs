@@ -6,10 +6,10 @@ mod server_manager;
 
 use markon_core::settings::AppSettings;
 use server_manager::ServerManager;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::sync::{
     atomic::{AtomicBool, Ordering},
-    Arc, Mutex,
+    Arc, Mutex, OnceLock,
 };
 use tauri::{
     menu::{Menu, MenuItem, PredefinedMenuItem},
@@ -88,6 +88,16 @@ pub struct AppState {
     pub file_just_opened: Arc<AtomicBool>,
     /// Live tray_resident flag — written by menu handler, read by window close handler.
     pub tray_resident: Arc<AtomicBool>,
+}
+
+/// On macOS, `RunEvent::Opened` for "Open With Markon" can fire **before** `setup()`
+/// runs and `AppState` is `manage()`'d (Apple Events are dispatched during early
+/// AppKit launch, ahead of Tauri's setup callback). Calling `app.state::<AppState>()`
+/// at that point panics with "state() called before manage()". Stash the URLs here
+/// and drain them at the end of `setup()` once state is live.
+fn pending_opens() -> &'static Mutex<Vec<PathBuf>> {
+    static PENDING: OnceLock<Mutex<Vec<PathBuf>>> = OnceLock::new();
+    PENDING.get_or_init(|| Mutex::new(Vec::new()))
 }
 
 // ── Path-open logic ───────────────────────────────────────────────────────────
@@ -354,11 +364,32 @@ fn main() {
                     let _ = w.set_focus();
                 }
             }
+            // Drain any RunEvent::Opened paths that arrived before AppState
+            // was managed (see `pending_opens` for the cold-launch race).
             #[cfg(target_os = "macos")]
-            if !tray_resident_init {
+            let drained_pending: bool = {
+                let pending: Vec<PathBuf> =
+                    std::mem::take(&mut *pending_opens().lock().unwrap());
+                let had = !pending.is_empty();
+                if had {
+                    app.state::<AppState>()
+                        .file_just_opened
+                        .store(true, Ordering::Relaxed);
+                    let handle = app.app_handle().clone();
+                    for p in &pending {
+                        handle_open_path(&handle, p);
+                    }
+                }
+                had
+            };
+
+            #[cfg(target_os = "macos")]
+            if !tray_resident_init && !drained_pending {
                 // Tray is hidden, so Settings must show for the app to be
                 // reachable on launch. With tray_resident=true the tray
                 // icon stays visible and Reopen/Opened cover navigation.
+                // If a pending Open just got drained, the user explicitly
+                // asked for a file — don't pop the Settings window over it.
                 if let Some(w) = app.get_webview_window("settings") {
                     let _ = w.show();
                     let _ = w.set_focus();
@@ -394,12 +425,20 @@ fn main() {
         match event {
             #[cfg(any(target_os = "macos", target_os = "ios"))]
             tauri::RunEvent::Opened { urls } => {
-                let flag = app_handle.state::<AppState>().file_just_opened.clone();
-                flag.store(true, Ordering::Relaxed);
-                for url in &urls {
-                    if let Ok(path) = url.to_file_path() {
-                        handle_open_path(app_handle, &path);
+                // Apple Events can fire before setup() runs `app.manage(state)`,
+                // so try_state() — fall back to a process-level queue that
+                // setup() drains once state is live. See `pending_opens`.
+                let paths: Vec<PathBuf> = urls
+                    .iter()
+                    .filter_map(|u| u.to_file_path().ok())
+                    .collect();
+                if let Some(state) = app_handle.try_state::<AppState>() {
+                    state.file_just_opened.store(true, Ordering::Relaxed);
+                    for p in &paths {
+                        handle_open_path(app_handle, p);
                     }
+                } else {
+                    pending_opens().lock().unwrap().extend(paths);
                 }
             }
             #[cfg(target_os = "macos")]
