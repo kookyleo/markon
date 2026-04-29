@@ -1,5 +1,5 @@
 use crate::server::{ServerConfig, WorkspaceInit};
-use crate::workspace::{PersistHook, WorkspaceFlags, WorkspaceRegistry};
+use crate::workspace::{generate_token, PersistHook, WorkspaceFlags, WorkspaceRegistry};
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
@@ -43,6 +43,12 @@ pub struct AppSettings {
     #[serde(default = "default_auto")]
     pub web_language: String,
     pub db_path: Option<String>,
+    /// Per-install random salt for workspace-id hashing. Empty on first run;
+    /// `load()` lazily generates one and persists it. Keeping it stable across
+    /// restarts means bookmarked workspace URLs survive; randomizing per install
+    /// means the URL is not derivable from the file path alone.
+    #[serde(default)]
+    pub salt: String,
     pub workspaces: Vec<WorkspaceSettings>,
     #[serde(default = "default_true")]
     pub tray_resident: bool,
@@ -81,6 +87,7 @@ impl Default for AppSettings {
             web_theme: "auto".to_string(),
             web_language: "auto".to_string(),
             db_path: None,
+            salt: String::new(),
             workspaces: vec![],
             tray_resident: true,
             default_search: true,
@@ -107,13 +114,17 @@ impl AppSettings {
     }
     pub fn load() -> Self {
         let p = Self::settings_path();
-        if let Ok(c) = std::fs::read_to_string(p) {
-            if let Ok(mut s) = serde_json::from_str::<Self>(&c) {
-                s.normalize();
-                return s;
-            }
+        let mut s = if let Ok(c) = std::fs::read_to_string(&p) {
+            serde_json::from_str::<Self>(&c).unwrap_or_default()
+        } else {
+            Self::default()
+        };
+        s.normalize();
+        if s.salt.is_empty() {
+            s.salt = generate_token();
+            let _ = s.save();
         }
-        Self::default()
+        s
     }
 
     /// Clean up settings loaded from disk:
@@ -164,7 +175,7 @@ impl AppSettings {
             qr: None,
             open_browser: None,
             shared_annotation: initial_workspaces.iter().any(|w| w.flags.shared_annotation),
-            salt: None,
+            salt: Some(self.salt.clone()),
             initial_workspaces,
             bound_listener: None,
             registry: None,

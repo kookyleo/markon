@@ -31,8 +31,13 @@ impl ServerManager {
     pub fn start(&mut self, mut config: ServerConfig, persist: Option<PersistHook>) {
         self.stop();
 
-        // Stable salt based on port — same dir+port = same workspace ID.
-        let salt = format!("markon:{}", config.port);
+        // Use the salt the caller put into ServerConfig (GUI: per-install random
+        // salt from AppSettings). Fall back to a port-derived constant only for
+        // callers that didn't set one — preserves the original CLI behavior.
+        let salt = config
+            .salt
+            .clone()
+            .unwrap_or_else(|| format!("markon:{}", config.port));
         self.registry = Arc::new(WorkspaceRegistry::new(salt.clone()));
         if let Some(hook) = persist {
             self.registry.set_persist_hook(hook);
