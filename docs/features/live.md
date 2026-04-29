@@ -1,5 +1,9 @@
 # 实时协作 (Live)
 
+<div class="feature-illustration">
+  <img src="/illustrations/06-live.svg" alt="实时协作" />
+</div>
+
 **Markon Live** 主要用于团队一起阅读文档的场景，比如产品宣讲或者评审会。
 
 通过“同屏审阅”机制，团队成员可以实时同步彼此的视线焦点，消除远程会议中“找不到主讲人说在哪”的沟通成本。

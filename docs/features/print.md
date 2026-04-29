@@ -1,5 +1,9 @@
 # 章节打印
 
+<div class="feature-illustration">
+  <img src="/illustrations/08-print.svg" alt="章节打印" />
+</div>
+
 除了浏览器自带的 "整页打印"，Markon 还支持**按章节打印** —— 只打印某个小节的内容。
 
 ## 使用

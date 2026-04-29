@@ -1,5 +1,9 @@
 # 全文搜索
 
+<div class="feature-illustration">
+  <img src="/illustrations/02-search.svg" alt="全文搜索" />
+</div>
+
 > 需要启用：桌面版在工作区设置中勾选"搜索"；CLI 用 `--enable-search`
 
 基于 [Tantivy](https://github.com/quickwit-oss/tantivy) 引擎构建的全文搜索，支持中日英分词。

@@ -1,5 +1,9 @@
 # 共享标注
 
+<div class="feature-illustration">
+  <img src="/illustrations/07-sync.svg" alt="多端同步" />
+</div>
+
 默认情况下，Markon 的标注和已读状态存储在浏览器 LocalStorage —— 只对当前浏览器有效。启用 **共享标注** 后，这些数据会存到 SQLite 数据库，并通过 WebSocket 在所有连接的客户端间实时同步。
 
 ## 启用

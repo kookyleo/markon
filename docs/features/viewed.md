@@ -1,5 +1,9 @@
 # 已读追踪
 
+<div class="feature-illustration">
+  <img src="/illustrations/03-viewed.svg" alt="已读追踪" />
+</div>
+
 > 需要启用：桌面版在工作区设置中勾选"已读追踪"；CLI 用 `--enable-viewed`
 
 受 GitHub PR Review 的 "Viewed" 复选框启发，Markon 按**段落级别**追踪你的阅读进度。

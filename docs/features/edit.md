@@ -1,5 +1,9 @@
 # 在线编辑
 
+<div class="feature-illustration">
+  <img src="/illustrations/04-edit.svg" alt="在线编辑" />
+</div>
+
 > 需要启用：桌面版在工作区设置中勾选"编辑"；CLI 用 `--enable-edit`
 
 无需离开浏览器即可编辑 Markdown 源文件。

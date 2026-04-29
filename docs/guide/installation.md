@@ -1,5 +1,9 @@
 # 安装
 
+<div class="feature-illustration">
+  <img src="/illustrations/11-platforms.svg" alt="全平台覆盖" />
+</div>
+
 Markon 提供桌面应用（GUI）和命令行（CLI）两种形态。
 
 ## 桌面版

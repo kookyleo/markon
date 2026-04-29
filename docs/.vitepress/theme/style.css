@@ -34,3 +34,20 @@
   position: relative;
   top: -0.25em;
 }
+
+/* Hero illustration at the top of feature/guide pages — same artwork as
+   the matching FeatureGallery card on the home page, sized down so it
+   reads as a chapter mark rather than dominating the page. */
+.feature-illustration {
+  margin: 8px auto 24px;
+  max-width: 280px;
+  background: #FAFAF7;
+  border: 1px solid var(--vp-c-divider);
+  border-radius: 10px;
+  overflow: hidden;
+}
+.feature-illustration img {
+  display: block;
+  width: 100%;
+  height: auto;
+}
