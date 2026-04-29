@@ -316,11 +316,15 @@ export class PopoverManager {
             ? '<span class="popover-separator">|</span><button data-action="edit">Edit</button>'
             : '';
 
+        // Drag handle on the left edge — the only region that initiates a drag.
+        const dragHandle = '<span class="popover-drag-handle" aria-hidden="true"></span>';
+
         if (highlightedElement) {
             if (hasSelection) {
                 // Highlighted with selection: show Unhighlight + Note + Edit
                 Logger.log('PopoverManager', 'Showing: Unhighlight + Note + Edit');
                 this.#element.innerHTML = `
+                    ${dragHandle}
                     <button data-action="unhighlight">${_t('web.annot.unhighlight')}</button>
                     <span class="popover-separator">|</span>
                     <button data-action="add-note">${_t('web.annot.note')}</button>
@@ -329,11 +333,12 @@ export class PopoverManager {
             } else {
                 // Highlighted without selection (just click): show only Unhighlight
                 Logger.log('PopoverManager', 'Showing: Unhighlight only');
-                this.#element.innerHTML = `<button data-action="unhighlight">${_t('web.annot.unhighlight')}</button>`;
+                this.#element.innerHTML = `${dragHandle}<button data-action="unhighlight">${_t('web.annot.unhighlight')}</button>`;
             }
         } else {
             // Not highlighted: show annotation buttons + Edit
             this.#element.innerHTML = `
+                ${dragHandle}
                 <button data-action="highlight-orange">${_t('web.annot.orange')}</button>
                 <button data-action="highlight-green">${_t('web.annot.green')}</button>
                 <button data-action="highlight-yellow">${_t('web.annot.yellow')}</button>
@@ -398,6 +403,7 @@ export class PopoverManager {
         // Create新的拖拽Instance
         this.#draggable = new DraggableManager(this.#element, {
             storageKey: 'markon-popover-offset',
+            handle: '.popover-drag-handle',
             saveOffset: true,
             onDragEnd: (finalLeft, finalTop) => {
                 Logger.log('PopoverManager', `Popover dragged to (${finalLeft}, ${finalTop})`);

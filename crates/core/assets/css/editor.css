@@ -48,30 +48,43 @@ html[data-theme="dark"] {
     position: absolute;
     background-color: #2c2c2c;
     border-radius: 4px;
-    padding: 3px 6px 3px 10px;
+    padding: 3px 6px 3px 3px;
     display: none;
     z-index: 10001;
     box-shadow: 0 2px 10px rgba(0, 0, 0, 0.2);
     color: white;
-    cursor: grab;
 }
 
-/* Drag handle indicator - two thin vertical lines on the left */
-.selection-popover::before {
+/* Drag handle — the only region that initiates a popover drag. */
+.popover-drag-handle {
+    display: inline-block;
+    position: relative;
+    width: 8px;
+    height: 18px;
+    margin-right: 4px;
+    vertical-align: middle;
+    cursor: grab;
+    user-select: none;
+}
+
+.popover-drag-handle::before {
     content: '';
     position: absolute;
-    left: 5px;
+    left: 50%;
     top: 50%;
-    transform: translateY(-50%);
-    width: 1px;
+    transform: translate(-50%, -50%);
+    width: 2px;
     height: 12px;
     background: #666;
-    border-radius: 0.5px;
-    pointer-events: none;
-    box-shadow: 2px 0 0 #666;
+    border-radius: 1px;
+    transition: background 0.15s;
 }
 
-.selection-popover:active {
+.popover-drag-handle:hover::before {
+    background: #aaa;
+}
+
+.popover-drag-handle:active {
     cursor: grabbing;
 }
 
