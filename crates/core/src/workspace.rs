@@ -1,9 +1,10 @@
+use crate::markdown::extract_referenced_assets;
 use crate::search::SearchIndex;
 use arc_swap::ArcSwapOption;
 use notify::{EventKind, RecursiveMode, Watcher};
 use serde::{Deserialize, Serialize};
 use std::{
-    collections::HashMap,
+    collections::{HashMap, HashSet},
     path::{Path, PathBuf},
     sync::{
         atomic::{AtomicBool, Ordering},
@@ -30,6 +31,11 @@ pub struct WorkspaceFlags {
 pub struct WorkspaceConfig {
     pub path: PathBuf,
     pub flags: WorkspaceFlags,
+    /// `Some(name)` → the workspace exposes only `name` (relative to `path`)
+    /// plus assets that file references. Used by Open-With on macOS so that
+    /// opening `~/Downloads/note.md` does not turn `~/Downloads` into an
+    /// indexed, browsable workspace. Ephemeral (not persisted).
+    pub single_file: Option<String>,
 }
 
 pub struct WorkspaceEntry {
@@ -42,6 +48,13 @@ pub struct WorkspaceEntry {
     pub shared_annotation: AtomicBool,
     pub config_tx: broadcast::Sender<()>,
     pub search_index: ArcSwapOption<SearchIndex>,
+    /// Set for single-file ephemeral workspaces. Holds the file name (relative
+    /// to `root`); routes outside this file + `allowed_assets` return 404.
+    pub single_file: Option<String>,
+    /// Co-located assets the single-file's markdown references (images,
+    /// stylesheets, etc.). Re-derived whenever the file is modified.
+    /// Empty (and unread) for normal directory workspaces.
+    pub allowed_assets: RwLock<HashSet<String>>,
 }
 
 impl WorkspaceEntry {
@@ -58,6 +71,22 @@ impl WorkspaceEntry {
             shared_annotation: self.shared_annotation.load(Ordering::Relaxed),
         }
     }
+
+    pub fn is_ephemeral(&self) -> bool {
+        self.single_file.is_some()
+    }
+
+    /// True when `rel` is the workspace's pinned file or one of the assets it
+    /// currently references. Always true for non-single-file workspaces.
+    pub fn allows(&self, rel: &str) -> bool {
+        let Some(only) = &self.single_file else {
+            return true;
+        };
+        if rel == only {
+            return true;
+        }
+        self.allowed_assets.read().unwrap().contains(rel)
+    }
 }
 
 #[derive(Serialize)]
@@ -67,6 +96,13 @@ pub struct WorkspaceInfo {
     #[serde(flatten)]
     pub flags: WorkspaceFlags,
     pub search_ready: bool,
+    /// True for single-file workspaces — the GUI's Settings list filters these
+    /// out (they're created by Open-With and live in memory only).
+    pub ephemeral: bool,
+    /// `Some(filename)` only when ephemeral, for callers that want to display
+    /// or re-derive the URL. Omitted from the wire format when None.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub single_file: Option<String>,
 }
 
 /// Invoked whenever the registry mutates (add / update_flags / remove).
@@ -152,14 +188,23 @@ impl WorkspaceRegistry {
         }
     }
     pub fn add(&self, config: WorkspaceConfig) -> String {
-        let id = hash_id(&config.path, &self.salt);
-        // Idempotent: same path registered twice just updates flags on the
+        // Hash on the workspace's identity, not its serving root: a single-file
+        // workspace and an enclosing directory workspace coexist with distinct
+        // ids even though they share the same `root` (parent dir). Same file
+        // re-opened → same id → idempotent reuse.
+        let identity = match &config.single_file {
+            Some(name) => config.path.join(name),
+            None => config.path.clone(),
+        };
+        let id = hash_id(&identity, &self.salt);
+        // Idempotent: same identity registered twice just updates flags on the
         // existing entry instead of spawning a second indexer thread.
         if self.inner.read().unwrap().contains_key(&id) {
             self.update_flags(&id, config.flags);
             return id;
         }
         let (config_tx, _) = broadcast::channel(4);
+        let single_file = config.single_file.clone();
         let entry = Arc::new(WorkspaceEntry {
             id: id.clone(),
             root: config.path.clone(),
@@ -170,13 +215,27 @@ impl WorkspaceRegistry {
             shared_annotation: AtomicBool::new(config.flags.shared_annotation),
             config_tx,
             search_index: ArcSwapOption::empty(),
+            single_file: single_file.clone(),
+            allowed_assets: RwLock::new(HashSet::new()),
         });
         self.inner
             .write()
             .unwrap()
             .insert(id.clone(), entry.clone());
-        if config.flags.enable_search {
-            spawn_search_indexer(config.path, entry);
+        match single_file {
+            Some(name) => {
+                // Seed allowed_assets from the file's current content, then watch
+                // for external edits to keep it fresh. Search indexing is
+                // suppressed regardless of `enable_search` — single-file mode
+                // skips the tantivy spin-up entirely (use Cmd/Ctrl+F instead).
+                refresh_allowed_assets(&entry, &name);
+                spawn_single_file_watcher(config.path, entry, name);
+            }
+            None => {
+                if config.flags.enable_search {
+                    spawn_search_indexer(config.path, entry);
+                }
+            }
         }
         self.notify_persist();
         id
@@ -231,9 +290,75 @@ impl WorkspaceRegistry {
                 path: e.root.to_string_lossy().to_string(),
                 flags: e.flags(),
                 search_ready: e.search_ready(),
+                ephemeral: e.is_ephemeral(),
+                single_file: e.single_file.clone(),
             })
             .collect()
     }
+}
+
+/// Read the single-file's current content and replace `entry.allowed_assets`
+/// with the asset paths it references. Errors (file gone, unreadable) clear
+/// the set — a missing source can't legitimately bless any sibling.
+fn refresh_allowed_assets(entry: &WorkspaceEntry, file_name: &str) {
+    let abs = entry.root.join(file_name);
+    let new_set = match std::fs::read_to_string(&abs) {
+        Ok(content) => extract_referenced_assets(&content),
+        Err(_) => HashSet::new(),
+    };
+    *entry.allowed_assets.write().unwrap() = new_set;
+}
+
+/// Watch the parent directory of a single-file workspace and:
+///   * filter events down to `{file_name} ∪ allowed_assets`
+///   * on changes to `file_name`, re-derive the asset allowlist so that newly
+///     referenced images become accessible (and removed ones stop being).
+///
+/// `notify` cannot reliably watch a single file across platforms, so the
+/// minimum viable scope is the parent directory — non-recursive.
+fn spawn_single_file_watcher(root: PathBuf, entry: Arc<WorkspaceEntry>, file_name: String) {
+    std::thread::spawn(move || {
+        let (tx, rx) = std::sync::mpsc::channel();
+        let Ok(mut watcher) = notify::recommended_watcher(move |res| {
+            if let Ok(e) = res {
+                let _ = tx.send(e);
+            }
+        }) else {
+            return;
+        };
+        if watcher
+            .watch(&root, RecursiveMode::NonRecursive)
+            .is_err()
+        {
+            return;
+        }
+        let target = root.join(&file_name);
+        while let Ok(event) = rx.recv() {
+            for path in event.paths {
+                let Ok(rel) = path.strip_prefix(&root) else {
+                    continue;
+                };
+                let rel_str = rel.to_string_lossy().to_string();
+                let touched_pinned = path == target;
+                let touched_asset =
+                    entry.allowed_assets.read().unwrap().contains(&rel_str);
+                if !(touched_pinned || touched_asset) {
+                    continue;
+                }
+                if touched_pinned {
+                    match event.kind {
+                        EventKind::Create(_) | EventKind::Modify(_) => {
+                            refresh_allowed_assets(&entry, &file_name);
+                        }
+                        EventKind::Remove(_) => {
+                            entry.allowed_assets.write().unwrap().clear();
+                        }
+                        _ => {}
+                    }
+                }
+            }
+        }
+    });
 }
 
 fn spawn_search_indexer(root: PathBuf, entry: Arc<WorkspaceEntry>) {

@@ -220,11 +220,14 @@ impl AppSettings {
             serde_json::to_string(&self.shortcuts).ok()
         }
     }
-    /// Overwrite `workspaces` with the current registry contents.
+    /// Overwrite `workspaces` with the current registry contents. Ephemeral
+    /// (single-file) workspaces are skipped — they're created on demand by
+    /// Open-With, live in memory only, and should not pile up in settings.json.
     pub fn sync_from_registry(&mut self, registry: &WorkspaceRegistry) {
         self.workspaces = registry
             .info_list()
             .into_iter()
+            .filter(|info| !info.ephemeral)
             .map(|info| WorkspaceSettings {
                 path: info.path,
                 flags: info.flags,

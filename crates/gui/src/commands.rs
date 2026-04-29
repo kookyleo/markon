@@ -178,6 +178,7 @@ pub fn add_workspace(
     let id = server.registry.add(WorkspaceConfig {
         path: canonical,
         flags,
+        single_file: None,
     });
     let url = format!("http://127.0.0.1:{}/{id}/", server.port());
     Ok(serde_json::json!({ "id": id, "url": url }))

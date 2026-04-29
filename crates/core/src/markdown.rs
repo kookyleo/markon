@@ -28,6 +28,100 @@ lazy_static! {
         .expect("Failed to compile MULTI_HYPHEN_REGEX");
     static ref SYNTAX_SET: SyntaxSet = SyntaxSet::load_defaults_newlines();
     static ref THEME_SET: ThemeSet = ThemeSet::load_defaults();
+    /// `<img src=…>`, `<source src=…>`, `<video|audio … src=…>` — case-insensitive
+    /// tag and attribute, single or double quotes.
+    static ref HTML_SRC_REGEX: Regex = Regex::new(
+        r#"(?i)<(?:img|source|video|audio|iframe)[^>]*\ssrc\s*=\s*["']([^"']+)["']"#
+    ).expect("Failed to compile HTML_SRC_REGEX");
+    /// `<link … href=…>` (CSS, manifests, etc.) and HTML `<a href=…>` is **not**
+    /// included — anchors are navigation, not assets.
+    static ref HTML_LINK_HREF_REGEX: Regex = Regex::new(
+        r#"(?i)<link[^>]*\shref\s*=\s*["']([^"']+)["']"#
+    ).expect("Failed to compile HTML_LINK_HREF_REGEX");
+    /// CSS `url(...)` inside `<style>` blocks or inline `style="…"`.
+    static ref CSS_URL_REGEX: Regex = Regex::new(
+        r#"url\(\s*['"]?([^'")]+)['"]?\s*\)"#
+    ).expect("Failed to compile CSS_URL_REGEX");
+}
+
+/// Returns a set of relative asset paths referenced from a markdown source.
+///
+/// Used by single-file workspaces to allowlist co-located images and stylesheets
+/// the document needs (so `![](pic.png)` still loads), while keeping every other
+/// sibling file 404. Only same-directory or descendant relative paths are kept;
+/// absolute URLs (`http://`, `data:`, …), parent-traversing (`../…`), and
+/// anchor-only fragments are filtered out.
+pub fn extract_referenced_assets(markdown: &str) -> std::collections::HashSet<String> {
+    use std::collections::HashSet;
+    let mut out: HashSet<String> = HashSet::new();
+
+    // Markdown image syntax (`![](url)`) via pulldown for accurate semantics.
+    let mut options = Options::empty();
+    options.insert(Options::ENABLE_TABLES);
+    options.insert(Options::ENABLE_FOOTNOTES);
+    options.insert(Options::ENABLE_STRIKETHROUGH);
+    options.insert(Options::ENABLE_TASKLISTS);
+    let parser = Parser::new_ext(markdown, options);
+    for event in parser {
+        match event {
+            Event::Start(Tag::Image { dest_url, .. }) => {
+                if let Some(rel) = sanitize_asset_ref(&dest_url) {
+                    out.insert(rel);
+                }
+            }
+            Event::Html(s) | Event::InlineHtml(s) => {
+                collect_from_html(&s, &mut out);
+            }
+            _ => {}
+        }
+    }
+    out
+}
+
+fn collect_from_html(html: &str, out: &mut std::collections::HashSet<String>) {
+    for caps in HTML_SRC_REGEX.captures_iter(html) {
+        if let Some(rel) = sanitize_asset_ref(&caps[1]) {
+            out.insert(rel);
+        }
+    }
+    for caps in HTML_LINK_HREF_REGEX.captures_iter(html) {
+        if let Some(rel) = sanitize_asset_ref(&caps[1]) {
+            out.insert(rel);
+        }
+    }
+    for caps in CSS_URL_REGEX.captures_iter(html) {
+        if let Some(rel) = sanitize_asset_ref(&caps[1]) {
+            out.insert(rel);
+        }
+    }
+}
+
+/// Accept only relative paths under the current dir. Reject schemes (`http`,
+/// `data:`), root-anchored (`/foo`), parent-traversing (`../`), and bare
+/// fragments (`#x`). Returns the path with any URL fragment / query stripped.
+fn sanitize_asset_ref(raw: &str) -> Option<String> {
+    let trimmed = raw.trim();
+    if trimmed.is_empty() || trimmed.starts_with('#') {
+        return None;
+    }
+    // Reject anything with a URL scheme.
+    if trimmed.contains("://") || trimmed.starts_with("data:") || trimmed.starts_with("mailto:") {
+        return None;
+    }
+    if trimmed.starts_with('/') {
+        return None;
+    }
+    // Strip URL fragment and query, leaving just the path portion.
+    let path = trimmed.split(['#', '?']).next().unwrap_or(trimmed);
+    if path.is_empty() {
+        return None;
+    }
+    // Reject any segment that escapes upward.
+    if path.split('/').any(|seg| seg == ".." || seg.is_empty()) {
+        return None;
+    }
+    let stripped = path.strip_prefix("./").unwrap_or(path);
+    Some(stripped.to_string())
 }
 
 #[derive(Debug, Clone, serde::Serialize)]
@@ -436,5 +530,72 @@ impl MarkdownRenderer {
 
         // Remove consecutive hyphens
         MULTI_HYPHEN_REGEX.replace_all(&slug, "-").to_string()
+    }
+}
+
+#[cfg(test)]
+mod assets_tests {
+    use super::extract_referenced_assets;
+
+    fn assert_set(actual: std::collections::HashSet<String>, expected: &[&str]) {
+        let want: std::collections::HashSet<String> =
+            expected.iter().map(|s| s.to_string()).collect();
+        assert_eq!(actual, want, "asset set mismatch");
+    }
+
+    #[test]
+    fn markdown_image_syntax() {
+        let s = "![alt](pic.png) and ![](folder/img.jpg)";
+        assert_set(extract_referenced_assets(s), &["pic.png", "folder/img.jpg"]);
+    }
+
+    #[test]
+    fn html_img_video_audio() {
+        let s = r#"<img src="a.png"> <video src='b.mp4'/> <audio src="c.ogg"></audio>"#;
+        assert_set(extract_referenced_assets(s), &["a.png", "b.mp4", "c.ogg"]);
+    }
+
+    #[test]
+    fn link_stylesheet() {
+        let s = r#"<link rel="stylesheet" href="style.css">"#;
+        assert_set(extract_referenced_assets(s), &["style.css"]);
+    }
+
+    #[test]
+    fn css_url_in_style_block() {
+        let s = "<style>body { background: url('bg.jpg'); }</style>";
+        assert_set(extract_referenced_assets(s), &["bg.jpg"]);
+    }
+
+    #[test]
+    fn rejects_external_and_traversal() {
+        let s = r#"
+![](https://example.com/a.png)
+![](data:image/png;base64,xx)
+![](/absolute/path.png)
+![](../parent.png)
+![](#anchor)
+![](valid.png)
+"#;
+        assert_set(extract_referenced_assets(s), &["valid.png"]);
+    }
+
+    #[test]
+    fn strips_query_and_fragment() {
+        let s = "![](pic.png?v=2#frag)";
+        assert_set(extract_referenced_assets(s), &["pic.png"]);
+    }
+
+    #[test]
+    fn dot_slash_normalized() {
+        let s = "![](./pic.png)";
+        assert_set(extract_referenced_assets(s), &["pic.png"]);
+    }
+
+    #[test]
+    fn anchor_href_is_not_an_asset() {
+        // href on <a> is navigation, not an asset to allowlist.
+        let s = r#"<a href="other.md">x</a>"#;
+        assert_set(extract_referenced_assets(s), &[]);
     }
 }

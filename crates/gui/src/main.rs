@@ -113,13 +113,19 @@ fn handle_open_path(app: &tauri::AppHandle, path: &Path) {
         }
     };
 
-    // Determine workspace root and relative path for this file/dir.
-    let (ws_root, rel_path) = if canonical.is_dir() {
-        (canonical.clone(), None)
+    // Determine workspace root and per-file context.
+    //
+    // Files take the single-file ephemeral path: parent dir is the serving
+    // root (so co-located images resolve via relative URLs), but only the
+    // file itself + assets it references are reachable, and the workspace
+    // is not persisted to settings.json. Directories keep the existing
+    // "the whole thing is the workspace" behavior.
+    let (ws_root, rel_path, single_file) = if canonical.is_dir() {
+        (canonical.clone(), None, None)
     } else {
         let parent = canonical.parent().unwrap().to_path_buf();
         let file_name = canonical.file_name().unwrap().to_string_lossy().to_string();
-        (parent, Some(file_name))
+        (parent, Some(file_name.clone()), Some(file_name))
     };
 
     let state = app.state::<AppState>();
@@ -132,8 +138,13 @@ fn handle_open_path(app: &tauri::AppHandle, path: &Path) {
 
     let flags = {
         let settings = state.settings.lock().unwrap();
+        // For single-file workspaces, force search off (a tantivy index per
+        // ephemeral .md is wasteful — Cmd/Ctrl+F is the right tool for one
+        // file). enable_live still follows the user's default so external
+        // edits can sync once the live-reload client lands.
+        let is_single = single_file.is_some();
         markon_core::workspace::WorkspaceFlags {
-            enable_search: settings.default_search,
+            enable_search: settings.default_search && !is_single,
             enable_viewed: settings.default_viewed,
             enable_edit: settings.default_edit,
             enable_live: settings.default_live,
@@ -141,13 +152,16 @@ fn handle_open_path(app: &tauri::AppHandle, path: &Path) {
         }
     };
 
-    // `registry.add` is idempotent on path and triggers the persist hook,
-    // which mirrors the change into AppSettings and writes settings.json.
+    // `registry.add` is idempotent on (path, single_file) and triggers the
+    // persist hook, which mirrors directory workspaces into AppSettings.
+    // Single-file entries are skipped by `sync_from_registry` and never hit
+    // settings.json.
     let id = server
         .registry
         .add(markon_core::workspace::WorkspaceConfig {
             path: ws_root,
             flags,
+            single_file,
         });
     let port = server.port();
     drop(server);

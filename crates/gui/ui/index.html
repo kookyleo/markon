@@ -1294,7 +1294,10 @@
 
   // ── Workspace list ──────────────────────────────────────────────────────
   async function refreshWorkspaces() {
-    const workspaces = await invoke('get_workspaces');
+    const all = await invoke('get_workspaces');
+    // Hide ephemeral (single-file Open-With) workspaces from Settings — they're
+    // not user-configurable, not persisted, and disappear when the app exits.
+    const workspaces = all.filter(ws => !ws.ephemeral);
     const list = document.getElementById('ws-list');
     list.innerHTML = '';
 

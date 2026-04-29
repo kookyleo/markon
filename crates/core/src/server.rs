@@ -4,7 +4,7 @@ use axum::{
         Path as AxumPath, State, WebSocketUpgrade,
     },
     http::{header, StatusCode},
-    response::{Html, IntoResponse, Response},
+    response::{Html, IntoResponse, Redirect, Response},
     routing::{delete, get, post},
     Json, Router,
 };
@@ -253,6 +253,7 @@ pub async fn start(config: ServerConfig) -> Result<(), String> {
         let id = registry.add(WorkspaceConfig {
             path,
             flags: ws_init.flags,
+            single_file: None,
         });
         if first_workspace_url_path.is_none() {
             let url_path = workspace_url_path(&id, ws_init.initial_path.as_deref());
@@ -676,6 +677,11 @@ async fn handle_workspace_root(
     let Some(ws) = state.workspace_registry.get(&workspace_id) else {
         return StatusCode::NOT_FOUND.into_response();
     };
+    // Single-file workspace: there's no listing, just the one document.
+    // 302 to the file URL so the user lands directly on the rendered .md.
+    if let Some(only) = &ws.single_file {
+        return Redirect::to(&format!("/{workspace_id}/{only}")).into_response();
+    }
     render_directory_listing(&workspace_id, &ws, None, &state)
 }
 
@@ -688,7 +694,14 @@ async fn handle_workspace_path(
     };
 
     let decoded = urlencoding::decode(&path).unwrap_or_else(|_| path.clone().into());
-    let full_path = ws.root.join(decoded.trim_start_matches('/'));
+    let rel = decoded.trim_start_matches('/');
+    // Single-file gate: reject anything outside the pinned file and the
+    // assets it currently references. Directory listings are not allowed
+    // either — `allows()` is false for everything else.
+    if ws.is_ephemeral() && !ws.allows(rel) {
+        return (StatusCode::NOT_FOUND, "Path not found").into_response();
+    }
+    let full_path = ws.root.join(rel);
 
     let canonical = match full_path.canonicalize() {
         Ok(p) => p,
@@ -711,6 +724,12 @@ async fn handle_workspace_path(
             serve_file(&canonical)
         }
     } else if canonical.is_dir() {
+        if ws.is_ephemeral() {
+            // Defense in depth: `allows()` already rejects directories, but
+            // be explicit so a future change to `allows()` can't accidentally
+            // expose a sibling listing.
+            return (StatusCode::NOT_FOUND, "Path not found").into_response();
+        }
         render_directory_listing(&workspace_id, &ws, Some(&decoded), &state)
     } else {
         (StatusCode::NOT_FOUND, "Path not found").into_response()
@@ -742,6 +761,7 @@ async fn add_workspace_handler(
     let id = state.workspace_registry.add(WorkspaceConfig {
         path,
         flags: req.flags,
+        single_file: None,
     });
     Json(AddWorkspaceResponse { id }).into_response()
 }
