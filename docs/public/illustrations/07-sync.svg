@@ -50,9 +50,9 @@
     <rect x="270" y="562" width="60" height="6" rx="3" fill="#0F172A"/>
   </g>
 
-  <!-- Phone — illustration style: thin bezel, no notch / status bar / home indicator; tilted 8° CW; sits to the right of the laptop with breathing room -->
-  <g transform="rotate(8 550 490)">
-    <g transform="translate(480 360)" filter="url(#sh)">
+  <!-- Phone — illustration style: thin bezel, no notch / status bar / home indicator; tilted 3° CW; pressing the laptop's right corner -->
+  <g transform="rotate(3 550 490)">
+    <g transform="translate(475 360)" filter="url(#sh)">
       <rect x="0" y="0" width="140" height="260" rx="24" fill="#1F2937"/>
       <rect x="3" y="3" width="134" height="254" rx="21" fill="#FFFFFF"/>
 

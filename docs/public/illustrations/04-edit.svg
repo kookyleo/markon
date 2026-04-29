@@ -13,13 +13,14 @@
       <feMerge><feMergeNode/><feMergeNode in="SourceGraphic"/></feMerge>
     </filter>
     <clipPath id="cardClip">
-      <rect x="100" y="120" width="600" height="540" rx="16"/>
+      <rect x="100" y="135" width="600" height="525" rx="16"/>
     </clipPath>
   </defs>
   <rect width="800" height="800" fill="#FAFAF7"/>
 
+  <g transform="translate(0 15)">
   <g filter="url(#sh)">
-    <rect x="100" y="120" width="600" height="540" rx="16" fill="#FFFFFF" stroke="#E5E7EB"/>
+    <rect x="100" y="120" width="600" height="525" rx="16" fill="#FFFFFF" stroke="#E5E7EB"/>
     <circle cx="125" cy="148" r="6" fill="#FF5F57"/>
     <circle cx="145" cy="148" r="6" fill="#FEBC2E"/>
     <circle cx="165" cy="148" r="6" fill="#28C840"/>
@@ -29,10 +30,10 @@
     <line x1="100" y1="176" x2="700" y2="176" stroke="#E5E7EB"/>
 
     <g clip-path="url(#cardClip)">
-      <!-- left source -->
-      <rect x="100" y="176" width="300" height="484" fill="#0F172A"/>
+      <!-- left source (GitHub light) -->
+      <rect x="100" y="176" width="300" height="469" fill="#F6F8FA"/>
       <!-- gutter line numbers -->
-      <g font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="11" fill="#475569">
+      <g font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="11" fill="#8B949E">
         <text x="125" y="210" text-anchor="end">1</text>
         <text x="125" y="234" text-anchor="end">2</text>
         <text x="125" y="258" text-anchor="end">3</text>
@@ -43,23 +44,23 @@
         <text x="125" y="378" text-anchor="end">8</text>
         <text x="125" y="402" text-anchor="end">9</text>
       </g>
-      <line x1="135" y1="186" x2="135" y2="660" stroke="#1F2937"/>
-      <g font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="14" fill="#94A3B8">
-        <text x="148" y="210" fill="#FB7185"># Title</text>
+      <line x1="135" y1="186" x2="135" y2="645" stroke="#D0D7DE"/>
+      <g font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="14" fill="#24292F">
+        <text x="148" y="210" fill="#0550AE"># Title</text>
         <text x="148" y="234"></text>
-        <text x="148" y="258">Some intro <tspan fill="#FCD34D">**bold**</tspan> text.</text>
+        <text x="148" y="258">Some intro <tspan fill="#953800">**bold**</tspan> text.</text>
         <text x="148" y="282"></text>
-        <text x="148" y="306" fill="#60A5FA">- list item one</text>
-        <text x="148" y="330" fill="#60A5FA">- list item two</text>
+        <text x="148" y="306" fill="#0550AE">- list item one</text>
+        <text x="148" y="330" fill="#0550AE">- list item two</text>
         <text x="148" y="354"></text>
-        <text x="148" y="378" fill="#FCD34D">```bash</text>
+        <text x="148" y="378" fill="#953800">```bash</text>
         <text x="148" y="402">$ markon serve</text>
       </g>
       <!-- caret -->
-      <rect x="248" y="392" width="2" height="16" fill="#86E5A4"/>
+      <rect x="248" y="392" width="2" height="16" fill="#0969DA"/>
 
       <!-- right rendered -->
-      <rect x="400" y="176" width="300" height="484" fill="#FFFFFF"/>
+      <rect x="400" y="176" width="300" height="469" fill="#FFFFFF"/>
       <rect x="430" y="208" rx="3" width="160" height="14" fill="#111827"/>
       <rect x="430" y="252" rx="2" width="240" height="8" fill="#9CA3AF"/>
       <rect x="430" y="266" rx="2" width="200" height="8" fill="#9CA3AF"/>
@@ -73,13 +74,14 @@
       <text x="442" y="388" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="13" fill="#86E5A4">$ markon serve</text>
 
       <!-- divider -->
-      <line x1="400" y1="176" x2="400" y2="660" stroke="#E5E7EB"/>
+      <line x1="400" y1="176" x2="400" y2="645" stroke="#E5E7EB"/>
     </g>
   </g>
 
   <!-- floating Save button -->
   <g filter="url(#btnSh)">
-    <rect x="320" y="630" width="160" height="48" rx="24" fill="#3B82F6"/>
-    <text x="400" y="660" font-family="ui-sans-serif, system-ui" font-size="15" font-weight="700" fill="#FFFFFF" text-anchor="middle">Save Changes</text>
+    <rect x="320" y="615" width="160" height="48" rx="24" fill="#3B82F6"/>
+    <text x="400" y="645" font-family="ui-sans-serif, system-ui" font-size="15" font-weight="700" fill="#FFFFFF" text-anchor="middle">Save Changes</text>
+  </g>
   </g>
 </svg>
