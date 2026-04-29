@@ -299,10 +299,14 @@
             }
         }
 
-        /* Z-index stacking: article and #toc-container are siblings in body,
-           competing directly in the root stacking context. Cursor location wins. */
+        /* Z-index stacking: article, #toc-container, and footer are siblings in
+           body, competing directly in the root stacking context. Footer must
+           match article — otherwise its default (auto) stacks below the TOC,
+           and when the TOC is tall its tail can overlap footer links and
+           swallow clicks. Cursor location wins between article/toc on hover. */
         @media (min-width: 1401px) {
-            article.markdown-body {
+            article.markdown-body,
+            footer.footer {
                 position: relative;
                 z-index: 2;
             }
