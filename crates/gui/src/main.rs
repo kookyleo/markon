@@ -9,7 +9,7 @@ use server_manager::ServerManager;
 use std::path::{Path, PathBuf};
 use std::sync::{
     atomic::{AtomicBool, Ordering},
-    Arc, Mutex, OnceLock,
+    Arc, Mutex,
 };
 use tauri::{
     menu::{Menu, MenuItem, PredefinedMenuItem},
@@ -95,8 +95,9 @@ pub struct AppState {
 /// AppKit launch, ahead of Tauri's setup callback). Calling `app.state::<AppState>()`
 /// at that point panics with "state() called before manage()". Stash the URLs here
 /// and drain them at the end of `setup()` once state is live.
+#[cfg(any(target_os = "macos", target_os = "ios"))]
 fn pending_opens() -> &'static Mutex<Vec<PathBuf>> {
-    static PENDING: OnceLock<Mutex<Vec<PathBuf>>> = OnceLock::new();
+    static PENDING: std::sync::OnceLock<Mutex<Vec<PathBuf>>> = std::sync::OnceLock::new();
     PENDING.get_or_init(|| Mutex::new(Vec::new()))
 }
 
@@ -382,8 +383,7 @@ fn main() {
             // was managed (see `pending_opens` for the cold-launch race).
             #[cfg(target_os = "macos")]
             let drained_pending: bool = {
-                let pending: Vec<PathBuf> =
-                    std::mem::take(&mut *pending_opens().lock().unwrap());
+                let pending: Vec<PathBuf> = std::mem::take(&mut *pending_opens().lock().unwrap());
                 let had = !pending.is_empty();
                 if had {
                     app.state::<AppState>()
@@ -442,10 +442,8 @@ fn main() {
                 // Apple Events can fire before setup() runs `app.manage(state)`,
                 // so try_state() — fall back to a process-level queue that
                 // setup() drains once state is live. See `pending_opens`.
-                let paths: Vec<PathBuf> = urls
-                    .iter()
-                    .filter_map(|u| u.to_file_path().ok())
-                    .collect();
+                let paths: Vec<PathBuf> =
+                    urls.iter().filter_map(|u| u.to_file_path().ok()).collect();
                 if let Some(state) = app_handle.try_state::<AppState>() {
                     state.file_just_opened.store(true, Ordering::Relaxed);
                     for p in &paths {

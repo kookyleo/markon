@@ -343,10 +343,7 @@ fn spawn_single_file_watcher(
         }) else {
             return;
         };
-        if watcher
-            .watch(&root, RecursiveMode::NonRecursive)
-            .is_err()
-        {
+        if watcher.watch(&root, RecursiveMode::NonRecursive).is_err() {
             return;
         }
         let target = root.join(&file_name);
@@ -357,8 +354,7 @@ fn spawn_single_file_watcher(
                 };
                 let rel_str = rel.to_string_lossy().to_string();
                 let touched_pinned = path == target;
-                let touched_asset =
-                    entry.allowed_assets.read().unwrap().contains(&rel_str);
+                let touched_asset = entry.allowed_assets.read().unwrap().contains(&rel_str);
                 if !(touched_pinned || touched_asset) {
                     continue;
                 }
@@ -370,12 +366,10 @@ fn spawn_single_file_watcher(
                         }
                         should_broadcast = true;
                     }
-                    EventKind::Remove(_) => {
-                        if touched_pinned {
-                            entry.allowed_assets.write().unwrap().clear();
-                        }
-                        // Don't broadcast for Remove: the file just went away,
-                        // reloading would 404 the tab.
+                    // Don't broadcast for Remove: the file just went away,
+                    // reloading would 404 the tab.
+                    EventKind::Remove(_) if touched_pinned => {
+                        entry.allowed_assets.write().unwrap().clear();
                     }
                     _ => {}
                 }

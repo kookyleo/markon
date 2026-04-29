@@ -157,10 +157,7 @@ enum WebSocketMessage {
     /// externally. The browser tab compares `workspace_id` (and `path`) to
     /// what it's currently displaying and reloads if it matches.
     #[serde(rename = "file_changed")]
-    FileChanged {
-        workspace_id: String,
-        path: String,
-    },
+    FileChanged { workspace_id: String, path: String },
 }
 
 pub async fn start(config: ServerConfig) -> Result<(), String> {
