@@ -3,24 +3,24 @@ import { withBase } from 'vitepress';
 
 const groups = [
   {
-    title: '阅读 / 排版',
+    title: '舒适阅读',
     items: [
       {
         image: 'illustrations/01-rendering.svg',
         title: 'GitHub 风格渲染',
         desc: '原生 GitHub Markdown 样式：GFM 表格、任务列表、Alerts、Mermaid、40+ 语言语法高亮。',
       },
+      // TODO: 与文档对话 — 功能尚未开发，先隐藏卡片
+      // {
+      //   image: 'illustrations/12-chat.svg',
+      //   title: '与文档对话',
+      //   desc: '直接向文档发问，AI 引用原文回答，让长篇资料也能"问出来"。',
+      // },
       {
         image: 'illustrations/02-search.svg',
         title: '全文搜索',
         desc: '基于 Tantivy 构建索引，支持中日英分词。浏览器中按 / 实时搜索全部 Markdown。',
         link: '/features/search',
-      },
-      {
-        image: 'illustrations/03-viewed.svg',
-        title: '已读追踪',
-        desc: '受 GitHub PR Review 启发，按段落标记进度，自动折叠已读章节，下次打开即恢复。',
-        link: '/features/viewed',
       },
       {
         image: 'illustrations/08-print.svg',
@@ -31,19 +31,19 @@ const groups = [
     ],
   },
   {
-    title: '协作 / 编辑',
+    title: '便捷协作',
     items: [
       {
         image: 'illustrations/05-annotate.svg',
-        title: '深度标注与审校',
+        title: '注解与笔记',
         desc: 'Medium 风格三色高亮、删除线、便条笔记，支持侧边栏卡片或弹窗呈现。',
         link: '/features/annotations',
       },
       {
-        image: 'illustrations/04-edit.svg',
-        title: '在线编辑',
-        desc: '按 e 直接在浏览器编辑 Markdown 源文件，左右双栏 + 滚动联动，Ctrl/Cmd+S 保存。',
-        link: '/features/edit',
+        image: 'illustrations/03-viewed.svg',
+        title: '已读追踪',
+        desc: '受 GitHub PR Review 启发，按段落标记进度，自动折叠已读章节，下次打开即恢复。',
+        link: '/features/viewed',
       },
       {
         image: 'illustrations/06-live.svg',
@@ -52,15 +52,15 @@ const groups = [
         link: '/features/live',
       },
       {
-        image: 'illustrations/07-sync.svg',
-        title: '多端同步',
-        desc: '自动同步批注与已读状态，个人多设备或团队协同审阅，支持私有化部署。',
-        link: '/advanced/shared-annotations',
+        image: 'illustrations/04-edit.svg',
+        title: '快捷编辑',
+        desc: '按 e 直接在浏览器编辑 Markdown 源文件，左右双栏 + 滚动联动，Ctrl/Cmd+S 保存。',
+        link: '/features/edit',
       },
     ],
   },
   {
-    title: '平台',
+    title: '多端覆盖',
     items: [
       {
         image: 'illustrations/11-platforms.svg',
@@ -76,6 +76,12 @@ const groups = [
         image: 'illustrations/10-mobile.svg',
         title: '移动端友好',
         desc: '响应式设计，生成 QR 码方便扫码移动端查看。',
+      },
+      {
+        image: 'illustrations/07-sync.svg',
+        title: '多端同步',
+        desc: '自动同步批注与已读状态，个人多设备或团队协同审阅，支持私有化部署。',
+        link: '/advanced/shared-annotations',
       },
     ],
   },

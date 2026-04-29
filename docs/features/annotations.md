@@ -1,7 +1,7 @@
-# 标注与高亮
+# 注解与笔记
 
 <div class="feature-illustration">
-  <img src="/illustrations/05-annotate.svg" alt="标注与高亮" />
+  <img src="/illustrations/05-annotate.svg" alt="注解与笔记" />
 </div>
 
 标注是 Markon 的核心能力 —— 让你在阅读时能随手做标记、加笔记，就像看实体书时的荧光笔和便条纸。

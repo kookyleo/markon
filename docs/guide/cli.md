@@ -27,7 +27,7 @@ markon [FILE] [OPTIONS]
 | `-t, --theme <THEME>` | 配色主题：`light` / `dark` / `auto` | `auto` |
 | `--enable-search` | 启用全文搜索（Tantivy 索引） | false |
 | `--enable-viewed` | 启用 Section Viewed 复选框 | false |
-| `--enable-edit` | 启用 Markdown 在线编辑 | false |
+| `--enable-edit` | 启用 Markdown 快捷编辑 | false |
 | `--shared-annotation` | 启用共享标注（SQLite 同步） | false |
 | `--salt <STRING>` | 自定义 workspace ID salt | — |
 

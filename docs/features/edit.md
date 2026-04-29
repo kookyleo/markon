@@ -1,7 +1,7 @@
-# 在线编辑
+# 快捷编辑
 
 <div class="feature-illustration">
-  <img src="/illustrations/04-edit.svg" alt="在线编辑" />
+  <img src="/illustrations/04-edit.svg" alt="快捷编辑" />
 </div>
 
 > 需要启用：桌面版在工作区设置中勾选"编辑"；CLI 用 `--enable-edit`

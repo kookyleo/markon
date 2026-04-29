@@ -97,6 +97,6 @@ markon --host 0.0.0.0 --entry https://example.com/
 
 ## 下一步
 
-- 了解 [核心功能](/features/search) — 全文搜索、已读追踪、在线编辑、标注与高亮、章节打印
+- 了解 [核心功能](/features/search) — 全文搜索、已读追踪、快捷编辑、标注与高亮、章节打印
 - 配置 [共享标注](/advanced/shared-annotations) 实现多端同步
 - 查看 [键盘快捷键](/advanced/shortcuts) 提升效率
