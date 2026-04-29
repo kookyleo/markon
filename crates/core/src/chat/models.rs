@@ -75,23 +75,51 @@ pub async fn list_models(
     Ok(ids)
 }
 
-/// Filter out non-chat models. Conservative: only allow ids whose prefix
-/// matches a known chat family.
+/// Filter out non-chat models. Black-list approach so we don't have to know
+/// every OpenAI-compatible vendor's id prefix in advance — anything that
+/// isn't obviously embeddings / audio / image / moderation / rerank stays.
 fn is_chat_model(provider: ProviderKind, id: &str) -> bool {
-    let id = id.to_ascii_lowercase();
-    match provider {
-        // Anthropic only ships chat models — accept everything claude-*.
-        ProviderKind::Anthropic => id.starts_with("claude-"),
-        // OpenAI ships embeddings, whisper, dall-e, tts, etc. through the
-        // same listing — accept only chat-shaped ids.
-        ProviderKind::OpenAI => {
-            id.starts_with("gpt-")
-                || id.starts_with("chatgpt-")
-                || id.starts_with("o1")
-                || id.starts_with("o3")
-                || id.starts_with("o4")
-        }
+    // Anthropic's listing is chat-only today; trust it instead of guessing.
+    // Lazy lowercase on the OpenAI path keeps the Anthropic path allocation-free
+    // and forces a non-exhaustive-match warning if a third ProviderKind ever lands.
+    let id = match provider {
+        ProviderKind::Anthropic => return true,
+        ProviderKind::OpenAI => id.to_ascii_lowercase(),
+    };
+    // OpenAI + every OpenAI-compatible vendor (xAI / DeepSeek / Groq /
+    // Together / Mistral / Moonshot / Zhipu / DashScope / Ollama / vLLM ...).
+    // We can't enumerate their model prefixes, so we drop the families that
+    // clearly aren't chat instead.
+    const REJECT_SUBSTRINGS: &[&str] = &[
+        "embedding",
+        "embed",            // bge-*, voyage-*, etc.
+        "rerank",
+        "moderation",
+        "whisper",
+        "transcribe",
+        "tts",              // text-to-speech
+        "speech",
+        "audio",
+        "dall-e",
+        "image",            // gpt-image-*, image-gen, etc.
+        "vision-preview",   // older preview-only vision endpoints
+        "guard",            // safety/guard models (e.g. llama-guard)
+        "code-search",
+    ];
+    const REJECT_PREFIXES: &[&str] = &[
+        "text-",            // text-embedding-3, text-moderation-*, text-davinci-*
+        "babbage",
+        "curie",
+        "ada-",
+        "davinci",          // legacy completion-only models
+    ];
+    if REJECT_PREFIXES.iter().any(|p| id.starts_with(p)) {
+        return false;
     }
+    if REJECT_SUBSTRINGS.iter().any(|s| id.contains(s)) {
+        return false;
+    }
+    true
 }
 
 #[cfg(test)]
@@ -99,19 +127,40 @@ mod tests {
     use super::*;
 
     #[test]
-    fn anthropic_filter_keeps_claude_only() {
+    fn anthropic_passes_everything_through() {
         assert!(is_chat_model(ProviderKind::Anthropic, "claude-sonnet-4-6"));
         assert!(is_chat_model(ProviderKind::Anthropic, "claude-3-5-haiku"));
-        assert!(!is_chat_model(ProviderKind::Anthropic, "text-embedding-3"));
+    }
+
+    #[test]
+    fn openai_compatible_keeps_third_party_chat_ids() {
+        // OpenAI + every OpenAI-compatible vendor we care about.
+        assert!(is_chat_model(ProviderKind::OpenAI, "gpt-4o"));
+        assert!(is_chat_model(ProviderKind::OpenAI, "o1-mini"));
+        assert!(is_chat_model(ProviderKind::OpenAI, "o3-mini"));
+        assert!(is_chat_model(ProviderKind::OpenAI, "grok-4"));
+        assert!(is_chat_model(ProviderKind::OpenAI, "deepseek-chat"));
+        assert!(is_chat_model(ProviderKind::OpenAI, "moonshot-v1-8k"));
+        assert!(is_chat_model(ProviderKind::OpenAI, "glm-4-plus"));
+        assert!(is_chat_model(ProviderKind::OpenAI, "qwen-plus"));
+        assert!(is_chat_model(ProviderKind::OpenAI, "llama-3.1-70b-instruct"));
+        assert!(is_chat_model(ProviderKind::OpenAI, "mistral-large-latest"));
     }
 
     #[test]
     fn openai_filter_drops_non_chat() {
-        assert!(is_chat_model(ProviderKind::OpenAI, "gpt-4o"));
-        assert!(is_chat_model(ProviderKind::OpenAI, "o1-mini"));
-        assert!(is_chat_model(ProviderKind::OpenAI, "o3-mini"));
-        assert!(!is_chat_model(ProviderKind::OpenAI, "text-embedding-3"));
+        assert!(!is_chat_model(ProviderKind::OpenAI, "text-embedding-3-small"));
+        assert!(!is_chat_model(ProviderKind::OpenAI, "text-moderation-latest"));
         assert!(!is_chat_model(ProviderKind::OpenAI, "whisper-1"));
+        assert!(!is_chat_model(ProviderKind::OpenAI, "tts-1-hd"));
         assert!(!is_chat_model(ProviderKind::OpenAI, "dall-e-3"));
+        assert!(!is_chat_model(ProviderKind::OpenAI, "gpt-image-1"));
+        assert!(!is_chat_model(ProviderKind::OpenAI, "babbage-002"));
+        assert!(!is_chat_model(ProviderKind::OpenAI, "davinci-002"));
+        assert!(!is_chat_model(ProviderKind::OpenAI, "voyage-rerank-2"));      // rerank
+        assert!(!is_chat_model(ProviderKind::OpenAI, "llama-guard-3-8b"));     // safety
+        // Note: vendor-specific embedding ids without "embed" in the string
+        // (e.g. "bge-large-en") will leak through — accepted trade-off for
+        // a black-list approach. Users will notice when the API rejects them.
     }
 }

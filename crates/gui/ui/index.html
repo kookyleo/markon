@@ -24,6 +24,13 @@
       --danger: #ff3b30;
       --radius: 10px;
       --radius-sm: 6px;
+      /* Tell WKWebView the page supports both schemes so native UA controls
+         (datalist popup, scrollbars, etc.) follow the active theme. */
+      color-scheme: light;
+    }
+    :root[data-theme="dark"] { color-scheme: dark; }
+    @media (prefers-color-scheme: dark) {
+      :root[data-theme="auto"] { color-scheme: dark; }
     }
     /* Explicit dark override */
     :root[data-theme="dark"] {
@@ -261,33 +268,6 @@
     .inline-hint.show { opacity: 1; pointer-events: auto; }
     .inline-hint.ok  { color: rgb(52,199,89); }
     .inline-hint.err { color: rgb(255,69,58); }
-    /* Custom suggestion popup for the model field — bypasses native <datalist>
-       so the menu can size to the longest id rather than the input width.
-       Uses position:fixed and is reparented to <body> at wire time so the
-       enclosing .section-body { overflow:hidden } can't clip it. */
-    .model-popup {
-      position: fixed;
-      margin-top: 2px;
-      background: var(--surface);
-      border: 1px solid var(--border);
-      border-radius: var(--radius-sm);
-      box-shadow: 0 8px 24px rgba(0,0,0,0.18);
-      max-height: 260px;
-      overflow-y: auto;
-      z-index: 1000;
-      display: none;
-      width: max-content;
-      font-size: 12px;
-    }
-    .model-popup.open { display: block; }
-    .model-popup-item {
-      padding: 6px 12px;
-      cursor: pointer;
-      white-space: nowrap;
-      color: var(--text);
-    }
-    .model-popup-item:hover,
-    .model-popup-item.active { background: var(--border); }
     /* Small inline reveal button for password fields. */
     .key-row { display: flex; gap: 6px; align-items: center; flex: 1; min-width: 0; justify-content: flex-end; }
     .key-row input { flex: 1; min-width: 0; }
@@ -315,10 +295,6 @@
        the password eye toggle and the model-list refresh icon. */
     .input-eye { position: relative; display: inline-flex; align-items: center; }
     .input-eye > input { width: 100%; padding-right: 30px; }
-    /* Hide WebKit's built-in datalist dropdown arrow; it lives in the same
-       trailing-padding region and would steal clicks from .btn-eye. */
-    .input-eye > input[list]::-webkit-calendar-picker-indicator { display: none !important; }
-    .input-eye > input[list]::-webkit-list-button { display: none !important; }
     .input-eye > .btn-eye {
       position: absolute;
       right: 3px;
@@ -1035,16 +1011,16 @@
           </div>
           <!-- Anthropic block ─────────────────────────────────────────── -->
           <div class="pref-row" data-chat-provider="anthropic">
-            <span class="pref-label" data-i18n="settings.chat.anthropic_base"></span>
+            <span class="pref-label" data-i18n="settings.chat.base_url"></span>
             <div class="key-row">
-              <input type="text" id="chat_anthropic_base" style="flex:0 0 300px">
+              <input type="text" id="chat_anthropic_base" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" style="flex:0 0 300px">
               <button type="button" class="btn-tiny row-reset" id="chat_anthropic_base_reset" data-i18n-title="settings.chat.base.reset">
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M9 14 4 9l5-5"/><path d="M4 9h10.5a5.5 5.5 0 0 1 0 11H11"/></svg>
               </button>
             </div>
           </div>
           <div class="pref-row" data-chat-provider="anthropic">
-            <span class="pref-label" data-i18n="settings.chat.anthropic_key"></span>
+            <span class="pref-label" data-i18n="settings.chat.api_key"></span>
             <div class="key-row">
               <div class="input-eye" style="flex:0 0 300px">
                 <input type="password" id="chat_anthropic_key" autocomplete="off" spellcheck="false">
@@ -1059,28 +1035,26 @@
             <span class="pref-label" data-i18n="settings.chat.model"></span>
             <div class="key-row">
               <span class="inline-hint" id="chat_anthropic_model_hint"></span>
-              <div class="input-eye" style="flex:0 0 150px">
-                <input type="text" id="chat_anthropic_model" data-i18n-placeholder="settings.chat.anthropic_model.placeholder" autocomplete="off">
-                <datalist id="chat_anthropic_models_list" hidden></datalist>
-                <div class="model-popup" id="chat_anthropic_models_popup"></div>
-                <button type="button" class="btn-tiny btn-eye" id="chat_anthropic_models_refresh" data-i18n-title="settings.chat.models.refresh">
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-3-6.7L21 8"/><path d="M21 3v5h-5"/></svg>
-                </button>
-              </div>
+              <input type="text" id="chat_anthropic_model" list="chat_anthropic_models_list" data-i18n-placeholder="settings.chat.anthropic_model.placeholder" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" style="flex:0 0 280px">
+              <datalist id="chat_anthropic_models_list"></datalist>
+              <button type="button" class="btn-tiny row-reset" id="chat_anthropic_models_refresh" data-i18n-title="settings.chat.models.refresh">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-3-6.7L21 8"/><path d="M21 3v5h-5"/></svg>
+              </button>
             </div>
           </div>
           <!-- OpenAI block ─────────────────────────────────────────────── -->
           <div class="pref-row" data-chat-provider="openai">
-            <span class="pref-label" data-i18n="settings.chat.openai_base"></span>
+            <span class="pref-label" data-i18n="settings.chat.base_url"></span>
             <div class="key-row">
-              <input type="text" id="chat_openai_base" style="flex:0 0 300px">
+              <input type="text" id="chat_openai_base" list="openai_base_presets" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" style="flex:0 0 300px">
+              <datalist id="openai_base_presets"></datalist>
               <button type="button" class="btn-tiny row-reset" id="chat_openai_base_reset" data-i18n-title="settings.chat.base.reset">
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M9 14 4 9l5-5"/><path d="M4 9h10.5a5.5 5.5 0 0 1 0 11H11"/></svg>
               </button>
             </div>
           </div>
           <div class="pref-row" data-chat-provider="openai">
-            <span class="pref-label" data-i18n="settings.chat.openai_key"></span>
+            <span class="pref-label" data-i18n="settings.chat.api_key"></span>
             <div class="key-row">
               <div class="input-eye" style="flex:0 0 300px">
                 <input type="password" id="chat_openai_key" autocomplete="off" spellcheck="false">
@@ -1095,14 +1069,11 @@
             <span class="pref-label" data-i18n="settings.chat.model"></span>
             <div class="key-row">
               <span class="inline-hint" id="chat_openai_model_hint"></span>
-              <div class="input-eye" style="flex:0 0 150px">
-                <input type="text" id="chat_openai_model" data-i18n-placeholder="settings.chat.openai_model.placeholder" autocomplete="off">
-                <datalist id="chat_openai_models_list" hidden></datalist>
-                <div class="model-popup" id="chat_openai_models_popup"></div>
-                <button type="button" class="btn-tiny btn-eye" id="chat_openai_models_refresh" data-i18n-title="settings.chat.models.refresh">
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-3-6.7L21 8"/><path d="M21 3v5h-5"/></svg>
-                </button>
-              </div>
+              <input type="text" id="chat_openai_model" list="chat_openai_models_list" data-i18n-placeholder="settings.chat.openai_model.placeholder" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" style="flex:0 0 280px">
+              <datalist id="chat_openai_models_list"></datalist>
+              <button type="button" class="btn-tiny row-reset" id="chat_openai_models_refresh" data-i18n-title="settings.chat.models.refresh">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-3-6.7L21 8"/><path d="M21 3v5h-5"/></svg>
+              </button>
             </div>
           </div>
         </div>
@@ -1418,6 +1389,12 @@
   }
 
   // ── Global settings ─────────────────────────────────────────────────────
+  // Official endpoints used as the load-time fallback and as the reset target.
+  // Single source of truth so the dim-when-default check stays in sync.
+  const PROVIDER_DEFAULTS = {
+    anthropic: 'https://api.anthropic.com',
+    openai:    'https://api.openai.com',
+  };
   async function loadSettings() {
     const s = await invoke('get_settings');
     const mode = s.port_mode ?? 'spec';
@@ -1443,10 +1420,10 @@
     document.getElementById('chat_provider').value          = c.provider || 'anthropic';
     document.getElementById('chat_anthropic_model').value = ca.model    || '';
     document.getElementById('chat_anthropic_key').value   = ca.api_key  || '';
-    document.getElementById('chat_anthropic_base').value  = ca.base_url || 'https://api.anthropic.com';
+    document.getElementById('chat_anthropic_base').value  = ca.base_url || PROVIDER_DEFAULTS.anthropic;
     document.getElementById('chat_openai_model').value    = co.model    || '';
     document.getElementById('chat_openai_key').value      = co.api_key  || '';
-    document.getElementById('chat_openai_base').value     = co.base_url || 'https://api.openai.com';
+    document.getElementById('chat_openai_base').value     = co.base_url || PROVIDER_DEFAULTS.openai;
     fillModelDatalist('chat_anthropic_models_list', ca.models || []);
     fillModelDatalist('chat_openai_models_list',    co.models || []);
     // Programmatic .value sets don't fire 'input' — nudge the base-URL reset
@@ -1674,54 +1651,6 @@
     .addEventListener('click', () => refreshModels('anthropic'));
   document.getElementById('chat_openai_models_refresh')
     .addEventListener('click', () => refreshModels('openai'));
-  // Self-rolled suggestion popup for the model field. Native <datalist> forces
-  // its menu to the input's width (long ids get clipped); ours sizes to
-  // max-content so users can read full ids like claude-3-5-sonnet-20241022.
-  function wireModelPopup(provider) {
-    const input = document.getElementById(`chat_${provider}_model`);
-    const popup = document.getElementById(`chat_${provider}_models_popup`);
-    // Reparent so ancestor overflow:hidden can't clip the popup.
-    document.body.appendChild(popup);
-    function position() {
-      const r = input.getBoundingClientRect();
-      // Anchor right edge to input's right edge; popup grows leftwards via
-      // width:max-content so it can be wider than the 150px input.
-      popup.style.top   = `${r.bottom + 2}px`;
-      popup.style.right = `${Math.max(8, window.innerWidth - r.right)}px`;
-      popup.style.left  = 'auto';
-    }
-    function render(filter) {
-      const ids = readDatalistOptions(`chat_${provider}_models_list`);
-      const f = (filter || '').trim().toLowerCase();
-      const matches = f ? ids.filter(id => id.toLowerCase().includes(f)) : ids;
-      popup.innerHTML = '';
-      if (matches.length === 0) { popup.classList.remove('open'); return; }
-      for (const id of matches) {
-        const item = document.createElement('div');
-        item.className = 'model-popup-item';
-        item.textContent = id;
-        // mousedown (not click) so we beat the input's blur event.
-        item.addEventListener('mousedown', e => {
-          e.preventDefault();
-          input.value = id;
-          popup.classList.remove('open');
-          saveSettings();
-        });
-        popup.appendChild(item);
-      }
-      position();
-      popup.classList.add('open');
-    }
-    input.addEventListener('focus', () => render(input.value));
-    input.addEventListener('input', () => render(input.value));
-    input.addEventListener('blur',  () => setTimeout(() => popup.classList.remove('open'), 120));
-    // Page scroll/resize would leave the popup floating in the wrong spot;
-    // simplest is to close it.
-    window.addEventListener('scroll', () => popup.classList.remove('open'), { passive: true, capture: true });
-    window.addEventListener('resize', () => popup.classList.remove('open'));
-  }
-  wireModelPopup('anthropic');
-  wireModelPopup('openai');
   // Reset base URL to the official endpoint, and keep the button dimmed
   // whenever the field is already at its default — same pattern as the
   // shortcut/webstyle row-reset buttons.
@@ -1738,8 +1667,36 @@
     });
     sync();
   }
-  wireBaseReset('anthropic', 'https://api.anthropic.com');
-  wireBaseReset('openai',    'https://api.openai.com');
+  wireBaseReset('anthropic', PROVIDER_DEFAULTS.anthropic);
+  wireBaseReset('openai',    PROVIDER_DEFAULTS.openai);
+  // Curated list of OpenAI-compatible services. Adding a new service is a
+  // one-liner here — anything that speaks Bearer + /v1/chat/completions works
+  // through the OpenAI provider once the user picks/types the base URL.
+  const OPENAI_BASE_PRESETS = [
+    { url: 'https://api.openai.com',                          label: 'OpenAI' },
+    { url: 'https://api.deepseek.com',                        label: 'DeepSeek' },
+    { url: 'https://api.groq.com/openai',                     label: 'Groq' },
+    { url: 'https://api.x.ai',                                label: 'xAI (Grok)' },
+    { url: 'https://api.together.xyz',                        label: 'Together AI' },
+    { url: 'https://api.mistral.ai',                          label: 'Mistral' },
+    { url: 'https://api.moonshot.cn',                         label: 'Moonshot 月之暗面' },
+    { url: 'https://open.bigmodel.cn/api/paas/v4',            label: '智谱 GLM' },
+    { url: 'https://dashscope.aliyuncs.com/compatible-mode',  label: '通义千问 DashScope' },
+    { url: 'https://api.siliconflow.cn',                      label: '硅基流动 SiliconFlow' },
+    { url: 'http://127.0.0.1:11434',                          label: 'Ollama (local)' },
+    { url: 'http://127.0.0.1:8000',                           label: 'vLLM (local)' },
+  ];
+  // Populate the OpenAI Base URL datalist with curated presets.
+  (() => {
+    const dl = document.getElementById('openai_base_presets');
+    if (!dl) return;
+    for (const p of OPENAI_BASE_PRESETS) {
+      const opt = document.createElement('option');
+      opt.value = p.url;
+      opt.label = p.label;
+      dl.appendChild(opt);
+    }
+  })();
   document.querySelectorAll('input[name="update_channel"]').forEach(r =>
     r.addEventListener('change', saveSettings)
   );
