@@ -157,9 +157,37 @@ export class MarkonApp {
             if (this.#isSharedMode) {
                 this.#setupWebSocketHandlers();
             }
+
+            // External-edit auto-reload: applies to any workspace whose pages
+            // hold a WS connection, not just shared-annotation ones. The
+            // server's single-file watcher is the only emitter today; once we
+            // wire dir-workspace external-change broadcasts, this handler
+            // covers them transparently.
+            this.#setupFileChangedHandler();
         }
 
         this.#storage = new StorageManager(this.#filePath, this.#isSharedMode, this.#wsManager);
+    }
+
+    /**
+     * Reload the page when the server reports an external edit to a file
+     * inside this workspace. Skipped when the editor is open with unsaved
+     * changes — that buffer would be silently destroyed.
+     * @private
+     */
+    #setupFileChangedHandler() {
+        if (!this.#wsManager) return;
+        this.#wsManager.on(CONFIG.WS_MESSAGE_TYPES.FILE_CHANGED, (message) => {
+            const myWs = Meta.get(CONFIG.META_TAGS.WORKSPACE_ID);
+            if (!myWs || message.workspace_id !== myWs) return;
+            const editor = window.editorManager;
+            if (editor && editor.isOpen() && editor.isDirty()) {
+                Logger.log('MarkonApp', 'file_changed received but editor is dirty, skipping reload');
+                return;
+            }
+            Logger.log('MarkonApp', `file_changed for ${message.path} → reloading`);
+            window.location.reload();
+        });
     }
 
     /**
@@ -477,6 +505,7 @@ export class MarkonApp {
             const selectedText = selection.toString().trim();
             if (!this.#editorManager) {
                 this.#editorManager = new EditorManager(this.#filePath);
+                window.editorManager = this.#editorManager;
             }
             this.#editorManager.open({ selectedText: selectedText });
             return; // Don't clear selection until editor opens
@@ -1215,6 +1244,7 @@ export class MarkonApp {
 
         if (!this.#editorManager) {
             this.#editorManager = new EditorManager(this.#filePath);
+            window.editorManager = this.#editorManager;
         }
 
         this.#editorManager.open();
@@ -1227,6 +1257,7 @@ export class MarkonApp {
         }
         if (!this.#editorManager) {
             this.#editorManager = new EditorManager(this.#filePath);
+            window.editorManager = this.#editorManager;
         }
         this.#editorManager.open({ line });
     }

@@ -36,6 +36,16 @@ export class EditorManager {
         Logger.log('EditorManager', 'Initialized for file:', filePath);
     }
 
+    /** Has the buffer diverged from the last-saved baseline? */
+    isDirty() {
+        return this.#isDirty;
+    }
+
+    /** Is the editor modal currently open (DOM mounted)? */
+    isOpen() {
+        return this.#editorModal !== null;
+    }
+
     /**
      * Open the editor
      * @param {Object} options - Optional configuration

@@ -149,6 +149,7 @@ export const CONFIG = {
         VIEWED_STATE: 'viewed_state',
         UPDATE_VIEWED_STATE: 'update_viewed_state',
         LIVE_ACTION: 'live_action',
+        FILE_CHANGED: 'file_changed',
     },
 
     // Collaboration Configuration — 8 bright, saturated colors. Greys and

@@ -153,6 +153,14 @@ enum WebSocketMessage {
     UpdateViewedState { state: serde_json::Value },
     #[serde(rename = "live_action")]
     LiveAction { data: serde_json::Value },
+    /// Sent by the file watcher when a file under a workspace was modified
+    /// externally. The browser tab compares `workspace_id` (and `path`) to
+    /// what it's currently displaying and reloads if it matches.
+    #[serde(rename = "file_changed")]
+    FileChanged {
+        workspace_id: String,
+        path: String,
+    },
 }
 
 pub async fn start(config: ServerConfig) -> Result<(), String> {
@@ -243,6 +251,11 @@ pub async fn start(config: ServerConfig) -> Result<(), String> {
     // Build workspace registry and register initial workspaces.
     let effective_salt = salt.unwrap_or_else(|| format!("markon:{port}"));
     let registry = registry.unwrap_or_else(|| Arc::new(WorkspaceRegistry::new(effective_salt)));
+    // Hand the broadcaster to the registry **before** seeding initial
+    // workspaces so single-file watchers spawned from inside `add()` already
+    // have it. Watchers read the slot lazily on each event, but doing it now
+    // means the first emitted event is delivered.
+    registry.set_live_broadcaster(tx.clone());
 
     // Track first workspace's URL path for browser/QR.
     let mut first_workspace_url_path: Option<String> = None;

@@ -115,6 +115,11 @@ pub struct WorkspaceRegistry {
     inner: RwLock<HashMap<String, Arc<WorkspaceEntry>>>,
     pub salt: String,
     persist: RwLock<Option<PersistHook>>,
+    /// Shared broadcaster the server populates once its WS channel is alive.
+    /// Watchers spawned by `add()` capture a clone of this Arc and read it
+    /// lazily on each event, so setting the broadcaster after some entries
+    /// already exist still wires them up correctly.
+    live_tx: Arc<ArcSwapOption<broadcast::Sender<String>>>,
 }
 
 /// Stable workspace id: truncated SHA-256 of salt + path.
@@ -176,10 +181,16 @@ impl WorkspaceRegistry {
             inner: RwLock::new(HashMap::new()),
             salt,
             persist: RwLock::new(None),
+            live_tx: Arc::new(ArcSwapOption::empty()),
         }
     }
     pub fn set_persist_hook(&self, hook: PersistHook) {
         *self.persist.write().unwrap() = Some(hook);
+    }
+    /// Wire a broadcast sender that watchers use to push file-change events to
+    /// connected browser tabs. Pass `None` to disconnect (e.g. on shutdown).
+    pub fn set_live_broadcaster(&self, tx: Option<broadcast::Sender<String>>) {
+        self.live_tx.store(tx.map(Arc::new));
     }
     fn notify_persist(&self) {
         let hook = self.persist.read().unwrap().clone();
@@ -229,7 +240,7 @@ impl WorkspaceRegistry {
                 // suppressed regardless of `enable_search` — single-file mode
                 // skips the tantivy spin-up entirely (use Cmd/Ctrl+F instead).
                 refresh_allowed_assets(&entry, &name);
-                spawn_single_file_watcher(config.path, entry, name);
+                spawn_single_file_watcher(config.path, entry, name, self.live_tx.clone());
             }
             None => {
                 if config.flags.enable_search {
@@ -312,11 +323,17 @@ fn refresh_allowed_assets(entry: &WorkspaceEntry, file_name: &str) {
 /// Watch the parent directory of a single-file workspace and:
 ///   * filter events down to `{file_name} ∪ allowed_assets`
 ///   * on changes to `file_name`, re-derive the asset allowlist so that newly
-///     referenced images become accessible (and removed ones stop being).
+///     referenced images become accessible (and removed ones stop being)
+///   * push a `file_changed` WS message so the open browser tab reloads.
 ///
 /// `notify` cannot reliably watch a single file across platforms, so the
 /// minimum viable scope is the parent directory — non-recursive.
-fn spawn_single_file_watcher(root: PathBuf, entry: Arc<WorkspaceEntry>, file_name: String) {
+fn spawn_single_file_watcher(
+    root: PathBuf,
+    entry: Arc<WorkspaceEntry>,
+    file_name: String,
+    live_tx: Arc<ArcSwapOption<broadcast::Sender<String>>>,
+) {
     std::thread::spawn(move || {
         let (tx, rx) = std::sync::mpsc::channel();
         let Ok(mut watcher) = notify::recommended_watcher(move |res| {
@@ -345,15 +362,32 @@ fn spawn_single_file_watcher(root: PathBuf, entry: Arc<WorkspaceEntry>, file_nam
                 if !(touched_pinned || touched_asset) {
                     continue;
                 }
-                if touched_pinned {
-                    match event.kind {
-                        EventKind::Create(_) | EventKind::Modify(_) => {
+                let mut should_broadcast = false;
+                match event.kind {
+                    EventKind::Create(_) | EventKind::Modify(_) => {
+                        if touched_pinned {
                             refresh_allowed_assets(&entry, &file_name);
                         }
-                        EventKind::Remove(_) => {
+                        should_broadcast = true;
+                    }
+                    EventKind::Remove(_) => {
+                        if touched_pinned {
                             entry.allowed_assets.write().unwrap().clear();
                         }
-                        _ => {}
+                        // Don't broadcast for Remove: the file just went away,
+                        // reloading would 404 the tab.
+                    }
+                    _ => {}
+                }
+                if should_broadcast {
+                    if let Some(tx) = live_tx.load_full() {
+                        let payload = serde_json::json!({
+                            "type": "file_changed",
+                            "workspace_id": entry.id,
+                            "path": rel_str,
+                        })
+                        .to_string();
+                        let _ = tx.send(payload);
                     }
                 }
             }
