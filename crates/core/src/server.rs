@@ -1387,7 +1387,10 @@ mod tests {
             i18n_lang: Arc::new("zh".into()),
             shortcuts_json: Arc::new("{}".into()),
             styles_css: Arc::new("".into()),
+            default_chat_mode: Arc::new("in_page".into()),
             shutdown_tx: tx,
+            #[cfg(debug_assertions)]
+            dev_reload_tx: Arc::new(broadcast::channel::<()>(1).0),
         };
         assert_eq!(state.management_token.as_str(), "token");
     }

@@ -32,6 +32,12 @@ jobs:
         with:
           shared-key: ci-test
 
+      # Surface test-only compile errors (e.g. `#[cfg(test)]` literals
+      # falling out of sync with struct definitions) before they cascade
+      # into a confusing `cargo test` failure.
+      - name: Build all targets
+        run: cargo build --tests --all-targets --workspace
+
       - name: Run tests
         run: cargo test --verbose
 
