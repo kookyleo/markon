@@ -28,6 +28,8 @@ markon [FILE] [OPTIONS]
 | `--enable-search` | 启用全文搜索（Tantivy 索引） | false |
 | `--enable-viewed` | 启用 Section Viewed 复选框 | false |
 | `--enable-edit` | 启用 Markdown 快捷编辑 | false |
+| `--enable-live` | 启用实时协作（主控/被控同步） | false |
+| `--enable-chat` | 启用 AI 对话（需先在配置文件填 API Key） | false |
 | `--shared-annotation` | 启用共享标注（SQLite 同步） | false |
 | `--salt <STRING>` | 自定义 workspace ID salt | — |
 
@@ -136,10 +138,14 @@ markon --host 0.0.0.0 \
   --enable-search \
   --enable-viewed \
   --enable-edit \
+  --enable-live \
+  --enable-chat \
   --shared-annotation \
   --qr \
   -b
 ```
+
+`--enable-chat` 需要先在 `~/.markon/settings.json` 中配好 Provider 与 API Key，详见 [与文档对话](/features/chat)。
 
 ## `--host` 详解
 
