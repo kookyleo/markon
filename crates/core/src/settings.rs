@@ -1,7 +1,7 @@
 use crate::server::{ServerConfig, WorkspaceInit};
 use crate::workspace::{generate_token, PersistHook, WorkspaceFlags, WorkspaceRegistry};
 use serde::{Deserialize, Serialize};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 
 fn default_true() -> bool {
@@ -172,14 +172,21 @@ impl Default for AppSettings {
 }
 
 impl AppSettings {
-    pub fn settings_path() -> PathBuf {
-        dirs::home_dir()
-            .unwrap()
-            .join(".markon")
-            .join("settings.json")
+    /// Returns the canonical settings path rooted at `home`. Extracted so
+    /// tests can inject a tempdir without mutating `HOME`.
+    pub(crate) fn settings_path_at(home: &Path) -> PathBuf {
+        home.join(".markon").join("settings.json")
     }
-    pub fn load() -> Self {
-        let p = Self::settings_path();
+
+    pub fn settings_path() -> PathBuf {
+        let home = dirs::home_dir().expect("HOME directory required");
+        Self::settings_path_at(&home)
+    }
+
+    /// Load from `home/.markon/settings.json`. Generates and persists a salt
+    /// on first run. Used by tests to inject a controlled home directory.
+    pub(crate) fn load_at(home: &Path) -> Self {
+        let p = Self::settings_path_at(home);
         let mut s = if let Ok(c) = std::fs::read_to_string(&p) {
             serde_json::from_str::<Self>(&c).unwrap_or_default()
         } else {
@@ -188,9 +195,14 @@ impl AppSettings {
         s.normalize();
         if s.salt.is_empty() {
             s.salt = generate_token();
-            let _ = s.save();
+            let _ = s.save_at(home);
         }
         s
+    }
+
+    pub fn load() -> Self {
+        let home = dirs::home_dir().expect("HOME directory required");
+        Self::load_at(&home)
     }
 
     /// Clean up settings loaded from disk:
@@ -215,13 +227,18 @@ impl AppSettings {
             self.default_chat_mode = "in_page".to_string();
         }
     }
-    pub fn save(&self) -> Result<(), String> {
-        let p = Self::settings_path();
+    pub(crate) fn save_at(&self, home: &Path) -> Result<(), String> {
+        let p = Self::settings_path_at(home);
         if let Some(parent) = p.parent() {
             let _ = std::fs::create_dir_all(parent);
         }
         let c = serde_json::to_string_pretty(self).unwrap();
         std::fs::write(p, c).map_err(|e| e.to_string())
+    }
+
+    pub fn save(&self) -> Result<(), String> {
+        let home = dirs::home_dir().expect("HOME directory required");
+        self.save_at(&home)
     }
     pub fn to_server_config(&self, port: u16) -> ServerConfig {
         let initial_workspaces: Vec<WorkspaceInit> = self
@@ -317,5 +334,150 @@ impl AppSettings {
                 .collect::<Vec<_>>()
                 .join(" "),
         )
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::workspace::WorkspaceConfig;
+
+    /// Self-cleaning tempdir; each test gets an isolated `home` so they can
+    /// run in parallel without touching the real `HOME` env var.
+    struct TempHome(PathBuf);
+    impl TempHome {
+        fn new(label: &str) -> Self {
+            let base = std::env::temp_dir().join(format!(
+                "markon-test-{}-{}",
+                label,
+                uuid::Uuid::new_v4().simple()
+            ));
+            std::fs::create_dir_all(&base).expect("create tempdir");
+            TempHome(base)
+        }
+        fn path(&self) -> &Path {
+            &self.0
+        }
+    }
+    impl Drop for TempHome {
+        fn drop(&mut self) {
+            let _ = std::fs::remove_dir_all(&self.0);
+        }
+    }
+
+    // First load generates a non-empty salt and persists it; second load
+    // returns the same salt (workspace-id stability contract).
+    #[test]
+    fn load_generates_salt_and_persists_it() {
+        let home = TempHome::new("salt");
+        let s1 = AppSettings::load_at(home.path());
+        assert!(!s1.salt.is_empty());
+
+        assert!(AppSettings::settings_path_at(home.path()).exists());
+
+        let s2 = AppSettings::load_at(home.path());
+        assert_eq!(s1.salt, s2.salt, "salt must be stable across load() calls");
+    }
+
+    #[test]
+    fn load_missing_file_returns_default() {
+        let home = TempHome::new("missing");
+        let s = AppSettings::load_at(home.path());
+        let d = AppSettings::default();
+        assert_eq!(s.port, d.port);
+        assert_eq!(s.host, d.host);
+        assert_eq!(s.language, "auto");
+        assert_eq!(s.web_theme, "auto");
+        assert_eq!(s.default_chat_mode, "in_page");
+    }
+
+    #[test]
+    fn load_corrupt_file_returns_default() {
+        let home = TempHome::new("corrupt");
+        let p = AppSettings::settings_path_at(home.path());
+        std::fs::create_dir_all(p.parent().unwrap()).unwrap();
+        std::fs::write(&p, b"{garbage").unwrap();
+
+        let s = AppSettings::load_at(home.path());
+        assert_eq!(s.port, AppSettings::default().port);
+        assert_eq!(s.default_chat_mode, "in_page");
+    }
+
+    #[test]
+    fn normalize_dedup_and_coerce() {
+        let mut s = AppSettings::default();
+        s.workspaces = vec![
+            WorkspaceSettings {
+                path: "/a".to_string(),
+                flags: WorkspaceFlags::default(),
+            },
+            WorkspaceSettings {
+                path: "/b".to_string(),
+                flags: WorkspaceFlags::default(),
+            },
+            WorkspaceSettings {
+                path: "/a".to_string(),
+                flags: WorkspaceFlags::default(),
+            },
+        ];
+        s.language = String::new();
+        s.web_theme = String::new();
+        s.web_language = String::new();
+        s.default_chat_mode = "sidebar".to_string();
+
+        s.normalize();
+
+        assert_eq!(s.workspaces.len(), 2);
+        assert_eq!(s.workspaces[0].path, "/a");
+        assert_eq!(s.workspaces[1].path, "/b");
+        assert_eq!(s.language, "auto");
+        assert_eq!(s.web_theme, "auto");
+        assert_eq!(s.web_language, "auto");
+        assert_eq!(s.default_chat_mode, "in_page");
+
+        s.default_chat_mode = "popout".to_string();
+        s.normalize();
+        assert_eq!(s.default_chat_mode, "popout");
+    }
+
+    #[test]
+    fn sync_from_registry_skips_ephemeral() {
+        let reg = WorkspaceRegistry::new("testsalt".to_string());
+        let home = TempHome::new("reg");
+        let ws_path = home.path().to_path_buf();
+
+        reg.add(WorkspaceConfig {
+            path: ws_path.clone(),
+            flags: WorkspaceFlags::default(),
+            single_file: None,
+        });
+        reg.add(WorkspaceConfig {
+            path: ws_path.clone(),
+            flags: WorkspaceFlags::default(),
+            single_file: Some("note.md".to_string()),
+        });
+
+        let mut s = AppSettings::default();
+        s.sync_from_registry(&reg);
+
+        assert_eq!(s.workspaces.len(), 1, "ephemeral entry must be excluded");
+        assert_eq!(s.workspaces[0].path, ws_path.to_string_lossy());
+    }
+
+    #[test]
+    fn to_server_config_propagates_salt_and_workspaces() {
+        let mut s = AppSettings::default();
+        s.salt = "mysalt".to_string();
+        s.workspaces = vec![WorkspaceSettings {
+            path: "/docs".to_string(),
+            flags: WorkspaceFlags::default(),
+        }];
+
+        let cfg = s.to_server_config(7777);
+
+        assert_eq!(cfg.salt, Some("mysalt".to_string()));
+        assert_eq!(cfg.port, 7777);
+        assert_eq!(cfg.initial_workspaces.len(), 1);
+        assert_eq!(cfg.initial_workspaces[0].path, Path::new("/docs"));
     }
 }

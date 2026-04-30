@@ -435,7 +435,7 @@ pub struct ServerLock {
 impl ServerLock {
     pub fn path() -> PathBuf {
         dirs::home_dir()
-            .unwrap()
+            .expect("HOME directory required")
             .join(".markon")
             .join("server.lock")
     }
