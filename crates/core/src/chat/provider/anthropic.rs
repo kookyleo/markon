@@ -12,13 +12,11 @@ use crate::chat::config::{ChatRuntimeConfig, ProviderKind};
 use crate::chat::message::{ContentBlock, Usage};
 use crate::chat::tools::ToolSchema;
 use async_trait::async_trait;
-use bytes::{Bytes, BytesMut};
+use bytes::Bytes;
 use futures::stream::{BoxStream, Stream, StreamExt};
 use serde::Deserialize;
 use serde_json::{json, Value};
 use std::collections::{HashMap, VecDeque};
-use std::pin::Pin;
-use std::task::{Context, Poll};
 
 pub struct AnthropicProvider {
     cfg: ChatRuntimeConfig,
@@ -537,69 +535,13 @@ pub(crate) fn parse_anthropic_stream<S>(
 where
     S: Stream<Item = Result<Bytes, ProviderError>> + Send + 'static,
 {
-    AnthropicSseStream {
-        upstream: Box::pin(byte_stream),
-        buf: BytesMut::new(),
-        queue: VecDeque::new(),
-        state: ParserState::new(),
-        upstream_done: false,
-    }
-}
-
-struct AnthropicSseStream<S> {
-    upstream: Pin<Box<S>>,
-    buf: BytesMut,
-    queue: VecDeque<Result<ProviderEvent, ProviderError>>,
-    state: ParserState,
-    upstream_done: bool,
-}
-
-impl<S> Stream for AnthropicSseStream<S>
-where
-    S: Stream<Item = Result<Bytes, ProviderError>> + Send + 'static,
-{
-    type Item = Result<ProviderEvent, ProviderError>;
-
-    fn poll_next(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
-        let this = self.get_mut();
-        loop {
-            if let Some(ev) = this.queue.pop_front() {
-                return Poll::Ready(Some(ev));
-            }
-            if this.state.finished {
-                return Poll::Ready(None);
-            }
-            if let Some((pos, term_len)) = super::find_event_end(&this.buf) {
-                let raw = this.buf.split_to(pos + term_len);
-                let chunk = String::from_utf8_lossy(&raw).to_string();
-                handle_sse_chunk(&chunk, &mut this.state, &mut this.queue);
-                continue;
-            }
-            if this.upstream_done {
-                if !this.buf.is_empty() {
-                    let chunk = String::from_utf8_lossy(&this.buf).to_string();
-                    this.buf.clear();
-                    handle_sse_chunk(&chunk, &mut this.state, &mut this.queue);
-                    continue;
-                }
-                return Poll::Ready(None);
-            }
-            match this.upstream.as_mut().poll_next(cx) {
-                Poll::Ready(Some(Ok(bytes))) => {
-                    this.buf.extend_from_slice(&bytes);
-                    continue;
-                }
-                Poll::Ready(Some(Err(e))) => {
-                    return Poll::Ready(Some(Err(e)));
-                }
-                Poll::Ready(None) => {
-                    this.upstream_done = true;
-                    continue;
-                }
-                Poll::Pending => return Poll::Pending,
-            }
-        }
-    }
+    super::SseStreamDriver::new(
+        byte_stream,
+        ParserState::new(),
+        |chunk, state, queue| handle_sse_chunk(chunk, state, queue),
+        |_, _| {},
+        |state| state.finished,
+    )
 }
 
 #[cfg(test)]

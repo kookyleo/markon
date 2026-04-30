@@ -7,8 +7,12 @@ use crate::chat::config::{ChatRuntimeConfig, ProviderKind};
 use crate::chat::message::{ContentBlock, Message, Usage};
 use crate::chat::tools::ToolSchema;
 use async_trait::async_trait;
-use futures::stream::BoxStream;
+use bytes::{Bytes, BytesMut};
+use futures::stream::{BoxStream, Stream};
+use std::collections::VecDeque;
+use std::pin::Pin;
 use std::sync::Arc;
+use std::task::{Context, Poll};
 
 /// One block of the system prompt. Multiple blocks let providers that support
 /// prompt-caching (Anthropic) place a `cache_control: ephemeral` breakpoint
@@ -80,6 +84,106 @@ pub fn build(cfg: ChatRuntimeConfig) -> Arc<dyn Provider> {
     match cfg.provider {
         ProviderKind::Anthropic => Arc::new(anthropic::AnthropicProvider::new(cfg)),
         ProviderKind::OpenAI => Arc::new(openai::OpenAiProvider::new(cfg)),
+    }
+}
+
+pub(super) type EventQueue = VecDeque<Result<ProviderEvent, ProviderError>>;
+
+/// Generic SSE-stream driver shared by Anthropic and OpenAI providers. Owns
+/// the upstream byte stream and a parser `State`, splits the buffer on event
+/// terminators, and dispatches each chunk through `on_chunk`. When the
+/// upstream closes and the buffer is fully drained, `on_eof` runs once — used
+/// by OpenAI to defensively `finalize()` if the server didn't send `[DONE]`,
+/// and a no-op for Anthropic. The `eof_dispatched` flag prevents the loop
+/// from busy-spinning when the EOF handler doesn't flip the finished bit.
+pub(super) struct SseStreamDriver<S, State> {
+    upstream: Pin<Box<S>>,
+    buf: BytesMut,
+    queue: EventQueue,
+    state: State,
+    on_chunk: fn(&str, &mut State, &mut EventQueue),
+    on_eof: fn(&mut State, &mut EventQueue),
+    is_finished: fn(&State) -> bool,
+    upstream_done: bool,
+    eof_dispatched: bool,
+}
+
+impl<S, State> SseStreamDriver<S, State>
+where
+    S: Stream<Item = Result<Bytes, ProviderError>> + Send + 'static,
+{
+    pub(super) fn new(
+        upstream: S,
+        state: State,
+        on_chunk: fn(&str, &mut State, &mut EventQueue),
+        on_eof: fn(&mut State, &mut EventQueue),
+        is_finished: fn(&State) -> bool,
+    ) -> Self {
+        Self {
+            upstream: Box::pin(upstream),
+            buf: BytesMut::new(),
+            queue: VecDeque::new(),
+            state,
+            on_chunk,
+            on_eof,
+            is_finished,
+            upstream_done: false,
+            eof_dispatched: false,
+        }
+    }
+}
+
+impl<S, State> Stream for SseStreamDriver<S, State>
+where
+    S: Stream<Item = Result<Bytes, ProviderError>> + Send + 'static,
+    State: Unpin,
+{
+    type Item = Result<ProviderEvent, ProviderError>;
+
+    fn poll_next(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
+        let this = self.get_mut();
+        loop {
+            if let Some(ev) = this.queue.pop_front() {
+                return Poll::Ready(Some(ev));
+            }
+            if (this.is_finished)(&this.state) {
+                return Poll::Ready(None);
+            }
+            if let Some((pos, term_len)) = find_event_end(&this.buf) {
+                let raw = this.buf.split_to(pos + term_len);
+                let chunk = String::from_utf8_lossy(&raw).to_string();
+                (this.on_chunk)(&chunk, &mut this.state, &mut this.queue);
+                continue;
+            }
+            if this.upstream_done {
+                if !this.buf.is_empty() {
+                    let chunk = String::from_utf8_lossy(&this.buf).to_string();
+                    this.buf.clear();
+                    (this.on_chunk)(&chunk, &mut this.state, &mut this.queue);
+                    continue;
+                }
+                if !this.eof_dispatched {
+                    this.eof_dispatched = true;
+                    (this.on_eof)(&mut this.state, &mut this.queue);
+                    continue;
+                }
+                return Poll::Ready(None);
+            }
+            match this.upstream.as_mut().poll_next(cx) {
+                Poll::Ready(Some(Ok(bytes))) => {
+                    this.buf.extend_from_slice(&bytes);
+                    continue;
+                }
+                Poll::Ready(Some(Err(e))) => {
+                    return Poll::Ready(Some(Err(e)));
+                }
+                Poll::Ready(None) => {
+                    this.upstream_done = true;
+                    continue;
+                }
+                Poll::Pending => return Poll::Pending,
+            }
+        }
     }
 }
 
