@@ -11,6 +11,7 @@ import {
     type MessageBlock,
     type ServerMessage,
 } from './chat-manager';
+import { FloatingLayer } from '../components/floating-layer';
 
 // ────────────────────────────────────────────────────────────────────────────
 // Pure helper functions — bulk of the coverage. No DOM needed.
@@ -511,5 +512,58 @@ describe('ChatManager — header markup invariants', () => {
         expect(rename?.previousElementSibling).toBe(title);
         expect(rename?.parentElement?.classList.contains('markon-chat-header-titlebar')).toBe(true);
         expect(switcher?.parentElement?.classList.contains('markon-chat-header-actions')).toBe(true);
+    });
+});
+
+describe('ChatManager — destroy()', () => {
+    beforeEach(() => {
+        // Earlier `describe` blocks may have left a 'chat' FloatingLayer in
+        // the module-scoped REGISTRY without a cleanup pass. Drop it before
+        // we init a fresh manager so the duplicate-name guard doesn't fire.
+        FloatingLayer.get('chat')?.destroy();
+        // JSDOM lacks ResizeObserver — stub it so init() can wire up the
+        // panel-size observer without exploding.
+        if (typeof globalThis.ResizeObserver === 'undefined') {
+            (globalThis as { ResizeObserver: unknown }).ResizeObserver = class {
+                observe(): void { /* noop */ }
+                unobserve(): void { /* noop */ }
+                disconnect(): void { /* noop */ }
+            };
+        }
+        document.head.innerHTML = `
+            <meta name="enable-chat" content="true">
+            <meta name="workspace-id" content="ws-test">
+        `;
+        document.body.innerHTML = '';
+        localStorage.clear();
+    });
+
+    it('detaches document/window listeners on destroy', () => {
+        const docAdd = vi.spyOn(document, 'addEventListener');
+        const docRm = vi.spyOn(document, 'removeEventListener');
+        const winAdd = vi.spyOn(window, 'addEventListener');
+        const winRm = vi.spyOn(window, 'removeEventListener');
+
+        const mgr = new ChatManager(null);
+        mgr.init();
+
+        const docClickAdds = docAdd.mock.calls.filter((c) => c[0] === 'click').length;
+        const winMessageAdds = winAdd.mock.calls.filter((c) => c[0] === 'message').length;
+        // init() registers the thread-dropdown click + popout inbound message.
+        expect(docClickAdds).toBeGreaterThanOrEqual(1);
+        expect(winMessageAdds).toBeGreaterThanOrEqual(1);
+
+        mgr.destroy();
+
+        expect(docRm.mock.calls.some((c) => c[0] === 'click')).toBe(true);
+        expect(winRm.mock.calls.some((c) => c[0] === 'message')).toBe(true);
+    });
+
+    it('destroy is idempotent', () => {
+        const mgr = new ChatManager(null);
+        mgr.init();
+        mgr.destroy();
+        // Second call must not throw — the named handler refs were nulled out.
+        expect(() => mgr.destroy()).not.toThrow();
     });
 });

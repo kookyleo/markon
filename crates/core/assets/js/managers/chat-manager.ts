@@ -483,6 +483,12 @@ export class ChatManager {
     #mentionAbortCtrl: AbortController | null = null;
     #mentionOutsideHandler: ((e: MouseEvent) => void) | null = null;
 
+    // Named refs for document/window listeners so destroy() can detach them.
+    // Without this, repeated init/teardown leaks listeners on JSDOM and any
+    // future host that re-creates the manager (e.g. a workspace switcher).
+    #threadDropdownDocClick: ((e: MouseEvent) => void) | null = null;
+    #popoutInboundHandler: ((e: MessageEvent) => void) | null = null;
+
     constructor(app: unknown) {
         this.#app = app;
         this.#workspaceId = Meta.get(CONFIG.META_TAGS.WORKSPACE_ID) || '';
@@ -511,6 +517,40 @@ export class ChatManager {
         this.#observePanelResize();
 
         Logger.log('Chat', `Initialized (workspace=${this.#workspaceId}, defaultMode=${this.#defaultMode})`);
+    }
+
+    /** Detach all document/window listeners and tear down popout/layer state.
+     *  Safe to call from a host that re-creates the manager (workspace switch),
+     *  or from tests that share JSDOM between cases. Idempotent. */
+    destroy(): void {
+        if (this.#threadDropdownDocClick) {
+            document.removeEventListener('click', this.#threadDropdownDocClick);
+            this.#threadDropdownDocClick = null;
+        }
+        if (this.#popoutInboundHandler) {
+            window.removeEventListener('message', this.#popoutInboundHandler);
+            this.#popoutInboundHandler = null;
+        }
+        if (this.#mentionOutsideHandler) {
+            document.removeEventListener('mousedown', this.#mentionOutsideHandler, true);
+            this.#mentionOutsideHandler = null;
+        }
+        if (this.#popoutWatcherId) {
+            clearInterval(this.#popoutWatcherId);
+            this.#popoutWatcherId = null;
+        }
+        if (this.#mentionDebounceId) {
+            clearTimeout(this.#mentionDebounceId);
+            this.#mentionDebounceId = null;
+        }
+        if (this.#mentionAbortCtrl) {
+            this.#mentionAbortCtrl.abort();
+            this.#mentionAbortCtrl = null;
+        }
+        if (this.#layer) {
+            this.#layer.destroy();
+            this.#layer = null;
+        }
     }
 
     /** Read the `default-chat-mode` meta tag (server-rendered from
@@ -604,7 +644,7 @@ export class ChatManager {
      *                   state and expand the in-page panel so the user lands
      *                   back where they were. */
     #wirePopoutMessages(): void {
-        window.addEventListener('message', (e: MessageEvent) => {
+        const handler = (e: MessageEvent): void => {
             if (e.origin !== location.origin) return;
             // Only trust messages from a popout we actually spawned.
             if (!this.#popoutWindow || e.source !== this.#popoutWindow) return;
@@ -618,7 +658,9 @@ export class ChatManager {
                 this.#popoutWatcherId = null;
                 setTimeout(() => this.#layer?.expand(), 0);
             }
-        });
+        };
+        this.#popoutInboundHandler = handler;
+        window.addEventListener('message', handler);
     }
 
     /** Push whatever the in-page chat had queued — pending selection chip and
@@ -1102,13 +1144,15 @@ export class ChatManager {
         // Close the thread dropdown when clicking outside it. Listening on
         // the panel itself (capture) is enough — clicks outside the panel
         // don't matter because the panel is the only host.
-        document.addEventListener('click', (e: MouseEvent) => {
+        const dropdownClick = (e: MouseEvent): void => {
             if (!this.#threadDropdownMenu || this.#threadDropdownMenu.hidden) return;
             const target = e.target as Element | null;
             if (target?.closest('.markon-chat-thread-menu')) return;
             if (target?.closest('.markon-chat-thread-switcher')) return;
             this.#threadDropdownMenu.hidden = true;
-        });
+        };
+        this.#threadDropdownDocClick = dropdownClick;
+        document.addEventListener('click', dropdownClick);
     }
 
     // ── Panel open/close ──────────────────────────────────────────────────
