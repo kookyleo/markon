@@ -140,19 +140,12 @@ pub fn hash_id(path: &Path, salt: &str) -> String {
     )
 }
 
+/// Cryptographically-random 32-hex-char token. Used as the management API
+/// bearer (`X-Markon-Token`) and as the per-install salt for workspace IDs.
+/// Backed by `uuid::Uuid::new_v4` which sources 122 bits of entropy from the
+/// OS RNG — a meaningful upgrade over a hash of `SystemTime + pid`.
 pub fn generate_token() -> String {
-    use std::time::{SystemTime, UNIX_EPOCH};
-    let now = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .unwrap_or_default();
-    let a = now.as_nanos() as u64;
-    let b = std::process::id() as u64;
-    let c = now.subsec_nanos() as u64;
-    format!(
-        "{:016x}{:016x}",
-        a.wrapping_mul(6364136223846793005).wrapping_add(b),
-        c.wrapping_mul(2862933555777941757).wrapping_add(a)
-    )
+    uuid::Uuid::new_v4().simple().to_string()
 }
 
 /// Expand `~` / `～` and canonicalize (dunce strips the `\\?\` verbatim prefix

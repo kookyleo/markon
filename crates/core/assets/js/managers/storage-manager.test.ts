@@ -4,6 +4,7 @@ import {
     LocalStorageStrategy,
     SharedStorageStrategy,
 } from './storage-manager.js';
+import type { Annotation } from './annotation-manager.js';
 import type { WebSocketManager } from './websocket-manager.js';
 import type { WsOutbound } from './websocket-manager.js';
 
@@ -17,6 +18,23 @@ function makeFakeWs(connected: boolean) {
         }),
     };
     return { fake: fake as unknown as WebSocketManager, sent };
+}
+
+/** Build a fully-shaped Annotation for storage round-trip tests; only `id`
+ * and any explicitly-overridden fields matter to these tests. */
+function makeAnno(overrides: Partial<Annotation> & { id: string }): Annotation {
+    return {
+        type: 'highlight-yellow',
+        tagName: 'span',
+        startPath: '/p[1]',
+        startOffset: 0,
+        endPath: '/p[1]',
+        endOffset: 0,
+        text: '',
+        note: null,
+        createdAt: 0,
+        ...overrides,
+    };
 }
 
 describe('StorageManager', () => {
@@ -78,8 +96,9 @@ describe('StorageManager', () => {
             const { fake, sent } = makeFakeWs(true);
             const s = new SharedStorageStrategy(fake);
 
-            s.updateCache('markon-annotations-foo.md', [{ id: 'a' }]);
-            expect(await s.load('markon-annotations-foo.md')).toEqual([{ id: 'a' }]);
+            const cached = makeAnno({ id: 'a' });
+            s.updateCache('markon-annotations-foo.md', [cached]);
+            expect(await s.load('markon-annotations-foo.md')).toEqual([cached]);
             // No outbound messages should have been emitted.
             expect(sent).toEqual([]);
         });
@@ -87,8 +106,9 @@ describe('StorageManager', () => {
         it('saveSingleAnnotation emits new_annotation', async () => {
             const { fake, sent } = makeFakeWs(true);
             const s = new SharedStorageStrategy(fake);
-            await s.saveSingleAnnotation({ id: 'x1', value: 'hi' });
-            expect(sent).toEqual([{ type: 'new_annotation', annotation: { id: 'x1', value: 'hi' } }]);
+            const anno = makeAnno({ id: 'x1', text: 'hi' });
+            await s.saveSingleAnnotation(anno);
+            expect(sent).toEqual([{ type: 'new_annotation', annotation: anno }]);
         });
 
         it('deleteSingleAnnotation emits delete_annotation', async () => {
@@ -142,9 +162,10 @@ describe('StorageManager', () => {
             expect(m.isSharedMode()).toBe(false);
             expect(m.getFilePath()).toBe('foo.md');
 
-            await m.saveAnnotations([{ id: 'a' }, { id: 'b' }]);
-            const annos = await m.loadAnnotations();
-            expect(annos).toEqual([{ id: 'a' }, { id: 'b' }]);
+            const a = makeAnno({ id: 'a' });
+            const b = makeAnno({ id: 'b' });
+            await m.saveAnnotations([a, b]);
+            expect(await m.loadAnnotations()).toEqual([a, b]);
         });
 
         it('selects SharedStorageStrategy when shared mode + ws given', async () => {
@@ -152,25 +173,26 @@ describe('StorageManager', () => {
             const m = new StorageManager('foo.md', true, fake);
             expect(m.isSharedMode()).toBe(true);
 
-            await m.saveAnnotation({ id: 'x1' });
-            expect(sent).toEqual([{ type: 'new_annotation', annotation: { id: 'x1' } }]);
+            const anno = makeAnno({ id: 'x1' });
+            await m.saveAnnotation(anno);
+            expect(sent).toEqual([{ type: 'new_annotation', annotation: anno }]);
         });
 
         it('local mode upserts and removes annotations through the array', async () => {
             const m = new StorageManager('foo.md', false);
-            await m.saveAnnotation({ id: 'a', v: 1 });
-            await m.saveAnnotation({ id: 'b', v: 2 });
-            await m.saveAnnotation({ id: 'a', v: 99 }); // update existing
+            const a1 = makeAnno({ id: 'a', text: '1' });
+            const b = makeAnno({ id: 'b', text: '2' });
+            const a2 = makeAnno({ id: 'a', text: '99' }); // update existing
+            await m.saveAnnotation(a1);
+            await m.saveAnnotation(b);
+            await m.saveAnnotation(a2);
 
             let annos = await m.loadAnnotations();
-            expect(annos).toEqual([
-                { id: 'a', v: 99 },
-                { id: 'b', v: 2 },
-            ]);
+            expect(annos).toEqual([a2, b]);
 
             await m.deleteAnnotation('a');
             annos = await m.loadAnnotations();
-            expect(annos).toEqual([{ id: 'b', v: 2 }]);
+            expect(annos).toEqual([b]);
         });
 
         it('viewed-state save/load/clear round-trip in local mode', async () => {
@@ -185,18 +207,19 @@ describe('StorageManager', () => {
         it('updateCache() is a no-op in local mode', async () => {
             const m = new StorageManager('foo.md', false);
             // Should not throw and should not write to localStorage.
-            m.updateCache('markon-annotations-foo.md', [{ id: 'a' }]);
+            m.updateCache('markon-annotations-foo.md', [makeAnno({ id: 'a' })]);
             expect(localStorage.getItem('markon-annotations-foo.md')).toBeNull();
         });
 
         it('falls back to LocalStorageStrategy when shared mode is requested but ws is null', () => {
             const m = new StorageManager('foo.md', true, null);
+            const a = makeAnno({ id: 'a' });
             // No ws supplied: facade should silently degrade to local mode storage.
             // We assert behaviour by writing and reading; localStorage should be hit.
-            return m.saveAnnotations([{ id: 'a' }]).then(async () => {
+            return m.saveAnnotations([a]).then(async () => {
                 const raw = localStorage.getItem('markon-annotations-foo.md');
                 expect(raw).not.toBeNull();
-                expect(JSON.parse(raw as string)).toEqual([{ id: 'a' }]);
+                expect(JSON.parse(raw as string)).toEqual([a]);
             });
         });
     });

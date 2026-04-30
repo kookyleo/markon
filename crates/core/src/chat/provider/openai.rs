@@ -21,11 +21,15 @@ use std::task::{Context, Poll};
 
 pub struct OpenAiProvider {
     cfg: ChatRuntimeConfig,
+    client: reqwest::Client,
 }
 
 impl OpenAiProvider {
     pub fn new(cfg: ChatRuntimeConfig) -> Self {
-        Self { cfg }
+        Self {
+            cfg,
+            client: reqwest::Client::new(),
+        }
     }
 
     pub fn base_url(&self) -> &str {
@@ -52,8 +56,8 @@ impl Provider for OpenAiProvider {
             self.base_url().trim_end_matches('/')
         );
         let body = build_body(&request);
-        let client = reqwest::Client::new();
-        let resp = client
+        let resp = self
+            .client
             .post(&url)
             .bearer_auth(&self.cfg.api_key)
             .header("content-type", "application/json")

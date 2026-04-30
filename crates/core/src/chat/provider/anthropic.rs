@@ -22,11 +22,15 @@ use std::task::{Context, Poll};
 
 pub struct AnthropicProvider {
     cfg: ChatRuntimeConfig,
+    client: reqwest::Client,
 }
 
 impl AnthropicProvider {
     pub fn new(cfg: ChatRuntimeConfig) -> Self {
-        Self { cfg }
+        Self {
+            cfg,
+            client: reqwest::Client::new(),
+        }
     }
 
     pub fn base_url(&self) -> &str {
@@ -50,8 +54,8 @@ impl Provider for AnthropicProvider {
     ) -> Result<BoxStream<'static, Result<ProviderEvent, ProviderError>>, ProviderError> {
         let url = format!("{}/v1/messages", self.base_url().trim_end_matches('/'));
         let body = build_body(&request);
-        let client = reqwest::Client::new();
-        let resp = client
+        let resp = self
+            .client
             .post(&url)
             .header("x-api-key", &self.cfg.api_key)
             .header("anthropic-version", "2023-06-01")

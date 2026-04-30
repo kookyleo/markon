@@ -5,14 +5,13 @@
 
 import { CONFIG, type WsMessageType } from '../core/config';
 import { Logger } from '../core/utils';
+import type { Annotation } from './annotation-manager';
 import type { WebSocketManager } from './websocket-manager';
 
 /**
  * Generic storage strategy interface. The default `unknown` parameter keeps
  * call sites flexible while still discouraging implicit `any`.
  */
-// TODO(phase-3-typing): tighten `T` at call sites once annotation-manager
-// publishes `Annotation` and a concrete viewed-state shape.
 export abstract class StorageStrategy<T = unknown> {
     abstract load(key: string): Promise<T | null>;
     abstract save(key: string, data: T): Promise<void>;
@@ -50,14 +49,6 @@ export class LocalStorageStrategy<T = unknown> extends StorageStrategy<T> {
     }
 }
 
-/** Annotation shape, opaque at this layer. */
-// TODO(phase-3-typing): replace with the real `Annotation` interface once
-// annotation-manager exports it.
-export interface AnnotationLike {
-    id: string;
-    [key: string]: unknown;
-}
-
 /** WebSocket-backed strategy. Maintains a local cache of pushed values. */
 export class SharedStorageStrategy extends StorageStrategy<unknown> {
     #wsManager: WebSocketManager | null;
@@ -92,7 +83,7 @@ export class SharedStorageStrategy extends StorageStrategy<unknown> {
     }
 
     /** Save a single annotation (shared mode only). */
-    async saveSingleAnnotation(annotation: AnnotationLike): Promise<void> {
+    async saveSingleAnnotation(annotation: Annotation): Promise<void> {
         if (this.#wsManager && this.#wsManager.isConnected()) {
             await this.#wsManager.send({
                 type: 'new_annotation',
@@ -189,20 +180,20 @@ export class StorageManager {
     }
 
     /** Load all annotations for the current file. */
-    async loadAnnotations(): Promise<AnnotationLike[]> {
+    async loadAnnotations(): Promise<Annotation[]> {
         const key = CONFIG.STORAGE_KEYS.ANNOTATIONS(this.#filePath);
         const data = await this.#strategy.load(key);
-        return (data as AnnotationLike[] | null) ?? [];
+        return (data as Annotation[] | null) ?? [];
     }
 
     /** Save the full annotation list (local mode) or push individually (shared). */
-    async saveAnnotations(annotations: AnnotationLike[]): Promise<void> {
+    async saveAnnotations(annotations: Annotation[]): Promise<void> {
         const key = CONFIG.STORAGE_KEYS.ANNOTATIONS(this.#filePath);
         await this.#strategy.save(key, annotations);
     }
 
     /** Upsert a single annotation. */
-    async saveAnnotation(annotation: AnnotationLike): Promise<void> {
+    async saveAnnotation(annotation: Annotation): Promise<void> {
         if (this.#isSharedMode && this.#strategy instanceof SharedStorageStrategy) {
             // Shared mode: push the single annotation to the server.
             await this.#strategy.saveSingleAnnotation(annotation);

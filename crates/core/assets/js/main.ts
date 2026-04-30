@@ -224,11 +224,7 @@ export class MarkonApp {
     #initManagers(): void {
         if (!this.#markdownBody || !this.#storage) return;
 
-        this.#annotationManager = new AnnotationManager(
-            // StorageManager satisfies the AnnotationStorage shape (loadAnnotations / saveAnnotation / …).
-            this.#storage as unknown as ConstructorParameters<typeof AnnotationManager>[0],
-            this.#markdownBody,
-        );
+        this.#annotationManager = new AnnotationManager(this.#storage, this.#markdownBody);
 
         this.#noteManager = new NoteManager(this.#annotationManager, this.#markdownBody);
 

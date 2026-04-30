@@ -132,24 +132,19 @@ pub fn save_settings(
 }
 
 fn update_tray_language(app: &tauri::AppHandle, language: &str) {
+    let Some(tray) = app.tray_by_id("main") else { return };
     let data = i18n::get_lang_data(language);
     let label_settings = data["tray.show"].as_str().unwrap_or("Settings…");
     let label_quit = data["tray.quit"].as_str().unwrap_or("Quit Markon");
 
-    if let Some(tray) = app.tray_by_id("main") {
-        if let Ok(item_settings) =
-            MenuItem::with_id(app, "settings", label_settings, true, None::<&str>)
-        {
-            if let Ok(sep) = PredefinedMenuItem::separator(app) {
-                if let Ok(item_quit) =
-                    MenuItem::with_id(app, "quit", label_quit, true, None::<&str>)
-                {
-                    if let Ok(menu) = Menu::with_items(app, &[&item_settings, &sep, &item_quit]) {
-                        let _ = tray.set_menu(Some(menu));
-                    }
-                }
-            }
-        }
+    let build = || -> tauri::Result<Menu<tauri::Wry>> {
+        let item_settings = MenuItem::with_id(app, "settings", label_settings, true, None::<&str>)?;
+        let sep = PredefinedMenuItem::separator(app)?;
+        let item_quit = MenuItem::with_id(app, "quit", label_quit, true, None::<&str>)?;
+        Menu::with_items(app, &[&item_settings, &sep, &item_quit])
+    };
+    if let Ok(menu) = build() {
+        let _ = tray.set_menu(Some(menu));
     }
 }
 
