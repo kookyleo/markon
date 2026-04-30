@@ -6,7 +6,7 @@ use markon_core::settings::AppSettings;
 use markon_core::workspace::{ServerLock, WorkspaceFlags, WorkspaceRegistry};
 use serde::Deserialize;
 use std::io::IsTerminal;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 
 fn get_available_hosts() -> Vec<(String, String)> {
@@ -651,10 +651,20 @@ async fn main() {
         initial_path: initial_path.clone(),
     };
 
-    let effective_salt = cli
-        .salt
-        .clone()
-        .unwrap_or_else(|| format!("markon:{}", cli.port));
+    // Workspace IDs are SHA-256(salt + path). For URLs to survive restarts the
+    // salt must be stable. AppSettings::load() persists a random salt to
+    // settings.json on first run; fall back to it (also matches the GUI path)
+    // so a path always hashes to the same id regardless of which surface
+    // (CLI / GUI) opens it. The port-derived fallback only kicks in when no
+    // settings file exists yet.
+    let settings = AppSettings::load();
+    let effective_salt = cli.salt.clone().unwrap_or_else(|| {
+        if settings.salt.is_empty() {
+            format!("markon:{}", cli.port)
+        } else {
+            settings.salt.clone()
+        }
+    });
     let id = markon_core::workspace::hash_id(&ws_root, &effective_salt);
 
     let open_browser_target = cli.open_browser.clone().or_else(|| {
@@ -734,23 +744,35 @@ async fn main() {
         }
     }
 
-    let settings = Arc::new(Mutex::new(AppSettings::load()));
+    // Restore previously persisted workspaces so a daemon cold-start doesn't
+    // immediately drop them when the persist hook fires. registry.add is
+    // idempotent on (salt, path), so adding `ws_init` last for the same path
+    // preserves the historical behavior of letting CLI flags override saved
+    // ones for the explicitly-named workspace.
+    let mut initial_workspaces: Vec<WorkspaceInit> = settings
+        .workspaces
+        .iter()
+        .filter(|w| !w.path.is_empty())
+        .map(|w| WorkspaceInit {
+            path: PathBuf::from(&w.path),
+            flags: w.flags,
+            initial_path: None,
+        })
+        .collect();
+    initial_workspaces.push(ws_init);
+
+    let language = settings.effective_web_language();
+    let shortcuts_json = settings.render_shortcuts_json();
+    let styles_css = settings.render_styles_css();
+    let default_chat_mode = settings.default_chat_mode.clone();
+
+    let settings = Arc::new(Mutex::new(settings));
 
     // Share one registry with a persist hook so HTTP API mutations
     // (e.g. `markon <dir>` into the running daemon) land in settings.json
     // exactly like GUI-initiated changes do.
     let registry = Arc::new(WorkspaceRegistry::new(effective_salt.clone()));
     registry.set_persist_hook(AppSettings::persist_hook(settings.clone()));
-
-    let (language, shortcuts_json, styles_css, default_chat_mode) = {
-        let s = settings.lock().unwrap();
-        (
-            s.effective_web_language(),
-            s.render_shortcuts_json(),
-            s.render_styles_css(),
-            s.default_chat_mode.clone(),
-        )
-    };
 
     if let Err(e) = server::start(ServerConfig {
         host: match cli.host {
@@ -770,7 +792,7 @@ async fn main() {
         open_browser: open_browser_target,
         shared_annotation: cli.shared_annotation,
         salt: Some(effective_salt),
-        initial_workspaces: vec![ws_init],
+        initial_workspaces,
         bound_listener: None,
         registry: Some(registry),
         management_token: None,
