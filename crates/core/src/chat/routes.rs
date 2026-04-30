@@ -60,7 +60,10 @@ pub fn router() -> Router<AppState> {
 
 // ── helpers ──────────────────────────────────────────────────────────────────
 
-fn ensure_chat_enabled(state: &AppState, workspace_id: &str) -> Result<Arc<WorkspaceEntry>, ChatHttpError> {
+fn ensure_chat_enabled(
+    state: &AppState,
+    workspace_id: &str,
+) -> Result<Arc<WorkspaceEntry>, ChatHttpError> {
     let ws = state
         .workspace_registry
         .get(workspace_id)
@@ -76,7 +79,9 @@ fn storage_for(state: &AppState) -> Result<ChatStorage, ChatHttpError> {
         .db
         .clone()
         .map(ChatStorage::new)
-        .ok_or(ChatHttpError::Unavailable("chat persistence not initialized"))
+        .ok_or(ChatHttpError::Unavailable(
+            "chat persistence not initialized",
+        ))
 }
 
 #[derive(Debug)]
@@ -467,9 +472,11 @@ async fn chat_stream_handler(
     });
 
     let stream = ReceiverStream::new(rx).map(|ev| {
-        let event = Event::default()
-            .json_data(&ev)
-            .unwrap_or_else(|e| Event::default().data(format!("{{\"type\":\"error\",\"message\":\"sse encode: {e}\"}}")));
+        let event = Event::default().json_data(&ev).unwrap_or_else(|e| {
+            Event::default().data(format!(
+                "{{\"type\":\"error\",\"message\":\"sse encode: {e}\"}}"
+            ))
+        });
         Ok::<_, Infallible>(event)
     });
 
@@ -508,10 +515,7 @@ fn workspace_outline(root: &std::path::Path) -> String {
             continue;
         };
         let n = name.to_string_lossy().into_owned();
-        let is_dir = entry
-            .file_type()
-            .map(|t| t.is_dir())
-            .unwrap_or(false);
+        let is_dir = entry.file_type().map(|t| t.is_dir()).unwrap_or(false);
         if is_dir {
             dirs.push(format!("{n}/"));
         } else {
@@ -665,9 +669,7 @@ mod tests {
         let v = body_json(resp).await;
         assert_eq!(v.as_array().unwrap().len(), 0);
 
-        env.storage
-            .create_thread(&env.workspace_id, "t1")
-            .unwrap();
+        env.storage.create_thread(&env.workspace_id, "t1").unwrap();
         let resp = app
             .oneshot(
                 Request::builder()
@@ -753,7 +755,9 @@ mod tests {
             .append_message(
                 &thread.id,
                 Role::Assistant,
-                &[ContentBlock::Text { text: "hello".into() }],
+                &[ContentBlock::Text {
+                    text: "hello".into(),
+                }],
             )
             .unwrap();
 
@@ -844,5 +848,4 @@ mod tests {
         assert!(paths.contains(&"b.txt".to_string()));
         assert!(!paths.contains(&"img.png".to_string()));
     }
-
 }

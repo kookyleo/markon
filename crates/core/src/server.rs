@@ -250,8 +250,7 @@ pub async fn start(config: ServerConfig) -> Result<(), String> {
             [],
         )
         .expect("Failed to create viewed_state table");
-        crate::chat::storage::ChatStorage::init(&conn)
-            .expect("Failed to create chat tables");
+        crate::chat::storage::ChatStorage::init(&conn).expect("Failed to create chat tables");
         Some(Arc::new(Mutex::new(conn)))
     } else {
         None
@@ -520,13 +519,11 @@ async fn dev_reload_stream(State(state): State<AppState>) -> impl IntoResponse {
     use axum::response::sse::{Event, KeepAlive, Sse};
     use std::convert::Infallible;
     let rx = state.dev_reload_tx.subscribe();
-    let stream = tokio_stream::wrappers::BroadcastStream::new(rx).filter_map(
-        |item| async move {
-            // Drop lagged frames silently; we only need *some* recent reload.
-            item.ok()
-                .map(|()| Ok::<Event, Infallible>(Event::default().event("reload")))
-        },
-    );
+    let stream = tokio_stream::wrappers::BroadcastStream::new(rx).filter_map(|item| async move {
+        // Drop lagged frames silently; we only need *some* recent reload.
+        item.ok()
+            .map(|()| Ok::<Event, Infallible>(Event::default().event("reload")))
+    });
     Sse::new(stream).keep_alive(KeepAlive::default())
 }
 

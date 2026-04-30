@@ -47,21 +47,13 @@ impl Tool for GlobTool {
         })
     }
 
-    async fn run(
-        &self,
-        ctx: &ToolContext,
-        input: serde_json::Value,
-    ) -> Result<String, ToolError> {
-        let args: GlobInput = serde_json::from_value(input)
-            .map_err(|e| ToolError::InvalidArgument(e.to_string()))?;
+    async fn run(&self, ctx: &ToolContext, input: serde_json::Value) -> Result<String, ToolError> {
+        let args: GlobInput =
+            serde_json::from_value(input).map_err(|e| ToolError::InvalidArgument(e.to_string()))?;
         if args.pattern.is_empty() {
             return Err(ToolError::InvalidArgument("empty glob pattern".into()));
         }
-        let limit = args
-            .limit
-            .unwrap_or(DEFAULT_LIMIT)
-            .min(MAX_LIMIT)
-            .max(1);
+        let limit = args.limit.unwrap_or(DEFAULT_LIMIT).clamp(1, MAX_LIMIT);
 
         let glob = Glob::new(&args.pattern).map_err(|e| {
             ToolError::InvalidArgument(format!("invalid glob '{}': {e}", args.pattern))

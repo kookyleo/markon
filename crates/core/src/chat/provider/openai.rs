@@ -434,10 +434,7 @@ fn apply_envelope(
     }
 }
 
-fn finalize(
-    state: &mut OpenAiState,
-    queue: &mut VecDeque<Result<ProviderEvent, ProviderError>>,
-) {
+fn finalize(state: &mut OpenAiState, queue: &mut VecDeque<Result<ProviderEvent, ProviderError>>) {
     if state.finished {
         return;
     }
@@ -481,15 +478,16 @@ pub(crate) fn parse_openai_stream<S>(
 where
     S: Stream<Item = Result<Bytes, ProviderError>> + Send + 'static,
 {
+    fn on_eof(state: &mut OpenAiState, queue: &mut super::EventQueue) {
+        if !state.finished {
+            finalize(state, queue);
+        }
+    }
     super::SseStreamDriver::new(
         byte_stream,
         OpenAiState::new(),
-        |chunk, state, queue| handle_chunk(chunk, state, queue),
-        |state, queue| {
-            if !state.finished {
-                finalize(state, queue);
-            }
-        },
+        handle_chunk,
+        on_eof,
         |state| state.finished,
     )
 }
@@ -504,9 +502,8 @@ mod tests {
     use futures::stream;
 
     fn drive_static(raw: &'static str) -> Vec<Result<ProviderEvent, ProviderError>> {
-        let s = stream::once(async move {
-            Ok::<_, ProviderError>(Bytes::from_static(raw.as_bytes()))
-        });
+        let s =
+            stream::once(async move { Ok::<_, ProviderError>(Bytes::from_static(raw.as_bytes())) });
         let mut parsed = parse_openai_stream(s);
         futures::executor::block_on(async {
             let mut out = Vec::new();
@@ -661,9 +658,7 @@ mod tests {
                 Message {
                     role: Role::Assistant,
                     content: vec![
-                        ContentBlock::Text {
-                            text: "ok".into(),
-                        },
+                        ContentBlock::Text { text: "ok".into() },
                         ContentBlock::ToolUse {
                             id: "tu_1".into(),
                             name: "read_file".into(),
@@ -692,14 +687,8 @@ mod tests {
         // system + user + assistant + tool = 4
         assert_eq!(msgs.len(), 4);
         assert_eq!(msgs[0]["role"], "system");
-        assert!(msgs[0]["content"]
-            .as_str()
-            .unwrap()
-            .contains("rule one"));
-        assert!(msgs[0]["content"]
-            .as_str()
-            .unwrap()
-            .contains("rule two"));
+        assert!(msgs[0]["content"].as_str().unwrap().contains("rule one"));
+        assert!(msgs[0]["content"].as_str().unwrap().contains("rule two"));
         // No cache_control anywhere.
         for m in msgs {
             assert!(m.get("cache_control").is_none());

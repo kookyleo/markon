@@ -222,11 +222,7 @@ fn display_workspace_path(path: &Path) -> String {
     path.to_string_lossy().to_string()
 }
 
-fn format_workspace_flags(
-    flags: WorkspaceFlags,
-    search_ready: bool,
-    colors: CliColors,
-) -> String {
+fn format_workspace_flags(flags: WorkspaceFlags, search_ready: bool, colors: CliColors) -> String {
     let search_label = if flags.enable_search && search_ready {
         "Search (ready)"
     } else {

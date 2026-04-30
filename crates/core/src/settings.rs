@@ -405,25 +405,27 @@ mod tests {
 
     #[test]
     fn normalize_dedup_and_coerce() {
-        let mut s = AppSettings::default();
-        s.workspaces = vec![
-            WorkspaceSettings {
-                path: "/a".to_string(),
-                flags: WorkspaceFlags::default(),
-            },
-            WorkspaceSettings {
-                path: "/b".to_string(),
-                flags: WorkspaceFlags::default(),
-            },
-            WorkspaceSettings {
-                path: "/a".to_string(),
-                flags: WorkspaceFlags::default(),
-            },
-        ];
-        s.language = String::new();
-        s.web_theme = String::new();
-        s.web_language = String::new();
-        s.default_chat_mode = "sidebar".to_string();
+        let mut s = AppSettings {
+            workspaces: vec![
+                WorkspaceSettings {
+                    path: "/a".to_string(),
+                    flags: WorkspaceFlags::default(),
+                },
+                WorkspaceSettings {
+                    path: "/b".to_string(),
+                    flags: WorkspaceFlags::default(),
+                },
+                WorkspaceSettings {
+                    path: "/a".to_string(),
+                    flags: WorkspaceFlags::default(),
+                },
+            ],
+            language: String::new(),
+            web_theme: String::new(),
+            web_language: String::new(),
+            default_chat_mode: "sidebar".to_string(),
+            ..AppSettings::default()
+        };
 
         s.normalize();
 
@@ -466,12 +468,14 @@ mod tests {
 
     #[test]
     fn to_server_config_propagates_salt_and_workspaces() {
-        let mut s = AppSettings::default();
-        s.salt = "mysalt".to_string();
-        s.workspaces = vec![WorkspaceSettings {
-            path: "/docs".to_string(),
-            flags: WorkspaceFlags::default(),
-        }];
+        let s = AppSettings {
+            salt: "mysalt".to_string(),
+            workspaces: vec![WorkspaceSettings {
+                path: "/docs".to_string(),
+                flags: WorkspaceFlags::default(),
+            }],
+            ..AppSettings::default()
+        };
 
         let cfg = s.to_server_config(7777);
 

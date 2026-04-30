@@ -170,11 +170,7 @@ impl ChatStorage {
         Ok(out)
     }
 
-    pub fn create_thread(
-        &self,
-        workspace_id: &str,
-        title: &str,
-    ) -> Result<Thread, StorageError> {
+    pub fn create_thread(&self, workspace_id: &str, title: &str) -> Result<Thread, StorageError> {
         let id = uuid::Uuid::new_v4().to_string();
         let now = now_ms();
         let conn = self.conn()?;
@@ -230,10 +226,7 @@ impl ChatStorage {
         // Ensure FK cascade is on for this connection — `init` set it, but
         // `PRAGMA foreign_keys` is per-connection and cheap to re-assert.
         conn.execute_batch("PRAGMA foreign_keys = ON;")?;
-        let n = conn.execute(
-            "DELETE FROM chat_threads WHERE id = ?1",
-            params![thread_id],
-        )?;
+        let n = conn.execute("DELETE FROM chat_threads WHERE id = ?1", params![thread_id])?;
         if n == 0 {
             return Err(StorageError::NotFound);
         }
@@ -383,10 +376,7 @@ mod tests {
         let tmp = NamedTempFile::new().expect("tempfile");
         let conn = Connection::open(tmp.path()).expect("open db");
         ChatStorage::init(&conn).expect("init");
-        (
-            ChatStorage::new(Arc::new(Mutex::new(conn))),
-            tmp,
-        )
+        (ChatStorage::new(Arc::new(Mutex::new(conn))), tmp)
     }
 
     #[test]
@@ -408,13 +398,19 @@ mod tests {
         // Append a couple of messages, then delete the thread and confirm the
         // FK cascade dropped them.
         store
-            .append_message(&t1.id, Role::User, &[ContentBlock::Text { text: "hi".into() }])
+            .append_message(
+                &t1.id,
+                Role::User,
+                &[ContentBlock::Text { text: "hi".into() }],
+            )
             .unwrap();
         store
             .append_message(
                 &t1.id,
                 Role::Assistant,
-                &[ContentBlock::Text { text: "hello".into() }],
+                &[ContentBlock::Text {
+                    text: "hello".into(),
+                }],
             )
             .unwrap();
         assert_eq!(store.list_messages(&t1.id).unwrap().len(), 2);
@@ -464,7 +460,9 @@ mod tests {
             is_error: false,
         }];
 
-        let m0 = store.append_message(&t.id, Role::User, &user_blocks).unwrap();
+        let m0 = store
+            .append_message(&t.id, Role::User, &user_blocks)
+            .unwrap();
         let m1 = store
             .append_message(&t.id, Role::Assistant, &assistant_blocks)
             .unwrap();

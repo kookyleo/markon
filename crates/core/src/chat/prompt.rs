@@ -101,7 +101,8 @@ pub fn build_system_blocks(inputs: &PromptInputs) -> Vec<SystemBlock> {
         .as_deref()
         .map(|s| !s.trim().is_empty())
         .unwrap_or(false);
-    let has_tier3 = inputs.current_doc.is_some() || has_selection || !inputs.mention_blocks.is_empty();
+    let has_tier3 =
+        inputs.current_doc.is_some() || has_selection || !inputs.mention_blocks.is_empty();
     let mut tier3 = String::new();
     if has_tier3 {
         tier3.push_str("# Current turn\n\n");
@@ -190,5 +191,4 @@ mod tests {
         assert!(b.contains("hello\nworld"));
         assert!(b.ends_with("</file>"));
     }
-
 }

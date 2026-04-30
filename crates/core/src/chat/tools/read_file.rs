@@ -52,20 +52,12 @@ impl Tool for ReadFileTool {
         })
     }
 
-    async fn run(
-        &self,
-        ctx: &ToolContext,
-        input: serde_json::Value,
-    ) -> Result<String, ToolError> {
-        let args: ReadFileInput = serde_json::from_value(input)
-            .map_err(|e| ToolError::InvalidArgument(e.to_string()))?;
+    async fn run(&self, ctx: &ToolContext, input: serde_json::Value) -> Result<String, ToolError> {
+        let args: ReadFileInput =
+            serde_json::from_value(input).map_err(|e| ToolError::InvalidArgument(e.to_string()))?;
 
         let offset = args.offset.unwrap_or(0);
-        let limit = args
-            .limit
-            .unwrap_or(DEFAULT_LIMIT)
-            .min(MAX_LIMIT)
-            .max(1);
+        let limit = args.limit.unwrap_or(DEFAULT_LIMIT).clamp(1, MAX_LIMIT);
 
         let abs = ctx.resolve(&args.path)?;
         let meta = std::fs::metadata(&abs).map_err(|e| match e.kind() {
@@ -86,7 +78,8 @@ impl Tool for ReadFileTool {
         let mut sniff = [0u8; 8192];
         let n = {
             let mut f = File::open(&abs).map_err(|e| ToolError::Io(e.to_string()))?;
-            f.read(&mut sniff).map_err(|e| ToolError::Io(e.to_string()))?
+            f.read(&mut sniff)
+                .map_err(|e| ToolError::Io(e.to_string()))?
         };
         if looks_binary(&sniff[..n]) {
             return Err(ToolError::Binary);

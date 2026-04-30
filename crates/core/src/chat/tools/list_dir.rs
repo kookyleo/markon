@@ -41,13 +41,9 @@ impl Tool for ListDirTool {
         })
     }
 
-    async fn run(
-        &self,
-        ctx: &ToolContext,
-        input: serde_json::Value,
-    ) -> Result<String, ToolError> {
-        let args: ListDirInput = serde_json::from_value(input)
-            .map_err(|e| ToolError::InvalidArgument(e.to_string()))?;
+    async fn run(&self, ctx: &ToolContext, input: serde_json::Value) -> Result<String, ToolError> {
+        let args: ListDirInput =
+            serde_json::from_value(input).map_err(|e| ToolError::InvalidArgument(e.to_string()))?;
 
         let rel_arg = args.path.as_deref().unwrap_or("");
         let abs = if rel_arg.is_empty() {
@@ -189,7 +185,10 @@ mod tests {
             .unwrap();
 
         // Header
-        assert!(out.starts_with("Listing ./ (2 dirs, 2 files)\n"), "got: {out}");
+        assert!(
+            out.starts_with("Listing ./ (2 dirs, 2 files)\n"),
+            "got: {out}"
+        );
         // Order: dirs sorted, then files sorted.
         let body = out.lines().skip(1).collect::<Vec<_>>();
         assert_eq!(body[0], "asub/");

@@ -65,7 +65,11 @@ pub struct Agent {
 }
 
 impl Agent {
-    pub fn new(provider: Arc<dyn Provider>, tools: Arc<ToolRegistry>, storage: ChatStorage) -> Self {
+    pub fn new(
+        provider: Arc<dyn Provider>,
+        tools: Arc<ToolRegistry>,
+        storage: ChatStorage,
+    ) -> Self {
         Self {
             provider,
             tools,
@@ -122,11 +126,7 @@ impl Agent {
             while let Some(ev) = stream.next().await {
                 match ev {
                     Ok(ProviderEvent::TextDelta(text)) => {
-                        if sink
-                            .send(AgentEvent::Text { delta: text })
-                            .await
-                            .is_err()
-                        {
+                        if sink.send(AgentEvent::Text { delta: text }).await.is_err() {
                             return; // client disconnected
                         }
                     }
@@ -176,11 +176,10 @@ impl Agent {
 
             // Persist the assistant turn now (before tool execution) so the
             // record exists even if a tool blows up mid-loop.
-            match self.storage.append_message(
-                &request.thread_id,
-                Role::Assistant,
-                &turn_content,
-            ) {
+            match self
+                .storage
+                .append_message(&request.thread_id, Role::Assistant, &turn_content)
+            {
                 Ok(stored) => {
                     last_seq = Some(stored.seq);
                 }
@@ -224,15 +223,12 @@ impl Agent {
 
             let mut tool_results: Vec<ContentBlock> = Vec::new();
             for (id, name, input) in tool_uses {
-                let (output, is_error) = match self
-                    .tools
-                    .dispatch(&tool_ctx, &name, input.clone())
-                    .await
-                {
-                    Ok(out) => (out, false),
-                    Err(ToolError::NotFound(p)) => (format!("not found: {p}"), true),
-                    Err(e) => (e.to_tool_message(), true),
-                };
+                let (output, is_error) =
+                    match self.tools.dispatch(&tool_ctx, &name, input.clone()).await {
+                        Ok(out) => (out, false),
+                        Err(ToolError::NotFound(p)) => (format!("not found: {p}"), true),
+                        Err(e) => (e.to_tool_message(), true),
+                    };
                 let _ = sink
                     .send(AgentEvent::ToolStart {
                         id: id.clone(),
@@ -256,11 +252,10 @@ impl Agent {
 
             // Persist the synthetic user-turn carrying tool results, then add
             // it to the in-memory history for the next provider call.
-            if let Err(e) = self.storage.append_message(
-                &request.thread_id,
-                Role::User,
-                &tool_results,
-            ) {
+            if let Err(e) =
+                self.storage
+                    .append_message(&request.thread_id, Role::User, &tool_results)
+            {
                 let _ = sink
                     .send(AgentEvent::Error {
                         message: format!("persist tool results: {e}"),
@@ -317,7 +312,7 @@ pub fn auto_title(text: &str) -> String {
     let trimmed = text.trim();
     let first_line = trimmed.lines().next().unwrap_or("").trim();
     let first_sentence = first_line
-        .split(|c: char| matches!(c, '.' | '。' | '!' | '?' | '\n'))
+        .split(['.', '。', '!', '?', '\n'])
         .next()
         .unwrap_or("");
     let take = 64;

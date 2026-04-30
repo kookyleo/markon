@@ -13,7 +13,7 @@ use super::{default_walker, Tool, ToolContext, ToolError, MAX_TOOL_OUTPUT_BYTES}
 use async_trait::async_trait;
 use globset::{Glob, GlobSet, GlobSetBuilder};
 use grep_regex::RegexMatcherBuilder;
-use grep_searcher::{Sink, SinkMatch, SearcherBuilder};
+use grep_searcher::{SearcherBuilder, Sink, SinkMatch};
 use serde::Deserialize;
 
 const DEFAULT_MAX_MATCHES: usize = 100;
@@ -61,21 +61,16 @@ impl Tool for GrepTool {
         })
     }
 
-    async fn run(
-        &self,
-        ctx: &ToolContext,
-        input: serde_json::Value,
-    ) -> Result<String, ToolError> {
-        let args: GrepInput = serde_json::from_value(input)
-            .map_err(|e| ToolError::InvalidArgument(e.to_string()))?;
+    async fn run(&self, ctx: &ToolContext, input: serde_json::Value) -> Result<String, ToolError> {
+        let args: GrepInput =
+            serde_json::from_value(input).map_err(|e| ToolError::InvalidArgument(e.to_string()))?;
         if args.pattern.is_empty() {
             return Err(ToolError::InvalidArgument("empty pattern".into()));
         }
         let max_matches = args
             .max_matches
             .unwrap_or(DEFAULT_MAX_MATCHES)
-            .min(HARD_MAX_MATCHES)
-            .max(1);
+            .clamp(1, HARD_MAX_MATCHES);
         let case_insensitive = args.case_insensitive.unwrap_or(false);
 
         let start = match args.path.as_deref() {
@@ -90,9 +85,8 @@ impl Tool for GrepTool {
 
         let glob_set: Option<GlobSet> = match args.glob.as_deref() {
             Some(g) if !g.is_empty() => {
-                let glob = Glob::new(g).map_err(|e| {
-                    ToolError::InvalidArgument(format!("invalid glob '{g}': {e}"))
-                })?;
+                let glob = Glob::new(g)
+                    .map_err(|e| ToolError::InvalidArgument(format!("invalid glob '{g}': {e}")))?;
                 let set = GlobSetBuilder::new()
                     .add(glob)
                     .build()
@@ -287,7 +281,10 @@ mod tests {
             .await
             .unwrap();
         assert!(out.contains("notes.md:1:hello world"), "got: {out}");
-        assert!(!out.contains("code.rs"), "rs file should be filtered: {out}");
+        assert!(
+            !out.contains("code.rs"),
+            "rs file should be filtered: {out}"
+        );
     }
 
     #[tokio::test]

@@ -132,7 +132,9 @@ pub fn save_settings(
 }
 
 fn update_tray_language(app: &tauri::AppHandle, language: &str) {
-    let Some(tray) = app.tray_by_id("main") else { return };
+    let Some(tray) = app.tray_by_id("main") else {
+        return;
+    };
     let data = i18n::get_lang_data(language);
     let label_settings = data["tray.show"].as_str().unwrap_or("Settings…");
     let label_quit = data["tray.quit"].as_str().unwrap_or("Quit Markon");
@@ -173,6 +175,7 @@ fn flags_from_params(
 }
 
 #[tauri::command]
+#[allow(clippy::too_many_arguments)]
 pub fn add_workspace(
     path: String,
     enable_search: bool,
@@ -203,6 +206,7 @@ pub fn add_workspace(
 }
 
 #[tauri::command]
+#[allow(clippy::too_many_arguments)]
 pub fn update_workspace(
     id: String,
     enable_search: bool,

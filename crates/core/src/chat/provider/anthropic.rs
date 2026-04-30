@@ -117,10 +117,7 @@ fn build_body(req: &ChatRequest) -> Value {
     if any_cached {
         if let Some(last) = tools_arr.last_mut() {
             if let Some(obj) = last.as_object_mut() {
-                obj.insert(
-                    "cache_control".to_string(),
-                    json!({ "type": "ephemeral" }),
-                );
+                obj.insert("cache_control".to_string(), json!({ "type": "ephemeral" }));
             }
         }
     }
@@ -291,9 +288,7 @@ impl ParserState {
         for idx in &self.order {
             if let Some(block) = self.blocks.get(idx) {
                 match block {
-                    BlockState::Text(text) => out.push(ContentBlock::Text {
-                        text: text.clone(),
-                    }),
+                    BlockState::Text(text) => out.push(ContentBlock::Text { text: text.clone() }),
                     BlockState::ToolUse {
                         id,
                         name,
@@ -538,7 +533,7 @@ where
     super::SseStreamDriver::new(
         byte_stream,
         ParserState::new(),
-        |chunk, state, queue| handle_sse_chunk(chunk, state, queue),
+        handle_sse_chunk,
         |_, _| {},
         |state| state.finished,
     )
@@ -552,9 +547,8 @@ mod tests {
     use futures::stream;
 
     fn drive(raw: &'static str) -> Vec<Result<ProviderEvent, ProviderError>> {
-        let s = stream::once(async move {
-            Ok::<_, ProviderError>(Bytes::from_static(raw.as_bytes()))
-        });
+        let s =
+            stream::once(async move { Ok::<_, ProviderError>(Bytes::from_static(raw.as_bytes())) });
         let mut parsed = parse_anthropic_stream(s);
         let mut events = Vec::new();
         // Tests run on the tokio runtime via `#[tokio::test]`.
@@ -601,9 +595,7 @@ mod tests {
             match ev {
                 ProviderEvent::TextDelta(t) => deltas.push(t),
                 ProviderEvent::ToolUseStart { id, name } => tool_start = Some((id, name)),
-                ProviderEvent::ToolUseEnd { id, name, input } => {
-                    tool_end = Some((id, name, input))
-                }
+                ProviderEvent::ToolUseEnd { id, name, input } => tool_end = Some((id, name, input)),
                 ProviderEvent::MessageEnd {
                     stop_reason,
                     usage,
@@ -675,10 +667,9 @@ mod tests {
             "data: {\"type\":\"error\",\"error\":{\"type\":\"rate_limit_error\",\"message\":\"slow down\"}}\n\n",
         );
         let events = drive(raw);
-        assert!(events.iter().any(|e| matches!(
-            e,
-            Err(ProviderError::Api { status: 429, .. })
-        )));
+        assert!(events
+            .iter()
+            .any(|e| matches!(e, Err(ProviderError::Api { status: 429, .. }))));
     }
 
     #[test]
