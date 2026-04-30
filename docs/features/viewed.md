@@ -4,9 +4,9 @@
   <img src="/illustrations/03-viewed.svg" alt="已读追踪" />
 </div>
 
-> 需要启用：桌面版在工作区设置中勾选"已读追踪"；CLI 用 `--enable-viewed`
+> 需要启用：桌面版在工作区设置中勾选「已读追踪」；CLI 用 `--enable-viewed`
 
-受 GitHub PR Review 的 "Viewed" 复选框启发，Markon 按**段落级别**追踪你的阅读进度。
+受 GitHub PR Review 的「Viewed」复选框启发，Markon 按**段落级别**追踪你的阅读进度。
 
 ## 使用
 
@@ -61,5 +61,5 @@ H1 标题下方有一个工具栏：
 ## 典型场景
 
 - **阅读技术文档** — 学完一章勾选，下次直接从未读章节继续
-- **Code Review 文档** — 审阅长文档时标记"已审"段落
+- **Code Review 文档** — 审阅长文档时标记「已审」段落
 - **周期性浏览** — 每次读完一部分做标记，避免重复阅读

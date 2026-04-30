@@ -35,13 +35,13 @@ brew install --cask --no-quarantine markon
 
 下载对应芯片的 `.dmg`，双击挂载后拖到 Applications 目录。
 
-首次启动时，macOS Gatekeeper 会拒绝打开（因为应用使用的是 ad-hoc 签名，而非 Apple 颁发的证书）。打开 **系统设置 → 隐私与安全性**，滚动到下方 _Security_ 区，点击 **"Markon" was blocked to protect your Mac** 旁的 **Open Anyway**；再次确认即可。之后启动不会再提示。
+首次启动时，macOS Gatekeeper 会拒绝打开（因为应用使用的是 ad-hoc 签名，而非 Apple 颁发的证书）。打开 **系统设置 → 隐私与安全性**，滚动到下方 _Security_ 区，点击 **「Markon」 was blocked to protect your Mac** 旁的 **Open Anyway**；再次确认即可。之后启动不会再提示。
 
 ![macOS Gatekeeper：在系统设置点 Open Anyway，确认放行 Markon](/screenshots/macos-gatekeeper.png)
 
 ::: details 较老版本 macOS（Monterey 及更早）
 
-如果系统设置中**没有** "Open Anyway" 按钮，请改用右键方式：在 Finder 的 Applications 目录中，**右键**（或 Control+点击）Markon.app → 选择 **Open**，弹出的确认框中再点 **Open** 即可放行。
+如果系统设置中**没有**「Open Anyway」按钮，请改用右键方式：在 Finder 的 Applications 目录中，**右键**（或 Control+点击）Markon.app → 选择 **Open**，弹出的确认框中再点 **Open** 即可放行。
 
 ![macOS 较老版本：右键打开放行 Markon](/screenshots/macos-gatekeeper-legacy.png)
 
@@ -53,7 +53,7 @@ brew install --cask --no-quarantine markon
 
 下载对应 CPU 的 `-setup.exe`，双击运行安装。
 
-NSIS 安装包未做代码签名，会触发 SmartScreen。在 "Windows protected your PC" 弹窗中点左下角 **More info**，展开后点右下角 **Run anyway** 即可。
+NSIS 安装包未做代码签名，会触发 SmartScreen。在「Windows protected your PC」弹窗中点左下角 **More info**，展开后点右下角 **Run anyway** 即可。
 
 ![Windows SmartScreen：点 More info 展开后选择 Run anyway](/screenshots/windows-smartscreen.png)
 

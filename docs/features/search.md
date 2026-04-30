@@ -4,7 +4,7 @@
   <img src="/illustrations/02-search.svg" alt="全文搜索" />
 </div>
 
-> 需要启用：桌面版在工作区设置中勾选"搜索"；CLI 用 `--enable-search`
+> 需要启用：桌面版在工作区设置中勾选「搜索」；CLI 用 `--enable-search`
 
 基于 [Tantivy](https://github.com/quickwit-oss/tantivy) 引擎构建的全文搜索，支持中日英分词。
 
@@ -45,8 +45,8 @@ Markon 对以下字段建立索引：
 
 使用 [Jieba](https://github.com/baoyachi/tantivy-jieba) 分词器，能正确处理中文词语：
 
-- 搜索 `数据库` 能匹配 "数据库连接"、"关系型数据库"，但不会匹配 "数据"
-- 搜索 `数据` 能匹配 "数据处理"、"大数据"
+- 搜索 `数据库` 能匹配「数据库连接」、「关系型数据库」，但不会匹配「数据」
+- 搜索 `数据` 能匹配「数据处理」、「大数据」
 - 日文同样支持（通过 Jieba 的东亚语言分词）
 
 ## 自动索引更新

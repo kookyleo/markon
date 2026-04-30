@@ -2,13 +2,13 @@
 
 ## 安装 / 启动
 
-### macOS 提示"无法验证开发者"怎么办？
+### macOS 提示「无法验证开发者」怎么办？
 
 Markon 使用 ad-hoc 签名（免费签名方式）。首次启动时：
 
-1. 双击 `Markon.app`，会弹出"无法打开 'Markon'…" 对话框 — 点 **关闭**
+1. 双击 `Markon.app`，会弹出「无法打开 'Markon'…」对话框 — 点 **关闭**
 2. 前往 **系统设置 → 隐私与安全性**，滚动到底部
-3. 在 "已阻止打开 'Markon'" 一行点 **仍要打开**，再次确认即可
+3. 在「已阻止打开 'Markon'」一行点 **仍要打开**，再次确认即可
 
 ![macOS Gatekeeper：在系统设置点 Open Anyway，确认放行 Markon](/screenshots/macos-gatekeeper.png)
 
@@ -16,13 +16,13 @@ Markon 使用 ad-hoc 签名（免费签名方式）。首次启动时：
 
 ::: details 较老版本 macOS（Monterey 及更早）
 
-如果系统设置中没有 "Open Anyway" 按钮，请在 Finder 的 Applications 目录中 **右键**（或 Control+点击）Markon.app → 选择 **Open**，弹出确认框后再点 **Open** 即可。
+如果系统设置中没有「Open Anyway」按钮，请在 Finder 的 Applications 目录中 **右键**（或 Control+点击）Markon.app → 选择 **Open**，弹出确认框后再点 **Open** 即可。
 
 ![macOS 较老版本：右键打开放行 Markon](/screenshots/macos-gatekeeper-legacy.png)
 
 :::
 
-### Windows 提示"Windows 已保护你的电脑"？
+### Windows 提示「Windows 已保护你的电脑」？
 
 NSIS 安装包未做代码签名，会触发 SmartScreen：
 
@@ -116,7 +116,7 @@ markon shutdown
 
 ### 共享模式支持用户权限管理吗？
 
-不支持。Markon 设计为"所有连接客户端平等"，适合小团队 wiki 或读书会场景，不适合需要权限控制的正式文档系统。
+不支持。Markon 设计为「所有连接客户端平等」，适合小团队 wiki 或读书会场景，不适合需要权限控制的正式文档系统。
 
 ### 能和 Obsidian / VS Code 共享标注数据吗？
 
@@ -149,7 +149,7 @@ markon shutdown
 
 ### 能打印 PDF 吗？
 
-打印对话框选择 "另存为 PDF" 即可。Markon 的 [章节打印](/features/print) 只导出选定章节，适合做 PDF 切片。
+打印对话框选择「另存为 PDF」即可。Markon 的 [章节打印](/features/print) 只导出选定章节，适合做 PDF 切片。
 
 ### 能导出成 HTML 吗？
 
@@ -161,7 +161,7 @@ wget --recursive --no-parent --convert-links http://127.0.0.1:6419/
 
 ### 为什么叫 Markon？
 
-**Mark-on** — "Turn your markdown **on**"。像 Markdown 的"开关"，启动它让文档活起来。
+**Mark-on** —「Turn your markdown **on**」。像 Markdown 的「开关」，启动它让文档活起来。
 
 ### 和 GitHub 渲染有何不同？
 
