@@ -551,3 +551,298 @@ fn inline_mention(ws: &WorkspaceEntry, rel_path: &str) -> Option<String> {
     let text = String::from_utf8(bytes).ok()?;
     Some(render_mention_block(rel_path, &text))
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::chat::storage::ChatStorage;
+    use crate::workspace::{WorkspaceConfig, WorkspaceFlags, WorkspaceRegistry};
+    use axum::body::{to_bytes, Body};
+    use axum::http::{Request, StatusCode};
+    use rusqlite::Connection;
+    use std::sync::Mutex;
+    use tempfile::TempDir;
+    use tera::Tera;
+    use tokio::sync::broadcast;
+    use tower::ServiceExt;
+
+    struct TestEnv {
+        _tmp: TempDir,
+        _db_tmp: tempfile::NamedTempFile,
+        state: AppState,
+        workspace_id: String,
+        storage: ChatStorage,
+    }
+
+    fn build_env(enable_chat: bool) -> TestEnv {
+        let tmp = TempDir::new().expect("workspace tmpdir");
+        let registry = Arc::new(WorkspaceRegistry::new("salt".into()));
+        let workspace_id = registry.add(WorkspaceConfig {
+            path: tmp.path().to_path_buf(),
+            flags: WorkspaceFlags {
+                enable_chat,
+                ..Default::default()
+            },
+            single_file: None,
+        });
+
+        let db_tmp = tempfile::NamedTempFile::new().expect("sqlite tmpfile");
+        let conn = Connection::open(db_tmp.path()).expect("open db");
+        ChatStorage::init(&conn).expect("init schema");
+        let db = Arc::new(Mutex::new(conn));
+        let storage = ChatStorage::new(db.clone());
+
+        let (shutdown_tx, _) = mpsc::channel(1);
+        let state = AppState {
+            theme: Arc::new("dark".into()),
+            tera: Arc::new(Tera::default()),
+            shared_annotation: false,
+            db: Some(db),
+            tx: None,
+            workspace_registry: registry,
+            management_token: Arc::new("token".into()),
+            i18n_json: Arc::new("{}".into()),
+            i18n_lang: Arc::new("zh".into()),
+            shortcuts_json: Arc::new("null".into()),
+            styles_css: Arc::new(String::new()),
+            default_chat_mode: Arc::new("in_page".into()),
+            shutdown_tx,
+            #[cfg(debug_assertions)]
+            dev_reload_tx: Arc::new(broadcast::channel::<()>(1).0),
+        };
+        TestEnv {
+            _tmp: tmp,
+            _db_tmp: db_tmp,
+            state,
+            workspace_id,
+            storage,
+        }
+    }
+
+    async fn body_json(resp: axum::response::Response) -> serde_json::Value {
+        let bytes = to_bytes(resp.into_body(), 1 << 20).await.unwrap();
+        serde_json::from_slice(&bytes).unwrap_or_else(|_| {
+            serde_json::Value::String(String::from_utf8_lossy(&bytes).into_owned())
+        })
+    }
+
+    fn json_body(value: serde_json::Value) -> Body {
+        Body::from(serde_json::to_vec(&value).unwrap())
+    }
+
+    #[tokio::test]
+    async fn list_threads_returns_403_when_chat_disabled() {
+        let env = build_env(false);
+        let app = router().with_state(env.state.clone());
+        let resp = app
+            .oneshot(
+                Request::builder()
+                    .uri(format!("/api/chat/{}/threads", env.workspace_id))
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), StatusCode::FORBIDDEN);
+    }
+
+    #[tokio::test]
+    async fn list_threads_returns_empty_then_populated() {
+        let env = build_env(true);
+        let app = router().with_state(env.state.clone());
+
+        let resp = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .uri(format!("/api/chat/{}/threads", env.workspace_id))
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), StatusCode::OK);
+        let v = body_json(resp).await;
+        assert_eq!(v.as_array().unwrap().len(), 0);
+
+        env.storage
+            .create_thread(&env.workspace_id, "t1")
+            .unwrap();
+        let resp = app
+            .oneshot(
+                Request::builder()
+                    .uri(format!("/api/chat/{}/threads", env.workspace_id))
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        let v = body_json(resp).await;
+        assert_eq!(v.as_array().unwrap().len(), 1);
+        assert_eq!(v[0]["title"], "t1");
+    }
+
+    #[tokio::test]
+    async fn create_thread_uses_default_title_when_blank() {
+        let env = build_env(true);
+        let app = router().with_state(env.state.clone());
+        let resp = app
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri(format!("/api/chat/{}/threads", env.workspace_id))
+                    .header("content-type", "application/json")
+                    .body(json_body(serde_json::json!({})))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), StatusCode::OK);
+        let v = body_json(resp).await;
+        assert_eq!(v["title"], "New chat");
+        assert_eq!(v["workspace_id"], env.workspace_id);
+    }
+
+    #[tokio::test]
+    async fn create_thread_trims_custom_title() {
+        let env = build_env(true);
+        let app = router().with_state(env.state.clone());
+        let resp = app
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri(format!("/api/chat/{}/threads", env.workspace_id))
+                    .header("content-type", "application/json")
+                    .body(json_body(serde_json::json!({"title": "  hello  "})))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        let v = body_json(resp).await;
+        assert_eq!(v["title"], "hello");
+    }
+
+    #[tokio::test]
+    async fn get_thread_returns_404_for_unknown() {
+        let env = build_env(true);
+        let app = router().with_state(env.state.clone());
+        let resp = app
+            .oneshot(
+                Request::builder()
+                    .uri(format!("/api/chat/{}/threads/nope", env.workspace_id))
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), StatusCode::NOT_FOUND);
+    }
+
+    #[tokio::test]
+    async fn get_thread_returns_messages_in_order() {
+        let env = build_env(true);
+        let thread = env.storage.create_thread(&env.workspace_id, "t").unwrap();
+        env.storage
+            .append_message(
+                &thread.id,
+                Role::User,
+                &[ContentBlock::Text { text: "hi".into() }],
+            )
+            .unwrap();
+        env.storage
+            .append_message(
+                &thread.id,
+                Role::Assistant,
+                &[ContentBlock::Text { text: "hello".into() }],
+            )
+            .unwrap();
+
+        let app = router().with_state(env.state.clone());
+        let resp = app
+            .oneshot(
+                Request::builder()
+                    .uri(format!(
+                        "/api/chat/{}/threads/{}",
+                        env.workspace_id, thread.id
+                    ))
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), StatusCode::OK);
+        let v = body_json(resp).await;
+        let msgs = v["messages"].as_array().unwrap();
+        assert_eq!(msgs.len(), 2);
+        assert_eq!(msgs[0]["role"], "user");
+        assert_eq!(msgs[1]["role"], "assistant");
+    }
+
+    #[tokio::test]
+    async fn delete_thread_removes_it() {
+        let env = build_env(true);
+        let thread = env.storage.create_thread(&env.workspace_id, "t").unwrap();
+        let app = router().with_state(env.state.clone());
+
+        let resp = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("DELETE")
+                    .uri(format!(
+                        "/api/chat/{}/threads/{}",
+                        env.workspace_id, thread.id
+                    ))
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), StatusCode::NO_CONTENT);
+
+        let resp = app
+            .oneshot(
+                Request::builder()
+                    .uri(format!(
+                        "/api/chat/{}/threads/{}",
+                        env.workspace_id, thread.id
+                    ))
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), StatusCode::NOT_FOUND);
+    }
+
+    #[tokio::test]
+    async fn list_files_returns_only_text_files() {
+        let env = build_env(true);
+        std::fs::write(env._tmp.path().join("a.md"), "hello").unwrap();
+        std::fs::write(env._tmp.path().join("b.txt"), "world").unwrap();
+        std::fs::write(env._tmp.path().join("img.png"), [0u8; 16]).unwrap();
+
+        let app = router().with_state(env.state.clone());
+        let resp = app
+            .oneshot(
+                Request::builder()
+                    .uri(format!("/api/chat/{}/files", env.workspace_id))
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), StatusCode::OK);
+        let v = body_json(resp).await;
+        let paths: Vec<String> = v
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|s| s["path"].as_str().unwrap().to_string())
+            .collect();
+        assert!(paths.contains(&"a.md".to_string()));
+        assert!(paths.contains(&"b.txt".to_string()));
+        assert!(!paths.contains(&"img.png".to_string()));
+    }
+
+}
