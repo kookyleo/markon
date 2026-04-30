@@ -168,12 +168,12 @@ onUnmounted(() => {
   transform: translate(-50%, -50%);
   width: 2px;
   height: 12px;
-  background: #ad7e00;
+  background: #744d00;
   border-radius: 1px;
   transition: background 0.15s;
 }
 .drag-handle:hover::before {
-  background: #5d4500;
+  background: #3d2d00;
 }
 .drag-handle:active {
   cursor: grabbing;
