@@ -242,11 +242,7 @@ async fn list_files_handler(
             Ok(r) => r,
             Err(_) => continue,
         };
-        let rel_str = rel
-            .components()
-            .map(|c| c.as_os_str().to_string_lossy().into_owned())
-            .collect::<Vec<_>>()
-            .join("/");
+        let rel_str = crate::chat::tools::path_to_forward_slash(rel);
 
         // Skip likely-binary files cheaply: by extension and by metadata size,
         // then a NUL-byte sniff for the survivors. The autocomplete must stay

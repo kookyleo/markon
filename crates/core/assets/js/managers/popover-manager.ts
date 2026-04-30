@@ -462,7 +462,7 @@ export class PopoverManager {
 
         // Create新的拖拽Instance
         this.#draggable = new DraggableManager(this.#element, {
-            storageKey: 'markon-popover-offset',
+            storageKey: CONFIG.STORAGE_KEYS.POPOVER_OFFSET,
             handle: '.popover-drag-handle',
             saveOffset: true,
             onDragEnd: (finalLeft, finalTop) => {
@@ -476,7 +476,7 @@ export class PopoverManager {
      */
     #getSavedOffset(): SavedOffset | null {
         try {
-            const saved = localStorage.getItem('markon-popover-offset');
+            const saved = localStorage.getItem(CONFIG.STORAGE_KEYS.POPOVER_OFFSET);
             if (saved) {
                 const parsed: unknown = JSON.parse(saved);
                 if (

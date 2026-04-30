@@ -4,7 +4,7 @@
  */
 
 import { CONFIG } from '../core/config';
-import { PlatformUtils, Logger } from '../core/utils';
+import { PlatformUtils, Logger, debounce } from '../core/utils';
 import { LayoutEngine } from '../services/layout';
 import { Text } from '../services/text';
 import type { AnnotationManager, Annotation } from './annotation-manager';
@@ -99,22 +99,14 @@ export class NoteManager {
     }
 
     setupResponsiveLayout(): void {
-        let resizeTimeout: ReturnType<typeof setTimeout> | undefined;
-
-        window.addEventListener('resize', () => {
-            if (resizeTimeout !== undefined) clearTimeout(resizeTimeout);
-            resizeTimeout = setTimeout(() => {
-                this.#layout();
-
-                // Close弹出Window（窄屏Mode）
-                if (PlatformUtils.isNarrowScreen()) {
-                    const existingPopup = document.querySelector('.note-popup');
-                    if (existingPopup) {
-                        existingPopup.remove();
-                    }
-                }
-            }, CONFIG.ANIMATION.RESIZE_DEBOUNCE);
-        });
+        const onResize = debounce(() => {
+            this.#layout();
+            // Close弹出Window（窄屏Mode）
+            if (PlatformUtils.isNarrowScreen()) {
+                document.querySelector('.note-popup')?.remove();
+            }
+        }, CONFIG.ANIMATION.RESIZE_DEBOUNCE);
+        window.addEventListener('resize', onResize);
 
         Logger.log('NoteManager', 'Responsive layout setup complete');
     }

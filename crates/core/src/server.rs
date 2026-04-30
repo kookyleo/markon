@@ -230,9 +230,7 @@ pub async fn start(config: ServerConfig) -> Result<(), String> {
                 .to_string()
         });
         let parent_dir = std::path::Path::new(&db_path).parent().unwrap();
-        if !parent_dir.exists() {
-            fs::create_dir_all(parent_dir).expect("Failed to create database directory");
-        }
+        fs::create_dir_all(parent_dir).expect("Failed to create database directory");
         let conn = Connection::open(&db_path).expect("Failed to open database");
         conn.execute(
             "CREATE TABLE IF NOT EXISTS annotations (

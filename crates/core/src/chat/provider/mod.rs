@@ -82,3 +82,25 @@ pub fn build(cfg: ChatRuntimeConfig) -> Arc<dyn Provider> {
         ProviderKind::OpenAI => Arc::new(openai::OpenAiProvider::new(cfg)),
     }
 }
+
+/// Find the offset of the first SSE event terminator (`\n\n` or `\r\n\r\n`)
+/// in the buffer. Returns `(offset, terminator_len)` so callers can split off
+/// `offset + terminator_len` bytes.
+pub(super) fn find_event_end(buf: &[u8]) -> Option<(usize, usize)> {
+    let mut i = 0;
+    while i + 1 < buf.len() {
+        if buf[i] == b'\n' && buf[i + 1] == b'\n' {
+            return Some((i, 2));
+        }
+        if i + 3 < buf.len()
+            && buf[i] == b'\r'
+            && buf[i + 1] == b'\n'
+            && buf[i + 2] == b'\r'
+            && buf[i + 3] == b'\n'
+        {
+            return Some((i, 4));
+        }
+        i += 1;
+    }
+    None
+}

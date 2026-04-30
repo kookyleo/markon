@@ -10,14 +10,9 @@ let selectedText = '';
 
 // Persisted user-applied offset, in CSS pixels relative to the auto-placed
 // position (selection rect's right edge). Survives reloads and applies to
-// every subsequent popover until the user drags it again.
-const offset = (() => {
-  try {
-    const v = JSON.parse(localStorage.getItem(STORAGE_KEY) || 'null');
-    if (v && typeof v.dx === 'number' && typeof v.dy === 'number') return { dx: v.dx, dy: v.dy };
-  } catch {}
-  return { dx: 0, dy: 0 };
-})();
+// every subsequent popover until the user drags it again. Read in onMounted
+// — VitePress SSR has no localStorage.
+const offset = { dx: 0, dy: 0 };
 
 let dragging = false;
 let dragBaseX = 0, dragBaseY = 0;
@@ -103,6 +98,13 @@ function onHandleUp() {
 }
 
 onMounted(() => {
+  try {
+    const v = JSON.parse(localStorage.getItem(STORAGE_KEY) || 'null');
+    if (v && typeof v.dx === 'number' && typeof v.dy === 'number') {
+      offset.dx = v.dx;
+      offset.dy = v.dy;
+    }
+  } catch {}
   document.addEventListener('mouseup', onMouseUp);
   document.addEventListener('mousedown', onMouseDown);
 });

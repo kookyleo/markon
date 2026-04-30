@@ -93,12 +93,7 @@ impl Tool for GlobTool {
                 continue;
             }
             // Forward-slash normalize for stable cross-OS citations.
-            let rel_str = rel
-                .components()
-                .map(|c| c.as_os_str().to_string_lossy().into_owned())
-                .collect::<Vec<_>>()
-                .join("/");
-            matches.push(rel_str);
+            matches.push(super::path_to_forward_slash(rel));
         }
 
         matches.sort();

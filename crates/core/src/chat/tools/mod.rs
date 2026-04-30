@@ -151,6 +151,15 @@ pub fn looks_binary(bytes: &[u8]) -> bool {
     bytes[..scan].contains(&0)
 }
 
+/// Render a path with forward slashes regardless of platform — used for
+/// stable cross-OS citations and tool output.
+pub fn path_to_forward_slash(rel: &Path) -> String {
+    rel.components()
+        .map(|c| c.as_os_str().to_string_lossy().into_owned())
+        .collect::<Vec<_>>()
+        .join("/")
+}
+
 /// Default ignore-rule walker that respects `.gitignore`, `.ignore`, and
 /// hidden-file conventions — the same defaults ripgrep uses.
 pub fn default_walker(root: &Path) -> ignore::WalkBuilder {

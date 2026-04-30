@@ -157,6 +157,26 @@ fn update_tray_language(app: &tauri::AppHandle, language: &str) {
 // to settings.json happens via the persist hook wired at server startup,
 // so CLI (HTTP API) and GUI (Tauri API) paths share a single flow.
 
+// Tauri commands take flat scalar args (no struct), so add/update repeat
+// the six bool params; this helper packs them once.
+fn flags_from_params(
+    enable_search: bool,
+    enable_viewed: bool,
+    enable_edit: bool,
+    enable_live: bool,
+    enable_chat: bool,
+    shared_annotation: bool,
+) -> WorkspaceFlags {
+    WorkspaceFlags {
+        enable_search,
+        enable_viewed,
+        enable_edit,
+        enable_live,
+        enable_chat,
+        shared_annotation,
+    }
+}
+
 #[tauri::command]
 pub fn add_workspace(
     path: String,
@@ -169,14 +189,14 @@ pub fn add_workspace(
     state: State<AppState>,
 ) -> Result<serde_json::Value, String> {
     let canonical = expand_and_canonicalize(&path).map_err(|e| format!("Invalid path: {e}"))?;
-    let flags = WorkspaceFlags {
+    let flags = flags_from_params(
         enable_search,
         enable_viewed,
         enable_edit,
         enable_live,
         enable_chat,
         shared_annotation,
-    };
+    );
     let server = state.server.lock().unwrap();
     let id = server.registry.add(WorkspaceConfig {
         path: canonical,
@@ -198,14 +218,14 @@ pub fn update_workspace(
     shared_annotation: bool,
     state: State<AppState>,
 ) -> Result<(), String> {
-    let flags = WorkspaceFlags {
+    let flags = flags_from_params(
         enable_search,
         enable_viewed,
         enable_edit,
         enable_live,
         enable_chat,
         shared_annotation,
-    };
+    );
     let server = state.server.lock().unwrap();
     if !server.registry.update_flags(&id, flags) {
         return Err(format!("Workspace {id} not found"));

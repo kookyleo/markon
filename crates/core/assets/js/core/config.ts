@@ -127,6 +127,7 @@ export const CONFIG = {
         CLIENT_ID: 'markon-client-id',
         CHAT_POS: 'markon-chat-pos',
         CHAT_SIZE: 'markon-chat-size',
+        POPOVER_OFFSET: 'markon-popover-offset',
     },
 
     // DOM Selectors
@@ -175,6 +176,7 @@ export const CONFIG = {
         ENABLE_LIVE: 'enable-live',
         ENABLE_CHAT: 'enable-chat',
         DEFAULT_CHAT_MODE: 'default-chat-mode',
+        CHAT_ONLY: 'chat-only',
     },
 
     // WebSocket Message types

@@ -144,10 +144,7 @@ impl Tool for ReadFileTool {
 /// containment).
 fn rel_path_string(abs: &std::path::Path, root: &std::path::Path) -> String {
     let rel = abs.strip_prefix(root).unwrap_or(abs);
-    rel.components()
-        .map(|c| c.as_os_str().to_string_lossy().into_owned())
-        .collect::<Vec<_>>()
-        .join("/")
+    super::path_to_forward_slash(rel)
 }
 
 /// Cap output at `MAX_TOOL_OUTPUT_BYTES`, truncating at a line boundary and

@@ -15,7 +15,6 @@ use globset::{Glob, GlobSet, GlobSetBuilder};
 use grep_regex::RegexMatcherBuilder;
 use grep_searcher::{Sink, SinkMatch, SearcherBuilder};
 use serde::Deserialize;
-use std::path::Path;
 
 const DEFAULT_MAX_MATCHES: usize = 100;
 const HARD_MAX_MATCHES: usize = 1000;
@@ -188,12 +187,7 @@ impl Tool for GrepTool {
     }
 }
 
-fn rel_to_forward(rel: &Path) -> String {
-    rel.components()
-        .map(|c| c.as_os_str().to_string_lossy().into_owned())
-        .collect::<Vec<_>>()
-        .join("/")
-}
+use super::path_to_forward_slash as rel_to_forward;
 
 /// A `Sink` that stashes formatted `rel:line:text` strings into a shared
 /// vector. Stops searching the current file once we've collected enough or

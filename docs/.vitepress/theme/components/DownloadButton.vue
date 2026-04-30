@@ -80,10 +80,10 @@ const platformLabel = computed(() => {
   return a ? `${o} · ${a}` : o;
 });
 
-// Canonical platform matrix. mode='os' / mode='all' iterate this so the
-// install-page reference always lists every supported target, even if the
-// current release happens to be missing one (older releases predate the
-// expanded build matrix). Missing entries render muted instead of vanishing.
+// Canonical platform matrix. mode='os' iterates this so the install page
+// always lists every supported target, even if the current release is missing
+// one (older releases predate the expanded build matrix). Missing entries
+// render muted instead of vanishing.
 const MATRIX = {
   macos: [
     { variant: 'Apple Silicon', match: a => /\.dmg$/.test(a) && /aarch64/.test(a) },
@@ -202,19 +202,6 @@ const showAll = ref(false);
         <span class="markon-dl-size">{{ formatBytes(a.size) }}</span>
       </li>
     </ul>
-  </div>
-
-  <div v-else class="markon-dl-list">
-    <div v-for="g in grouped" :key="g.label" class="markon-dl-group">
-      <div class="markon-dl-group-label">{{ g.label }}</div>
-      <ul>
-        <li v-for="a in g.items" :key="a.name">
-          <a :href="a.url">{{ a.variant }}</a>
-          <span class="markon-dl-name">{{ a.name }}</span>
-          <span class="markon-dl-size">{{ formatBytes(a.size) }}</span>
-        </li>
-      </ul>
-    </div>
   </div>
 </template>
 

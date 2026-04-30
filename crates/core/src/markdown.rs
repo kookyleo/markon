@@ -356,7 +356,7 @@ impl MarkdownRenderer {
                 } else {
                     format!("{}-{}", base_id, count)
                 };
-                *id_counts.get_mut(&base_id).unwrap() += 1;
+                *count += 1;
                 let text = HTML_TAG_REGEX.replace_all(content, "").to_string();
 
                 toc.push(TocItem {

@@ -352,20 +352,18 @@ fn compose_svg(
 /// Generate an Apple-style squircle (superellipse n≈4.5) as an SVG path.
 /// `cx`,`cy` = center; `rx`,`ry` = half-width/height.
 fn squircle_path(cx: f32, cy: f32, rx: f32, ry: f32) -> String {
+    use std::fmt::Write;
     let n = 4.5_f32; // exponent — Apple icons use ~4–5
     let steps = 64;
-    let mut d = String::new();
+    let mut d = String::with_capacity(steps * 16);
     for i in 0..steps {
         let t = std::f32::consts::TAU * i as f32 / steps as f32;
         let cos_t = t.cos();
         let sin_t = t.sin();
         let x = cx + cos_t.abs().powf(2.0 / n) * cos_t.signum() * rx;
         let y = cy + sin_t.abs().powf(2.0 / n) * sin_t.signum() * ry;
-        if i == 0 {
-            d.push_str(&format!("M{:.1},{:.1}", x, y));
-        } else {
-            d.push_str(&format!("L{:.1},{:.1}", x, y));
-        }
+        let cmd = if i == 0 { 'M' } else { 'L' };
+        let _ = write!(d, "{cmd}{x:.1},{y:.1}");
     }
     d.push('Z');
     d
@@ -405,17 +403,23 @@ fn render_output(svg: &str, out: &Output) -> Result<Vec<u8>> {
 fn rasterize(svg: &str, size: u32) -> Result<Vec<u8>> {
     let opts = usvg::Options::default();
     let tree = usvg::Tree::from_str(svg, &opts).context("parse composed svg")?;
+    rasterize_tree(&tree, size)
+}
+
+fn rasterize_tree(tree: &usvg::Tree, size: u32) -> Result<Vec<u8>> {
     let mut pixmap = tiny_skia::Pixmap::new(size, size).context("alloc pixmap")?;
     let scale = size as f32 / tree.size().width();
     let transform = tiny_skia::Transform::from_scale(scale, scale);
-    resvg::render(&tree, transform, &mut pixmap.as_mut());
+    resvg::render(tree, transform, &mut pixmap.as_mut());
     pixmap.encode_png().context("encode png")
 }
 
 fn pack_ico(svg: &str, sizes: &[u32]) -> Result<Vec<u8>> {
+    let opts = usvg::Options::default();
+    let tree = usvg::Tree::from_str(svg, &opts).context("parse composed svg")?;
     let mut dir = ico::IconDir::new(ico::ResourceType::Icon);
     for &size in sizes {
-        let png = rasterize(svg, size)?;
+        let png = rasterize_tree(&tree, size)?;
         let img = ico::IconImage::read_png(&png[..]).context("decode png for ico")?;
         // Windows Shell (taskbar, Explorer) reliably renders BMP entries at
         // every size but has historical bugs rendering PNG-encoded entries
@@ -435,9 +439,11 @@ fn pack_ico(svg: &str, sizes: &[u32]) -> Result<Vec<u8>> {
 }
 
 fn pack_icns(svg: &str, sizes: &[u32]) -> Result<Vec<u8>> {
+    let opts = usvg::Options::default();
+    let tree = usvg::Tree::from_str(svg, &opts).context("parse composed svg")?;
     let mut family = icns::IconFamily::new();
     for &size in sizes {
-        let png = rasterize(svg, size)?;
+        let png = rasterize_tree(&tree, size)?;
         let img = icns::Image::read_png(&png[..]).context("decode png for icns")?;
         family
             .add_icon(&img)

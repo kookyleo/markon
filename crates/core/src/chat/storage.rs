@@ -105,6 +105,12 @@ impl ChatStorage {
         Self { db }
     }
 
+    fn conn(&self) -> Result<std::sync::MutexGuard<'_, Connection>, StorageError> {
+        self.db
+            .lock()
+            .map_err(|e| StorageError::Sqlite(format!("mutex poisoned: {e}")))
+    }
+
     /// Idempotent table creation — invoked once at server startup if either
     /// `shared_annotation` or any workspace's `enable_chat` is set.
     pub fn init(conn: &Connection) -> Result<(), StorageError> {
@@ -141,10 +147,7 @@ impl ChatStorage {
     }
 
     pub fn list_threads(&self, workspace_id: &str) -> Result<Vec<Thread>, StorageError> {
-        let conn = self
-            .db
-            .lock()
-            .map_err(|e| StorageError::Sqlite(format!("mutex poisoned: {e}")))?;
+        let conn = self.conn()?;
         let mut stmt = conn.prepare(
             "SELECT id, workspace_id, title, created_at, updated_at
                FROM chat_threads
@@ -174,10 +177,7 @@ impl ChatStorage {
     ) -> Result<Thread, StorageError> {
         let id = uuid::Uuid::new_v4().to_string();
         let now = now_ms();
-        let conn = self
-            .db
-            .lock()
-            .map_err(|e| StorageError::Sqlite(format!("mutex poisoned: {e}")))?;
+        let conn = self.conn()?;
         conn.execute(
             "INSERT INTO chat_threads (id, workspace_id, title, created_at, updated_at)
                   VALUES (?1, ?2, ?3, ?4, ?4)",
@@ -193,10 +193,7 @@ impl ChatStorage {
     }
 
     pub fn get_thread(&self, thread_id: &str) -> Result<Thread, StorageError> {
-        let conn = self
-            .db
-            .lock()
-            .map_err(|e| StorageError::Sqlite(format!("mutex poisoned: {e}")))?;
+        let conn = self.conn()?;
         let mut stmt = conn.prepare(
             "SELECT id, workspace_id, title, created_at, updated_at
                FROM chat_threads
@@ -217,10 +214,7 @@ impl ChatStorage {
 
     pub fn rename_thread(&self, thread_id: &str, title: &str) -> Result<(), StorageError> {
         let now = now_ms();
-        let conn = self
-            .db
-            .lock()
-            .map_err(|e| StorageError::Sqlite(format!("mutex poisoned: {e}")))?;
+        let conn = self.conn()?;
         let n = conn.execute(
             "UPDATE chat_threads SET title = ?1, updated_at = ?2 WHERE id = ?3",
             params![title, now, thread_id],
@@ -232,10 +226,7 @@ impl ChatStorage {
     }
 
     pub fn delete_thread(&self, thread_id: &str) -> Result<(), StorageError> {
-        let conn = self
-            .db
-            .lock()
-            .map_err(|e| StorageError::Sqlite(format!("mutex poisoned: {e}")))?;
+        let conn = self.conn()?;
         // Ensure FK cascade is on for this connection — `init` set it, but
         // `PRAGMA foreign_keys` is per-connection and cheap to re-assert.
         conn.execute_batch("PRAGMA foreign_keys = ON;")?;
@@ -250,10 +241,7 @@ impl ChatStorage {
     }
 
     pub fn list_messages(&self, thread_id: &str) -> Result<Vec<StoredMessage>, StorageError> {
-        let conn = self
-            .db
-            .lock()
-            .map_err(|e| StorageError::Sqlite(format!("mutex poisoned: {e}")))?;
+        let conn = self.conn()?;
         let mut stmt = conn.prepare_cached(
             "SELECT thread_id, seq, role, content_json, created_at
                FROM chat_messages
@@ -294,10 +282,7 @@ impl ChatStorage {
         let now = now_ms();
         let role_s = role_to_str(role);
 
-        let mut conn = self
-            .db
-            .lock()
-            .map_err(|e| StorageError::Sqlite(format!("mutex poisoned: {e}")))?;
+        let mut conn = self.conn()?;
 
         // IMMEDIATE so SELECT MAX(seq)+INSERT is atomic against concurrent
         // appends in other transactions on the same DB.
@@ -350,10 +335,7 @@ impl ChatStorage {
         &self,
         workspace_id: &str,
     ) -> Result<Vec<ThreadSummary>, StorageError> {
-        let conn = self
-            .db
-            .lock()
-            .map_err(|e| StorageError::Sqlite(format!("mutex poisoned: {e}")))?;
+        let conn = self.conn()?;
         let mut stmt = conn.prepare(
             "SELECT t.id, t.title, t.created_at, t.updated_at,
                     COALESCE(COUNT(m.seq), 0) AS message_count

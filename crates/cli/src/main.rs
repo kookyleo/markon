@@ -62,7 +62,10 @@ struct Cli {
     host: Option<String>,
 
     /// Theme selection (light, dark, auto).
-    #[arg(short = 't', long, default_value = "auto")]
+    #[arg(
+        short = 't', long, default_value = "auto",
+        value_parser = clap::builder::PossibleValuesParser::new(["light", "dark", "auto"])
+    )]
     theme: String,
 
     /// Public entry URL prefix (proxy/domain). Used for QR code and "accessible at" logs.
@@ -219,29 +222,7 @@ fn display_workspace_path(path: &Path) -> String {
     path.to_string_lossy().to_string()
 }
 
-fn format_workspace_flags(flags: WorkspaceFlags, colors: CliColors) -> String {
-    [
-        (flags.enable_search, "Search"),
-        (flags.enable_viewed, "Viewed tracking"),
-        (flags.enable_edit, "Edit"),
-        (flags.enable_live, "Live"),
-        (flags.enable_chat, "Chat"),
-        (flags.shared_annotation, "Shared notes"),
-    ]
-    .into_iter()
-    .map(|(enabled, label)| {
-        let plain = format!("[{}] {label}", if enabled { "x" } else { " " });
-        if enabled {
-            colors.enabled_flag(&plain)
-        } else {
-            colors.disabled_flag(&plain)
-        }
-    })
-    .collect::<Vec<_>>()
-    .join("  ")
-}
-
-fn format_workspace_list_flags(
+fn format_workspace_flags(
     flags: WorkspaceFlags,
     search_ready: bool,
     colors: CliColors,
@@ -368,7 +349,7 @@ fn print_workspace_access_summary(summary: &WorkspaceAccessSummary) {
         colors.title("Added workspace:"),
         colors.path(&summary.workspace_path)
     );
-    println!("{}", format_workspace_flags(summary.flags, colors));
+    println!("{}", format_workspace_flags(summary.flags, false, colors));
     println!();
     println!("{}", colors.local_url(&summary.local_url));
     if let Some(public_url) = summary.public_url.as_ref() {
@@ -419,7 +400,7 @@ fn list_workspaces(
                 );
                 println!(
                     "   {}",
-                    format_workspace_list_flags(ws.flags, ws.search_ready, colors)
+                    format_workspace_flags(ws.flags, ws.search_ready, colors)
                 );
                 let rendered_url = if use_entry_url {
                     colors.public_url(&url)
@@ -631,15 +612,8 @@ async fn main() {
         return;
     }
 
-    let theme = match cli.theme.as_str() {
-        "light" | "dark" | "auto" => cli.theme.clone(),
-        _ => {
-            eprintln!("Invalid theme '{}'. Use: light, dark, or auto", cli.theme);
-            return;
-        }
-    };
+    let theme = cli.theme.clone();
 
-    // Resolve the workspace directory from the file/dir argument.
     let (ws_root, initial_path) = if let Some(ref file_str) = cli.file {
         let path = Path::new(file_str);
         let canonical = match dunce::canonicalize(path) {
@@ -837,7 +811,7 @@ mod tests {
 
         assert_eq!(summary.workspace_path, "/tmp/Downloads");
         assert_eq!(
-            format_workspace_flags(summary.flags, CliColors::plain()),
+            format_workspace_flags(summary.flags, false, CliColors::plain()),
             "[x] Search  [x] Viewed tracking  [x] Edit  [x] Live  [ ] Chat  [ ] Shared notes"
         );
         assert_eq!(summary.local_url, "http://127.0.0.1:5050/30c52d3e/");
@@ -871,7 +845,7 @@ mod tests {
         );
 
         assert_eq!(
-            format_workspace_flags(summary.flags, CliColors::plain()),
+            format_workspace_flags(summary.flags, false, CliColors::plain()),
             "[ ] Search  [x] Viewed tracking  [ ] Edit  [ ] Live  [ ] Chat  [x] Shared notes"
         );
         assert_eq!(
@@ -897,7 +871,7 @@ mod tests {
         };
 
         assert_eq!(
-            format_workspace_flags(flags, CliColors::plain()),
+            format_workspace_flags(flags, false, CliColors::plain()),
             "[x] Search  [ ] Viewed tracking  [x] Edit  [ ] Live  [ ] Chat  [ ] Shared notes"
         );
     }
@@ -914,7 +888,7 @@ mod tests {
         };
 
         assert_eq!(
-            format_workspace_list_flags(flags, true, CliColors::plain()),
+            format_workspace_flags(flags, true, CliColors::plain()),
             "[x] Search (ready)  [x] Viewed tracking  [ ] Edit  [ ] Live  [ ] Chat  [ ] Shared notes"
         );
     }

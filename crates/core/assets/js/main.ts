@@ -137,22 +137,19 @@ export class MarkonApp {
         // 5. Setup event listeners
         this.#setupEventListeners();
 
-        // 6. Initialize search
-        this.#initSearch();
-
-        // 7. Register keyboard shortcuts
+        // 6. Register keyboard shortcuts
         this.#registerShortcuts();
 
-        // 8. Fix TOC HTML entities
+        // 7. Fix TOC HTML entities
         this.#fixTocHtmlEntities();
 
-        // 9. Update clear button text
+        // 8. Update clear button text
         this.#updateClearButtonText();
 
-        // 10. Start collaboration
+        // 9. Start collaboration
         this.#collaboration?.init();
 
-        // 11. Start chat (gated internally on Meta.flag('enable-chat'))
+        // 10. Start chat (gated internally on Meta.flag('enable-chat'))
         if (Meta.flag(CONFIG.META_TAGS.ENABLE_CHAT)) {
             const chat = new ChatManager(this);
             chat.init();
@@ -1319,7 +1316,7 @@ document.addEventListener('DOMContentLoaded', () => {
     // which is our signal to skip MarkonApp entirely (no markdown body, no
     // annotations, no popovers) and boot just the chat panel. The popout-mode
     // CSS in chat.css then grows the chat container to fill the viewport.
-    if (Meta.flag('chat-only')) {
+    if (Meta.flag(CONFIG.META_TAGS.CHAT_ONLY)) {
         const chat = new ChatManager(null);
         chat.initPopout();
         window.chatManager = chat;
