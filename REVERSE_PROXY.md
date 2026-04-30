@@ -2,6 +2,43 @@
 
 When using `--shared-annotation` mode, ensure your reverse proxy correctly supports WebSocket connections.
 
+## Authentication
+
+**Markon has no built-in authentication.** Anyone who can reach the URL — directly or through the proxy — can read every file in the workspace. With `--shared-annotation` or `--edit` enabled, they can also write.
+
+Before exposing Markon through a reverse proxy, configure authentication at the gateway level. Recommended approaches:
+
+- **HTTP Basic Auth (nginx)** — simplest option, suitable for personal or team use:
+
+  ```nginx
+  server {
+      listen 443 ssl http2;
+      server_name md.example.com;
+      # ... SSL certs ...
+
+      location / {
+          auth_basic           "Markon";
+          auth_basic_user_file /etc/nginx/.htpasswd;   # htpasswd -c /etc/nginx/.htpasswd <user>
+
+          proxy_pass http://127.0.0.1:6419;
+          proxy_http_version 1.1;
+          proxy_set_header Upgrade $http_upgrade;
+          proxy_set_header Connection "upgrade";
+          proxy_set_header Host $host;
+          proxy_set_header X-Real-IP $remote_addr;
+          proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+          proxy_set_header X-Forwarded-Proto $scheme;
+          proxy_read_timeout 86400;
+      }
+  }
+  ```
+
+- **OAuth2 / SSO** — use [oauth2-proxy](https://github.com/oauth2-proxy/oauth2-proxy) in front of the Markon upstream.
+- **Zero-trust tunnels** — Cloudflare Access or Tailscale Funnel enforce identity before traffic ever reaches the server.
+- **Network-level isolation** — Tailscale, WireGuard, or LAN-only binding (`--host 127.0.0.1`) are sufficient for single-user or fully private deployments.
+
+> **Read-only public sharing** is not currently supported at the application layer. If you want a public read-only view, you must enforce that restriction in the proxy (e.g., block `PUT`/`POST`/`DELETE` methods, or disable `--shared-annotation` and `--edit`).
+
 ## System Path Overview
 
 Markon uses `/_/` as a unified prefix for all system resources to avoid conflicts with user file paths:

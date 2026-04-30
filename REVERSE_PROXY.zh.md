@@ -2,6 +2,43 @@
 
 当使用 `--shared-annotation` 模式时，需要确保反向代理正确支持 WebSocket 连接。
 
+## 访问控制
+
+**Markon 本身不做任何身份认证。** 凡是能访问到该 URL 的人，都可以读取工作区里的所有文件；开启 `--shared-annotation` 或 `--edit` 后，他们同样可以写入。
+
+通过反向代理对外暴露时，**必须在网关层加上认证**，否则工作区对公网完全开放。常见方案：
+
+- **HTTP Basic Auth（nginx）** — 最简单，个人或小团队首选：
+
+  ```nginx
+  server {
+      listen 443 ssl http2;
+      server_name md.example.com;
+      # ... SSL 证书 ...
+
+      location / {
+          auth_basic           "Markon";
+          auth_basic_user_file /etc/nginx/.htpasswd;   # htpasswd -c /etc/nginx/.htpasswd <用户名>
+
+          proxy_pass http://127.0.0.1:6419;
+          proxy_http_version 1.1;
+          proxy_set_header Upgrade $http_upgrade;
+          proxy_set_header Connection "upgrade";
+          proxy_set_header Host $host;
+          proxy_set_header X-Real-IP $remote_addr;
+          proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+          proxy_set_header X-Forwarded-Proto $scheme;
+          proxy_read_timeout 86400;
+      }
+  }
+  ```
+
+- **OAuth2 / SSO** — 在 Markon 上游挂一个 [oauth2-proxy](https://github.com/oauth2-proxy/oauth2-proxy)。
+- **零信任隧道** — Cloudflare Access 或 Tailscale Funnel，流量到达服务器之前已完成身份验证。
+- **网络层隔离** — Tailscale、WireGuard，或直接只绑本地（`--host 127.0.0.1`），适合单人或完全私有部署。
+
+> 目前 Markon 应用层不支持「只读公开共享」。若需对外提供只读视图，须在代理层限制写入方法（禁止 `PUT`/`POST`/`DELETE`），或关闭 `--shared-annotation` 与 `--edit`。
+
 ## 系统路径说明
 
 Markon 使用 `/_/` 作为系统资源的统一前缀，避免与用户文件路径冲突：

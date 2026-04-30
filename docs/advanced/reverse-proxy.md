@@ -2,6 +2,27 @@
 
 本文介绍如何通过 Nginx / Apache / Caddy 把 Markon 暴露到公网域名下。
 
+## 访问控制
+
+Markon 不内置任何身份认证。凡是能访问到该地址的人，均可读取工作区的全部内容；启用「共享标注」或「编辑」模式后，也具有写入能力。
+
+**把 Markon 挂到公网前，请先在网关层配好认证。** 常见方案：
+
+- **Basic Auth（nginx）** — 在 `proxy_pass` 之前加两行：
+
+  ```nginx
+  auth_basic           "Markon";
+  auth_basic_user_file /etc/nginx/.htpasswd;
+  ```
+
+  完整示例见下方 Nginx 配置节。
+
+- **OAuth2 代理** — 在 Markon 上游挂 [oauth2-proxy](https://github.com/oauth2-proxy/oauth2-proxy)，对接 GitHub / Google 等 IdP。
+- **零信任隧道** — Cloudflare Access、Tailscale Funnel；流量在到达服务器之前已完成身份核验。
+- **网络层隔离** — Tailscale、WireGuard，或绑定 `--host 127.0.0.1` 仅本机访问，适合单人私有部署。
+
+如需对外提供只读访问，目前须在代理层屏蔽写入方法（`PUT`/`POST`/`DELETE`），应用层暂无原生只读公开模式。
+
 ## 为什么需要反向代理
 
 - **绑定域名** — 用 `docs.example.com` 替代 `http://192.168.1.5:6419`

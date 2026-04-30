@@ -129,7 +129,7 @@ markon docs/ --enable-chat
 ## 隐私与成本
 
 - **API 调用**：工作区内被引用的文件、被选中的文字、AI 工具读取的内容，都会作为 prompt 发到 Provider。请只对你愿意上传的目录开启 chat。
-- **Key 存储**：明文存在 `~/.markon/settings.json`，与你的其它本地配置同等敏感度。
+- **Key 存储**：API Key 以**明文**形式存储在 `~/.markon/settings.json`。任何能读到该文件的进程都能读取你的 Key —— 与本地 git credentials、ssh key 等同敏感度，但 Markon 本身不做额外加密。请确保该目录的文件权限合理（macOS / Linux 默认 0600 即可），并避免把 `settings.json` 同步到版本控制或公共云盘。
 - **prompt cache**（仅 Anthropic）：系统提示词与工作区结构会进入 5 分钟 TTL 缓存，**实际计费量在第二轮起会显著下降**。
 
 ## 自定义 Persona
