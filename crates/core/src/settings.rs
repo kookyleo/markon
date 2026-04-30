@@ -13,6 +13,9 @@ fn default_stable() -> String {
 fn default_auto() -> String {
     "auto".to_string()
 }
+fn default_in_page() -> String {
+    "in_page".to_string()
+}
 
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
@@ -109,6 +112,15 @@ pub struct AppSettings {
     pub default_edit: bool,
     #[serde(default)]
     pub default_chat: bool,
+    /// Default chat surface form: "in_page" (floating panel embedded in the
+    /// markdown view) or "popout" (a standalone window opened via window.open).
+    /// Drives:
+    ///   • sphere click → expand panel vs spawn popout
+    ///   • selection 聊聊 button → quote into in-page chat vs popout
+    ///   • TOGGLE_CHAT shortcut
+    /// In every case Shift inverts the choice for that single click/press.
+    #[serde(default = "default_in_page")]
+    pub default_chat_mode: String,
     #[serde(default)]
     pub default_shared_annotation: bool,
     #[serde(default)]
@@ -146,6 +158,7 @@ impl Default for AppSettings {
             default_live: false,
             default_edit: false,
             default_chat: false,
+            default_chat_mode: default_in_page(),
             default_shared_annotation: false,
             chat: ChatSettings::default(),
             web_styles: std::collections::HashMap::new(),
@@ -184,6 +197,7 @@ impl AppSettings {
     /// - drop duplicate workspaces (keep first occurrence, preserving its flags)
     /// - coerce empty language/theme strings to "auto" so existing files written
     ///   before the auto-default fix don't show blank dropdowns
+    /// - canonicalize default_chat_mode so downstream code can compare directly
     fn normalize(&mut self) {
         use std::collections::HashSet;
         let mut seen = HashSet::new();
@@ -196,6 +210,9 @@ impl AppSettings {
             if field.is_empty() {
                 *field = "auto".to_string();
             }
+        }
+        if self.default_chat_mode != "popout" {
+            self.default_chat_mode = "in_page".to_string();
         }
     }
     pub fn save(&self) -> Result<(), String> {
@@ -240,6 +257,7 @@ impl AppSettings {
             },
             styles_css: self.render_styles_css(),
             shortcuts_json: self.render_shortcuts_json(),
+            default_chat_mode: self.default_chat_mode.clone(),
         }
     }
     pub fn effective_web_language(&self) -> Option<String> {

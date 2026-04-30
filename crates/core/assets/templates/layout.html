@@ -28,6 +28,7 @@
     {% if management_token %}<meta name="mgmt-token" content="{{ management_token }}">{% endif %}
     <meta name="enable-live" content="{{ enable_live }}">
     <meta name="enable-chat" content="{{ enable_chat }}">
+    <meta name="default-chat-mode" content="{{ default_chat_mode }}">
     <title>{{ title }}</title>
     <link rel="icon" type="image/svg+xml" href="/_/favicon.svg">
     <link rel="alternate icon" href="/_/favicon.ico">
@@ -332,7 +333,6 @@
         .toc-item a:hover {
             color: #58a6ff;
         }
-        }
         {% elif theme == "light" %}
         .toc-title {
             color: #1f2328;
@@ -342,7 +342,6 @@
         }
         .toc-item a:hover {
             color: #0969da;
-        }
         }
         {% else %}
         @media (prefers-color-scheme: dark) {
@@ -355,7 +354,6 @@
             .toc-item a:hover {
                 color: #58a6ff;
             }
-            }
         }
         @media (prefers-color-scheme: light) {
             .toc-title {
@@ -367,15 +365,16 @@
             .toc-item a:hover {
                 color: #0969da;
             }
-            }
         }
         {% endif %}
 
-        /* TOC Icon & Floating Menu (Narrow Screens) */
+        /* TOC Icon & Floating Menu (Narrow Screens). Borders match the Live
+           sphere/panel surface treatment — no drop shadow, just a 1px hairline
+           that thickens slightly under the dark-theme palette. */
         {% if theme == "dark" %}
         #toc-icon {
             background-color: #2d333b;
-            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.5);
+            border-color: #484f58;
         }
         #toc-icon .toc-bar {
             background-color: #adbac7;
@@ -383,12 +382,11 @@
         #toc-icon .toc-close {
             color: #adbac7;
         }
-        /* Floating TOC menu on narrow screens — same surface + shadow as icon */
+        /* Floating TOC menu on narrow screens — same surface + border as icon */
         @media (max-width: 1400px) {
             .toc {
                 background-color: #2d333b;
-                border: none;
-                box-shadow: 0 2px 10px rgba(0, 0, 0, 0.5);
+                border-color: #484f58;
             }
         }
         /* TOC background on wide screens (matches body, ensures overlap is clean) */
@@ -398,15 +396,14 @@
             }
             #toc-container.toc-nav-active .toc {
                 background-color: #2d333b;
-                border: none;
-                box-shadow: 0 2px 10px rgba(0, 0, 0, 0.5);
+                border: 2.5px solid #484f58;
                 border-radius: 20px;
             }
         }
         {% elif theme == "light" %}
         #toc-icon {
             background-color: #f6f8fa;
-            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.2);
+            border-color: #d0d7de;
         }
         #toc-icon .toc-bar {
             background-color: #1f2328;
@@ -414,12 +411,11 @@
         #toc-icon .toc-close {
             color: #1f2328;
         }
-        /* Floating TOC menu on narrow screens — same surface + shadow as icon */
+        /* Floating TOC menu on narrow screens — same surface + border as icon */
         @media (max-width: 1400px) {
             .toc {
                 background-color: #f6f8fa;
-                border: none;
-                box-shadow: 0 2px 10px rgba(0, 0, 0, 0.2);
+                border-color: #d0d7de;
             }
         }
         /* TOC background on wide screens (matches body, ensures overlap is clean) */
@@ -429,8 +425,7 @@
             }
             #toc-container.toc-nav-active .toc {
                 background-color: #f6f8fa;
-                border: none;
-                box-shadow: 0 2px 10px rgba(0, 0, 0, 0.2);
+                border: 2.5px solid #d0d7de;
                 border-radius: 20px;
             }
         }
@@ -439,7 +434,7 @@
         @media (prefers-color-scheme: dark) {
             #toc-icon {
                 background-color: #2d333b;
-                box-shadow: 0 2px 10px rgba(0, 0, 0, 0.5);
+                border-color: #484f58;
             }
             #toc-icon .toc-bar    { background-color: #adbac7; }
             #toc-icon .toc-close  { color: #adbac7; }
@@ -447,24 +442,22 @@
         @media (prefers-color-scheme: light) {
             #toc-icon {
                 background-color: #f6f8fa;
-                box-shadow: 0 2px 10px rgba(0, 0, 0, 0.2);
+                border-color: #d0d7de;
             }
             #toc-icon .toc-bar    { background-color: #1f2328; }
             #toc-icon .toc-close  { color: #1f2328; }
         }
-        /* Floating TOC menu on narrow screens — match icon surface + shadow */
+        /* Floating TOC menu on narrow screens — match icon surface + border */
         @media (prefers-color-scheme: dark) and (max-width: 1400px) {
             .toc {
                 background-color: #2d333b;
-                border: none;
-                box-shadow: 0 2px 10px rgba(0, 0, 0, 0.5);
+                border-color: #484f58;
             }
         }
         @media (prefers-color-scheme: light) and (max-width: 1400px) {
             .toc {
                 background-color: #f6f8fa;
-                border: none;
-                box-shadow: 0 2px 10px rgba(0, 0, 0, 0.2);
+                border-color: #d0d7de;
             }
         }
         /* TOC background on wide screens (matches body, ensures overlap is clean) */
@@ -474,8 +467,7 @@
             }
             #toc-container.toc-nav-active .toc {
                 background-color: #2d333b;
-                border: none;
-                box-shadow: 0 2px 10px rgba(0, 0, 0, 0.5);
+                border: 2.5px solid #484f58;
                 border-radius: 20px;
             }
         }
@@ -485,8 +477,7 @@
             }
             #toc-container.toc-nav-active .toc {
                 background-color: #f6f8fa;
-                border: none;
-                box-shadow: 0 2px 10px rgba(0, 0, 0, 0.2);
+                border: 2.5px solid #d0d7de;
                 border-radius: 20px;
             }
         }
@@ -1335,8 +1326,8 @@
             <span class="toc-bar"></span>
             <span class="toc-bar"></span>
             <span class="toc-bar"></span>
-            <svg class="toc-close" viewBox="0 0 24 24" width="20" height="20" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
-                <path d="M7 7 L17 17 M17 7 L7 17" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"/>
+            <svg class="toc-close" viewBox="0 0 24 24" width="18" height="18" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+                <path d="M7 7 L17 17 M17 7 L7 17" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/>
             </svg>
         </div>
         <nav class="toc">

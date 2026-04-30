@@ -5,7 +5,7 @@ use rust_embed::RustEmbed;
 pub struct CssAssets;
 
 #[derive(RustEmbed)]
-#[folder = "assets/js/"]
+#[folder = "assets/dist/"]
 pub struct JsAssets;
 
 #[derive(RustEmbed)]

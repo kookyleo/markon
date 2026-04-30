@@ -1076,6 +1076,15 @@
               </button>
             </div>
           </div>
+          <div class="pref-row">
+            <span class="pref-label" data-i18n="pref.def.chat_mode"></span>
+            <div class="seg-ctrl" style="min-width:200px">
+              <input type="radio" name="default_chat_mode" id="dcm_in_page" value="in_page">
+              <label for="dcm_in_page" data-i18n="pref.chat_mode.in_page"></label>
+              <input type="radio" name="default_chat_mode" id="dcm_popout"  value="popout">
+              <label for="dcm_popout"  data-i18n="pref.chat_mode.popout"></label>
+            </div>
+          </div>
         </div>
       </div>
 
@@ -1417,6 +1426,10 @@
     const ca = c.anthropic || {};
     const co = c.openai || {};
     document.getElementById('default_chat').checked         = s.default_chat ?? false;
+    // Segmented control — pick the radio matching the persisted value.
+    const dcm = s.default_chat_mode === 'popout' ? 'popout' : 'in_page';
+    const dcmRadio = document.querySelector(`input[name="default_chat_mode"][value="${dcm}"]`);
+    if (dcmRadio) dcmRadio.checked = true;
     document.getElementById('chat_provider').value          = c.provider || 'anthropic';
     document.getElementById('chat_anthropic_model').value = ca.model    || '';
     document.getElementById('chat_anthropic_key').value   = ca.api_key  || '';
@@ -1459,6 +1472,7 @@
       default_edit: document.getElementById('default_edit').checked,
       default_live: document.getElementById('default_live').checked,
       default_chat: document.getElementById('default_chat').checked,
+      default_chat_mode: document.querySelector('input[name="default_chat_mode"]:checked')?.value ?? 'in_page',
       default_shared_annotation: document.getElementById('default_shared').checked,
       chat: {
         provider: document.getElementById('chat_provider').value,
@@ -1698,6 +1712,9 @@
     }
   })();
   document.querySelectorAll('input[name="update_channel"]').forEach(r =>
+    r.addEventListener('change', saveSettings)
+  );
+  document.querySelectorAll('input[name="default_chat_mode"]').forEach(r =>
     r.addEventListener('change', saveSettings)
   );
 

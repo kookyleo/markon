@@ -68,6 +68,9 @@
     "pref.def.edit":        "Edit",
     "pref.def.live":        "Live",
     "pref.def.chat":        "AI Chat",
+    "pref.def.chat_mode":     "Default chat surface (hold Shift for the alternate)",
+    "pref.chat_mode.in_page": "In-page panel",
+    "pref.chat_mode.popout":  "Standalone window",
     "pref.def.shared":      "Shared notes",
 
     // ── General — AI Chat ────────────────────────────────────
@@ -218,7 +221,10 @@
     // ── Annotations / Highlights ─────────────────────────────
     "web.annot.unhighlight": "Unhighlight",
     "web.annot.note":       "Note",
-    "web.chat.ask":         "Ask AI",
+    "web.chat.discuss":     "Chat",
+    "web.chat.quote.dismiss": "Remove quote",
+    "web.chat.popout":      "Open in new window",
+    "web.chat.dock":        "Back to in-page chat",
     "web.chat.title":       "AI Chat",
     "web.chat.send":        "Send",
     "web.chat.stop":        "Stop",
@@ -273,6 +279,7 @@
     "web.kbd.cat.edit":     "Edit (when enabled)",
     "web.kbd.cat.viewed":   "Viewed (when enabled)",
     "web.kbd.cat.live":     "Live (when enabled)",
+    "web.kbd.cat.chat":     "AI Chat (when enabled)",
     "web.kbd.footer":       "Press ESC or ? to close",
     "web.kbd.undo":         "Undo last operation",
     "web.kbd.redo":         "Redo last undone operation",
@@ -291,6 +298,8 @@
     "web.kbd.edit":         "Edit current Markdown file",
     "web.kbd.live.active":  "Toggle Broadcast ⇄ Follow",
     "web.kbd.live.off":     "Toggle Off ⇄ last active mode",
+    "web.kbd.chat":         "Open AI Chat in default surface",
+    "web.kbd.chat.alt":     "Open AI Chat in alternate surface",
     "web.live.mode":        "Mode",
     "web.live.off":         "Off",
     "web.live.broadcast":   "Broadcast",

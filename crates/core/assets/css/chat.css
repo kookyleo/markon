@@ -1,177 +1,278 @@
-/* markon-chat — floating-sphere AI assistant. Mirrors the Live sphere's
-   geometry (40×40 bottom-right, neutral surface) but adds a purple accent so
-   the two indicators are visually distinct, and expands into a side drawer
-   instead of a small pop-out panel. */
+/* markon-chat — floating-sphere AI assistant. A single container morphs in
+   place between a 40×40 sphere (collapsed) and a ~420×600 panel (expanded),
+   the same pattern as the Live sphere. The face stays pinned to the panel's
+   bottom-right corner, so clicking it again at the same screen position is
+   the exact reverse of opening — and the sphere doesn't visually "jump" when
+   the panel is bigger. Position, drag, and collision avoidance are driven by
+   FloatingLayer (components/floating-layer.js); this file is geometry +
+   theming only. */
 
 :root {
     --markon-chat-accent: #8B5CF6;       /* Tailwind violet-500 */
     --markon-chat-accent-soft: rgba(139, 92, 246, 0.18);
+    /* Border-color tokens for the BR resize handle — match the panel's
+       border in resting state and darken on hover. Overridden in dark mode. */
+    --markon-chat-resizer-color: #d0d7de;
+    --markon-chat-resizer-color-hover: #8c959f;
 }
 
-/* ─── Sphere (collapsed) ─────────────────────────────────────────────── */
+html[data-theme="dark"] {
+    --markon-chat-resizer-color: #484f58;
+    --markon-chat-resizer-color-hover: #768390;
+}
 
-/* Sphere is positioned 50px above Live (which sits at right:20/bottom:20)
-   so both can coexist without overlap. Same surface + shadow as the TOC
-   icon so it visually belongs to the same family of floating affordances. */
-.markon-chat-sphere {
+/* ─── Container (morph host) ─────────────────────────────────────────── */
+
+/* Collapsed: a 40×40 circle. Same surface + 1px hairline border as the
+   TOC and Live spheres so the three floating affordances visually belong
+   to one family — no drop shadow, the border alone separates them from
+   the article surface. FloatingLayer writes the position
+   (top/right/bottom/left) directly. */
+.markon-chat-container {
     position: fixed;
-    right: 20px;
-    bottom: 70px;
+    z-index: 10000;
     width: 40px;
     height: 40px;
     border-radius: 50%;
     background-color: #f6f8fa;
     color: #1f2328;
-    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.2);
-    cursor: pointer;
+    /* 2.5px border matches the Live sphere's "off" stroke width — same
+       visual weight across all three floating-layer family members. */
+    border: 2.5px solid #d0d7de;
+    box-sizing: border-box;
     user-select: none;
-    z-index: 10000;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    transition: transform 0.15s ease, box-shadow 0.15s ease;
+    overflow: hidden;
 }
 
-.markon-chat-sphere:hover {
-    transform: translateY(-1px);
-    box-shadow: 0 4px 14px rgba(0, 0, 0, 0.25);
-}
-
-.markon-chat-sphere:active {
-    transform: translateY(0);
-}
-
-html[data-theme="dark"] .markon-chat-sphere {
+html[data-theme="dark"] .markon-chat-container {
     background-color: #2d333b;
     color: #adbac7;
-    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.5);
+    /* See collaboration.css for the rationale on #484f58 — same 12%
+       luminance delta with the sphere bg as light mode. */
+    border-color: #484f58;
 }
 
-/* Purple ring + dot identify this sphere as Chat. Different shape than the
-   Live sphere's broadcasting/off rings so the two are unambiguous even when
-   stacked in the same column. */
-.markon-chat-sphere-icon {
+/* Expanded: panel rectangle. Inherits the sphere's surface + text color so
+   clicking feels like a pure geometric transform (sphere → panel), not a
+   skin swap. Border-radius matches the sphere radius (20px) for the corner
+   continuity, and we cap width/height to the viewport so very small windows
+   still get a readable panel. Background is the same #f6f8fa / #2d333b the
+   Live panel and TOC narrow-screen menu use — the three floating-layer family
+   members share one surface tone so they read as the same component class. */
+.markon-chat-container.expanded {
+    width: 420px;
+    height: 600px;
+    min-width: 320px;
+    min-height: 400px;
+    max-width: calc(100vw - 16px);
+    max-height: calc(100vh - 16px);
+    border-radius: 20px;
+    /* `resize: both` only takes effect when overflow != visible. Switching to
+       hidden gives the user a native BR-corner drag handle for resizing the
+       panel. The thread-menu dropdown lives inside .markon-chat-body which
+       has its own overflow rules, and the mention popup is `position: fixed`
+       on document.body — so neither is clipped by this. */
+    overflow: hidden;
+    resize: both;
+    background: #f6f8fa;
+}
+
+/* Webkit-only restyle of the BR resize handle. A single 1.5px arc traced
+   just inside the panel border, in the same neutral border color, so the
+   resize affordance reads as part of the chrome rather than a foreign
+   glyph. The resizer is a 16×16 box rendered inside the panel's
+   padding-box (i.e. inside the 2.5px border). The padding-box's BR
+   rounded corner has radius 17.5 (= 20 − 2.5), and its centre sits at
+   (-1.5px, -1.5px) relative to the resizer's local origin (= 16 − 17.5).
+   We anchor the radial-gradient there so the arc is concentric with —
+   and just inside — the panel's inner border edge. Firefox has no
+   equivalent pseudo-element and keeps its native handle. */
+.markon-chat-container.expanded::-webkit-resizer {
+    background-color: transparent;
+    background-image: radial-gradient(
+        circle at -3px -3px,
+        transparent 0 15.5px,
+        var(--markon-chat-resizer-color) 15.5px 17px,
+        transparent 17px
+    );
+}
+
+.markon-chat-container.expanded::-webkit-resizer:hover {
+    background-image: radial-gradient(
+        circle at -3px -3px,
+        transparent 0 15.5px,
+        var(--markon-chat-resizer-color-hover) 15.5px 17px,
+        transparent 17px
+    );
+}
+
+html[data-theme="dark"] .markon-chat-container.expanded {
+    background: #2d333b;
+    color: #f0f6fc;
+}
+
+/* ─── Face (sphere face / close handle) ──────────────────────────────── */
+
+/* When collapsed, the face fills the container. When expanded, it shrinks
+   to a 40×40 button pinned at the panel's bottom-right corner, becoming the
+   close (X) — exactly the position the sphere occupied before expand, so a
+   second click at the same spot reverses the first. */
+.markon-chat-face {
+    position: relative;
+    width: 100%;
+    height: 100%;
     display: flex;
     align-items: center;
     justify-content: center;
+    cursor: pointer;
     color: inherit;
 }
 
-.markon-chat-sphere-dot {
-    position: absolute;
-    top: 4px;
-    right: 4px;
-    width: 8px;
-    height: 8px;
-    border-radius: 50%;
-    background: var(--markon-chat-accent);
-    box-shadow: 0 0 0 2px #f6f8fa;
-}
-
-html[data-theme="dark"] .markon-chat-sphere-dot {
-    box-shadow: 0 0 0 2px #2d333b;
-}
-
-/* When the panel is open the sphere acts as a "panel-attached" handle —
-   the dot turns into a filled ring so it visually connects to the panel. */
-.markon-chat-sphere.panel-open {
-    box-shadow: 0 0 0 2px var(--markon-chat-accent),
-                0 2px 10px rgba(0, 0, 0, 0.2);
-}
-
-html[data-theme="dark"] .markon-chat-sphere.panel-open {
-    box-shadow: 0 0 0 2px var(--markon-chat-accent),
-                0 2px 10px rgba(0, 0, 0, 0.5);
-}
-
-/* ─── Panel (expanded) ───────────────────────────────────────────────── */
-
-/* Right-side drawer. Hidden by default; the .open class slides it into view.
-   Width caps at 380px on desktop and stretches to viewport on phones. The
-   panel sits above almost everything (Live sphere included) so streaming
-   tokens always read clearly even mid-broadcast. */
-.markon-chat-panel {
-    position: fixed;
-    top: 0;
-    right: 0;
-    bottom: 0;
-    width: 380px;
-    max-width: 100vw;
-    background: #ffffff;
-    color: #1f2328;
-    box-shadow: -4px 0 20px rgba(0, 0, 0, 0.12);
-    display: flex;
-    flex-direction: column;
-    transform: translateX(100%);
-    transition: transform 0.22s ease;
-    z-index: 10001;
-    /* Disable pointer events while collapsed so the sphere underneath stays
-       clickable; restored when .open is added. */
+.markon-chat-face-icon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
     pointer-events: none;
-    border-left: 1px solid #d0d7de;
+    color: inherit;
 }
 
-.markon-chat-panel.open {
-    transform: translateX(0);
-    pointer-events: auto;
+/* The sparkle inherits the violet accent so the Chat sphere is identifiable
+   at a glance — no separate corner dot needed since the icon itself carries
+   the brand color. The close X (expanded state) reverts to currentColor so
+   it matches the panel's text. */
+.markon-chat-face-icon.icon-chat {
+    color: var(--markon-chat-accent);
 }
 
-html[data-theme="dark"] .markon-chat-panel {
-    background: #161b22;
-    color: #f0f6fc;
-    border-left-color: #30363d;
-    box-shadow: -4px 0 20px rgba(0, 0, 0, 0.5);
+.markon-chat-face-icon.icon-close {
+    display: none;
+}
+
+.markon-chat-container.expanded .markon-chat-face-icon.icon-chat {
+    display: none;
+}
+
+.markon-chat-container.expanded .markon-chat-face-icon.icon-close {
+    display: inline-flex;
+}
+
+/* Pin face to the TL corner when expanded — same morph as the Live panel.
+   The sphere becomes the panel's top-left close button; round only the TL
+   so it visually continues the panel's TL rounded corner. */
+.markon-chat-container.expanded .markon-chat-face {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 40px;
+    height: 40px;
+    z-index: 2;
+    border-radius: 20px 0 0 0;
+}
+
+/* Hover spin on the X — same playful affordance as TOC and Live use. */
+.markon-chat-container.expanded .markon-chat-face .icon-close {
+    transition: transform 0.35s ease;
+}
+.markon-chat-container.expanded .markon-chat-face:hover .icon-close {
+    transform: rotate(180deg);
+}
+
+/* ─── Body (panel content) ───────────────────────────────────────────── */
+
+/* Hidden when collapsed — only the face is visible inside the 40×40 sphere.
+   When expanded, fills the container with header / messages / footer.
+   The container itself owns the border + radius; the body just rounds its
+   own clip so its content doesn't bleed past the rounded corners. */
+.markon-chat-body {
+    display: none;
+    width: 100%;
+    height: 100%;
+    flex-direction: column;
+    border-radius: 20px;
+    background: inherit;
+    color: inherit;
+    overflow: hidden;
+}
+
+.markon-chat-container.expanded .markon-chat-body {
+    display: flex;
 }
 
 @media (max-width: 600px) {
-    .markon-chat-panel {
-        width: 100vw;
-        border-left: none;
+    .markon-chat-container.expanded {
+        width: calc(100vw - 16px);
+        height: calc(100vh - 16px);
     }
 }
 
 /* ─── Header ─────────────────────────────────────────────────────────── */
 
+/* Header: 40px tall so the X face (top:0, 40×40) and the inline action buttons
+   share the same horizontal mid-line. No bottom border — the panel reads as a
+   single continuous surface, divider-less, matching the Live panel. The X face
+   and the right-side action group are both absolutely-positioned, leaving the
+   title group as the only flex child — `justify-content: center` then puts it
+   at the panel's true horizontal center (not just centered in the available
+   space between X and actions). */
 .markon-chat-header {
     display: flex;
     align-items: center;
-    gap: 6px;
-    padding: 10px 12px;
-    border-bottom: 1px solid #d0d7de;
+    justify-content: center;
+    min-height: 40px;
+    padding: 0;
     flex-shrink: 0;
     position: relative;
+    /* Header doubles as the panel-drag handle (FloatingLayer's
+       expandedDragHandle). Show a grab cursor over its blank space; the
+       buttons + thread title inside override with their own cursors. */
+    cursor: grab;
 }
 
-html[data-theme="dark"] .markon-chat-header {
-    border-bottom-color: #30363d;
+.markon-chat-header:active {
+    cursor: grabbing;
 }
 
-.markon-chat-thread-switcher {
-    flex: 1;
-    min-width: 0;
+/* Centered title-group (title text + rename pencil). Sits in the natural flex
+   center, with side margins to keep clear of the X (left) and action buttons
+   (right) when the title is long. */
+.markon-chat-header-titlebar {
     display: flex;
     align-items: center;
     gap: 4px;
-    padding: 4px 6px;
-    background: transparent;
-    border: 1px solid transparent;
-    border-radius: 6px;
-    cursor: pointer;
-    color: inherit;
-    text-align: left;
-    font: inherit;
+    min-width: 0;
+    /* 48px clears the X face on the left and the action group on the right. */
+    margin: 0 56px;
 }
 
-.markon-chat-thread-switcher:hover {
-    background: rgba(0, 0, 0, 0.05);
+/* Action group (chevron + new) pinned to the right edge, mirror of the X on
+   the left. Absolute so it stays out of the flex flow and doesn't shift the
+   centered title-group. */
+.markon-chat-header-actions {
+    position: absolute;
+    right: 6px;
+    top: 50%;
+    transform: translateY(-50%);
+    display: flex;
+    align-items: center;
+    gap: 2px;
 }
 
-html[data-theme="dark"] .markon-chat-thread-switcher:hover {
-    background: rgba(255, 255, 255, 0.06);
+/* Left actions group — sits right of the X face (which occupies left:0..40),
+   currently hosts the popout button. Same absolute positioning as the right
+   actions so the centered title group stays balanced. */
+.markon-chat-header-left-actions {
+    position: absolute;
+    left: 40px;
+    top: 50%;
+    transform: translateY(-50%);
+    display: flex;
+    align-items: center;
+    gap: 2px;
 }
 
+/* Title: plain text. shrinks with ellipsis when the workspace name is long.
+   No cursor:text — renaming goes through the dedicated pencil button. */
 .markon-chat-thread-title {
-    flex: 1;
     min-width: 0;
     overflow: hidden;
     text-overflow: ellipsis;
@@ -179,29 +280,30 @@ html[data-theme="dark"] .markon-chat-thread-switcher:hover {
     font-size: 13px;
     font-weight: 600;
     outline: none;
-    cursor: text;
 }
 
-/* Empty title shows a placeholder via ::before so the contenteditable still
-   accepts focus. textContent equivalent of an HTML placeholder. */
 .markon-chat-thread-title:empty::before {
     content: attr(data-placeholder);
     opacity: 0.5;
     font-weight: 400;
 }
 
+/* Edit mode (entered via the rename pencil): contenteditable surface gets a
+   soft accent background and a text cursor. */
 .markon-chat-thread-title[contenteditable="true"] {
+    cursor: text;
     background: rgba(139, 92, 246, 0.1);
     border-radius: 4px;
     padding: 2px 4px;
     margin: -2px -4px;
 }
 
-.markon-chat-chevron {
-    display: inline-flex;
+/* The switcher is now a plain icon button (chevron only). Dropdown opens
+   only from this explicit affordance — clicking the title text does not
+   trigger it (low-frequency action, deliberate). */
+.markon-chat-thread-switcher svg {
     transform: rotate(90deg);
-    opacity: 0.55;
-    transition: transform 0.15s;
+    opacity: 0.7;
 }
 
 .markon-chat-icon-btn {
@@ -232,8 +334,8 @@ html[data-theme="dark"] .markon-chat-icon-btn:hover {
 .markon-chat-thread-menu {
     position: absolute;
     top: 100%;
-    left: 12px;
-    right: 76px;
+    left: 48px;           /* skip the TL sphere/close button */
+    right: 48px;          /* skip the [+] button on the right */
     margin-top: 4px;
     background: #ffffff;
     border: 1px solid #d0d7de;
@@ -312,9 +414,11 @@ html[data-theme="dark"] .markon-chat-thread-row:hover {
     font-size: 13px;
 }
 
-/* ─── Body / message list ────────────────────────────────────────────── */
+/* ─── Messages wrapper / list ────────────────────────────────────────── */
 
-.markon-chat-body {
+/* Middle scrollable region between header and footer. `position: relative`
+   anchors the floating "↓ new messages" pill below. */
+.markon-chat-messages-wrap {
     flex: 1;
     min-height: 0;
     position: relative;
@@ -401,7 +505,9 @@ html[data-theme="dark"] .markon-chat-thread-row:hover {
 }
 
 html[data-theme="dark"] .markon-chat-message-user .markon-chat-message-body {
-    background: #2d333b;
+    /* Lifted from #2d333b (now the panel surface) to #373e47 so the user
+       bubble still pops as an elevated surface against the panel. */
+    background: #373e47;
     color: #f0f6fc;
 }
 
@@ -591,74 +697,198 @@ html[data-theme="dark"] .markon-chat-error {
 
 /* ─── Footer (input) ─────────────────────────────────────────────────── */
 
+/* Footer hosts a single composite element: textarea with the send button
+   absolutely pinned to its inner bottom-right corner. No top border — the
+   input's own outline is the only divider, so the panel reads as "messages
+   above, a free-floating input below". */
 .markon-chat-footer {
-    display: flex;
-    align-items: flex-end;
-    gap: 8px;
     padding: 10px 12px;
-    border-top: 1px solid #d0d7de;
     flex-shrink: 0;
 }
 
-html[data-theme="dark"] .markon-chat-footer {
-    border-top-color: #30363d;
-}
-
-.markon-chat-input {
-    flex: 1;
-    min-width: 0;
-    resize: none;
-    appearance: none;
+/* Input-group — single rounded composite that hosts the optional quote chip
+   on top, the textarea in the middle, and the send button anchored to its
+   bottom-right. One outer border + radius so chip + textarea read as ONE
+   control, not two stacked rectangles. The send button is `position:
+   absolute` against this group, so its placement is unaffected by the chip's
+   presence. */
+.markon-chat-input-group {
+    position: relative;
     border: 1px solid #d0d7de;
-    border-radius: 8px;
-    padding: 8px 10px;
-    font: inherit;
-    font-size: 13px;
-    line-height: 1.4;
+    border-radius: 14px;
     background: #ffffff;
     color: inherit;
-    max-height: 136px;       /* matches the JS-side cap (6 lines + padding). */
-    outline: none;
+    overflow: hidden;       /* clips chip's tinted bg into the rounded corner */
     transition: border-color 0.15s, box-shadow 0.15s;
 }
 
-.markon-chat-input:focus {
+/* Lift the focus ring to the *group* so the whole composite (chip + input)
+   highlights together when the textarea has focus, instead of just the
+   textarea — that keeps the "single control" reading intact. */
+.markon-chat-input-group:focus-within {
     border-color: var(--markon-chat-accent);
     box-shadow: 0 0 0 3px var(--markon-chat-accent-soft);
 }
 
-html[data-theme="dark"] .markon-chat-input {
+html[data-theme="dark"] .markon-chat-input-group {
     background: #0d1117;
     border-color: #30363d;
-    color: #f0f6fc;
 }
 
-.markon-chat-send {
-    appearance: none;
-    border: none;
-    width: 36px;
-    height: 36px;
-    border-radius: 50%;
-    background: var(--markon-chat-accent);
-    color: white;
-    cursor: pointer;
+/* Quote chip — appears in the upper half of the group when "聊聊" / Chat is
+   clicked on a selection. Tinted background distinguishes it from the white
+   textarea below: the user reads it as "context attached", not "another
+   input". A 1px hairline at the bottom is the only divider — same vibe as
+   GitHub's PR comment quote-reply box. */
+.markon-chat-quote-chip {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    /* padding-right tuned so the X (20×20) centers on the same vertical line
+       as the send button below: X.center = group.right − padding-right − 10
+       must equal send.center = group.right − send.right (10) − 13
+       ⇒ padding-right = 13. Keeps the two action buttons stacked. */
+    padding: 6px 13px 6px 12px;
+    background: rgba(0, 0, 0, 0.035);
+    border-bottom: 1px solid rgba(0, 0, 0, 0.08);
+    font-size: 11.5px;
+    line-height: 1.35;
+    min-width: 0;
+}
+
+.markon-chat-quote-chip[hidden] { display: none; }
+
+html[data-theme="dark"] .markon-chat-quote-chip {
+    background: rgba(255, 255, 255, 0.04);
+    border-bottom-color: rgba(255, 255, 255, 0.08);
+}
+
+.markon-chat-quote-icon {
+    flex-shrink: 0;
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    flex-shrink: 0;
-    transition: filter 0.15s, transform 0.1s;
+    color: currentColor;
+    opacity: 0.5;
 }
 
+.markon-chat-quote-text {
+    flex: 1 1 auto;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    color: inherit;
+    opacity: 0.7;
+}
+
+.markon-chat-quote-dismiss {
+    appearance: none;
+    border: none;
+    background: transparent;
+    color: inherit;
+    cursor: pointer;
+    flex-shrink: 0;
+    width: 20px;
+    height: 20px;
+    border-radius: 50%;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    opacity: 0.5;
+    padding: 0;
+    transition: background-color 0.12s, opacity 0.12s;
+}
+
+.markon-chat-quote-dismiss:hover {
+    opacity: 1;
+    background: rgba(0, 0, 0, 0.08);
+}
+
+html[data-theme="dark"] .markon-chat-quote-dismiss:hover {
+    background: rgba(255, 255, 255, 0.1);
+}
+
+.markon-chat-quote-dismiss svg { display: block; }
+
+/* Textarea is borderless — the input-group owns the rounded outline. The
+   `block` display kills the inline-block baseline gap that would otherwise
+   throw the bottom-anchored send button off the last-line center by ~4px. */
+.markon-chat-input {
+    width: 100%;
+    box-sizing: border-box;
+    display: block;
+    min-width: 0;
+    resize: none;
+    appearance: none;
+    border: none;
+    border-radius: 0;
+    /* Right padding clears the 26px-wide send button + 12px gap. */
+    padding: 14px 44px 14px 14px;
+    font: inherit;
+    font-size: 13px;
+    line-height: 1.4;
+    background: transparent;
+    color: inherit;
+    max-height: 136px;       /* matches the JS-side cap (6 lines + padding). */
+    outline: none;
+}
+
+html[data-theme="dark"] .markon-chat-input {
+    color: #f0f6fc;
+}
+
+/* Pinned to the input-group's inner bottom-right. The group is the absolute-
+   positioning context, so this `bottom` measures against the group's bottom
+   edge (the group expands to include the chip when visible, but the send
+   button stays anchored to the textarea's last line either way).
+   Default state is a quiet outlined glyph — no filled disc — so the input
+   field reads as the dominant element and the send affordance recedes
+   until a draft is actually in flight. Background only appears on hover /
+   while streaming. */
+.markon-chat-send {
+    appearance: none;
+    border: none;
+    position: absolute;
+    right: 10px;
+    /* Anchored to the *last line* of the textarea: as the draft grows, the
+       button stays vertically centered on the current bottom line. Math
+       (group as reference): group border (1) + textarea padding-bottom (14)
+       + half line-height (13 × 1.4 / 2 ≈ 9) − half button height (13)
+       = ~11px from the group's bottom edge. */
+    bottom: 11px;
+    width: 26px;
+    height: 26px;
+    /* padding:0 + box-sizing strips the user-agent button padding; grid +
+       place-items centers the icon glyph exactly on the button's geometric
+       center (inline-flex through a span wrapper had baseline drift). */
+    padding: 0;
+    box-sizing: border-box;
+    border-radius: 50%;
+    background: transparent;
+    color: var(--markon-chat-accent);
+    cursor: pointer;
+    display: grid;
+    place-items: center;
+    transition: background-color 0.15s, transform 0.1s;
+}
+
+/* svg block-level so the wrapping span has no baseline gap below the glyph. */
+.markon-chat-send svg { display: block; }
+
 .markon-chat-send:hover {
-    filter: brightness(1.05);
+    background: var(--markon-chat-accent-soft);
 }
 
 .markon-chat-send:active {
-    transform: scale(0.96);
+    transform: scale(0.94);
 }
 
+/* Streaming: turn into a small filled stop button (red) so the action is
+   unambiguous mid-stream. */
 .markon-chat-send.streaming {
     background: #dc3545;
+    color: white;
 }
 
 /* ─── Mention pill (in user message bubbles) ─────────────────────────── */
@@ -702,10 +932,12 @@ html[data-theme="dark"] .markon-chat-mention-pill {
     border-radius: 8px;
     box-shadow: 0 6px 18px rgba(0, 0, 0, 0.15);
     padding: 4px;
-    min-width: 220px;
-    max-width: 360px;
+    /* Width is set inline to match the input-group's rendered width (see
+       #positionMentionPopup). No min/max here — clamping with CSS would
+       fight the inline value and break the alignment in popout mode. */
     max-height: 280px;
     overflow-y: auto;
+    box-sizing: border-box;
 }
 
 .markon-chat-mention-popup[hidden] {
@@ -803,4 +1035,72 @@ html[data-theme="dark"] .markon-chat-citation {
 html[data-theme="dark"] .markon-chat-citation:hover {
     background: rgba(88, 166, 255, 0.28);
     border-color: rgba(88, 166, 255, 0.45);
+}
+
+/* ─── Popout window mode ─────────────────────────────────────────────── */
+
+/* When the chat is loaded in its own browser-level window (`?chat_popout=1`),
+   the chat IS the entire page — there's no markdown body, no TOC, no Live
+   sphere. The page's body class flips, and rules below hide all the page
+   chrome and grow the chat container to fill the viewport. The morph
+   animation is bypassed (we add .expanded synchronously at boot), so the
+   panel reads as a fixed full-window surface, not a floating overlay. */
+body.markon-chat-popout-mode {
+    margin: 0;
+    overflow: hidden;
+    background: #f6f8fa;
+}
+
+html[data-theme="dark"] body.markon-chat-popout-mode {
+    background: #2d333b;
+}
+
+/* Hide everything else but the chat surface. The mention-popup lives on
+   `body` (position:fixed) so the @ autocomplete works the same in popout
+   mode — exempt it explicitly. Any future body-level chat overlay must
+   either be appended to .markon-chat-container or be added to this
+   exclusion list. */
+body.markon-chat-popout-mode > :not(.markon-chat-container):not(.markon-chat-mention-popup):not(script):not(style) {
+    display: none !important;
+}
+
+body.markon-chat-popout-mode .markon-chat-container,
+body.markon-chat-popout-mode .markon-chat-container.expanded {
+    position: fixed !important;
+    inset: 0 !important;
+    width: 100vw !important;
+    height: 100vh !important;
+    max-width: none !important;
+    max-height: none !important;
+    border: none !important;
+    border-radius: 0 !important;
+    /* Panel IS the window — resize the OS window, not the panel inside. */
+    resize: none !important;
+}
+
+/* No floating sphere in popout mode — the panel is the window itself. The X
+   close button at the TL also has no role here (closing the chat means
+   closing the window). The popout button stays visible but its icon/role is
+   swapped to "dock back to in-page" by initPopout(). */
+body.markon-chat-popout-mode .markon-chat-face {
+    display: none !important;
+}
+
+/* Body always shown in popout mode (the .expanded class is set at boot, but
+   guard against any timing where it isn't applied yet). */
+body.markon-chat-popout-mode .markon-chat-body {
+    display: flex !important;
+}
+
+/* Header has no X face to clear in popout mode — pull the left actions group
+   back to the edge (and currently the popout button is hidden, so this just
+   keeps the header symmetric if other left-side controls are added later). */
+body.markon-chat-popout-mode .markon-chat-header-left-actions {
+    left: 6px;
+}
+
+/* The header's title centering math assumes a 40px-wide X face on the left;
+   without it, no padding is needed. */
+body.markon-chat-popout-mode .markon-chat-header {
+    /* keeps title visually centered against the full window width */
 }

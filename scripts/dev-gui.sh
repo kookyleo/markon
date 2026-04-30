@@ -8,7 +8,11 @@
 # Usage:
 #   scripts/dev-gui.sh              # debug build, run binary
 #   scripts/dev-gui.sh --release    # release build, run binary
-#   scripts/dev-gui.sh --watch      # use `cargo tauri dev` (hot reload)
+#   scripts/dev-gui.sh --watch      # cargo tauri dev (Rust hot reload) +
+#                                   # npm run dev (TS esbuild watch).
+#                                   # Rust edits restart the binary;
+#                                   # TS edits rebuild on save — Cmd-R the
+#                                   # webview to pick them up.
 #
 set -euo pipefail
 
@@ -48,11 +52,39 @@ pkill -x "Markon"     2>/dev/null || true
 osascript -e 'tell application "Markon" to quit' 2>/dev/null || true
 sleep 0.3
 
-# ── 2. Hot-reload mode (cargo tauri dev) ─────────────────────────────────────
+# ── 2. Hot-reload mode (esbuild watch + cargo tauri dev) ─────────────────────
+# Rust changes → `cargo tauri dev` rebuilds + restarts the binary.
+# TS changes  → `npm run dev` (esbuild watch) bundles into assets/dist/.
+# rust-embed in debug mode reads from disk every request, so a TS rebuild is
+# visible after a manual webview reload (Cmd-R).
 if [[ $WATCH -eq 1 ]]; then
   sync_dev_bundle_icon
-  echo "▶ Starting cargo tauri dev (hot reload)…"
-  exec cargo tauri dev
+
+  ESBUILD_LOG="${TMPDIR:-/tmp}/markon-esbuild.log"
+  echo "▶ Starting esbuild watcher (npm run dev) — logs: $ESBUILD_LOG"
+  npm run dev > "$ESBUILD_LOG" 2>&1 &
+  ESBUILD_PID=$!
+
+  # Tear down the watcher when this script exits, no matter how it ends.
+  cleanup() {
+    if kill -0 "$ESBUILD_PID" 2>/dev/null; then
+      echo "▶ Stopping esbuild watcher (pid $ESBUILD_PID)…"
+      kill "$ESBUILD_PID" 2>/dev/null || true
+      wait "$ESBUILD_PID" 2>/dev/null || true
+    fi
+  }
+  trap cleanup EXIT INT TERM
+
+  # Wait for esbuild's first bundle to land before launching tauri so the
+  # initial webview load gets fresh main.js / viewed.js.
+  for _ in 1 2 3 4 5 6 7 8 9 10; do
+    [[ -f crates/core/assets/dist/main.js && -f crates/core/assets/dist/viewed.js ]] && break
+    sleep 0.2
+  done
+
+  echo "▶ Starting cargo tauri dev (Rust hot reload)…"
+  cargo tauri dev
+  exit $?
 fi
 
 # ── 3. Build ─────────────────────────────────────────────────────────────────

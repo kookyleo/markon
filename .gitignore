@@ -22,6 +22,7 @@ Thumbs.db
 *.pdb
 *.pem
 dist/
+crates/core/assets/dist/
 docs/.vitepress/dist/
 docs/.vitepress/cache/
 

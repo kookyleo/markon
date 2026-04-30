@@ -68,6 +68,9 @@
     "pref.def.edit":        "編集",
     "pref.def.live":        "Live",
     "pref.def.chat":        "AI チャット",
+    "pref.def.chat_mode":     "既定の対話形態 (Shift で代替形態)",
+    "pref.chat_mode.in_page": "ページ内パネル",
+    "pref.chat_mode.popout":  "独立ウィンドウ",
     "pref.def.shared":      "共有ノート",
 
     // ── General — AI チャット ────────────────────────────────
@@ -218,7 +221,10 @@
     // ── Annotations / Highlights ─────────────────────────────
     "web.annot.unhighlight": "ハイライト解除",
     "web.annot.note":       "メモ",
-    "web.chat.ask":         "AI に聞く",
+    "web.chat.discuss":     "話してみる",
+    "web.chat.quote.dismiss": "引用を削除",
+    "web.chat.popout":      "新しいウィンドウで開く",
+    "web.chat.dock":        "ページ内に戻す",
     "web.chat.title":       "AI チャット",
     "web.chat.send":        "送信",
     "web.chat.stop":        "停止",
@@ -273,6 +279,7 @@
     "web.kbd.cat.edit":     "編集 (有効時)",
     "web.kbd.cat.viewed":   "既読トラッキング (有効時)",
     "web.kbd.cat.live":     "Live (有効時)",
+    "web.kbd.cat.chat":     "AI チャット (有効時)",
     "web.kbd.footer":       "ESC または ? で閉じる",
     "web.kbd.undo":         "操作を元に戻す",
     "web.kbd.redo":         "やり直し",
@@ -291,6 +298,8 @@
     "web.kbd.edit":         "現在の Markdown ファイルを編集",
     "web.kbd.live.active":  "送信 ⇄ 受信を切替",
     "web.kbd.live.off":     "オフ ⇄ 直前のアクティブモードを切替",
+    "web.kbd.chat":         "AI チャットを既定形態で開く",
+    "web.kbd.chat.alt":     "AI チャットを別形態で開く",
     "web.live.mode":        "モード",
     "web.live.off":         "オフ",
     "web.live.broadcast":   "送信",

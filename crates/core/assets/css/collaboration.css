@@ -10,7 +10,13 @@
     height: 40px;
     border-radius: 50%;
     cursor: default;
-    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.2);
+    /* All three modes (default / broadcasting / live-off) share a 2.5px
+       stroke; only the color changes. Width parity makes the sphere read
+       as the *same* element across modes — what differs is mode color, not
+       chrome thickness. The same width is used by the ToC and Chat
+       spheres/panels so the floating-layer family looks unified. */
+    border: 2.5px solid #d0d7de;
+    box-sizing: border-box;
     overflow: hidden;
     background-color: #f6f8fa;
     color: #1f2328;
@@ -23,22 +29,22 @@
 html[data-theme="dark"] .markon-live-container {
     background-color: #2d333b;
     color: #adbac7;
-    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.5);
+    /* Lifted from GitHub's "border-default" #30363d to "border-default+"
+       #484f58 — the original was only ~2% brighter than the sphere bg,
+       barely visible against the surface. The 12% delta now matches the
+       light-mode ratio (#f6f8fa vs #d0d7de). */
+    border-color: #484f58;
 }
 
-/* Broadcasting (speaker) — a 2px ring in the user's color. Shown on both
-   the collapsed sphere and the expanded panel so the indicator is
-   persistent regardless of state. `box-shadow` layers an inset-looking
-   outline that follows border-radius for free, and a second layer keeps
-   the original drop shadow. */
+/* Broadcasting (speaker) — same 2.5px stroke, recolored to the user's
+   broadcast color. Color comes from the --markon-live-user var set by
+   CollaborationManager._updateUIState. */
 .markon-live-container.broadcasting {
-    box-shadow: 0 0 0 2px var(--markon-live-user, transparent),
-                0 2px 10px rgba(0, 0, 0, 0.2);
+    border-color: var(--markon-live-user, #d0d7de);
 }
 
 html[data-theme="dark"] .markon-live-container.broadcasting {
-    box-shadow: 0 0 0 2px var(--markon-live-user, transparent),
-                0 2px 10px rgba(0, 0, 0, 0.5);
+    border-color: var(--markon-live-user, #30363d);
 }
 
 /* Expanded (panel) state — sphere becomes the panel rectangle in-place.
@@ -111,19 +117,16 @@ html[data-theme="dark"] .markon-live-container.broadcasting {
     display: none;
 }
 
-/* OFF mode: container's box-shadow is the ring of the prohibited sign,
-   the SVG draws only the slash. Ring and slash share the same disabled
-   color and the same stroke width (2.5px — slightly heavier than the
-   Broadcast ring so "disabled" reads as a stronger visual state). */
+/* OFF mode: the container's 2.5px border is the ring of the prohibited
+   sign and the SVG draws only the slash on top. Ring and slash share the
+   same disabled color so they read as a single 🚫 glyph. */
 .markon-live-container.live-off {
     --markon-disabled: rgba(107, 114, 128, 0.75);
-    box-shadow: 0 0 0 2.5px var(--markon-disabled),
-                0 2px 10px rgba(0, 0, 0, 0.2);
+    border-color: var(--markon-disabled);
 }
 html[data-theme="dark"] .markon-live-container.live-off {
     --markon-disabled: rgba(180, 188, 200, 0.55);
-    box-shadow: 0 0 0 2.5px var(--markon-disabled),
-                0 2px 10px rgba(0, 0, 0, 0.5);
+    border-color: var(--markon-disabled);
 }
 .markon-live-container.live-off .icon-off {
     color: var(--markon-disabled);

@@ -768,12 +768,13 @@ async fn main() {
     let registry = Arc::new(WorkspaceRegistry::new(effective_salt.clone()));
     registry.set_persist_hook(AppSettings::persist_hook(settings.clone()));
 
-    let (language, shortcuts_json, styles_css) = {
+    let (language, shortcuts_json, styles_css, default_chat_mode) = {
         let s = settings.lock().unwrap();
         (
             s.effective_web_language(),
             s.render_shortcuts_json(),
             s.render_styles_css(),
+            s.default_chat_mode.clone(),
         )
     };
 
@@ -802,6 +803,7 @@ async fn main() {
         language,
         shortcuts_json,
         styles_css,
+        default_chat_mode,
     })
     .await
     {

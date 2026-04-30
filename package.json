@@ -4,6 +4,9 @@
   "type": "module",
   "description": "Dev-only tooling (vitest, eslint) for Markon. Real project is Cargo-based.",
   "scripts": {
+    "dev": "node scripts/build.mjs --watch",
+    "build": "node scripts/build.mjs",
+    "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "test:watch": "vitest"
   },
@@ -16,8 +19,11 @@
   "author": "kookyleo",
   "license": "Apache-2.0",
   "devDependencies": {
+    "@types/node": "^25.6.0",
+    "esbuild": "^0.28.0",
     "eslint": "^9.37.0",
     "jsdom": "^29.0.2",
+    "typescript": "^6.0.3",
     "vitest": "^4.1.4"
   }
 }

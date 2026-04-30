@@ -68,6 +68,9 @@
     "pref.def.edit":        "编辑",
     "pref.def.live":        "Live",
     "pref.def.chat":        "AI 对话",
+    "pref.def.chat_mode":     "默认的对话框形式（按 Shift 启用副方式）",
+    "pref.chat_mode.in_page": "页内面板",
+    "pref.chat_mode.popout":  "独立窗口",
     "pref.def.shared":      "共享标记、便条和已读状态",
 
     // ── 全局设置 — AI 对话 ──────────────────────────────────
@@ -217,7 +220,10 @@
     // ── 批注 / 高亮 ─────────────────────────────────────────
     "web.annot.unhighlight": "取消高亮",
     "web.annot.note":       "备注",
-    "web.chat.ask":         "问 AI",
+    "web.chat.discuss":     "聊聊",
+    "web.chat.quote.dismiss": "移除引用",
+    "web.chat.popout":      "独立窗口",
+    "web.chat.dock":        "回到页面内",
     "web.chat.title":       "AI 对话",
     "web.chat.send":        "发送",
     "web.chat.stop":        "停止",
@@ -271,6 +277,7 @@
     "web.kbd.cat.search":   "搜索 (需启用)",
     "web.kbd.cat.edit":     "编辑 (需启用)",
     "web.kbd.cat.viewed":   "已读追踪 (需启用)",
+    "web.kbd.cat.chat":     "AI 对话 (需启用)",
     "web.kbd.footer":       "按 ESC 或 ? 关闭",
     "web.kbd.undo":         "撤销操作",
     "web.kbd.redo":         "重做操作",
@@ -289,6 +296,8 @@
     "web.kbd.edit":         "编辑当前 Markdown 文件",
     "web.kbd.live.active":  "主控 ⇄ 被控切换",
     "web.kbd.live.off":     "关闭 ⇄ 上一次激活模式切换",
+    "web.kbd.chat":         "按默认形式打开 AI 对话",
+    "web.kbd.chat.alt":     "按相反形式打开 AI 对话",
     "web.live.mode":        "模式",
     "web.live.off":         "关闭",
     "web.live.broadcast":   "主控",

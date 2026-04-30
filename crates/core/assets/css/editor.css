@@ -541,7 +541,7 @@ html[data-theme="dark"] .markdown-body h6.heading-focused {
 
 /* Collapsed TOC icon = 40×40 circle. When .active is toggled, the icon
    morphs into a close (X) button pinned at the menu's top-right rounded
-   corner — same surface, same shadow, geometry is the only thing changing
+   corner — same surface, same border, geometry is the only thing changing
    (mirror of how the Live sphere morphs into its panel). */
 #toc-icon {
     width: 40px;
@@ -553,15 +553,19 @@ html[data-theme="dark"] .markdown-body h6.heading-focused {
     flex-direction: column;
     justify-content: center;
     align-items: center;
-    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.2);
+    /* 2.5px border matches the Live sphere's "off" stroke width — same
+       visual weight across all three floating-layer family members
+       (ToC, Live, Chat). */
+    border: 2.5px solid #d0d7de;
+    box-sizing: border-box;
 }
 
 #toc-icon .toc-bar {
     display: block;
-    width: 20px;
-    height: 2px;
+    width: 16px;
+    height: 1.5px;
     background-color: #1f2328;
-    margin: 2px 0;
+    margin: 1.5px 0;
 }
 
 #toc-icon .toc-close {
@@ -596,17 +600,19 @@ html[data-theme="dark"] .markdown-body h6.heading-focused {
         max-height: calc(100vh - 40px);
         overflow-y: auto;
         background-color: #f6f8fa;
-        border: none;
+        border: 2.5px solid #d0d7de;
         border-radius: 20px;
-        box-shadow: 0 2px 10px rgba(0, 0, 0, 0.2);
         overscroll-behavior: contain;
+        box-sizing: border-box;
     }
 
     #toc-container.active .toc {
         display: block;
     }
 
-    /* Icon stays visible but becomes the menu's rounded top-right corner. */
+    /* Icon stays visible but becomes the menu's rounded top-right corner.
+       The menu owns the border in the expanded state — drop the icon's own
+       border so the two don't double up at the TR corner. */
     #toc-container.active #toc-icon {
         position: absolute;
         top: 0;
@@ -614,7 +620,7 @@ html[data-theme="dark"] .markdown-body h6.heading-focused {
         z-index: 2;
         border-radius: 0 20px 0 0;
         background-color: transparent;
-        box-shadow: none;
+        border: none;
     }
     #toc-container.active #toc-icon .toc-bar { display: none; }
     #toc-container.active #toc-icon .toc-close { display: block; }

@@ -62,6 +62,9 @@ pub struct ServerConfig {
     pub shortcuts_json: Option<String>,
     /// Custom CSS variable overrides (rendered as :root { --markon-*: value }).
     pub styles_css: Option<String>,
+    /// Default chat surface: "in_page" or "popout". Surfaced to the browser
+    /// via the `default-chat-mode` meta tag.
+    pub default_chat_mode: String,
 }
 
 #[derive(Clone)]
@@ -81,8 +84,16 @@ pub struct AppState {
     pub shortcuts_json: Arc<String>,
     /// CSS variable overrides string.
     pub styles_css: Arc<String>,
+    /// Default chat surface ("in_page" or "popout").
+    pub default_chat_mode: Arc<String>,
     /// Shutdown channel.
     pub shutdown_tx: mpsc::Sender<()>,
+    /// Dev-only: esbuild watcher posts to /_/dev/reload-trigger and the
+    /// webview's SSE stream listens on this channel to fire location.reload().
+    /// Cheap to keep in release builds (one Arc<broadcast::Sender>); the
+    /// routes that read it are only registered behind cfg(debug_assertions).
+    #[cfg(debug_assertions)]
+    pub dev_reload_tx: Arc<broadcast::Sender<()>>,
 }
 
 async fn shutdown_handler(State(state): State<AppState>) -> impl IntoResponse {
@@ -176,6 +187,7 @@ pub async fn start(config: ServerConfig) -> Result<(), String> {
         language,
         shortcuts_json,
         styles_css,
+        default_chat_mode,
     } = config;
 
     // Initialize Tera template engine from embedded resources.
@@ -293,7 +305,10 @@ pub async fn start(config: ServerConfig) -> Result<(), String> {
         // `= ;`, a syntax error that silently breaks i18n and shortcut runtime.
         shortcuts_json: Arc::new(shortcuts_json.unwrap_or_else(|| "null".to_string())),
         styles_css: Arc::new(styles_css.unwrap_or_default()),
+        default_chat_mode: Arc::new(default_chat_mode),
         shutdown_tx,
+        #[cfg(debug_assertions)]
+        dev_reload_tx: Arc::new(broadcast::channel::<()>(16).0),
     };
 
     // Management API: requires loopback source IP + valid token header.
@@ -323,6 +338,10 @@ pub async fn start(config: ServerConfig) -> Result<(), String> {
         .route("/search", get(search_handler))
         .route("/api/preview", post(preview_handler))
         // Workspace content routes
+        // Chat popout — minimal chat-only page that ChatManager opens via
+        // window.open. Registered before the catch-all `{*path}` so the
+        // literal `_/chat` segment wins.
+        .route("/{workspace_id}/_/chat", get(handle_chat_popout))
         .route("/{workspace_id}/", get(handle_workspace_root))
         .route("/{workspace_id}/{*path}", get(handle_workspace_path))
         // Everything else → 404
@@ -331,6 +350,17 @@ pub async fn start(config: ServerConfig) -> Result<(), String> {
 
     if needs_ws {
         app = app.route("/_/ws", get(ws_handler));
+    }
+
+    // Dev-only live-reload: esbuild's watch onEnd hook POSTs the trigger,
+    // server fans it out as an SSE event, the webview reloads. cfg gate keeps
+    // these routes (and the heavy tokio_stream / sse plumbing) out of release
+    // builds entirely.
+    #[cfg(debug_assertions)]
+    {
+        app = app
+            .route("/_/dev/reload-stream", get(dev_reload_stream))
+            .route("/_/dev/reload-trigger", post(dev_reload_trigger));
     }
 
     // Chat endpoints: SSE chat stream + thread/file REST. Each handler
@@ -485,6 +515,29 @@ async fn require_local_and_token(
 
 async fn ws_handler(ws: WebSocketUpgrade, State(state): State<AppState>) -> impl IntoResponse {
     ws.on_upgrade(|socket| handle_socket(socket, state))
+}
+
+#[cfg(debug_assertions)]
+async fn dev_reload_stream(State(state): State<AppState>) -> impl IntoResponse {
+    use axum::response::sse::{Event, KeepAlive, Sse};
+    use std::convert::Infallible;
+    let rx = state.dev_reload_tx.subscribe();
+    let stream = tokio_stream::wrappers::BroadcastStream::new(rx).filter_map(
+        |item| async move {
+            // Drop lagged frames silently; we only need *some* recent reload.
+            item.ok()
+                .map(|()| Ok::<Event, Infallible>(Event::default().event("reload")))
+        },
+    );
+    Sse::new(stream).keep_alive(KeepAlive::default())
+}
+
+#[cfg(debug_assertions)]
+async fn dev_reload_trigger(State(state): State<AppState>) -> impl IntoResponse {
+    // send() errors only when there are no subscribers; that's fine — esbuild
+    // can fire before any webview connects, we just no-op.
+    let _ = state.dev_reload_tx.send(());
+    StatusCode::NO_CONTENT
 }
 
 fn load_annotations(db: &Mutex<Connection>, file_path: &str) -> Vec<serde_json::Value> {
@@ -687,6 +740,42 @@ async fn handle_socket(socket: WebSocket, state: AppState) {
 }
 
 // ── Workspace content handlers ────────────────────────────────────────────────
+
+/// Standalone chat-only page. Opened by ChatManager.#openPopout() in its own
+/// browser-level window. Returns the minimal `chat.html` template — no
+/// markdown body, no TOC, no Live, no annotations bundle. The shared
+/// `main.js` bundle still loads, but at boot it sees `<meta name="chat-only">`
+/// and routes to `ChatManager.initPopout()` instead of `MarkonApp`.
+async fn handle_chat_popout(
+    State(state): State<AppState>,
+    AxumPath(workspace_id): AxumPath<String>,
+) -> impl IntoResponse {
+    let Some(ws) = state.workspace_registry.get(&workspace_id) else {
+        return StatusCode::NOT_FOUND.into_response();
+    };
+    // Hide the chat page entirely if chat is disabled for this workspace —
+    // mirrors the same gate the in-page chat panel respects via the
+    // `enable-chat` meta flag.
+    if !ws.flags().enable_chat {
+        return StatusCode::NOT_FOUND.into_response();
+    }
+    let mut context = tera::Context::new();
+    context.insert("workspace_id", &workspace_id);
+    context.insert("theme", state.theme.as_str());
+    context.insert("title", &"Markon Chat".to_string());
+    context.insert("i18n_json", state.i18n_json.as_str());
+    context.insert("i18n_lang", state.i18n_lang.as_str());
+    context.insert("styles_css", state.styles_css.as_str());
+    context.insert("default_chat_mode", state.default_chat_mode.as_str());
+    match state.tera.render("chat.html", &context) {
+        Ok(html) => Html(html).into_response(),
+        Err(e) => (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            format!("Template error: {e}"),
+        )
+            .into_response(),
+    }
+}
 
 async fn handle_workspace_root(
     State(state): State<AppState>,
@@ -905,6 +994,7 @@ fn render_markdown_file(
             context.insert("i18n_lang", state.i18n_lang.as_str());
             context.insert("shortcuts_json", state.shortcuts_json.as_str());
             context.insert("styles_css", state.styles_css.as_str());
+            context.insert("default_chat_mode", state.default_chat_mode.as_str());
 
             match state.tera.render("layout.html", &context) {
                 Ok(html) => Html(html).into_response(),
@@ -932,6 +1022,7 @@ fn render_markdown_file(
             context.insert("i18n_lang", state.i18n_lang.as_str());
             context.insert("shortcuts_json", state.shortcuts_json.as_str());
             context.insert("styles_css", state.styles_css.as_str());
+            context.insert("default_chat_mode", state.default_chat_mode.as_str());
 
             match state.tera.render("layout.html", &context) {
                 Ok(html) => Html(html).into_response(),

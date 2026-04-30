@@ -1,0 +1,29 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "lib": ["ES2022", "DOM", "DOM.Iterable"],
+    "strict": true,
+    "noEmit": true,
+    "allowJs": true,
+    "checkJs": false,
+    "isolatedModules": true,
+    "verbatimModuleSyntax": true,
+    "skipLibCheck": true,
+    "esModuleInterop": true,
+    "resolveJsonModule": true,
+    "useDefineForClassFields": true,
+    "forceConsistentCasingInFileNames": true
+  },
+  "include": [
+    "crates/core/assets/js/**/*.ts",
+    "crates/core/assets/js/**/*.d.ts",
+    "crates/core/assets/js/**/*.js"
+  ],
+  "exclude": [
+    "crates/core/assets/js/mermaid.min.js",
+    "crates/core/assets/dist/**",
+    "node_modules"
+  ]
+}

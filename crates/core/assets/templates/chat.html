@@ -1,0 +1,56 @@
+<!DOCTYPE html>
+<html lang="en" dir="auto" data-theme="{{ theme }}">
+<head>
+    <script>
+    // Resolve Markon's theme to a concrete light/dark value before stylesheets
+    // apply. Identical to layout.html's preamble — the chat-only page needs
+    // the same data-theme contract for its CSS.
+    (function(){
+        var root = document.documentElement;
+        var apply = function(t){ root.setAttribute('data-theme', t); };
+        if (root.getAttribute('data-theme') === 'auto') {
+            var mql = window.matchMedia('(prefers-color-scheme: dark)');
+            apply(mql.matches ? 'dark' : 'light');
+            mql.addEventListener && mql.addEventListener('change', function(e){
+                apply(e.matches ? 'dark' : 'light');
+            });
+        }
+    })();
+    </script>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="workspace-id" content="{{ workspace_id }}">
+    <meta name="enable-chat" content="true">
+    <meta name="default-chat-mode" content="{{ default_chat_mode }}">
+    <!-- chat-only mode: main.ts skips MarkonApp and boots ChatManager.initPopout() -->
+    <meta name="chat-only" content="true">
+    <title>{{ title }}</title>
+    <link rel="icon" type="image/svg+xml" href="/_/favicon.svg">
+    <link rel="alternate icon" href="/_/favicon.ico">
+    <link rel="stylesheet" href="/_/css/chat.css">
+    {% if styles_css %}<style>:root { {{ styles_css | safe }} }</style>{% endif %}
+    {% if i18n_json %}<script>
+    window.__MARKON_I18N__ = (function() {
+        var all = {{ i18n_json | safe }};
+        var lang = "{{ i18n_lang | default(value='en') }}";
+        var dict = all[lang] || all.en;
+        return { lang: lang, t: function(k) { return dict[k] || all.en[k] || k; } };
+    })();
+    </script>{% endif %}
+    <style>
+        html, body { margin: 0; padding: 0; height: 100%; overflow: hidden; }
+        body {
+            background: #f6f8fa;
+            color: #1f2328;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Helvetica Neue", Arial, sans-serif;
+        }
+        html[data-theme="dark"] body {
+            background: #2d333b;
+            color: #f0f6fc;
+        }
+    </style>
+</head>
+<body>
+    <script type="module" src="/_/js/main.js"></script>
+</body>
+</html>
