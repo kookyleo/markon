@@ -28,7 +28,7 @@
     <link rel="icon" type="image/svg+xml" href="/_/favicon.svg">
     <link rel="alternate icon" href="/_/favicon.ico">
     <link rel="stylesheet" href="/_/css/chat.css">
-    {% if styles_css %}<style>:root { {{ styles_css | safe }} }</style>{% endif %}
+    {% if styles_css %}<style>{{ styles_css | safe }}</style>{% endif %}
     {% if i18n_json %}<script>
     window.__MARKON_I18N__ = (function() {
         var all = {{ i18n_json | safe }};

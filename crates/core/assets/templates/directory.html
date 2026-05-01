@@ -523,7 +523,7 @@
         }
         {% endif %}
     </style>
-    {% if styles_css %}<style>:root { {{ styles_css | safe }} }</style>{% endif %}
+    {% if styles_css %}<style>{{ styles_css | safe }}</style>{% endif %}
     {% if shortcuts_json %}<script>window.__MARKON_SHORTCUTS__ = {{ shortcuts_json | safe }};</script>{% endif %}
     {% if i18n_json %}<script>
     window.__MARKON_I18N__ = (function() {

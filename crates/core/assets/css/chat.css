@@ -10,14 +10,15 @@
 :root {
     --markon-chat-accent: #8B5CF6;       /* Tailwind violet-500 */
     --markon-chat-accent-soft: rgba(139, 92, 246, 0.18);
-    /* Border-color tokens for the BR resize handle — match the panel's
-       border in resting state and darken on hover. Overridden in dark mode. */
-    --markon-chat-resizer-color: #d0d7de;
+    /* The resting resize handle reuses the panel's border-strong token so it
+       stays visually stitched to the panel chrome under both themes. The hover
+       color stays theme-specific (no matching neutral mid-tone in our token
+       set), so its dark override lives below. */
+    --markon-chat-resizer-color: var(--markon-border-strong);
     --markon-chat-resizer-color-hover: #8c959f;
 }
 
 html[data-theme="dark"] {
-    --markon-chat-resizer-color: #484f58;
     --markon-chat-resizer-color-hover: #768390;
 }
 
@@ -34,31 +35,33 @@ html[data-theme="dark"] {
     width: 40px;
     height: 40px;
     border-radius: 50%;
-    background-color: #f6f8fa;
-    color: #1f2328;
+    background-color: var(--markon-elevated);
+    color: var(--markon-text);
     /* 2.5px border matches the Live sphere's "off" stroke width — same
        visual weight across all three floating-layer family members. */
-    border: 2.5px solid #d0d7de;
+    border: 2.5px solid var(--markon-border-strong);
     box-sizing: border-box;
     user-select: none;
     overflow: hidden;
+    /* Float above the document — same panel-opacity as the editor panels.
+       Popout mode overrides this to 1 (the panel IS the window then). */
+    opacity: var(--markon-panel-opacity, 0.9);
 }
 
+/* Dark mode keeps a slightly muted body color on the sphere face (matches
+   collaboration.css's `#adbac7` family). The container background + border
+   are token-driven and need no theme override. */
 html[data-theme="dark"] .markon-chat-container {
-    background-color: #2d333b;
     color: #adbac7;
-    /* See collaboration.css for the rationale on #484f58 — same 12%
-       luminance delta with the sphere bg as light mode. */
-    border-color: #484f58;
 }
 
 /* Expanded: panel rectangle. Inherits the sphere's surface + text color so
    clicking feels like a pure geometric transform (sphere → panel), not a
    skin swap. Border-radius matches the sphere radius (20px) for the corner
    continuity, and we cap width/height to the viewport so very small windows
-   still get a readable panel. Background is the same #f6f8fa / #2d333b the
-   Live panel and TOC narrow-screen menu use — the three floating-layer family
-   members share one surface tone so they read as the same component class. */
+   still get a readable panel. Background tracks `--markon-elevated` — the
+   same surface tone the Live panel and TOC narrow-screen menu use, so the
+   three floating-layer family members read as one component class. */
 .markon-chat-container.expanded {
     width: 420px;
     height: 600px;
@@ -74,7 +77,7 @@ html[data-theme="dark"] .markon-chat-container {
        on document.body — so neither is clipped by this. */
     overflow: hidden;
     resize: both;
-    background: #f6f8fa;
+    background: var(--markon-elevated);
 }
 
 /* Webkit-only restyle of the BR resize handle. A single 1.5px arc traced
@@ -107,8 +110,7 @@ html[data-theme="dark"] .markon-chat-container {
 }
 
 html[data-theme="dark"] .markon-chat-container.expanded {
-    background: #2d333b;
-    color: #f0f6fc;
+    color: var(--markon-text);
 }
 
 /* ─── Face (sphere face / close handle) ──────────────────────────────── */
@@ -337,8 +339,10 @@ html[data-theme="dark"] .markon-chat-icon-btn:hover {
     left: 48px;           /* skip the TL sphere/close button */
     right: 48px;          /* skip the [+] button on the right */
     margin-top: 4px;
-    background: #ffffff;
-    border: 1px solid #d0d7de;
+    /* Pops one tier above the elevated panel surface — pure canvas in light
+       mode reads as the "highest" layer. */
+    background: var(--markon-canvas);
+    border: 1px solid var(--markon-border-strong);
     border-radius: 8px;
     box-shadow: 0 6px 16px rgba(0, 0, 0, 0.12);
     z-index: 5;
@@ -348,8 +352,14 @@ html[data-theme="dark"] .markon-chat-icon-btn:hover {
 }
 
 html[data-theme="dark"] .markon-chat-thread-menu {
+    /* Dark menus go *darker* than the elevated panel (GitHub-style recessed
+       overlay). #21262d sits between subtle (#161b22) and elevated (#2d333b)
+       — no token mid-tone, so this stays theme-specific. Border drops to the
+       softer `--markon-border` because #30363d is dimmer than the
+       `border-strong` dark value (#484f58) and matches the surrounding
+       low-contrast popover chrome. */
     background: #21262d;
-    border-color: #30363d;
+    border-color: var(--markon-border);
     box-shadow: 0 6px 16px rgba(0, 0, 0, 0.5);
 }
 
@@ -538,8 +548,8 @@ html[data-theme="dark"] .markon-chat-text code {
 }
 
 .markon-chat-text pre {
-    background: #f6f8fa;
-    border: 1px solid #d0d7de;
+    background: var(--markon-subtle);
+    border: 1px solid var(--markon-border-strong);
     border-radius: 6px;
     padding: 10px 12px;
     overflow-x: auto;
@@ -556,8 +566,12 @@ html[data-theme="dark"] .markon-chat-text code {
 }
 
 html[data-theme="dark"] .markon-chat-text pre {
-    background: #0d1117;
-    border-color: #30363d;
+    /* GitHub-dark recesses code blocks below `subtle` (#161b22) — `#0d1117`
+       (canvas in dark) reads as a deeper well against the panel. Border drops
+       to `--markon-border` so the chrome stays understated against this
+       darker fill. */
+    background: var(--markon-canvas);
+    border-color: var(--markon-border);
 }
 
 .markon-chat-text ul,
@@ -580,16 +594,18 @@ html[data-theme="dark"] .markon-chat-text pre {
 .markon-chat-tool-call,
 .markon-chat-tool-result {
     margin: 6px 0;
-    border: 1px solid #d0d7de;
+    border: 1px solid var(--markon-border-strong);
     border-radius: 6px;
-    background: #f6f8fa;
+    background: var(--markon-subtle);
     overflow: hidden;
 }
 
 html[data-theme="dark"] .markon-chat-tool-call,
 html[data-theme="dark"] .markon-chat-tool-result {
-    background: #0d1117;
-    border-color: #30363d;
+    /* Mirrors `.markon-chat-text pre` — tool pills sink below the `subtle`
+       step in dark mode for a visible "well" against the elevated panel. */
+    background: var(--markon-canvas);
+    border-color: var(--markon-border);
 }
 
 .markon-chat-tool-call > summary,
@@ -633,7 +649,7 @@ html[data-theme="dark"] .markon-chat-tool-result {
 .markon-chat-tool-output {
     margin: 0;
     padding: 8px 12px;
-    border-top: 1px solid #d0d7de;
+    border-top: 1px solid var(--markon-border-strong);
     font-size: 11px;
     line-height: 1.45;
     white-space: pre-wrap;
@@ -644,7 +660,8 @@ html[data-theme="dark"] .markon-chat-tool-result {
 
 html[data-theme="dark"] .markon-chat-tool-args,
 html[data-theme="dark"] .markon-chat-tool-output {
-    border-top-color: #30363d;
+    /* Match the parent pill's softened dark border. */
+    border-top-color: var(--markon-border);
 }
 
 .markon-chat-tool-result-error {
@@ -714,9 +731,9 @@ html[data-theme="dark"] .markon-chat-error {
    presence. */
 .markon-chat-input-group {
     position: relative;
-    border: 1px solid #d0d7de;
+    border: 1px solid var(--markon-border-strong);
     border-radius: 14px;
-    background: #ffffff;
+    background: var(--markon-canvas);
     color: inherit;
     overflow: hidden;       /* clips chip's tinted bg into the rounded corner */
     transition: border-color 0.15s, box-shadow 0.15s;
@@ -731,8 +748,10 @@ html[data-theme="dark"] .markon-chat-error {
 }
 
 html[data-theme="dark"] .markon-chat-input-group {
-    background: #0d1117;
-    border-color: #30363d;
+    /* Dark side keeps the input border softer than `--markon-border-strong`
+       (#484f58) — #30363d (= `--markon-border`) preserves the original quiet
+       outline against the canvas-dark fill. */
+    border-color: var(--markon-border);
 }
 
 /* Quote chip — appears in the upper half of the group when "聊聊" / Chat is
@@ -834,10 +853,6 @@ html[data-theme="dark"] .markon-chat-quote-dismiss:hover {
     outline: none;
 }
 
-html[data-theme="dark"] .markon-chat-input {
-    color: #f0f6fc;
-}
-
 /* Pinned to the input-group's inner bottom-right. The group is the absolute-
    positioning context, so this `bottom` measures against the group's bottom
    edge (the group expands to include the chip when visible, but the send
@@ -926,9 +941,9 @@ html[data-theme="dark"] .markon-chat-mention-pill {
 .markon-chat-mention-popup {
     position: fixed;
     z-index: 10010;
-    background: #ffffff;
-    color: #1f2328;
-    border: 1px solid #d0d7de;
+    background: var(--markon-canvas);
+    color: var(--markon-text);
+    border: 1px solid var(--markon-border-strong);
     border-radius: 8px;
     box-shadow: 0 6px 18px rgba(0, 0, 0, 0.15);
     padding: 4px;
@@ -938,6 +953,9 @@ html[data-theme="dark"] .markon-chat-mention-pill {
     max-height: 280px;
     overflow-y: auto;
     box-sizing: border-box;
+    /* Floats over the document like the chat panel — track the same
+       panel-opacity so all overlay surfaces fade together. */
+    opacity: var(--markon-panel-opacity, 0.9);
 }
 
 .markon-chat-mention-popup[hidden] {
@@ -945,9 +963,11 @@ html[data-theme="dark"] .markon-chat-mention-pill {
 }
 
 html[data-theme="dark"] .markon-chat-mention-popup {
+    /* Dark popovers sink darker than the elevated panel (same `#21262d`
+       midway tone as `.markon-chat-thread-menu`). Border drops to
+       `--markon-border` to keep the chrome quiet against the deeper fill. */
     background: #21262d;
-    color: #f0f6fc;
-    border-color: #30363d;
+    border-color: var(--markon-border);
     box-shadow: 0 6px 18px rgba(0, 0, 0, 0.55);
 }
 
@@ -1008,7 +1028,7 @@ html[data-theme="dark"] .markon-chat-mention-row:hover {
     padding: 1px 8px;
     border-radius: 999px;
     background: rgba(56, 139, 253, 0.14);
-    color: #0969da;
+    color: var(--markon-primary);
     font-family: 'SF Mono', Monaco, 'Cascadia Code', 'Roboto Mono', Consolas, 'Courier New', monospace;
     font-size: 0.85em;
     font-weight: 500;
@@ -1048,11 +1068,7 @@ html[data-theme="dark"] .markon-chat-citation:hover {
 body.markon-chat-popout-mode {
     margin: 0;
     overflow: hidden;
-    background: #f6f8fa;
-}
-
-html[data-theme="dark"] body.markon-chat-popout-mode {
-    background: #2d333b;
+    background: var(--markon-elevated);
 }
 
 /* Hide everything else but the chat surface. The mention-popup lives on
@@ -1076,6 +1092,10 @@ body.markon-chat-popout-mode .markon-chat-container.expanded {
     border-radius: 0 !important;
     /* Panel IS the window — resize the OS window, not the panel inside. */
     resize: none !important;
+    /* In popout mode the container fills the OS window, so the panel-opacity
+       fade (used for in-page float) would just bleed the desktop through.
+       Force fully opaque. */
+    opacity: 1 !important;
 }
 
 /* No floating sphere in popout mode — the panel is the window itself. The X

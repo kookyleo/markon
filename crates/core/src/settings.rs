@@ -323,17 +323,63 @@ impl AppSettings {
             .collect();
     }
 
+    /// Render `web_styles` (GUI-supplied overrides) as a complete CSS block
+    /// targeting the `--markon-*` design tokens defined in `editor.css`.
+    ///
+    /// Storage convention from the GUI panel (`STYLE_DEFS` in `index.html`):
+    ///   • duo-color entries are keyed `<base>.light` / `<base>.dark`
+    ///     (e.g. `primary.light`, `muted.dark`)
+    ///   • single-value entries are keyed by the bare token name
+    ///     (`ui-font`, `ui-font-size`, `panel-opacity`)
+    ///
+    /// Routing rules:
+    ///   • `<base>.light`  → `:root`                       as `--markon-<base>`
+    ///   • `<base>.dark`   → `html[data-theme="dark"]`     as `--markon-<base>`
+    ///   • bare key        → `:root`                       as `--markon-<key>`
+    ///   • unknown suffix (anything other than `.light`/`.dark`) is treated
+    ///     as a single value and routed to `:root` so malformed/legacy
+    ///     storage doesn't panic.
+    ///
+    /// Selector blocks are emitted in a fixed order — `:root` first, then
+    /// the dark override — so callers/tests get stable framing even though
+    /// HashMap iteration over individual properties is unordered.
+    /// Returns `None` when neither selector would have any content.
     pub fn render_styles_css(&self) -> Option<String> {
         if self.web_styles.is_empty() {
             return None;
         }
-        Some(
-            self.web_styles
-                .iter()
-                .map(|(k, v)| format!("{k}: {v};"))
-                .collect::<Vec<_>>()
-                .join(" "),
-        )
+        let mut root: Vec<String> = Vec::new();
+        let mut dark: Vec<String> = Vec::new();
+        for (k, v) in &self.web_styles {
+            if let Some(base) = k.strip_suffix(".light") {
+                root.push(format!("--markon-{base}: {v};"));
+            } else if let Some(base) = k.strip_suffix(".dark") {
+                dark.push(format!("--markon-{base}: {v};"));
+            } else {
+                // Bare key (single-value token) or unknown suffix — both go
+                // to `:root` so unexpected data is rendered harmlessly rather
+                // than dropped or panicking.
+                root.push(format!("--markon-{k}: {v};"));
+            }
+        }
+        if root.is_empty() && dark.is_empty() {
+            return None;
+        }
+        let mut out = String::new();
+        if !root.is_empty() {
+            out.push_str(":root { ");
+            out.push_str(&root.join(" "));
+            out.push_str(" }");
+        }
+        if !dark.is_empty() {
+            if !out.is_empty() {
+                out.push(' ');
+            }
+            out.push_str("html[data-theme=\"dark\"] { ");
+            out.push_str(&dark.join(" "));
+            out.push_str(" }");
+        }
+        Some(out)
     }
 }
 
@@ -464,6 +510,139 @@ mod tests {
 
         assert_eq!(s.workspaces.len(), 1, "ephemeral entry must be excluded");
         assert_eq!(s.workspaces[0].path, ws_path.to_string_lossy());
+    }
+
+    /// Helper: build settings with the given `web_styles` map and nothing else.
+    fn settings_with_styles(pairs: &[(&str, &str)]) -> AppSettings {
+        let mut s = AppSettings::default();
+        for (k, v) in pairs {
+            s.web_styles.insert((*k).to_string(), (*v).to_string());
+        }
+        s
+    }
+
+    #[test]
+    fn render_styles_css_empty_returns_none() {
+        let s = AppSettings::default();
+        assert!(s.web_styles.is_empty());
+        assert!(s.render_styles_css().is_none());
+    }
+
+    #[test]
+    fn render_styles_css_light_only_emits_root_block() {
+        let s = settings_with_styles(&[("primary.light", "#0969da"), ("muted.light", "#656d76")]);
+        let css = s.render_styles_css().expect("should render");
+        assert!(css.starts_with(":root { "), "got: {css}");
+        assert!(css.contains("--markon-primary: #0969da;"), "got: {css}");
+        assert!(css.contains("--markon-muted: #656d76;"), "got: {css}");
+        assert!(
+            !css.contains("html[data-theme=\"dark\"]"),
+            "dark block must be absent when no dark keys: {css}"
+        );
+        // Reverse-assert old bug shape never reappears.
+        assert!(!css.contains("primary.light:"), "leaked dotted key: {css}");
+        assert!(css.contains("--markon-"), "must carry token prefix: {css}");
+    }
+
+    #[test]
+    fn render_styles_css_dark_only_emits_dark_block_only() {
+        let s = settings_with_styles(&[("primary.dark", "#58a6ff")]);
+        let css = s.render_styles_css().expect("should render");
+        assert!(
+            !css.contains(":root {"),
+            "no :root block when no light/single-value keys: {css}"
+        );
+        assert!(
+            css.contains("html[data-theme=\"dark\"] { --markon-primary: #58a6ff; }"),
+            "got: {css}"
+        );
+        assert!(!css.contains("primary.dark:"), "leaked dotted key: {css}");
+        assert!(css.contains("--markon-"), "must carry token prefix: {css}");
+    }
+
+    #[test]
+    fn render_styles_css_mixed_routes_keys_correctly() {
+        let s = settings_with_styles(&[
+            ("primary.light", "#0969da"),
+            ("primary.dark", "#58a6ff"),
+            ("muted.light", "#656d76"),
+            ("ui-font", "Inter"),
+            ("ui-font-size", "0.95"),
+            ("panel-opacity", "0.85"),
+        ]);
+        let css = s.render_styles_css().expect("should render");
+
+        // Both selector blocks present, in fixed order: :root then dark.
+        let root_idx = css.find(":root {").expect("root block present");
+        let dark_idx = css
+            .find("html[data-theme=\"dark\"] {")
+            .expect("dark block present");
+        assert!(
+            root_idx < dark_idx,
+            "selector block order must be :root before dark: {css}"
+        );
+
+        // Light + single-value tokens routed to :root with --markon- prefix.
+        // Use HashMap-order-agnostic membership checks.
+        let root_block = &css[root_idx..dark_idx];
+        assert!(
+            root_block.contains("--markon-primary: #0969da;"),
+            "got: {root_block}"
+        );
+        assert!(
+            root_block.contains("--markon-muted: #656d76;"),
+            "got: {root_block}"
+        );
+        assert!(
+            root_block.contains("--markon-ui-font: Inter;"),
+            "got: {root_block}"
+        );
+        assert!(
+            root_block.contains("--markon-ui-font-size: 0.95;"),
+            "got: {root_block}"
+        );
+        assert!(
+            root_block.contains("--markon-panel-opacity: 0.85;"),
+            "got: {root_block}"
+        );
+
+        // Dark override carries only the .dark entries — single-value tokens
+        // must NOT leak into the dark block.
+        let dark_block = &css[dark_idx..];
+        assert!(
+            dark_block.contains("--markon-primary: #58a6ff;"),
+            "got: {dark_block}"
+        );
+        assert!(
+            !dark_block.contains("--markon-ui-font"),
+            "single-value token leaked into dark block: {dark_block}"
+        );
+        assert!(
+            !dark_block.contains("--markon-panel-opacity"),
+            "single-value token leaked into dark block: {dark_block}"
+        );
+
+        // Reverse assertions: none of the legacy-bug shapes should appear.
+        assert!(!css.contains("primary.light:"), "leaked dotted key: {css}");
+        assert!(!css.contains("primary.dark:"), "leaked dotted key: {css}");
+        assert!(
+            !css.contains(" ui-font:") && !css.starts_with("ui-font:"),
+            "bare (un-prefixed) property leaked: {css}"
+        );
+        assert!(css.contains("--markon-"), "must carry token prefix: {css}");
+    }
+
+    #[test]
+    fn render_styles_css_unknown_suffix_falls_back_to_root() {
+        // An out-of-spec key (e.g. legacy/typo) must not panic; route to :root
+        // verbatim under the --markon- prefix so the result is still legal CSS.
+        let s = settings_with_styles(&[("primary.weird", "#abcdef")]);
+        let css = s.render_styles_css().expect("should render");
+        assert!(
+            css.contains(":root { --markon-primary.weird: #abcdef; }"),
+            "got: {css}"
+        );
+        assert!(!css.contains("html[data-theme=\"dark\"]"), "got: {css}");
     }
 
     #[test]

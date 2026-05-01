@@ -64,43 +64,14 @@
             color: inherit;
         }
 
-        /* Body theme colors */
-        {% if theme == "dark" %}
+        /* Body theme colors — driven by tokens (light/dark switched in editor.css) */
         body {
-            background-color: #0d1117;
-            color: #f0f6fc;
+            background-color: var(--markon-canvas);
+            color: var(--markon-text);
         }
         @media (min-width: 1401px) {
-            #main-content { background-color: #0d1117; }
+            #main-content { background-color: var(--markon-canvas); }
         }
-        {% elif theme == "light" %}
-        body {
-            background-color: #ffffff;
-            color: #1f2328;
-        }
-        @media (min-width: 1401px) {
-            #main-content { background-color: #ffffff; }
-        }
-        {% else %}
-        @media (prefers-color-scheme: dark) {
-            body {
-                background-color: #0d1117;
-                color: #f0f6fc;
-            }
-        }
-        @media (prefers-color-scheme: light) {
-            body {
-                background-color: #ffffff;
-                color: #1f2328;
-            }
-        }
-        @media (prefers-color-scheme: dark) and (min-width: 1401px) {
-            #main-content { background-color: #0d1117; }
-        }
-        @media (prefers-color-scheme: light) and (min-width: 1401px) {
-            #main-content { background-color: #ffffff; }
-        }
-        {% endif %}
 
         /* ========================================
            NAVIGATION COMPONENTS
@@ -113,19 +84,13 @@
         }
 
         .back-link a {
-            color: #0969da;
+            color: var(--markon-primary);
             text-decoration: none;
         }
 
         .back-link a:hover {
             text-decoration: underline;
         }
-
-        {% if theme == "dark" %}
-        .back-link a {
-            color: #58a6ff;
-        }
-        {% endif %}
 
         /* Footer */
         .footer {
@@ -134,15 +99,16 @@
             font-size: 0.9rem;
             text-align: left;
             margin-left: -1px;
+            color: var(--markon-muted);
         }
 
         .footer a {
             text-decoration: none;
-            color: #8b949e;
+            color: var(--markon-muted);
         }
 
         .footer a:visited {
-            color: #8b949e;
+            color: var(--markon-muted);
         }
 
         .footer a:hover {
@@ -150,62 +116,25 @@
         }
 
         .footer-separator {
-            color: #8b949e;
+            color: var(--markon-muted);
             margin: 0 8px;
         }
 
         .footer-clear-link {
-            color: #8b949e;
+            color: var(--markon-muted);
             text-decoration: none;
             cursor: pointer;
             transition: color 0.2s;
         }
 
         .footer-clear-link:visited {
-            color: #8b949e;
+            color: var(--markon-muted);
         }
 
         .footer-clear-link:hover {
             color: #dc3545;
             text-decoration: underline;
         }
-
-        {% if theme == "dark" %}
-        .footer {
-            color: #8b949e;
-        }
-        .footer a,
-        .footer a:visited {
-            color: #8b949e;
-        }
-        {% elif theme == "light" %}
-        .footer {
-            color: #656d76;
-        }
-        .footer a,
-        .footer a:visited {
-            color: #656d76;
-        }
-        {% else %}
-        @media (prefers-color-scheme: dark) {
-            .footer {
-                color: #8b949e;
-            }
-            .footer a,
-            .footer a:visited {
-                color: #8b949e;
-            }
-        }
-        @media (prefers-color-scheme: light) {
-            .footer {
-                color: #656d76;
-            }
-            .footer a,
-            .footer a:visited {
-                color: #656d76;
-            }
-        }
-        {% endif %}
 
         /* ========================================
            TABLE OF CONTENTS
@@ -323,210 +252,89 @@
         }
 
         /* TOC Theme Colors */
-        {% if theme == "dark" %}
         .toc-title {
-            color: #f0f6fc;
+            color: var(--markon-text);
         }
         .toc-item a {
-            color: #8b949e;
+            color: var(--markon-muted);
         }
         .toc-item a:hover {
-            color: #58a6ff;
+            color: var(--markon-primary);
         }
-        {% elif theme == "light" %}
-        .toc-title {
-            color: #1f2328;
-        }
-        .toc-item a {
-            color: #656d76;
-        }
-        .toc-item a:hover {
-            color: #0969da;
-        }
-        {% else %}
-        @media (prefers-color-scheme: dark) {
-            .toc-title {
-                color: #f0f6fc;
-            }
-            .toc-item a {
-                color: #8b949e;
-            }
-            .toc-item a:hover {
-                color: #58a6ff;
-            }
-        }
-        @media (prefers-color-scheme: light) {
-            .toc-title {
-                color: #1f2328;
-            }
-            .toc-item a {
-                color: #656d76;
-            }
-            .toc-item a:hover {
-                color: #0969da;
-            }
-        }
-        {% endif %}
 
         /* TOC Icon & Floating Menu (Narrow Screens). Borders match the Live
            sphere/panel surface treatment — no drop shadow, just a 1px hairline
            that thickens slightly under the dark-theme palette. */
-        {% if theme == "dark" %}
         #toc-icon {
-            background-color: #2d333b;
-            border-color: #484f58;
+            background-color: var(--markon-elevated);
+            border-color: var(--markon-border-strong);
+            opacity: var(--markon-panel-opacity, 0.9);
         }
+        /* In dark theme the bar uses a dedicated light-grey (#adbac7) so it
+           reads as a tinted icon rather than pure muted/text colors; light theme
+           bar follows text. The light-only branch is harmless on dark since the
+           dark-only rule below overrides it via specificity-equal cascade. */
         #toc-icon .toc-bar {
-            background-color: #adbac7;
+            background-color: var(--markon-text);
         }
         #toc-icon .toc-close {
+            color: var(--markon-text);
+        }
+        html[data-theme="dark"] #toc-icon .toc-bar {
+            background-color: #adbac7;
+        }
+        html[data-theme="dark"] #toc-icon .toc-close {
             color: #adbac7;
         }
         /* Floating TOC menu on narrow screens — same surface + border as icon */
         @media (max-width: 1400px) {
             .toc {
-                background-color: #2d333b;
-                border-color: #484f58;
+                background-color: var(--markon-elevated);
+                border-color: var(--markon-border-strong);
             }
         }
         /* TOC background on wide screens (matches body, ensures overlap is clean) */
         @media (min-width: 1401px) {
             .toc {
-                background-color: #0d1117;
+                background-color: var(--markon-canvas);
             }
             #toc-container.toc-nav-active .toc {
-                background-color: #2d333b;
-                border: 2.5px solid #484f58;
+                background-color: var(--markon-elevated);
+                border: 2.5px solid var(--markon-border-strong);
                 border-radius: 20px;
             }
         }
-        {% elif theme == "light" %}
-        #toc-icon {
-            background-color: #f6f8fa;
-            border-color: #d0d7de;
-        }
-        #toc-icon .toc-bar {
-            background-color: #1f2328;
-        }
-        #toc-icon .toc-close {
-            color: #1f2328;
-        }
-        /* Floating TOC menu on narrow screens — same surface + border as icon */
-        @media (max-width: 1400px) {
-            .toc {
-                background-color: #f6f8fa;
-                border-color: #d0d7de;
-            }
-        }
-        /* TOC background on wide screens (matches body, ensures overlap is clean) */
-        @media (min-width: 1401px) {
-            .toc {
-                background-color: #ffffff;
-            }
-            #toc-container.toc-nav-active .toc {
-                background-color: #f6f8fa;
-                border: 2.5px solid #d0d7de;
-                border-radius: 20px;
-            }
-        }
-        {% else %}
-        /* Auto theme */
-        @media (prefers-color-scheme: dark) {
-            #toc-icon {
-                background-color: #2d333b;
-                border-color: #484f58;
-            }
-            #toc-icon .toc-bar    { background-color: #adbac7; }
-            #toc-icon .toc-close  { color: #adbac7; }
-        }
-        @media (prefers-color-scheme: light) {
-            #toc-icon {
-                background-color: #f6f8fa;
-                border-color: #d0d7de;
-            }
-            #toc-icon .toc-bar    { background-color: #1f2328; }
-            #toc-icon .toc-close  { color: #1f2328; }
-        }
-        /* Floating TOC menu on narrow screens — match icon surface + border */
-        @media (prefers-color-scheme: dark) and (max-width: 1400px) {
-            .toc {
-                background-color: #2d333b;
-                border-color: #484f58;
-            }
-        }
-        @media (prefers-color-scheme: light) and (max-width: 1400px) {
-            .toc {
-                background-color: #f6f8fa;
-                border-color: #d0d7de;
-            }
-        }
-        /* TOC background on wide screens (matches body, ensures overlap is clean) */
-        @media (prefers-color-scheme: dark) and (min-width: 1401px) {
-            .toc {
-                background-color: #0d1117;
-            }
-            #toc-container.toc-nav-active .toc {
-                background-color: #2d333b;
-                border: 2.5px solid #484f58;
-                border-radius: 20px;
-            }
-        }
-        @media (prefers-color-scheme: light) and (min-width: 1401px) {
-            .toc {
-                background-color: #ffffff;
-            }
-            #toc-container.toc-nav-active .toc {
-                background-color: #f6f8fa;
-                border: 2.5px solid #d0d7de;
-                border-radius: 20px;
-            }
-        }
-        {% endif %}
 
         /* ========================================
            EDITOR UI COMPONENTS (Theme Overrides)
            Note: Base styles are in editor.css
+           Selection popover is anti-theme (dark surface in BOTH light/dark);
+           it lives entirely in editor.css — do not override here.
            ======================================== */
-
-        {% if theme == "dark" %}
-        /* Selection Popover */
-        .selection-popover {
-            background-color: #21262d;
-            color: #f0f6fc;
-            box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
-        }
-        .selection-popover button {
-            color: #f0f6fc;
-        }
-        .selection-popover button:hover {
-            background-color: #30363d;
-        }
-        .popover-separator {
-            color: #484f58;
-        }
 
         /* Note input modal */
         .note-input-modal {
-            background: #161b22;
-            border: 1px solid #30363d;
+            background: var(--markon-subtle);
+            border: 1px solid var(--markon-border);
             box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+            opacity: var(--markon-panel-opacity, 0.9);
         }
         .note-textarea {
-            background: #0d1117;
-            border: 1px solid #30363d;
-            color: #f0f6fc;
+            background: var(--markon-canvas);
+            border: 1px solid var(--markon-border);
+            color: var(--markon-text);
         }
         .note-textarea:focus {
-            border-color: #58a6ff;
-            box-shadow: 0 0 0 3px rgba(88, 166, 255, 0.15);
+            border-color: var(--markon-primary);
+            box-shadow: 0 0 0 3px color-mix(in srgb, var(--markon-primary) 15%, transparent);
         }
         .note-input-actions button {
-            background: #21262d;
-            border: 1px solid #30363d;
-            color: #f0f6fc;
+            background: var(--markon-elevated);
+            border: 1px solid var(--markon-border);
+            color: var(--markon-text);
         }
         .note-input-actions button:hover {
-            background: #30363d;
+            background: var(--markon-border);
         }
         .note-save {
             background: #238636 !important;
@@ -538,50 +346,53 @@
 
         /* Note cards */
         .note-card-margin {
-            background: #161b22;
-            border-left: 3px solid #58a6ff;
+            background: var(--markon-elevated);
+            border-left: 3px solid var(--markon-primary);
             box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
         }
         .note-card-margin:hover {
-            background: #1c2128;
-            border-left-color: #58a6ff;
+            background: color-mix(in srgb, var(--markon-elevated) 92%, var(--markon-text) 8%);
+            border-left-color: var(--markon-primary);
             box-shadow: 0 2px 8px rgba(0, 0, 0, 0.4);
         }
         .note-card-margin.highlight-active {
-            border: 2px solid #58a6ff;
-            border-left: 3px solid #58a6ff;
-            box-shadow: 0 0 0 3px rgba(88, 166, 255, 0.15);
+            border: 2px solid var(--markon-primary);
+            border-left: 3px solid var(--markon-primary);
+            box-shadow: 0 0 0 3px color-mix(in srgb, var(--markon-primary) 15%, transparent);
         }
         .note-content {
-            color: #f0f6fc;
+            color: var(--markon-text);
         }
 
         /* Confirm dialog */
         .confirm-dialog {
-            background: #161b22;
-            border: 1px solid #30363d;
+            background: var(--markon-subtle);
+            border: 1px solid var(--markon-border);
             box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+            opacity: var(--markon-panel-opacity, 0.9);
         }
         .confirm-message {
-            color: #f0f6fc;
+            color: var(--markon-text);
         }
         .confirm-actions button {
-            background: #21262d;
-            border: 1px solid #30363d;
-            color: #f0f6fc;
+            background: var(--markon-elevated);
+            border: 1px solid var(--markon-border);
+            color: var(--markon-text);
         }
         .confirm-actions button:hover {
-            background: #30363d;
+            background: var(--markon-border);
         }
 
         /* Note popup */
         .note-popup {
-            background: #161b22;
-            border: 1px solid #58a6ff;
+            background: var(--markon-subtle);
+            border: 1px solid var(--markon-primary);
             box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
+            opacity: var(--markon-panel-opacity, 0.9);
         }
 
-        /* Has-note highlight */
+        /* Has-note highlight (tomato/amber accent — kept as fixed rgba so it
+           reads consistently across themes) */
         .has-note {
             background-color: rgba(187, 128, 9, 0.15);
             border-bottom: 2px dotted rgba(187, 128, 9, 0.4);
@@ -591,12 +402,12 @@
             border-bottom-color: rgba(187, 128, 9, 0.6);
         }
         .has-note.highlight-active {
-            background-color: rgba(88, 166, 255, 0.15);
-            border-bottom: 2px solid #58a6ff;
-            box-shadow: 0 0 0 2px rgba(88, 166, 255, 0.15);
+            background-color: color-mix(in srgb, var(--markon-primary) 15%, transparent);
+            border-bottom: 2px solid var(--markon-primary);
+            box-shadow: 0 0 0 2px color-mix(in srgb, var(--markon-primary) 15%, transparent);
         }
 
-        /* Highlight colors for dark mode - softer, more readable */
+        /* Highlight colors — fixed rgba for stable visibility on either theme */
         .highlight-orange {
             background-color: rgba(224, 108, 43, 0.35);
         }
@@ -613,16 +424,16 @@
         .markdown-body a:hover,
         .markdown-body a:active,
         .markdown-body a:focus {
-            color: #58a6ff !important;
+            color: var(--markon-primary) !important;
         }
 
-        /* Viewed toolbar - dark theme */
+        /* Viewed toolbar */
         .viewed-toolbar {
-            border-color: #30363d;
-            color: #8b949e;
+            border-color: var(--markon-border);
+            color: var(--markon-muted);
         }
         .viewed-toolbar a {
-            color: #58a6ff;
+            color: var(--markon-primary);
         }
 
         /* Remove H1 bottom margin when followed by viewed toolbar */
@@ -630,292 +441,56 @@
             margin-bottom: 0;
         }
 
-        /* Editor modal - dark theme */
+        /* Editor modal */
         .editor-modal {
-            background-color: #0d1117;
+            background-color: var(--markon-canvas);
         }
         .editor-header {
-            background-color: #161b22;
-            border-color: #30363d;
+            background-color: var(--markon-subtle);
+            border-color: var(--markon-border);
         }
         .editor-close {
-            color: #8b949e;
+            color: var(--markon-muted);
         }
         .editor-file-name {
-            color: #f0f6fc;
+            color: var(--markon-text);
         }
         .editor-close:hover {
-            color: #f0f6fc;
+            color: var(--markon-text);
         }
         .editor-line-numbers {
-            background-color: #0d1117;
-            border-right-color: #30363d;
-            color: #6e7681;
+            background-color: var(--markon-canvas);
+            border-right-color: var(--markon-border);
+            color: var(--markon-muted);
         }
         .editor-highlight-layer {
-            background-color: #0d1117;
-            color: #f0f6fc;
+            background-color: var(--markon-canvas);
+            color: var(--markon-text);
         }
         .editor-textarea {
             background-color: transparent;
             color: transparent;
-            caret-color: #f0f6fc;
+            caret-color: var(--markon-text);
         }
+        /* Selection alpha varies by theme to keep the textarea legible — kept
+           as fixed rgba (token primary doesn't carry an alpha component) */
         .editor-textarea::selection {
             background-color: rgba(31, 111, 235, 0.6);
             color: transparent;
         }
-        .editor-status {
-            color: #8b949e;
-        }
-        .editor-split-divider { background-color: #30363d; }
-        .editor-split-divider:hover, .editor-split-divider:active { background-color: #58a6ff; }
-        .editor-preview-content { background-color: #0d1117; color: #f0f6fc; }
-        .editor-pane-preview { background-color: #0d1117; }
-        .editor-tab { color: #8b949e; }
-        .editor-tab:hover { color: #f0f6fc; }
-        .editor-tab.active { color: #f0f6fc; border-bottom-color: #58a6ff; }
-
-        {% elif theme == "light" %}
-        /* Light Theme: Override dark defaults */
-
-        /* Editor modal - light theme */
-        .editor-modal {
-            background-color: #ffffff;
-        }
-        .editor-header {
-            background-color: #f6f8fa;
-            border-color: #d0d7de;
-        }
-        .editor-close {
-            color: #656d76;
-        }
-        .editor-file-name {
-            color: #1f2328;
-        }
-        .editor-close:hover {
-            color: #1f2328;
-        }
-        .editor-line-numbers {
-            background-color: #f6f8fa;
-            border-right-color: #d0d7de;
-            color: #656d76;
-        }
-        .editor-highlight-layer {
-            background-color: #ffffff;
-            color: #1f2328;
-        }
-        .editor-textarea {
-            background-color: transparent;
-            color: transparent;
-            caret-color: #1f2328;
-        }
-        .editor-textarea::selection {
+        html[data-theme="light"] .editor-textarea::selection {
             background-color: rgba(173, 214, 255, 0.6);
-            color: transparent;
         }
         .editor-status {
-            color: #656d76;
+            color: var(--markon-muted);
         }
-        .editor-split-divider { background-color: #d0d7de; }
-        .editor-split-divider:hover, .editor-split-divider:active { background-color: #0969da; }
-        .editor-preview-content { background-color: #ffffff; color: #1f2328; }
-        .editor-pane-preview { background-color: #ffffff; }
-        .editor-tab { color: #656d76; }
-        .editor-tab:hover { color: #1f2328; }
-        .editor-tab.active { color: #1f2328; border-bottom-color: #0969da; }
-
-        /* Remove H1 bottom margin when followed by viewed toolbar */
-        .markdown-body h1:has(+ .viewed-toolbar) {
-            margin-bottom: 0;
-        }
-
-        {% else %}
-        /* Auto Theme: Respond to system preference */
-        @media (prefers-color-scheme: dark) {
-            /* Selection Popover */
-            .selection-popover {
-                background-color: #21262d;
-                color: #f0f6fc;
-                box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
-            }
-            .selection-popover button {
-                color: #f0f6fc;
-            }
-            .selection-popover button:hover {
-                background-color: #30363d;
-            }
-            .popover-separator {
-                color: #484f58;
-            }
-
-            /* Note input modal */
-            .note-input-modal {
-                background: #161b22;
-                border: 1px solid #30363d;
-                box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
-            }
-            .note-textarea {
-                background: #0d1117;
-                border: 1px solid #30363d;
-                color: #f0f6fc;
-            }
-            .note-textarea:focus {
-                border-color: #58a6ff;
-                box-shadow: 0 0 0 3px rgba(88, 166, 255, 0.15);
-            }
-            .note-input-actions button {
-                background: #21262d;
-                border: 1px solid #30363d;
-                color: #f0f6fc;
-            }
-            .note-input-actions button:hover {
-                background: #30363d;
-            }
-            .note-save {
-                background: #238636 !important;
-                border-color: #238636 !important;
-            }
-            .note-save:hover {
-                background: #2ea043 !important;
-            }
-
-            /* Note cards */
-            .note-card-margin {
-                background: #161b22;
-                border-left: 3px solid #58a6ff;
-                box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
-            }
-            .note-card-margin:hover {
-                background: #1c2128;
-                border-left-color: #58a6ff;
-                box-shadow: 0 2px 8px rgba(0, 0, 0, 0.4);
-            }
-            .note-card-margin.highlight-active {
-                border: 2px solid #58a6ff;
-                border-left: 3px solid #58a6ff;
-                box-shadow: 0 0 0 3px rgba(88, 166, 255, 0.15);
-            }
-            .note-content {
-                color: #f0f6fc;
-            }
-
-            /* Confirm dialog */
-            .confirm-dialog {
-                background: #161b22;
-                border: 1px solid #30363d;
-                box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
-            }
-            .confirm-message {
-                color: #f0f6fc;
-            }
-            .confirm-actions button {
-                background: #21262d;
-                border: 1px solid #30363d;
-                color: #f0f6fc;
-            }
-            .confirm-actions button:hover {
-                background: #30363d;
-            }
-
-            /* Note popup */
-            .note-popup {
-                background: #161b22;
-                border: 1px solid #58a6ff;
-                box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
-            }
-
-            /* Has-note highlight */
-            .has-note {
-                background-color: rgba(187, 128, 9, 0.15);
-                border-bottom: 2px dotted rgba(187, 128, 9, 0.4);
-            }
-            .has-note:hover {
-                background-color: rgba(187, 128, 9, 0.25);
-                border-bottom-color: rgba(187, 128, 9, 0.6);
-            }
-            .has-note.highlight-active {
-                background-color: rgba(88, 166, 255, 0.15);
-                border-bottom: 2px solid #58a6ff;
-                box-shadow: 0 0 0 2px rgba(88, 166, 255, 0.15);
-            }
-
-            /* Highlight colors for dark mode - softer, more readable */
-            .highlight-orange {
-                background-color: rgba(224, 108, 43, 0.35);
-            }
-            .highlight-green {
-                background-color: rgba(46, 160, 67, 0.35);
-            }
-            .highlight-yellow {
-                background-color: rgba(187, 128, 9, 0.35);
-            }
-
-            /* Link colors in markdown body */
-            .markdown-body a:link,
-            .markdown-body a:visited,
-            .markdown-body a:hover,
-            .markdown-body a:active,
-            .markdown-body a:focus {
-                color: #58a6ff !important;
-            }
-
-            /* Viewed toolbar - dark theme (auto mode) */
-            .viewed-toolbar {
-                border-color: #30363d;
-                color: #8b949e;
-            }
-            .viewed-toolbar a {
-                color: #58a6ff;
-            }
-
-            /* Remove H1 bottom margin when followed by viewed toolbar */
-            .markdown-body h1:has(+ .viewed-toolbar) {
-                margin-bottom: 0;
-            }
-
-            /* Editor modal - dark theme (auto mode) */
-            .editor-modal {
-                background-color: #0d1117;
-            }
-            .editor-header,
-            .editor-footer {
-                background-color: #161b22;
-                border-color: #30363d;
-            }
-            .editor-title,
-            .editor-close {
-                color: #8b949e;
-            }
-            .editor-file-name {
-                color: #f0f6fc;
-            }
-            .editor-close:hover {
-                color: #f0f6fc;
-            }
-            .editor-line-numbers {
-                background-color: #0d1117;
-                border-right-color: #30363d;
-                color: #6e7681;
-            }
-            .editor-textarea {
-                background-color: #0d1117;
-                color: #f0f6fc;
-            }
-            .editor-textarea::selection {
-                background-color: #1f6feb;
-            }
-            .editor-status {
-                color: #8b949e;
-            }
-            .editor-split-divider { background-color: #30363d; }
-            .editor-split-divider:hover, .editor-split-divider:active { background-color: #58a6ff; }
-            .editor-preview-content { background-color: #0d1117; color: #f0f6fc; }
-            .editor-pane-preview { background-color: #0d1117; }
-            .editor-tab { color: #8b949e; }
-            .editor-tab.active { color: #f0f6fc; border-bottom-color: #58a6ff; }
-        }
-        {% endif %}
+        .editor-split-divider { background-color: var(--markon-border); }
+        .editor-split-divider:hover, .editor-split-divider:active { background-color: var(--markon-primary); }
+        .editor-preview-content { background-color: var(--markon-canvas); color: var(--markon-text); }
+        .editor-pane-preview { background-color: var(--markon-canvas); }
+        .editor-tab { color: var(--markon-muted); }
+        .editor-tab:hover { color: var(--markon-text); }
+        .editor-tab.active { color: var(--markon-text); border-bottom-color: var(--markon-primary); }
 
         /* ========================================
            SEARCH MODAL
@@ -1038,192 +613,50 @@
             opacity: 1;
         }
 
-        /* Light theme */
-        {% if theme == "light" %}
+        /* Search modal */
         .search-modal {
-            background-color: #ffffff;
+            background-color: var(--markon-canvas);
         }
 
         .search-modal-content {
-            background-color: #ffffff;
+            background-color: var(--markon-canvas);
         }
 
         .search-input-container {
-            background: #f6f8fa;
-            border-bottom: 2px solid #d0d7de;
+            background: var(--markon-subtle);
+            border-bottom: 2px solid var(--markon-border-strong);
         }
 
         #search-input {
             background: transparent;
-            color: #1f2328;
+            color: var(--markon-text);
         }
 
         #search-input::placeholder {
-            color: #656d76;
+            color: var(--markon-muted);
         }
 
         .search-results-container {
-            background: #ffffff;
+            background: var(--markon-canvas);
         }
 
         .search-result-item a {
-            color: #1f2328;
-            border-bottom: 1px solid #f6f8fa;
+            color: var(--markon-text);
+            border-bottom: 1px solid var(--markon-subtle);
         }
 
         .search-result-item a:hover,
         .search-result-item.selected a {
-            background-color: #f6f8fa;
+            background-color: var(--markon-subtle);
         }
 
         .search-result-item.selected a {
-            border-left-color: #0969da;
+            border-left-color: var(--markon-primary);
         }
 
         .search-result-snippet b {
-            color: #0969da;
+            color: var(--markon-primary);
         }
-
-        /* Dark theme */
-        {% elif theme == "dark" %}
-        .search-modal {
-            background-color: #0d1117;
-        }
-
-        .search-modal-content {
-            background-color: #0d1117;
-        }
-
-        .search-input-container {
-            background: #161b22;
-            border-bottom: 2px solid #30363d;
-        }
-
-        #search-input {
-            background: transparent;
-            color: #f0f6fc;
-        }
-
-        #search-input::placeholder {
-            color: #8b949e;
-        }
-
-        .search-results-container {
-            background: #0d1117;
-        }
-
-        .search-result-item a {
-            color: #f0f6fc;
-            border-bottom: 1px solid #161b22;
-        }
-
-        .search-result-item a:hover,
-        .search-result-item.selected a {
-            background-color: #161b22;
-        }
-
-        .search-result-item.selected a {
-            border-left-color: #58a6ff;
-        }
-
-        .search-result-snippet b {
-            color: #58a6ff;
-        }
-
-        /* Auto theme */
-        {% else %}
-        @media (prefers-color-scheme: light) {
-            .search-modal {
-                background-color: #ffffff;
-            }
-
-            .search-modal-content {
-                background-color: #ffffff;
-            }
-
-            .search-input-container {
-                background: #f6f8fa;
-                border-bottom: 2px solid #d0d7de;
-            }
-
-            #search-input {
-                background: transparent;
-                color: #1f2328;
-            }
-
-            #search-input::placeholder {
-                color: #656d76;
-            }
-
-            .search-results-container {
-                background: #ffffff;
-            }
-
-            .search-result-item a {
-                color: #1f2328;
-                border-bottom: 1px solid #f6f8fa;
-            }
-
-            .search-result-item a:hover,
-            .search-result-item.selected a {
-                background-color: #f6f8fa;
-            }
-
-            .search-result-item.selected a {
-                border-left-color: #0969da;
-            }
-
-            .search-result-snippet b {
-                color: #0969da;
-            }
-        }
-
-        @media (prefers-color-scheme: dark) {
-            .search-modal {
-                background-color: #0d1117;
-            }
-
-            .search-modal-content {
-                background-color: #0d1117;
-            }
-
-            .search-input-container {
-                background: #161b22;
-                border-bottom: 2px solid #30363d;
-            }
-
-            #search-input {
-                background: transparent;
-                color: #f0f6fc;
-            }
-
-            #search-input::placeholder {
-                color: #8b949e;
-            }
-
-            .search-results-container {
-                background: #0d1117;
-            }
-
-            .search-result-item a {
-                color: #f0f6fc;
-                border-bottom: 1px solid #161b22;
-            }
-
-            .search-result-item a:hover,
-            .search-result-item.selected a {
-                background-color: #161b22;
-            }
-
-            .search-result-item.selected a {
-                border-left-color: #58a6ff;
-            }
-
-            .search-result-snippet b {
-                color: #58a6ff;
-            }
-        }
-        {% endif %}
 
         /* ========================================
            SEARCH HIGHLIGHTING
@@ -1250,35 +683,20 @@
             }
         }
 
-        {% if theme == "dark" %}
-        .search-highlight {
+        /* Dark theme softens search-highlight alpha for readability against
+           dark canvas. The inline <head> script normalizes data-theme="auto"
+           to a concrete light|dark value before stylesheets apply, so a single
+           attribute selector covers both explicit-dark and auto-dark cases. */
+        html[data-theme="dark"] .search-highlight {
             background-color: rgba(255, 193, 7, 0.25);
         }
 
-        .search-highlight-active {
+        html[data-theme="dark"] .search-highlight-active {
             background-color: rgba(255, 193, 7, 0.4);
             box-shadow: 0 0 0 3px rgba(255, 193, 7, 0.2);
         }
 
-        @keyframes highlight-pulse {
-            0%, 100% {
-                background-color: rgba(255, 193, 7, 0.4);
-            }
-            50% {
-                background-color: rgba(255, 193, 7, 0.6);
-            }
-        }
-        {% elif theme == "auto" %}
         @media (prefers-color-scheme: dark) {
-            .search-highlight {
-                background-color: rgba(255, 193, 7, 0.25);
-            }
-
-            .search-highlight-active {
-                background-color: rgba(255, 193, 7, 0.4);
-                box-shadow: 0 0 0 3px rgba(255, 193, 7, 0.2);
-            }
-
             @keyframes highlight-pulse {
                 0%, 100% {
                     background-color: rgba(255, 193, 7, 0.4);
@@ -1288,7 +706,6 @@
                 }
             }
         }
-        {% endif %}
 
         /* ========================================
            PRINT STYLES
@@ -1307,7 +724,7 @@
             }
         }
     </style>
-    {% if styles_css %}<style>:root { {{ styles_css | safe }} }</style>{% endif %}
+    {% if styles_css %}<style>{{ styles_css | safe }}</style>{% endif %}
     {% if i18n_json %}<script>
     window.__MARKON_I18N__ = (function() {
         var all = {{ i18n_json | safe }};
@@ -1369,7 +786,7 @@
             <div class="search-input-container">
                 <input type="text" id="search-input" placeholder="Search..." autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false">
             </div>
-            <div id="search-esc-hint" style="text-align:center;padding:8px 0 4px;font-size:12px;color:#8b949e"><kbd style="padding:1px 5px;border:1px solid #d0d7de;border-radius:3px;font-size:11px;font-family:monospace;background:#f6f8fa">ESC</kbd> <span id="search-esc-text">to close</span></div>
+            <div id="search-esc-hint" style="text-align:center;padding:8px 0 4px;font-size:12px;color:var(--markon-muted)"><kbd style="padding:1px 5px;border:1px solid var(--markon-border-strong);border-radius:3px;font-size:11px;font-family:monospace;background:var(--markon-subtle)">ESC</kbd> <span id="search-esc-text">to close</span></div>
             <div class="search-results-container">
                 <ul id="search-results"></ul>
             </div>

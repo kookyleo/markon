@@ -60,7 +60,11 @@ pub struct ServerConfig {
     pub language: Option<String>,
     /// Custom keyboard shortcut overrides (JSON object, injected into browser pages).
     pub shortcuts_json: Option<String>,
-    /// Custom CSS variable overrides (rendered as :root { --markon-*: value }).
+    /// Custom CSS variable overrides for `--markon-*` design tokens.
+    /// Pre-rendered by `AppSettings::render_styles_css` as a complete CSS
+    /// block carrying its own selectors (`:root { ... }` for light/single-
+    /// value tokens, `html[data-theme="dark"] { ... }` for dark overrides),
+    /// so templates inject it verbatim — no wrapping selector.
     pub styles_css: Option<String>,
     /// Default chat surface: "in_page" or "popout". Surfaced to the browser
     /// via the `default-chat-mode` meta tag.
