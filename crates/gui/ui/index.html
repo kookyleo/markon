@@ -2308,6 +2308,10 @@
     TOGGLE_SECTION_COLLAPSE: { key: 'o', ctrl: false, shift: false },
     TOGGLE_VIEWED:  { key: 'v', ctrl: false, shift: false },
     EDIT:           { key: 'e', ctrl: false, shift: false },
+    TOGGLE_LIVE_ACTIVE: { key: 'l', ctrl: false, shift: false },
+    TOGGLE_LIVE_OFF:    { key: 'l', ctrl: false, shift: true  },
+    TOGGLE_CHAT:        { key: 'c', ctrl: false, shift: false },
+    TOGGLE_CHAT_ALT:    { key: 'c', ctrl: false, shift: true  },
   };
 
   // i18n keys for shortcut descriptions (reuse web.kbd.* keys)
@@ -2320,7 +2324,35 @@
     NEXT_ANNOTATION: 'web.kbd.nextanno', SCROLL_HALF_PAGE_DOWN: 'web.kbd.scroll',
     TOGGLE_SECTION_COLLAPSE: 'web.kbd.collapse', TOGGLE_VIEWED: 'web.kbd.viewed',
     EDIT: 'web.kbd.edit',
+    TOGGLE_LIVE_ACTIVE: 'web.kbd.live.active', TOGGLE_LIVE_OFF: 'web.kbd.live.off',
+    TOGGLE_CHAT: 'web.kbd.chat', TOGGLE_CHAT_ALT: 'web.kbd.chat.alt',
   };
+
+  // Render layout: each row holds one or more shortcut names. Multi-name rows
+  // collapse synonymous bindings (e.g. UNDO/REDO has a primary and an alt
+  // chord) into a single row whose label uses the primary's description and
+  // whose reset button clears all names in the row at once.
+  const SHORTCUT_ROWS = [
+    ['UNDO'],
+    ['REDO', 'REDO_ALT'],
+    ['ESCAPE'],
+    ['TOGGLE_TOC'],
+    ['HELP'],
+    ['NEW_WORKSPACE'],
+    ['SEARCH'],
+    ['PREV_HEADING'],
+    ['NEXT_HEADING'],
+    ['PREV_ANNOTATION'],
+    ['NEXT_ANNOTATION'],
+    ['SCROLL_HALF_PAGE_DOWN'],
+    ['TOGGLE_SECTION_COLLAPSE'],
+    ['TOGGLE_VIEWED'],
+    ['EDIT'],
+    ['TOGGLE_LIVE_ACTIVE'],
+    ['TOGGLE_LIVE_OFF'],
+    ['TOGGLE_CHAT'],
+    ['TOGGLE_CHAT_ALT'],
+  ];
 
   let currentShortcuts = {}; // user overrides only
 
@@ -2362,42 +2394,53 @@
     return cur.key === def.key && !!cur.ctrl === !!def.ctrl && !!cur.shift === !!def.shift;
   }
 
+  function isRowAtDefault(names) {
+    return names.every(isShortcutAtDefault);
+  }
+
   function renderShortcuts() {
     const list = document.getElementById('shortcuts-list');
     list.innerHTML = '';
     const undoSvg = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M9 14 4 9l5-5"/><path d="M4 9h10.5a5.5 5.5 0 0 1 0 11H11"/></svg>';
-    for (const name of Object.keys(DEFAULT_SHORTCUTS)) {
-      const current = getShortcut(name);
+    for (const names of SHORTCUT_ROWS) {
+      const primary = names[0];
       const row = document.createElement('div');
       row.className = 'shortcut-row';
-      const atDefault = isShortcutAtDefault(name);
+      const atDefault = isRowAtDefault(names);
+      const keysHtml = names.map(n =>
+        `<div class="sc-key" tabindex="0" data-name="${n}">${formatKey(getShortcut(n))}</div>`
+      ).join('');
       row.innerHTML = `
-        <span class="sc-name">${T(SHORTCUT_DESC_KEYS[name] || name)}</span>
+        <span class="sc-name">${T(SHORTCUT_DESC_KEYS[primary] || primary)}</span>
         <div class="sc-actions">
-          <div class="sc-key" tabindex="0" data-name="${name}">${formatKey(current)}</div>
+          ${keysHtml}
           <button type="button" class="btn-tiny row-reset ${atDefault ? 'is-default' : ''}" title="${T('shortcuts.reset.row')}">${undoSvg}</button>
         </div>
       `;
-      const keyEl = row.querySelector('.sc-key');
-      keyEl.addEventListener('click', () => startRecording(keyEl, name));
-      keyEl.addEventListener('keydown', (e) => {
-        if (!keyEl.classList.contains('recording')) return;
-        e.preventDefault();
-        e.stopPropagation();
-        // Ignore modifier-only presses — wait for an actual key
-        if (['Meta', 'Control', 'Shift', 'Alt', 'CapsLock'].includes(e.key)) return;
-        if (e.key === 'Escape' && !e.metaKey && !e.ctrlKey && !e.shiftKey) {
-          stopRecording(keyEl, name, null); return;
-        }
-        const sc = { key: e.key, ctrl: e.metaKey || e.ctrlKey, shift: e.shiftKey };
-        stopRecording(keyEl, name, sc);
+      row.querySelectorAll('.sc-key').forEach(keyEl => {
+        const name = keyEl.dataset.name;
+        keyEl.addEventListener('click', () => startRecording(keyEl, name));
+        keyEl.addEventListener('keydown', (e) => {
+          if (!keyEl.classList.contains('recording')) return;
+          e.preventDefault();
+          e.stopPropagation();
+          // Ignore modifier-only presses — wait for an actual key
+          if (['Meta', 'Control', 'Shift', 'Alt', 'CapsLock'].includes(e.key)) return;
+          if (e.key === 'Escape' && !e.metaKey && !e.ctrlKey && !e.shiftKey) {
+            stopRecording(keyEl, name, null); return;
+          }
+          const sc = { key: e.key, ctrl: e.metaKey || e.ctrlKey, shift: e.shiftKey };
+          stopRecording(keyEl, name, sc);
+        });
       });
       const resetBtn = row.querySelector('.row-reset');
       resetBtn.addEventListener('click', () => {
-        if (isShortcutAtDefault(name)) return;
-        delete currentShortcuts[name];
+        if (isRowAtDefault(names)) return;
+        for (const n of names) delete currentShortcuts[n];
         saveSettings();
-        keyEl.textContent = formatKey(getShortcut(name));
+        row.querySelectorAll('.sc-key').forEach(keyEl => {
+          keyEl.textContent = formatKey(getShortcut(keyEl.dataset.name));
+        });
         resetBtn.classList.add('is-default');
         renderHelpTip();
         renderWorkspaceAddTip();
@@ -2432,9 +2475,14 @@
     }
     const cur = getShortcut(name);
     el.textContent = formatKey(cur);
-    // Sync the per-row reset-button dim state.
-    const resetBtn = el.closest('.shortcut-row')?.querySelector('.row-reset');
-    if (resetBtn) resetBtn.classList.toggle('is-default', isShortcutAtDefault(name));
+    // Sync the per-row reset-button dim state. Reset is shared across all
+    // sc-keys in the row, so dim state depends on every name in the row.
+    const row = el.closest('.shortcut-row');
+    const resetBtn = row?.querySelector('.row-reset');
+    if (resetBtn) {
+      const names = Array.from(row.querySelectorAll('.sc-key')).map(k => k.dataset.name);
+      resetBtn.classList.toggle('is-default', isRowAtDefault(names));
+    }
     renderWorkspaceAddTip();
   }
 
