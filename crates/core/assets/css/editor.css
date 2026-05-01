@@ -14,7 +14,10 @@
     /* ── Surfaces & contrast (light) ──────────────────────── */
     --markon-canvas:        #ffffff; /* page / editor canvas base */
     --markon-text:          #1f2328; /* body text */
+    --markon-text-muted:    #656d76; /* secondary text on elevated surfaces (sphere icons, TOC bar) */
     --markon-elevated:      #f6f8fa; /* one step above subtle: floats, cards, TOC icon */
+    --markon-elevated-2:    #f1f5f9; /* one step above elevated: chat user bubble */
+    --markon-overlay:       #ffffff; /* recessed popover/dropdown background */
     --markon-border-strong: #d0d7de; /* stronger border: float edges, strokes on dark surfaces */
 
     /* ── Typography ────────────────────────────────────────── */
@@ -38,7 +41,10 @@ html[data-theme="dark"] {
     --markon-subtle:    #161b22;
     --markon-canvas:        #0d1117;
     --markon-text:          #f0f6fc;
+    --markon-text-muted:    #adbac7;
     --markon-elevated:      #2d333b;
+    --markon-elevated-2:    #373e47;
+    --markon-overlay:       #21262d;
     --markon-border-strong: #484f58;
     --markon-primary-hover: color-mix(in srgb, var(--markon-primary) 80%, white);
     --markon-muted-hover:   color-mix(in srgb, var(--markon-muted) 60%, white);

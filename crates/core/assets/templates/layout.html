@@ -270,21 +270,14 @@
             border-color: var(--markon-border-strong);
             opacity: var(--markon-panel-opacity, 0.9);
         }
-        /* In dark theme the bar uses a dedicated light-grey (#adbac7) so it
-           reads as a tinted icon rather than pure muted/text colors; light theme
-           bar follows text. The light-only branch is harmless on dark since the
-           dark-only rule below overrides it via specificity-equal cascade. */
+        /* TOC icon uses --markon-text-muted so it reads as a secondary chrome
+           glyph (not as bold as document body text). The token swaps modes
+           by itself (light = #656d76, dark = #adbac7). */
         #toc-icon .toc-bar {
-            background-color: var(--markon-text);
+            background-color: var(--markon-text-muted);
         }
         #toc-icon .toc-close {
-            color: var(--markon-text);
-        }
-        html[data-theme="dark"] #toc-icon .toc-bar {
-            background-color: #adbac7;
-        }
-        html[data-theme="dark"] #toc-icon .toc-close {
-            color: #adbac7;
+            color: var(--markon-text-muted);
         }
         /* Floating TOC menu on narrow screens — same surface + border as icon */
         @media (max-width: 1400px) {

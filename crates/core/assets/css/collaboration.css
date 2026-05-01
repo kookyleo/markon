@@ -1,4 +1,9 @@
-/* markon-live — the sphere morphs into the settings panel in-place on click. */
+/* markon-live — the sphere morphs into the settings panel in-place on click.
+ *
+ * Note: --markon-live-user / --live-pulse-color are RUNTIME variables set
+ * via JS (see collaboration-manager.ts), not design tokens. They share the
+ * --markon-* prefix for legacy reasons but are not part of the editor.css
+ * design palette and are not user-configurable through the styles panel. */
 
 /* Collapsed sphere matches the narrow-screen TOC icon: neutral surface color,
    foreground used for the icon. User's broadcast color lives in the panel
@@ -19,18 +24,13 @@
     box-sizing: border-box;
     overflow: hidden;
     background-color: var(--markon-elevated);
-    color: var(--markon-text);
+    /* Sphere icon is secondary chrome — uses --markon-text-muted so it
+       doesn't punch as hard as the document body text. */
+    color: var(--markon-text-muted);
     user-select: none;
     display: flex;
     align-items: center;
     justify-content: center;
-}
-
-/* Dark-mode foreground is intentionally muted (Primer fg.muted) to keep the
-   sphere icon from punching as hard as plain text. Not in the design-token
-   set; left as a literal pending a dedicated muted-fg token. */
-html[data-theme="dark"] .markon-live-container {
-    color: #adbac7;
 }
 
 /* Broadcasting (speaker) — same 2.5px stroke, recolored to the user's
@@ -358,7 +358,7 @@ html[data-theme="dark"] .markon-live-body .mode-btn:hover {
 }
 
 .markon-live-body .mode-btn.active {
-    background: #3451B2;
+    background: var(--markon-primary);
     color: #fff;
 }
 

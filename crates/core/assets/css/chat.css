@@ -36,7 +36,7 @@ html[data-theme="dark"] {
     height: 40px;
     border-radius: 50%;
     background-color: var(--markon-elevated);
-    color: var(--markon-text);
+    color: var(--markon-text-muted);
     /* 2.5px border matches the Live sphere's "off" stroke width — same
        visual weight across all three floating-layer family members. */
     border: 2.5px solid var(--markon-border-strong);
@@ -48,12 +48,8 @@ html[data-theme="dark"] {
     opacity: var(--markon-panel-opacity, 0.9);
 }
 
-/* Dark mode keeps a slightly muted body color on the sphere face (matches
-   collaboration.css's `#adbac7` family). The container background + border
-   are token-driven and need no theme override. */
-html[data-theme="dark"] .markon-chat-container {
-    color: #adbac7;
-}
+/* Dark mode keeps a slightly muted body color on the sphere face — handled
+   by --markon-text-muted; container background + border are token-driven. */
 
 /* Expanded: panel rectangle. Inherits the sphere's surface + text color so
    clicking feels like a pure geometric transform (sphere → panel), not a
@@ -339,9 +335,10 @@ html[data-theme="dark"] .markon-chat-icon-btn:hover {
     left: 48px;           /* skip the TL sphere/close button */
     right: 48px;          /* skip the [+] button on the right */
     margin-top: 4px;
-    /* Pops one tier above the elevated panel surface — pure canvas in light
-       mode reads as the "highest" layer. */
-    background: var(--markon-canvas);
+    /* Pops one tier above the elevated panel surface. --markon-overlay is
+       canvas in light mode (white "highest" layer) and a recessed mid-tone
+       in dark mode (#21262d, sits between subtle and elevated). */
+    background: var(--markon-overlay);
     border: 1px solid var(--markon-border-strong);
     border-radius: 8px;
     box-shadow: 0 6px 16px rgba(0, 0, 0, 0.12);
@@ -352,13 +349,8 @@ html[data-theme="dark"] .markon-chat-icon-btn:hover {
 }
 
 html[data-theme="dark"] .markon-chat-thread-menu {
-    /* Dark menus go *darker* than the elevated panel (GitHub-style recessed
-       overlay). #21262d sits between subtle (#161b22) and elevated (#2d333b)
-       — no token mid-tone, so this stays theme-specific. Border drops to the
-       softer `--markon-border` because #30363d is dimmer than the
-       `border-strong` dark value (#484f58) and matches the surrounding
-       low-contrast popover chrome. */
-    background: #21262d;
+    /* Dark border drops to the softer `--markon-border` because the strong
+       value (#484f58) is too loud against the recessed overlay surface. */
     border-color: var(--markon-border);
     box-shadow: 0 6px 16px rgba(0, 0, 0, 0.5);
 }
@@ -505,20 +497,13 @@ html[data-theme="dark"] .markon-chat-thread-row:hover {
     overflow-wrap: anywhere;
 }
 
-/* User bubble: light surface so the message stands out from the assistant's
-   prose-on-canvas style. */
+/* User bubble: one tier above the panel (--markon-elevated-2) so the
+   message stands out from the assistant's prose-on-canvas style. */
 .markon-chat-message-user .markon-chat-message-body {
-    background: #f1f5f9;
-    color: #0f172a;
+    background: var(--markon-elevated-2);
+    color: var(--markon-text);
     padding: 8px 12px;
     border-radius: 14px 14px 4px 14px;
-}
-
-html[data-theme="dark"] .markon-chat-message-user .markon-chat-message-body {
-    /* Lifted from #2d333b (now the panel surface) to #373e47 so the user
-       bubble still pops as an elevated surface against the panel. */
-    background: #373e47;
-    color: #f0f6fc;
 }
 
 /* Assistant: just text on canvas — minimal chrome so streamed output reads
@@ -941,7 +926,7 @@ html[data-theme="dark"] .markon-chat-mention-pill {
 .markon-chat-mention-popup {
     position: fixed;
     z-index: 10010;
-    background: var(--markon-canvas);
+    background: var(--markon-overlay);
     color: var(--markon-text);
     border: 1px solid var(--markon-border-strong);
     border-radius: 8px;
@@ -963,10 +948,8 @@ html[data-theme="dark"] .markon-chat-mention-pill {
 }
 
 html[data-theme="dark"] .markon-chat-mention-popup {
-    /* Dark popovers sink darker than the elevated panel (same `#21262d`
-       midway tone as `.markon-chat-thread-menu`). Border drops to
-       `--markon-border` to keep the chrome quiet against the deeper fill. */
-    background: #21262d;
+    /* Border drops to `--markon-border` to keep the chrome quiet against
+       the deeper overlay fill (same softening as .markon-chat-thread-menu). */
     border-color: var(--markon-border);
     box-shadow: 0 6px 18px rgba(0, 0, 0, 0.55);
 }
@@ -1021,13 +1004,13 @@ html[data-theme="dark"] .markon-chat-mention-row:hover {
 /* ─── Citation pills (in assistant messages) ─────────────────────────── */
 
 /* A citation `<code>path:42</code>` becomes a clickable pill. Distinct from
-   mention pills (which are purple) — citations use the info/blue palette. */
+   mention pills (which are purple) — citations use the primary accent. */
 .markon-chat-citation {
     display: inline-flex;
     align-items: center;
     padding: 1px 8px;
     border-radius: 999px;
-    background: rgba(56, 139, 253, 0.14);
+    background: color-mix(in srgb, var(--markon-primary) 14%, transparent);
     color: var(--markon-primary);
     font-family: 'SF Mono', Monaco, 'Cascadia Code', 'Roboto Mono', Consolas, 'Courier New', monospace;
     font-size: 0.85em;
@@ -1043,18 +1026,8 @@ html[data-theme="dark"] .markon-chat-mention-row:hover {
 
 .markon-chat-citation:hover {
     text-decoration: underline;
-    background: rgba(56, 139, 253, 0.22);
-    border-color: rgba(56, 139, 253, 0.35);
-}
-
-html[data-theme="dark"] .markon-chat-citation {
-    background: rgba(88, 166, 255, 0.18);
-    color: #79c0ff;
-}
-
-html[data-theme="dark"] .markon-chat-citation:hover {
-    background: rgba(88, 166, 255, 0.28);
-    border-color: rgba(88, 166, 255, 0.45);
+    background: color-mix(in srgb, var(--markon-primary) 22%, transparent);
+    border-color: color-mix(in srgb, var(--markon-primary) 35%, transparent);
 }
 
 /* ─── Popout window mode ─────────────────────────────────────────────── */
