@@ -124,7 +124,7 @@ cargo install --path crates/cli
 
 ```bash
 markon --version
-# Markon v0.9.1
+# Markon vX.Y.Z
 ```
 
 ## 卸载

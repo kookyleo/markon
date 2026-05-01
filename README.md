@@ -155,6 +155,8 @@ Options:
       --enable-viewed              Enable section viewed checkboxes (GitHub PR-style)
       --enable-search              Enable full-text search with Tantivy
       --enable-edit                Enable Markdown file editing with syntax highlighting
+      --enable-live                Enable Live collaboration (leader/follower reading sync)
+      --enable-chat                Enable AI chat (read-only assistant grounded in the workspace)
   -h, --help                       Print help
   -V, --version                    Print version
 ```
@@ -198,8 +200,8 @@ markon --enable-search
 # Enable Markdown editing
 markon --enable-edit README.md
 
-# Full-featured: QR + browser + shared + viewed + search + edit
-markon --qr -b --shared-annotation --enable-viewed --enable-search --enable-edit README.md
+# Full-featured: QR + browser + shared + viewed + search + edit + live + chat
+markon --qr -b --shared-annotation --enable-viewed --enable-search --enable-edit --enable-live --enable-chat README.md
 ```
 
 ### Features Guide
@@ -240,9 +242,25 @@ markon --qr -b --shared-annotation --enable-viewed --enable-search --enable-edit
 - Security: Only `.md` files within the start directory can be edited
 - Theme: Auto-follows light/dark mode with GitHub-style syntax highlighting
 
+**Live Collaboration** (`--enable-live`):
+- Three-state sphere on the page: Off / Broadcast / Follow
+- Broadcaster shares section focus, text selection, and viewed-checks; followers smooth-scroll to match
+- XPath-based anchoring works across screen sizes (4K presenter ↔ phone follower)
+- Each client picks one of 8 colors for identity; the broadcaster's color rings the sphere and triggers the focus pulse
+- Press `l` to swap leader/follower (jumps in even from off); `Shift+L` toggles between off and the previous active state
+
+**AI Chat** (`--enable-chat`):
+- Embedded read-only assistant that reads files in the workspace via `read_file` / `list_dir` / `glob` / `grep` — no write or execute
+- Press `c` to open in the default surface (in-page panel or popout window); `Shift+C` opens in the opposite surface for one-shot inversion
+- Threads are workspace-scoped and persisted in `~/.markon/annotation.sqlite` (override via `MARKON_SQLITE_PATH`)
+- `@` in the input picks any text file from the workspace; selecting text in the page and clicking "聊聊" sends it as a citation pill
+- Provider is Anthropic or OpenAI; API key is stored locally in `~/.markon/settings.json` (plain text — see [Reverse-proxy notes](REVERSE_PROXY.md) before exposing the server)
+
 **Keyboard Shortcuts** (press `?` to see all):
 - `/`: Open search (requires `--enable-search`)
 - `e`: Edit current file (requires `--enable-edit`)
+- `l` / `Shift+L`: Toggle Live broadcast/follow / off (requires `--enable-live`)
+- `c` / `Shift+C`: Open AI chat in default / opposite surface (requires `--enable-chat`)
 - `Ctrl/Cmd+Z` / `Ctrl/Cmd+Shift+Z`: Undo/Redo annotations
 - `j` / `k`: Next/Previous heading
 - `Ctrl/Cmd+\`: Toggle TOC

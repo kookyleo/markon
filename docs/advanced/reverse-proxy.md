@@ -44,7 +44,8 @@ markon --host 127.0.0.1 -p 6419 \
 关键点：
 
 - `--host 127.0.0.1` — 仅本地访问，安全
-- `-b` / `--qr` — 用公网 URL，不然浏览器打开的还是内网 IP
+- `-b https://docs.example.com` — 启动后浏览器打开公网 URL（不传 BASE 则只开本地地址）
+- `--qr https://docs.example.com`（`--entry` 别名）— 终端二维码与日志中的「accessible at」用公网 URL；不设这条会回落到内网 IP
 
 ## Nginx
 

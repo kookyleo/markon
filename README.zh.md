@@ -167,13 +167,15 @@ markon --host README.md
 | `<FILE>` | 要渲染的 Markdown 文件 | `markon README.md` |
 | `-p, --port <PORT>` | HTTP 服务器端口（默认：6419） | `markon -p 8080` |
 | `--host [IP]` | 绑定地址（用于局域网访问）<br>- 不指定：仅本地 (127.0.0.1)<br>- `--host`：交互式选择<br>- `--host 0.0.0.0`：所有接口<br>- `--host <IP>`：指定 IP | `markon --host 0.0.0.0` |
-| `-b, --browser [BASE]` | 尝试打开浏览器（尽力而为） | `markon -b` |
+| `-b, --open-browser [BASE_URL]` | 自动打开浏览器；可选传入 BASE_URL 覆盖默认 | `markon -b` |
 | `--entry, --qr [PREFIX]` | 指定外部访问地址前缀（生成二维码） | `markon --entry http://{IP}:6419` |
 | `--theme <THEME>` | 颜色主题：light/dark/auto | `markon --theme dark` |
 | `--shared-annotation` | 启用共享标注（SQLite + WebSocket） | `markon --shared-annotation` |
 | `--enable-viewed` | 启用 Section Viewed 功能 | `markon --enable-viewed` |
 | `--enable-search` | 启用全文搜索（Tantivy） | `markon --enable-search` |
 | `--enable-edit` | 启用 Markdown 文件编辑（带语法高亮） | `markon --enable-edit` |
+| `--enable-live` | 启用实时协作（主控/被控同步阅读位置） | `markon --enable-live` |
+| `--enable-chat` | 启用 AI 对话（基于工作区的只读助手） | `markon --enable-chat` |
 
 ### 常用示例
 
@@ -190,8 +192,8 @@ markon --host
 # 启用全文搜索
 markon --enable-search
 
-# 全功能：二维码 + 共享标注 + 进度追踪 + 全文搜索 + 在线编辑
-markon --entry {YOUR_URL} --shared-annotation --enable-viewed --enable-search --enable-edit README.md
+# 全功能：二维码 + 共享标注 + 进度追踪 + 全文搜索 + 在线编辑 + 实时协作 + AI 对话
+markon --entry {YOUR_URL} --shared-annotation --enable-viewed --enable-search --enable-edit --enable-live --enable-chat README.md
 ```
 
 ### 功能指南
@@ -232,9 +234,25 @@ markon --entry {YOUR_URL} --shared-annotation --enable-viewed --enable-search --
 - 安全限制：仅允许编辑启动目录内的 `.md` 文件
 - 主题：自动跟随亮色/暗色模式，使用 GitHub 风格语法高亮
 
+**实时协作 Live**（`--enable-live`）：
+- 页面右下三态协作球：关闭 / 主控 / 被控
+- 主控端广播自己的章节焦点、文本选区、已读勾选；被控端平滑滚动同步
+- 基于 XPath 锚点定位，跨屏幕尺寸通用（4K 主讲 ↔ 手机被控都能对上同一段）
+- 每个客户端从 8 种代表色里选一个标识身份，主控色绕在协作球外环并触发对方端的呼吸灯
+- 按 `l` 在主控/被控间切换（即使当前关闭也直接进入循环）；`Shift+L` 在关闭与上一次激活态间切换
+
+**AI 对话**（`--enable-chat`）：
+- 嵌入式只读助手：通过 `read_file` / `list_dir` / `glob` / `grep` 读取工作区文件，无写入或执行能力
+- 按 `c` 以默认形式打开（页内浮层或独立窗口）；`Shift+C` 一次性反转打开形式
+- 会话按工作区独立保存，存储在 `~/.markon/annotation.sqlite`（可用 `MARKON_SQLITE_PATH` 自定义路径）
+- 输入框 `@` 引用工作区任意文本文件；正文选中文字点「聊聊」会作为引用 pill 送入对话
+- Provider 支持 Anthropic / OpenAI；API Key 以**明文**保存在 `~/.markon/settings.json`，对外暴露前请参考 [反向代理说明](REVERSE_PROXY.zh.md) 配 auth
+
 **键盘快捷键**（按 `?` 查看全部）：
 - `/`：打开搜索（需要 `--enable-search`）
 - `e`：编辑当前文件（需要 `--enable-edit`）
+- `l` / `Shift+L`：切换 Live 主控/被控/关闭（需要 `--enable-live`）
+- `c` / `Shift+C`：以默认 / 反向形式打开 AI 对话（需要 `--enable-chat`）
 - `Ctrl/Cmd+Z` / `Ctrl/Cmd+Shift+Z`：撤销/重做标注
 - `j` / `k`：下一个/上一个标题
 - `Ctrl/Cmd+\`：切换 TOC

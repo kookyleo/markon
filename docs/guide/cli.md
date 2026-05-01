@@ -22,7 +22,7 @@ markon [FILE] [OPTIONS]
 |------|------|------|
 | `-p, --port <PORT>` | HTTP 服务器端口 | `6419` |
 | `--host [IP]` | 绑定地址，省略值时交互式选择 | `127.0.0.1` |
-| `-b, --browser [BASE]` | 尝试打开浏览器（尽力而为） | 是 (若提供路径) |
+| `-b, --open-browser [BASE_URL]` | 自动打开浏览器；可选传入 BASE_URL 覆盖默认（不传则用本地工作区地址） | 是（若提供路径） |
 | `--entry, --qr [PREFIX]` | 指定外部访问地址前缀（生成二维码） | — |
 | `-t, --theme <THEME>` | 配色主题：`light` / `dark` / `auto` | `auto` |
 | `--enable-search` | 启用全文搜索（Tantivy 索引） | false |

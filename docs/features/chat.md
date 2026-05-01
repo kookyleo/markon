@@ -122,7 +122,7 @@ markon docs/ --enable-chat
 
 ## 多会话
 
-每个工作区的对话独立保存，存在 `~/.markon/annotation.sqlite`（与共享标注共用一个 SQLite 数据库）。面板顶部的下拉框可以切换会话或新建。
+每个工作区的对话独立保存，存在 `~/.markon/annotation.sqlite`（与共享标注共用一个 SQLite 数据库；可通过 `MARKON_SQLITE_PATH` 环境变量自定义路径）。面板顶部的下拉框可以切换会话或新建。
 
 切换工作区时不会丢历史 —— 下次打开同一个目录，所有对话仍在。
 
