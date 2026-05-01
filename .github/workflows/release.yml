@@ -106,6 +106,15 @@ jobs:
           packages: libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev libfontconfig1-dev patchelf
           version: 1
 
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Build frontend assets
+        shell: bash
+        run: npm install && npm run build
+
       - name: Build installer
         uses: tauri-apps/tauri-action@v0
         env:

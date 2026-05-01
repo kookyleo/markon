@@ -32,6 +32,14 @@ jobs:
         with:
           shared-key: ci-test
 
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Build frontend assets
+        run: npm install && npm run build
+
       # Surface test-only compile errors (e.g. `#[cfg(test)]` literals
       # falling out of sync with struct definitions) before they cascade
       # into a confusing `cargo test` failure.
@@ -63,6 +71,14 @@ jobs:
         uses: Swatinem/rust-cache@v2
         with:
           shared-key: ci-clippy
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Build frontend assets
+        run: npm install && npm run build
 
       - name: Run clippy
         run: cargo clippy --all-targets --all-features -- -D warnings
