@@ -2127,8 +2127,9 @@
 
   // ── Auto-update check ───────────────────────────────────────────────────
   // ── Web styles editor ────────────────────────────────────────────────
-  // Semantic design tokens: 4 colors (light + dark) + typography + opacity.
-  // Specific CSS usages (toc-active-bg, accent-hover, etc.) derive automatically.
+  // Semantic design tokens: 6 colors (light + dark) + typography + opacity.
+  // Other tokens (text-muted, elevated, elevated-2, overlay, border-strong)
+  // are derived in editor.css from these and not user-configurable.
   const STYLE_DEFS = [
     { key: 'primary',  type: 'duocolor', defLight: '#0969da', defDark: '#58a6ff',
       hint: 'webstyles.primary.hint' },
@@ -2138,6 +2139,10 @@
       hint: 'webstyles.border.hint' },
     { key: 'subtle',   type: 'duocolor', defLight: '#f6f8fa', defDark: '#161b22',
       hint: 'webstyles.subtle.hint' },
+    { key: 'canvas',   type: 'duocolor', defLight: '#ffffff', defDark: '#0d1117',
+      hint: 'webstyles.canvas.hint' },
+    { key: 'text',     type: 'duocolor', defLight: '#1f2328', defDark: '#f0f6fc',
+      hint: 'webstyles.text.hint' },
     { key: 'ui-font',          type: 'font',  def: 'system-ui, sans-serif' },
     { key: 'ui-font-size',     type: 'range', def: '0.80', min: 0.60, max: 1.20, step: 0.05, unit: 'rem' },
     { key: 'panel-opacity',    type: 'range', def: '0.90', min: 0.30, max: 1.00, step: 0.05, unit: '' },
