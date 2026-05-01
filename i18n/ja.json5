@@ -152,6 +152,7 @@
     "cli.viewed":      "既読トラッキング",
     "cli.edit":        "編集",
     "cli.live":        "Live",
+    "cli.chat":        "AI チャット",
     "cli.shared":      "共有ノート",
     "cli.open":        "ブラウザを自動で開く",
 
@@ -175,6 +176,12 @@
     "tips.feat.shared.desc":  "マルチデバイス閲読やチームコラボレーションに最適",
     "tips.feat.print.title":  "セクション印刷",
     "tips.feat.print.desc":   "見出し横の印刷リンクをクリックで、そのセクションだけを印刷",
+    "tips.feat.live.title":   "ライブ協調",
+    "tips.feat.live.desc":    "複数デバイスやチーム間で閲覧位置を同期；ブラウザで l を押すと主導/追従を切替、Shift+l でオフ",
+    "tips.feat.chat.title":   "AI アシスタント",
+    "tips.feat.chat.desc":    "現在の文書に基づく組み込み AI アシスタント；ブラウザで c を押すと起動 (Shift+c で組込/ポップアウト切替)",
+    "tips.feat.customize.title": "カスタマイズ",
+    "tips.feat.customize.desc":  "「ページスタイル」でテーマカラー（ライト/ダーク）、UI フォント・サイズ、パネル透明度を調整；「ショートカット」で全キーを再バインド可能",
 
     // ── About ────────────────────────────────────────────────
     "about.slogan":   "Turn your markdown on.",

@@ -151,6 +151,7 @@
     "cli.viewed":      "已读追踪",
     "cli.edit":        "编辑",
     "cli.live":        "Live",
+    "cli.chat":        "AI 对话",
     "cli.shared":      "共享标记、便条和已读状态",
     "cli.open":        "自动打开浏览器",
 
@@ -174,6 +175,12 @@
     "tips.feat.annot.desc":   "选中文本标记颜色、添加删除线或添加便条",
     "tips.feat.print.title":  "章节打印",
     "tips.feat.print.desc":   "点击标题旁的打印链接，则仅打印当前章节内容",
+    "tips.feat.live.title":   "协作直播",
+    "tips.feat.live.desc":    "多设备/团队间同步阅读位置；浏览器中按 l 在主控/被控间切换，Shift+l 关闭",
+    "tips.feat.chat.title":   "AI 对话",
+    "tips.feat.chat.desc":    "嵌入式 AI 助手，回答基于当前文档；浏览器中按 c 打开（Shift+c 切换内嵌/弹出窗口）",
+    "tips.feat.customize.title": "个性化",
+    "tips.feat.customize.desc":  "在「页面样式」面板调主题色（亮/暗）、字体字号、面板透明度；「快捷键」面板可重绑所有键位",
 
     // ── 关于页 ───────────────────────────────────────────────
     "about.slogan":   "Turn your markdown on.",

@@ -152,6 +152,7 @@
     "cli.viewed":      "Viewed tracking",
     "cli.edit":        "Edit",
     "cli.live":        "Live",
+    "cli.chat":        "AI chat",
     "cli.shared":      "Shared notes",
     "cli.open":        "Auto-open browser",
 
@@ -175,6 +176,12 @@
     "tips.feat.shared.desc":  "Ideal for multi-device reading or team collaboration",
     "tips.feat.print.title":  "Section print",
     "tips.feat.print.desc":   "Click the print link next to a heading to print only that section",
+    "tips.feat.live.title":   "Live collaboration",
+    "tips.feat.live.desc":    "Sync reading position across devices or teammates; press l in the browser to swap leader/follower, Shift+l to disable",
+    "tips.feat.chat.title":   "AI assistant",
+    "tips.feat.chat.desc":    "Embedded AI assistant grounded in the current document; press c to open (Shift+c toggles in-page / popout window)",
+    "tips.feat.customize.title": "Customize",
+    "tips.feat.customize.desc":  "Tweak theme colors (light/dark), UI font/size and panel opacity in Page styles; rebind every key in Shortcuts",
 
     // ── About ────────────────────────────────────────────────
     "about.slogan":   "Turn your markdown on.",

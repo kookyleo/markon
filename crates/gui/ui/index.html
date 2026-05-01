@@ -1221,6 +1221,7 @@
               <label class="cli-pill"><input type="checkbox" id="cli-viewed"><span data-i18n="cli.viewed"></span></label>
               <label class="cli-pill"><input type="checkbox" id="cli-edit"><span data-i18n="cli.edit"></span></label>
               <label class="cli-pill"><input type="checkbox" id="cli-live"><span data-i18n="cli.live"></span></label>
+              <label class="cli-pill"><input type="checkbox" id="cli-chat"><span data-i18n="cli.chat"></span></label>
               <label class="cli-pill"><input type="checkbox" id="cli-shared"><span data-i18n="cli.shared"></span></label>
               <label class="cli-pill"><input type="checkbox" id="cli-open"><span data-i18n="cli.open"></span></label>
             </div>
@@ -1266,6 +1267,18 @@
             <div class="tip-feature">
               <p><span class="tip-feature-title" data-i18n="tips.feat.print.title"></span><span class="tip-feature-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><polyline points="6 9 6 2 18 2 18 9"/><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><rect x="6" y="14" width="12" height="8"/></svg></span></p>
               <p data-i18n="tips.feat.print.desc"></p>
+            </div>
+            <div class="tip-feature">
+              <p><span class="tip-feature-title" data-i18n="tips.feat.live.title"></span><span class="tip-feature-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M2 16.1A5 5 0 0 1 5.9 20"/><path d="M2 12.05A9 9 0 0 1 9.95 20"/><path d="M2 8.05A13 13 0 0 1 13.95 20"/><circle cx="4.5" cy="19.5" r="1.5" fill="currentColor"/></svg></span></p>
+              <p data-i18n="tips.feat.live.desc"></p>
+            </div>
+            <div class="tip-feature">
+              <p><span class="tip-feature-title" data-i18n="tips.feat.chat.title"></span><span class="tip-feature-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg></span></p>
+              <p data-i18n="tips.feat.chat.desc"></p>
+            </div>
+            <div class="tip-feature">
+              <p><span class="tip-feature-title" data-i18n="tips.feat.customize.title"></span><span class="tip-feature-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><line x1="4" y1="21" x2="4" y2="14"/><line x1="4" y1="10" x2="4" y2="3"/><line x1="12" y1="21" x2="12" y2="12"/><line x1="12" y1="8" x2="12" y2="3"/><line x1="20" y1="21" x2="20" y2="16"/><line x1="20" y1="12" x2="20" y2="3"/><line x1="1" y1="14" x2="7" y2="14"/><line x1="9" y1="8" x2="15" y2="8"/><line x1="17" y1="16" x2="23" y2="16"/></svg></span></p>
+              <p data-i18n="tips.feat.customize.desc"></p>
             </div>
           </div>
         </div>
@@ -2071,7 +2084,7 @@
   });
 
   // ── CLI command builder ──────────────────────────────────────────────
-  const cliIds = ['cli-path','cli-port','cli-host','cli-theme','cli-qr','cli-search','cli-viewed','cli-edit','cli-live','cli-shared','cli-open'];
+  const cliIds = ['cli-path','cli-port','cli-host','cli-theme','cli-qr','cli-search','cli-viewed','cli-edit','cli-live','cli-chat','cli-shared','cli-open'];
   const cliOutput = document.getElementById('cli-output');
   const cliAliasOutput = document.getElementById('cli-alias-output');
 
@@ -2090,6 +2103,7 @@
     if (document.getElementById('cli-viewed').checked) parts.push('--enable-viewed');
     if (document.getElementById('cli-edit').checked)   parts.push('--enable-edit');
     if (document.getElementById('cli-live').checked)   parts.push('--enable-live');
+    if (document.getElementById('cli-chat').checked)   parts.push('--enable-chat');
     if (document.getElementById('cli-shared').checked) parts.push('--shared-annotation');
     if (document.getElementById('cli-open').checked)   parts.push('-b');
     parts.push(path);
