@@ -2435,6 +2435,17 @@
       });
       const resetBtn = row.querySelector('.row-reset');
       resetBtn.addEventListener('click', () => {
+        // While any chip in this row is mid-recording, the button acts as
+        // a cancel — stopRecording(null) restores the prior binding without
+        // touching saved settings. Only when nothing is being recorded does
+        // it fall through to the actual reset-to-default behavior.
+        const recordingKeys = row.querySelectorAll('.sc-key.recording');
+        if (recordingKeys.length > 0) {
+          recordingKeys.forEach(keyEl => {
+            stopRecording(keyEl, keyEl.dataset.name, null);
+          });
+          return;
+        }
         if (isRowAtDefault(names)) return;
         for (const n of names) delete currentShortcuts[n];
         saveSettings();
