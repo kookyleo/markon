@@ -6,7 +6,9 @@ mod server_manager;
 
 use markon_core::settings::AppSettings;
 use server_manager::ServerManager;
-use std::path::{Path, PathBuf};
+use std::path::Path;
+#[cfg(any(target_os = "macos", target_os = "ios"))]
+use std::path::PathBuf;
 use std::sync::{
     atomic::{AtomicBool, Ordering},
     Arc, Mutex,
