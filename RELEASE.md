@@ -7,7 +7,7 @@ Markon uses a dual-channel (RC / Stable) release model with fully automated CI/C
 ```mermaid
 flowchart TD
     A["Cargo.toml version bump → push main"] --> B["Auto RC<br/>(auto-rc.yml)"]
-    B --> C["Tag: v0.9.0-rc.1"]
+    B --> C["Tag: v0.13.0-rc.1"]
     C --> D["gh workflow run release.yml<br/><i>dispatch trigger</i>"]
     D --> E["Release<br/>(release.yml)"]
     E --> F["Build 6 targets<br/>macOS / Linux / Windows × (x86_64 + aarch64)"]
@@ -18,7 +18,7 @@ flowchart TD
     I --> J{{"7 days, no release-blocker issues"}}
     J --> K["Auto Promote<br/>(auto-promote.yml, daily cron)"]
     K --> L["Promote<br/>(promote.yml)"]
-    L --> M["Copy RC assets → stable release v0.9.0"]
+    L --> M["Copy RC assets → stable release v0.13.0"]
     M --> N["Upload latest.json<br/>to updater release"]
     N --> P["Publish markon-core + markon<br/>to crates.io"]
 
@@ -60,6 +60,7 @@ graph LR
 | `release.yml` | `workflow_dispatch` or tag push `v*` | Build + sign + publish + upload updater manifest |
 | `auto-promote.yml` | Daily cron 08:00 UTC + manual | Check RC age & blockers → dispatch Promote |
 | `promote.yml` | `workflow_dispatch` (by auto-promote or manual) | Copy RC assets → create stable release → update manifest → publish to crates.io |
+| `docs.yml` | Push to main touching `docs/**` + stable `release` event | Build VitePress site and deploy to GitHub Pages |
 
 ## How to Release
 
@@ -70,19 +71,20 @@ with zero-warning enforcement before touching version fields. Any failure
 aborts the bump, so the committed version is guaranteed to be on clean code.
 
 ```bash
-scripts/bump-version.sh 0.10.0
-git add -A && git commit -m 'chore: bump to 0.10.0' && git push
+scripts/bump-version.sh 0.13.2
 ```
 
-The script atomically updates:
+The script atomically updates, commits, and pushes:
 - `Cargo.toml` → `workspace.package.version` (primary source of truth)
 - `Cargo.toml` → `workspace.dependencies.markon-core.version` (MAJOR.MINOR range)
 - `Cargo.lock` (via `cargo check`)
+- Stages **only** `Cargo.toml` + `Cargo.lock` (never `-A`), commits as
+  `chore: bump to <version>`, then `git push` so the bump is HEAD on
+  `origin/main` — `auto-rc.yml` keys off this push to fire the release pipeline.
 
-Once pushed to `main`, CI handles the rest.
-
-> Manual edit works too (just edit `workspace.package.version` in `Cargo.toml`),
-> but the script is recommended for consistency and quality enforcement.
+> Manual edit works too (edit `workspace.package.version` in `Cargo.toml`,
+> commit, push), but the script is recommended for consistency and quality
+> enforcement.
 
 ### 2. What happens automatically
 
@@ -97,7 +99,7 @@ sequenceDiagram
 
     Dev->>GH: push (Cargo.toml version changed)
     GH->>RC: trigger
-    RC->>GH: git tag v0.9.0-rc.1 && git push
+    RC->>GH: git tag v0.13.0-rc.1 && git push
     RC->>Rel: gh workflow run release.yml
     Rel->>GH: build 6 targets
     Rel->>GH: publish prerelease + latest-rc.json
@@ -110,10 +112,10 @@ sequenceDiagram
     Prom->>GH: upload latest.json
 ```
 
-1. **auto-rc.yml** detects the version change, creates tag `v0.9.0-rc.1`, dispatches Release
+1. **auto-rc.yml** detects the version change, creates tag `v0.13.0-rc.1`, dispatches Release
 2. **release.yml** builds all 6 targets (macOS / Linux / Windows, each in x86_64 and aarch64), signs updater archives, creates a prerelease, uploads `latest-rc.json` to the permanent `updater` release
 3. **auto-promote.yml** runs daily at 08:00 UTC -- checks the latest RC against promotion criteria (see below), dispatches Promote if all pass
-4. **promote.yml** copies all RC assets to a new stable release `v0.9.0` and uploads `latest.json`
+4. **promote.yml** copies all RC assets to a new stable release `v0.13.0` and uploads `latest.json`
 
 ### 3. Auto-promote criteria
 
@@ -132,17 +134,17 @@ Add the `release-blocker` label to any open GitHub issue to prevent auto-promoti
 Promote an RC immediately without waiting 7 days:
 
 ```bash
-gh workflow run promote.yml -f rc_tag=v0.9.0-rc.1
+gh workflow run promote.yml -f rc_tag=v0.13.0-rc.1
 ```
 
 Push a new RC (e.g. after a hotfix, version unchanged):
 
 ```bash
 # auto-rc only triggers on version *change*, so for same-version re-RC:
-git tag v0.9.0-rc.2
-git push origin v0.9.0-rc.2
+git tag v0.13.0-rc.2
+git push origin v0.13.0-rc.2
 # Then manually trigger build:
-gh workflow run release.yml -f tag=v0.9.0-rc.2
+gh workflow run release.yml -f tag=v0.13.0-rc.2
 ```
 
 ### 6. Publish to crates.io
