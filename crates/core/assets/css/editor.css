@@ -366,9 +366,38 @@ html[data-theme="dark"] .markdown-body h6.heading-focused {
 }
 
 .note-card-margin.highlight-active {
-    border: 2px solid var(--markon-primary);
-    border-left: 3px solid var(--markon-primary);
-    box-shadow: 0 0 0 3px color-mix(in srgb, var(--markon-primary) 15%, transparent);
+    background: color-mix(in srgb, var(--markon-primary) 12%, var(--markon-canvas));
+    border-left-color: var(--markon-primary-hover);
+    box-shadow: 0 0 0 2px color-mix(in srgb, var(--markon-primary) 25%, transparent),
+                0 2px 8px rgba(0, 0, 0, 0.1);
+}
+
+/* ============================================================
+   NOTE CONNECTOR
+   Dashed S-curve linking the active source highlight to its card
+   ============================================================ */
+
+.note-connector-svg {
+    z-index: 9; /* below note cards (10), above text */
+}
+
+.note-connector-path {
+    fill: none;
+    stroke: var(--markon-primary);
+    stroke-width: 1.4;
+    stroke-linecap: round;
+    stroke-dasharray: 5 4;
+    opacity: 0;
+    transition: opacity 180ms ease;
+}
+
+.note-connector-path.is-visible {
+    opacity: 0.7;
+    animation: markon-note-connector-dash 12s linear infinite;
+}
+
+@keyframes markon-note-connector-dash {
+    to { stroke-dashoffset: -180; }
 }
 
 /* ============================================================

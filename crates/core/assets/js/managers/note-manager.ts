@@ -13,6 +13,8 @@ const _t: (key: string, ...args: unknown[]) => string =
     (typeof window !== 'undefined' && window.__MARKON_I18N__ && window.__MARKON_I18N__.t) ||
     ((k: string) => k);
 
+const SVG_NS = 'http://www.w3.org/2000/svg';
+
 /**
  * Internal in-memory record kept per rendered note card. Exposed via
  * `getNoteCardsData()` so peers (e.g. popover-manager) can locate the
@@ -36,6 +38,11 @@ export class NoteManager {
     #markdownBody: HTMLElement;
     #noteCardsData: NoteCard[] = [];
     #layoutEngine: LayoutEngine;
+    #activeAnnotationId: string | null = null;
+    #connectorSvg: SVGSVGElement | null = null;
+    #connectorPath: SVGPathElement | null = null;
+    #resizeObserver: ResizeObserver | null = null;
+    #scrollHandler: (() => void) | null = null;
 
     constructor(annotationManager: AnnotationManager, markdownBody: HTMLElement) {
         this.#annotationManager = annotationManager;
@@ -86,6 +93,20 @@ export class NoteManager {
         // 布局Note
         this.#layout();
 
+        // Restore the active styling if the previously selected card still exists
+        if (this.#activeAnnotationId) {
+            const stillExists = this.#noteCardsData.some(
+                n => n.highlightId === this.#activeAnnotationId,
+            );
+            if (stillExists) {
+                this.#applyActiveClasses(this.#activeAnnotationId);
+                this.#drawConnector();
+            } else {
+                this.#activeAnnotationId = null;
+                this.#hideConnector();
+            }
+        }
+
         Logger.log('NoteManager', `Rendered ${this.#noteCardsData.length} note cards`);
     }
 
@@ -101,12 +122,36 @@ export class NoteManager {
     setupResponsiveLayout(): void {
         const onResize = debounce(() => {
             this.#layout();
+            this.#drawConnector();
             // Close弹出Window（窄屏Mode）
             if (PlatformUtils.isNarrowScreen()) {
                 document.querySelector('.note-popup')?.remove();
             }
         }, CONFIG.ANIMATION.RESIZE_DEBOUNCE);
         window.addEventListener('resize', onResize);
+
+        // Re-layout on async content changes (mermaid render, font load, images,
+        // collapse/expand, etc.) — without this, notes anchor to the page's
+        // initial pre-async layout and visibly drift away from their source.
+        if (typeof ResizeObserver !== 'undefined') {
+            this.#resizeObserver = new ResizeObserver(onResize);
+            this.#resizeObserver.observe(this.#markdownBody);
+        }
+
+        if (typeof document !== 'undefined' && document.fonts && document.fonts.ready) {
+            document.fonts.ready.then(() => {
+                this.#layout();
+                this.#drawConnector();
+            }).catch(() => { /* font load failures are non-fatal */ });
+        }
+
+        // Connector follows the active card while the user scrolls. Cards are
+        // absolutely positioned in document coords, so only the SVG dimensions
+        // need refreshing — the path itself stays valid.
+        this.#scrollHandler = (): void => {
+            if (this.#activeAnnotationId) this.#drawConnector();
+        };
+        window.addEventListener('scroll', this.#scrollHandler, { passive: true });
 
         Logger.log('NoteManager', 'Responsive layout setup complete');
     }
@@ -202,6 +247,161 @@ export class NoteManager {
         });
 
         Logger.log('NoteManager', 'Narrow screen layout applied (cards hidden)');
+    }
+
+    /**
+     * Toggle which annotation is the user's currently selected one. Only one
+     * card / source pair carries `.highlight-active` at a time, and the
+     * connector is redrawn (or hidden) accordingly.
+     */
+    setActive(annotationId: string): void {
+        // Clicking the same annotation again toggles the selection off.
+        if (this.#activeAnnotationId === annotationId) {
+            this.clearActive();
+            return;
+        }
+
+        this.#clearActiveClasses();
+        this.#activeAnnotationId = annotationId;
+        this.#applyActiveClasses(annotationId);
+        this.#drawConnector();
+    }
+
+    clearActive(): void {
+        this.#clearActiveClasses();
+        this.#activeAnnotationId = null;
+        this.#hideConnector();
+    }
+
+    getActiveAnnotationId(): string | null {
+        return this.#activeAnnotationId;
+    }
+
+    #clearActiveClasses(): void {
+        document
+            .querySelectorAll('.has-note.highlight-active, .note-card-margin.highlight-active')
+            .forEach(el => el.classList.remove('highlight-active'));
+    }
+
+    #applyActiveClasses(annotationId: string): void {
+        const card = document.querySelector<HTMLElement>(
+            `.note-card-margin[data-annotation-id="${annotationId}"]`,
+        );
+        card?.classList.add('highlight-active');
+
+        // Apply to every fragment of the highlight (a span may be split
+        // across blocks), not just the outermost one.
+        this.#markdownBody
+            .querySelectorAll<HTMLElement>(
+                `.has-note[data-annotation-id="${annotationId}"]`,
+            )
+            .forEach(el => el.classList.add('highlight-active'));
+    }
+
+    #ensureConnectorSvg(): SVGSVGElement {
+        if (this.#connectorSvg && document.body.contains(this.#connectorSvg)) {
+            return this.#connectorSvg;
+        }
+        const svg = document.createElementNS(SVG_NS, 'svg');
+        svg.classList.add('note-connector-svg');
+        svg.setAttribute('aria-hidden', 'true');
+        svg.style.position = 'absolute';
+        svg.style.left = '0';
+        svg.style.top = '0';
+        svg.style.pointerEvents = 'none';
+        svg.style.overflow = 'visible';
+
+        const path = document.createElementNS(SVG_NS, 'path');
+        path.classList.add('note-connector-path');
+        path.setAttribute('fill', 'none');
+        svg.appendChild(path);
+
+        document.body.appendChild(svg);
+        this.#connectorSvg = svg;
+        this.#connectorPath = path;
+        return svg;
+    }
+
+    #drawConnector(): void {
+        const annotationId = this.#activeAnnotationId;
+        if (!annotationId || !PlatformUtils.isWideScreen()) {
+            this.#hideConnector();
+            return;
+        }
+
+        const noteData = this.#noteCardsData.find(n => n.highlightId === annotationId);
+        if (!noteData) {
+            this.#hideConnector();
+            return;
+        }
+
+        const cardRect = noteData.element.getBoundingClientRect();
+        if (cardRect.width === 0 && cardRect.height === 0) {
+            this.#hideConnector();
+            return;
+        }
+
+        // Use the LAST client rect — for a multi-line highlight that's the
+        // visual line tail the user would expect the connector to spring from.
+        const sourceFragments = this.#markdownBody.querySelectorAll<HTMLElement>(
+            `.has-note[data-annotation-id="${annotationId}"]`,
+        );
+        let sourceRect: DOMRect | null = null;
+        sourceFragments.forEach(frag => {
+            const rects = frag.getClientRects();
+            if (rects.length === 0) return;
+            const last = rects[rects.length - 1];
+            if (!sourceRect || last.bottom > sourceRect.bottom) {
+                sourceRect = last;
+            }
+        });
+        if (!sourceRect) {
+            this.#hideConnector();
+            return;
+        }
+        // TS narrows to never inside forEach; restate to the actual type.
+        const src: DOMRect = sourceRect;
+
+        const scrollX = window.scrollX || window.pageXOffset;
+        const scrollY = window.scrollY || window.pageYOffset;
+
+        const x1 = src.right + scrollX;
+        const y1 = src.top + src.height / 2 + scrollY;
+        const x2 = cardRect.left + scrollX;
+        const y2 = cardRect.top + cardRect.height / 2 + scrollY;
+
+        // Cubic Bezier with horizontal control handles — gives the connector
+        // a calm S-curve regardless of vertical offset between source & card.
+        const dx = Math.max(40, (x2 - x1) * 0.5);
+        const c1x = x1 + dx;
+        const c1y = y1;
+        const c2x = x2 - dx;
+        const c2y = y2;
+
+        const svg = this.#ensureConnectorSvg();
+        const docWidth = Math.max(
+            document.documentElement.scrollWidth,
+            document.body.scrollWidth,
+        );
+        const docHeight = Math.max(
+            document.documentElement.scrollHeight,
+            document.body.scrollHeight,
+        );
+        svg.setAttribute('width', String(docWidth));
+        svg.setAttribute('height', String(docHeight));
+        svg.setAttribute('viewBox', `0 0 ${docWidth} ${docHeight}`);
+
+        if (this.#connectorPath) {
+            this.#connectorPath.setAttribute(
+                'd',
+                `M ${x1} ${y1} C ${c1x} ${c1y}, ${c2x} ${c2y}, ${x2} ${y2}`,
+            );
+            this.#connectorPath.classList.add('is-visible');
+        }
+    }
+
+    #hideConnector(): void {
+        this.#connectorPath?.classList.remove('is-visible');
     }
 
     showNotePopup(highlightElement: HTMLElement, annotationId: string): void {

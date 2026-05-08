@@ -741,15 +741,13 @@ export class MarkonApp {
             if (target.classList.contains('has-note')) {
                 const annotationId = target.dataset.annotationId;
                 if (!annotationId) return;
-                target.classList.add('highlight-active');
 
                 if (window.innerWidth > CONFIG.BREAKPOINTS.WIDE_SCREEN) {
-                    // Wide screen: highlight margin note card
+                    this.#noteManager.setActive(annotationId);
                     const noteCard = document.querySelector<HTMLElement>(
                         `.note-card-margin[data-annotation-id="${annotationId}"]`,
                     );
                     if (noteCard) {
-                        noteCard.classList.add('highlight-active');
                         const noteRect = noteCard.getBoundingClientRect();
                         if (noteRect.top < 0 || noteRect.bottom > window.innerHeight) {
                             noteCard.scrollIntoView({ behavior: 'smooth', block: 'center' });
@@ -760,6 +758,18 @@ export class MarkonApp {
                     this.#noteManager.showNotePopup(target, annotationId);
                 }
 
+                e.stopPropagation();
+                return;
+            }
+
+            // Click on a note card itself — make it the active selection so
+            // the connector + source highlight light up too.
+            const card = target.closest<HTMLElement>('.note-card-margin');
+            if (card) {
+                const annotationId = card.dataset.annotationId;
+                if (annotationId && window.innerWidth > CONFIG.BREAKPOINTS.WIDE_SCREEN) {
+                    this.#noteManager.setActive(annotationId);
+                }
                 e.stopPropagation();
             }
         });
@@ -888,6 +898,13 @@ export class MarkonApp {
                 target.closest('.note-input-modal')
             ) {
                 return;
+            }
+
+            // Clear an active note unless the click landed on the source
+            // highlight itself (that path runs through the click handler and
+            // toggles selection there).
+            if (!target.closest('.has-note')) {
+                this.#noteManager?.clearActive();
             }
 
             if (this.#popoverManager?.isVisible()) {
