@@ -139,21 +139,24 @@ fn handle_open_path(app: &tauri::AppHandle, path: &Path) {
         return;
     }
 
-    let flags = {
+    let (flags, browser_base) = {
         let settings = state.settings.lock().unwrap();
         // For single-file workspaces, force search off (a tantivy index per
         // ephemeral .md is wasteful — Cmd/Ctrl+F is the right tool for one
         // file). enable_live still follows the user's default so external
         // edits can sync once the live-reload client lands.
         let is_single = single_file.is_some();
-        markon_core::workspace::WorkspaceFlags {
-            enable_search: settings.default_search && !is_single,
-            enable_viewed: settings.default_viewed,
-            enable_edit: settings.default_edit,
-            enable_live: settings.default_live,
-            enable_chat: settings.default_chat,
-            shared_annotation: settings.default_shared_annotation,
-        }
+        (
+            markon_core::workspace::WorkspaceFlags {
+                enable_search: settings.default_search && !is_single,
+                enable_viewed: settings.default_viewed,
+                enable_edit: settings.default_edit,
+                enable_live: settings.default_live,
+                enable_chat: settings.default_chat,
+                shared_annotation: settings.default_shared_annotation,
+            },
+            markon_core::server::browser_base_url(&settings.host, server.port()),
+        )
     };
 
     // `registry.add` is idempotent on (path, single_file) and triggers the
@@ -167,13 +170,10 @@ fn handle_open_path(app: &tauri::AppHandle, path: &Path) {
             flags,
             single_file,
         });
-    let port = server.port();
     drop(server);
 
-    let url = match rel_path {
-        Some(p) => format!("http://127.0.0.1:{port}/{id}/{p}"),
-        None => format!("http://127.0.0.1:{port}/{id}/"),
-    };
+    let workspace_path = markon_core::server::workspace_url_path(&id, rel_path.as_deref());
+    let url = markon_core::server::build_workspace_url(&browser_base, &workspace_path);
 
     let _ = open::that(url);
 
@@ -425,6 +425,7 @@ fn main() {
             commands::get_workspaces,
             commands::open_browser,
             commands::open_url,
+            commands::get_bind_hosts,
             commands::get_system_info,
             commands::pick_workspace_dir,
             commands::pick_db_path,

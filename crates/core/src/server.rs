@@ -119,6 +119,19 @@ pub fn workspace_url_path(workspace_id: &str, initial_path: Option<&str>) -> Str
     }
 }
 
+pub fn browser_base_url(bind_host: &str, port: u16) -> String {
+    let trimmed = bind_host.trim();
+    let host = match trimmed {
+        "" | "0.0.0.0" | "::" | "[::]" => "127.0.0.1".to_string(),
+        other if other.starts_with('[') && other.ends_with(']') => other.to_string(),
+        other => match other.parse::<std::net::IpAddr>() {
+            Ok(std::net::IpAddr::V6(addr)) => format!("[{addr}]"),
+            _ => other.to_string(),
+        },
+    };
+    format!("http://{host}:{port}")
+}
+
 pub fn build_workspace_url(base: &str, workspace_path: &str) -> String {
     let suffix = if workspace_path.starts_with('/') {
         workspace_path.to_string()
@@ -1394,5 +1407,20 @@ mod tests {
             dev_reload_tx: Arc::new(broadcast::channel::<()>(1).0),
         };
         assert_eq!(state.management_token.as_str(), "token");
+    }
+
+    #[test]
+    fn browser_base_url_uses_localhost_for_wildcard_binds() {
+        assert_eq!(browser_base_url("0.0.0.0", 6419), "http://127.0.0.1:6419");
+        assert_eq!(browser_base_url("::", 6419), "http://127.0.0.1:6419");
+    }
+
+    #[test]
+    fn browser_base_url_preserves_specific_hosts() {
+        assert_eq!(
+            browser_base_url("192.168.1.20", 6419),
+            "http://192.168.1.20:6419"
+        );
+        assert_eq!(browser_base_url("::1", 6419), "http://[::1]:6419");
     }
 }

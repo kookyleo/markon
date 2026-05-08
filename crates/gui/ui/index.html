@@ -1421,6 +1421,7 @@
   };
   async function loadSettings() {
     const s = await invoke('get_settings');
+    await loadBindHosts(s.host);
     const mode = s.port_mode ?? 'spec';
     document.querySelector(`input[name="port_mode"][value="${mode}"]`).checked = true;
     document.getElementById('port').value = s.port;
@@ -1881,6 +1882,10 @@
   let lang = 'en';
   let t = i18n[lang];
   let systemLocale = 'en'; // will be updated from Rust
+  let bindHosts = [
+    { address: '127.0.0.1', kind: 'localhost' },
+    { address: '0.0.0.0', kind: 'all_interfaces' },
+  ];
 
   function T(key) {
     return (t[key] ?? i18n.en[key] ?? key);
@@ -1894,6 +1899,64 @@
       <span class="ws-fab-tip-label">${T('ws.add.hint')}</span>
       <span class="ws-fab-tip-key">${formatKey(shortcut)}</span>
     `;
+  }
+
+  function bindHostLabel(host) {
+    switch (host?.kind) {
+      case 'localhost':
+        return T('bind.local');
+      case 'all_interfaces':
+        return T('bind.lan');
+      default:
+        return host?.interface ? `${host.address} (${host.interface})` : (host?.address || '');
+    }
+  }
+
+  function appendSelectOption(select, value, label) {
+    const opt = document.createElement('option');
+    opt.value = value;
+    opt.textContent = label;
+    select.appendChild(opt);
+  }
+
+  function hasSelectOption(select, value) {
+    return Array.from(select.options).some(opt => opt.value === value);
+  }
+
+  function renderBindHostSelects(settingsHost) {
+    const hostSel = document.getElementById('host');
+    const cliSel = document.getElementById('cli-host');
+    const currentHost = (settingsHost ?? hostSel.value) || '127.0.0.1';
+    const currentCliHost = cliSel.value || '';
+    const localhost = bindHosts.find(host => host.kind === 'localhost')
+      || { address: '127.0.0.1', kind: 'localhost' };
+
+    hostSel.innerHTML = '';
+    bindHosts.forEach(host => appendSelectOption(hostSel, host.address, bindHostLabel(host)));
+    if (currentHost && !hasSelectOption(hostSel, currentHost)) {
+      appendSelectOption(hostSel, currentHost, currentHost);
+    }
+    hostSel.value = currentHost;
+
+    cliSel.innerHTML = '';
+    appendSelectOption(cliSel, '', bindHostLabel(localhost));
+    bindHosts
+      .filter(host => host.address !== localhost.address)
+      .forEach(host => appendSelectOption(cliSel, host.address, bindHostLabel(host)));
+    if (currentCliHost && !hasSelectOption(cliSel, currentCliHost)) {
+      appendSelectOption(cliSel, currentCliHost, currentCliHost);
+    }
+    cliSel.value = currentCliHost;
+  }
+
+  async function loadBindHosts(settingsHost) {
+    try {
+      const hosts = await invoke('get_bind_hosts');
+      if (Array.isArray(hosts) && hosts.length > 0) {
+        bindHosts = hosts;
+      }
+    } catch (_) {}
+    renderBindHostSelects(settingsHost);
   }
 
   function applyI18n() {
@@ -1921,6 +1984,7 @@
     });
     // Refresh language dropdown labels (the "auto" text changes with locale)
     populateLanguageSelects();
+    renderBindHostSelects();
     // Re-render shortcuts and help tip with translated descriptions
     if (document.getElementById('shortcuts-list')?.children.length) {
       renderShortcuts();

@@ -1,6 +1,6 @@
 use clap::Parser;
 use dialoguer::Select;
-use local_ip_address::list_afinet_netifas;
+use markon_core::net::{available_bind_hosts, BindHostKind};
 use markon_core::server::{self, ServerConfig, WorkspaceInit};
 use markon_core::settings::AppSettings;
 use markon_core::workspace::{ServerLock, WorkspaceFlags, WorkspaceRegistry};
@@ -10,25 +10,20 @@ use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 
 fn get_available_hosts() -> Vec<(String, String)> {
-    let mut hosts = vec![
-        (
-            "127.0.0.1".to_string(),
-            "Localhost (local only)".to_string(),
-        ),
-        (
-            "0.0.0.0".to_string(),
-            "All interfaces (LAN accessible)".to_string(),
-        ),
-    ];
-    if let Ok(ifaces) = list_afinet_netifas() {
-        for (name, ip) in ifaces {
-            let ip_str = ip.to_string();
-            if ip_str != "127.0.0.1" && !ip_str.starts_with("169.254") {
-                hosts.push((ip_str.clone(), format!("{ip_str} ({name})")));
-            }
-        }
-    }
-    hosts
+    available_bind_hosts()
+        .into_iter()
+        .map(|host| {
+            let label = match host.kind {
+                BindHostKind::Localhost => "Localhost (local only)".to_string(),
+                BindHostKind::AllInterfaces => "All interfaces (LAN accessible)".to_string(),
+                BindHostKind::Interface => host
+                    .interface
+                    .map(|name| format!("{} ({name})", host.address))
+                    .unwrap_or_else(|| host.address.clone()),
+            };
+            (host.address, label)
+        })
+        .collect()
 }
 
 fn select_host() -> Result<String, Box<dyn std::error::Error>> {

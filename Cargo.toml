@@ -15,6 +15,7 @@ opt-level = "s"
 [workspace.dependencies]
 markon-core = { path = "crates/core", version = "0.13" }
 dunce = "1.0"
+local-ip-address = "0.6"
 
 [workspace.package]
 version = "0.13.1"

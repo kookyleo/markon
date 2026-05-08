@@ -1,6 +1,8 @@
 use crate::AppState;
 use markon_core::chat::{config::ProviderKind, models};
 use markon_core::i18n;
+use markon_core::net::{available_bind_hosts, BindHostOption};
+use markon_core::server;
 use markon_core::settings::{AppSettings, PortMode};
 use markon_core::workspace::{expand_and_canonicalize, WorkspaceConfig, WorkspaceFlags};
 use std::sync::atomic::Ordering;
@@ -174,6 +176,11 @@ fn flags_from_params(
     }
 }
 
+fn browser_base_url_for_state(state: &State<AppState>, port: u16) -> String {
+    let bind_host = state.settings.lock().unwrap().host.clone();
+    server::browser_base_url(&bind_host, port)
+}
+
 #[tauri::command]
 #[allow(clippy::too_many_arguments)]
 pub fn add_workspace(
@@ -201,7 +208,12 @@ pub fn add_workspace(
         flags,
         single_file: None,
     });
-    let url = format!("http://127.0.0.1:{}/{id}/", server.port());
+    let port = server.port();
+    drop(server);
+    let url = server::build_workspace_url(
+        &browser_base_url_for_state(&state, port),
+        &server::workspace_url_path(&id, None),
+    );
     Ok(serde_json::json!({ "id": id, "url": url }))
 }
 
@@ -246,12 +258,16 @@ pub fn remove_workspace(id: String, state: State<AppState>) -> Result<(), String
 pub fn get_workspaces(state: State<AppState>) -> Vec<serde_json::Value> {
     let server = state.server.lock().unwrap();
     let port = server.port();
+    let browser_base = browser_base_url_for_state(&state, port);
     server
         .registry
         .info_list()
         .into_iter()
         .map(|info| {
-            let url = format!("http://127.0.0.1:{port}/{}/", info.id);
+            let url = server::build_workspace_url(
+                &browser_base,
+                &server::workspace_url_path(&info.id, None),
+            );
             serde_json::json!({
                 "id": info.id,
                 "path": info.path,
@@ -272,9 +288,12 @@ pub fn get_workspaces(state: State<AppState>) -> Vec<serde_json::Value> {
 pub fn open_browser(path: Option<String>, state: State<AppState>) -> Result<(), String> {
     let server = state.server.lock().unwrap();
     if server.is_running() {
+        let port = server.port();
+        drop(server);
+        let base = browser_base_url_for_state(&state, port);
         let url = match path {
-            Some(p) => format!("http://127.0.0.1:{}{}", server.port(), p),
-            None => format!("http://127.0.0.1:{}/", server.port()),
+            Some(p) => server::build_workspace_url(&base, &p),
+            None => format!("{}/", base.trim_end_matches('/')),
         };
         open::that(url).map_err(|e| e.to_string())?;
     }
@@ -284,6 +303,11 @@ pub fn open_browser(path: Option<String>, state: State<AppState>) -> Result<(), 
 #[tauri::command]
 pub fn open_url(url: String) -> Result<(), String> {
     open::that(url).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn get_bind_hosts() -> Vec<BindHostOption> {
+    available_bind_hosts()
 }
 
 #[tauri::command]
