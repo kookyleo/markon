@@ -82,6 +82,23 @@ pub fn available_bind_hosts() -> Vec<BindHostOption> {
     }
 }
 
+/// True when `host` can still be bound right now — wildcard / loopback are
+/// always OK, otherwise the address must be present on a current network
+/// interface. Pass `hosts` so callers that already enumerated don't pay twice.
+pub fn host_in_list(host: &str, hosts: &[BindHostOption]) -> bool {
+    let h = host.trim();
+    if matches!(
+        h,
+        "" | "0.0.0.0" | "::" | "[::]" | "127.0.0.1" | "::1" | "[::1]"
+    ) {
+        return true;
+    }
+    let bare = h.trim_start_matches('[').trim_end_matches(']');
+    hosts
+        .iter()
+        .any(|opt| opt.address == h || opt.address == bare)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -97,6 +114,26 @@ mod tests {
                 BindHostOption::all_interfaces()
             ]
         );
+    }
+
+    #[test]
+    fn host_in_list_passes_wildcard_and_loopback() {
+        let hosts = collect_bind_hosts_from_iter(std::iter::empty());
+        assert!(host_in_list("0.0.0.0", &hosts));
+        assert!(host_in_list("::", &hosts));
+        assert!(host_in_list("127.0.0.1", &hosts));
+        assert!(host_in_list("::1", &hosts));
+        assert!(!host_in_list("192.168.1.20", &hosts));
+    }
+
+    #[test]
+    fn host_in_list_matches_specific_interface_address() {
+        let hosts = collect_bind_hosts_from_iter([(
+            "en0".to_string(),
+            IpAddr::V4(Ipv4Addr::new(192, 168, 1, 20)),
+        )]);
+        assert!(host_in_list("192.168.1.20", &hosts));
+        assert!(!host_in_list("192.168.99.99", &hosts));
     }
 
     #[test]

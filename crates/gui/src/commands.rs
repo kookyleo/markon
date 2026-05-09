@@ -1,14 +1,31 @@
 use crate::AppState;
 use markon_core::chat::{config::ProviderKind, models};
 use markon_core::i18n;
-use markon_core::net::{available_bind_hosts, BindHostOption};
+use markon_core::net::{available_bind_hosts, host_in_list, BindHostOption};
 use markon_core::server;
 use markon_core::settings::{AppSettings, PortMode};
 use markon_core::workspace::{expand_and_canonicalize, WorkspaceConfig, WorkspaceFlags};
 use std::sync::atomic::Ordering;
 use tauri::menu::{Menu, MenuItem, PredefinedMenuItem};
-use tauri::State;
+use tauri::{Emitter, State};
 use tauri_plugin_updater::UpdaterExt;
+
+/// Snapshot of server lifecycle + bind-host validity, broadcast on
+/// `server-status-changed` whenever it might have shifted (after save, after
+/// a network change). Mirrored by `get_server_status` for cold reads.
+fn server_status_payload(state: &State<AppState>) -> serde_json::Value {
+    let server = state.server.lock().unwrap();
+    let bind_host = state.settings.lock().unwrap().host.clone();
+    let hosts = available_bind_hosts();
+    let host_available = host_in_list(&bind_host, &hosts);
+    serde_json::json!({
+        "running": server.is_running(),
+        "error": server.last_error(),
+        "host": bind_host,
+        "port": server.port(),
+        "host_available": host_available,
+    })
+}
 
 // Spawning a console program from a GUI app on Windows pops up a cmd window
 // unless CREATE_NO_WINDOW is set. These helpers centralise the cfg dance so
@@ -129,8 +146,11 @@ pub fn save_settings(
     let config = settings.to_server_config(port);
     *state.settings.lock().unwrap() = settings;
     let persist = AppSettings::persist_hook(state.settings.clone());
-    state.server.lock().unwrap().start(config, Some(persist));
-    Ok(())
+    let start_result = state.server.lock().unwrap().start(config, Some(persist));
+    // Always broadcast — even on failure UI needs the new (host, error) so
+    // the banner state and toast don't lag the persisted settings.
+    let _ = app.emit("server-status-changed", server_status_payload(&state));
+    start_result
 }
 
 fn update_tray_language(app: &tauri::AppHandle, language: &str) {
@@ -308,6 +328,11 @@ pub fn open_url(url: String) -> Result<(), String> {
 #[tauri::command]
 pub fn get_bind_hosts() -> Vec<BindHostOption> {
     available_bind_hosts()
+}
+
+#[tauri::command]
+pub fn get_server_status(state: State<AppState>) -> serde_json::Value {
+    server_status_payload(&state)
 }
 
 #[tauri::command]

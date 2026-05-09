@@ -7,6 +7,7 @@ pub struct ServerManager {
     thread: Option<std::thread::JoinHandle<()>>,
     port: u16,
     running: bool,
+    last_error: Option<String>,
     /// Shared with the server's AppState; allows Tauri commands to add/remove workspaces.
     pub registry: Arc<WorkspaceRegistry>,
 }
@@ -18,6 +19,7 @@ impl Default for ServerManager {
             thread: None,
             port: 0,
             running: false,
+            last_error: None,
             registry: Arc::new(WorkspaceRegistry::new("markon:0".into())),
         }
     }
@@ -28,8 +30,13 @@ impl ServerManager {
         Self::default()
     }
 
-    pub fn start(&mut self, mut config: ServerConfig, persist: Option<PersistHook>) {
+    pub fn start(
+        &mut self,
+        mut config: ServerConfig,
+        persist: Option<PersistHook>,
+    ) -> Result<(), String> {
         self.stop();
+        self.last_error = None;
 
         // Use the salt the caller put into ServerConfig (GUI: per-install random
         // salt from AppSettings). Fall back to a port-derived constant only for
@@ -45,7 +52,9 @@ impl ServerManager {
         config.salt = Some(salt);
         config.registry = Some(self.registry.clone());
 
-        // Pre-bind to hold the port synchronously before the async runtime starts.
+        // Pre-bind synchronously so a bad address (e.g. NIC IP saved in a
+        // previous network) fails loudly here instead of leaving the async
+        // start to silently die in the spawned thread.
         let bind_addr = format!("{}:{}", config.host, config.port);
         let (config, actual_port) = match std::net::TcpListener::bind(&bind_addr) {
             Ok(listener) => {
@@ -59,9 +68,12 @@ impl ServerManager {
                 (c, actual_port)
             }
             Err(e) => {
-                eprintln!("[ServerManager] pre-bind failed {bind_addr}: {e}");
-                let p = config.port;
-                (config, p)
+                let msg = format!("Failed to bind {bind_addr}: {e}");
+                eprintln!("[ServerManager] {msg}");
+                self.last_error = Some(msg.clone());
+                self.running = false;
+                self.port = 0;
+                return Err(msg);
             }
         };
 
@@ -88,6 +100,7 @@ impl ServerManager {
         self.thread = Some(thread);
         self.port = actual_port;
         self.running = true;
+        Ok(())
     }
 
     pub fn stop(&mut self) {
@@ -106,6 +119,10 @@ impl ServerManager {
 
     pub fn port(&self) -> u16 {
         self.port
+    }
+
+    pub fn last_error(&self) -> Option<String> {
+        self.last_error.clone()
     }
 }
 

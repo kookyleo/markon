@@ -915,6 +915,10 @@
               </select>
             </div>
           </div>
+          <div id="bind-warning" class="pref-row" style="display:none">
+            <span class="pref-label"></span>
+            <div class="pref-control" style="color:#d93025;font-size:12px;line-height:1.4;max-width:380px"></div>
+          </div>
         </div>
       </div>
 
@@ -1511,7 +1515,15 @@
       update_channel: document.querySelector('input[name="update_channel"]:checked')?.value ?? 'stable',
       workspaces: [],  // preserved by Rust command; managed via add/remove/update
     };
-    await invoke('save_settings', { settings });
+    try {
+      await invoke('save_settings', { settings });
+    } catch (e) {
+      // Bind failure ("address not on this machine") is the realistic case;
+      // surface server-side text directly so the user knows what to fix.
+      // Don't rethrow — every saveSettings() caller is fire-and-forget; a
+      // rejection would only surface as an unhandled promise warning.
+      toast(T('bind.save_failed').replace('{error}', String(e)), 'err');
+    }
   }
 
   // ── DB path state & helpers ────────────────────────────────────────────
@@ -1912,6 +1924,25 @@
     }
   }
 
+  function isHostInList(addr, hosts) {
+    if (!addr) return true;
+    if (['', '0.0.0.0', '::', '[::]', '127.0.0.1', '::1', '[::1]'].includes(addr)) return true;
+    const bare = addr.replace(/^\[|\]$/g, '');
+    return hosts.some(h => h.address === addr || h.address === bare);
+  }
+
+  function updateBindWarning(host, available) {
+    const row = document.getElementById('bind-warning');
+    if (!row) return;
+    if (available || !host) {
+      row.style.display = 'none';
+      return;
+    }
+    row.style.display = '';
+    row.querySelector('.pref-control').textContent =
+      T('bind.unavailable').replace('{host}', host);
+  }
+
   function appendSelectOption(select, value, label) {
     const opt = document.createElement('option');
     opt.value = value;
@@ -1934,7 +1965,9 @@
     hostSel.innerHTML = '';
     bindHosts.forEach(host => appendSelectOption(hostSel, host.address, bindHostLabel(host)));
     if (currentHost && !hasSelectOption(hostSel, currentHost)) {
-      appendSelectOption(hostSel, currentHost, currentHost);
+      // Saved-but-missing host — keep so save still round-trips, but tag it
+      // so the user sees why their server isn't reachable.
+      appendSelectOption(hostSel, currentHost, `⚠️ ${currentHost} ${T('bind.stale')}`);
     }
     hostSel.value = currentHost;
 
@@ -1944,9 +1977,11 @@
       .filter(host => host.address !== localhost.address)
       .forEach(host => appendSelectOption(cliSel, host.address, bindHostLabel(host)));
     if (currentCliHost && !hasSelectOption(cliSel, currentCliHost)) {
-      appendSelectOption(cliSel, currentCliHost, currentCliHost);
+      appendSelectOption(cliSel, currentCliHost, `⚠️ ${currentCliHost} ${T('bind.stale')}`);
     }
     cliSel.value = currentCliHost;
+
+    updateBindWarning(currentHost, isHostInList(currentHost, bindHosts));
   }
 
   async function loadBindHosts(settingsHost) {
@@ -2109,8 +2144,53 @@
     // Load settings AFTER locale is resolved so all UI renders in correct language.
     await loadSettings();
     refreshWorkspaces();
+    refreshServerStatus();
+    setupBindHostListeners();
   })();
-  window.addEventListener('focus', refreshWorkspaces);
+  window.addEventListener('focus', () => {
+    refreshWorkspaces();
+    // Wi-Fi switch / VPN toggled while the settings window was idle — re-pull
+    // the bind list and the server-status payload so warnings don't go stale.
+    const currentHost = document.getElementById('host')?.value;
+    loadBindHosts(currentHost);
+    refreshServerStatus();
+  });
+
+  async function refreshServerStatus() {
+    let status;
+    try { status = await invoke('get_server_status'); } catch (_) { return; }
+    if (status?.error) {
+      toast(T('bind.bind_failed').replace('{error}', status.error), 'err');
+    }
+    if (typeof status?.host_available === 'boolean') {
+      updateBindWarning(status.host, status.host_available);
+    }
+  }
+
+  function setupBindHostListeners() {
+    const ev = window.__TAURI__?.event;
+    if (!ev?.listen) return;
+    ev.listen('bind-hosts-changed', (evt) => {
+      const payload = evt?.payload || {};
+      if (Array.isArray(payload.hosts) && payload.hosts.length > 0) {
+        bindHosts = payload.hosts;
+      }
+      const currentHost = document.getElementById('host')?.value;
+      renderBindHostSelects(currentHost);
+      if (typeof payload.host_available === 'boolean') {
+        updateBindWarning(payload.current_host || currentHost, payload.host_available);
+      }
+    });
+    ev.listen('server-status-changed', (evt) => {
+      const payload = evt?.payload || {};
+      if (payload.error) {
+        toast(T('bind.bind_failed').replace('{error}', payload.error), 'err');
+      }
+      if (typeof payload.host_available === 'boolean') {
+        updateBindWarning(payload.host, payload.host_available);
+      }
+    });
+  }
 
   // ── Tips: Cmd+F search ───────────────────────────────────────────────
   const tipsBar = document.getElementById('tips-search-bar');

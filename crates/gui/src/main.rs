@@ -16,7 +16,7 @@ use std::sync::{
 use tauri::{
     menu::{Menu, MenuItem, PredefinedMenuItem},
     tray::TrayIconBuilder,
-    Manager,
+    Emitter, Manager,
 };
 
 // Point the Win32 HWND at the multi-size icon embedded in the .exe resource
@@ -270,9 +270,42 @@ fn main() {
                 tray_resident: Arc::new(AtomicBool::new(tray_resident_init)),
             };
             let mut server = state.server.lock().unwrap();
-            server.start(config, Some(persist_hook));
+            if let Err(e) = server.start(config, Some(persist_hook)) {
+                eprintln!("[setup] server failed to start: {e}");
+            }
             drop(server);
             app.manage(state);
+
+            // Poll for NIC changes — switching Wi-Fi or toggling a VPN
+            // mutates the available-bind-hosts list, and a server bound to a
+            // specific NIC IP that just disappeared will silently fail. Push
+            // both the new list and the freshness of the active host so the
+            // settings UI can re-render its dropdown and surface a banner.
+            let app_for_watcher = app.handle().clone();
+            tauri::async_runtime::spawn(async move {
+                use std::time::Duration;
+                use tokio::time::sleep;
+                let mut prev = markon_core::net::available_bind_hosts();
+                loop {
+                    sleep(Duration::from_secs(3)).await;
+                    let cur = markon_core::net::available_bind_hosts();
+                    if cur == prev {
+                        continue;
+                    }
+                    prev = cur.clone();
+                    let bind_host = match app_for_watcher.try_state::<AppState>() {
+                        Some(state) => state.settings.lock().unwrap().host.clone(),
+                        None => continue,
+                    };
+                    let host_available = markon_core::net::host_in_list(&bind_host, &cur);
+                    let payload = serde_json::json!({
+                        "hosts": cur,
+                        "current_host": bind_host,
+                        "host_available": host_available,
+                    });
+                    let _ = app_for_watcher.emit("bind-hosts-changed", payload);
+                }
+            });
 
             // ── System tray ───────────────────────────────────────────────
             // macOS uses a template icon (monochrome + alpha) that the system
@@ -426,6 +459,7 @@ fn main() {
             commands::open_browser,
             commands::open_url,
             commands::get_bind_hosts,
+            commands::get_server_status,
             commands::get_system_info,
             commands::pick_workspace_dir,
             commands::pick_db_path,

@@ -21,6 +21,10 @@
     "pref.bind":       "バインドアドレス",
     "bind.local":      "127.0.0.1 — ローカルホストのみ",
     "bind.lan":        "0.0.0.0",
+    "bind.stale":      "（このマシン上に存在しません）",
+    "bind.unavailable": "{host} はどのネットワークインターフェースにも存在しません。0.0.0.0 に切り替えてください。",
+    "bind.bind_failed": "サーバ起動に失敗：{error}",
+    "bind.save_failed": "保存に失敗：{error}",
 
     // ── General — Appearance ─────────────────────────────────
     "sec.appearance": "外観",

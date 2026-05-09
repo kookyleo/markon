@@ -21,6 +21,10 @@
     "pref.bind":       "Bind address",
     "bind.local":      "127.0.0.1 — Localhost only",
     "bind.lan":        "0.0.0.0",
+    "bind.stale":      "(no longer on this machine)",
+    "bind.unavailable": "{host} is not on any current network interface — switch to 0.0.0.0 to keep the server reachable.",
+    "bind.bind_failed": "Server failed to start: {error}",
+    "bind.save_failed": "Save failed: {error}",
 
     // ── General — Appearance ─────────────────────────────────
     "sec.appearance": "Appearance",

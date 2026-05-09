@@ -21,6 +21,10 @@
     "pref.bind":       "绑定地址",
     "bind.local":      "127.0.0.1 — 仅本机可用",
     "bind.lan":        "0.0.0.0",
+    "bind.stale":      "（已不在本机网卡上）",
+    "bind.unavailable": "{host} 已不在当前任意网卡上，建议切换到 0.0.0.0 以保持可访问。",
+    "bind.bind_failed": "服务启动失败：{error}",
+    "bind.save_failed": "保存失败：{error}",
 
     // ── 全局设置 — 外观 ──────────────────────────────────────
     "sec.appearance": "外观",
