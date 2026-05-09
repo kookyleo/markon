@@ -18,7 +18,7 @@ dunce = "1.0"
 local-ip-address = "0.6"
 
 [workspace.package]
-version = "0.13.2"
+version = "0.13.3"
 edition = "2021"
 authors = ["kookyleo"]
 license = "Apache-2.0"
