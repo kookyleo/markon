@@ -94,10 +94,14 @@ pub struct ChatStorage {
 }
 
 fn now_ms() -> i64 {
+    // A clock reporting before UNIX_EPOCH is a real corruption — every
+    // chat row's created_at / updated_at would order against the rest
+    // of the timeline incorrectly. Better to fail loudly than to write
+    // 0 silently and watch threads sort to the year 1970.
     SystemTime::now()
         .duration_since(UNIX_EPOCH)
-        .map(|d| d.as_millis() as i64)
-        .unwrap_or(0)
+        .expect("system clock must be at or after UNIX_EPOCH")
+        .as_millis() as i64
 }
 
 fn role_to_str(role: Role) -> &'static str {
