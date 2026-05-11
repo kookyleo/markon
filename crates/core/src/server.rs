@@ -482,12 +482,19 @@ pub async fn start(config: ServerConfig) -> Result<(), String> {
 }
 
 /// Lightweight always-on WebSocket per workspace — pushes a "reload" text frame
-/// whenever workspace flags change. No auth required (read-only notification).
+/// whenever workspace flags change. Requires same-origin (see
+/// `check_ws_origin`) so a foreign page cannot subscribe to a victim's
+/// workspace config stream when the server is shared on a LAN.
 async fn config_ws_handler(
     ws: WebSocketUpgrade,
     State(state): State<AppState>,
     AxumPath(workspace_id): AxumPath<String>,
+    axum::extract::ConnectInfo(addr): axum::extract::ConnectInfo<std::net::SocketAddr>,
+    headers: axum::http::HeaderMap,
 ) -> impl IntoResponse {
+    if !check_ws_origin(&headers, &addr) {
+        return StatusCode::FORBIDDEN.into_response();
+    }
     let Some(ws_entry) = state.workspace_registry.get(&workspace_id) else {
         return StatusCode::NOT_FOUND.into_response();
     };
@@ -503,6 +510,74 @@ async fn config_ws_handler(
             }
         }
     })
+}
+
+/// Reject cross-origin WebSocket upgrades. When the server is bound to a
+/// non-loopback interface (LAN share / QR-code mobile access), any browser on
+/// the same network could otherwise open `/_/ws` from an attacker page and
+/// read or poison annotations under a victim's identity. Browsers always
+/// send `Origin` on WS handshakes; the rule is "Origin authority must equal
+/// Host authority". Native (non-browser) clients can omit Origin entirely —
+/// we let those through only when the TCP peer is loopback, since that's
+/// where local CLI tooling legitimately connects without an Origin header.
+fn check_ws_origin(headers: &axum::http::HeaderMap, peer: &std::net::SocketAddr) -> bool {
+    let origin = headers
+        .get(axum::http::header::ORIGIN)
+        .and_then(|v| v.to_str().ok());
+    match origin {
+        None => peer.ip().is_loopback(),
+        // Sandboxed iframes and some `file://` contexts send `Origin: null`.
+        // We refuse rather than try to interpret what they mean.
+        Some(o) if o.trim().eq_ignore_ascii_case("null") => false,
+        Some(o) => {
+            let host = headers
+                .get(axum::http::header::HOST)
+                .and_then(|v| v.to_str().ok());
+            origin_matches_host(o, host)
+        }
+    }
+}
+
+/// Validate the first frame the WebSocket client sends as its `file_path`
+/// identity. The value is used as a SQL key (parameterized, so no injection)
+/// and as a broadcast match key — it does NOT have to point at a real file
+/// on disk. We still reject obviously dangerous shapes so a foreign client
+/// cannot claim a path like `../etc/passwd` and have it silently persist /
+/// fan out to other connected viewers.
+///
+/// Constraints:
+/// - Non-empty and at most 1024 bytes (db keys should be modest).
+/// - No NUL bytes (defends downstream code that might pass the value to C
+///   string APIs in syntect, sqlite, etc.).
+/// - No `..` path components and no absolute path prefixes.
+fn is_valid_ws_file_path(path: &str) -> bool {
+    if path.is_empty() || path.len() > 1024 || path.contains('\0') {
+        return false;
+    }
+    let p = std::path::Path::new(path);
+    for comp in p.components() {
+        match comp {
+            std::path::Component::ParentDir
+            | std::path::Component::RootDir
+            | std::path::Component::Prefix(_) => return false,
+            _ => {}
+        }
+    }
+    true
+}
+
+/// True when `origin` (e.g. `http://192.168.1.10:1618`) and `host` (e.g.
+/// `192.168.1.10:1618`) refer to the same authority. The origin's authority
+/// is the part after `scheme://` up to the path/query. Comparison is
+/// case-insensitive on the host part — port is matched verbatim.
+fn origin_matches_host(origin: &str, host: Option<&str>) -> bool {
+    let Some(host) = host else { return false };
+    let Some(rest) = origin.split_once("://").map(|(_, r)| r) else {
+        return false;
+    };
+    // Strip path/query if any (shouldn't normally be present on Origin).
+    let authority = rest.split(['/', '?', '#']).next().unwrap_or(rest);
+    authority.eq_ignore_ascii_case(host)
 }
 
 /// Middleware: management API only accepts loopback source + valid token header.
@@ -527,8 +602,17 @@ async fn require_local_and_token(
     next.run(req).await
 }
 
-async fn ws_handler(ws: WebSocketUpgrade, State(state): State<AppState>) -> impl IntoResponse {
-    ws.on_upgrade(|socket| handle_socket(socket, state))
+async fn ws_handler(
+    ws: WebSocketUpgrade,
+    State(state): State<AppState>,
+    axum::extract::ConnectInfo(addr): axum::extract::ConnectInfo<std::net::SocketAddr>,
+    headers: axum::http::HeaderMap,
+) -> impl IntoResponse {
+    if !check_ws_origin(&headers, &addr) {
+        return StatusCode::FORBIDDEN.into_response();
+    }
+    ws.on_upgrade(move |socket| handle_socket(socket, state))
+        .into_response()
 }
 
 #[cfg(debug_assertions)]
@@ -698,6 +782,13 @@ async fn handle_socket(socket: WebSocket, state: AppState) {
             return;
         }
     };
+    if !is_valid_ws_file_path(&file_path) {
+        eprintln!(
+            "[WebSocket] Rejecting suspicious file_path from client: {:?}",
+            file_path
+        );
+        return;
+    }
 
     // Only send initial annotation/viewed state when a persistence layer exists.
     if let Some(db) = db.as_ref() {
@@ -1369,6 +1460,105 @@ async fn preview_handler(
 mod tests {
     use super::*;
     use serde_json::json;
+
+    use axum::http::HeaderMap;
+    use std::net::{IpAddr, Ipv4Addr};
+
+    fn headers_with(origin: Option<&str>, host: Option<&str>) -> HeaderMap {
+        let mut h = HeaderMap::new();
+        if let Some(o) = origin {
+            h.insert("origin", o.parse().unwrap());
+        }
+        if let Some(host) = host {
+            h.insert("host", host.parse().unwrap());
+        }
+        h
+    }
+
+    fn loopback() -> SocketAddr {
+        SocketAddr::new(IpAddr::V4(Ipv4Addr::LOCALHOST), 1618)
+    }
+
+    fn lan_peer() -> SocketAddr {
+        SocketAddr::new(IpAddr::V4(Ipv4Addr::new(192, 168, 1, 50)), 51234)
+    }
+
+    #[test]
+    fn ws_origin_accepts_matching_authority() {
+        let h = headers_with(Some("http://192.168.1.10:1618"), Some("192.168.1.10:1618"));
+        assert!(check_ws_origin(&h, &lan_peer()));
+    }
+
+    #[test]
+    fn ws_origin_rejects_cross_origin() {
+        let h = headers_with(Some("http://evil.example.com"), Some("192.168.1.10:1618"));
+        assert!(!check_ws_origin(&h, &lan_peer()));
+    }
+
+    #[test]
+    fn ws_origin_rejects_port_mismatch() {
+        let h = headers_with(Some("http://127.0.0.1:9000"), Some("127.0.0.1:1618"));
+        assert!(!check_ws_origin(&h, &loopback()));
+    }
+
+    #[test]
+    fn ws_origin_rejects_null_origin() {
+        let h = headers_with(Some("null"), Some("127.0.0.1:1618"));
+        assert!(!check_ws_origin(&h, &loopback()));
+    }
+
+    #[test]
+    fn ws_missing_origin_allowed_only_from_loopback() {
+        let h = headers_with(None, Some("127.0.0.1:1618"));
+        assert!(check_ws_origin(&h, &loopback()));
+        assert!(!check_ws_origin(&h, &lan_peer()));
+    }
+
+    #[test]
+    fn ws_origin_case_insensitive_host_match() {
+        let h = headers_with(
+            Some("http://Example.Local:1618"),
+            Some("example.local:1618"),
+        );
+        assert!(check_ws_origin(&h, &loopback()));
+    }
+
+    #[test]
+    fn ws_origin_with_trailing_path_still_matches_authority() {
+        // Defensive: spec says Origin has no path, but some clients append one.
+        let h = headers_with(Some("http://127.0.0.1:1618/"), Some("127.0.0.1:1618"));
+        assert!(check_ws_origin(&h, &loopback()));
+    }
+
+    #[test]
+    fn ws_file_path_accepts_normal_paths() {
+        assert!(is_valid_ws_file_path("notes/intro.md"));
+        assert!(is_valid_ws_file_path("README.md"));
+        assert!(is_valid_ws_file_path("docs/api/index.html"));
+    }
+
+    #[test]
+    fn ws_file_path_rejects_parent_traversal() {
+        assert!(!is_valid_ws_file_path("../etc/passwd"));
+        assert!(!is_valid_ws_file_path("notes/../../etc/passwd"));
+    }
+
+    #[test]
+    fn ws_file_path_rejects_absolute_path() {
+        assert!(!is_valid_ws_file_path("/etc/passwd"));
+    }
+
+    #[test]
+    fn ws_file_path_rejects_nul_byte_and_empty() {
+        assert!(!is_valid_ws_file_path(""));
+        assert!(!is_valid_ws_file_path("a\0b"));
+    }
+
+    #[test]
+    fn ws_file_path_rejects_overlong() {
+        let big = "a".repeat(1025);
+        assert!(!is_valid_ws_file_path(&big));
+    }
 
     #[test]
     fn test_websocket_message_serialization() {

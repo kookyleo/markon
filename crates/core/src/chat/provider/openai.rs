@@ -7,7 +7,7 @@
 //! prompt caching, so [`SystemBlock::cache`] is ignored — all system blocks
 //! are concatenated into a single `system` message.
 
-use super::{ChatRequest, Provider, ProviderError, ProviderEvent};
+use super::{scrub_credentials, ChatRequest, Provider, ProviderError, ProviderEvent};
 use crate::chat::config::{ChatRuntimeConfig, ProviderKind};
 use crate::chat::message::{ContentBlock, Message, Role, Usage};
 use async_trait::async_trait;
@@ -63,7 +63,9 @@ impl Provider for OpenAiProvider {
             .json(&body)
             .send()
             .await
-            .map_err(|e| ProviderError::Network(scrub(&e.to_string())))?;
+            .map_err(|e| {
+                ProviderError::Network(scrub_credentials(&e.to_string(), &self.cfg.api_key))
+            })?;
         let status = resp.status();
         if !status.is_success() {
             let code = status.as_u16();
@@ -73,23 +75,15 @@ impl Provider for OpenAiProvider {
                 .unwrap_or_else(|e| format!("<failed to read error body: {e}>"));
             return Err(ProviderError::Api {
                 status: code,
-                message: scrub(&text),
+                message: scrub_credentials(&text, &self.cfg.api_key),
             });
         }
-        let byte_stream = resp
-            .bytes_stream()
-            .map(|res| res.map_err(|e| ProviderError::Network(scrub(&e.to_string()))));
+        let api_key = self.cfg.api_key.clone();
+        let byte_stream = resp.bytes_stream().map(move |res| {
+            res.map_err(|e| ProviderError::Network(scrub_credentials(&e.to_string(), &api_key)))
+        });
         Ok(parse_openai_stream(byte_stream).boxed())
     }
-}
-
-fn scrub(s: &str) -> String {
-    let mut out = s.to_string();
-    if let Some(idx) = out.find("Authorization") {
-        out.truncate(idx);
-        out.push_str("[redacted]");
-    }
-    out
 }
 
 // ---- Request body construction --------------------------------------------

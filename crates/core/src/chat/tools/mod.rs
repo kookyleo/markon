@@ -9,24 +9,64 @@ pub mod read_file;
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
-use std::path::{Path, PathBuf};
+use std::path::{Component, Path, PathBuf};
 use std::sync::Arc;
 
 /// Per-request tool scope — currently just the workspace root. Anything
 /// extra (cwd, environment) lives here so individual tools stay pure.
+///
+/// `workspace_root` must be canonicalized at construction so the sandbox
+/// check in `resolve()` can rely on lexical prefix comparison being
+/// semantically meaningful. Use `ToolContext::new()` instead of building the
+/// struct literally — the literal constructor is kept `pub` only for tests
+/// that pass an already-canonicalized temp dir.
 #[derive(Debug, Clone)]
 pub struct ToolContext {
     pub workspace_root: PathBuf,
 }
 
 impl ToolContext {
+    /// Canonicalize `root` and wrap it in a `ToolContext`. Returns an error
+    /// when the root cannot be canonicalized (e.g. doesn't exist).
+    pub fn new(root: impl AsRef<Path>) -> Result<Self, ToolError> {
+        let workspace_root = dunce::canonicalize(root.as_ref())
+            .map_err(|e| ToolError::Io(format!("workspace root: {e}")))?;
+        Ok(Self { workspace_root })
+    }
+
     /// Resolve a relative-to-workspace path, rejecting any traversal that
     /// escapes the root. Returns the absolute path on success.
+    ///
+    /// Defense-in-depth strategy:
+    /// 1. Reject `..`, absolute paths, and Windows path prefixes lexically —
+    ///    no syscall needed, eliminates the obvious attempts up front.
+    /// 2. Canonicalize the candidate (must exist). This collapses any
+    ///    symlinks inside `workspace_root` that point outside, so the next
+    ///    check can catch them.
+    /// 3. `starts_with` against the canonical root — only paths that resolve
+    ///    inside the sandbox are returned.
+    ///
+    /// We intentionally do NOT fall back to the un-canonicalized candidate
+    /// on `canonicalize()` failure: that fallback silently broke step 3 for
+    /// any path whose last component didn't exist (`..` traversal to a
+    /// non-existent file then read), since `PathBuf::starts_with` is a
+    /// lexical component-prefix match and does not normalize `..`.
     pub fn resolve(&self, rel: &str) -> Result<PathBuf, ToolError> {
-        let candidate = self.workspace_root.join(rel);
-        let canon = dunce::canonicalize(&candidate)
-            .or_else(|_| Ok::<_, std::io::Error>(candidate.clone()))
-            .map_err(|e| ToolError::Io(e.to_string()))?;
+        let rel_path = Path::new(rel);
+        for comp in rel_path.components() {
+            match comp {
+                Component::ParentDir => return Err(ToolError::OutsideWorkspace),
+                Component::RootDir | Component::Prefix(_) => {
+                    return Err(ToolError::OutsideWorkspace);
+                }
+                Component::CurDir | Component::Normal(_) => {}
+            }
+        }
+        let candidate = self.workspace_root.join(rel_path);
+        let canon = dunce::canonicalize(&candidate).map_err(|e| match e.kind() {
+            std::io::ErrorKind::NotFound => ToolError::NotFound(rel.to_string()),
+            _ => ToolError::Io(e.to_string()),
+        })?;
         if !canon.starts_with(&self.workspace_root) {
             return Err(ToolError::OutsideWorkspace);
         }
@@ -167,4 +207,84 @@ pub fn default_walker(root: &Path) -> ignore::WalkBuilder {
         .git_global(true)
         .git_exclude(true);
     b
+}
+
+#[cfg(test)]
+mod resolve_tests {
+    use super::*;
+    use std::fs;
+    use tempfile::TempDir;
+
+    fn ctx() -> (TempDir, ToolContext) {
+        let td = TempDir::new().unwrap();
+        fs::write(td.path().join("ok.md"), b"hi").unwrap();
+        let ctx = ToolContext::new(td.path()).unwrap();
+        (td, ctx)
+    }
+
+    #[test]
+    fn accepts_normal_relative_path() {
+        let (_td, ctx) = ctx();
+        let p = ctx.resolve("ok.md").unwrap();
+        assert!(p.ends_with("ok.md"));
+        assert!(p.starts_with(&ctx.workspace_root));
+    }
+
+    #[test]
+    fn accepts_curdir_component() {
+        let (_td, ctx) = ctx();
+        ctx.resolve("./ok.md").unwrap();
+    }
+
+    #[test]
+    fn rejects_parent_traversal_even_when_target_missing() {
+        // Regression: the pre-fix `or_else` fallback let
+        // `workspace_root.join("../etc/passwd")` slip past the lexical
+        // `starts_with` check whenever canonicalize failed (typically because
+        // the last component did not exist).
+        let (_td, ctx) = ctx();
+        let err = ctx.resolve("../etc/passwd").unwrap_err();
+        assert!(matches!(err, ToolError::OutsideWorkspace), "got {err:?}");
+    }
+
+    #[test]
+    fn rejects_parent_traversal_with_existing_outside_target() {
+        let (_td, ctx) = ctx();
+        // /tmp exists; without the lexical check, an attacker could read it.
+        let err = ctx.resolve("../").unwrap_err();
+        assert!(matches!(err, ToolError::OutsideWorkspace), "got {err:?}");
+    }
+
+    #[test]
+    fn rejects_absolute_path() {
+        let (_td, ctx) = ctx();
+        #[cfg(unix)]
+        let abs = "/etc/passwd";
+        #[cfg(windows)]
+        let abs = "C:\\Windows\\System32\\drivers\\etc\\hosts";
+        let err = ctx.resolve(abs).unwrap_err();
+        assert!(matches!(err, ToolError::OutsideWorkspace), "got {err:?}");
+    }
+
+    #[test]
+    fn missing_file_returns_not_found() {
+        let (_td, ctx) = ctx();
+        let err = ctx.resolve("does-not-exist.md").unwrap_err();
+        assert!(matches!(err, ToolError::NotFound(_)), "got {err:?}");
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn rejects_symlink_escaping_workspace() {
+        use std::os::unix::fs::symlink;
+        let td = TempDir::new().unwrap();
+        let outside = TempDir::new().unwrap();
+        fs::write(outside.path().join("secret.txt"), b"nope").unwrap();
+        symlink(outside.path(), td.path().join("escape")).unwrap();
+        let ctx = ToolContext::new(td.path()).unwrap();
+        // Following the symlink would canonicalize to a path outside the
+        // workspace; the post-canonicalize starts_with check must catch it.
+        let err = ctx.resolve("escape/secret.txt").unwrap_err();
+        assert!(matches!(err, ToolError::OutsideWorkspace), "got {err:?}");
+    }
 }

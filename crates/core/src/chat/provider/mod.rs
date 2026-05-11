@@ -89,6 +89,49 @@ pub fn build(cfg: ChatRuntimeConfig) -> Arc<dyn Provider> {
 
 pub(super) type EventQueue = VecDeque<Result<ProviderEvent, ProviderError>>;
 
+/// Strip credentials from a provider-error message before it crosses the
+/// network boundary back to the browser. Two layers of defense:
+///
+/// 1. **Exact-match redaction** — substring-replace the live API key with
+///    `[redacted]`. Zero false positives, perfectly safe for the actual key
+///    that's in use.
+/// 2. **Prefix-shape redaction** — mask tokens that *look* like credentials
+///    (`sk-…`, `sk-ant-…`, Bearer values, header echoes) in case an upstream
+///    leaks a stale or related credential we don't have the literal value
+///    for.
+///
+/// Old behavior just truncated everything after the first `x-api-key` /
+/// `Authorization` substring, which silently destroyed diagnostic info and
+/// did nothing if the key showed up under any other shape.
+pub(super) fn scrub_credentials(msg: &str, api_key: &str) -> String {
+    let mut out = msg.to_string();
+    if api_key.len() >= 8 {
+        out = out.replace(api_key, "[redacted]");
+    }
+    mask_credential_shapes(&out)
+}
+
+fn mask_credential_shapes(s: &str) -> String {
+    use std::sync::OnceLock;
+    static RE: OnceLock<regex::Regex> = OnceLock::new();
+    let re = RE.get_or_init(|| {
+        // Order matters: the header-echo alternative is greedier (it eats
+        // any value tokens following `Authorization:` up to end-of-line) so
+        // listing it first stops the bearer-token alternative from leaving
+        // the actual key behind.
+        regex::Regex::new(
+            r"(?ix)
+              ( (?:x-api-key|authorization)\s*[:=]\s*[^\r\n,;]+
+              | bearer\s+[A-Za-z0-9_\-\.=]{16,}
+              | sk-ant-[A-Za-z0-9_\-]{8,}
+              | sk-[A-Za-z0-9_\-]{16,}
+              )",
+        )
+        .expect("scrub regex must compile")
+    });
+    re.replace_all(s, "[redacted]").into_owned()
+}
+
 /// Generic SSE-stream driver shared by Anthropic and OpenAI providers. Owns
 /// the upstream byte stream and a parser `State`, splits the buffer on event
 /// terminators, and dispatches each chunk through `on_chunk`. When the
@@ -207,4 +250,44 @@ pub(super) fn find_event_end(buf: &[u8]) -> Option<(usize, usize)> {
         i += 1;
     }
     None
+}
+
+#[cfg(test)]
+mod scrub_tests {
+    use super::scrub_credentials;
+
+    #[test]
+    fn redacts_exact_key_anywhere_in_message() {
+        let msg = "request failed: x-api-key was sk-ant-api03-EXAMPLEKEY123, please retry";
+        let out = scrub_credentials(msg, "sk-ant-api03-EXAMPLEKEY123");
+        assert!(!out.contains("sk-ant-api03-EXAMPLEKEY123"));
+        assert!(out.contains("[redacted]"));
+        assert!(out.contains("please retry"));
+    }
+
+    #[test]
+    fn redacts_bearer_token_shape() {
+        let msg = "upstream said: Authorization: Bearer abcdefghijklmnop1234";
+        let out = scrub_credentials(msg, "different-key");
+        assert!(!out.contains("abcdefghijklmnop1234"));
+    }
+
+    #[test]
+    fn redacts_unknown_sk_prefix() {
+        let msg = "leaked sk-proj-AAAA1111BBBB2222 in body";
+        let out = scrub_credentials(msg, "");
+        assert!(!out.contains("sk-proj-AAAA1111BBBB2222"));
+    }
+
+    #[test]
+    fn empty_api_key_does_not_panic_or_overmatch() {
+        let msg = "hello world";
+        assert_eq!(scrub_credentials(msg, ""), "hello world");
+    }
+
+    #[test]
+    fn short_api_key_is_ignored_to_avoid_collisions() {
+        let msg = "abc happens in many words";
+        assert_eq!(scrub_credentials(msg, "abc"), "abc happens in many words");
+    }
 }

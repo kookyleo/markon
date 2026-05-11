@@ -14,8 +14,19 @@
 import { CONFIG, i18n } from '../core/config';
 import { Logger } from '../core/utils';
 import { Meta } from '../services/dom';
+import { escapeHtml } from './chat-manager';
 
 const _t = (key: string, ...args: unknown[]): string => i18n.t(key, ...args);
+
+/**
+ * Percent-encode each path segment individually so `/` separators survive.
+ * Filenames legally containing `<`, `>`, `?`, `#`, or `&` would otherwise
+ * either break the URL or smuggle attribute boundaries into the rendered
+ * `<a href="…">`.
+ */
+function encodePathSegments(path: string): string {
+    return path.split('/').map(encodeURIComponent).join('/');
+}
 
 /**
  * Raw payload shape returned by `/search`. Field names are snake_case to
@@ -210,17 +221,25 @@ export class SearchManager {
         const query = this.#searchInput.value;
         const wsId = this.#getWorkspaceId();
         this.#searchResults.innerHTML = results
-            .map(
-                (result) => `
+            .map((result) => {
+                const safeTitle = escapeHtml(result.title);
+                const safePathText = escapeHtml(result.file_path);
+                const safeHref = escapeHtml(encodePathSegments(result.file_path));
+                // Tantivy snippet.to_html() already HTML-escapes the source and
+                // wraps matches in <b>…</b>, so it is the one trusted field we
+                // can pass through verbatim. Title and file path come from
+                // user-controlled filenames / first-heading text and MUST be
+                // escaped before going through innerHTML.
+                return `
                     <li class="search-result-item">
-                        <a href="/${wsId}/${result.file_path}?highlight=${encodeURIComponent(query)}">
-                            <div class="search-result-title">${result.title}</div>
-                            <div class="search-result-path">${result.file_path}</div>
+                        <a href="/${escapeHtml(wsId)}/${safeHref}?highlight=${encodeURIComponent(query)}">
+                            <div class="search-result-title">${safeTitle}</div>
+                            <div class="search-result-path">${safePathText}</div>
                             <div class="search-result-snippet">${result.snippet}</div>
                         </a>
                     </li>
-                `,
-            )
+                `;
+            })
             .join('');
 
         // 添加鼠标点击事件

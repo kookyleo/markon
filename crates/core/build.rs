@@ -1,7 +1,31 @@
 use std::path::Path;
 
 fn main() {
+    check_js_bundle_present();
     generate_langs_registry();
+}
+
+/// Fail with an actionable message when the frontend bundle is missing.
+///
+/// `rust_embed::RustEmbed` on `crates/core/src/assets.rs` requires
+/// `crates/core/assets/dist/` to exist at compile time. The directory is
+/// produced by `scripts/build.mjs` (driven by `npm run build`), not by
+/// cargo — so a fresh clone followed by `cargo build` would otherwise fail
+/// with a cryptic `#[derive(RustEmbed)] folder '…/assets/dist/' does not
+/// exist` error and no hint about the missing prerequisite.
+fn check_js_bundle_present() {
+    let manifest_dir = env!("CARGO_MANIFEST_DIR");
+    let dist = Path::new(manifest_dir).join("assets/dist");
+    println!("cargo:rerun-if-changed={}", dist.display());
+    if !dist.is_dir() {
+        panic!(
+            "frontend bundle missing: {} does not exist.\n\
+             Run `npm ci && npm run build` from the repo root before building \
+             the Rust workspace. The bundle is produced by scripts/build.mjs \
+             and is required by `rust_embed::RustEmbed` in crates/core/src/assets.rs.",
+            dist.display()
+        );
+    }
 }
 
 /// Scan i18n/*.json5 at build time, generate LANGS array so no manual registration needed.

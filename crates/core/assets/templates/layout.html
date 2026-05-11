@@ -790,8 +790,11 @@
     {% if has_mermaid %}
     <script src="/_/js/mermaid.min.js"></script>
     <script>
-        // Always use default light theme for better readability and print compatibility
-        mermaid.initialize({ startOnLoad: true, theme: 'default' });
+        // securityLevel: 'strict' disables raw HTML / click handlers / iframes
+        // in Mermaid sources — defends against a malicious markdown file
+        // smuggling script via a mermaid block that the server already
+        // HTML-escapes at the fence boundary.
+        mermaid.initialize({ startOnLoad: true, theme: 'default', securityLevel: 'strict' });
     </script>
     {% endif %}
 

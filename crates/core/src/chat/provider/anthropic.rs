@@ -7,7 +7,7 @@
 //! the system has at least one cached block — that is the Anthropic recipe
 //! for caching the (system + tools) prefix together.
 
-use super::{ChatRequest, Provider, ProviderError, ProviderEvent, SystemBlock};
+use super::{scrub_credentials, ChatRequest, Provider, ProviderError, ProviderEvent, SystemBlock};
 use crate::chat::config::{ChatRuntimeConfig, ProviderKind};
 use crate::chat::message::{ContentBlock, Usage};
 use crate::chat::tools::ToolSchema;
@@ -63,7 +63,9 @@ impl Provider for AnthropicProvider {
             .json(&body)
             .send()
             .await
-            .map_err(|e| ProviderError::Network(scrub(&e.to_string())))?;
+            .map_err(|e| {
+                ProviderError::Network(scrub_credentials(&e.to_string(), &self.cfg.api_key))
+            })?;
 
         let status = resp.status();
         if !status.is_success() {
@@ -74,13 +76,14 @@ impl Provider for AnthropicProvider {
                 .unwrap_or_else(|e| format!("<failed to read error body: {e}>"));
             return Err(ProviderError::Api {
                 status: code,
-                message: scrub(&text),
+                message: scrub_credentials(&text, &self.cfg.api_key),
             });
         }
 
-        let byte_stream = resp
-            .bytes_stream()
-            .map(|res| res.map_err(|e| ProviderError::Network(scrub(&e.to_string()))));
+        let api_key = self.cfg.api_key.clone();
+        let byte_stream = resp.bytes_stream().map(move |res| {
+            res.map_err(|e| ProviderError::Network(scrub_credentials(&e.to_string(), &api_key)))
+        });
         Ok(parse_anthropic_stream(byte_stream).boxed())
     }
 }
@@ -135,18 +138,6 @@ fn build_body(req: &ChatRequest) -> Value {
         body["tools"] = Value::Array(tools_arr);
     }
     body
-}
-
-/// Defense-in-depth: never let credentials slip into a user-visible error.
-/// The runtime layer already validates the key, so we only mask any header
-/// echo that an upstream might surface.
-fn scrub(s: &str) -> String {
-    let mut out = s.to_string();
-    if let Some(idx) = out.find("x-api-key") {
-        out.truncate(idx);
-        out.push_str("[redacted]");
-    }
-    out
 }
 
 // ---- SSE parsing -----------------------------------------------------------

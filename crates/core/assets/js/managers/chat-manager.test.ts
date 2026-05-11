@@ -66,6 +66,32 @@ describe('ChatManager — pure helpers', () => {
             expect(out).toContain('click');
         });
 
+        it.each([
+            'data:text/html,<script>1</script>',
+            'vbscript:msgbox',
+            'file:///etc/passwd',
+            'intent://evil#Intent;scheme=http;end',
+            'JAR:http://evil/x.jar!/',
+            ' javascript:alert(1)', // leading whitespace
+        ])('rejects non-allowlisted scheme %s', (url) => {
+            const out = renderInline(`[click](${url})`);
+            expect(out).not.toContain('<a ');
+            expect(out).toContain('click');
+        });
+
+        it.each([
+            'https://example.com',
+            'http://example.com/path?q=1',
+            'mailto:user@example.com',
+            './relative/path.md',
+            '../up/path.md',
+            '/absolute/path.md',
+            '#fragment',
+        ])('allows safe url %s', (url) => {
+            const out = renderInline(`[ok](${url})`);
+            expect(out).toContain('<a ');
+        });
+
         it('keeps backtick code verbatim — no emphasis inside it', () => {
             const out = renderInline('text `**still code**` here');
             // The text inside the backticks must NOT have become <strong>.
@@ -82,11 +108,7 @@ describe('ChatManager — pure helpers', () => {
         });
     });
 
-    describe('renderMarkdown (block-level fallback)', () => {
-        beforeEach(() => {
-            // Make sure window.marked isn't around — we want the fallback path.
-            (window as unknown as { marked?: unknown }).marked = undefined;
-        });
+    describe('renderMarkdown (block-level)', () => {
 
         it('wraps plain text in <p>', () => {
             expect(renderMarkdown('hello')).toBe('<p>hello</p>');

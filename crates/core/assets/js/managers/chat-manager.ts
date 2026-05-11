@@ -105,12 +105,12 @@ export interface Citation {
 //
 // markon ships a server-side markdown renderer for documents but the chat
 // stream is rendered client-side, token-by-token, so we need something
-// in-process. If the host page exposes `window.marked` we use it (markon does
-// not today, but a future task may inject it); otherwise we fall back to this
-// minimal subset covering: paragraphs, fenced code, inline code, **bold**,
-// *italic*, links [text](url), and ordered/unordered lists. No raw HTML
-// support — all input is escaped first so streamed model output cannot inject
-// markup into the page.
+// in-process. This minimal renderer covers paragraphs, fenced code, inline
+// code, **bold**, *italic*, links [text](url), and ordered/unordered lists.
+// All input is HTML-escaped first so streamed model output cannot inject
+// markup into the page — there is no `window.marked` fallback because a
+// general-purpose markdown parser without DOMPurify would re-open the XSS
+// surface this renderer exists to close.
 
 const HTML_ESCAPE: Record<string, string> = {
     '&': '&amp;',
@@ -122,6 +122,22 @@ const HTML_ESCAPE: Record<string, string> = {
 
 export function escapeHtml(s: unknown): string {
     return String(s).replace(/[&<>"']/g, (ch) => HTML_ESCAPE[ch] ?? ch);
+}
+
+/**
+ * Allow only well-known navigation schemes plus same-origin / relative
+ * references in chat-rendered links. The `url` argument has already been
+ * passed through `escapeHtml`, so it's safe to substring-match here.
+ */
+function isSafeChatLinkUrl(url: string): boolean {
+    // Reject empty or whitespace-only.
+    const trimmed = url.trim();
+    if (!trimmed) return false;
+    // Relative (./, ../), fragment, query, absolute path → fine.
+    if (/^[./?#]/.test(trimmed)) return true;
+    // Allowlist explicit safe schemes; everything else (javascript:, data:,
+    // vbscript:, file:, intent:, jar:, etc.) is rejected.
+    return /^(https?:|mailto:)/i.test(trimmed);
 }
 
 export function renderInline(text: string): string {
@@ -139,9 +155,12 @@ export function renderInline(text: string): string {
     // so `** ** ` doesn't match.
     out = out.replace(/\*\*([^*\n]+?)\*\*/g, '<strong>$1</strong>');
     out = out.replace(/(^|[^*])\*([^*\n]+?)\*(?!\*)/g, '$1<em>$2</em>');
-    // Links [text](url) — escape url already done, but strip javascript: just in case.
+    // Links [text](url). URL has been escaped already by escapeHtml above, but
+    // an attribute-context `href=` still needs a scheme allowlist: pre-fix
+    // logic only blocked `javascript:`, leaving `data:`, `vbscript:`,
+    // `file:` and friends as live XSS surfaces if the model ever emits them.
     out = out.replace(/\[([^\]]+)\]\(([^)\s]+)\)/g, (_match, label: string, url: string) => {
-        if (/^javascript:/i.test(url)) return label;
+        if (!isSafeChatLinkUrl(url)) return label;
         return `<a href="${url}" target="_blank" rel="noopener noreferrer">${label}</a>`;
     });
     // Restore code spans last so they're rendered verbatim.
@@ -150,13 +169,6 @@ export function renderInline(text: string): string {
 }
 
 export function renderMarkdown(src: unknown): string {
-    if (typeof window !== 'undefined' && window.marked && typeof window.marked.parse === 'function') {
-        try {
-            return window.marked.parse(String(src ?? ''));
-        } catch {
-            /* fall through */
-        }
-    }
     if (!src) return '';
     const lines = String(src).split('\n');
     const out: string[] = [];

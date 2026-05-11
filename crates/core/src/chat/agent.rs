@@ -91,8 +91,20 @@ impl Agent {
         let mut messages = request.history.clone();
         messages.push(request.user_message);
         let tool_schemas = self.tools.schemas();
-        let tool_ctx = ToolContext {
-            workspace_root: request.workspace_root.clone(),
+        let tool_ctx = match ToolContext::new(&request.workspace_root) {
+            Ok(ctx) => ctx,
+            Err(e) => {
+                eprintln!(
+                    "[agent] failed to canonicalize workspace root {}: {e}",
+                    request.workspace_root.display()
+                );
+                let _ = sink
+                    .send(AgentEvent::Error {
+                        message: format!("workspace root unavailable: {e}"),
+                    })
+                    .await;
+                return;
+            }
         };
 
         let mut total_usage = Usage::default();
