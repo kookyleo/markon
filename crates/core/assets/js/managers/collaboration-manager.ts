@@ -109,6 +109,9 @@ export class CollaborationManager {
     _applyingRemote?: boolean;
     _lastFocusXPath?: string;
     _lastSelectionKey?: string | null;
+    // Retained so a future destroy() / reinit cycle can detach without
+    // leaking accumulated observers on every call to _observeFocusedSection.
+    _focusObserver?: MutationObserver;
 
     constructor(app: CollaborationApp) {
         this.app = app;
@@ -343,7 +346,11 @@ export class CollaborationManager {
     _observeFocusedSection(): void {
         const article = document.querySelector('article.markdown-body');
         if (!article) return;
-        new MutationObserver(() => {
+        // Detach any prior observer before installing a new one — calling
+        // init() twice (test reload, mode toggle) would otherwise pile up
+        // observers that all fire on every class mutation.
+        this._focusObserver?.disconnect();
+        this._focusObserver = new MutationObserver(() => {
             if (this._applyingRemote) return;
             const focused = article.querySelector('.heading-focused');
             if (!focused) return;
@@ -351,7 +358,8 @@ export class CollaborationManager {
             if (xpath === this._lastFocusXPath) return;
             this._lastFocusXPath = xpath;
             this.broadcastAction('focus_section', { xpath });
-        }).observe(article, {
+        });
+        this._focusObserver.observe(article, {
             subtree: true,
             attributes: true,
             attributeFilter: ['class'],

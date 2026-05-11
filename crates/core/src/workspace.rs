@@ -447,8 +447,26 @@ impl ServerLock {
         std::fs::write(&path, serde_json::to_string(self).unwrap())
     }
     pub fn read() -> Option<Self> {
-        let content = std::fs::read_to_string(Self::path()).ok()?;
-        serde_json::from_str(&content).ok()
+        let path = Self::path();
+        let content = match std::fs::read_to_string(&path) {
+            Ok(c) => c,
+            Err(e) => {
+                if e.kind() != std::io::ErrorKind::NotFound {
+                    eprintln!("[server-lock] cannot read {}: {e}", path.display());
+                }
+                return None;
+            }
+        };
+        match serde_json::from_str(&content) {
+            Ok(v) => Some(v),
+            Err(e) => {
+                eprintln!(
+                    "[server-lock] corrupted lock file {}: {e}; ignoring",
+                    path.display()
+                );
+                None
+            }
+        }
     }
     pub fn remove() {
         let _ = std::fs::remove_file(Self::path());

@@ -46,6 +46,16 @@ fn install_exe_window_icon(window: &tauri::WebviewWindow) {
     // Known ids used by Tauri toolchains for the app icon resource.
     const CANDIDATE_IDS: &[u16] = &[32512, 1, 2];
 
+    // SAFETY: All Win32 calls below are sound because:
+    //   - `GetModuleHandleW(null)` is documented to return the current module
+    //     handle (or NULL on failure); we don't dereference it.
+    //   - `LoadImageW` returns NULL on failure and is null-checked at L74
+    //     before being cast to `hicon`.
+    //   - `SendMessageW` is only invoked once `hicon != 0`, with an `hwnd`
+    //     obtained from Tauri's living window handle (still valid for the
+    //     duration of this function), and `WM_SETICON` accepts a 0-or-handle
+    //     LPARAM with well-defined semantics for both.
+    //   - No raw pointer outlives the call. We never free/realloc anything.
     unsafe {
         let hinstance = GetModuleHandleW(std::ptr::null());
         let slots = [

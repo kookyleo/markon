@@ -42,7 +42,10 @@ fn generate_langs_registry() {
                 // value = "zh_CN", "en", etc.
                 // key = first segment before '_', or the whole value if no '_'
                 let key = value.split('_').next().unwrap_or(value);
-                let abs_path = entry.path().canonicalize().unwrap();
+                let abs_path = entry
+                    .path()
+                    .canonicalize()
+                    .expect("i18n entry path must canonicalize during build");
                 entries.push((value.to_string(), key.to_string(), abs_path));
             }
         }
@@ -64,7 +67,8 @@ fn generate_langs_registry() {
     code.push_str("];\n\n");
     code.push_str("const DEFAULT_LANG_KEY: &str = \"en\";\n");
 
-    std::fs::write(&dest, code).unwrap();
+    std::fs::write(&dest, code)
+        .expect("must be able to write generated langs registry into OUT_DIR");
 
     // Re-run if i18n files change
     println!("cargo:rerun-if-changed={}", i18n_dir.display());

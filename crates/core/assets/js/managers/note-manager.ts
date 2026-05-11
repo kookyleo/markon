@@ -191,10 +191,12 @@ export class NoteManager {
         noteCard.className = 'note-card-margin';
         noteCard.dataset.annotationId = annotation.id;
 
+        const editLabel = _t('web.note.edit');
+        const deleteLabel = _t('web.note.delete');
         noteCard.innerHTML = `
             <div class="note-actions">
-                <button class="note-edit" data-annotation-id="${annotation.id}" title="${_t('web.note.edit')}">✎</button>
-                <button class="note-delete" data-annotation-id="${annotation.id}" title="${_t('web.note.delete')}">×</button>
+                <button class="note-edit" data-annotation-id="${annotation.id}" title="${editLabel}" aria-label="${editLabel}">✎</button>
+                <button class="note-delete" data-annotation-id="${annotation.id}" title="${deleteLabel}" aria-label="${deleteLabel}">×</button>
             </div>
             <div class="note-content">${Text.escape(annotation.note ?? '')}</div>
         `;
@@ -417,10 +419,12 @@ export class NoteManager {
         const popup = document.createElement('div');
         popup.className = 'note-popup';
         popup.dataset.annotationId = annotationId;
+        const popupEditLabel = _t('web.note.edit');
+        const popupDeleteLabel = _t('web.note.delete');
         popup.innerHTML = `
             <div class="note-actions">
-                <button class="note-edit" data-annotation-id="${annotationId}" title="${_t('web.note.edit')}">✎</button>
-                <button class="note-delete" data-annotation-id="${annotationId}" title="${_t('web.note.delete')}">×</button>
+                <button class="note-edit" data-annotation-id="${annotationId}" title="${popupEditLabel}" aria-label="${popupEditLabel}">✎</button>
+                <button class="note-delete" data-annotation-id="${annotationId}" title="${popupDeleteLabel}" aria-label="${popupDeleteLabel}">×</button>
             </div>
             <div class="note-content">${Text.escape(noteData.note)}</div>
         `;

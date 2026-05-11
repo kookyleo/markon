@@ -326,11 +326,27 @@ fn score_match(needle: &str, rel: &str) -> Option<i32> {
 /// autocomplete handler that returns up to a few dozen entries.
 fn is_text_file_quick(path: &std::path::Path) -> bool {
     use std::io::Read;
-    let Ok(mut f) = std::fs::File::open(path) else {
-        return false;
+    let mut f = match std::fs::File::open(path) {
+        Ok(f) => f,
+        Err(e) => {
+            eprintln!(
+                "[chat/mentions] cannot open {} for text-sniff: {e}",
+                path.display()
+            );
+            return false;
+        }
     };
     let mut buf = [0u8; 4096];
-    let n = f.read(&mut buf).unwrap_or(0);
+    let n = match f.read(&mut buf) {
+        Ok(n) => n,
+        Err(e) => {
+            eprintln!(
+                "[chat/mentions] read failed during text-sniff of {}: {e}",
+                path.display()
+            );
+            return false;
+        }
+    };
     !looks_binary(&buf[..n])
 }
 

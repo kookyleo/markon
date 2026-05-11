@@ -111,6 +111,13 @@ impl Agent {
         let mut last_seq: Option<i64> = None;
 
         for step in 0..request.max_steps {
+            // Short-circuit if the SSE client already went away — no point
+            // burning another provider call (and its prompt-cache state) on
+            // events nobody will read.
+            if sink.is_closed() {
+                return;
+            }
+
             let chat_req = ChatRequest {
                 model: request.model.clone(),
                 system: request.system.clone(),
@@ -135,23 +142,37 @@ impl Agent {
             let mut turn_usage = Usage::default();
             let mut stop_reason = String::from("end_turn");
 
-            while let Some(ev) = stream.next().await {
+            // Race each provider chunk against `sink.closed()` so the moment
+            // the SSE client disconnects we drop the stream and stop billing
+            // tokens, rather than draining the rest of the provider response
+            // (which can keep going for a long time on a `tool_use` turn).
+            loop {
+                let ev = tokio::select! {
+                    biased;
+                    () = sink.closed() => return,
+                    next = stream.next() => match next {
+                        Some(ev) => ev,
+                        None => break,
+                    },
+                };
                 match ev {
                     Ok(ProviderEvent::TextDelta(text)) => {
                         if sink.send(AgentEvent::Text { delta: text }).await.is_err() {
-                            return; // client disconnected
+                            return;
                         }
                     }
                     Ok(ProviderEvent::ToolUseStart { id, name }) => {
-                        // We forward the start now (without input) so the UI can
-                        // render an "calling X..." pill immediately.
-                        let _ = sink
+                        if sink
                             .send(AgentEvent::ToolStart {
                                 id,
                                 name,
                                 input: serde_json::Value::Null,
                             })
-                            .await;
+                            .await
+                            .is_err()
+                        {
+                            return;
+                        }
                     }
                     Ok(ProviderEvent::ToolUseEnd { .. }) => {
                         // Final tool input arrives in `MessageEnd.content`; we

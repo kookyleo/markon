@@ -1,6 +1,6 @@
 /**
  * ModalManager - Unified modal manager
- * Eliminate addNote、editNote、showConfirmDialog betweencode duplication
+ * Eliminates duplication between addNote / editNote / showConfirmDialog.
  */
 
 import { Logger } from '../core/utils';
@@ -10,7 +10,7 @@ const _t: (k: string, ...args: unknown[]) => string =
     (window.__MARKON_I18N__ && window.__MARKON_I18N__.t) || ((k: string) => k);
 
 /**
- * 模态框Type枚举
+ * Modal type enum.
  */
 export const ModalType = {
     NOTE_INPUT: 'note_input',
@@ -39,7 +39,7 @@ interface BaseModalHandlers {
 type RequiredBaseOptions = Required<BaseModalOptions>;
 
 /**
- * 基础模态框类
+ * Base modal class.
  */
 export abstract class BaseModal {
     #element: HTMLElement | null = null;
@@ -56,38 +56,46 @@ export abstract class BaseModal {
     }
 
     /**
-     * Create模态框 DOM Element. Subclasses must override.
+     * Build the modal DOM element. Subclasses must override.
      */
     abstract create(): HTMLElement;
 
     /**
-     * Show模态框
-     * @param anchorElement - 锚点Element（用于定位）
+     * Show the modal.
+     * @param anchorElement - anchor used for positioning, if any.
      */
     show(anchorElement: HTMLElement | null = null): void {
-        // 移除已存在的同类模态框
+        // Remove any existing modal of the same class first.
         this.#removeExisting();
 
-        // CreateElement
         this.#element = this.create();
+        // Assistive-tech semantics: anything we surface as a modal needs
+        // role+aria-modal so screen readers announce it as a dialog and the
+        // focus trap (see #setupEventListeners → tab-key cycling) is
+        // discoverable. Subclasses that already set these attributes win
+        // because `setAttribute` here would clobber a more specific value.
+        if (!this.#element.hasAttribute('role')) {
+            this.#element.setAttribute('role', 'dialog');
+        }
+        if (!this.#element.hasAttribute('aria-modal')) {
+            this.#element.setAttribute('aria-modal', 'true');
+        }
         document.body.appendChild(this.#element);
 
-        // 定位
         if (anchorElement) {
             this.#positionNear(anchorElement);
         }
 
-        // SettingsEventListen器
         this.#setupEventListeners();
 
-        // 聚焦第一个可聚焦Element
+        // Move focus into the modal on the next tick.
         setTimeout(() => this.#focusFirst(), 0);
 
         Logger.log('Modal', `Showed ${this.#options.className}`);
     }
 
     /**
-     * Close模态框
+     * Close the modal.
      */
     close(): void {
         if (this.#element) {
@@ -100,7 +108,7 @@ export abstract class BaseModal {
     }
 
     /**
-     * Get模态框Element
+     * Get the modal element.
      */
     getElement(): HTMLElement | null {
         return this.#element;
@@ -113,7 +121,7 @@ export abstract class BaseModal {
     cancel?(): void;
 
     /**
-     * 移除已存在的同类模态框
+     * Remove any pre-existing modal that shares this class.
      */
     #removeExisting(): void {
         const existing = document.querySelector(`.${this.#options.className}`);
@@ -123,7 +131,7 @@ export abstract class BaseModal {
     }
 
     /**
-     * 在锚点Element附近定位
+     * Position the modal near the anchor element.
      */
     #positionNear(anchorElement: HTMLElement): void {
         if (!this.#element) return;
@@ -148,10 +156,10 @@ export abstract class BaseModal {
     }
 
     /**
-     * SettingsEventListen器
+     * Install the keydown / outside-click event listeners.
      */
     #setupEventListeners(): void {
-        // ESC 键Close
+        // ESC closes the modal.
         if (this.#options.closeOnEscape) {
             this.#handlers.keydown = (e: KeyboardEvent) => {
                 if (e.key === 'Escape') {
@@ -167,7 +175,7 @@ export abstract class BaseModal {
             document.addEventListener('keydown', this.#handlers.keydown);
         }
 
-        // 点击外部Close
+        // Click outside the modal closes it.
         if (this.#options.closeOnOutsideClick) {
             this.#handlers.click = (e: MouseEvent) => {
                 if (!this.#element) return;
@@ -189,7 +197,7 @@ export abstract class BaseModal {
     }
 
     /**
-     * 移除EventListen器
+     * Detach the event listeners installed by #setupEventListeners.
      */
     #removeEventListeners(): void {
         if (this.#handlers.keydown) {
@@ -201,14 +209,14 @@ export abstract class BaseModal {
     }
 
     /**
-     * 聚焦第一个可聚焦Element
+     * Focus the first focusable element inside the modal.
      */
     #focusFirst(): void {
         if (!this.#element) return;
 
         const focusable = this.#element.querySelector('input, textarea, button') as HTMLElement | null;
         if (focusable) {
-            // 使用 preventScroll 防止自动滚动
+            // preventScroll keeps the page in place while we move focus in.
             focusable.focus({ preventScroll: true });
         }
     }
@@ -224,7 +232,7 @@ export interface NoteInputModalOptions extends BaseModalOptions {
 }
 
 /**
- * NoteInput模态框
+ * Note input modal.
  */
 export class NoteInputModal extends BaseModal {
     #onSave: (value: string) => void;
@@ -270,18 +278,18 @@ export class NoteInputModal extends BaseModal {
         // Monitor content changes
         textarea.addEventListener('input', updateSaveButton);
 
-        // 如果有初始值，选中全部Text
+        // Pre-select the existing value so typing replaces it instead of appending.
         if (this.#initialValue) {
             setTimeout(() => textarea.select(), 0);
         }
 
-        // CancelButton
+        // Cancel button.
         cancelBtn.addEventListener('click', () => {
             this.#onCancel();
             this.close();
         });
 
-        // SaveButton
+        // Save button.
         const save = (): void => {
             const value = textarea.value.trim();
             if (value) {
@@ -292,7 +300,7 @@ export class NoteInputModal extends BaseModal {
 
         saveBtn.addEventListener('click', save);
 
-        // Enter Save（Shift+Enter 换行）
+        // Enter saves; Shift+Enter inserts a newline.
         textarea.addEventListener('keydown', (e: KeyboardEvent) => {
             if (e.key === 'Enter' && !e.shiftKey && !e.ctrlKey) {
                 e.preventDefault();
@@ -331,7 +339,7 @@ export interface ConfirmModalOptions extends BaseModalOptions {
 }
 
 /**
- * Confirm对话框
+ * Confirm dialog.
  */
 export class ConfirmModal extends BaseModal {
     #message: string;
@@ -396,13 +404,13 @@ export interface AnchoredOptions {
 }
 
 /**
- * 模态框Management器（静态类）
+ * Modal manager (static class).
  */
 export class ModalManager {
     static #current: BaseModal | null = null;
 
     /**
-     * ShowNoteInput模态框
+     * Show a note-input modal.
      */
     static showNoteInput(options: NoteInputModalOptions & AnchoredOptions = {}): NoteInputModal {
         const modal = new NoteInputModal(options);
@@ -412,7 +420,7 @@ export class ModalManager {
     }
 
     /**
-     * ShowConfirm对话框
+     * Show a confirm dialog.
      */
     static showConfirm(options: ConfirmModalOptions & AnchoredOptions = {}): ConfirmModal {
         const modal = new ConfirmModal(options);
@@ -422,7 +430,7 @@ export class ModalManager {
     }
 
     /**
-     * Close当前模态框
+     * Close the currently-open modal, if any.
      */
     static closeCurrent(): void {
         if (ModalManager.#current) {
@@ -432,7 +440,7 @@ export class ModalManager {
     }
 
     /**
-     * Get当前模态框
+     * Get the currently-open modal, if any.
      */
     static getCurrent(): BaseModal | null {
         return ModalManager.#current;
@@ -440,7 +448,7 @@ export class ModalManager {
 }
 
 /**
- * 便捷函数：ShowConfirm对话框
+ * Convenience function: show a confirm dialog.
  */
 export function showConfirmDialog(
     message: string,

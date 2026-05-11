@@ -117,6 +117,23 @@ export class SearchManager {
                 this.hide();
             }
         });
+
+        // Delegated hover handler — one listener on the container instead of
+        // per-item listeners that pile up every time `#renderResults` rewrites
+        // innerHTML. Walks up from the event target until it lands on the
+        // `.search-result-item` to find the row index.
+        if (this.#searchResults) {
+            this.#searchResults.addEventListener('mouseover', (e: MouseEvent) => {
+                const target = e.target as HTMLElement | null;
+                const item = target?.closest('.search-result-item');
+                if (!item || !this.#searchResults) return;
+                const items = this.#searchResults.querySelectorAll('.search-result-item');
+                const idx = Array.prototype.indexOf.call(items, item);
+                if (idx < 0 || idx === this.#selectedIndex) return;
+                this.#selectedIndex = idx;
+                this.#updateSelection();
+            });
+        }
     }
 
     #moveSelection(direction: number): void {
@@ -242,13 +259,7 @@ export class SearchManager {
             })
             .join('');
 
-        // 添加鼠标点击事件
-        const items = this.#searchResults.querySelectorAll('.search-result-item');
-        items.forEach((item, index) => {
-            item.addEventListener('mouseenter', () => {
-                this.#selectedIndex = index;
-                this.#updateSelection();
-            });
-        });
+        // Hover-to-select handled by the delegated listener installed in
+        // `#setupEventListeners` so we don't accumulate listeners per render.
     }
 }
