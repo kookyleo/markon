@@ -1,0 +1,48 @@
+/* Markon design tokens.
+ *
+ * Centralised z-index vocabulary. Every project-owned stylesheet references
+ * these custom properties instead of hard-coding numeric layers — bumping a
+ * tier here cascades to every site without a project-wide search.
+ *
+ * Layer hierarchy, bottom to top (effective stacking order):
+ *
+ *   --markon-z-content-overlay  ( 2) Pseudo-stack inside a container (close-button
+ *                                    face pinned to corner, focus pulse ring,
+ *                                    scroll-to-bottom pill, expanded TOC corner).
+ *   --markon-z-popover-inline   ( 5) Inline popover hovering above its parent
+ *                                    panel surface (chat thread-list menu).
+ *   --markon-z-note-connector   ( 9) SVG connector that sits below note cards
+ *                                    but above body text.
+ *   --markon-z-note-card        (10) Margin note cards in the sidebar.
+ *   --markon-z-modal-inline     (1001) Inline modal anchored near content
+ *                                      (note-input modal).
+ *   --markon-z-modal-backdrop   (9998) Backdrop overlay shown beneath an
+ *                                      inline modal (temp selection overlay).
+ *   --markon-z-modal            (9999) Floating modal popup above the backdrop
+ *                                      (mobile note popup).
+ *   --markon-z-chrome           (10000) Floating chrome: spheres, full-screen
+ *                                       modals, confirm dialog, TOC container,
+ *                                       shortcuts help, editor modal.
+ *   --markon-z-chrome-toolbar   (10001) One tier above chrome — the floating
+ *                                       selection toolbar so it clears spheres.
+ *   --markon-z-chrome-top       (10010) Topmost: autocomplete popups, drag
+ *                                       previews — must never be obscured.
+ *
+ * Note: values 2 and 1 are reused for different *semantic* tiers in some
+ * inline contexts (e.g. layout.html stacks article / toc / footer inside the
+ * root context with 1..3). Those are local stacking and unrelated to the
+ * floating-overlay scale above.
+ */
+
+:root {
+    --markon-z-content-overlay: 2;
+    --markon-z-popover-inline: 5;
+    --markon-z-note-connector: 9;
+    --markon-z-note-card: 10;
+    --markon-z-modal-inline: 1001;
+    --markon-z-modal-backdrop: 9998;
+    --markon-z-modal: 9999;
+    --markon-z-chrome: 10000;
+    --markon-z-chrome-toolbar: 10001;
+    --markon-z-chrome-top: 10010;
+}

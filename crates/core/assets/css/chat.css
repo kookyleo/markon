@@ -31,7 +31,7 @@ html[data-theme="dark"] {
    (top/right/bottom/left) directly. */
 .markon-chat-container {
     position: fixed;
-    z-index: 10000;
+    z-index: var(--markon-z-chrome);
     width: 40px;
     height: 40px;
     border-radius: 50%;
@@ -163,7 +163,7 @@ html[data-theme="dark"] .markon-chat-container.expanded {
     left: 0;
     width: 40px;
     height: 40px;
-    z-index: 2;
+    z-index: var(--markon-z-content-overlay);
     border-radius: 20px 0 0 0;
 }
 
@@ -342,7 +342,7 @@ html[data-theme="dark"] .markon-chat-icon-btn:hover {
     border: 1px solid var(--markon-border-strong);
     border-radius: 8px;
     box-shadow: 0 6px 16px rgba(0, 0, 0, 0.12);
-    z-index: 5;
+    z-index: var(--markon-z-popover-inline);
     max-height: 320px;
     overflow-y: auto;
     padding: 4px;
@@ -465,7 +465,7 @@ html[data-theme="dark"] .markon-chat-thread-row:hover {
     font-weight: 500;
     cursor: pointer;
     box-shadow: 0 2px 8px rgba(0, 0, 0, 0.18);
-    z-index: 2;
+    z-index: var(--markon-z-content-overlay);
 }
 
 .markon-chat-scroll-pill:hover {
@@ -925,7 +925,7 @@ html[data-theme="dark"] .markon-chat-mention-pill {
    so the popup never gets clipped against the panel footer). */
 .markon-chat-mention-popup {
     position: fixed;
-    z-index: 10010;
+    z-index: var(--markon-z-chrome-top);
     background: var(--markon-overlay);
     color: var(--markon-text);
     border: 1px solid var(--markon-border-strong);

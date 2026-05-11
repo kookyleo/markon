@@ -10,7 +10,7 @@
    picker and on remote peers' focus pulse, not on the local sphere. */
 .markon-live-container {
     position: fixed;
-    z-index: 10000;
+    z-index: var(--markon-z-chrome);
     width: 40px;
     height: 40px;
     border-radius: 50%;
@@ -133,7 +133,7 @@ html[data-theme="dark"] .markon-live-container.live-off {
     left: 0;
     width: 40px;
     height: 40px;
-    z-index: 2;
+    z-index: var(--markon-z-content-overlay);
     border-radius: 20px 0 0 0;
 }
 
@@ -373,7 +373,7 @@ html[data-theme="dark"] .markon-live-body .mode-btn:hover {
     inset: 0;
     border-radius: inherit;
     pointer-events: none;
-    z-index: 2;
+    z-index: var(--markon-z-content-overlay);
     animation: markon-live-focus-pulse 1.4s ease-out;
 }
 
