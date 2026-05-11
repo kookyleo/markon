@@ -126,7 +126,7 @@ async fn list_threads_handler(
 ) -> Result<impl IntoResponse, ChatHttpError> {
     ensure_chat_enabled(&state, &workspace_id)?;
     let storage = storage_for(&state)?;
-    let summaries = storage.list_thread_summaries(&workspace_id)?;
+    let summaries = storage.list_thread_summaries(&workspace_id).await?;
     Ok(Json(summaries))
 }
 
@@ -148,7 +148,7 @@ async fn create_thread_handler(
     } else {
         body.title.trim()
     };
-    let thread = storage.create_thread(&workspace_id, title)?;
+    let thread = storage.create_thread(&workspace_id, title).await?;
     Ok(Json(thread))
 }
 
@@ -172,12 +172,13 @@ async fn get_thread_handler(
 ) -> Result<impl IntoResponse, ChatHttpError> {
     ensure_chat_enabled(&state, &workspace_id)?;
     let storage = storage_for(&state)?;
-    let thread = storage.get_thread(&thread_id)?;
+    let thread = storage.get_thread(&thread_id).await?;
     if thread.workspace_id != workspace_id {
         return Err(ChatHttpError::NotFound);
     }
     let messages = storage
-        .list_messages(&thread_id)?
+        .list_messages(&thread_id)
+        .await?
         .into_iter()
         .map(|m| MessageView {
             seq: m.seq,
@@ -195,11 +196,11 @@ async fn delete_thread_handler(
 ) -> Result<impl IntoResponse, ChatHttpError> {
     ensure_chat_enabled(&state, &workspace_id)?;
     let storage = storage_for(&state)?;
-    let thread = storage.get_thread(&thread_id)?;
+    let thread = storage.get_thread(&thread_id).await?;
     if thread.workspace_id != workspace_id {
         return Err(ChatHttpError::NotFound);
     }
-    storage.delete_thread(&thread_id)?;
+    storage.delete_thread(&thread_id).await?;
     Ok(StatusCode::NO_CONTENT)
 }
 
@@ -405,7 +406,7 @@ async fn chat_stream_handler(
 
     // Resolve / create thread.
     let thread = match body.thread_id.as_deref() {
-        Some(id) => match storage.get_thread(id) {
+        Some(id) => match storage.get_thread(id).await {
             Ok(t) if t.workspace_id == workspace_id => t,
             Ok(_) => return ChatHttpError::NotFound.into_response(),
             Err(StorageError::NotFound) => return ChatHttpError::NotFound.into_response(),
@@ -413,7 +414,7 @@ async fn chat_stream_handler(
         },
         None => {
             let title = auto_title(user_text);
-            match storage.create_thread(&workspace_id, &title) {
+            match storage.create_thread(&workspace_id, &title).await {
                 Ok(t) => t,
                 Err(e) => return ChatHttpError::Storage(e).into_response(),
             }
@@ -421,7 +422,7 @@ async fn chat_stream_handler(
     };
 
     // Load prior history and rehydrate as Message objects.
-    let history: Vec<Message> = match storage.list_messages(&thread.id) {
+    let history: Vec<Message> = match storage.list_messages(&thread.id).await {
         Ok(msgs) => msgs
             .into_iter()
             .map(|m| Message {
@@ -438,7 +439,10 @@ async fn chat_stream_handler(
     let user_blocks = vec![ContentBlock::Text {
         text: user_text.to_string(),
     }];
-    if let Err(e) = storage.append_message(&thread.id, Role::User, &user_blocks) {
+    if let Err(e) = storage
+        .append_message(&thread.id, Role::User, &user_blocks)
+        .await
+    {
         return ChatHttpError::Storage(e).into_response();
     }
 
@@ -685,7 +689,10 @@ mod tests {
         let v = body_json(resp).await;
         assert_eq!(v.as_array().unwrap().len(), 0);
 
-        env.storage.create_thread(&env.workspace_id, "t1").unwrap();
+        env.storage
+            .create_thread(&env.workspace_id, "t1")
+            .await
+            .unwrap();
         let resp = app
             .oneshot(
                 Request::builder()
@@ -759,13 +766,18 @@ mod tests {
     #[tokio::test]
     async fn get_thread_returns_messages_in_order() {
         let env = build_env(true);
-        let thread = env.storage.create_thread(&env.workspace_id, "t").unwrap();
+        let thread = env
+            .storage
+            .create_thread(&env.workspace_id, "t")
+            .await
+            .unwrap();
         env.storage
             .append_message(
                 &thread.id,
                 Role::User,
                 &[ContentBlock::Text { text: "hi".into() }],
             )
+            .await
             .unwrap();
         env.storage
             .append_message(
@@ -775,6 +787,7 @@ mod tests {
                     text: "hello".into(),
                 }],
             )
+            .await
             .unwrap();
 
         let app = router().with_state(env.state.clone());
@@ -801,7 +814,11 @@ mod tests {
     #[tokio::test]
     async fn delete_thread_removes_it() {
         let env = build_env(true);
-        let thread = env.storage.create_thread(&env.workspace_id, "t").unwrap();
+        let thread = env
+            .storage
+            .create_thread(&env.workspace_id, "t")
+            .await
+            .unwrap();
         let app = router().with_state(env.state.clone());
 
         let resp = app

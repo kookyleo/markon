@@ -636,37 +636,51 @@ async fn dev_reload_trigger(State(state): State<AppState>) -> impl IntoResponse 
     StatusCode::NO_CONTENT
 }
 
-fn load_annotations(db: &Mutex<Connection>, file_path: &str) -> Vec<serde_json::Value> {
-    let db = db.lock().unwrap();
-    let mut stmt = match db.prepare("SELECT data FROM annotations WHERE file_path = ?1") {
-        Ok(s) => s,
-        Err(e) => {
-            eprintln!("[WebSocket] prepare failed: {e}");
-            return Vec::new();
-        }
-    };
-    let rows = match stmt.query_map([file_path], |row| row.get::<_, String>(0)) {
-        Ok(r) => r,
-        Err(e) => {
-            eprintln!("[WebSocket] query_map failed: {e}");
-            return Vec::new();
-        }
-    };
-    rows.filter_map(Result::ok)
-        .filter_map(|s| serde_json::from_str(&s).ok())
-        .collect()
+async fn load_annotations(db: Arc<Mutex<Connection>>, file_path: String) -> Vec<serde_json::Value> {
+    tokio::task::spawn_blocking(move || {
+        let db = db.lock().unwrap();
+        let mut stmt = match db.prepare("SELECT data FROM annotations WHERE file_path = ?1") {
+            Ok(s) => s,
+            Err(e) => {
+                eprintln!("[WebSocket] prepare failed: {e}");
+                return Vec::new();
+            }
+        };
+        let rows = match stmt.query_map([file_path.as_str()], |row| row.get::<_, String>(0)) {
+            Ok(r) => r,
+            Err(e) => {
+                eprintln!("[WebSocket] query_map failed: {e}");
+                return Vec::new();
+            }
+        };
+        rows.filter_map(Result::ok)
+            .filter_map(|s| serde_json::from_str(&s).ok())
+            .collect()
+    })
+    .await
+    .unwrap_or_else(|e| {
+        eprintln!("[WebSocket] load_annotations join error: {e}");
+        Vec::new()
+    })
 }
 
-fn load_viewed_state(db: &Mutex<Connection>, file_path: &str) -> serde_json::Value {
-    let db = db.lock().unwrap();
-    let state_json = db
-        .query_row(
-            "SELECT state FROM viewed_state WHERE file_path = ?1",
-            [file_path],
-            |row| row.get::<_, String>(0),
-        )
-        .unwrap_or_else(|_| "{}".to_string());
-    serde_json::from_str(&state_json).unwrap_or_else(|_| serde_json::json!({}))
+async fn load_viewed_state(db: Arc<Mutex<Connection>>, file_path: String) -> serde_json::Value {
+    tokio::task::spawn_blocking(move || {
+        let db = db.lock().unwrap();
+        let state_json = db
+            .query_row(
+                "SELECT state FROM viewed_state WHERE file_path = ?1",
+                [file_path.as_str()],
+                |row| row.get::<_, String>(0),
+            )
+            .unwrap_or_else(|_| "{}".to_string());
+        serde_json::from_str(&state_json).unwrap_or_else(|_| serde_json::json!({}))
+    })
+    .await
+    .unwrap_or_else(|e| {
+        eprintln!("[WebSocket] load_viewed_state join error: {e}");
+        serde_json::json!({})
+    })
 }
 
 async fn send_json(
@@ -688,79 +702,115 @@ fn broadcast_msg(tx: &broadcast::Sender<String>, msg: &WebSocketMessage) {
     }
 }
 
-fn handle_client_msg(
-    db: Option<&Mutex<Connection>>,
-    tx: &broadcast::Sender<String>,
-    file_path: &str,
+/// Side-effect plan computed inside the blocking SQLite worker. Returned to
+/// the async caller so the broadcast (which touches the tokio channel) stays
+/// on the runtime, not on the blocking pool.
+enum DbResult {
+    Broadcast(WebSocketMessage),
+    BroadcastClear,
+    None,
+}
+
+async fn handle_client_msg(
+    db: Option<Arc<Mutex<Connection>>>,
+    tx: broadcast::Sender<String>,
+    file_path: String,
     msg: WebSocketMessage,
 ) {
     // LiveAction is pure broadcast — no DB needed. Handle it before the DB
     // short-circuit so Live works in workspaces where shared_annotation is off.
     if let WebSocketMessage::LiveAction { data } = msg {
-        broadcast_msg(tx, &WebSocketMessage::LiveAction { data });
+        broadcast_msg(&tx, &WebSocketMessage::LiveAction { data });
         return;
     }
     let Some(db) = db else { return };
-    let db = db.lock().unwrap();
-    match msg {
-        WebSocketMessage::NewAnnotation { annotation } => {
-            let Some(id) = annotation["id"].as_str().map(str::to_owned) else {
-                return;
-            };
-            let Ok(data) = serde_json::to_string(&annotation) else {
-                return;
-            };
-            if let Err(e) = db.execute(
-                "INSERT OR REPLACE INTO annotations (id, file_path, data) VALUES (?1, ?2, ?3)",
-                [id.as_str(), file_path, data.as_str()],
-            ) {
-                eprintln!("[WebSocket] insert annotation failed: {e}");
-                return;
+
+    // One spawn_blocking per inbound message: take the lock exactly once,
+    // run whichever SQL the message requires, then return the broadcast plan
+    // for the async side to fan out.
+    let result = tokio::task::spawn_blocking(move || {
+        let conn = db.lock().unwrap();
+        match msg {
+            WebSocketMessage::NewAnnotation { annotation } => {
+                let Some(id) = annotation["id"].as_str().map(str::to_owned) else {
+                    return DbResult::None;
+                };
+                let Ok(data) = serde_json::to_string(&annotation) else {
+                    return DbResult::None;
+                };
+                if let Err(e) = conn.execute(
+                    "INSERT OR REPLACE INTO annotations (id, file_path, data) VALUES (?1, ?2, ?3)",
+                    [id.as_str(), file_path.as_str(), data.as_str()],
+                ) {
+                    eprintln!("[WebSocket] insert annotation failed: {e}");
+                    return DbResult::None;
+                }
+                DbResult::Broadcast(WebSocketMessage::NewAnnotation { annotation })
             }
-            broadcast_msg(tx, &WebSocketMessage::NewAnnotation { annotation });
+            WebSocketMessage::DeleteAnnotation { id } => {
+                if let Err(e) = conn.execute(
+                    "DELETE FROM annotations WHERE id = ?1 AND file_path = ?2",
+                    [id.as_str(), file_path.as_str()],
+                ) {
+                    eprintln!("[WebSocket] delete annotation failed: {e}");
+                    return DbResult::None;
+                }
+                DbResult::Broadcast(WebSocketMessage::DeleteAnnotation { id })
+            }
+            WebSocketMessage::ClearAnnotations => {
+                eprintln!("[WebSocket] Clearing annotations for file_path: {file_path}");
+                if let Err(e) = conn.execute(
+                    "DELETE FROM annotations WHERE file_path = ?1",
+                    [file_path.as_str()],
+                ) {
+                    eprintln!("[WebSocket] clear annotations failed: {e}");
+                }
+                if let Err(e) = conn.execute(
+                    "DELETE FROM viewed_state WHERE file_path = ?1",
+                    [file_path.as_str()],
+                ) {
+                    eprintln!("[WebSocket] clear viewed_state failed: {e}");
+                }
+                DbResult::BroadcastClear
+            }
+            WebSocketMessage::UpdateViewedState { state: viewed } => {
+                let Ok(state_json) = serde_json::to_string(&viewed) else {
+                    return DbResult::None;
+                };
+                if let Err(e) = conn.execute(
+                    "INSERT OR REPLACE INTO viewed_state (file_path, state, updated_at) VALUES (?1, ?2, CURRENT_TIMESTAMP)",
+                    [file_path.as_str(), state_json.as_str()],
+                ) {
+                    eprintln!("[WebSocket] update viewed_state failed: {e}");
+                    return DbResult::None;
+                }
+                DbResult::Broadcast(WebSocketMessage::ViewedState { state: viewed })
+            }
+            _ => DbResult::None,
         }
-        WebSocketMessage::DeleteAnnotation { id } => {
-            if let Err(e) = db.execute(
-                "DELETE FROM annotations WHERE id = ?1 AND file_path = ?2",
-                [id.as_str(), file_path],
-            ) {
-                eprintln!("[WebSocket] delete annotation failed: {e}");
-                return;
-            }
-            broadcast_msg(tx, &WebSocketMessage::DeleteAnnotation { id });
+    })
+    .await;
+
+    let result = match result {
+        Ok(r) => r,
+        Err(e) => {
+            eprintln!("[WebSocket] handle_client_msg join error: {e}");
+            return;
         }
-        WebSocketMessage::ClearAnnotations => {
-            eprintln!("[WebSocket] Clearing annotations for file_path: {file_path}");
-            if let Err(e) = db.execute("DELETE FROM annotations WHERE file_path = ?1", [file_path])
-            {
-                eprintln!("[WebSocket] clear annotations failed: {e}");
-            }
-            if let Err(e) = db.execute("DELETE FROM viewed_state WHERE file_path = ?1", [file_path])
-            {
-                eprintln!("[WebSocket] clear viewed_state failed: {e}");
-            }
-            broadcast_msg(tx, &WebSocketMessage::ClearAnnotations);
+    };
+
+    match result {
+        DbResult::Broadcast(out) => broadcast_msg(&tx, &out),
+        DbResult::BroadcastClear => {
+            broadcast_msg(&tx, &WebSocketMessage::ClearAnnotations);
             broadcast_msg(
-                tx,
+                &tx,
                 &WebSocketMessage::ViewedState {
                     state: serde_json::Value::Object(serde_json::Map::new()),
                 },
             );
         }
-        WebSocketMessage::UpdateViewedState { state: viewed } => {
-            let Ok(state_json) = serde_json::to_string(&viewed) else {
-                return;
-            };
-            if let Err(e) = db.execute(
-                "INSERT OR REPLACE INTO viewed_state (file_path, state, updated_at) VALUES (?1, ?2, CURRENT_TIMESTAMP)",
-                [file_path, state_json.as_str()],
-            ) {
-                eprintln!("[WebSocket] update viewed_state failed: {e}");
-                return;
-            }
-            broadcast_msg(tx, &WebSocketMessage::ViewedState { state: viewed });
-        }
-        _ => {}
+        DbResult::None => {}
     }
 }
 
@@ -792,7 +842,7 @@ async fn handle_socket(socket: WebSocket, state: AppState) {
 
     // Only send initial annotation/viewed state when a persistence layer exists.
     if let Some(db) = db.as_ref() {
-        let annotations = load_annotations(db, &file_path);
+        let annotations = load_annotations(db.clone(), file_path.clone()).await;
         eprintln!(
             "[WebSocket] Sending {} annotations for file_path: {}",
             annotations.len(),
@@ -807,7 +857,7 @@ async fn handle_socket(socket: WebSocket, state: AppState) {
         {
             return;
         }
-        let viewed = load_viewed_state(db, &file_path);
+        let viewed = load_viewed_state(db.clone(), file_path.clone()).await;
         if send_json(
             &mut sender,
             &WebSocketMessage::ViewedState { state: viewed },
@@ -832,7 +882,7 @@ async fn handle_socket(socket: WebSocket, state: AppState) {
             let Ok(msg) = serde_json::from_str::<WebSocketMessage>(&text) else {
                 continue;
             };
-            handle_client_msg(db.as_deref(), &tx, &file_path, msg);
+            handle_client_msg(db.clone(), tx.clone(), file_path.clone(), msg).await;
         }
     });
 

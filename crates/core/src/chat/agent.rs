@@ -212,6 +212,7 @@ impl Agent {
             match self
                 .storage
                 .append_message(&request.thread_id, Role::Assistant, &turn_content)
+                .await
             {
                 Ok(stored) => {
                     last_seq = Some(stored.seq);
@@ -285,9 +286,10 @@ impl Agent {
 
             // Persist the synthetic user-turn carrying tool results, then add
             // it to the in-memory history for the next provider call.
-            if let Err(e) =
-                self.storage
-                    .append_message(&request.thread_id, Role::User, &tool_results)
+            if let Err(e) = self
+                .storage
+                .append_message(&request.thread_id, Role::User, &tool_results)
+                .await
             {
                 let _ = sink
                     .send(AgentEvent::Error {
