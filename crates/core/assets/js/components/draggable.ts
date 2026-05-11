@@ -1,6 +1,6 @@
 /**
  * DraggableManager - Unified drag-and-drop manager
- * Eliminate makePopoverDraggable 和 makeDraggable betweencode duplication
+ * Eliminates code duplication between makePopoverDraggable and makeDraggable.
  */
 
 import { Logger } from '../core/utils';
@@ -51,7 +51,7 @@ interface InternalHandlers {
 type Required<T> = { [K in keyof T]-?: T[K] };
 
 /**
- * 拖拽Management器类
+ * Drag-and-drop manager class.
  */
 export class DraggableManager {
     #element: HTMLElement;
@@ -64,8 +64,8 @@ export class DraggableManager {
     #handlers: InternalHandlers = {};
 
     /**
-     * @param element - 要使其可拖拽的Element
-     * @param options - ConfigurationOptions
+     * @param element - the element to make draggable
+     * @param options - configuration options
      */
     constructor(element: HTMLElement, options: DraggableOptions = {}) {
         this.#element = element;
@@ -83,7 +83,7 @@ export class DraggableManager {
     }
 
     /**
-     * Initialize拖拽功能
+     * Initialize the drag behavior.
      */
     #init(): void {
         const handle: HTMLElement | null = this.#options.handle
@@ -95,14 +95,14 @@ export class DraggableManager {
             return;
         }
 
-        // 不Settings cursor，使用 CSS 中的默认样式（grab）
+        // Do not set cursor here; rely on the CSS default (grab).
 
-        // 鼠标Event
+        // Mouse events
         this.#handlers.mousedown = (e: MouseEvent) => this.#onDragStart(e);
         this.#handlers.mousemove = (e: MouseEvent) => this.#onDragmove(e);
         this.#handlers.mouseup = () => this.#onDragEnd();
 
-        // 触摸Event
+        // Touch events
         this.#handlers.touchstart = (e: TouchEvent) => this.#onDragStart(e);
         this.#handlers.touchmove = (e: TouchEvent) => this.#onDragmove(e);
         this.#handlers.touchend = () => this.#onDragEnd();
@@ -112,10 +112,10 @@ export class DraggableManager {
     }
 
     /**
-     * Start拖拽
+     * Begin a drag.
      */
     #onDragStart(e: MouseEvent | TouchEvent): void {
-        // 如果点击的是Button，不进行拖拽
+        // Skip when the press target is a button/input control.
         const target = e.target as Element | null;
         if (target && (target.tagName === 'BUTTON' || target.tagName === 'INPUT')) {
             return;
@@ -127,14 +127,14 @@ export class DraggableManager {
         this.#startX = point.pageX;
         this.#startY = point.pageY;
 
-        // 从 style.left/top Parse位置，因为我们使用绝对定位
+        // Read the initial position from style.left/top because we use absolute positioning.
         this.#initialLeft = parseFloat(this.#element.style.left) || 0;
         this.#initialTop = parseFloat(this.#element.style.top) || 0;
 
         this.#element.style.cursor = 'grabbing';
         document.body.style.userSelect = 'none';
 
-        // 添加全局Listen器
+        // Attach global listeners
         if (this.#handlers.mousemove) document.addEventListener('mousemove', this.#handlers.mousemove);
         if (this.#handlers.mouseup) document.addEventListener('mouseup', this.#handlers.mouseup);
         if (this.#handlers.touchmove) document.addEventListener('touchmove', this.#handlers.touchmove, { passive: false });
@@ -142,14 +142,14 @@ export class DraggableManager {
 
         e.preventDefault();
 
-        // TriggerCallback
+        // Fire callback
         if (this.#options.onDragStart) {
             this.#options.onDragStart(e);
         }
     }
 
     /**
-     * 拖拽中
+     * Mid-drag handler.
      */
     #onDragmove(e: MouseEvent | TouchEvent): void {
         if (!this.#isDragging) return;
@@ -158,7 +158,7 @@ export class DraggableManager {
         const dx = point.pageX - this.#startX;
         const dy = point.pageY - this.#startY;
 
-        // Calculate新位置
+        // Compute the new position
         let newLeft = this.#initialLeft + dx;
         let newTop = this.#initialTop + dy;
 
@@ -172,34 +172,34 @@ export class DraggableManager {
         this.#element.style.left = `${newLeft}px`;
         this.#element.style.top = `${newTop}px`;
 
-        // TriggerCallback
+        // Fire callback
         if (this.#options.onDragmove) {
             this.#options.onDragmove(dx, dy);
         }
     }
 
     /**
-     * End拖拽
+     * Finish a drag.
      */
     #onDragEnd(): void {
         if (!this.#isDragging) return;
 
         this.#isDragging = false;
-        this.#element.style.cursor = ''; // Reset回 CSS 默认样式
+        this.#element.style.cursor = ''; // restore the CSS default cursor
         document.body.style.userSelect = '';
 
-        // 移除全局Listen器
+        // Detach global listeners
         if (this.#handlers.mousemove) document.removeEventListener('mousemove', this.#handlers.mousemove);
         if (this.#handlers.mouseup) document.removeEventListener('mouseup', this.#handlers.mouseup);
         if (this.#handlers.touchmove) document.removeEventListener('touchmove', this.#handlers.touchmove);
         if (this.#handlers.touchend) document.removeEventListener('touchend', this.#handlers.touchend);
 
-        // Save偏移量
+        // Persist the offset
         if (this.#options.saveOffset && this.#options.storageKey) {
             this.#saveOffset();
         }
 
-        // TriggerCallback
+        // Fire callback
         if (this.#options.onDragEnd) {
             const finalLeft = parseFloat(this.#element.style.left) || 0;
             const finalTop = parseFloat(this.#element.style.top) || 0;
@@ -208,10 +208,10 @@ export class DraggableManager {
     }
 
     /**
-     * Save偏移量到 localStorage
+     * Persist the offset to localStorage.
      */
     #saveOffset(): void {
-        // 使用 style.left/top 而不是 offsetLeft/Top，因为我们使用的是绝对定位
+        // Use style.left/top rather than offsetLeft/Top because the element is absolutely positioned.
         const finalLeft = parseFloat(this.#element.style.left) || 0;
         const finalTop = parseFloat(this.#element.style.top) || 0;
         const originalLeft = parseFloat(this.#element.dataset.originalLeft ?? '');
@@ -242,7 +242,7 @@ export class DraggableManager {
     }
 
     /**
-     * 销毁拖拽功能
+     * Tear down the drag behavior.
      */
     destroy(): void {
         const handle: HTMLElement | null = this.#options.handle
@@ -254,7 +254,7 @@ export class DraggableManager {
             if (this.#handlers.touchstart) handle.removeEventListener('touchstart', this.#handlers.touchstart);
         }
 
-        // 移除全局Listen器（如果正在拖拽）
+        // Detach global listeners if a drag is still active.
         if (this.#isDragging) {
             if (this.#handlers.mousemove) document.removeEventListener('mousemove', this.#handlers.mousemove);
             if (this.#handlers.mouseup) document.removeEventListener('mouseup', this.#handlers.mouseup);
@@ -268,7 +268,7 @@ export class DraggableManager {
 }
 
 /**
- * 快捷函数：使Element可拖拽
+ * Convenience helper that makes an element draggable.
  */
 export function makeDraggable(element: HTMLElement, options: DraggableOptions = {}): DraggableManager {
     return new DraggableManager(element, options);

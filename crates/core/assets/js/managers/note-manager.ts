@@ -51,10 +51,10 @@ export class NoteManager {
     }
 
     render(): void {
-        // 移除现有的边距Note
+        // Remove any existing margin notes.
         this.clear();
 
-        // Get所有带Note的HighlightElement（仅最外层）
+        // Gather every annotated highlight element (outermost only).
         const allHighlightElements = this.#markdownBody.querySelectorAll<HTMLElement>(
             '.has-note[data-annotation-id]',
         );
@@ -64,11 +64,11 @@ export class NoteManager {
             return;
         }
 
-        // Get注解Data
+        // Fetch annotation data.
         const annotations = this.#annotationManager.getAll();
         const annotationsMap = new Map<string, Annotation>(annotations.map(a => [a.id, a]));
 
-        // CreateNote卡片
+        // Build note cards.
         outermostElements.forEach(highlightElement => {
             const annoId = highlightElement.dataset.annotationId;
             if (!annoId) return;
@@ -90,7 +90,7 @@ export class NoteManager {
             });
         });
 
-        // 布局Note
+        // Lay out the notes.
         this.#layout();
 
         // Restore the active styling if the previously selected card still exists
@@ -123,7 +123,7 @@ export class NoteManager {
         const onResize = debounce(() => {
             this.#layout();
             this.#drawConnector();
-            // Close弹出Window（窄屏Mode）
+            // Close any popup window when on a narrow-screen layout.
             if (PlatformUtils.isNarrowScreen()) {
                 document.querySelector('.note-popup')?.remove();
             }
@@ -163,7 +163,7 @@ export class NoteManager {
             const annoId = element.dataset.annotationId;
             if (!annoId) return;
 
-            // Check是否嵌套在另一个 .has-note 中
+            // Detect whether this highlight is nested inside another .has-note element.
             let isNested = false;
             let parent: HTMLElement | null = element.parentElement;
 
@@ -175,7 +175,7 @@ export class NoteManager {
                 parent = parent.parentElement;
             }
 
-            // 只保留未嵌套的或首次遇到的
+            // Keep the un-nested fragment (or the first one we encountered).
             if (!outermostMap.has(annoId)) {
                 outermostMap.set(annoId, element);
             } else if (!isNested) {
@@ -212,28 +212,28 @@ export class NoteManager {
         }
 
         if (PlatformUtils.isWideScreen()) {
-            // 宽屏：使用物理布局
+            // Wide-screen layout uses the physics-based placement.
             this.#layoutWideScreen();
         } else {
-            // 窄屏：Hide所有Note卡片（点击ShowModal）
+            // Narrow-screen layout hides all cards (a click opens a popup instead).
             this.#layoutNarrowScreen();
         }
     }
 
     #layoutWideScreen(): void {
-        // 强制重排以确保 offsetHeight Calculate准确
+        // Force a reflow so offsetHeight is reliable.
         void document.body.offsetHeight;
 
-        // 使用物理引擎Calculate位置
+        // Compute positions through the physics engine.
         const notes = this.#layoutEngine.calculate(this.#noteCardsData);
 
-        // Calculate水平位置（右对齐）
+        // Compute the horizontal position (right-aligned).
         const rightEdge =
             window.innerWidth -
             CONFIG.DIMENSIONS.NOTE_CARD_WIDTH -
             CONFIG.DIMENSIONS.NOTE_CARD_RIGHT_MARGIN;
 
-        // Apply位置
+        // Apply the computed positions.
         notes.forEach(note => {
             note.element.style.left = `${rightEdge}px`;
             note.element.style.top = `${note.currentTop}px`;
@@ -407,15 +407,15 @@ export class NoteManager {
     }
 
     showNotePopup(highlightElement: HTMLElement, annotationId: string): void {
-        // 移除已存在的Modal
+        // Remove any existing popup.
         const existingPopup = document.querySelector('.note-popup');
         if (existingPopup) existingPopup.remove();
 
-        // FindNoteData
+        // Look up the note data.
         const noteData = this.#noteCardsData.find(n => n.highlightId === annotationId);
         if (!noteData) return;
 
-        // CreateModal
+        // Build the popup DOM.
         const popup = document.createElement('div');
         popup.className = 'note-popup';
         popup.dataset.annotationId = annotationId;
@@ -429,7 +429,7 @@ export class NoteManager {
             <div class="note-content">${Text.escape(noteData.note)}</div>
         `;
 
-        // 定位
+        // Position the popup below the highlight.
         const rect = highlightElement.getBoundingClientRect();
         popup.style.position = 'absolute';
         popup.style.left = `${rect.left + window.scrollX}px`;
@@ -437,7 +437,7 @@ export class NoteManager {
 
         document.body.appendChild(popup);
 
-        // 添加点击外部关闭功能
+        // Close the popup when the user clicks outside of it.
         const closeHandler = (e: MouseEvent): void => {
             const target = e.target as Node | null;
             if (!popup.contains(target) && !noteData.highlightElement.contains(target)) {
@@ -446,12 +446,12 @@ export class NoteManager {
                 Logger.log('NoteManager', 'Note popup closed by clicking outside');
             }
         };
-        // 延迟添加事件监听器，避免立即触发
+        // Defer attaching the listener so the opening click does not immediately close it.
         setTimeout(() => {
             document.addEventListener('click', closeHandler);
         }, 0);
 
-        // 调整位置以保持在视口内
+        // Adjust the position so the popup stays inside the viewport.
         const popupRect = popup.getBoundingClientRect();
         if (popupRect.right > window.innerWidth) {
             popup.style.left = `${rect.left + window.scrollX - (popupRect.right - window.innerWidth) - 10}px`;

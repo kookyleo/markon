@@ -20,14 +20,14 @@ export interface NavAnnotation {
 }
 
 /**
- * Annotation navigator类
+ * Annotation navigator class.
  */
 export class AnnotationNavigator {
     #currentIndex = -1;
     #annotations: NavAnnotation[] = [];
 
     /**
-     * Get所有注解（Highlight + Note）按Document顺序
+     * Gather every annotation (highlights + notes) in document order.
      */
     #getAllAnnotations(): NavAnnotation[] {
         const markdownBody = document.querySelector(CONFIG.SELECTORS.MARKDOWN_BODY) as HTMLElement | null;
@@ -35,7 +35,7 @@ export class AnnotationNavigator {
 
         const annotations: NavAnnotation[] = [];
 
-        // Get所有Highlight（排除Note，因为Note单独Handle）
+        // Collect every highlight (skip noted ones — handled separately below).
         const highlights = markdownBody.querySelectorAll(CONFIG.SELECTORS.HIGHLIGHT_CLASSES);
         highlights.forEach((el) => {
             const htmlEl = el as HTMLElement;
@@ -48,11 +48,11 @@ export class AnnotationNavigator {
             }
         });
 
-        // Get所有Note（仅最外层的 has-note Element）
+        // Collect every note (only the outermost has-note element).
         const notes = markdownBody.querySelectorAll('.has-note[data-annotation-id]');
         notes.forEach((el) => {
             const htmlEl = el as HTMLElement;
-            // 仅包含最外层 has-note Element
+            // Include only the outermost has-note element.
             let parent: HTMLElement | null = htmlEl.parentElement;
             let isNested = false;
             while (parent && parent !== markdownBody) {
@@ -71,14 +71,14 @@ export class AnnotationNavigator {
             }
         });
 
-        // 按Document位置Sort
+        // Sort by document position.
         annotations.sort((a, b) => a.position - b.position);
 
         return annotations;
     }
 
     /**
-     * Navigation到下一个注解
+     * Navigate to the next annotation.
      */
     next(): void {
         this.#annotations = this.#getAllAnnotations();
@@ -87,13 +87,13 @@ export class AnnotationNavigator {
             return;
         }
 
-        // move到下一个
+        // Advance the cursor.
         this.#currentIndex = (this.#currentIndex + 1) % this.#annotations.length;
         this.#focusAnnotation(this.#annotations[this.#currentIndex]);
     }
 
     /**
-     * Navigation到上一个注解
+     * Navigate to the previous annotation.
      */
     previous(): void {
         this.#annotations = this.#getAllAnnotations();
@@ -102,31 +102,31 @@ export class AnnotationNavigator {
             return;
         }
 
-        // move到上一个
+        // Step the cursor backward.
         this.#currentIndex = this.#currentIndex <= 0 ? this.#annotations.length - 1 : this.#currentIndex - 1;
         this.#focusAnnotation(this.#annotations[this.#currentIndex]);
     }
 
     /**
-     * 聚焦注解并提供视觉反馈
+     * Focus an annotation and surface visual feedback.
      */
     #focusAnnotation(annotation: NavAnnotation): void {
-        // Clear之前的焦点
+        // Clear the previous focus indicator.
         this.#clearFocus();
 
         const { element, type } = annotation;
 
-        // 滚动到可见
+        // Scroll the element into view.
         element.scrollIntoView({ behavior: 'smooth', block: 'center' });
 
         if (type === 'highlight') {
-            // Highlight：添加轮廓
+            // Highlight: add an outline.
             element.classList.add('annotation-focused');
         } else if (type === 'note') {
             const isNarrowScreen = PlatformUtils.isNarrowScreen();
 
             if (isNarrowScreen) {
-                // 窄屏：ShowModal（不自动聚焦）
+                // Narrow screen: pop the modal (without auto-focusing it).
                 let scrollEndTimer: ReturnType<typeof setTimeout> | undefined;
                 const handleScrollEnd = (): void => {
                     if (scrollEndTimer !== undefined) clearTimeout(scrollEndTimer);
@@ -138,17 +138,17 @@ export class AnnotationNavigator {
                 };
                 window.addEventListener('scroll', handleScrollEnd);
 
-                // 回退（如果滚动未发生）
+                // Fallback in case the scroll never fires.
                 setTimeout(() => {
                     window.removeEventListener('scroll', handleScrollEnd);
                     element.click();
                     element.classList.add('annotation-focused');
                 }, 600);
             } else {
-                // 宽屏：HighlightNoteElement和Note卡
+                // Wide screen: highlight both the note element and its margin card.
                 element.classList.add('annotation-focused');
 
-                // Find并Highlight对应的Note卡
+                // Locate and highlight the matching margin card.
                 const annotationId = element.dataset.annotationId;
                 if (annotationId) {
                     const noteCard = document.querySelector(
@@ -157,7 +157,7 @@ export class AnnotationNavigator {
                     if (noteCard) {
                         noteCard.classList.add('highlight-active');
 
-                        // 如果需要，滚动Note卡到可见
+                        // Scroll the note card into view if needed.
                         const noteRect = noteCard.getBoundingClientRect();
                         if (noteRect.top < 0 || noteRect.bottom > window.innerHeight) {
                             noteCard.scrollIntoView({ behavior: 'smooth', block: 'center' });
@@ -171,26 +171,26 @@ export class AnnotationNavigator {
     }
 
     /**
-     * Clear所有焦点指示器
+     * Clear every focus indicator.
      */
     #clearFocus(): void {
-        // Clear注解焦点
+        // Clear annotation focus.
         document.querySelectorAll('.annotation-focused').forEach((el) => {
             el.classList.remove('annotation-focused');
         });
 
-        // ClearNote卡Highlight
+        // Clear the margin-note card highlight.
         document.querySelectorAll('.note-card-margin.highlight-active').forEach((el) => {
             el.classList.remove('highlight-active');
         });
 
-        // CloseOpen的NoteModal（窄屏）
+        // Close the open narrow-screen note popup.
         const existingPopup = document.querySelector('.note-popup');
         if (existingPopup) {
             existingPopup.remove();
         }
 
-        // ClearNoteElement的 highlight-active
+        // Clear the highlight-active class on note elements.
         document.querySelectorAll('.has-note.highlight-active').forEach((el) => {
             el.classList.remove('highlight-active');
         });

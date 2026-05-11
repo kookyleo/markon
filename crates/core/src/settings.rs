@@ -153,7 +153,7 @@ pub struct AppSettings {
     /// markdown view) or "popout" (a standalone window opened via window.open).
     /// Drives:
     ///   • sphere click → expand panel vs spawn popout
-    ///   • selection 聊聊 button → quote into in-page chat vs popout
+    ///   • selection chat button → quote into in-page chat vs popout
     ///   • TOGGLE_CHAT shortcut
     /// In every case Shift inverts the choice for that single click/press.
     #[serde(default = "default_in_page")]

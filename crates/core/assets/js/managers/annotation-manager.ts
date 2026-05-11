@@ -185,7 +185,7 @@ export class AnnotationManager {
             return;
         }
 
-        // 按Path和偏移量Sort（从后向前Apply，避免偏移问题）
+        // Sort by path and offset, applying from end to start to avoid offset shifts.
         const sorted = [...annotations].sort((a, b) => {
             if (a.startPath !== b.startPath) {
                 return a.startPath.localeCompare(b.startPath);
@@ -220,12 +220,12 @@ export class AnnotationManager {
                 const parent = el.parentNode;
                 if (!parent) return;
 
-                // 将子Element移出
+                // Lift child nodes out of the wrapper.
                 while (el.firstChild) {
                     parent.insertBefore(el.firstChild, el);
                 }
 
-                // 移除Element
+                // Remove the now-empty wrapper element.
                 parent.removeChild(el);
                 (parent as Element).normalize?.();
             }
@@ -266,10 +266,10 @@ export class AnnotationManager {
     }
 
     #applyAnnotation(anno: Annotation): void {
-        // Check是否已存在
+        // Skip if the annotation is already present in the DOM.
         const existing = this.#markdownBody.querySelector(`[data-annotation-id="${anno.id}"]`);
         if (existing) {
-            return;  // 已存在，Skip
+            return;  // already present, skip
         }
 
         const startNode = XPath.resolve(anno.startPath);
@@ -281,7 +281,7 @@ export class AnnotationManager {
         }
 
         try {
-            // Validate偏移量
+            // Validate offsets against the resolved containers.
             const startTextLen = (startNode.textContent ?? '').length;
             const endTextLen = (endNode.textContent ?? '').length;
             if (anno.startOffset > startTextLen || anno.endOffset > endTextLen) {
@@ -289,7 +289,7 @@ export class AnnotationManager {
                 return;
             }
 
-            // FindTextNode和偏移量
+            // Locate the text node and intra-node offset.
             const start = XPath.findNode(startNode, anno.startOffset);
             const end = XPath.findNode(endNode, anno.endOffset);
 
@@ -298,12 +298,12 @@ export class AnnotationManager {
                 return;
             }
 
-            // Create范围
+            // Build the live Range.
             const range = document.createRange();
             range.setStart(start.node, start.offset);
             range.setEnd(end.node, end.offset);
 
-            // ValidateTextContent
+            // Verify the text still matches what was stored (drift detection).
             const storedText = Text.normalize(anno.text);
             const currentText = Text.normalize(range.toString());
 
@@ -315,7 +315,7 @@ export class AnnotationManager {
                 return;
             }
 
-            // CreateElement
+            // Create the wrapper element.
             const element = document.createElement(anno.tagName);
             element.className = anno.type;
             element.dataset.annotationId = anno.id;
@@ -325,7 +325,7 @@ export class AnnotationManager {
                 element.classList.add('has-note');
             }
 
-            // Apply到 DOM
+            // Splice it into the DOM.
             element.appendChild(range.extractContents());
             range.insertNode(element);
 

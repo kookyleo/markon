@@ -165,7 +165,7 @@ export class PopoverManager {
     handleSelection(event: Event): void {
         const target = event.target as Element | null;
 
-        // Ignore弹出框内的点击
+        // Ignore clicks that originate inside the popover itself.
         if (target && this.#element.contains(target)) {
             return;
         }
@@ -186,7 +186,7 @@ export class PopoverManager {
         if (!selection) return;
         const selectedText = selection.toString().trim();
 
-        // 没有选中任何TextContent，Hide弹出框
+        // Nothing is selected — hide the popover.
         if (selectedText.length === 0) {
             if (target && !this.#element.contains(target)) {
                 this.hide();
@@ -194,7 +194,7 @@ export class PopoverManager {
             return;
         }
 
-        // CheckSelect是否在 markdown body 内
+        // Confirm the selection lives inside the markdown body.
         const range = selection.getRangeAt(0);
         const container = range.commonAncestorContainer;
         const element: Element | null =
@@ -204,17 +204,17 @@ export class PopoverManager {
             return;
         }
 
-        // Skip UI Element
+        // Skip floating UI elements.
         if (this.#shouldSkipElement(element)) {
             return;
         }
 
-        // Check是否跨块级Element
+        // Detect a selection that spans multiple block-level elements.
         if (this.#spansMultipleBlocks(range)) {
             Logger.log('PopoverManager', 'Selection spans multiple blocks, trimming to first block');
             const trimmed = this.#trimToFirstBlock(range);
             if (trimmed) {
-                // Check trim 后是否有实际TextContent
+                // Bail out when the trimmed range has no usable text content.
                 const trimmedText = trimmed.toString().trim();
                 if (trimmedText.length === 0) {
                     Logger.log('PopoverManager', 'Trimmed selection has no text content, hiding');
@@ -222,8 +222,8 @@ export class PopoverManager {
                     return;
                 }
 
-                // Check trim 后的 range 是否在 UI Element内
-                // 需要Check range 的起始Node，而不是 commonAncestorContainer
+                // Re-check whether the trimmed range starts inside a UI element.
+                // We inspect the range's start node rather than its commonAncestorContainer.
                 const startContainer = trimmed.startContainer;
                 const startElement: Element | null =
                     startContainer.nodeType === 3 ? startContainer.parentElement : (startContainer as Element);
@@ -248,21 +248,21 @@ export class PopoverManager {
                 selection.removeAllRanges();
                 selection.addRange(trimmed);
 
-                // Check trimmed range 是否在已高亮区域内
+                // Check whether the trimmed range falls inside an existing highlight.
                 const isHighlightedTrimmed = startElement.closest(CONFIG.SELECTORS.HIGHLIGHT_CLASSES);
                 this.show(trimmed, isHighlightedTrimmed);
             }
             return;
         }
 
-        // Check是否已Highlight
+        // Check whether the selection already lies inside a highlight.
         const isHighlighted = element.closest(CONFIG.SELECTORS.HIGHLIGHT_CLASSES);
 
         this.show(range, isHighlighted);
     }
 
     handleHighlightClick(highlightedElement: Element): void {
-        // 如果 popover 已经可见，说明 handleSelection 刚刚处理过，不要覆盖
+        // If the popover is already visible, handleSelection just placed it — don't overwrite.
         if (this.isVisible()) {
             Logger.log('PopoverManager', 'handleHighlightClick: ignored because popover is already visible');
             return;
@@ -271,7 +271,7 @@ export class PopoverManager {
         this.#currentHighlightedElement = highlightedElement;
         this.#updateContent(highlightedElement, false);
 
-        // 先Show以Get尺寸
+        // Render hidden first to measure final dimensions.
         this.#element.style.visibility = 'hidden';
         this.#element.style.display = 'block';
 
@@ -283,19 +283,19 @@ export class PopoverManager {
         const scrollY = window.pageYOffset || document.documentElement.scrollTop;
         const offset = CONFIG.DIMENSIONS.POPOVER_OFFSET;
 
-        // 水平居中对齐（绝对坐标）
+        // Centre horizontally (in absolute document coordinates).
         let left = rect.left + scrollX + rect.width / 2 - popoverWidth / 2;
 
-        // 默认在下方Show（绝对坐标）
+        // Default placement is below the anchor (absolute coordinates).
         let top = rect.bottom + scrollY + offset;
         let positionBelow = true;
 
-        // Check下方空间是否足够
+        // Check whether there's enough headroom below.
         const spaceBelow = window.innerHeight - rect.bottom;
         const spaceAbove = rect.top;
 
         if (spaceBelow < popoverHeight + offset + 20) {
-            // 下方空间不够，尝试上方
+            // Not enough room below; flip above when there's more space there.
             if (spaceAbove > spaceBelow || spaceAbove > popoverHeight + offset + 20) {
                 top = rect.top + scrollY - popoverHeight - offset;
                 positionBelow = false;
@@ -314,7 +314,7 @@ export class PopoverManager {
             ({ left, top } = Position.constrainToViewport(left, top, popoverWidth, popoverHeight));
         }
 
-        // Save原始位置（Apply偏移之前）供 DraggableManager Calculate偏移量
+        // Store the pre-offset coordinates so DraggableManager can compute deltas.
         this.#element.dataset.originalLeft = String(originalLeft);
         this.#element.dataset.originalTop = String(originalTop);
 
@@ -322,7 +322,7 @@ export class PopoverManager {
         this.#element.style.top = `${top}px`;
         this.#element.style.visibility = 'visible';
 
-        // Initialize拖拽功能
+        // Initialize the drag behavior.
         this.#initDraggable();
 
         Logger.log(
@@ -338,7 +338,7 @@ export class PopoverManager {
 
         document.body.appendChild(this.#element);
 
-        // Settings点击Event
+        // Wire up the click handler.
         this.#element.addEventListener('click', (e: MouseEvent) => {
             const target = e.target as HTMLElement | null;
             const action = target?.dataset?.action;
@@ -452,15 +452,15 @@ export class PopoverManager {
     }
 
     /**
-     * Initialize拖拽功能
+     * Initialize the drag behavior.
      */
     #initDraggable(): void {
-        // 如果已存在拖拽Instance，先销毁
+        // Tear down any previous instance before creating a new one.
         if (this.#draggable) {
             this.#draggable.destroy();
         }
 
-        // Create新的拖拽Instance
+        // Spin up a fresh draggable instance.
         this.#draggable = new DraggableManager(this.#element, {
             storageKey: CONFIG.STORAGE_KEYS.POPOVER_OFFSET,
             handle: '.popover-drag-handle',
@@ -472,7 +472,7 @@ export class PopoverManager {
     }
 
     /**
-     * GetSave的偏移量
+     * Retrieve the persisted offset from localStorage.
      */
     #getSavedOffset(): SavedOffset | null {
         try {

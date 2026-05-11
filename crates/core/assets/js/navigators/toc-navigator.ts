@@ -1,26 +1,27 @@
 /**
  * TOCNavigator - TOC navigator
- * 提供键盘Navigate TOC的功能（j/k 上下move，Enter 跳转，折叠/展开等）
+ * Provides keyboard-driven TOC navigation (j/k to move, Enter to jump,
+ * arrow-left/right to collapse/expand, etc.).
  */
 
 import { CONFIG } from '../core/config';
 import { Logger } from '../core/utils';
 
 /**
- * TOC Navigation器类
+ * TOC navigator class.
  */
 export class TOCNavigator {
     #active = false;
     #focusedIndex = -1;
     #links: HTMLAnchorElement[] = [];
     #keydownHandler: ((e: KeyboardEvent) => void) | null = null;
-    #collapsedItems: Set<number> = new Set(); // 按索引跟踪折叠的项
+    #collapsedItems: Set<number> = new Set(); // tracks collapsed items by index
 
     /**
-     * 激活Navigation器
+     * Activate the navigator.
      */
     activate(): void {
-        // Get所有 TOC Link
+        // Collect every TOC link.
         const tocContainer = document.querySelector(CONFIG.SELECTORS.TOC_CONTAINER) as HTMLElement | null;
         if (!tocContainer) {
             Logger.warn('TOCNavigator', 'TOC container not found');
@@ -33,40 +34,40 @@ export class TOCNavigator {
             return;
         }
 
-        // Resume之前的焦点位置，或Find当前活动Link，或默认第一个
+        // Restore the previous focus, fall back to the active link, then to the first item.
         if (this.#focusedIndex < 0 || this.#focusedIndex >= this.#links.length) {
             const activeLink = (tocContainer.querySelector('.toc-item.viewport a')
                 ?? tocContainer.querySelector('.toc-item a.selected')) as HTMLAnchorElement | null;
             this.#focusedIndex = activeLink ? this.#links.indexOf(activeLink) : 0;
         }
 
-        // Initialize折叠指示器
+        // Initialize the collapse indicators.
         this.#links.forEach((_link, index) => {
             this.#updateCollapseIndicator(index);
         });
 
-        // Settings初始焦点
+        // Place initial focus.
         this.#setFocus(this.#focusedIndex);
 
-        // Settings键盘Handle器
+        // Install the keyboard handler.
         this.#active = true;
         this.#setupKeyboardHandler();
 
-        // 添加视觉边框表示活动Navigation
+        // Add the active-navigation visual border.
         tocContainer.classList.add('toc-nav-active');
 
         Logger.log('TOCNavigator', 'Activated');
     }
 
     /**
-     * 停用Navigation器
+     * Deactivate the navigator.
      */
     deactivate(): void {
         this.#active = false;
         this.#clearFocus();
         this.#removeKeyboardHandler();
 
-        // 移除视觉边框
+        // Remove the active-navigation visual border.
         const tocContainer = document.querySelector(CONFIG.SELECTORS.TOC_CONTAINER);
         if (tocContainer) {
             tocContainer.classList.remove('toc-nav-active');
@@ -76,14 +77,14 @@ export class TOCNavigator {
     }
 
     /**
-     * Check是否活动
+     * Whether the navigator is currently active.
      */
     get active(): boolean {
         return this.#active;
     }
 
     /**
-     * Settings键盘Handle器
+     * Install the keyboard handler.
      */
     #setupKeyboardHandler(): void {
         if (this.#keydownHandler) {
@@ -93,7 +94,7 @@ export class TOCNavigator {
         this.#keydownHandler = (e: KeyboardEvent) => {
             if (!this.#active) return;
 
-            // 仅在非Input框时Handle按键
+            // Only handle keys when focus is not inside an input field.
             const target = e.target as HTMLElement | null;
             if (!target) return;
             if (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable) {
@@ -147,12 +148,12 @@ export class TOCNavigator {
             }
         };
 
-        // 使用捕获阶段以高优先级添加
+        // Register on the capture phase to claim higher priority.
         document.addEventListener('keydown', this.#keydownHandler, true);
     }
 
     /**
-     * 移除键盘Handle器
+     * Remove the keyboard handler.
      */
     #removeKeyboardHandler(): void {
         if (this.#keydownHandler) {
@@ -162,34 +163,34 @@ export class TOCNavigator {
     }
 
     /**
-     * Settings焦点
+     * Set focus on the link at the given index.
      */
     #setFocus(index: number): void {
         if (index < 0 || index >= this.#links.length) {
             return;
         }
 
-        // Clear之前的焦点
+        // Clear the previous focus indicator.
         this.#clearFocus();
 
-        // Settings新焦点
+        // Apply the new focus indicator.
         this.#focusedIndex = index;
         const link = this.#links[index];
         link.classList.add('toc-focused');
 
-        // 滚动到可见
+        // Scroll the focused link into view.
         link.scrollIntoView({ block: 'nearest' });
     }
 
     /**
-     * Clear焦点
+     * Clear focus.
      */
     #clearFocus(): void {
         this.#links.forEach((link) => link.classList.remove('toc-focused'));
     }
 
     /**
-     * move到下一个
+     * Move focus to the next visible item.
      */
     #moveNext(): void {
         for (let i = this.#focusedIndex + 1; i < this.#links.length; i++) {
@@ -201,7 +202,7 @@ export class TOCNavigator {
     }
 
     /**
-     * move到上一个
+     * Move focus to the previous visible item.
      */
     #movePrevious(): void {
         for (let i = this.#focusedIndex - 1; i >= 0; i--) {
@@ -213,7 +214,7 @@ export class TOCNavigator {
     }
 
     /**
-     * 展开或move到子项
+     * Expand the focused item, or jump to its first child if already expanded.
      */
     #expandOrmoveToChild(): void {
         const children = this.#getChildren(this.#focusedIndex);
@@ -223,29 +224,29 @@ export class TOCNavigator {
         }
 
         if (this.#collapsedItems.has(this.#focusedIndex)) {
-            // 已折叠，展开
+            // Currently collapsed: expand it.
             this.#collapsedItems.delete(this.#focusedIndex);
             this.#updateVisibility();
             this.#updateCollapseIndicator(this.#focusedIndex);
         } else {
-            // 已展开，move到第一个子项
+            // Already expanded: jump to the first child.
             this.#setFocus(children[0]);
         }
     }
 
     /**
-     * 折叠或move到父项
+     * Collapse the focused item, or jump to its parent if there's nothing to collapse.
      */
     #collapseOrmoveToParent(): void {
         const children = this.#getChildren(this.#focusedIndex);
 
         if (children.length > 0 && !this.#collapsedItems.has(this.#focusedIndex)) {
-            // 有可见子项，折叠
+            // Visible children present: collapse them.
             this.#collapsedItems.add(this.#focusedIndex);
             this.#updateVisibility();
             this.#updateCollapseIndicator(this.#focusedIndex);
         } else {
-            // 已折叠或无子项，move到父项
+            // Already collapsed or leaf node: jump to the parent.
             const parentIndex = this.#getParentIndex(this.#focusedIndex);
             if (parentIndex !== -1) {
                 this.#setFocus(parentIndex);
@@ -254,14 +255,14 @@ export class TOCNavigator {
     }
 
     /**
-     * Check是否有子项
+     * Whether the item has child entries.
      */
     #hasChildren(index: number): boolean {
         return this.#getChildren(index).length > 0;
     }
 
     /**
-     * Get子项
+     * Return the direct child indices of `index`.
      */
     #getChildren(index: number): number[] {
         if (index < 0 || index >= this.#links.length) {
@@ -285,7 +286,7 @@ export class TOCNavigator {
     }
 
     /**
-     * Get父项索引
+     * Return the parent index of `index`, or -1 when there's no parent.
      */
     #getParentIndex(index: number): number {
         if (index <= 0 || index >= this.#links.length) {
@@ -305,7 +306,7 @@ export class TOCNavigator {
     }
 
     /**
-     * Get级别
+     * Return the heading level of the item.
      */
     #getLevel(index: number): number {
         if (index < 0 || index >= this.#links.length) {
@@ -320,7 +321,7 @@ export class TOCNavigator {
     }
 
     /**
-     * Check是否可见
+     * Whether the item is currently visible (not hidden under a collapsed ancestor).
      */
     #isVisible(index: number): boolean {
         const currentLevel = this.#getLevel(index);
@@ -342,7 +343,7 @@ export class TOCNavigator {
     }
 
     /**
-     * Get所有后代
+     * Return every descendant index of `index`.
      */
     #getAllDescendants(index: number): number[] {
         if (index < 0 || index >= this.#links.length) {
@@ -364,7 +365,7 @@ export class TOCNavigator {
     }
 
     /**
-     * Update可见性
+     * Refresh the visibility of every TOC entry.
      */
     #updateVisibility(): void {
         this.#links.forEach((link, index) => {
@@ -376,7 +377,7 @@ export class TOCNavigator {
     }
 
     /**
-     * Update折叠指示器
+     * Refresh the collapse indicator for the item.
      */
     #updateCollapseIndicator(index: number): void {
         if (index < 0 || index >= this.#links.length) {
@@ -387,7 +388,7 @@ export class TOCNavigator {
         const hasChildren = this.#hasChildren(index);
 
         if (!hasChildren) {
-            // 移除指示器
+            // Remove the indicator.
             const existing = link.querySelector('.toc-collapse-indicator');
             if (existing) {
                 existing.remove();
@@ -395,7 +396,7 @@ export class TOCNavigator {
             return;
         }
 
-        // 添加或Update指示器
+        // Add or update the indicator.
         let indicator = link.querySelector('.toc-collapse-indicator') as HTMLSpanElement | null;
         if (!indicator) {
             indicator = document.createElement('span');
@@ -408,7 +409,7 @@ export class TOCNavigator {
     }
 
     /**
-     * Navigation到当前焦点项
+     * Jump to the currently focused item.
      */
     #navigate(): void {
         if (this.#focusedIndex >= 0 && this.#focusedIndex < this.#links.length) {
@@ -419,7 +420,7 @@ export class TOCNavigator {
     }
 
     /**
-     * CloseNavigation器
+     * Close the navigator.
      */
     #close(): void {
         const tocContainer = document.querySelector(CONFIG.SELECTORS.TOC_CONTAINER);

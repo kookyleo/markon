@@ -459,7 +459,7 @@ export class ChatManager {
     // meta tag, sourced from AppSettings.default_chat_mode. "in_page" expands
     // the floating panel; "popout" spawns a standalone window. Either choice
     // is inverted for a single click/press by holding Shift on the trigger
-    // (sphere click, 聊聊 button, TOGGLE_CHAT shortcut).
+    // (sphere click, chat button, TOGGLE_CHAT shortcut).
     #defaultMode: 'in_page' | 'popout' = 'in_page';
 
     // Free-resize support — the panel uses CSS `resize: both` for the native
@@ -736,7 +736,7 @@ export class ChatManager {
     }
 
     /** Quote a chunk of selected text in the input. `shift` inverts the
-     *  default surface for this single open (Shift-click on the 聊聊 button).
+     *  default surface for this single open (Shift-click on the chat button).
      *  Selection routing for every (popout-alive / popout-mode / default-mode)
      *  combination is decided in {@link #resolveOpenTarget}. */
     openWithSelection({ text, currentDoc = null, shift = false }: { text?: string; currentDoc?: string | null; shift?: boolean } = {}): void {

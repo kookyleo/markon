@@ -111,7 +111,7 @@ export const CONFIG = {
 
         // Chat (requires enable_chat):
         //   C        — open chat in the user's default surface (in-page panel
-        //              or popout window, per Settings → 默认 chat 形式).
+        //              or popout window, per Settings → Default chat surface).
         //   Shift+C  — open in the alternate surface for that single press.
         TOGGLE_CHAT:     { key: 'c', ctrl: false, shift: false, desc: _t('web.kbd.chat') },
         TOGGLE_CHAT_ALT: { key: 'c', ctrl: false, shift: true,  desc: _t('web.kbd.chat.alt') },
@@ -159,7 +159,7 @@ export const CONFIG = {
         SECTION_CONTENT_HIDDEN: '.section-content-hidden',
     },
 
-    // Skip的Element（XPath Calculate时）
+    // Elements to skip (during XPath computation).
     SKIP_ELEMENTS: {
         IDS: new Set<string>(['toc']),
         CLASSES: new Set<string>(['back-link', 'toc', 'selection-popover', 'note-card-margin', 'note-popup']),
@@ -223,7 +223,7 @@ export const CONFIG = {
         STRIKETHROUGH: 's',
     },
 
-    // 块级Tag（用于Select范围判断）
+    // Block-level tags (used when judging selection boundaries).
     BLOCK_TAGS: ['P', 'DIV', 'LI', 'H1', 'H2', 'H3', 'H4', 'H5', 'H6', 'BLOCKQUOTE', 'PRE', 'TD', 'TH'],
 };
 
@@ -245,7 +245,7 @@ if (typeof window !== 'undefined' && window.__MARKON_SHORTCUTS__) {
     }
 }
 
-// 冻结ConfigurationObject，防止意外修改
+// Freeze the configuration object to prevent accidental mutation.
 Object.freeze(CONFIG);
 Object.freeze(CONFIG.BREAKPOINTS);
 Object.freeze(CONFIG.DIMENSIONS);

@@ -63,7 +63,7 @@ export const Position = {
         return { left: newLeft, top: newTop };
     },
 
-    // 智能滚动到Heading
+    // Smart scroll to a heading.
     smartScrollToHeading(heading: Element): void {
         const section = (heading.closest('.heading-section') as HTMLElement | null) ?? (heading as HTMLElement);
         const sectionHeight = section.offsetHeight;

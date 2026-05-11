@@ -55,12 +55,12 @@ export class KeyboardShortcutsManager {
         const isMac = PlatformUtils.isMac();
         const ctrlPressed = isMac ? event.metaKey : event.ctrlKey;
 
-        // 特殊Handle单字符键（不需要修饰符）
+        // Special case: single non-letter keys that don't require modifiers.
         if (!shortcut.ctrl && shortcut.key.length === 1 && !shortcut.key.match(/[a-z]/i)) {
             return event.key === shortcut.key && !ctrlPressed && !event.altKey;
         }
 
-        // 常规匹配
+        // Regular match
         return (
             event.key.toLowerCase() === shortcut.key.toLowerCase() &&
             ctrlPressed === shortcut.ctrl &&
@@ -82,7 +82,7 @@ export class KeyboardShortcutsManager {
             return false;
         }
 
-        // 不拦截Input框内的按键（除了已读复选框）
+        // Don't intercept keys typed inside input fields (except the viewed checkbox).
         const isViewedCheckbox =
             !!target && !!(target as Element).classList && (target as Element).classList.contains('viewed-checkbox');
 
@@ -92,12 +92,12 @@ export class KeyboardShortcutsManager {
             return false;
         }
 
-        // j/k Navigation时，如果已读复选框有焦点，失焦
+        // When navigating with j/k, blur the viewed checkbox if it currently has focus.
         if (isViewedCheckbox && (event.key === 'j' || event.key === 'k')) {
             (target as HTMLElement).blur();
         }
 
-        // 不拦截 TOC Navigation器的按键
+        // Don't intercept keys claimed by the TOC navigator.
         // TODO(phase-3-typing): tighten window.tocNavigator type once toc-navigator
         // exposes a stable interface; today it's typed as `unknown` in ambient.d.ts.
         const tocNav = (window as { tocNavigator?: { active?: boolean } }).tocNavigator;
@@ -107,7 +107,7 @@ export class KeyboardShortcutsManager {
             }
         }
 
-        // Check每个快捷键
+        // Try each registered shortcut.
         for (const [name, handler] of this.#handlers.entries()) {
             if (this.matches(event, name)) {
                 Logger.log('KeyboardShortcuts', `Matched: ${name}`);
@@ -124,7 +124,7 @@ export class KeyboardShortcutsManager {
      * Show the keyboard-shortcuts help panel.
      */
     showHelp(): void {
-        // 移除已存在的Panel
+        // Toggle: remove an existing panel when one is already open.
         const existing = document.querySelector('.shortcuts-help-panel');
         if (existing) {
             existing.remove();
@@ -142,7 +142,7 @@ export class KeyboardShortcutsManager {
             if (shortcut.ctrl) keys.push(modKey);
             if (shortcut.shift) keys.push('Shift');
 
-            // Show特殊键
+            // Pretty-print special keys.
             let keyDisplay = shortcut.key;
             if (shortcut.key === ' ') {
                 keyDisplay = 'Space';
@@ -235,17 +235,17 @@ export class KeyboardShortcutsManager {
         panel.innerHTML = html;
         document.body.appendChild(panel);
 
-        // Show动画
+        // Trigger the show animation.
         setTimeout(() => panel.classList.add('visible'), 10);
 
-        // 点击遮罩Close
+        // Click on the overlay closes the panel.
         const overlay = panel.querySelector('.shortcuts-help-overlay');
         overlay?.addEventListener('click', () => {
             panel.classList.remove('visible');
             setTimeout(() => panel.remove(), CONFIG.ANIMATION.PANEL_TRANSITION);
         });
 
-        // ESC 或 ? Close
+        // ESC or ? closes the panel.
         const escHandler = (e: KeyboardEvent): void => {
             if (e.key === 'Escape' || e.key === '?') {
                 e.preventDefault();
