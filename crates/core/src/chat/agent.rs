@@ -43,9 +43,10 @@ pub enum AgentEvent {
 }
 
 #[derive(Debug)]
-pub struct AgentRequest {
+pub(crate) struct AgentRequest {
     pub thread_id: String,
     pub thread_title: String,
+    #[allow(dead_code)]
     pub workspace_id: String,
     pub workspace_root: std::path::PathBuf,
     /// Full prior history (already persisted).
@@ -58,14 +59,14 @@ pub struct AgentRequest {
     pub max_tokens: u32,
 }
 
-pub struct Agent {
+pub(crate) struct Agent {
     pub provider: Arc<dyn Provider>,
     pub tools: Arc<ToolRegistry>,
     pub storage: ChatStorage,
 }
 
 impl Agent {
-    pub fn new(
+    pub(crate) fn new(
         provider: Arc<dyn Provider>,
         tools: Arc<ToolRegistry>,
         storage: ChatStorage,
@@ -79,7 +80,7 @@ impl Agent {
 
     /// Run the agent loop and forward events on `sink`. Returns once the loop
     /// terminates (success, error, or sink closed).
-    pub async fn run(&self, request: AgentRequest, sink: mpsc::Sender<AgentEvent>) {
+    pub(crate) async fn run(&self, request: AgentRequest, sink: mpsc::Sender<AgentEvent>) {
         // Tell the client which thread we landed in *before* we burn API budget.
         let _ = sink
             .send(AgentEvent::ThreadAssigned {
@@ -328,7 +329,8 @@ impl Agent {
 
 /// Helper: convert a slice of [`ContentBlock`] into a single string for
 /// places that need a flat representation (titles, summaries).
-pub fn flatten_text(blocks: &[ContentBlock]) -> String {
+#[allow(dead_code)]
+pub(crate) fn flatten_text(blocks: &[ContentBlock]) -> String {
     let mut out = String::new();
     for b in blocks {
         if let ContentBlock::Text { text } = b {
@@ -343,7 +345,7 @@ pub fn flatten_text(blocks: &[ContentBlock]) -> String {
 
 /// Generate a thread title from the first user message — first sentence,
 /// trimmed to 64 chars. Plain heuristic; the user can rename.
-pub fn auto_title(text: &str) -> String {
+pub(crate) fn auto_title(text: &str) -> String {
     let trimmed = text.trim();
     let first_line = trimmed.lines().next().unwrap_or("").trim();
     let first_sentence = first_line

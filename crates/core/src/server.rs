@@ -29,6 +29,17 @@ use crate::workspace::{
     WorkspaceFlags, WorkspaceRegistry,
 };
 
+/// Public wire-format types served by the (non-chat) HTTP surface.
+///
+/// Everything re-exported here is part of the JSON contract that the browser
+/// and external API consumers read. The types live in their implementation
+/// modules; this submodule lifts them back into the public API so callers
+/// don't have to chase across modules to know what is and isn't a wire
+/// contract.
+pub mod api {
+    pub use crate::workspace::WorkspaceInfo;
+}
+
 /// Initial workspace for the server (one per CLI path / GUI workspace entry).
 pub struct WorkspaceInit {
     pub path: std::path::PathBuf,
@@ -72,9 +83,10 @@ pub struct ServerConfig {
 }
 
 #[derive(Clone)]
-pub struct AppState {
+pub(crate) struct AppState {
     pub theme: Arc<String>,
     pub tera: Arc<Tera>,
+    #[allow(dead_code)]
     pub shared_annotation: bool,
     pub db: Option<Arc<Mutex<Connection>>>,
     pub tx: Option<broadcast::Sender<String>>,

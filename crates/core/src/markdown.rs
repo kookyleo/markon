@@ -51,7 +51,7 @@ lazy_static! {
 /// sibling file 404. Only same-directory or descendant relative paths are kept;
 /// absolute URLs (`http://`, `data:`, …), parent-traversing (`../…`), and
 /// anchor-only fragments are filtered out.
-pub fn extract_referenced_assets(markdown: &str) -> std::collections::HashSet<String> {
+pub(crate) fn extract_referenced_assets(markdown: &str) -> std::collections::HashSet<String> {
     use std::collections::HashSet;
     let mut out: HashSet<String> = HashSet::new();
 
@@ -125,24 +125,24 @@ fn sanitize_asset_ref(raw: &str) -> Option<String> {
 }
 
 #[derive(Debug, Clone, serde::Serialize)]
-pub struct TocItem {
+pub(crate) struct TocItem {
     pub level: u8,
     pub id: String,
     pub text: String,
 }
 
-pub struct MarkdownRenderer {
+pub(crate) struct MarkdownRenderer {
     theme: String,
 }
 
 impl MarkdownRenderer {
-    pub fn new(theme: &str) -> Self {
+    pub(crate) fn new(theme: &str) -> Self {
         Self {
             theme: theme.to_string(),
         }
     }
 
-    pub fn render(&self, markdown: &str) -> (String, bool, Vec<TocItem>) {
+    pub(crate) fn render(&self, markdown: &str) -> (String, bool, Vec<TocItem>) {
         let mut options = Options::empty();
         options.insert(Options::ENABLE_TABLES);
         options.insert(Options::ENABLE_FOOTNOTES);

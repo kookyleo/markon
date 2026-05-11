@@ -44,7 +44,7 @@ use crate::workspace::WorkspaceEntry;
 const MAX_AGENT_STEPS: u8 = 8;
 const MAX_TOKENS_PER_TURN: u32 = 4096;
 
-pub fn router() -> Router<AppState> {
+pub(crate) fn router() -> Router<AppState> {
     Router::new()
         .route("/api/chat/{workspace_id}", post(chat_stream_handler))
         .route("/api/chat/{workspace_id}/files", get(list_files_handler))
@@ -348,7 +348,7 @@ fn is_text_file_quick(path: &std::path::Path) -> bool {
 // ── chat stream (SSE) — stub ─────────────────────────────────────────────────
 
 #[derive(Debug, Deserialize)]
-pub struct ChatStreamRequest {
+pub(crate) struct ChatStreamRequest {
     /// `None` → start a new thread (server creates and reports the id back via
     /// the first `thread_assigned` SSE event).
     #[serde(default)]
@@ -367,7 +367,7 @@ pub struct ChatStreamRequest {
 }
 
 #[derive(Debug, Deserialize)]
-pub struct MentionRef {
+pub(crate) struct MentionRef {
     pub path: String,
 }
 

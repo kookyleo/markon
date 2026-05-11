@@ -9,19 +9,19 @@
 //! - [`storage`]  — SQLite-backed thread & message persistence.
 //! - [`agent`]    — orchestrates provider stream + tool dispatch.
 //! - [`routes`]   — axum handlers (SSE chat endpoint + REST helpers).
+//! - [`api`]      — types whose only public contract is the JSON wire format
+//!   for the chat HTTP / SSE surface. Consolidated here so callers can see
+//!   the wire schema at a glance instead of digging through implementation
+//!   modules.
 
-pub mod agent;
+pub mod api;
 pub mod config;
-pub mod message;
 pub mod models;
-pub mod prompt;
-pub mod provider;
-pub mod routes;
-pub mod storage;
-pub mod tools;
 
-pub use config::{ChatRuntimeConfig, ProviderKind};
-pub use message::{ContentBlock, Message, Role, Usage};
-pub use provider::{Provider, ProviderEvent};
-pub use storage::{ChatStorage, StoredMessage, Thread};
-pub use tools::{Tool, ToolContext, ToolError, ToolRegistry, ToolSchema};
+pub(crate) mod agent;
+pub(crate) mod message;
+pub(crate) mod prompt;
+pub(crate) mod provider;
+pub(crate) mod routes;
+pub(crate) mod storage;
+pub(crate) mod tools;

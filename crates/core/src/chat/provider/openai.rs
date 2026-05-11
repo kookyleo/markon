@@ -17,20 +17,20 @@ use serde::Deserialize;
 use serde_json::{json, Value};
 use std::collections::{BTreeMap, VecDeque};
 
-pub struct OpenAiProvider {
+pub(crate) struct OpenAiProvider {
     cfg: ChatRuntimeConfig,
     client: reqwest::Client,
 }
 
 impl OpenAiProvider {
-    pub fn new(cfg: ChatRuntimeConfig) -> Self {
+    pub(crate) fn new(cfg: ChatRuntimeConfig) -> Self {
         Self {
             cfg,
             client: reqwest::Client::new(),
         }
     }
 
-    pub fn base_url(&self) -> &str {
+    pub(crate) fn base_url(&self) -> &str {
         if self.cfg.base_url.is_empty() {
             "https://api.openai.com"
         } else {

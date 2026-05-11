@@ -2,7 +2,7 @@
 include!(concat!(env!("OUT_DIR"), "/langs_generated.rs"));
 
 /// Strip `// ...` line comments from JSON5 text so serde_json can parse it.
-pub fn strip_json5_comments(s: &str) -> String {
+pub(crate) fn strip_json5_comments(s: &str) -> String {
     s.lines()
         .map(|line| {
             if line.trim_start().starts_with("//") {
@@ -20,7 +20,7 @@ fn parse_lang(entry: &LangEntry) -> serde_json::Value {
 }
 
 /// Load all i18n data as a single JSON string (for template injection).
-pub fn load_i18n() -> String {
+pub(crate) fn load_i18n() -> String {
     let mut map = serde_json::Map::new();
     for entry in LANGS {
         map.insert(entry.key.to_string(), parse_lang(entry));
@@ -29,7 +29,7 @@ pub fn load_i18n() -> String {
 }
 
 /// Resolve a language setting value ("zh_CN", "en", "auto", ...) to an i18n dict key ("zh", "en").
-pub fn resolve_lang(language: &str) -> &'static str {
+pub(crate) fn resolve_lang(language: &str) -> &'static str {
     // Exact match on value or key
     for l in LANGS {
         if language == l.value || language == l.key {

@@ -32,7 +32,7 @@ struct GrepInput {
     max_matches: Option<usize>,
 }
 
-pub struct GrepTool;
+pub(crate) struct GrepTool;
 
 #[async_trait]
 impl Tool for GrepTool {

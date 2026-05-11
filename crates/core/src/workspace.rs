@@ -40,7 +40,7 @@ pub struct WorkspaceConfig {
     pub single_file: Option<String>,
 }
 
-pub struct WorkspaceEntry {
+pub(crate) struct WorkspaceEntry {
     pub id: String,
     pub root: PathBuf,
     pub enable_search: AtomicBool,
@@ -61,11 +61,11 @@ pub struct WorkspaceEntry {
 }
 
 impl WorkspaceEntry {
-    pub fn search_ready(&self) -> bool {
+    pub(crate) fn search_ready(&self) -> bool {
         self.enable_search.load(Ordering::Relaxed) && self.search_index.load().is_some()
     }
 
-    pub fn flags(&self) -> WorkspaceFlags {
+    pub(crate) fn flags(&self) -> WorkspaceFlags {
         WorkspaceFlags {
             enable_search: self.enable_search.load(Ordering::Relaxed),
             enable_viewed: self.enable_viewed.load(Ordering::Relaxed),
@@ -76,13 +76,13 @@ impl WorkspaceEntry {
         }
     }
 
-    pub fn is_ephemeral(&self) -> bool {
+    pub(crate) fn is_ephemeral(&self) -> bool {
         self.single_file.is_some()
     }
 
     /// True when `rel` is the workspace's pinned file or one of the assets it
     /// currently references. Always true for non-single-file workspaces.
-    pub fn allows(&self, rel: &str) -> bool {
+    pub(crate) fn allows(&self, rel: &str) -> bool {
         let Some(only) = &self.single_file else {
             return true;
         };
@@ -93,6 +93,10 @@ impl WorkspaceEntry {
     }
 }
 
+/// Workspace info as serialized to JSON by `GET /api/workspaces`. Lives here
+/// because it's built from [`WorkspaceEntry`] state, but its only public
+/// contract is the wire format — see `crate::server::api` for the canonical
+/// re-export.
 #[derive(Serialize)]
 pub struct WorkspaceInfo {
     pub id: String,
@@ -117,7 +121,7 @@ pub type PersistHook = Arc<dyn Fn(&WorkspaceRegistry) + Send + Sync>;
 
 pub struct WorkspaceRegistry {
     inner: RwLock<HashMap<String, Arc<WorkspaceEntry>>>,
-    pub salt: String,
+    pub(crate) salt: String,
     persist: RwLock<Option<PersistHook>>,
     /// Shared broadcaster the server populates once its WS channel is alive.
     /// Watchers spawned by `add()` capture a clone of this Arc and read it
@@ -144,7 +148,7 @@ pub fn hash_id(path: &Path, salt: &str) -> String {
 /// bearer (`X-Markon-Token`) and as the per-install salt for workspace IDs.
 /// Backed by `uuid::Uuid::new_v4` which sources 122 bits of entropy from the
 /// OS RNG — a meaningful upgrade over a hash of `SystemTime + pid`.
-pub fn generate_token() -> String {
+pub(crate) fn generate_token() -> String {
     uuid::Uuid::new_v4().simple().to_string()
 }
 
@@ -186,7 +190,7 @@ impl WorkspaceRegistry {
     }
     /// Wire a broadcast sender that watchers use to push file-change events to
     /// connected browser tabs. Pass `None` to disconnect (e.g. on shutdown).
-    pub fn set_live_broadcaster(&self, tx: Option<broadcast::Sender<String>>) {
+    pub(crate) fn set_live_broadcaster(&self, tx: Option<broadcast::Sender<String>>) {
         self.live_tx.store(tx.map(Arc::new));
     }
     fn notify_persist(&self) {
@@ -288,10 +292,10 @@ impl WorkspaceRegistry {
         }
         removed
     }
-    pub fn get(&self, id: &str) -> Option<Arc<WorkspaceEntry>> {
+    pub(crate) fn get(&self, id: &str) -> Option<Arc<WorkspaceEntry>> {
         self.inner.read().unwrap().get(id).cloned()
     }
-    pub fn list(&self) -> Vec<Arc<WorkspaceEntry>> {
+    pub(crate) fn list(&self) -> Vec<Arc<WorkspaceEntry>> {
         self.inner.read().unwrap().values().cloned().collect()
     }
     pub fn info_list(&self) -> Vec<WorkspaceInfo> {
@@ -433,13 +437,13 @@ pub struct ServerLock {
     pub token: String,
 }
 impl ServerLock {
-    pub fn path() -> PathBuf {
+    pub(crate) fn path() -> PathBuf {
         dirs::home_dir()
             .expect("HOME directory required")
             .join(".markon")
             .join("server.lock")
     }
-    pub fn write(&self) -> std::io::Result<()> {
+    pub(crate) fn write(&self) -> std::io::Result<()> {
         let path = Self::path();
         if let Some(parent) = path.parent() {
             std::fs::create_dir_all(parent)?;
@@ -468,7 +472,7 @@ impl ServerLock {
             }
         }
     }
-    pub fn remove() {
+    pub(crate) fn remove() {
         let _ = std::fs::remove_file(Self::path());
     }
     pub fn is_alive(&self) -> bool {

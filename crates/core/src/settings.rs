@@ -215,7 +215,8 @@ impl AppSettings {
         home.join(".markon").join("settings.json")
     }
 
-    pub fn settings_path() -> PathBuf {
+    #[allow(dead_code)]
+    pub(crate) fn settings_path() -> PathBuf {
         let home = dirs::home_dir().expect("HOME directory required");
         Self::settings_path_at(&home)
     }
@@ -366,7 +367,7 @@ impl AppSettings {
     /// Overwrite `workspaces` with the current registry contents. Ephemeral
     /// (single-file) workspaces are skipped — they're created on demand by
     /// Open-With, live in memory only, and should not pile up in settings.json.
-    pub fn sync_from_registry(&mut self, registry: &WorkspaceRegistry) {
+    pub(crate) fn sync_from_registry(&mut self, registry: &WorkspaceRegistry) {
         self.workspaces = registry
             .info_list()
             .into_iter()

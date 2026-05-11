@@ -22,7 +22,7 @@ struct GlobInput {
     limit: Option<usize>,
 }
 
-pub struct GlobTool;
+pub(crate) struct GlobTool;
 
 #[async_trait]
 impl Tool for GlobTool {

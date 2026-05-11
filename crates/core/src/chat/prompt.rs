@@ -11,7 +11,7 @@
 use crate::chat::provider::SystemBlock;
 
 #[derive(Debug, Clone, Default)]
-pub struct PromptInputs {
+pub(crate) struct PromptInputs {
     /// Workspace-relative root display name (e.g. "~/projects/foo/docs").
     pub workspace_label: String,
     /// Top-level files/dirs in the workspace, newline-separated.
@@ -29,7 +29,7 @@ pub struct PromptInputs {
 /// Stable across sessions so the entire string can sit behind a cache
 /// breakpoint. Avoid embedding workspace specifics or timestamps here; that
 /// lives in tier 2 / 3.
-pub const DEFAULT_PERSONA: &str = r#"You are Markon's reading companion — a read-only assistant embedded inside the user's document viewer. You help the user understand, navigate, and reason about the contents of their workspace.
+pub(crate) const DEFAULT_PERSONA: &str = r#"You are Markon's reading companion — a read-only assistant embedded inside the user's document viewer. You help the user understand, navigate, and reason about the contents of their workspace.
 
 # Capabilities & Constraints
 
@@ -75,11 +75,12 @@ All paths are workspace-relative with forward slashes. Tools refuse to read abov
 - If a referenced file doesn't exist, report that and offer to grep for similar names.
 "#;
 
-pub fn default_persona() -> &'static str {
+#[allow(dead_code)]
+pub(crate) fn default_persona() -> &'static str {
     DEFAULT_PERSONA
 }
 
-pub fn build_system_blocks(inputs: &PromptInputs) -> Vec<SystemBlock> {
+pub(crate) fn build_system_blocks(inputs: &PromptInputs) -> Vec<SystemBlock> {
     let persona = DEFAULT_PERSONA.to_string();
 
     let mut tier2 = String::new();
@@ -147,7 +148,7 @@ pub fn build_system_blocks(inputs: &PromptInputs) -> Vec<SystemBlock> {
 
 /// Wrap an inlined `@`-mentioned file's contents into a tagged block the
 /// model can parse out reliably. Path is workspace-relative.
-pub fn render_mention_block(path: &str, contents: &str) -> String {
+pub(crate) fn render_mention_block(path: &str, contents: &str) -> String {
     format!(
         "<file path=\"{}\">\n{}\n</file>",
         path,

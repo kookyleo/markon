@@ -26,7 +26,7 @@ struct ReadFileInput {
     limit: Option<usize>,
 }
 
-pub struct ReadFileTool;
+pub(crate) struct ReadFileTool;
 
 #[async_trait]
 impl Tool for ReadFileTool {

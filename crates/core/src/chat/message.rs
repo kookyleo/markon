@@ -44,21 +44,24 @@ pub struct Message {
 }
 
 impl Message {
-    pub fn user_text(text: impl Into<String>) -> Self {
+    #[allow(dead_code)]
+    pub(crate) fn user_text(text: impl Into<String>) -> Self {
         Self {
             role: Role::User,
             content: vec![ContentBlock::Text { text: text.into() }],
         }
     }
 
-    pub fn assistant(content: Vec<ContentBlock>) -> Self {
+    #[allow(dead_code)]
+    pub(crate) fn assistant(content: Vec<ContentBlock>) -> Self {
         Self {
             role: Role::Assistant,
             content,
         }
     }
 
-    pub fn tool_results(results: Vec<ContentBlock>) -> Self {
+    #[allow(dead_code)]
+    pub(crate) fn tool_results(results: Vec<ContentBlock>) -> Self {
         Self {
             role: Role::User,
             content: results,
@@ -80,7 +83,7 @@ pub struct Usage {
 }
 
 impl Usage {
-    pub fn add(&mut self, other: &Usage) {
+    pub(crate) fn add(&mut self, other: &Usage) {
         self.input_tokens += other.input_tokens;
         self.cache_creation_input_tokens += other.cache_creation_input_tokens;
         self.cache_read_input_tokens += other.cache_read_input_tokens;

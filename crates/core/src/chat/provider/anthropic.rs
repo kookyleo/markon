@@ -18,20 +18,20 @@ use serde::Deserialize;
 use serde_json::{json, Value};
 use std::collections::{HashMap, VecDeque};
 
-pub struct AnthropicProvider {
+pub(crate) struct AnthropicProvider {
     cfg: ChatRuntimeConfig,
     client: reqwest::Client,
 }
 
 impl AnthropicProvider {
-    pub fn new(cfg: ChatRuntimeConfig) -> Self {
+    pub(crate) fn new(cfg: ChatRuntimeConfig) -> Self {
         Self {
             cfg,
             client: reqwest::Client::new(),
         }
     }
 
-    pub fn base_url(&self) -> &str {
+    pub(crate) fn base_url(&self) -> &str {
         if self.cfg.base_url.is_empty() {
             "https://api.anthropic.com"
         } else {

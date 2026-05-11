@@ -2,16 +2,16 @@ use rust_embed::RustEmbed;
 
 #[derive(RustEmbed)]
 #[folder = "assets/css/"]
-pub struct CssAssets;
+pub(crate) struct CssAssets;
 
 #[derive(RustEmbed)]
 #[folder = "assets/dist/"]
-pub struct JsAssets;
+pub(crate) struct JsAssets;
 
 #[derive(RustEmbed)]
 #[folder = "assets/templates/"]
-pub struct Templates;
+pub(crate) struct Templates;
 
 #[derive(RustEmbed)]
 #[folder = "assets/icons/"]
-pub struct IconAssets;
+pub(crate) struct IconAssets;

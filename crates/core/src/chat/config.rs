@@ -16,7 +16,7 @@ impl ProviderKind {
         }
     }
 
-    pub fn default_model(self) -> &'static str {
+    pub(crate) fn default_model(self) -> &'static str {
         match self {
             Self::Anthropic => "claude-sonnet-4-6",
             Self::OpenAI => "gpt-4o",
@@ -28,7 +28,7 @@ impl ProviderKind {
 /// shared [`ChatSettings`] at request time so changing keys via the GUI takes
 /// effect on the next message.
 #[derive(Debug, Clone)]
-pub struct ChatRuntimeConfig {
+pub(crate) struct ChatRuntimeConfig {
     pub provider: ProviderKind,
     pub model: String,
     pub api_key: String,
@@ -36,7 +36,7 @@ pub struct ChatRuntimeConfig {
 }
 
 impl ChatRuntimeConfig {
-    pub fn from_settings(s: &ChatSettings) -> Result<Self, &'static str> {
+    pub(crate) fn from_settings(s: &ChatSettings) -> Result<Self, &'static str> {
         let provider = ProviderKind::parse(&s.provider);
         let block: &ChatProviderSettings = match provider {
             ProviderKind::Anthropic => &s.anthropic,

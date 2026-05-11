@@ -50,7 +50,7 @@ pub struct Thread {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct StoredMessage {
+pub(crate) struct StoredMessage {
     pub thread_id: String,
     pub seq: i64,
     pub role: Role,
@@ -59,7 +59,7 @@ pub struct StoredMessage {
 }
 
 #[derive(Debug, thiserror::Error)]
-pub enum StorageError {
+pub(crate) enum StorageError {
     #[error("sqlite error: {0}")]
     Sqlite(String),
     #[error("not found")]
@@ -89,7 +89,7 @@ impl From<tokio::task::JoinError> for StorageError {
 }
 
 #[derive(Clone)]
-pub struct ChatStorage {
+pub(crate) struct ChatStorage {
     db: Arc<Mutex<Connection>>,
 }
 
@@ -120,7 +120,7 @@ fn role_from_str(s: &str) -> Result<Role, StorageError> {
 }
 
 impl ChatStorage {
-    pub fn new(db: Arc<Mutex<Connection>>) -> Self {
+    pub(crate) fn new(db: Arc<Mutex<Connection>>) -> Self {
         Self { db }
     }
 
@@ -164,7 +164,7 @@ impl ChatStorage {
     /// synchronously because boot owns the `Connection` outright; only the
     /// per-request paths (which share the connection through `Arc<Mutex<…>>`)
     /// need to hop onto the blocking pool.
-    pub fn init(conn: &Connection) -> Result<(), StorageError> {
+    pub(crate) fn init(conn: &Connection) -> Result<(), StorageError> {
         // Enable FK enforcement for cascade-delete on chat_messages.
         conn.execute_batch("PRAGMA foreign_keys = ON;")?;
         conn.execute(
@@ -197,7 +197,11 @@ impl ChatStorage {
         Ok(())
     }
 
-    pub async fn list_threads(&self, workspace_id: &str) -> Result<Vec<Thread>, StorageError> {
+    #[allow(dead_code)]
+    pub(crate) async fn list_threads(
+        &self,
+        workspace_id: &str,
+    ) -> Result<Vec<Thread>, StorageError> {
         let workspace_id = workspace_id.to_string();
         self.with_conn(move |conn| {
             let mut stmt = conn.prepare(
@@ -224,7 +228,7 @@ impl ChatStorage {
         .await
     }
 
-    pub async fn create_thread(
+    pub(crate) async fn create_thread(
         &self,
         workspace_id: &str,
         title: &str,
@@ -250,7 +254,7 @@ impl ChatStorage {
         .await
     }
 
-    pub async fn get_thread(&self, thread_id: &str) -> Result<Thread, StorageError> {
+    pub(crate) async fn get_thread(&self, thread_id: &str) -> Result<Thread, StorageError> {
         let thread_id = thread_id.to_string();
         self.with_conn(move |conn| {
             let mut stmt = conn.prepare(
@@ -273,7 +277,12 @@ impl ChatStorage {
         .await
     }
 
-    pub async fn rename_thread(&self, thread_id: &str, title: &str) -> Result<(), StorageError> {
+    #[allow(dead_code)]
+    pub(crate) async fn rename_thread(
+        &self,
+        thread_id: &str,
+        title: &str,
+    ) -> Result<(), StorageError> {
         let thread_id = thread_id.to_string();
         let title = title.to_string();
         self.with_conn(move |conn| {
@@ -290,7 +299,7 @@ impl ChatStorage {
         .await
     }
 
-    pub async fn delete_thread(&self, thread_id: &str) -> Result<(), StorageError> {
+    pub(crate) async fn delete_thread(&self, thread_id: &str) -> Result<(), StorageError> {
         let thread_id = thread_id.to_string();
         self.with_conn(move |conn| {
             // Ensure FK cascade is on for this connection — `init` set it, but
@@ -305,7 +314,10 @@ impl ChatStorage {
         .await
     }
 
-    pub async fn list_messages(&self, thread_id: &str) -> Result<Vec<StoredMessage>, StorageError> {
+    pub(crate) async fn list_messages(
+        &self,
+        thread_id: &str,
+    ) -> Result<Vec<StoredMessage>, StorageError> {
         let thread_id = thread_id.to_string();
         self.with_conn(move |conn| {
             let mut stmt = conn.prepare_cached(
@@ -340,7 +352,7 @@ impl ChatStorage {
         .await
     }
 
-    pub async fn append_message(
+    pub(crate) async fn append_message(
         &self,
         thread_id: &str,
         role: Role,
@@ -404,7 +416,7 @@ impl ChatStorage {
 
     /// Joins thread + COUNT(messages); ordered by `updated_at DESC`.
     /// This is what GET /api/chat/threads returns.
-    pub async fn list_thread_summaries(
+    pub(crate) async fn list_thread_summaries(
         &self,
         workspace_id: &str,
     ) -> Result<Vec<ThreadSummary>, StorageError> {

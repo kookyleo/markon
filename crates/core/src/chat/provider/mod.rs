@@ -1,7 +1,7 @@
 //! Provider abstraction for streaming chat completions.
 
-pub mod anthropic;
-pub mod openai;
+pub(crate) mod anthropic;
+pub(crate) mod openai;
 
 use crate::chat::config::{ChatRuntimeConfig, ProviderKind};
 use crate::chat::message::{ContentBlock, Message, Usage};
@@ -18,13 +18,13 @@ use std::task::{Context, Poll};
 /// prompt-caching (Anthropic) place a `cache_control: ephemeral` breakpoint
 /// at the end of any block whose tail is stable across turns.
 #[derive(Debug, Clone)]
-pub struct SystemBlock {
+pub(crate) struct SystemBlock {
     pub text: String,
     pub cache: bool,
 }
 
 #[derive(Debug, Clone)]
-pub struct ChatRequest {
+pub(crate) struct ChatRequest {
     pub model: String,
     pub system: Vec<SystemBlock>,
     pub messages: Vec<Message>,
@@ -34,12 +34,13 @@ pub struct ChatRequest {
 
 /// Streaming events emitted by a provider, normalized across vendors.
 #[derive(Debug, Clone)]
-pub enum ProviderEvent {
+pub(crate) enum ProviderEvent {
     /// Plain text delta from the assistant.
     TextDelta(String),
     /// A tool_use block has been opened. `input` is `null` until [`ToolUseEnd`].
     ToolUseStart { id: String, name: String },
     /// Final, fully-parsed tool input once the block closes.
+    #[allow(dead_code)]
     ToolUseEnd {
         id: String,
         name: String,
@@ -57,7 +58,8 @@ pub enum ProviderEvent {
 }
 
 #[derive(Debug, thiserror::Error)]
-pub enum ProviderError {
+#[allow(dead_code)]
+pub(crate) enum ProviderError {
     #[error("network error: {0}")]
     Network(String),
     #[error("auth error: {0}")]
@@ -71,7 +73,8 @@ pub enum ProviderError {
 }
 
 #[async_trait]
-pub trait Provider: Send + Sync {
+pub(crate) trait Provider: Send + Sync {
+    #[allow(dead_code)]
     fn kind(&self) -> ProviderKind;
     async fn stream(
         &self,
@@ -80,7 +83,7 @@ pub trait Provider: Send + Sync {
 }
 
 /// Build a provider from resolved runtime config.
-pub fn build(cfg: ChatRuntimeConfig) -> Arc<dyn Provider> {
+pub(crate) fn build(cfg: ChatRuntimeConfig) -> Arc<dyn Provider> {
     match cfg.provider {
         ProviderKind::Anthropic => Arc::new(anthropic::AnthropicProvider::new(cfg)),
         ProviderKind::OpenAI => Arc::new(openai::OpenAiProvider::new(cfg)),

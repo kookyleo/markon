@@ -18,7 +18,7 @@ struct ListDirInput {
     path: Option<String>,
 }
 
-pub struct ListDirTool;
+pub(crate) struct ListDirTool;
 
 #[async_trait]
 impl Tool for ListDirTool {

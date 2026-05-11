@@ -1,10 +1,10 @@
 //! Read-only tools the LLM can invoke. All tools are scoped to the workspace
 //! root — paths above the root are rejected before they ever hit the disk.
 
-pub mod glob_search;
-pub mod grep;
-pub mod list_dir;
-pub mod read_file;
+pub(crate) mod glob_search;
+pub(crate) mod grep;
+pub(crate) mod list_dir;
+pub(crate) mod read_file;
 
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
@@ -21,14 +21,14 @@ use std::sync::Arc;
 /// struct literally — the literal constructor is kept `pub` only for tests
 /// that pass an already-canonicalized temp dir.
 #[derive(Debug, Clone)]
-pub struct ToolContext {
+pub(crate) struct ToolContext {
     pub workspace_root: PathBuf,
 }
 
 impl ToolContext {
     /// Canonicalize `root` and wrap it in a `ToolContext`. Returns an error
     /// when the root cannot be canonicalized (e.g. doesn't exist).
-    pub fn new(root: impl AsRef<Path>) -> Result<Self, ToolError> {
+    pub(crate) fn new(root: impl AsRef<Path>) -> Result<Self, ToolError> {
         let workspace_root = dunce::canonicalize(root.as_ref())
             .map_err(|e| ToolError::Io(format!("workspace root: {e}")))?;
         Ok(Self { workspace_root })
@@ -51,7 +51,7 @@ impl ToolContext {
     /// any path whose last component didn't exist (`..` traversal to a
     /// non-existent file then read), since `PathBuf::starts_with` is a
     /// lexical component-prefix match and does not normalize `..`.
-    pub fn resolve(&self, rel: &str) -> Result<PathBuf, ToolError> {
+    pub(crate) fn resolve(&self, rel: &str) -> Result<PathBuf, ToolError> {
         let rel_path = Path::new(rel);
         for comp in rel_path.components() {
             match comp {
@@ -75,7 +75,8 @@ impl ToolContext {
 }
 
 #[derive(Debug, thiserror::Error)]
-pub enum ToolError {
+#[allow(dead_code)]
+pub(crate) enum ToolError {
     #[error("not found: {0}")]
     NotFound(String),
     #[error("invalid argument: {0}")]
@@ -95,21 +96,21 @@ pub enum ToolError {
 impl ToolError {
     /// Render the error as a string the LLM gets back as `tool_result` content
     /// when `is_error: true`. Keep these short and actionable.
-    pub fn to_tool_message(&self) -> String {
+    pub(crate) fn to_tool_message(&self) -> String {
         self.to_string()
     }
 }
 
 /// JSON-Schema-shaped tool definition exposed to the LLM.
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct ToolSchema {
+pub(crate) struct ToolSchema {
     pub name: String,
     pub description: String,
     pub input_schema: serde_json::Value,
 }
 
 #[async_trait]
-pub trait Tool: Send + Sync {
+pub(crate) trait Tool: Send + Sync {
     fn name(&self) -> &'static str;
     fn description(&self) -> &'static str;
     fn input_schema(&self) -> serde_json::Value;
@@ -124,18 +125,18 @@ pub trait Tool: Send + Sync {
     }
 }
 
-pub struct ToolRegistry {
+pub(crate) struct ToolRegistry {
     tools: HashMap<&'static str, Arc<dyn Tool>>,
 }
 
 impl ToolRegistry {
-    pub fn new() -> Self {
+    pub(crate) fn new() -> Self {
         Self {
             tools: HashMap::new(),
         }
     }
 
-    pub fn with_default_tools() -> Self {
+    pub(crate) fn with_default_tools() -> Self {
         let mut r = Self::new();
         r.register(Arc::new(read_file::ReadFileTool));
         r.register(Arc::new(list_dir::ListDirTool));
@@ -144,19 +145,19 @@ impl ToolRegistry {
         r
     }
 
-    pub fn register(&mut self, tool: Arc<dyn Tool>) {
+    pub(crate) fn register(&mut self, tool: Arc<dyn Tool>) {
         self.tools.insert(tool.name(), tool);
     }
 
-    pub fn get(&self, name: &str) -> Option<&Arc<dyn Tool>> {
+    pub(crate) fn get(&self, name: &str) -> Option<&Arc<dyn Tool>> {
         self.tools.get(name)
     }
 
-    pub fn schemas(&self) -> Vec<ToolSchema> {
+    pub(crate) fn schemas(&self) -> Vec<ToolSchema> {
         self.tools.values().map(|t| t.schema()).collect()
     }
 
-    pub async fn dispatch(
+    pub(crate) async fn dispatch(
         &self,
         ctx: &ToolContext,
         name: &str,
@@ -176,20 +177,20 @@ impl Default for ToolRegistry {
 }
 
 /// Hard cap a single `read_file` / `grep` result body sent back to the model.
-pub const MAX_TOOL_OUTPUT_BYTES: usize = 64 * 1024;
+pub(crate) const MAX_TOOL_OUTPUT_BYTES: usize = 64 * 1024;
 /// Skip files at or above this size in `read_file` and during `list_dir`
 /// content-snippet generation. Configurable per tool via input.
-pub const MAX_FILE_BYTES: u64 = 1024 * 1024; // 1 MiB
+pub(crate) const MAX_FILE_BYTES: u64 = 1024 * 1024; // 1 MiB
 
 /// Detect binary by scanning the first N bytes for NUL.
-pub fn looks_binary(bytes: &[u8]) -> bool {
+pub(crate) fn looks_binary(bytes: &[u8]) -> bool {
     let scan = bytes.len().min(8192);
     bytes[..scan].contains(&0)
 }
 
 /// Render a path with forward slashes regardless of platform — used for
 /// stable cross-OS citations and tool output.
-pub fn path_to_forward_slash(rel: &Path) -> String {
+pub(crate) fn path_to_forward_slash(rel: &Path) -> String {
     rel.components()
         .map(|c| c.as_os_str().to_string_lossy().into_owned())
         .collect::<Vec<_>>()
@@ -198,7 +199,7 @@ pub fn path_to_forward_slash(rel: &Path) -> String {
 
 /// Default ignore-rule walker that respects `.gitignore`, `.ignore`, and
 /// hidden-file conventions — the same defaults ripgrep uses.
-pub fn default_walker(root: &Path) -> ignore::WalkBuilder {
+pub(crate) fn default_walker(root: &Path) -> ignore::WalkBuilder {
     let mut b = ignore::WalkBuilder::new(root);
     b.standard_filters(true)
         .hidden(true)
