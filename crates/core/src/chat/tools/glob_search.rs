@@ -65,6 +65,15 @@ impl Tool for GlobTool {
 
         let walker = default_walker(&ctx.workspace_root).build();
         let mut matches: Vec<String> = Vec::new();
+        // Cumulative byte budget. The previous implementation collected
+        // every match, formatted them all into one String, then truncated.
+        // For pathological workspaces (hundred-thousand files with long
+        // names) that intermediate Vec could blow past `MAX_TOOL_OUTPUT_BYTES`
+        // many times over before truncation kicked in. We now stop walking
+        // the moment the next path would push us over budget — both the
+        // Vec and the final String stay bounded.
+        let mut bytes_used: usize = 0;
+        let mut over_budget = false;
 
         for entry in walker {
             let entry = match entry {
@@ -85,12 +94,26 @@ impl Tool for GlobTool {
                 continue;
             }
             // Forward-slash normalize for stable cross-OS citations.
-            matches.push(super::path_to_forward_slash(rel));
+            let line = super::path_to_forward_slash(rel);
+            // +1 for the newline that joins this line to the previous one.
+            let line_cost = line.len() + 1;
+            if bytes_used + line_cost > MAX_TOOL_OUTPUT_BYTES {
+                over_budget = true;
+                break;
+            }
+            bytes_used += line_cost;
+            matches.push(line);
         }
 
         matches.sort();
 
         if matches.is_empty() {
+            // If we stopped immediately because the very first match would
+            // already exceed the budget, surface it explicitly rather than
+            // pretending there are zero matches.
+            if over_budget {
+                return Ok("(no matches fit within the output budget)".to_string());
+            }
             return Ok("no matches".to_string());
         }
 
@@ -105,8 +128,13 @@ impl Tool for GlobTool {
         }
         if total > take {
             out.push_str(&format!("\n... ({} more matches)", total - take));
+        } else if over_budget {
+            out.push_str("\n... (truncated by output budget)");
         }
 
+        // truncate_to_budget remains as defense-in-depth: the early break
+        // above bounds the input, but a future refactor that forgets the
+        // break should not be allowed to overflow the tool result.
         Ok(truncate_to_budget(out))
     }
 }
@@ -188,6 +216,40 @@ mod tests {
         assert!(
             lines.last().unwrap().starts_with("... (15 more matches)"),
             "got: {out}"
+        );
+    }
+
+    #[tokio::test]
+    async fn early_break_on_output_budget() {
+        // Build a workspace where the matched lines collectively exceed
+        // MAX_TOOL_OUTPUT_BYTES (64 KiB). Each filename is ~96 chars, so
+        // ~700 files would already overflow without the early break.
+        let td = TempDir::new().unwrap();
+        let stuffer = "a".repeat(80);
+        for i in 0..1500 {
+            fs::write(td.path().join(format!("{stuffer}-{i:06}.md")), b"x").unwrap();
+        }
+        let tool = GlobTool;
+        let out = tool
+            .run(
+                &ctx_for(&td),
+                serde_json::json!({ "pattern": "**/*.md", "limit": 5000 }),
+            )
+            .await
+            .unwrap();
+        // Output must stay within the byte cap even though the request
+        // limit (5000) is well above the file count.
+        assert!(
+            out.len() <= MAX_TOOL_OUTPUT_BYTES,
+            "output {} bytes exceeded budget {}",
+            out.len(),
+            MAX_TOOL_OUTPUT_BYTES
+        );
+        // The marker tells the caller we stopped before exhausting matches.
+        assert!(
+            out.contains("(truncated") || out.contains("more matches"),
+            "expected a truncation marker, got tail: ...{}",
+            &out[out.len().saturating_sub(60)..]
         );
     }
 
