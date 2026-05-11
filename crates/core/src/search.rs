@@ -2,11 +2,11 @@ use serde::{Deserialize, Serialize};
 use std::{
     fs,
     path::{Path, PathBuf},
-    sync::{Arc, Mutex},
+    sync::{Arc, Mutex, MutexGuard},
 };
 use tantivy::{
     collector::TopDocs, query::QueryParser, schema::*, snippet::SnippetGenerator, Index,
-    IndexReader, IndexWriter, TantivyDocument,
+    IndexReader, IndexWriter, TantivyDocument, TantivyError,
 };
 use tantivy_jieba::JiebaTokenizer;
 use walkdir::WalkDir;
@@ -86,6 +86,16 @@ impl SearchIndex {
         Ok(search_index)
     }
 
+    /// Acquire the writer lock, mapping poisoning to a tantivy error
+    /// instead of panicking. All writer access in this module goes
+    /// through this helper so that a panic in one indexing path cannot
+    /// take down later writes.
+    fn writer(&self) -> tantivy::Result<MutexGuard<'_, IndexWriter>> {
+        self.writer.lock().map_err(|err| {
+            TantivyError::SystemError(format!("search index writer mutex poisoned: {err}"))
+        })
+    }
+
     fn index_directory(&self, dir: &Path) -> tantivy::Result<()> {
         use rayon::prelude::*;
 
@@ -98,15 +108,30 @@ impl SearchIndex {
             .map(|e| e.into_path())
             .collect();
 
-        paths.par_iter().for_each(|path| {
-            if let Ok(content) = fs::read_to_string(path) {
-                let _ = self.index_file(path, &content);
-            }
-        });
+        // Stage 1: parallel CPU-bound work. Each worker reads its file
+        // and builds the TantivyDocument without ever touching the
+        // writer lock, so rayon's parallelism is no longer serialised
+        // on a single mutex. Unreadable files are silently skipped, as
+        // before.
+        let docs: Vec<TantivyDocument> = paths
+            .par_iter()
+            .filter_map(|path| {
+                let content = fs::read_to_string(path).ok()?;
+                Some(self.build_document(path, &content))
+            })
+            .collect();
 
-        let mut writer = self.writer.lock().unwrap();
-        writer.commit()?;
-        drop(writer);
+        // Stage 2: serial write phase. Acquire the writer lock exactly
+        // once, batch every add_document, then commit. The guard is
+        // dropped at the end of the block, before reload(), so
+        // concurrent readers are not blocked any longer than needed.
+        {
+            let mut writer = self.writer()?;
+            for doc in docs {
+                writer.add_document(doc)?;
+            }
+            writer.commit()?;
+        }
 
         self.reader.reload()?;
         println!("Indexing complete!");
@@ -114,7 +139,10 @@ impl SearchIndex {
         Ok(())
     }
 
-    fn index_file(&self, path: &Path, content: &str) -> tantivy::Result<()> {
+    /// Build a TantivyDocument for `path` with `content`. Pure CPU
+    /// work — does not touch the writer. Safe to call from rayon
+    /// workers in parallel.
+    fn build_document(&self, path: &Path, content: &str) -> TantivyDocument {
         // Calculate relative path from start_dir
         let relative_path = path
             .strip_prefix(&self.start_dir)
@@ -140,11 +168,7 @@ impl SearchIndex {
         doc.add_text(self.field_file_name, &file_name);
         doc.add_text(self.field_title, &title);
         doc.add_text(self.field_content, content);
-
-        let writer = self.writer.lock().unwrap();
-        writer.add_document(doc)?;
-
-        Ok(())
+        doc
     }
 
     pub fn search(&self, query_str: &str, limit: usize) -> tantivy::Result<Vec<SearchResult>> {
@@ -229,12 +253,13 @@ impl SearchIndex {
         doc.add_text(self.field_content, &content);
 
         // Delete and re-add in same transaction
-        let mut writer = self.writer.lock().unwrap();
-        let term = Term::from_field_text(self.field_path, &relative_path);
-        writer.delete_term(term);
-        writer.add_document(doc)?;
-        writer.commit()?;
-        drop(writer);
+        {
+            let mut writer = self.writer()?;
+            let term = Term::from_field_text(self.field_path, &relative_path);
+            writer.delete_term(term);
+            writer.add_document(doc)?;
+            writer.commit()?;
+        }
 
         // Reload reader to see the changes
         self.reader.reload()?;
@@ -251,11 +276,12 @@ impl SearchIndex {
             .to_string_lossy()
             .to_string();
 
-        let mut writer = self.writer.lock().unwrap();
-        let term = Term::from_field_text(self.field_path, &relative_path);
-        writer.delete_term(term);
-        writer.commit()?;
-        drop(writer);
+        {
+            let mut writer = self.writer()?;
+            let term = Term::from_field_text(self.field_path, &relative_path);
+            writer.delete_term(term);
+            writer.commit()?;
+        }
 
         // Reload reader to see the changes
         self.reader.reload()?;
@@ -576,5 +602,99 @@ mod tests {
 
         let results = index.search("Plain text", 10).unwrap();
         assert!(results.is_empty());
+    }
+
+    /// Stress the parallel parse -> serial write pipeline with enough
+    /// files that rayon will fan out across multiple workers. Verifies
+    /// every doc lands in the index and that content from arbitrary
+    /// files is searchable.
+    #[test]
+    fn test_index_directory_parallel_completeness() {
+        let temp_dir = TempDir::new().unwrap();
+        let dir_path = temp_dir.path();
+
+        const N: usize = 50;
+        for i in 0..N {
+            // Vary body size so workers spend different amounts of
+            // CPU per file. Each file embeds its own unique marker
+            // token so we can probe individual docs after indexing.
+            let body_repeat = (i % 7) + 1;
+            let body = "lorem ipsum dolor sit amet ".repeat(body_repeat * 4);
+            let content =
+                format!("# Doc {i}\nmarker_token_{i} is unique to this file.\n\n{body}\n");
+            create_test_file(dir_path, &format!("file_{i:02}.md", i = i), &content).unwrap();
+        }
+
+        let index = SearchIndex::new(dir_path).unwrap();
+
+        // Every file must be present after the parallel pipeline.
+        assert_eq!(
+            index.reader.searcher().num_docs(),
+            N as u64,
+            "parallel indexing dropped documents"
+        );
+
+        // Probe a handful of unique markers to prove the content of
+        // individual docs survived the parse -> write split, not just
+        // the document count.
+        for i in [0usize, 7, 23, 49] {
+            let needle = format!("marker_token_{i}");
+            let results = index.search(&needle, 10).unwrap();
+            assert_eq!(
+                results.len(),
+                1,
+                "expected exactly one hit for `{needle}`, got {}",
+                results.len()
+            );
+        }
+
+        // Title-based search still works across the parallel pipeline.
+        let results = index.search("Doc", 100).unwrap();
+        assert_eq!(results.len(), N);
+    }
+
+    /// Poison the writer mutex from a panicking thread and verify
+    /// that subsequent public write calls surface a TantivyError
+    /// instead of panicking. This proves the writer() helper turned
+    /// the historical .lock().unwrap() panic path into a recoverable
+    /// error.
+    #[test]
+    fn test_writer_poison_returns_error_not_panic() {
+        let temp_dir = TempDir::new().unwrap();
+        create_test_file(temp_dir.path(), "seed.md", "# Seed\nseed content").unwrap();
+
+        let index = SearchIndex::new(temp_dir.path()).unwrap();
+
+        // Poison the writer mutex: grab the lock on another thread
+        // and panic while holding it. std::sync::Mutex marks the
+        // mutex poisoned when the panicking thread unwinds.
+        let writer_handle = Arc::clone(&index.writer);
+        let poisoner = std::thread::spawn(move || {
+            let _guard = writer_handle.lock().unwrap();
+            panic!("intentional poison for test");
+        });
+        // We expect the thread to panic. join() returns Err in that
+        // case; the panic must not propagate into this test thread.
+        let join_result = poisoner.join();
+        assert!(
+            join_result.is_err(),
+            "poisoner thread was supposed to panic"
+        );
+
+        // The lock is now poisoned. Any subsequent public write path
+        // (update_file / delete_file) must return an error, not panic.
+        let new_file = temp_dir.path().join("new.md");
+        fs::write(&new_file, "# After Poison\nshould not panic").unwrap();
+        let result = index.update_file(&new_file);
+        assert!(
+            result.is_err(),
+            "update_file should report poisoned writer as an error"
+        );
+
+        let delete_result = index.delete_file(&new_file);
+        assert!(
+            delete_result.is_err(),
+            "delete_file should report poisoned writer as an error"
+        );
     }
 }
