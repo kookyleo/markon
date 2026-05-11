@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { WebSocketManager, WSState, type WsInbound } from './websocket-manager.js';
+import { WebSocketManager, WSState, makeOpId, type WsInbound } from './websocket-manager.js';
 
 /**
  * Minimal stub for the global `WebSocket`. Captures sent payloads and lets
@@ -185,5 +185,76 @@ describe('WebSocketManager', () => {
         // Advance well past any reconnect window — no new socket should appear.
         await vi.advanceTimersByTimeAsync(60_000);
         expect(MockWS.instances.length).toBe(1);
+    });
+
+    // ── op_id echo dedup ──────────────────────────────────────────────────
+
+    it('makeOpId() produces 16-hex-char ids that vary across calls', () => {
+        const ids = new Set<string>();
+        for (let i = 0; i < 50; i++) {
+            const id = makeOpId();
+            expect(id).toMatch(/^[0-9a-f]{16}$/);
+            ids.add(id);
+        }
+        // 50 of 2^64 collisions is astronomically unlikely.
+        expect(ids.size).toBe(50);
+    });
+
+    it('isOwnEcho() returns true exactly once for a recorded op_id', () => {
+        const m = new WebSocketManager('a.md');
+        m.recordOutgoing('op-x');
+        expect(m.isOwnEcho('op-x')).toBe(true);
+        // Second hit is a miss — entry was consumed.
+        expect(m.isOwnEcho('op-x')).toBe(false);
+    });
+
+    it('isOwnEcho() returns false for null / undefined / unknown ids', () => {
+        const m = new WebSocketManager('a.md');
+        expect(m.isOwnEcho(null)).toBe(false);
+        expect(m.isOwnEcho(undefined)).toBe(false);
+        expect(m.isOwnEcho('never-sent')).toBe(false);
+    });
+
+    it('isOwnEcho() prunes entries older than the 30s TTL', () => {
+        vi.useFakeTimers();
+        const m = new WebSocketManager('a.md');
+        m.recordOutgoing('op-old');
+        // Advance just past the 30s TTL.
+        vi.advanceTimersByTime(30_001);
+        expect(m.isOwnEcho('op-old')).toBe(false);
+    });
+
+    it('recordOutgoing() bounds the dedup map to 256 entries', () => {
+        const m = new WebSocketManager('a.md');
+        // Insert 300 entries; the oldest should be evicted.
+        for (let i = 0; i < 300; i++) {
+            m.recordOutgoing(`op-${i}`);
+        }
+        // Earliest ids must have been dropped to keep the map bounded.
+        expect(m.isOwnEcho('op-0')).toBe(false);
+        expect(m.isOwnEcho('op-43')).toBe(false);
+        // Most recent ids are still recognised.
+        expect(m.isOwnEcho('op-299')).toBe(true);
+        expect(m.isOwnEcho('op-298')).toBe(true);
+    });
+
+    it('sendWithOpId() tags the outgoing frame and records the id', async () => {
+        const m = new WebSocketManager('a.md');
+        await m.connect();
+        const ws = MockWS.instances[0];
+
+        const opId = await m.sendWithOpId({
+            type: 'new_annotation',
+            annotation: { id: 'anno-1' },
+        });
+
+        expect(opId).toMatch(/^[0-9a-f]{16}$/);
+        // ws.sent[0] is the file path; the JSON frame follows.
+        const last = JSON.parse(ws.sent[ws.sent.length - 1]) as Record<string, unknown>;
+        expect(last.type).toBe('new_annotation');
+        expect(last.op_id).toBe(opId);
+        // The same op_id is recognised as own echo (single-shot).
+        expect(m.isOwnEcho(opId)).toBe(true);
+        expect(m.isOwnEcho(opId)).toBe(false);
     });
 });

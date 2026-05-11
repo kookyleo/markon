@@ -11,13 +11,32 @@ import type { WsOutbound } from './websocket-manager.js';
 /** Minimal WebSocketManager fake — just enough for SharedStorageStrategy. */
 function makeFakeWs(connected: boolean) {
     const sent: WsOutbound[] = [];
+    let counter = 0;
     const fake = {
         isConnected: () => connected,
         send: vi.fn(async (msg: WsOutbound) => {
             sent.push(msg);
         }),
+        // SharedStorageStrategy routes through sendWithOpId; mirror its
+        // behaviour by attaching a synthetic id and recording the framed
+        // payload so tests can assert on it.
+        sendWithOpId: vi.fn(async (msg: WsOutbound): Promise<string> => {
+            counter += 1;
+            const opId = `op-${counter}`;
+            sent.push({ ...msg, op_id: opId } as WsOutbound);
+            return opId;
+        }),
+        recordOutgoing: vi.fn(),
+        isOwnEcho: vi.fn(() => false),
     };
     return { fake: fake as unknown as WebSocketManager, sent };
+}
+
+/** Strip op_id from outbound payloads to keep existing expectations stable. */
+function withoutOpId(msg: WsOutbound): WsOutbound {
+    const copy = { ...msg } as Record<string, unknown>;
+    delete copy.op_id;
+    return copy as WsOutbound;
 }
 
 /** Build a fully-shaped Annotation for storage round-trip tests; only `id`
@@ -86,7 +105,9 @@ describe('StorageManager', () => {
             const s = new SharedStorageStrategy(fake);
 
             await s.save('markon-viewed-foo.md', { h1: true });
-            expect(sent).toEqual([{ type: 'update_viewed_state', state: { h1: true } }]);
+            expect(sent.map(withoutOpId)).toEqual([
+                { type: 'update_viewed_state', state: { h1: true } },
+            ]);
 
             // Cache should be populated, so load returns the saved value.
             expect(await s.load('markon-viewed-foo.md')).toEqual({ h1: true });
@@ -107,15 +128,21 @@ describe('StorageManager', () => {
             const { fake, sent } = makeFakeWs(true);
             const s = new SharedStorageStrategy(fake);
             const anno = makeAnno({ id: 'x1', text: 'hi' });
-            await s.saveSingleAnnotation(anno);
-            expect(sent).toEqual([{ type: 'new_annotation', annotation: anno }]);
+            const opId = await s.saveSingleAnnotation(anno);
+            expect(opId).toMatch(/^op-/);
+            expect(sent.map(withoutOpId)).toEqual([
+                { type: 'new_annotation', annotation: anno },
+            ]);
         });
 
         it('deleteSingleAnnotation emits delete_annotation', async () => {
             const { fake, sent } = makeFakeWs(true);
             const s = new SharedStorageStrategy(fake);
-            await s.deleteSingleAnnotation('x1');
-            expect(sent).toEqual([{ type: 'delete_annotation', id: 'x1' }]);
+            const opId = await s.deleteSingleAnnotation('x1');
+            expect(opId).toMatch(/^op-/);
+            expect(sent.map(withoutOpId)).toEqual([
+                { type: 'delete_annotation', id: 'x1' },
+            ]);
         });
 
         it('delete() routes annotations vs viewed keys to different ws messages', async () => {
@@ -125,7 +152,7 @@ describe('StorageManager', () => {
             await s.delete('markon-annotations-foo.md');
             await s.delete('markon-viewed-foo.md');
 
-            expect(sent).toEqual([
+            expect(sent.map(withoutOpId)).toEqual([
                 { type: 'clear_annotations' },
                 { type: 'update_viewed_state', state: {} },
             ]);
@@ -175,7 +202,9 @@ describe('StorageManager', () => {
 
             const anno = makeAnno({ id: 'x1' });
             await m.saveAnnotation(anno);
-            expect(sent).toEqual([{ type: 'new_annotation', annotation: anno }]);
+            expect(sent.map(withoutOpId)).toEqual([
+                { type: 'new_annotation', annotation: anno },
+            ]);
         });
 
         it('local mode upserts and removes annotations through the array', async () => {

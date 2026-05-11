@@ -62,12 +62,17 @@ export interface Annotation {
     createdAt: number;
 }
 
-/** Storage strategy contract used by AnnotationManager. */
+/** Storage strategy contract used by AnnotationManager.
+ *
+ * Mutating methods return the op_id used for the outgoing WebSocket frame
+ * (when one was sent) — useful so callers can stash it on an undo entry for
+ * correlation. Local-mode strategies return `null`.
+ */
 export interface AnnotationStorage {
     loadAnnotations(): Promise<Annotation[]>;
-    saveAnnotation(annotation: Annotation): Promise<void>;
-    deleteAnnotation(id: string): Promise<void>;
-    clearAnnotations(): Promise<void>;
+    saveAnnotation(annotation: Annotation): Promise<string | null>;
+    deleteAnnotation(id: string): Promise<string | null>;
+    clearAnnotations(): Promise<string | null>;
 }
 
 /** Action emitted via the `onChange` callback. */
@@ -108,27 +113,34 @@ export class AnnotationManager {
         return this.#annotations.find(a => a.id === id) ?? null;
     }
 
-    async add(annotation: Annotation, skipSave: boolean = false): Promise<void> {
-        // Check是否已存在
+    /**
+     * Add or upsert an annotation. Returns the op_id of the outgoing
+     * WebSocket frame (when in shared mode), or `null` in local-only mode
+     * and for remote-originating updates (`skipSave === true`).
+     */
+    async add(annotation: Annotation, skipSave: boolean = false): Promise<string | null> {
+        // Check whether the annotation already exists locally.
         const existingIndex = this.#annotations.findIndex(a => a.id === annotation.id);
 
         if (existingIndex >= 0) {
-            // Update现有注解
+            // Update existing annotation in place.
             this.#annotations[existingIndex] = annotation;
         } else {
-            // 添加新注解
+            // Append the new annotation.
             this.#annotations.push(annotation);
         }
 
-        // Save到Storage（除非是从 WebSocket 接收的）
+        // Persist to storage (skipped when applying a remote echo).
+        let opId: string | null = null;
         if (!skipSave) {
-            await this.#storage.saveAnnotation(annotation);
+            opId = await this.#storage.saveAnnotation(annotation);
         }
 
-        // Trigger变更Callback
+        // Fire the change callback.
         this.#triggerChange('add', annotation);
 
         Logger.log('AnnotationManager', `Added annotation: ${annotation.id}${skipSave ? ' (from remote)' : ''}`);
+        return opId;
     }
 
     async delete(id: string, skipSave: boolean = false): Promise<Annotation | null> {
@@ -141,12 +153,12 @@ export class AnnotationManager {
         const deleted = this.#annotations[index];
         this.#annotations.splice(index, 1);
 
-        // 从Storage中Delete（除非是从 WebSocket 接收的）
+        // Remove from storage (skipped when applying a remote echo).
         if (!skipSave) {
             await this.#storage.deleteAnnotation(id);
         }
 
-        // Trigger变更Callback
+        // Fire the change callback.
         this.#triggerChange('delete', deleted);
 
         Logger.log('AnnotationManager', `Deleted annotation: ${id}${skipSave ? ' (from remote)' : ''}`);

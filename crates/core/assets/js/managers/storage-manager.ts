@@ -71,7 +71,7 @@ export class SharedStorageStrategy extends StorageStrategy<unknown> {
         if (this.#wsManager && this.#wsManager.isConnected()) {
             const messageType = this.#getMessageType(key, 'save');
             if (messageType === CONFIG.WS_MESSAGE_TYPES.UPDATE_VIEWED_STATE) {
-                await this.#wsManager.send({
+                await this.#wsManager.sendWithOpId({
                     type: 'update_viewed_state',
                     state: data as Record<string, boolean>,
                 });
@@ -82,17 +82,22 @@ export class SharedStorageStrategy extends StorageStrategy<unknown> {
         }
     }
 
-    /** Save a single annotation (shared mode only). */
-    async saveSingleAnnotation(annotation: Annotation): Promise<void> {
+    /**
+     * Save a single annotation (shared mode only). Returns the op_id used
+     * for the outgoing frame so callers can correlate it with an undo entry
+     * (or `null` when nothing was sent — disconnected, etc.).
+     */
+    async saveSingleAnnotation(annotation: Annotation): Promise<string | null> {
         if (this.#wsManager && this.#wsManager.isConnected()) {
-            await this.#wsManager.send({
+            const opId = await this.#wsManager.sendWithOpId({
                 type: 'new_annotation',
                 annotation,
             });
             Logger.log('SharedStorage', 'Saved annotation via WebSocket:', annotation.id);
-        } else {
-            Logger.warn('SharedStorage', 'WebSocket not connected, annotation not saved');
+            return opId;
         }
+        Logger.warn('SharedStorage', 'WebSocket not connected, annotation not saved');
+        return null;
     }
 
     async delete(key: string): Promise<void> {
@@ -101,11 +106,11 @@ export class SharedStorageStrategy extends StorageStrategy<unknown> {
         if (this.#wsManager && this.#wsManager.isConnected()) {
             // `delete` clears the entire bucket (all annotations or all viewed state).
             if (key.includes('annotations')) {
-                await this.#wsManager.send({ type: 'clear_annotations' });
+                await this.#wsManager.sendWithOpId({ type: 'clear_annotations' });
                 Logger.log('SharedStorage', 'Sent clear annotations via WebSocket');
             } else if (key.includes('viewed')) {
                 // Clearing viewed state is modelled as "set state to {}".
-                await this.#wsManager.send({
+                await this.#wsManager.sendWithOpId({
                     type: 'update_viewed_state',
                     state: {},
                 });
@@ -114,17 +119,21 @@ export class SharedStorageStrategy extends StorageStrategy<unknown> {
         }
     }
 
-    /** Delete a single annotation (shared mode only). */
-    async deleteSingleAnnotation(annotationId: string): Promise<void> {
+    /**
+     * Delete a single annotation (shared mode only). Returns the op_id used
+     * for the outgoing frame (or `null` when nothing was sent).
+     */
+    async deleteSingleAnnotation(annotationId: string): Promise<string | null> {
         if (this.#wsManager && this.#wsManager.isConnected()) {
-            await this.#wsManager.send({
+            const opId = await this.#wsManager.sendWithOpId({
                 type: 'delete_annotation',
                 id: annotationId,
             });
             Logger.log('SharedStorage', 'Deleted annotation via WebSocket:', annotationId);
-        } else {
-            Logger.warn('SharedStorage', 'WebSocket not connected, annotation not deleted');
+            return opId;
         }
+        Logger.warn('SharedStorage', 'WebSocket not connected, annotation not deleted');
+        return null;
     }
 
     /** Update cache (called when WebSocket pushes data). */
@@ -192,41 +201,49 @@ export class StorageManager {
         await this.#strategy.save(key, annotations);
     }
 
-    /** Upsert a single annotation. */
-    async saveAnnotation(annotation: Annotation): Promise<void> {
+    /**
+     * Upsert a single annotation. In shared mode returns the op_id of the
+     * outgoing WebSocket frame; in local mode returns `null`.
+     */
+    async saveAnnotation(annotation: Annotation): Promise<string | null> {
         if (this.#isSharedMode && this.#strategy instanceof SharedStorageStrategy) {
             // Shared mode: push the single annotation to the server.
-            await this.#strategy.saveSingleAnnotation(annotation);
-        } else {
-            // Local mode: rewrite the entire array.
-            const annotations = await this.loadAnnotations();
-            const index = annotations.findIndex((a) => a.id === annotation.id);
-
-            if (index >= 0) {
-                annotations[index] = annotation;
-            } else {
-                annotations.push(annotation);
-            }
-
-            await this.saveAnnotations(annotations);
+            return this.#strategy.saveSingleAnnotation(annotation);
         }
+        // Local mode: rewrite the entire array.
+        const annotations = await this.loadAnnotations();
+        const index = annotations.findIndex((a) => a.id === annotation.id);
+
+        if (index >= 0) {
+            annotations[index] = annotation;
+        } else {
+            annotations.push(annotation);
+        }
+
+        await this.saveAnnotations(annotations);
+        return null;
     }
 
-    /** Delete an annotation by id. */
-    async deleteAnnotation(annotationId: string): Promise<void> {
+    /** Delete an annotation by id. Returns the outgoing op_id in shared mode. */
+    async deleteAnnotation(annotationId: string): Promise<string | null> {
         if (this.#isSharedMode && this.#strategy instanceof SharedStorageStrategy) {
-            await this.#strategy.deleteSingleAnnotation(annotationId);
-        } else {
-            const annotations = await this.loadAnnotations();
-            const filtered = annotations.filter((a) => a.id !== annotationId);
-            await this.saveAnnotations(filtered);
+            return this.#strategy.deleteSingleAnnotation(annotationId);
         }
+        const annotations = await this.loadAnnotations();
+        const filtered = annotations.filter((a) => a.id !== annotationId);
+        await this.saveAnnotations(filtered);
+        return null;
     }
 
-    /** Clear all annotations for the current file. */
-    async clearAnnotations(): Promise<void> {
+    /** Clear all annotations for the current file. Returns the outgoing op_id in shared mode. */
+    async clearAnnotations(): Promise<string | null> {
         const key = CONFIG.STORAGE_KEYS.ANNOTATIONS(this.#filePath);
         await this.#strategy.delete(key);
+        // SharedStorageStrategy.delete() already routes through sendWithOpId,
+        // but doesn't surface the id. For now callers that need the id can
+        // bypass this and call the WebSocketManager directly; threading it
+        // through the strategy is an easy future change.
+        return null;
     }
 
     /** Load viewed state (heading id → checked). */

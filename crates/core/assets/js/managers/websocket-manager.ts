@@ -26,26 +26,53 @@ export type WSStateValue = (typeof WSState)[keyof typeof WSState];
  */
 // TODO(phase-3-typing): replace `unknown` annotation/state shapes once
 // annotation-manager exports proper `Annotation` and `ViewedState` types.
+//
+// Mutating variants may carry an opaque `op_id` set by the originating
+// client. The server round-trips it verbatim so the originator can recognise
+// (and skip) its own echo. Field is optional for back-compat with older
+// peers that don't emit it.
 export type WsInbound =
     | { type: 'all_annotations'; annotations: unknown[] }
-    | { type: 'new_annotation'; annotation: unknown }
-    | { type: 'delete_annotation'; id: string }
-    | { type: 'clear_annotations' }
-    | { type: 'viewed_state'; state: Record<string, boolean> }
-    | { type: 'update_viewed_state'; state: Record<string, boolean> }
+    | { type: 'new_annotation'; annotation: unknown; op_id?: string | null }
+    | { type: 'delete_annotation'; id: string; op_id?: string | null }
+    | { type: 'clear_annotations'; op_id?: string | null }
+    | { type: 'viewed_state'; state: Record<string, boolean>; op_id?: string | null }
+    | { type: 'update_viewed_state'; state: Record<string, boolean>; op_id?: string | null }
     | { type: 'live_action'; data: { action: string; [k: string]: unknown } }
     | { type: 'file_changed'; workspace_id: string; path: string };
 
 /**
  * Discriminated union of WebSocket messages sent to the server.
  * Mirrors the call sites in `storage-manager` and `collaboration-manager`.
+ *
+ * Mutating variants accept an optional `op_id`. Prefer `sendWithOpId()` to
+ * have one generated and recorded for echo dedup automatically.
  */
 export type WsOutbound =
-    | { type: 'new_annotation'; annotation: unknown }
-    | { type: 'delete_annotation'; id: string }
-    | { type: 'clear_annotations' }
-    | { type: 'update_viewed_state'; state: Record<string, boolean> }
+    | { type: 'new_annotation'; annotation: unknown; op_id?: string }
+    | { type: 'delete_annotation'; id: string; op_id?: string }
+    | { type: 'clear_annotations'; op_id?: string }
+    | { type: 'update_viewed_state'; state: Record<string, boolean>; op_id?: string }
     | { type: 'live_action'; data: { action: string; [k: string]: unknown } };
+
+/** Outbound messages that participate in op_id-based echo dedup. */
+export type WsOutboundWithOpId = Exclude<WsOutbound, { type: 'live_action' }>;
+
+/**
+ * Generate a 64-bit (16 hex chars) random id, used to tag outgoing mutating
+ * frames so the originator can recognise its own echo. The space is plenty
+ * for in-session dedup; we don't need cryptographic uniqueness.
+ */
+export function makeOpId(): string {
+    const a = (Math.random() * 0x100000000) >>> 0;
+    const b = (Math.random() * 0x100000000) >>> 0;
+    return a.toString(16).padStart(8, '0') + b.toString(16).padStart(8, '0');
+}
+
+/** Upper bound on the dedup map. Anything older is pruned lazily. */
+const OP_ID_MAX_ENTRIES = 256;
+/** TTL for a recorded op_id (ms). A round-trip is sub-second; 30s is safe. */
+const OP_ID_TTL_MS = 30_000;
 
 /** Type-narrowed handler for a specific inbound message type. */
 export type WsHandler<T extends WsInbound['type']> = (
@@ -64,6 +91,13 @@ export class WebSocketManager {
     #stabilityTimer: ReturnType<typeof setTimeout> | null = null;
     #messageHandlers = new Map<string, Array<(msg: WsInbound) => void>>();
     #onStateChange: StateChangeCallback | null = null;
+    /**
+     * Recently-sent op_ids → expiry timestamp (ms since epoch). An entry is
+     * consumed (and removed) the first time a matching echo lands so it
+     * cannot accidentally re-suppress a future genuine remote op with the
+     * same — astronomically unlikely but cheap to be correct about — id.
+     */
+    #outgoingOpIds: Map<string, number> = new Map();
 
     constructor(filePath: string) {
         this.#filePath = filePath;
@@ -154,6 +188,57 @@ export class WebSocketManager {
             Logger.log('WebSocket', 'Sent message:', message.type);
         } catch (error) {
             Logger.error('WebSocket', 'Failed to send message:', error);
+        }
+    }
+
+    /**
+     * Send a mutating message with an auto-generated `op_id`, recording it
+     * for echo dedup. Returns the id so the caller can stash it on an undo
+     * entry or otherwise correlate the round-trip.
+     */
+    async sendWithOpId(message: WsOutboundWithOpId): Promise<string> {
+        const opId = makeOpId();
+        this.recordOutgoing(opId);
+        await this.send({ ...message, op_id: opId } as WsOutbound);
+        return opId;
+    }
+
+    /**
+     * Register an op_id we're about to send. Pruning happens lazily here so
+     * the map stays bounded — no background timer needed.
+     */
+    recordOutgoing(opId: string): void {
+        this.#pruneOpIds();
+        this.#outgoingOpIds.set(opId, Date.now() + OP_ID_TTL_MS);
+    }
+
+    /**
+     * Returns true if `opId` matches a previously recorded outgoing op. The
+     * entry is consumed on match (single-shot) so a server that erroneously
+     * replays the same id later can't suppress a genuine remote frame.
+     */
+    isOwnEcho(opId: string | null | undefined): boolean {
+        if (!opId) return false;
+        const expiry = this.#outgoingOpIds.get(opId);
+        if (expiry === undefined) return false;
+        this.#outgoingOpIds.delete(opId);
+        // Treat expired entries as misses — same effect as pruning.
+        return expiry > Date.now();
+    }
+
+    /**
+     * Drop expired entries; if still over the cap, drop oldest insertions
+     * (Map preserves insertion order). O(n) but bounded by the cap.
+     */
+    #pruneOpIds(): void {
+        const now = Date.now();
+        for (const [id, expiry] of this.#outgoingOpIds) {
+            if (expiry <= now) this.#outgoingOpIds.delete(id);
+        }
+        while (this.#outgoingOpIds.size >= OP_ID_MAX_ENTRIES) {
+            const oldest = this.#outgoingOpIds.keys().next().value;
+            if (oldest === undefined) break;
+            this.#outgoingOpIds.delete(oldest);
         }
     }
 

@@ -17,12 +17,33 @@ const _t = (window.__MARKON_I18N__ && window.__MARKON_I18N__.t) || ((k: string):
 type ViewedState = Record<string, boolean>;
 
 /**
+ * Subset of `WebSocketManager` that ViewedManager actually uses. Kept as a
+ * structural interface so we don't pull a managers-layer import into a
+ * standalone IIFE bundle, and to make it trivial to stub in tests.
+ */
+interface OpIdAwareWs {
+    isConnected(): boolean;
+    sendWithOpId(message: {
+        type: 'update_viewed_state';
+        state: Record<string, boolean>;
+    }): Promise<string>;
+    isOwnEcho(opId: string | null | undefined): boolean;
+}
+
+/**
  * SectionViewedManager — owns viewed checkboxes, collapsed sections, the
  * "All Viewed" toolbar and the (optional) shared-mode WebSocket sync.
  */
 export class SectionViewedManager {
     isSharedMode: boolean;
     ws: WebSocket | null;
+    /**
+     * Optional op_id-aware send/dedup adapter (the main `WebSocketManager`).
+     * When present, outgoing `update_viewed_state` frames are tagged with an
+     * op_id and incoming `viewed_state` echoes from this tab are dropped.
+     * Falls back to the raw `ws` field when `null` for backward compat.
+     */
+    wsManager: OpIdAwareWs | null;
     filePath: string;
     viewedState: ViewedState;
     /** Section IDs that are temporarily expanded despite being viewed. */
@@ -40,6 +61,7 @@ export class SectionViewedManager {
     constructor(isSharedMode: boolean, ws: WebSocket | null) {
         this.isSharedMode = isSharedMode;
         this.ws = ws;
+        this.wsManager = null;
         // Use meta file-path to ensure consistency with annotation manager
         const filePathMeta = document.querySelector('meta[name="file-path"]');
         this.filePath = filePathMeta ? filePathMeta.getAttribute('content') ?? window.location.pathname : window.location.pathname;
@@ -92,8 +114,17 @@ export class SectionViewedManager {
         }
         this._wsMessageHandler = (event: MessageEvent): void => {
             try {
-                const data = JSON.parse(event.data as string) as { type?: string; state?: ViewedState };
+                const data = JSON.parse(event.data as string) as {
+                    type?: string;
+                    state?: ViewedState;
+                    op_id?: string | null;
+                };
                 if (data.type !== 'viewed_state') return;
+
+                // Protocol-level echo dedup: drop frames originated by this tab.
+                if (this.wsManager && this.wsManager.isOwnEcho(data.op_id)) {
+                    return;
+                }
 
                 this.viewedState = data.state ?? {};
                 this.stateLoaded = true;
@@ -745,19 +776,32 @@ export class SectionViewedManager {
     }
 
     saveState(): void {
-        if (this.isSharedMode && this.ws && this.ws.readyState === WebSocket.OPEN) {
-            this.ws.send(
-                JSON.stringify({
+        if (this.isSharedMode) {
+            // Preferred path: route through the op_id-aware WebSocketManager
+            // so the next incoming `viewed_state` echo can be recognised and
+            // skipped. Falls back to the raw socket for tabs that haven't
+            // wired up the manager yet (e.g. legacy callers).
+            if (this.wsManager && this.wsManager.isConnected()) {
+                void this.wsManager.sendWithOpId({
                     type: 'update_viewed_state',
                     state: this.viewedState,
-                }),
-            );
-        } else if (!this.isSharedMode) {
-            const key = `markon-viewed-${this.filePath}`;
-            localStorage.setItem(key, JSON.stringify(this.viewedState));
-        } else {
+                });
+                return;
+            }
+            if (this.ws && this.ws.readyState === WebSocket.OPEN) {
+                this.ws.send(
+                    JSON.stringify({
+                        type: 'update_viewed_state',
+                        state: this.viewedState,
+                    }),
+                );
+                return;
+            }
             console.warn('[ViewedManager] Cannot save state - shared mode but no WebSocket connection');
+            return;
         }
+        const key = `markon-viewed-${this.filePath}`;
+        localStorage.setItem(key, JSON.stringify(this.viewedState));
     }
 
     applyViewedState(): void {

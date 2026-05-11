@@ -177,6 +177,10 @@ export class MarkonApp {
                     if (this.#isSharedMode && !window.viewedManager.isSharedMode) {
                         window.viewedManager.isSharedMode = true;
                     }
+                    // Always thread the op_id-aware adapter so viewed.ts can
+                    // tag outgoing frames and skip its own echoes, even on
+                    // tabs where `ws` was already populated by a prior init.
+                    window.viewedManager.wsManager = this.#wsManager;
                     if (!window.viewedManager.ws) {
                         window.viewedManager.ws = window.ws ?? null;
                         window.viewedManager.setupWebSocketListeners();
@@ -655,7 +659,13 @@ export class MarkonApp {
 
         ws.on('new_annotation', (message) => {
             if (!annotationManager || !noteManager) return;
+            // Protocol-level echo dedup: drop frames originated by this tab.
+            if (ws.isOwnEcho(message.op_id)) {
+                Logger.log('WebSocket', `Skipped own new_annotation echo (op_id ${message.op_id})`);
+                return;
+            }
             const incoming = message.annotation as Annotation;
+            // Belt-and-braces: a stray dupe (legacy peer, replay) still gets filtered.
             const existingAnnotation = annotationManager.getById(incoming.id);
             if (existingAnnotation) {
                 Logger.log('WebSocket', `Annotation ${incoming.id} already exists locally, skipping`);
@@ -669,13 +679,21 @@ export class MarkonApp {
 
         ws.on('delete_annotation', (message) => {
             if (!annotationManager || !noteManager) return;
+            if (ws.isOwnEcho(message.op_id)) {
+                Logger.log('WebSocket', `Skipped own delete_annotation echo (op_id ${message.op_id})`);
+                return;
+            }
             void annotationManager.delete(message.id, true);
             annotationManager.removeFromDOM(message.id);
             noteManager.render();
         });
 
-        ws.on('clear_annotations', () => {
+        ws.on('clear_annotations', (message) => {
             if (!annotationManager || !noteManager) return;
+            if (ws.isOwnEcho(message.op_id)) {
+                Logger.log('WebSocket', `Skipped own clear_annotations echo (op_id ${message.op_id})`);
+                return;
+            }
             Logger.log('MarkonApp', 'Received CLEAR_ANNOTATIONS broadcast from server');
             void annotationManager.clear(true);
             annotationManager.clearDOM();

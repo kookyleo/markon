@@ -169,16 +169,40 @@ pub fn print_compact_qr(data: &str) -> Result<(), Box<dyn std::error::Error>> {
 enum WebSocketMessage {
     #[serde(rename = "all_annotations")]
     AllAnnotations { annotations: Vec<serde_json::Value> },
+    // Mutating variants carry an optional `op_id` set by the originating
+    // client. The server treats it as opaque and round-trips it verbatim so
+    // the originator can recognise (and skip) its own echo. Old clients that
+    // don't send the field deserialize as `None` and serialize without it
+    // (`skip_serializing_if = Option::is_none`), preserving wire compat.
     #[serde(rename = "new_annotation")]
-    NewAnnotation { annotation: serde_json::Value },
+    NewAnnotation {
+        annotation: serde_json::Value,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        op_id: Option<String>,
+    },
     #[serde(rename = "delete_annotation")]
-    DeleteAnnotation { id: String },
+    DeleteAnnotation {
+        id: String,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        op_id: Option<String>,
+    },
     #[serde(rename = "clear_annotations")]
-    ClearAnnotations,
+    ClearAnnotations {
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        op_id: Option<String>,
+    },
     #[serde(rename = "viewed_state")]
-    ViewedState { state: serde_json::Value },
+    ViewedState {
+        state: serde_json::Value,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        op_id: Option<String>,
+    },
     #[serde(rename = "update_viewed_state")]
-    UpdateViewedState { state: serde_json::Value },
+    UpdateViewedState {
+        state: serde_json::Value,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        op_id: Option<String>,
+    },
     #[serde(rename = "live_action")]
     LiveAction { data: serde_json::Value },
     /// Sent by the file watcher when a file under a workspace was modified
@@ -707,7 +731,12 @@ fn broadcast_msg(tx: &broadcast::Sender<String>, msg: &WebSocketMessage) {
 /// on the runtime, not on the blocking pool.
 enum DbResult {
     Broadcast(WebSocketMessage),
-    BroadcastClear,
+    /// Clear-annotations side-effect: broadcast a `clear_annotations` plus a
+    /// reset `viewed_state` (both empty). Carries the originator's `op_id`
+    /// so it propagates to every fan-out frame for echo dedup.
+    BroadcastClear {
+        op_id: Option<String>,
+    },
     None,
 }
 
@@ -731,7 +760,7 @@ async fn handle_client_msg(
     let result = tokio::task::spawn_blocking(move || {
         let conn = db.lock().unwrap();
         match msg {
-            WebSocketMessage::NewAnnotation { annotation } => {
+            WebSocketMessage::NewAnnotation { annotation, op_id } => {
                 let Some(id) = annotation["id"].as_str().map(str::to_owned) else {
                     return DbResult::None;
                 };
@@ -745,9 +774,9 @@ async fn handle_client_msg(
                     eprintln!("[WebSocket] insert annotation failed: {e}");
                     return DbResult::None;
                 }
-                DbResult::Broadcast(WebSocketMessage::NewAnnotation { annotation })
+                DbResult::Broadcast(WebSocketMessage::NewAnnotation { annotation, op_id })
             }
-            WebSocketMessage::DeleteAnnotation { id } => {
+            WebSocketMessage::DeleteAnnotation { id, op_id } => {
                 if let Err(e) = conn.execute(
                     "DELETE FROM annotations WHERE id = ?1 AND file_path = ?2",
                     [id.as_str(), file_path.as_str()],
@@ -755,9 +784,9 @@ async fn handle_client_msg(
                     eprintln!("[WebSocket] delete annotation failed: {e}");
                     return DbResult::None;
                 }
-                DbResult::Broadcast(WebSocketMessage::DeleteAnnotation { id })
+                DbResult::Broadcast(WebSocketMessage::DeleteAnnotation { id, op_id })
             }
-            WebSocketMessage::ClearAnnotations => {
+            WebSocketMessage::ClearAnnotations { op_id } => {
                 eprintln!("[WebSocket] Clearing annotations for file_path: {file_path}");
                 if let Err(e) = conn.execute(
                     "DELETE FROM annotations WHERE file_path = ?1",
@@ -771,9 +800,12 @@ async fn handle_client_msg(
                 ) {
                     eprintln!("[WebSocket] clear viewed_state failed: {e}");
                 }
-                DbResult::BroadcastClear
+                DbResult::BroadcastClear { op_id }
             }
-            WebSocketMessage::UpdateViewedState { state: viewed } => {
+            WebSocketMessage::UpdateViewedState {
+                state: viewed,
+                op_id,
+            } => {
                 let Ok(state_json) = serde_json::to_string(&viewed) else {
                     return DbResult::None;
                 };
@@ -784,7 +816,10 @@ async fn handle_client_msg(
                     eprintln!("[WebSocket] update viewed_state failed: {e}");
                     return DbResult::None;
                 }
-                DbResult::Broadcast(WebSocketMessage::ViewedState { state: viewed })
+                DbResult::Broadcast(WebSocketMessage::ViewedState {
+                    state: viewed,
+                    op_id,
+                })
             }
             _ => DbResult::None,
         }
@@ -801,12 +836,18 @@ async fn handle_client_msg(
 
     match result {
         DbResult::Broadcast(out) => broadcast_msg(&tx, &out),
-        DbResult::BroadcastClear => {
-            broadcast_msg(&tx, &WebSocketMessage::ClearAnnotations);
+        DbResult::BroadcastClear { op_id } => {
+            broadcast_msg(
+                &tx,
+                &WebSocketMessage::ClearAnnotations {
+                    op_id: op_id.clone(),
+                },
+            );
             broadcast_msg(
                 &tx,
                 &WebSocketMessage::ViewedState {
                     state: serde_json::Value::Object(serde_json::Map::new()),
+                    op_id,
                 },
             );
         }
@@ -860,7 +901,10 @@ async fn handle_socket(socket: WebSocket, state: AppState) {
         let viewed = load_viewed_state(db.clone(), file_path.clone()).await;
         if send_json(
             &mut sender,
-            &WebSocketMessage::ViewedState { state: viewed },
+            &WebSocketMessage::ViewedState {
+                state: viewed,
+                op_id: None,
+            },
         )
         .await
         .is_err()
@@ -1623,6 +1667,49 @@ mod tests {
         let serialized = serde_json::to_string(&msg).unwrap();
         assert!(serialized.contains("\"type\":\"live_action\""));
         assert!(serialized.contains("\"clientId\":\"test-id\""));
+    }
+
+    /// `NewAnnotation` round-trips `op_id` verbatim in both directions and
+    /// the field is omitted from the wire when `None` — keeping the protocol
+    /// backward-compatible with clients that don't know about it yet.
+    #[test]
+    fn test_new_annotation_op_id_round_trip() {
+        // Some(op_id): present on the wire, parsed back identically.
+        let with = WebSocketMessage::NewAnnotation {
+            annotation: json!({ "id": "anno-1", "text": "hi" }),
+            op_id: Some("op-abc".into()),
+        };
+        let json_with = serde_json::to_string(&with).unwrap();
+        assert!(
+            json_with.contains("\"op_id\":\"op-abc\""),
+            "wire form should include op_id: {json_with}"
+        );
+        let parsed: WebSocketMessage = serde_json::from_str(&json_with).unwrap();
+        match parsed {
+            WebSocketMessage::NewAnnotation { op_id, .. } => {
+                assert_eq!(op_id.as_deref(), Some("op-abc"));
+            }
+            _ => panic!("expected NewAnnotation"),
+        }
+
+        // None: omitted from the wire (back-compat with old clients).
+        let without = WebSocketMessage::NewAnnotation {
+            annotation: json!({ "id": "anno-2" }),
+            op_id: None,
+        };
+        let json_without = serde_json::to_string(&without).unwrap();
+        assert!(
+            !json_without.contains("op_id"),
+            "wire form should omit op_id when None: {json_without}"
+        );
+
+        // An old-client payload with no op_id field deserialises to None.
+        let legacy = r#"{"type":"new_annotation","annotation":{"id":"x"}}"#;
+        let parsed_legacy: WebSocketMessage = serde_json::from_str(legacy).unwrap();
+        match parsed_legacy {
+            WebSocketMessage::NewAnnotation { op_id, .. } => assert!(op_id.is_none()),
+            _ => panic!("expected NewAnnotation"),
+        }
     }
 
     #[test]

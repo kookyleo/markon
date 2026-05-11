@@ -20,14 +20,17 @@ function makeStorage(initial: Annotation[] = []): AnnotationStorage & {
         deleted: [] as string[],
         cleared: 0,
         loadAnnotations: vi.fn(async (): Promise<Annotation[]> => [...initial]),
-        saveAnnotation: vi.fn(async (a: Annotation): Promise<void> => {
+        saveAnnotation: vi.fn(async (a: Annotation): Promise<string | null> => {
             stub.saved.push(a);
+            return null;
         }),
-        deleteAnnotation: vi.fn(async (id: string): Promise<void> => {
+        deleteAnnotation: vi.fn(async (id: string): Promise<string | null> => {
             stub.deleted.push(id);
+            return null;
         }),
-        clearAnnotations: vi.fn(async (): Promise<void> => {
+        clearAnnotations: vi.fn(async (): Promise<string | null> => {
             stub.cleared++;
+            return null;
         }),
     };
     return stub;
