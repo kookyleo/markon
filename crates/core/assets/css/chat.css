@@ -1050,11 +1050,20 @@ body.markon-chat-popout-mode {
    either be appended to .markon-chat-container or be added to this
    exclusion list. */
 body.markon-chat-popout-mode > :not(.markon-chat-container):not(.markon-chat-mention-popup):not(script):not(style) {
+    /* Overrides inline `element.style.display` set at runtime by managers
+       like popover-manager, search-manager, note-manager — those toggle
+       block/none on body-level children and an inline value beats any
+       selector specificity without !important. */
     display: none !important;
 }
 
 body.markon-chat-popout-mode .markon-chat-container,
 body.markon-chat-popout-mode .markon-chat-container.expanded {
+    /* All declarations in this block override inline styles written by
+       FloatingLayer (components/floating-layer.ts) at runtime —
+       position / top / right / bottom / left / width / height /
+       border-radius / transform. Inline styles beat any selector, so
+       !important is the only way to force popout-mode geometry. */
     position: fixed !important;
     inset: 0 !important;
     width: 100vw !important;
@@ -1074,15 +1083,19 @@ body.markon-chat-popout-mode .markon-chat-container.expanded {
 /* No floating sphere in popout mode — the panel is the window itself. The X
    close button at the TL also has no role here (closing the chat means
    closing the window). The popout button stays visible but its icon/role is
-   swapped to "dock back to in-page" by initPopout(). */
+   swapped to "dock back to in-page" by initPopout().
+   Specificity (0,2,1) beats `.markon-chat-container.expanded .markon-chat-face`
+   (0,2,0) without !important. */
 body.markon-chat-popout-mode .markon-chat-face {
-    display: none !important;
+    display: none;
 }
 
 /* Body always shown in popout mode (the .expanded class is set at boot, but
-   guard against any timing where it isn't applied yet). */
+   guard against any timing where it isn't applied yet).
+   Specificity (0,2,1) beats `.markon-chat-container.expanded .markon-chat-body`
+   (0,2,0) without !important. */
 body.markon-chat-popout-mode .markon-chat-body {
-    display: flex !important;
+    display: flex;
 }
 
 /* Header has no X face to clear in popout mode — pull the left actions group

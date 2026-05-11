@@ -148,7 +148,9 @@ html[data-theme="dark"] {
 .markdown-body a:hover,
 .markdown-body a:active,
 .markdown-body a:focus {
-    color: var(--markon-primary) !important;
+    /* Specificity (0,2,1) matches github-markdown's `.markdown-body a:hover`
+       and beats `.markdown-body a` (0,1,1); later source order wins ties. */
+    color: var(--markon-primary);
 }
 
 /* ============================================================
@@ -259,7 +261,8 @@ html[data-theme="dark"] .heading-section:has(.heading-focused) {
 .markdown-body h5.heading-focused,
 .markdown-body h6.heading-focused {
     background-color: color-mix(in srgb, var(--markon-primary) 10%, transparent);
-    border-bottom: none !important;
+    /* Specificity (0,2,2) beats github-markdown's `.markdown-body h2` (0,1,1). */
+    border-bottom: none;
     border-radius: 4px;
 }
 
@@ -329,14 +332,16 @@ html[data-theme="dark"] .markdown-body h6.heading-focused {
     background: var(--markon-subtle);
 }
 
-.note-save {
-    background: #2da44e !important;
-    color: white !important;
-    border-color: #2da44e !important;
+/* Specificity raised to `.note-input-actions button.note-save` (0,3,1) so it
+   beats the earlier `.note-input-actions button` (0,2,0) generic style. */
+.note-input-actions button.note-save {
+    background: #2da44e;
+    color: white;
+    border-color: #2da44e;
 }
 
-.note-save:hover {
-    background: #2c974b !important;
+.note-input-actions button.note-save:hover {
+    background: #2c974b;
 }
 
 /* ============================================================
@@ -502,14 +507,16 @@ html[data-theme="dark"] .markdown-body h6.heading-focused {
     background: var(--markon-subtle);
 }
 
-.confirm-ok {
-    background: #dc3545 !important;
-    color: white !important;
-    border-color: #dc3545 !important;
+/* Specificity raised to `.confirm-actions button.confirm-ok` (0,3,1) so it
+   beats the earlier `.confirm-actions button` (0,2,0) generic style. */
+.confirm-actions button.confirm-ok {
+    background: #dc3545;
+    color: white;
+    border-color: #dc3545;
 }
 
-.confirm-ok:hover {
-    background: #c82333 !important;
+.confirm-actions button.confirm-ok:hover {
+    background: #c82333;
 }
 
 /* ============================================================
@@ -621,15 +628,18 @@ html[data-theme="dark"] .markdown-body h6.heading-focused {
         display: flex;
     }
 
-    .toc {
+    /* Specificity raised to (1,1,0) via `#toc-container` so this overrides
+       the (0,1,0) `.toc` rule that layout.html declares for the same media
+       range (position: relative; margin-bottom: 30px; max-width: 100%). */
+    #toc-container .toc {
         display: none;
-        position: absolute !important;
-        top: 0 !important;
+        position: absolute;
+        top: 0;
         right: 0;
-        left: auto !important;
-        width: 280px !important;
-        max-width: 280px !important;
-        margin-bottom: 0 !important;
+        left: auto;
+        width: 280px;
+        max-width: 280px;
+        margin-bottom: 0;
         max-height: calc(100vh - 40px);
         overflow-y: auto;
         background-color: var(--markon-elevated);
@@ -797,25 +807,30 @@ html[data-theme="dark"] .markdown-body h6.heading-focused {
     background: var(--color-neutral-muted, rgba(175,184,193,0.15));
 }
 
-/* Hide section content when collapsed with smooth animation */
-.section-content-hidden {
-    max-height: 0 !important;
-    opacity: 0 !important;
-    margin-top: 0 !important;
-    margin-bottom: 0 !important;
-    padding-top: 0 !important;
-    padding-bottom: 0 !important;
-    overflow: hidden !important;
+/* Hide section content when collapsed with smooth animation.
+   Specificity raised to (0,2,0) via `.markdown-body` so margin / padding
+   zero-out beats github-markdown's `.markdown-body p|ul|ol|table|pre` rules
+   (each 0,1,1). The element this class lands on is a direct child of
+   .markdown-body so the descendant combinator is sufficient. */
+.markdown-body .section-content-hidden {
+    max-height: 0;
+    opacity: 0;
+    margin-top: 0;
+    margin-bottom: 0;
+    padding-top: 0;
+    padding-bottom: 0;
+    overflow: hidden;
     /* Collapse: fade out quickly, then shrink height */
-    transition: opacity 0.2s ease-out, max-height 0.35s ease-out 0.05s, margin 0.35s ease-out 0.05s, padding 0.35s ease-out 0.05s !important;
+    transition: opacity 0.2s ease-out, max-height 0.35s ease-out 0.05s, margin 0.35s ease-out 0.05s, padding 0.35s ease-out 0.05s;
 }
 
-/* Show content when temporarily expanded (controlled by JS) */
-.section-content-temp-visible {
-    max-height: 10000px !important;
-    opacity: 1 !important;
+/* Show content when temporarily expanded (controlled by JS).
+   Same specificity-raise logic as `.section-content-hidden` above. */
+.markdown-body .section-content-temp-visible {
+    max-height: 10000px;
+    opacity: 1;
     /* Expand: completely reverse of collapse - expand height, and fade in with 0.05s delay */
-    transition: max-height 0.35s ease-out, margin 0.35s ease-out, padding 0.35s ease-out, opacity 0.2s ease-out 0.05s !important;
+    transition: max-height 0.35s ease-out, margin 0.35s ease-out, padding 0.35s ease-out, opacity 0.2s ease-out 0.05s;
 }
 
 /* Add transition to elements that might be collapsed (performance optimization) */
@@ -875,23 +890,26 @@ html[data-theme="dark"] .markdown-body h6.heading-focused {
    Highlight TOC items based on viewed state
    ============================================================ */
 
+/* `.toc-item.viewed > a` is (0,3,0); beats layout.html's `.toc-item a` (0,2,0)
+   on specificity, so no !important is needed. The dark variants add an
+   attribute selector for theme switching. */
 .toc-item.viewed > a {
-    color: #2da44e !important;
+    color: #2da44e;
     font-weight: 500;
 }
 
 .toc-item.viewed > a:hover {
-    color: #2c974b !important;
+    color: #2c974b;
 }
 
 /* Dark theme adjustments for TOC viewed state */
 html[data-theme="dark"] .toc-item.viewed > a {
-    color: #3fb950 !important;
+    color: #3fb950;
     font-weight: 500;
 }
 
 html[data-theme="dark"] .toc-item.viewed > a:hover {
-    color: #56d364 !important;
+    color: #56d364;
 }
 
 /* ============================================================
@@ -925,7 +943,11 @@ html[data-theme="dark"] .toc-item.viewed > a:hover {
 
 /* ============================================================
    PRINT STYLES
-   Hide viewed UI elements when printing
+   Hide viewed UI elements when printing.
+   All `!important` declarations inside this block are intentional:
+   print rules must force-override the screen cascade (including
+   github-markdown.css and the inline <style> rules in layout.html)
+   so layout doesn't leak into printed output.
    ============================================================ */
 
 @media print {
