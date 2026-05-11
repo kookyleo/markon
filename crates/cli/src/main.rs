@@ -574,8 +574,20 @@ fn add_or_update_workspace(
     Ok(id.to_string())
 }
 
+fn init_tracing() {
+    tracing_subscriber::fmt()
+        .with_env_filter(
+            tracing_subscriber::EnvFilter::try_from_default_env()
+                .unwrap_or_else(|_| tracing_subscriber::EnvFilter::new("info")),
+        )
+        .with_target(false)
+        .compact()
+        .init();
+}
+
 #[tokio::main]
 async fn main() {
+    init_tracing();
     let cli = Cli::parse();
     let cli_entry = cli.entry.clone();
     println!("Markon v{}", env!("CARGO_PKG_VERSION"));
@@ -688,11 +700,11 @@ async fn main() {
                         open_browser_target.as_deref(),
                     ) {
                         if let Err(e) = open::that(&browser_url) {
-                            eprintln!("[info] Best-effort browser open failed: {e}");
+                            tracing::warn!("best-effort browser open failed: {e}");
                         }
                     }
                 }
-                Err(e) => eprintln!("Failed to add workspace to running server: {e}"),
+                Err(e) => tracing::error!("failed to add workspace to running server: {e}"),
             }
             return;
         }
@@ -729,7 +741,7 @@ async fn main() {
                     return;
                 }
                 Err(e) => {
-                    eprintln!("Failed to daemonize: {e}. Falling back to foreground.");
+                    tracing::warn!("failed to daemonize: {e}; falling back to foreground");
                 }
             }
         }

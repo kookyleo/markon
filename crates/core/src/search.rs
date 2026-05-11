@@ -99,7 +99,7 @@ impl SearchIndex {
     fn index_directory(&self, dir: &Path) -> tantivy::Result<()> {
         use rayon::prelude::*;
 
-        println!("Indexing markdown files in {dir:?}...");
+        tracing::info!("indexing markdown files in {dir:?}");
 
         let paths: Vec<PathBuf> = WalkDir::new(dir)
             .into_iter()
@@ -134,7 +134,7 @@ impl SearchIndex {
         }
 
         self.reader.reload()?;
-        println!("Indexing complete!");
+        tracing::info!("indexing complete");
 
         Ok(())
     }
@@ -264,7 +264,7 @@ impl SearchIndex {
         // Reload reader to see the changes
         self.reader.reload()?;
 
-        println!("Updated index: {}", relative_path);
+        tracing::debug!("updated index: {}", relative_path);
         Ok(())
     }
 
@@ -286,7 +286,7 @@ impl SearchIndex {
         // Reload reader to see the changes
         self.reader.reload()?;
 
-        println!("Removed from index: {}", relative_path);
+        tracing::debug!("removed from index: {}", relative_path);
         Ok(())
     }
 }

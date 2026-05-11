@@ -69,7 +69,7 @@ impl ServerManager {
             }
             Err(e) => {
                 let msg = format!("Failed to bind {bind_addr}: {e}");
-                eprintln!("[ServerManager] {msg}");
+                tracing::error!("{msg}");
                 self.last_error = Some(msg.clone());
                 self.running = false;
                 self.port = 0;
@@ -88,7 +88,7 @@ impl ServerManager {
                     tokio::select! {
                         r = markon_core::server::start(config) => {
                             if let Err(e) = r {
-                                eprintln!("[server] {e}");
+                                tracing::error!("server error: {e}");
                             }
                         }
                         _ = rx => {}

@@ -94,8 +94,8 @@ impl Agent {
         let tool_ctx = match ToolContext::new(&request.workspace_root) {
             Ok(ctx) => ctx,
             Err(e) => {
-                eprintln!(
-                    "[agent] failed to canonicalize workspace root {}: {e}",
+                tracing::error!(
+                    "failed to canonicalize workspace root {}: {e}",
                     request.workspace_root.display()
                 );
                 let _ = sink

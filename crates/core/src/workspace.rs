@@ -452,7 +452,7 @@ impl ServerLock {
             Ok(c) => c,
             Err(e) => {
                 if e.kind() != std::io::ErrorKind::NotFound {
-                    eprintln!("[server-lock] cannot read {}: {e}", path.display());
+                    tracing::warn!("cannot read server lock {}: {e}", path.display());
                 }
                 return None;
             }
@@ -460,8 +460,8 @@ impl ServerLock {
         match serde_json::from_str(&content) {
             Ok(v) => Some(v),
             Err(e) => {
-                eprintln!(
-                    "[server-lock] corrupted lock file {}: {e}; ignoring",
+                tracing::warn!(
+                    "corrupted server lock file {}: {e}; ignoring",
                     path.display()
                 );
                 None

@@ -16,6 +16,8 @@ opt-level = "s"
 markon-core = { path = "crates/core", version = "0.13" }
 dunce = "1.0"
 local-ip-address = "0.6"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt"] }
 
 [workspace.package]
 version = "0.13.4"

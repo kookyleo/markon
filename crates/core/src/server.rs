@@ -438,7 +438,7 @@ pub async fn start(config: ServerConfig) -> Result<(), String> {
         })
         .write()
         {
-            eprintln!("[server] Failed to write lock file: {e}");
+            tracing::warn!("failed to write lock file: {e}");
         }
         struct LockGuard;
         impl Drop for LockGuard {
@@ -488,7 +488,7 @@ pub async fn start(config: ServerConfig) -> Result<(), String> {
     if let Some(ref base_opt) = open_browser {
         let url = make_url(base_opt, &first_workspace_url_path);
         if let Err(e) = open::that(&url) {
-            eprintln!("[info] Best-effort browser open failed: {e}");
+            tracing::warn!("best-effort browser open failed: {e}");
         }
     }
 
@@ -666,14 +666,14 @@ async fn load_annotations(db: Arc<Mutex<Connection>>, file_path: String) -> Vec<
         let mut stmt = match db.prepare("SELECT data FROM annotations WHERE file_path = ?1") {
             Ok(s) => s,
             Err(e) => {
-                eprintln!("[WebSocket] prepare failed: {e}");
+                tracing::error!(file_path = %file_path, "load_annotations: prepare failed: {e}");
                 return Vec::new();
             }
         };
         let rows = match stmt.query_map([file_path.as_str()], |row| row.get::<_, String>(0)) {
             Ok(r) => r,
             Err(e) => {
-                eprintln!("[WebSocket] query_map failed: {e}");
+                tracing::error!(file_path = %file_path, "load_annotations: query_map failed: {e}");
                 return Vec::new();
             }
         };
@@ -683,7 +683,7 @@ async fn load_annotations(db: Arc<Mutex<Connection>>, file_path: String) -> Vec<
     })
     .await
     .unwrap_or_else(|e| {
-        eprintln!("[WebSocket] load_annotations join error: {e}");
+        tracing::error!("load_annotations join error: {e}");
         Vec::new()
     })
 }
@@ -702,7 +702,7 @@ async fn load_viewed_state(db: Arc<Mutex<Connection>>, file_path: String) -> ser
     })
     .await
     .unwrap_or_else(|e| {
-        eprintln!("[WebSocket] load_viewed_state join error: {e}");
+        tracing::error!("load_viewed_state join error: {e}");
         serde_json::json!({})
     })
 }
@@ -771,7 +771,7 @@ async fn handle_client_msg(
                     "INSERT OR REPLACE INTO annotations (id, file_path, data) VALUES (?1, ?2, ?3)",
                     [id.as_str(), file_path.as_str(), data.as_str()],
                 ) {
-                    eprintln!("[WebSocket] insert annotation failed: {e}");
+                    tracing::error!(file_path = %file_path, "insert annotation failed: {e}");
                     return DbResult::None;
                 }
                 DbResult::Broadcast(WebSocketMessage::NewAnnotation { annotation, op_id })
@@ -781,24 +781,24 @@ async fn handle_client_msg(
                     "DELETE FROM annotations WHERE id = ?1 AND file_path = ?2",
                     [id.as_str(), file_path.as_str()],
                 ) {
-                    eprintln!("[WebSocket] delete annotation failed: {e}");
+                    tracing::error!(file_path = %file_path, "delete annotation failed: {e}");
                     return DbResult::None;
                 }
                 DbResult::Broadcast(WebSocketMessage::DeleteAnnotation { id, op_id })
             }
             WebSocketMessage::ClearAnnotations { op_id } => {
-                eprintln!("[WebSocket] Clearing annotations for file_path: {file_path}");
+                tracing::info!(file_path = %file_path, "clearing annotations");
                 if let Err(e) = conn.execute(
                     "DELETE FROM annotations WHERE file_path = ?1",
                     [file_path.as_str()],
                 ) {
-                    eprintln!("[WebSocket] clear annotations failed: {e}");
+                    tracing::error!(file_path = %file_path, "clear annotations failed: {e}");
                 }
                 if let Err(e) = conn.execute(
                     "DELETE FROM viewed_state WHERE file_path = ?1",
                     [file_path.as_str()],
                 ) {
-                    eprintln!("[WebSocket] clear viewed_state failed: {e}");
+                    tracing::error!(file_path = %file_path, "clear viewed_state failed: {e}");
                 }
                 DbResult::BroadcastClear { op_id }
             }
@@ -813,7 +813,7 @@ async fn handle_client_msg(
                     "INSERT OR REPLACE INTO viewed_state (file_path, state, updated_at) VALUES (?1, ?2, CURRENT_TIMESTAMP)",
                     [file_path.as_str(), state_json.as_str()],
                 ) {
-                    eprintln!("[WebSocket] update viewed_state failed: {e}");
+                    tracing::error!(file_path = %file_path, "update viewed_state failed: {e}");
                     return DbResult::None;
                 }
                 DbResult::Broadcast(WebSocketMessage::ViewedState {
@@ -829,7 +829,7 @@ async fn handle_client_msg(
     let result = match result {
         Ok(r) => r,
         Err(e) => {
-            eprintln!("[WebSocket] handle_client_msg join error: {e}");
+            tracing::error!("handle_client_msg join error: {e}");
             return;
         }
     };
@@ -869,25 +869,22 @@ async fn handle_socket(socket: WebSocket, state: AppState) {
     let file_path = match receiver.next().await {
         Some(Ok(Message::Text(text))) => text.to_string(),
         _ => {
-            eprintln!("[WebSocket] Failed to receive file path from client");
+            tracing::warn!("failed to receive file path from client");
             return;
         }
     };
     if !is_valid_ws_file_path(&file_path) {
-        eprintln!(
-            "[WebSocket] Rejecting suspicious file_path from client: {:?}",
-            file_path
-        );
+        tracing::warn!(file_path = %file_path, "rejecting suspicious file_path from client");
         return;
     }
 
     // Only send initial annotation/viewed state when a persistence layer exists.
     if let Some(db) = db.as_ref() {
         let annotations = load_annotations(db.clone(), file_path.clone()).await;
-        eprintln!(
-            "[WebSocket] Sending {} annotations for file_path: {}",
-            annotations.len(),
-            file_path
+        tracing::debug!(
+            file_path = %file_path,
+            count = annotations.len(),
+            "sending initial annotations to client",
         );
         if send_json(
             &mut sender,
@@ -1123,7 +1120,7 @@ async fn search_handler(
         return Json(Vec::new()); // still indexing
     };
     let results = idx.search(&query.q.q, 20).unwrap_or_else(|e| {
-        eprintln!("[search] error: {e}");
+        tracing::warn!("search error: {e}");
         Vec::new()
     });
     Json(results)

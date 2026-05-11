@@ -330,10 +330,7 @@ fn is_text_file_quick(path: &std::path::Path) -> bool {
     let mut f = match std::fs::File::open(path) {
         Ok(f) => f,
         Err(e) => {
-            eprintln!(
-                "[chat/mentions] cannot open {} for text-sniff: {e}",
-                path.display()
-            );
+            tracing::warn!("cannot open {} for text-sniff: {e}", path.display());
             return false;
         }
     };
@@ -341,10 +338,7 @@ fn is_text_file_quick(path: &std::path::Path) -> bool {
     let n = match f.read(&mut buf) {
         Ok(n) => n,
         Err(e) => {
-            eprintln!(
-                "[chat/mentions] read failed during text-sniff of {}: {e}",
-                path.display()
-            );
+            tracing::warn!("read failed during text-sniff of {}: {e}", path.display());
             return false;
         }
     };

@@ -121,7 +121,7 @@ fn handle_open_path(app: &tauri::AppHandle, path: &Path) {
     let canonical = match dunce::canonicalize(path) {
         Ok(p) => p,
         Err(e) => {
-            eprintln!("Warning: cannot resolve path {}: {}", path.display(), e);
+            tracing::warn!("cannot resolve path {}: {}", path.display(), e);
             return;
         }
     };
@@ -145,7 +145,7 @@ fn handle_open_path(app: &tauri::AppHandle, path: &Path) {
     let server = state.server.lock().unwrap();
 
     if !server.is_running() {
-        eprintln!("Warning: server not running, cannot open path");
+        tracing::warn!("server not running, cannot open path");
         return;
     }
 
@@ -226,7 +226,19 @@ fn finder_front_directory() -> Option<String> {
 
 // ── Main ──────────────────────────────────────────────────────────────────────
 
+fn init_tracing() {
+    tracing_subscriber::fmt()
+        .with_env_filter(
+            tracing_subscriber::EnvFilter::try_from_default_env()
+                .unwrap_or_else(|_| tracing_subscriber::EnvFilter::new("info")),
+        )
+        .with_target(false)
+        .compact()
+        .init();
+}
+
 fn main() {
+    init_tracing();
     let settings = AppSettings::load();
 
     let app = tauri::Builder::default()
@@ -281,7 +293,7 @@ fn main() {
             };
             let mut server = state.server.lock().unwrap();
             if let Err(e) = server.start(config, Some(persist_hook)) {
-                eprintln!("[setup] server failed to start: {e}");
+                tracing::error!("server failed to start: {e}");
             }
             drop(server);
             app.manage(state);

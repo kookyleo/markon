@@ -483,7 +483,7 @@ pub fn list_fonts() -> Vec<String> {
     let families = match SystemSource::new().all_families() {
         Ok(f) => f,
         Err(e) => {
-            eprintln!("list_fonts: SystemSource::all_families failed: {e}");
+            tracing::warn!("list_fonts: SystemSource::all_families failed: {e}");
             return Vec::new();
         }
     };
