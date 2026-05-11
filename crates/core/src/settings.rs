@@ -2,7 +2,44 @@ use crate::server::{ServerConfig, WorkspaceInit};
 use crate::workspace::{generate_token, PersistHook, WorkspaceFlags, WorkspaceRegistry};
 use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Mutex, OnceLock};
+
+/// Restrict settings.json to the owning user (Unix only). Permission
+/// errors are logged at debug — failing to chmod on a temp filesystem
+/// (e.g. unit tests on tmpfs) is not worth interrupting the save.
+#[cfg(unix)]
+fn restrict_user_only(path: &Path) {
+    use std::os::unix::fs::PermissionsExt;
+    match std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o600)) {
+        Ok(()) => tracing::debug!(path = %path.display(), "settings.json chmod 0600 applied"),
+        Err(e) => tracing::debug!(
+            path = %path.display(),
+            "settings.json chmod 0600 failed: {e} — proceeding"
+        ),
+    }
+}
+
+/// Windows defaults to per-user ACLs on files created under the user
+/// profile, which is where we live (`~/.markon/`). We don't attempt
+/// further hardening here; the default is already "owner only" on a
+/// standard install.
+#[cfg(not(unix))]
+fn restrict_user_only(_path: &Path) {}
+
+/// Emit a one-shot warning when a provider api_key is being persisted
+/// in plaintext. Anything more elaborate (OS keychain, encryption) is
+/// future work — for now we make sure the operator at least knows the
+/// file is sensitive.
+fn warn_sensitive_secret_persisted_once(path: &Path) {
+    static WARNED: OnceLock<()> = OnceLock::new();
+    WARNED.get_or_init(|| {
+        tracing::warn!(
+            path = %path.display(),
+            "chat provider api_key persisted in plaintext at this path; \
+             restrict access to your user account only"
+        );
+    });
+}
 
 fn default_true() -> bool {
     true
@@ -233,7 +270,25 @@ impl AppSettings {
             let _ = std::fs::create_dir_all(parent);
         }
         let c = serde_json::to_string_pretty(self).unwrap();
-        std::fs::write(p, c).map_err(|e| e.to_string())
+        std::fs::write(&p, c).map_err(|e| e.to_string())?;
+        // The file stores plaintext provider api_key fields. Tighten
+        // permissions on Unix so other users on the same machine cannot
+        // read it. Windows files under the user profile are already
+        // restricted to the owning user by default ACLs — we don't
+        // attempt to re-tighten there.
+        restrict_user_only(&p);
+        if self.has_sensitive_provider_secret() {
+            warn_sensitive_secret_persisted_once(&p);
+        }
+        Ok(())
+    }
+
+    /// True when at least one chat provider has an api_key set. Used to
+    /// gate the "plaintext key on disk" warning so we don't spam users
+    /// who haven't configured chat at all.
+    fn has_sensitive_provider_secret(&self) -> bool {
+        !self.chat.anthropic.api_key.trim().is_empty()
+            || !self.chat.openai.api_key.trim().is_empty()
     }
 
     pub fn save(&self) -> Result<(), String> {
@@ -435,6 +490,19 @@ mod tests {
         assert_eq!(s.language, "auto");
         assert_eq!(s.web_theme, "auto");
         assert_eq!(s.default_chat_mode, "in_page");
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn save_chmods_settings_file_to_0600() {
+        use std::os::unix::fs::PermissionsExt;
+        let home = TempHome::new("chmod");
+        let mut s = AppSettings::load_at(home.path());
+        s.chat.anthropic.api_key = "sk-ant-test-key-1234567890".to_string();
+        s.save_at(home.path()).expect("save");
+        let p = AppSettings::settings_path_at(home.path());
+        let mode = std::fs::metadata(&p).unwrap().permissions().mode() & 0o777;
+        assert_eq!(mode, 0o600, "expected 0600, got {mode:o}");
     }
 
     #[test]
