@@ -140,6 +140,34 @@
             padding: 8px 0;
         }
 
+        /* Inline SVG icons via data: url. Self-contained — no dependency on
+           emoji font availability (📁 / 📄 render as tofu boxes on systems
+           without a colour emoji font, e.g. headless Chromium on Linux).
+           Single colour, currentColor so they pick up dark/light theme. */
+        .dir-icon {
+            display: inline-block;
+            width: 16px;
+            height: 16px;
+            vertical-align: -3px;
+            margin-right: 8px;
+            background-repeat: no-repeat;
+            background-position: center;
+            background-size: contain;
+            opacity: 0.75;
+        }
+        .dir-icon-folder {
+            background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='%23586069'><path d='M1.75 1A1.75 1.75 0 000 2.75v10.5C0 14.216.784 15 1.75 15h12.5A1.75 1.75 0 0016 13.25V4.75A1.75 1.75 0 0014.25 3H7.5a.25.25 0 01-.2-.1l-.9-1.2C6.07 1.26 5.55 1 5 1H1.75z'/></svg>");
+        }
+        .dir-icon-file {
+            background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='%23586069'><path d='M3.75 1.5a.25.25 0 00-.25.25v11.5c0 .138.112.25.25.25h8.5a.25.25 0 00.25-.25V6h-2.75A1.75 1.75 0 018 4.25V1.5H3.75zm5.75.56v2.19c0 .138.112.25.25.25h2.19L9.5 2.06zM2 1.75C2 .784 2.784 0 3.75 0h5.086a1.75 1.75 0 011.237.513l3.414 3.414c.329.328.513.773.513 1.237v8.086A1.75 1.75 0 0112.25 15h-8.5A1.75 1.75 0 012 13.25V1.75z'/></svg>");
+        }
+        html[data-theme="dark"] .dir-icon-folder {
+            background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='%238b949e'><path d='M1.75 1A1.75 1.75 0 000 2.75v10.5C0 14.216.784 15 1.75 15h12.5A1.75 1.75 0 0016 13.25V4.75A1.75 1.75 0 0014.25 3H7.5a.25.25 0 01-.2-.1l-.9-1.2C6.07 1.26 5.55 1 5 1H1.75z'/></svg>");
+        }
+        html[data-theme="dark"] .dir-icon-file {
+            background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='%238b949e'><path d='M3.75 1.5a.25.25 0 00-.25.25v11.5c0 .138.112.25.25.25h8.5a.25.25 0 00.25-.25V6h-2.75A1.75 1.75 0 018 4.25V1.5H3.75zm5.75.56v2.19c0 .138.112.25.25.25h2.19L9.5 2.06zM2 1.75C2 .784 2.784 0 3.75 0h5.086a1.75 1.75 0 011.237.513l3.414 3.414c.329.328.513.773.513 1.237v8.086A1.75 1.75 0 0112.25 15h-8.5A1.75 1.75 0 012 13.25V1.75z'/></svg>");
+        }
+
         a {
             text-decoration: none;
         }
@@ -541,14 +569,14 @@
     <div class="dir-path"><span id="dir-current-label">Current directory:</span> {{ current_dir }}</div>
     <ul>
         {% if show_parent %}
-        <li>📁 <a href="{{ parent_link }}"><strong>..</strong></a></li>
+        <li><span class="dir-icon dir-icon-folder" aria-hidden="true"></span><a href="{{ parent_link }}"><strong>..</strong></a></li>
         {% endif %}
         {% for entry in entries %}
         <li>
             {% if entry.is_dir %}
-            📁 <a href="{{ entry.link }}"><strong>{{ entry.name }}/</strong></a>
+            <span class="dir-icon dir-icon-folder" aria-hidden="true"></span><a href="{{ entry.link }}"><strong>{{ entry.name }}/</strong></a>
             {% else %}
-            📄 <a href="{{ entry.link }}">{{ entry.name }}</a>
+            <span class="dir-icon dir-icon-file" aria-hidden="true"></span><a href="{{ entry.link }}">{{ entry.name }}</a>
             {% endif %}
         </li>
         {% endfor %}
