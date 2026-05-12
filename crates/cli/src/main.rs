@@ -354,19 +354,26 @@ fn print_workspace_access_summary(summary: &WorkspaceAccessSummary) {
     }
 }
 
-fn list_workspaces(
+async fn list_workspaces(
     port: u16,
     token: &str,
     format: WorkspaceListFormat,
     entry: Option<&str>,
 ) -> Result<(), Box<dyn std::error::Error>> {
-    let client = reqwest::blocking::Client::new();
+    // Must use the async reqwest client. reqwest::blocking::Client::new()
+    // spins up its own internal tokio runtime; constructing it from inside
+    // an outer tokio runtime (we run under #[tokio::main]) panics on drop
+    // with "Cannot drop a runtime in a context where blocking is not
+    // allowed". Same applies to every other CLI -> server HTTP call below.
+    let client = reqwest::Client::new();
     let workspaces: Vec<WorkspaceListEntry> = client
         .get(format!("http://127.0.0.1:{port}/api/workspaces"))
         .header("X-Markon-Token", token)
-        .send()?
+        .send()
+        .await?
         .error_for_status()?
-        .json()?;
+        .json()
+        .await?;
 
     if workspaces.is_empty() {
         println!("No active workspaces.");
@@ -478,18 +485,20 @@ fn list_workspaces(
     Ok(())
 }
 
-fn detach_workspace(
+async fn detach_workspace(
     port: u16,
     token: &str,
     target: &str,
 ) -> Result<(), Box<dyn std::error::Error>> {
-    let client = reqwest::blocking::Client::new();
+    let client = reqwest::Client::new();
     let workspaces: serde_json::Value = client
         .get(format!("http://127.0.0.1:{port}/api/workspaces"))
         .header("X-Markon-Token", token)
-        .send()?
+        .send()
+        .await?
         .error_for_status()?
-        .json()?;
+        .json()
+        .await?;
 
     let arr = workspaces
         .as_array()
@@ -506,40 +515,44 @@ fn detach_workspace(
     client
         .delete(format!("http://127.0.0.1:{port}/api/workspace/{id}"))
         .header("X-Markon-Token", token)
-        .send()?
+        .send()
+        .await?
         .error_for_status()?;
 
     println!("Workspace '{id}' detached.");
     Ok(())
 }
 
-fn shutdown_server(port: u16, token: &str) -> Result<(), Box<dyn std::error::Error>> {
-    let client = reqwest::blocking::Client::new();
+async fn shutdown_server(port: u16, token: &str) -> Result<(), Box<dyn std::error::Error>> {
+    let client = reqwest::Client::new();
     client
         .post(format!("http://127.0.0.1:{port}/api/shutdown"))
         .header("X-Markon-Token", token)
-        .send()?
+        .send()
+        .await?
         .error_for_status()?;
 
     println!("Markon server is shutting down.");
     Ok(())
 }
 
-fn add_or_update_workspace(
+async fn add_or_update_workspace(
     port: u16,
     token: &str,
     ws_path: &str,
     flags: WorkspaceFlags,
 ) -> Result<String, Box<dyn std::error::Error>> {
-    let client = reqwest::blocking::Client::new();
+    let client = reqwest::Client::new();
 
     // Check if this path is already a registered workspace.
     let workspaces: serde_json::Value = client
         .get(format!("http://127.0.0.1:{port}/api/workspaces"))
         .header("X-Markon-Token", token)
-        .send()?
+        .send()
+        .await?
         .error_for_status()?
-        .json()?;
+        .json()
+        .await?;
 
     if let Some(existing) = workspaces
         .as_array()
@@ -550,7 +563,8 @@ fn add_or_update_workspace(
             .put(format!("http://127.0.0.1:{port}/api/workspace/{id}"))
             .header("X-Markon-Token", token)
             .json(&flags)
-            .send()?
+            .send()
+            .await?
             .error_for_status()?;
         return Ok(id.to_string());
     }
@@ -567,9 +581,11 @@ fn add_or_update_workspace(
             "enable_chat": flags.enable_chat,
             "shared_annotation": flags.shared_annotation,
         }))
-        .send()?
+        .send()
+        .await?
         .error_for_status()?
-        .json()?;
+        .json()
+        .await?;
     let id = resp["id"].as_str().ok_or("no id in response")?;
     Ok(id.to_string())
 }
@@ -604,9 +620,11 @@ async fn main() {
         };
 
         let res = match cmd {
-            Commands::Ls { format } => list_workspaces(port, &token, format, cli_entry.as_deref()),
-            Commands::Detach { target } => detach_workspace(port, &token, &target),
-            Commands::Shutdown => shutdown_server(port, &token),
+            Commands::Ls { format } => {
+                list_workspaces(port, &token, format, cli_entry.as_deref()).await
+            }
+            Commands::Detach { target } => detach_workspace(port, &token, &target).await,
+            Commands::Shutdown => shutdown_server(port, &token).await,
         };
 
         if let Err(e) = res {
@@ -681,6 +699,7 @@ async fn main() {
     if let Some(lock) = ServerLock::read() {
         if lock.is_alive() {
             match add_or_update_workspace(lock.port, &lock.token, &ws_root.to_string_lossy(), flags)
+                .await
             {
                 Ok(workspace_id) => {
                     let local_base = format!("http://127.0.0.1:{}", lock.port);
