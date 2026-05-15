@@ -41,6 +41,7 @@
     // ── General — Behavior ───────────────────────────────────
     "sec.behavior":   "More",
     "pref.tray":  "Hide on window close instead of quitting; reopen via menu bar icon",
+    "pref.print_collapsed_content": "Print the body of collapsed sections (default: skip and show a placeholder)",
     "sec.webstyles":        "Page styles",
     "webstyles.reset_all":  "Reset all to defaults",
     "webstyles.reset.row":  "Reset this style",

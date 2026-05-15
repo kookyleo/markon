@@ -349,7 +349,6 @@
   .section-actions,
   .section-action-separator,
   .section-expand-toggle,
-  .section-collapsed-placeholder,
   .viewed-checkbox-label,
   .toc,
   #toc-container,
@@ -359,6 +358,41 @@
   header,
   .footer {
     display: none !important;
+  }
+
+  /* ========== COLLAPSED SECTIONS ==========
+   * Default (data-print-collapsed-content="false"): keep the user's collapse
+   * state — content stays hidden via .section-content-hidden, but show the
+   * placeholder so a reader can tell something was deliberately omitted.
+   * When data-print-collapsed-content="true" the cascade below flips: the
+   * placeholder is hidden and the content is forced visible. */
+  .section-collapsed-placeholder {
+    display: block !important;
+    color: #666 !important;
+    font-style: italic !important;
+    margin: 4pt 0 !important;
+    padding: 2pt 0 !important;
+  }
+  /* Strip the live-UI hover affordance so the heading prints normally. */
+  html .markdown-body .section-collapsed {
+    opacity: 1 !important;
+    cursor: auto !important;
+  }
+
+  html[data-print-collapsed-content="true"] .section-collapsed-placeholder {
+    display: none !important;
+  }
+  /* Force-show content that the JS hid for collapse. Matches editor.css's
+   * .section-content-hidden block and explicitly reverses each !important
+   * override so the printed output looks like an expanded section. */
+  html[data-print-collapsed-content="true"] .section-content-hidden {
+    max-height: none !important;
+    opacity: 1 !important;
+    margin-top: revert !important;
+    margin-bottom: revert !important;
+    padding-top: revert !important;
+    padding-bottom: revert !important;
+    overflow: visible !important;
   }
 
   /* ========== PAGE BREAK CONTROL ========== */

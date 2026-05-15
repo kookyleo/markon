@@ -80,6 +80,10 @@ pub struct ServerConfig {
     /// Default chat surface: "in_page" or "popout". Surfaced to the browser
     /// via the `default-chat-mode` meta tag.
     pub default_chat_mode: String,
+    /// When true, collapsed sections are forced visible during print so their
+    /// content ends up on paper. When false (default) the content stays hidden
+    /// and a small placeholder marks the position of the collapsed section.
+    pub print_collapsed_content: bool,
 }
 
 #[derive(Clone)]
@@ -102,6 +106,9 @@ pub(crate) struct AppState {
     pub styles_css: Arc<String>,
     /// Default chat surface ("in_page" or "popout").
     pub default_chat_mode: Arc<String>,
+    /// Whether collapsed sections should be printed (true) or replaced by a
+    /// placeholder (false). Mirrored to the browser as a `<html>` data attr.
+    pub print_collapsed_content: bool,
     /// Shutdown channel.
     pub shutdown_tx: mpsc::Sender<()>,
     /// Dev-only: esbuild watcher posts to /_/dev/reload-trigger and the
@@ -241,6 +248,7 @@ pub async fn start(config: ServerConfig) -> Result<(), String> {
         shortcuts_json,
         styles_css,
         default_chat_mode,
+        print_collapsed_content,
     } = config;
 
     // Initialize Tera template engine from embedded resources.
@@ -356,6 +364,7 @@ pub async fn start(config: ServerConfig) -> Result<(), String> {
         shortcuts_json: Arc::new(shortcuts_json.unwrap_or_else(|| "null".to_string())),
         styles_css: Arc::new(styles_css.unwrap_or_default()),
         default_chat_mode: Arc::new(default_chat_mode),
+        print_collapsed_content,
         shutdown_tx,
         #[cfg(debug_assertions)]
         dev_reload_tx: Arc::new(broadcast::channel::<()>(16).0),
@@ -1201,6 +1210,7 @@ fn render_markdown_file(
             context.insert("shortcuts_json", state.shortcuts_json.as_str());
             context.insert("styles_css", state.styles_css.as_str());
             context.insert("default_chat_mode", state.default_chat_mode.as_str());
+            context.insert("print_collapsed_content", &state.print_collapsed_content);
 
             match state.tera.render("layout.html", &context) {
                 Ok(html) => Html(html).into_response(),
@@ -1229,6 +1239,7 @@ fn render_markdown_file(
             context.insert("shortcuts_json", state.shortcuts_json.as_str());
             context.insert("styles_css", state.styles_css.as_str());
             context.insert("default_chat_mode", state.default_chat_mode.as_str());
+            context.insert("print_collapsed_content", &state.print_collapsed_content);
 
             match state.tera.render("layout.html", &context) {
                 Ok(html) => Html(html).into_response(),
@@ -1738,6 +1749,7 @@ mod tests {
             shortcuts_json: Arc::new("{}".into()),
             styles_css: Arc::new("".into()),
             default_chat_mode: Arc::new("in_page".into()),
+            print_collapsed_content: false,
             shutdown_tx: tx,
             #[cfg(debug_assertions)]
             dev_reload_tx: Arc::new(broadcast::channel::<()>(1).0),

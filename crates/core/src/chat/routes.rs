@@ -624,6 +624,7 @@ mod tests {
             shortcuts_json: Arc::new("null".into()),
             styles_css: Arc::new(String::new()),
             default_chat_mode: Arc::new("in_page".into()),
+            print_collapsed_content: false,
             shutdown_tx,
             #[cfg(debug_assertions)]
             dev_reload_tx: Arc::new(broadcast::channel::<()>(1).0),

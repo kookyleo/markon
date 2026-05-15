@@ -160,6 +160,11 @@ pub struct AppSettings {
     pub default_chat_mode: String,
     #[serde(default)]
     pub default_shared_annotation: bool,
+    /// When false (default), `<details>`-style collapsed sections are hidden
+    /// in print and replaced by a small placeholder; when true the collapsed
+    /// content is forced visible so it shows up in the printed output.
+    #[serde(default)]
+    pub print_collapsed_content: bool,
     #[serde(default)]
     pub chat: ChatSettings,
     #[serde(default)]
@@ -197,6 +202,7 @@ impl Default for AppSettings {
             default_chat: false,
             default_chat_mode: default_in_page(),
             default_shared_annotation: false,
+            print_collapsed_content: false,
             chat: ChatSettings::default(),
             web_styles: std::collections::HashMap::new(),
             shortcuts: std::collections::HashMap::new(),
@@ -331,6 +337,7 @@ impl AppSettings {
             styles_css: self.render_styles_css(),
             shortcuts_json: self.render_shortcuts_json(),
             default_chat_mode: self.default_chat_mode.clone(),
+            print_collapsed_content: self.print_collapsed_content,
         }
     }
     pub fn effective_web_language(&self) -> Option<String> {

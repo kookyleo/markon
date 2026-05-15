@@ -41,6 +41,7 @@
     // ── General — Behavior ───────────────────────────────────
     "sec.behavior":   "その他",
     "pref.tray":  "ウィンドウを閉じても終了せず非表示にし、メニューバーアイコンから再表示",
+    "pref.print_collapsed_content": "折りたたまれたセクションの本文も印刷する（既定: 印刷せずプレースホルダーのみ表示）",
     "sec.webstyles":        "ページスタイル",
     "webstyles.reset_all":  "すべてデフォルトに戻す",
     "webstyles.reset.row":  "この項目をデフォルトに戻す",

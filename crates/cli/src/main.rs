@@ -99,6 +99,11 @@ struct Cli {
     #[arg(long, action = clap::ArgAction::SetTrue)]
     enable_chat: bool,
 
+    /// Include the body of collapsed sections when printing. Default: hide
+    /// collapsed bodies and mark them with a placeholder.
+    #[arg(long, action = clap::ArgAction::SetTrue)]
+    print_collapsed_content: bool,
+
     /// Internal flag for daemonization.
     #[arg(long, hide = true)]
     daemon_internal: bool,
@@ -787,6 +792,9 @@ async fn main() {
     let shortcuts_json = settings.render_shortcuts_json();
     let styles_css = settings.render_styles_css();
     let default_chat_mode = settings.default_chat_mode.clone();
+    // CLI flag forces inclusion; otherwise inherit the persisted preference so
+    // GUI-set values still apply when launching from the command line.
+    let print_collapsed_content = cli.print_collapsed_content || settings.print_collapsed_content;
 
     let settings = Arc::new(Mutex::new(settings));
 
@@ -822,6 +830,7 @@ async fn main() {
         shortcuts_json,
         styles_css,
         default_chat_mode,
+        print_collapsed_content,
     })
     .await
     {

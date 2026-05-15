@@ -41,6 +41,7 @@
     // ── 全局设置 — 行为 ──────────────────────────────────────
     "sec.behavior":   "更多",
     "pref.tray":  "关闭窗口时隐藏而非退出，通过菜单栏图标唤起",
+    "pref.print_collapsed_content": "打印折叠章节的内容（默认不打印，仅显示占位符）",
     "sec.webstyles":        "页面样式",
     "webstyles.reset_all":  "全部恢复默认",
     "webstyles.reset.row":  "恢复此项默认",
