@@ -315,22 +315,84 @@ export class AnnotationManager {
                 return;
             }
 
-            // Create the wrapper element.
-            const element = document.createElement(anno.tagName);
-            element.className = anno.type;
-            element.dataset.annotationId = anno.id;
-
-            if (anno.note) {
-                element.dataset.note = anno.note;
-                element.classList.add('has-note');
-            }
-
-            // Splice it into the DOM.
-            element.appendChild(range.extractContents());
-            range.insertNode(element);
+            // Wrap each intersecting text node individually instead of
+            // calling extractContents() + insertNode(), which would slice
+            // inline elements (e.g. <code>) at the range boundary and leave
+            // empty shells behind after unwrap. See #wrapRange.
+            this.#wrapRange(range, anno);
 
         } catch (error) {
             Logger.error('AnnotationManager', `Failed to apply annotation ${anno.id}:`, error);
+        }
+    }
+
+    /**
+     * Apply an annotation by wrapping each text node that intersects the
+     * range with its own wrapper element. Inspired by mark.js: keeps inline
+     * elements (`<code>`, `<em>`, …) intact because splitText only ever
+     * splits text nodes, never element nodes.
+     *
+     * For a range that crosses inline boundaries this produces multiple
+     * sibling wrappers that share the same `data-annotation-id` — that's
+     * fine: `removeFromDOM` / `clearDOM` already query by id and unwrap
+     * every match.
+     */
+    #wrapRange(range: Range, anno: Annotation): void {
+        // Snapshot endpoints up front: splitText below mutates the tree, and
+        // we don't want `range.startContainer` shifting under us.
+        const startContainer = range.startContainer;
+        const endContainer = range.endContainer;
+        const startOffset = range.startOffset;
+        const endOffset = range.endOffset;
+
+        const ancestor = range.commonAncestorContainer;
+        const root = ancestor.nodeType === 3 ? (ancestor.parentNode as Node) : ancestor;
+        if (!root) return;
+
+        // Collect (textNode, start, end) tuples for every text node that
+        // intersects the range. Doing the collection before any mutation
+        // means splitText-induced new siblings don't sneak into the walker.
+        const targets: Array<{ node: Text; start: number; end: number }> = [];
+        const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+        let cursor: Node | null = walker.nextNode();
+        while (cursor) {
+            const text = cursor as Text;
+            if (range.intersectsNode(text)) {
+                const start = text === startContainer ? startOffset : 0;
+                const end = text === endContainer ? endOffset : text.length;
+                if (start < end) {
+                    targets.push({ node: text, start, end });
+                }
+            }
+            cursor = walker.nextNode();
+        }
+
+        if (targets.length === 0) return;
+
+        for (const { node, start, end } of targets) {
+            // Slice the text node down to [start, end). Tail first so the
+            // head split doesn't invalidate `end`. splitText only splits the
+            // text node itself — surrounding inline elements stay intact.
+            let target = node;
+            if (end < target.length) {
+                target.splitText(end);
+            }
+            if (start > 0) {
+                target = target.splitText(start);
+            }
+
+            const wrapper = document.createElement(anno.tagName);
+            wrapper.className = anno.type;
+            wrapper.dataset.annotationId = anno.id;
+            if (anno.note) {
+                wrapper.dataset.note = anno.note;
+                wrapper.classList.add('has-note');
+            }
+
+            const parent = target.parentNode;
+            if (!parent) continue;
+            parent.insertBefore(wrapper, target);
+            wrapper.appendChild(target);
         }
     }
 

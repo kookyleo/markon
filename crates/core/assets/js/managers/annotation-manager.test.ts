@@ -260,6 +260,75 @@ describe('AnnotationManager', () => {
         expect((last.data as Annotation[])[0].id).toBe(anno.id);
     });
 
+    it('applyToDOM keeps inline <code> intact when the range crosses code boundaries', () => {
+        const article = setupArticle('<p><code>foo</code> + <code>bar</code></p>');
+        const storage = makeStorage();
+        const mgr = new AnnotationManager(storage, article);
+
+        const p = article.querySelector('p')!;
+        const codeFoo = p.childNodes[0] as HTMLElement; // <code>foo</code>
+        const middle = p.childNodes[1] as Text;          // " + "
+        const codeBar = p.childNodes[2] as HTMLElement; // <code>bar</code>
+
+        // Select "oo" + " + " + "ba" — crosses both <code> boundaries.
+        const range = document.createRange();
+        range.setStart(codeFoo.firstChild!, 1);
+        range.setEnd(codeBar.firstChild!, 2);
+
+        const anno = mgr.createAnnotation(range, 'highlight-yellow', 'span');
+        mgr.applyToDOM([anno]);
+
+        // Both <code> elements still exist and still hold their full text.
+        const codes = article.querySelectorAll('code');
+        expect(codes.length).toBe(2);
+        expect(codes[0].textContent).toBe('foo');
+        expect(codes[1].textContent).toBe('bar');
+
+        // No empty <code></code> shells leaked into the DOM.
+        codes.forEach(c => expect(c.textContent).not.toBe(''));
+
+        // The annotated portion is split across three sibling wrappers
+        // (inside codeFoo, the middle text, and inside codeBar), all sharing
+        // the same annotation id.
+        const wrappers = article.querySelectorAll<HTMLElement>(`[data-annotation-id="${anno.id}"]`);
+        expect(wrappers.length).toBe(3);
+        const wrappedText = Array.from(wrappers).map(w => w.textContent).join('');
+        expect(wrappedText).toBe('oo + ba');
+
+        // Visible text in the paragraph is untouched.
+        expect(p.textContent).toBe('foo + bar');
+        // The middle text Text node `+` should still be passed through (in
+        // wrapper form now). Reference kept for clarity.
+        void middle;
+    });
+
+    it('removeFromDOM restores the original DOM when the range crossed <code>', () => {
+        const article = setupArticle('<p><code>foo</code> + <code>bar</code></p>');
+        const storage = makeStorage();
+        const mgr = new AnnotationManager(storage, article);
+
+        const p = article.querySelector('p')!;
+        const codeFoo = p.childNodes[0] as HTMLElement;
+        const codeBar = p.childNodes[2] as HTMLElement;
+        const range = document.createRange();
+        range.setStart(codeFoo.firstChild!, 1);
+        range.setEnd(codeBar.firstChild!, 2);
+
+        const anno = mgr.createAnnotation(range, 'highlight-yellow', 'span');
+        mgr.applyToDOM([anno]);
+        mgr.removeFromDOM(anno.id);
+
+        // Annotation wrappers gone; both <code> elements remain non-empty.
+        expect(article.querySelectorAll('[data-annotation-id]').length).toBe(0);
+        const codes = article.querySelectorAll('code');
+        expect(codes.length).toBe(2);
+        expect(codes[0].textContent).toBe('foo');
+        expect(codes[1].textContent).toBe('bar');
+        // No empty <code></code> shells regardless of order.
+        codes.forEach(c => expect(c.childNodes.length).toBeGreaterThan(0));
+        expect(p.textContent).toBe('foo + bar');
+    });
+
     it('load() pulls from storage into the in-memory list', async () => {
         const article = setupArticle('<p>x</p>');
         const seed: Annotation = {
