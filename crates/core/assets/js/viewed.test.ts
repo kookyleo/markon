@@ -101,6 +101,49 @@ describe('SectionViewedManager', () => {
         expect(heading.classList.contains('section-collapsed')).toBe(false);
     });
 
+    it('collapseAll / expandAll keep the per-section toggle button label in sync (#15)', async () => {
+        seedMeta('file-path', 'docs/x.md');
+        seedMeta('enable-viewed', 'true');
+        buildArticle(['h2-a', 'h2-b']);
+
+        const mgr = new SectionViewedManager(false, null);
+        await mgr.ready;
+
+        const btnFor = (id: string): HTMLElement | null =>
+            document.querySelector<HTMLElement>(
+                `#${id} .section-expand-toggle`,
+            );
+        // Initial label: "Collapse" (sections start expanded).
+        expect(btnFor('h2-a')?.textContent).toBe('web.viewed.collapse');
+        expect(btnFor('h2-b')?.textContent).toBe('web.viewed.collapse');
+
+        mgr.collapseAll();
+        expect(btnFor('h2-a')?.textContent).toBe('web.viewed.expand');
+        expect(btnFor('h2-b')?.textContent).toBe('web.viewed.expand');
+
+        mgr.expandAll();
+        expect(btnFor('h2-a')?.textContent).toBe('web.viewed.collapse');
+        expect(btnFor('h2-b')?.textContent).toBe('web.viewed.collapse');
+    });
+
+    it('toggleCollapse (o shortcut path) keeps the toggle button label in sync (#15)', async () => {
+        seedMeta('file-path', 'docs/x.md');
+        seedMeta('enable-viewed', 'true');
+        buildArticle(['h2-a']);
+
+        const mgr = new SectionViewedManager(false, null);
+        await mgr.ready;
+
+        const btn = document.querySelector<HTMLElement>('#h2-a .section-expand-toggle')!;
+        expect(btn.textContent).toBe('web.viewed.collapse');
+
+        mgr.toggleCollapse('h2-a');
+        expect(btn.textContent).toBe('web.viewed.expand');
+
+        mgr.toggleCollapse('h2-a');
+        expect(btn.textContent).toBe('web.viewed.collapse');
+    });
+
     it('shared-mode: WS viewed_state push updates viewedState and reflects in checkboxes', async () => {
         seedMeta('file-path', 'docs/x.md');
         seedMeta('enable-viewed', 'true');

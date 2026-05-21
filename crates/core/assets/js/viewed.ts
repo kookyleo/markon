@@ -269,6 +269,13 @@ export class SectionViewedManager {
         });
 
         this.ensureCollapsedPlaceholder(heading, headingId);
+        this.syncToggleBtn(heading, true);
+    }
+
+    syncToggleBtn(heading: HTMLElement, isCollapsed: boolean): void {
+        const toggleBtn = heading.querySelector<HTMLElement>('.section-expand-toggle');
+        if (!toggleBtn) return;
+        toggleBtn.textContent = _t(isCollapsed ? 'web.viewed.expand' : 'web.viewed.collapse');
     }
 
     ensureCollapsedPlaceholder(heading: HTMLElement, headingId: string): void {
@@ -330,6 +337,7 @@ export class SectionViewedManager {
 
         delete this.tempExpandedState[headingId];
         heading.classList.remove('section-temp-expanded');
+        this.syncToggleBtn(heading, false);
     }
 
     toggleTempExpand(headingId: string): void {
@@ -691,6 +699,7 @@ export class SectionViewedManager {
                 el.classList.remove('section-content-hidden');
                 el.classList.add('section-content-temp-visible');
             });
+            this.syncToggleBtn(heading, false);
         } else {
             heading.classList.add('section-collapsed');
             content.forEach((el) => {
@@ -698,6 +707,7 @@ export class SectionViewedManager {
                 el.classList.remove('section-content-temp-visible');
             });
             this.ensureCollapsedPlaceholder(heading, headingId);
+            this.syncToggleBtn(heading, true);
         }
     }
 
