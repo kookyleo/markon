@@ -452,12 +452,23 @@ export class NoteManager {
         }, 0);
 
         // Adjust the position so the popup stays inside the viewport.
-        const popupRect = popup.getBoundingClientRect();
-        if (popupRect.right > window.innerWidth) {
-            popup.style.left = `${rect.left + window.scrollX - (popupRect.right - window.innerWidth) - 10}px`;
+        // An absolutely-positioned element with `left: X` and `width: auto`
+        // is shrink-to-fit against its containing block's right edge — on a
+        // narrow viewport that compresses the popup (the user perceives this
+        // as "deformation"), and the `right > innerWidth` test below would
+        // never fire because the browser already capped it. Detect both
+        // genuine overflow and the shrink-to-fit case by checking if the
+        // popup reaches the viewport edge, then re-anchor by `right` so the
+        // popup recovers its natural width with a small inset.
+        const edgeMargin = 10;
+        let popupRect = popup.getBoundingClientRect();
+        if (popupRect.right >= window.innerWidth) {
+            popup.style.left = 'auto';
+            popup.style.right = `${edgeMargin}px`;
+            popupRect = popup.getBoundingClientRect();
         }
         if (popupRect.bottom > window.innerHeight) {
-            popup.style.top = `${rect.top + window.scrollY - popupRect.height - 10}px`;
+            popup.style.top = `${rect.top + window.scrollY - popupRect.height - edgeMargin}px`;
         }
 
         Logger.log('NoteManager', `Showed note popup for annotation: ${annotationId}`);
