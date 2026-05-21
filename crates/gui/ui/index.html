@@ -2037,6 +2037,10 @@
       renderShortcuts();
       renderHelpTip();
     }
+    // Re-render web styles rows (labels/hints/tooltips are built dynamically)
+    if (document.getElementById('webstyles-list')?.children.length) {
+      renderWebStyles();
+    }
   }
 
   // Populate language dropdowns from i18n meta.
