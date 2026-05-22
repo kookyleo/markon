@@ -63,9 +63,10 @@ export type MessageContentBlock =
           line: number;
           old_string: string;
           new_string: string;
-          /** Client-only state; backend never echoes this. Starts at 'pending' and
-           *  flips to 'applied'/'rejected'/'drifted' after the user resolves. */
-          status?: 'pending' | 'applied' | 'rejected' | 'drifted';
+          /** Client-only state; backend never echoes this. Starts at 'pending'
+           *  → flips to 'applied'/'rejected'/'drifted' after the user resolves
+           *  → 'applied' can further flip to 'reverted' / 'drifted' via Undo. */
+          status?: 'pending' | 'applied' | 'rejected' | 'drifted' | 'reverted';
       };
 
 /** A message as we hold it in `#messagesByThread` (post-#hydrateMessage). */
@@ -1555,7 +1556,9 @@ export class ChatManager {
     /** Diff card for an `edit_file` proposal awaiting user confirmation.
      *  Renders inline in the message stream as a labelled two-tone diff
      *  (red old / green new) with a status pill that flips when the user
-     *  resolves the proposal via the bottom-bar bar. */
+     *  resolves the proposal via the bottom-bar bar. Once status='applied'
+     *  the card grows an inline [Undo] button so the user can revert the
+     *  write without going back through the model. */
     #renderEditPending(
         block: Extract<MessageContentBlock, { type: 'edit_pending' }>,
     ): HTMLElement {
@@ -1570,11 +1573,26 @@ export class ChatManager {
         const pathEl = document.createElement('span');
         pathEl.className = 'markon-chat-edit-pending-path';
         pathEl.textContent = `📝 ${block.path} · L${block.line}`;
+        const right = document.createElement('span');
+        right.className = 'markon-chat-edit-pending-head-right';
         const statusEl = document.createElement('span');
         statusEl.className = 'markon-chat-edit-pending-status';
         statusEl.textContent = this.#editStatusLabel(status);
+        right.appendChild(statusEl);
+        if (status === 'applied') {
+            const undoBtn = document.createElement('button');
+            undoBtn.type = 'button';
+            undoBtn.className = 'markon-chat-edit-pending-undo';
+            undoBtn.textContent = this.#tt('web.chat.edit.undo', 'Undo');
+            undoBtn.title = this.#tt('web.chat.edit.undo.tip', 'Revert this edit');
+            undoBtn.addEventListener('click', (e) => {
+                e.preventDefault();
+                void this.#undoAppliedEdit(block.edit_id);
+            });
+            right.appendChild(undoBtn);
+        }
         head.appendChild(pathEl);
-        head.appendChild(statusEl);
+        head.appendChild(right);
         card.appendChild(head);
 
         const diff = document.createElement('div');
@@ -1592,14 +1610,53 @@ export class ChatManager {
         return card;
     }
 
-    #editStatusLabel(status: 'pending' | 'applied' | 'rejected' | 'drifted'): string {
+    #editStatusLabel(status: 'pending' | 'applied' | 'rejected' | 'drifted' | 'reverted'): string {
         switch (status) {
         case 'applied':  return this.#tt('web.chat.edit.status.applied',  'Applied');
         case 'rejected': return this.#tt('web.chat.edit.status.rejected', 'Rejected');
         case 'drifted':  return this.#tt('web.chat.edit.status.drifted',  'Source drifted');
+        case 'reverted': return this.#tt('web.chat.edit.status.reverted', 'Reverted');
         case 'pending':
         default:         return this.#tt('web.chat.edit.status.pending',  'Awaiting confirmation');
         }
+    }
+
+    /** Revert a previously-applied edit via the stateless undo endpoint.
+     *  No re-confirmation — the previous file state is exactly what we just
+     *  had, so a synchronous revert without a model loop is the right call.
+     *  Drift after apply is possible (file changed under us) — surface that
+     *  by flipping the card's status to 'drifted' on the response. */
+    async #undoAppliedEdit(editId: string): Promise<void> {
+        const found = this.#findEditBlock(editId);
+        if (!found) return;
+        const { msg, block } = found;
+        if (block.status !== 'applied') return;
+        try {
+            const res = await fetch(
+                `/api/chat/${encodeURIComponent(this.#workspaceId)}/edits/undo`,
+                {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        path: block.path,
+                        // We're reversing what was previously written, so
+                        // find = new_string (current), replace_with = old_string.
+                        find: block.new_string,
+                        replace_with: block.old_string,
+                    }),
+                },
+            );
+            if (!res.ok) {
+                Logger.warn('Chat', `undo edit failed: HTTP ${res.status}`);
+                return;
+            }
+            const body = (await res.json().catch(() => ({}))) as { status?: string };
+            block.status = body.status === 'reverted' ? 'reverted' : 'drifted';
+        } catch (err) {
+            Logger.warn('Chat', 'undo edit threw', err);
+            return;
+        }
+        this.#rerenderMessage(msg);
     }
 
     /** Walk every cached message looking for the edit_pending block matching
@@ -2368,5 +2425,10 @@ export class ChatManager {
     /** @internal — test-only: drive Accept/Reject on the head of the queue. */
     _testResolveHeadEdit(action: 'apply' | 'reject'): Promise<void> {
         return this.#resolveHeadEdit(action);
+    }
+
+    /** @internal — test-only: drive Undo on an already-applied edit. */
+    _testUndoAppliedEdit(editId: string): Promise<void> {
+        return this.#undoAppliedEdit(editId);
     }
 }

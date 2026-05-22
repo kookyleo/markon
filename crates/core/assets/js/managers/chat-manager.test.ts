@@ -721,6 +721,109 @@ describe('ChatManager — edit_pending pending-edit flow', () => {
         fetchSpy.mockRestore();
     });
 
+    it('undo: applied card grows an Undo button that POSTs the reverse swap (#25)', async () => {
+        const mgr = new ChatManager(null);
+        const msg = newAssistantMsg();
+        mgr._testMessagesByThread.set('t1', [msg]);
+        mgr._testHandleEvent(
+            {
+                type: 'edit_pending',
+                id: 'edit-aaa',
+                tool_use_id: 'tu_1',
+                path: 'docs/guide.md',
+                line: 42,
+                old_string: 'old',
+                new_string: 'new',
+            },
+            msg,
+        );
+
+        // Apply first.
+        const applySpy = vi
+            .spyOn(globalThis, 'fetch')
+            .mockResolvedValue(new Response(JSON.stringify({ status: 'applied' }), { status: 200 }));
+        await mgr._testResolveHeadEdit('apply');
+        applySpy.mockRestore();
+
+        // Then Undo. The request body must swap find/replace_with — file
+        // currently contains `new`, we want `old` back.
+        const undoSpy = vi
+            .spyOn(globalThis, 'fetch')
+            .mockResolvedValue(new Response(JSON.stringify({ status: 'reverted' }), { status: 200 }));
+        await mgr._testUndoAppliedEdit('edit-aaa');
+        expect(undoSpy).toHaveBeenCalledOnce();
+        const [url, init] = undoSpy.mock.calls[0];
+        expect(String(url)).toBe('/api/chat/ws-test/edits/undo');
+        expect(init?.method).toBe('POST');
+        const body = JSON.parse(String(init?.body));
+        expect(body).toEqual({
+            path: 'docs/guide.md',
+            find: 'new',
+            replace_with: 'old',
+        });
+        const card = msg.blocks[1];
+        if (card && card.type === 'edit_pending') {
+            expect(card.status).toBe('reverted');
+        }
+        undoSpy.mockRestore();
+    });
+
+    it('undo: drift response flips card status to drifted (#25)', async () => {
+        const mgr = new ChatManager(null);
+        const msg = newAssistantMsg();
+        mgr._testMessagesByThread.set('t1', [msg]);
+        mgr._testHandleEvent(
+            {
+                type: 'edit_pending',
+                id: 'edit-aaa',
+                tool_use_id: 'tu_1',
+                path: 'docs/x.md',
+                line: 1,
+                old_string: 'A',
+                new_string: 'B',
+            },
+            msg,
+        );
+        const applySpy = vi
+            .spyOn(globalThis, 'fetch')
+            .mockResolvedValue(new Response(JSON.stringify({ status: 'applied' }), { status: 200 }));
+        await mgr._testResolveHeadEdit('apply');
+        applySpy.mockRestore();
+
+        const undoSpy = vi
+            .spyOn(globalThis, 'fetch')
+            .mockResolvedValue(new Response(JSON.stringify({ status: 'drifted' }), { status: 200 }));
+        await mgr._testUndoAppliedEdit('edit-aaa');
+        const card = msg.blocks[1];
+        if (card && card.type === 'edit_pending') {
+            expect(card.status).toBe('drifted');
+        }
+        undoSpy.mockRestore();
+    });
+
+    it('undo: no-op when card status is not applied (#25)', async () => {
+        const mgr = new ChatManager(null);
+        const msg = newAssistantMsg();
+        mgr._testMessagesByThread.set('t1', [msg]);
+        mgr._testHandleEvent(
+            {
+                type: 'edit_pending',
+                id: 'edit-aaa',
+                tool_use_id: 'tu_1',
+                path: 'docs/x.md',
+                line: 1,
+                old_string: 'A',
+                new_string: 'B',
+            },
+            msg,
+        );
+        // status is 'pending' — undo should be a no-op (no HTTP call).
+        const spy = vi.spyOn(globalThis, 'fetch');
+        await mgr._testUndoAppliedEdit('edit-aaa');
+        expect(spy).not.toHaveBeenCalled();
+        spy.mockRestore();
+    });
+
     it('HTTP failure keeps the head on the queue so the user can retry (#25)', async () => {
         const mgr = new ChatManager(null);
         const msg = newAssistantMsg();

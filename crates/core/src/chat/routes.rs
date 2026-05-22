@@ -65,6 +65,10 @@ pub(crate) fn router() -> Router<AppState> {
             "/api/chat/{workspace_id}/edits/{edit_id}/reject",
             post(reject_edit_handler),
         )
+        .route(
+            "/api/chat/{workspace_id}/edits/undo",
+            post(undo_edit_handler),
+        )
 }
 
 // ── helpers ──────────────────────────────────────────────────────────────────
@@ -302,6 +306,78 @@ async fn reject_edit_handler(
 #[derive(Serialize)]
 struct EditResolutionResponse {
     status: &'static str,
+}
+
+/// Undo a previously-applied `edit_file` by searching for the now-current
+/// text and replacing it with the prior text. Stateless: the diff card on
+/// the client already holds both sides of the swap, so we don't need a
+/// separate "applied history" store on the server. Same drift detection
+/// as the apply path — if `find` doesn't appear exactly once we return
+/// `drifted` instead of writing.
+///
+/// Trust model: this endpoint accepts an arbitrary find/replace pair, but
+/// the cross-flag gate (`--enable-chat && --enable-edit`) means any caller
+/// with reach to it already has `/api/save` available for arbitrary writes,
+/// so it doesn't widen the attack surface beyond what the editor already
+/// exposes.
+#[derive(Deserialize)]
+struct UndoEditRequest {
+    /// Workspace-relative path. Re-validated through `ToolContext::resolve`.
+    path: String,
+    /// Current file content to locate (the previous edit's `new_string`).
+    find: String,
+    /// What to write in its place (the previous edit's `old_string`).
+    replace_with: String,
+}
+
+async fn undo_edit_handler(
+    State(state): State<AppState>,
+    AxumPath(workspace_id): AxumPath<String>,
+    Json(body): Json<UndoEditRequest>,
+) -> Result<impl IntoResponse, ChatHttpError> {
+    let ws = ensure_chat_enabled(&state, &workspace_id)?;
+    if !ws.enable_edit.load(Ordering::Relaxed) {
+        return Err(ChatHttpError::Disabled);
+    }
+    if body.find.is_empty() {
+        return Err(ChatHttpError::BadRequest("find must not be empty".into()));
+    }
+    if body.find == body.replace_with {
+        return Err(ChatHttpError::BadRequest(
+            "find and replace_with are identical — no-op".into(),
+        ));
+    }
+
+    // Re-validate path under the workspace sandbox. ToolContext::resolve
+    // rejects `..`, absolute paths, and symlink escapes, then canonicalizes;
+    // we reuse it rather than reimplementing the same check here.
+    let ctx = match crate::chat::tools::ToolContext::new(&ws.root) {
+        Ok(c) => c,
+        Err(e) => {
+            return Err(ChatHttpError::Unavailable(Box::leak(
+                format!("workspace root: {e}").into_boxed_str(),
+            )));
+        }
+    };
+    let abs = ctx
+        .resolve(&body.path)
+        .map_err(|_| ChatHttpError::NotFound)?;
+
+    let current = match std::fs::read_to_string(&abs) {
+        Ok(s) => s,
+        Err(_) => return Ok(Json(EditResolutionResponse { status: "drifted" })),
+    };
+    if current.matches(&body.find).count() != 1 {
+        return Ok(Json(EditResolutionResponse { status: "drifted" }));
+    }
+
+    let updated = current.replacen(&body.find, &body.replace_with, 1);
+    if let Err(e) = std::fs::write(&abs, updated.as_bytes()) {
+        return Err(ChatHttpError::Unavailable(Box::leak(
+            format!("write failed: {e}").into_boxed_str(),
+        )));
+    }
+    Ok(Json(EditResolutionResponse { status: "reverted" }))
 }
 
 // ── file autocomplete (@-mention) ────────────────────────────────────────────
@@ -697,14 +773,18 @@ mod tests {
     }
 
     fn build_env(enable_chat: bool) -> TestEnv {
+        build_env_with_flags(WorkspaceFlags {
+            enable_chat,
+            ..Default::default()
+        })
+    }
+
+    fn build_env_with_flags(flags: WorkspaceFlags) -> TestEnv {
         let tmp = TempDir::new().expect("workspace tmpdir");
         let registry = Arc::new(WorkspaceRegistry::new("salt".into()));
         let workspace_id = registry.add(WorkspaceConfig {
             path: tmp.path().to_path_buf(),
-            flags: WorkspaceFlags {
-                enable_chat,
-                ..Default::default()
-            },
+            flags,
             single_file: None,
         });
 
@@ -979,5 +1059,152 @@ mod tests {
         assert!(paths.contains(&"a.md".to_string()));
         assert!(paths.contains(&"b.txt".to_string()));
         assert!(!paths.contains(&"img.png".to_string()));
+    }
+
+    // ── undo_edit_handler ──────────────────────────────────────────────────
+
+    async fn post_undo(env: &TestEnv, body: serde_json::Value) -> axum::response::Response {
+        let app = router().with_state(env.state.clone());
+        app.oneshot(
+            Request::builder()
+                .method("POST")
+                .uri(format!("/api/chat/{}/edits/undo", env.workspace_id))
+                .header("content-type", "application/json")
+                .body(json_body(body))
+                .unwrap(),
+        )
+        .await
+        .unwrap()
+    }
+
+    #[tokio::test]
+    async fn undo_rejects_when_chat_disabled() {
+        let env = build_env_with_flags(WorkspaceFlags {
+            enable_chat: false,
+            enable_edit: true,
+            ..Default::default()
+        });
+        let resp = post_undo(
+            &env,
+            serde_json::json!({ "path": "x.md", "find": "a", "replace_with": "b" }),
+        )
+        .await;
+        assert_eq!(resp.status(), StatusCode::FORBIDDEN);
+    }
+
+    #[tokio::test]
+    async fn undo_rejects_when_edit_disabled() {
+        let env = build_env_with_flags(WorkspaceFlags {
+            enable_chat: true,
+            enable_edit: false,
+            ..Default::default()
+        });
+        let resp = post_undo(
+            &env,
+            serde_json::json!({ "path": "x.md", "find": "a", "replace_with": "b" }),
+        )
+        .await;
+        assert_eq!(resp.status(), StatusCode::FORBIDDEN);
+    }
+
+    #[tokio::test]
+    async fn undo_replaces_find_with_replace_when_unique() {
+        let env = build_env_with_flags(WorkspaceFlags {
+            enable_chat: true,
+            enable_edit: true,
+            ..Default::default()
+        });
+        let path = env._tmp.path().join("doc.md");
+        std::fs::write(&path, "hello FOO world").unwrap();
+
+        let resp = post_undo(
+            &env,
+            serde_json::json!({ "path": "doc.md", "find": "FOO", "replace_with": "foo" }),
+        )
+        .await;
+        assert_eq!(resp.status(), StatusCode::OK);
+        let body = body_json(resp).await;
+        assert_eq!(body["status"], "reverted");
+        assert_eq!(std::fs::read_to_string(&path).unwrap(), "hello foo world");
+    }
+
+    #[tokio::test]
+    async fn undo_reports_drift_when_find_missing_and_does_not_write() {
+        let env = build_env_with_flags(WorkspaceFlags {
+            enable_chat: true,
+            enable_edit: true,
+            ..Default::default()
+        });
+        let path = env._tmp.path().join("doc.md");
+        std::fs::write(&path, "hello world").unwrap();
+
+        let resp = post_undo(
+            &env,
+            serde_json::json!({ "path": "doc.md", "find": "MISSING", "replace_with": "x" }),
+        )
+        .await;
+        assert_eq!(resp.status(), StatusCode::OK);
+        let body = body_json(resp).await;
+        assert_eq!(body["status"], "drifted");
+        assert_eq!(std::fs::read_to_string(&path).unwrap(), "hello world");
+    }
+
+    #[tokio::test]
+    async fn undo_reports_drift_when_find_is_ambiguous() {
+        let env = build_env_with_flags(WorkspaceFlags {
+            enable_chat: true,
+            enable_edit: true,
+            ..Default::default()
+        });
+        let path = env._tmp.path().join("doc.md");
+        std::fs::write(&path, "foo bar foo baz").unwrap();
+
+        let resp = post_undo(
+            &env,
+            serde_json::json!({ "path": "doc.md", "find": "foo", "replace_with": "FOO" }),
+        )
+        .await;
+        assert_eq!(resp.status(), StatusCode::OK);
+        let body = body_json(resp).await;
+        assert_eq!(body["status"], "drifted");
+        // file untouched
+        assert_eq!(std::fs::read_to_string(&path).unwrap(), "foo bar foo baz");
+    }
+
+    #[tokio::test]
+    async fn undo_rejects_path_outside_workspace() {
+        let env = build_env_with_flags(WorkspaceFlags {
+            enable_chat: true,
+            enable_edit: true,
+            ..Default::default()
+        });
+        let resp = post_undo(
+            &env,
+            serde_json::json!({ "path": "../etc/passwd", "find": "x", "replace_with": "y" }),
+        )
+        .await;
+        assert_eq!(resp.status(), StatusCode::NOT_FOUND);
+    }
+
+    #[tokio::test]
+    async fn undo_rejects_empty_find_and_noop_swap() {
+        let env = build_env_with_flags(WorkspaceFlags {
+            enable_chat: true,
+            enable_edit: true,
+            ..Default::default()
+        });
+        let resp = post_undo(
+            &env,
+            serde_json::json!({ "path": "x.md", "find": "", "replace_with": "y" }),
+        )
+        .await;
+        assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
+
+        let resp = post_undo(
+            &env,
+            serde_json::json!({ "path": "x.md", "find": "same", "replace_with": "same" }),
+        )
+        .await;
+        assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
     }
 }
