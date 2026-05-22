@@ -19,6 +19,7 @@ pub mod config;
 pub mod models;
 
 pub(crate) mod agent;
+pub(crate) mod edits;
 pub(crate) mod message;
 pub(crate) mod prompt;
 pub(crate) mod provider;

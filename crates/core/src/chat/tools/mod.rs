@@ -1,16 +1,19 @@
 //! Read-only tools the LLM can invoke. All tools are scoped to the workspace
 //! root — paths above the root are rejected before they ever hit the disk.
 
+pub(crate) mod edit_file;
 pub(crate) mod glob_search;
 pub(crate) mod grep;
 pub(crate) mod list_dir;
 pub(crate) mod read_file;
 
+use crate::chat::edits::PendingEditStore;
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::path::{Component, Path, PathBuf};
 use std::sync::Arc;
+use tokio::sync::mpsc;
 
 /// Per-request tool scope — currently just the workspace root. Anything
 /// extra (cwd, environment) lives here so individual tools stay pure.
@@ -20,9 +23,17 @@ use std::sync::Arc;
 /// semantically meaningful. Use `ToolContext::new()` instead of building the
 /// struct literally — the literal constructor is kept `pub` only for tests
 /// that pass an already-canonicalized temp dir.
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub(crate) struct ToolContext {
     pub workspace_root: PathBuf,
+    /// Pending-edit queue, shared with the workspace's HTTP routes so the
+    /// `edit_file` tool can stash a proposal and await the user's decision.
+    /// `None` in unit-test contexts that don't need it.
+    pub pending_edits: Option<Arc<PendingEditStore>>,
+    /// Channel the agent loop uses to fan agent events out to SSE. Tools that
+    /// need to surface mid-run UI hooks (currently just `edit_file`) push
+    /// directly to this. `None` in unit tests.
+    pub event_sink: Option<mpsc::Sender<crate::chat::agent::AgentEvent>>,
 }
 
 impl ToolContext {
@@ -31,7 +42,23 @@ impl ToolContext {
     pub(crate) fn new(root: impl AsRef<Path>) -> Result<Self, ToolError> {
         let workspace_root = dunce::canonicalize(root.as_ref())
             .map_err(|e| ToolError::Io(format!("workspace root: {e}")))?;
-        Ok(Self { workspace_root })
+        Ok(Self {
+            workspace_root,
+            pending_edits: None,
+            event_sink: None,
+        })
+    }
+
+    /// Builder that attaches the shared pending-edit store and event sink
+    /// the `edit_file` tool needs. The agent loop calls this once per run.
+    pub(crate) fn with_chat_state(
+        mut self,
+        pending_edits: Arc<PendingEditStore>,
+        event_sink: mpsc::Sender<crate::chat::agent::AgentEvent>,
+    ) -> Self {
+        self.pending_edits = Some(pending_edits);
+        self.event_sink = Some(event_sink);
+        self
     }
 
     /// Resolve a relative-to-workspace path, rejecting any traversal that
@@ -136,12 +163,24 @@ impl ToolRegistry {
         }
     }
 
+    /// Read-only tool set — what every chat session gets unconditionally.
     pub(crate) fn with_default_tools() -> Self {
         let mut r = Self::new();
         r.register(Arc::new(read_file::ReadFileTool));
         r.register(Arc::new(list_dir::ListDirTool));
         r.register(Arc::new(glob_search::GlobTool));
         r.register(Arc::new(grep::GrepTool));
+        r
+    }
+
+    /// Registry shaped for a particular workspace. Adds the `edit_file` tool
+    /// when `enable_edit` is on — same cross-flag gate the GUI uses to decide
+    /// whether the editor surface is available.
+    pub(crate) fn for_workspace(enable_edit: bool) -> Self {
+        let mut r = Self::with_default_tools();
+        if enable_edit {
+            r.register(Arc::new(edit_file::EditFileTool));
+        }
         r
     }
 

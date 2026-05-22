@@ -31,6 +31,22 @@ pub enum AgentEvent {
         output: String,
         is_error: bool,
     },
+    /// `edit_file` tool has stashed a proposal and is now blocked waiting on
+    /// the user's accept/reject. The client should render a diff card and a
+    /// pending bottom-bar; resolution comes via `POST /:ws/_/chat/edits/{id}/{apply|reject}`.
+    EditPending {
+        /// Pending-edit id, matches the URL segment of the resolve endpoint.
+        id: String,
+        /// Tool-use id from the originating `tool_use` block, so the client
+        /// can correlate this card with the right turn.
+        tool_use_id: String,
+        /// Workspace-relative path the model proposed editing.
+        path: String,
+        /// 1-based line number of `old_string`'s first character at propose-time.
+        line: usize,
+        old_string: String,
+        new_string: String,
+    },
     /// One full provider turn ended; agent may loop again with tool results.
     TurnEnd { stop_reason: String, usage: Usage },
     /// The whole agent loop has ended for this user turn.
@@ -42,7 +58,6 @@ pub enum AgentEvent {
     Error { message: String },
 }
 
-#[derive(Debug)]
 pub(crate) struct AgentRequest {
     pub thread_id: String,
     pub thread_title: String,
@@ -57,6 +72,10 @@ pub(crate) struct AgentRequest {
     pub model: String,
     pub max_steps: u8,
     pub max_tokens: u32,
+    /// Pending-edit store the `edit_file` tool stashes proposals into. Cloned
+    /// from the parent workspace so HTTP `apply`/`reject` handlers can find
+    /// the awaiting tool.
+    pub pending_edits: Arc<crate::chat::edits::PendingEditStore>,
 }
 
 pub(crate) struct Agent {
@@ -93,7 +112,7 @@ impl Agent {
         messages.push(request.user_message);
         let tool_schemas = self.tools.schemas();
         let tool_ctx = match ToolContext::new(&request.workspace_root) {
-            Ok(ctx) => ctx,
+            Ok(ctx) => ctx.with_chat_state(request.pending_edits.clone(), sink.clone()),
             Err(e) => {
                 tracing::error!(
                     "failed to canonicalize workspace root {}: {e}",

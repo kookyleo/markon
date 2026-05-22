@@ -165,9 +165,7 @@ mod tests {
     use tempfile::TempDir;
 
     fn ctx_for(td: &TempDir) -> ToolContext {
-        ToolContext {
-            workspace_root: dunce::canonicalize(td.path()).unwrap(),
-        }
+        ToolContext::new(td.path()).unwrap()
     }
 
     #[tokio::test]

@@ -28,6 +28,7 @@ use tokio_stream::wrappers::ReceiverStream;
 
 use crate::chat::agent::{auto_title, Agent, AgentEvent, AgentRequest};
 use crate::chat::config::ChatRuntimeConfig;
+use crate::chat::edits::{Resolution, ResolveError};
 use crate::chat::message::{ContentBlock, Message, Role};
 use crate::chat::prompt::{build_system_blocks, render_mention_block, PromptInputs};
 use crate::chat::provider;
@@ -55,6 +56,14 @@ pub(crate) fn router() -> Router<AppState> {
         .route(
             "/api/chat/{workspace_id}/threads/{thread_id}",
             get(get_thread_handler).delete(delete_thread_handler),
+        )
+        .route(
+            "/api/chat/{workspace_id}/edits/{edit_id}/apply",
+            post(apply_edit_handler),
+        )
+        .route(
+            "/api/chat/{workspace_id}/edits/{edit_id}/reject",
+            post(reject_edit_handler),
         )
 }
 
@@ -202,6 +211,97 @@ async fn delete_thread_handler(
     }
     storage.delete_thread(&thread_id).await?;
     Ok(StatusCode::NO_CONTENT)
+}
+
+// ── pending-edit resolution (edit_file tool) ────────────────────────────────
+
+/// Resolve a pending `edit_file` proposal by writing the new content to disk
+/// and signalling the awaiting tool.
+///
+/// Drift defence: re-read the target file and verify `old_string` still
+/// matches *exactly once* before writing. If the file has changed between
+/// the proposal and this apply (e.g. via the editor save endpoint or a
+/// shared-mode broadcast) we send `Resolution::Drifted` instead of writing.
+async fn apply_edit_handler(
+    State(state): State<AppState>,
+    AxumPath((workspace_id, edit_id)): AxumPath<(String, String)>,
+) -> Result<impl IntoResponse, ChatHttpError> {
+    let ws = ensure_chat_enabled(&state, &workspace_id)?;
+    if !ws.enable_edit.load(Ordering::Relaxed) {
+        return Err(ChatHttpError::Disabled);
+    }
+
+    let snap = ws
+        .pending_edits
+        .snapshot(&edit_id)
+        .ok_or(ChatHttpError::NotFound)?;
+
+    // Re-resolve the path against the (still-canonical) workspace root.
+    // We can't reuse ToolContext::resolve here without dragging the chat
+    // module's machinery in; the path was already sandbox-checked when the
+    // pending was created, but file existence and uniqueness must be
+    // re-verified against the on-disk state right now.
+    let abs = ws.root.join(&snap.path);
+    let current = match std::fs::read_to_string(&abs) {
+        Ok(s) => s,
+        Err(_) => {
+            // File vanished — treat as drift, surface "drifted" to the model.
+            let _ = ws.pending_edits.resolve(&edit_id, Resolution::Drifted);
+            return Ok(Json(EditResolutionResponse { status: "drifted" }));
+        }
+    };
+    let occurrences = current.matches(&snap.old_string).count();
+    if occurrences != 1 {
+        let _ = ws.pending_edits.resolve(&edit_id, Resolution::Drifted);
+        return Ok(Json(EditResolutionResponse { status: "drifted" }));
+    }
+
+    // Replace and write.
+    let updated = current.replacen(&snap.old_string, &snap.new_string, 1);
+    let line = 1 + current
+        .find(&snap.old_string)
+        .map(|off| current[..off].bytes().filter(|b| *b == b'\n').count())
+        .unwrap_or(0);
+    if let Err(e) = std::fs::write(&abs, updated.as_bytes()) {
+        return Err(ChatHttpError::Unavailable(Box::leak(
+            format!("write failed: {e}").into_boxed_str(),
+        )));
+    }
+
+    match ws
+        .pending_edits
+        .resolve(&edit_id, Resolution::Applied { line })
+    {
+        Ok(()) => Ok(Json(EditResolutionResponse { status: "applied" })),
+        Err(ResolveError::Unknown) => Err(ChatHttpError::NotFound),
+        // The model's tool task is gone but the file write already
+        // succeeded; report success rather than 500.
+        Err(ResolveError::AlreadyResolved | ResolveError::ReceiverGone) => {
+            Ok(Json(EditResolutionResponse { status: "applied" }))
+        }
+    }
+}
+
+async fn reject_edit_handler(
+    State(state): State<AppState>,
+    AxumPath((workspace_id, edit_id)): AxumPath<(String, String)>,
+) -> Result<impl IntoResponse, ChatHttpError> {
+    let ws = ensure_chat_enabled(&state, &workspace_id)?;
+    if !ws.enable_edit.load(Ordering::Relaxed) {
+        return Err(ChatHttpError::Disabled);
+    }
+    match ws.pending_edits.resolve(&edit_id, Resolution::Rejected) {
+        Ok(()) => Ok(Json(EditResolutionResponse { status: "rejected" })),
+        Err(ResolveError::Unknown) => Err(ChatHttpError::NotFound),
+        Err(ResolveError::AlreadyResolved | ResolveError::ReceiverGone) => {
+            Ok(Json(EditResolutionResponse { status: "rejected" }))
+        }
+    }
+}
+
+#[derive(Serialize)]
+struct EditResolutionResponse {
+    status: &'static str,
 }
 
 // ── file autocomplete (@-mention) ────────────────────────────────────────────
@@ -459,9 +559,12 @@ async fn chat_stream_handler(
         mention_blocks,
     });
 
-    // Build agent.
+    // Build agent. `edit_file` is registered only when --enable-edit is on
+    // for this workspace — the cross-flag gate the design committed to.
     let provider = provider::build(runtime_cfg.clone());
-    let tools = Arc::new(ToolRegistry::with_default_tools());
+    let tools = Arc::new(ToolRegistry::for_workspace(
+        ws.enable_edit.load(Ordering::Relaxed),
+    ));
     let agent = Agent::new(provider, tools, storage);
 
     let agent_req = AgentRequest {
@@ -478,6 +581,7 @@ async fn chat_stream_handler(
         model: runtime_cfg.model.clone(),
         max_steps: MAX_AGENT_STEPS,
         max_tokens: MAX_TOKENS_PER_TURN,
+        pending_edits: ws.pending_edits.clone(),
     };
 
     let (tx, rx) = mpsc::channel::<AgentEvent>(64);

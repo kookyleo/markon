@@ -1,3 +1,4 @@
+use crate::chat::edits::PendingEditStore;
 use crate::markdown::extract_referenced_assets;
 use crate::search::SearchIndex;
 use arc_swap::ArcSwapOption;
@@ -58,6 +59,10 @@ pub(crate) struct WorkspaceEntry {
     /// stylesheets, etc.). Re-derived whenever the file is modified.
     /// Empty (and unread) for normal directory workspaces.
     pub allowed_assets: RwLock<HashSet<String>>,
+    /// In-flight `edit_file` proposals from the chat tool, awaiting the
+    /// user's accept/reject. Lives on the workspace so HTTP handlers and
+    /// the agent loop can share the same store.
+    pub pending_edits: Arc<PendingEditStore>,
 }
 
 impl WorkspaceEntry {
@@ -230,6 +235,7 @@ impl WorkspaceRegistry {
             search_index: ArcSwapOption::empty(),
             single_file: single_file.clone(),
             allowed_assets: RwLock::new(HashSet::new()),
+            pending_edits: Arc::new(PendingEditStore::new()),
         });
         self.inner
             .write()
