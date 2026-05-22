@@ -37,6 +37,15 @@ export type ChatSSEEvent =
     | { type: 'text'; delta: string }
     | { type: 'tool_start'; id?: string; name: string; input?: Record<string, unknown> }
     | { type: 'tool_end'; id?: string; output?: string; is_error?: boolean }
+    | {
+          type: 'edit_pending';
+          id: string;
+          tool_use_id?: string;
+          path: string;
+          line: number;
+          old_string: string;
+          new_string: string;
+      }
     | { type: 'turn_end'; stop_reason?: string }
     | { type: 'done' }
     | { type: 'error'; message: string };
@@ -45,7 +54,19 @@ export type ChatSSEEvent =
 export type MessageContentBlock =
     | { type: 'text'; text: string }
     | { type: 'tool_use'; id?: string; name: string; input: Record<string, unknown> }
-    | { type: 'tool_result'; tool_use_id?: string; content?: unknown; output?: unknown; is_error?: boolean };
+    | { type: 'tool_result'; tool_use_id?: string; content?: unknown; output?: unknown; is_error?: boolean }
+    | {
+          type: 'edit_pending';
+          edit_id: string;
+          tool_use_id?: string;
+          path: string;
+          line: number;
+          old_string: string;
+          new_string: string;
+          /** Client-only state; backend never echoes this. Starts at 'pending' and
+           *  flips to 'applied'/'rejected'/'drifted' after the user resolves. */
+          status?: 'pending' | 'applied' | 'rejected' | 'drifted';
+      };
 
 /** A message as we hold it in `#messagesByThread` (post-#hydrateMessage). */
 export interface MessageBlock {
@@ -444,6 +465,16 @@ export class ChatManager {
     #quoteText: HTMLElement | null = null;
     #quoteDismiss: HTMLButtonElement | null = null;
     #popoutBtn: HTMLButtonElement | null = null;
+    #inputGroup: HTMLElement | null = null;       // wraps textarea + send + quote chip
+    #editBar: HTMLElement | null = null;          // pending-edit accept/reject bar
+    #editBarLabel: HTMLElement | null = null;
+    #editBarApplyBtn: HTMLButtonElement | null = null;
+    #editBarRejectBtn: HTMLButtonElement | null = null;
+
+    /** Edit IDs (`AgentEvent::EditPending.id`) in arrival order. The head is
+     *  the one currently shown in the bottom bar; user accept/reject pops it
+     *  off and advances. Empty queue = bottom bar hidden, input restored. */
+    #pendingEditQueue: string[] = [];
 
     // Popout — when the user clicks the maximize icon, the chat moves into
     // its own browser-level window. While that window is alive we route every
@@ -967,6 +998,13 @@ export class ChatManager {
                                 <span class="markon-chat-stop-icon" hidden>${ICON_STOP}</span>
                             </button>
                         </div>
+                        <div class="markon-chat-edit-bar" hidden role="group" aria-label="${escapeHtml(this.#tt('web.chat.edit.bar', 'Pending edit confirmation'))}">
+                            <span class="markon-chat-edit-bar-label"></span>
+                            <div class="markon-chat-edit-bar-buttons">
+                                <button type="button" class="markon-chat-edit-bar-reject" title="${escapeHtml(this.#tt('web.chat.edit.reject.tip', 'Reject (Esc)'))}">${escapeHtml(this.#tt('web.chat.edit.reject', 'Reject'))}</button>
+                                <button type="button" class="markon-chat-edit-bar-apply" title="${escapeHtml(this.#tt('web.chat.edit.apply.tip', 'Apply (Enter)'))}">${escapeHtml(this.#tt('web.chat.edit.apply', 'Apply'))}</button>
+                            </div>
+                        </div>
                     </footer>
                 </div>
             </div>
@@ -993,6 +1031,11 @@ export class ChatManager {
             this.#quoteText          = this.#panel.querySelector<HTMLElement>('.markon-chat-quote-text');
             this.#quoteDismiss       = this.#panel.querySelector<HTMLButtonElement>('.markon-chat-quote-dismiss');
             this.#popoutBtn          = this.#panel.querySelector<HTMLButtonElement>('.markon-chat-popout');
+            this.#inputGroup         = this.#panel.querySelector<HTMLElement>('.markon-chat-input-group');
+            this.#editBar            = this.#panel.querySelector<HTMLElement>('.markon-chat-edit-bar');
+            this.#editBarLabel       = this.#panel.querySelector<HTMLElement>('.markon-chat-edit-bar-label');
+            this.#editBarApplyBtn    = this.#panel.querySelector<HTMLButtonElement>('.markon-chat-edit-bar-apply');
+            this.#editBarRejectBtn   = this.#panel.querySelector<HTMLButtonElement>('.markon-chat-edit-bar-reject');
         }
 
         this.#wirePanelEvents();
@@ -1136,6 +1179,20 @@ export class ChatManager {
         this.#sendBtn?.addEventListener('click', () => {
             if (this.#streaming) this.#abort();
             else                 void this.#submit();
+        });
+
+        // Pending-edit accept/reject bar — shown when an edit_file proposal is
+        // awaiting the user. Enter/Esc are caught at the panel level (below)
+        // so the keybindings work whether or not the textarea has focus.
+        this.#editBarApplyBtn?.addEventListener('click', () => void this.#resolveHeadEdit('apply'));
+        this.#editBarRejectBtn?.addEventListener('click', () => void this.#resolveHeadEdit('reject'));
+        this.#panel?.addEventListener('keydown', (e: KeyboardEvent) => {
+            if (this.#pendingEditQueue.length === 0) return;
+            // Don't hijack typing in the (currently hidden) textarea; defensive only.
+            const target = e.target as HTMLElement | null;
+            if (target?.tagName === 'TEXTAREA' || target?.tagName === 'INPUT') return;
+            if (e.key === 'Enter')  { e.preventDefault(); void this.#resolveHeadEdit('apply'); }
+            if (e.key === 'Escape') { e.preventDefault(); void this.#resolveHeadEdit('reject'); }
         });
 
         // Track whether the user is "stuck to bottom". If they've scrolled
@@ -1418,6 +1475,8 @@ export class ChatManager {
                 body.appendChild(this.#renderToolUse(block));
             } else if (block.type === 'tool_result') {
                 body.appendChild(this.#renderToolResult(block));
+            } else if (block.type === 'edit_pending') {
+                body.appendChild(this.#renderEditPending(block));
             }
         }
 
@@ -1491,6 +1550,142 @@ export class ChatManager {
         pre.textContent = text;
         wrap.appendChild(pre);
         return wrap;
+    }
+
+    /** Diff card for an `edit_file` proposal awaiting user confirmation.
+     *  Renders inline in the message stream as a labelled two-tone diff
+     *  (red old / green new) with a status pill that flips when the user
+     *  resolves the proposal via the bottom-bar bar. */
+    #renderEditPending(
+        block: Extract<MessageContentBlock, { type: 'edit_pending' }>,
+    ): HTMLElement {
+        const card = document.createElement('div');
+        card.className = 'markon-chat-edit-pending';
+        card.dataset.editId = block.edit_id;
+        const status = block.status ?? 'pending';
+        card.dataset.status = status;
+
+        const head = document.createElement('div');
+        head.className = 'markon-chat-edit-pending-head';
+        const pathEl = document.createElement('span');
+        pathEl.className = 'markon-chat-edit-pending-path';
+        pathEl.textContent = `📝 ${block.path} · L${block.line}`;
+        const statusEl = document.createElement('span');
+        statusEl.className = 'markon-chat-edit-pending-status';
+        statusEl.textContent = this.#editStatusLabel(status);
+        head.appendChild(pathEl);
+        head.appendChild(statusEl);
+        card.appendChild(head);
+
+        const diff = document.createElement('div');
+        diff.className = 'markon-chat-edit-pending-diff';
+        const old = document.createElement('div');
+        old.className = 'markon-chat-edit-pending-old';
+        old.textContent = block.old_string;
+        const next = document.createElement('div');
+        next.className = 'markon-chat-edit-pending-new';
+        next.textContent = block.new_string;
+        diff.appendChild(old);
+        diff.appendChild(next);
+        card.appendChild(diff);
+
+        return card;
+    }
+
+    #editStatusLabel(status: 'pending' | 'applied' | 'rejected' | 'drifted'): string {
+        switch (status) {
+        case 'applied':  return this.#tt('web.chat.edit.status.applied',  'Applied');
+        case 'rejected': return this.#tt('web.chat.edit.status.rejected', 'Rejected');
+        case 'drifted':  return this.#tt('web.chat.edit.status.drifted',  'Source drifted');
+        case 'pending':
+        default:         return this.#tt('web.chat.edit.status.pending',  'Awaiting confirmation');
+        }
+    }
+
+    /** Walk every cached message looking for the edit_pending block matching
+     *  `editId`. Returns null if it was rendered into a thread we no longer
+     *  track (e.g. after `New thread` clears the message list). */
+    #findEditBlock(editId: string): {
+        msg: MessageBlock;
+        block: Extract<MessageContentBlock, { type: 'edit_pending' }>;
+    } | null {
+        for (const threadMsgs of this.#messagesByThread.values()) {
+            for (const msg of threadMsgs) {
+                for (const b of msg.blocks) {
+                    if (b.type === 'edit_pending' && b.edit_id === editId) {
+                        return { msg, block: b };
+                    }
+                }
+            }
+        }
+        return null;
+    }
+
+    /** Swap the bottom area between the textarea+send group and the
+     *  accept/reject bar. The bar is visible iff there's at least one
+     *  pending edit; when empty, hide it and restore input focus. */
+    #updateEditBar(): void {
+        if (!this.#editBar || !this.#inputGroup) return;
+        const headId = this.#pendingEditQueue[0];
+        if (!headId) {
+            this.#editBar.hidden = true;
+            this.#inputGroup.hidden = false;
+            return;
+        }
+        const found = this.#findEditBlock(headId);
+        if (!found) {
+            // Lost the block (thread switched?). Drop it from the queue.
+            this.#pendingEditQueue.shift();
+            this.#updateEditBar();
+            return;
+        }
+        const { block } = found;
+        const total = this.#pendingEditQueue.length;
+        const counter = total > 1 ? ` · 1 / ${total}` : '';
+        if (this.#editBarLabel) {
+            this.#editBarLabel.textContent = `${block.path} · L${block.line}${counter}`;
+        }
+        this.#inputGroup.hidden = true;
+        this.#editBar.hidden = false;
+        // Pull focus onto the bar so Enter / Esc keybindings activate
+        // without needing the user to click first.
+        (this.#editBarApplyBtn ?? this.#editBar).focus();
+    }
+
+    /** Resolve the head of the queue. POSTs to the backend, updates the
+     *  card's status from the response (the backend may downgrade an apply
+     *  to "drifted" if the file changed under us), and advances the queue. */
+    async #resolveHeadEdit(action: 'apply' | 'reject'): Promise<void> {
+        const headId = this.#pendingEditQueue[0];
+        if (!headId) return;
+        const found = this.#findEditBlock(headId);
+        if (!found) {
+            this.#pendingEditQueue.shift();
+            this.#updateEditBar();
+            return;
+        }
+        try {
+            const res = await fetch(
+                `/api/chat/${encodeURIComponent(this.#workspaceId)}/edits/${encodeURIComponent(headId)}/${action}`,
+                { method: 'POST' },
+            );
+            if (!res.ok) {
+                Logger.warn('Chat', `${action} edit failed: HTTP ${res.status}`);
+                // Don't pop the queue on a transient error — let the user retry.
+                return;
+            }
+            const body = (await res.json().catch(() => ({}))) as { status?: string };
+            const next: 'applied' | 'rejected' | 'drifted' =
+                body.status === 'applied'  ? 'applied'  :
+                body.status === 'drifted'  ? 'drifted'  : 'rejected';
+            found.block.status = next;
+        } catch (err) {
+            Logger.warn('Chat', `${action} edit threw`, err);
+            return;
+        }
+        this.#pendingEditQueue.shift();
+        this.#rerenderMessage(found.msg);
+        this.#updateEditBar();
     }
 
     /** Replace the DOM for one message in place (used during streaming). We
@@ -1738,6 +1933,26 @@ export class ChatManager {
                 is_error: !!event.is_error,
             });
             this.#rerenderMessage(assistantMsg);
+            break;
+        }
+        case 'edit_pending': {
+            // Append a diff card in the message stream and queue the edit
+            // for the bottom-bar accept/reject flow. The card and the bar
+            // share state via `event.id` — when the user resolves, we
+            // re-render the card with the new status and pop the queue.
+            assistantMsg.blocks.push({
+                type: 'edit_pending',
+                edit_id: event.id,
+                tool_use_id: event.tool_use_id,
+                path: event.path,
+                line: event.line,
+                old_string: event.old_string,
+                new_string: event.new_string,
+                status: 'pending',
+            });
+            this.#pendingEditQueue.push(event.id);
+            this.#rerenderMessage(assistantMsg);
+            this.#updateEditBar();
             break;
         }
         case 'turn_end':
@@ -2143,5 +2358,15 @@ export class ChatManager {
     /** @internal — test-only: read the threads list. */
     get _testThreads(): ChatThread[] {
         return this.#threads;
+    }
+
+    /** @internal — test-only: read the pending-edit queue. */
+    get _testPendingEditQueue(): string[] {
+        return this.#pendingEditQueue;
+    }
+
+    /** @internal — test-only: drive Accept/Reject on the head of the queue. */
+    _testResolveHeadEdit(action: 'apply' | 'reject'): Promise<void> {
+        return this.#resolveHeadEdit(action);
     }
 }

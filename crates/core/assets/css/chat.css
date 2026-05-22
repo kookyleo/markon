@@ -1110,3 +1110,124 @@ body.markon-chat-popout-mode .markon-chat-header-left-actions {
 body.markon-chat-popout-mode .markon-chat-header {
     /* keeps title visually centered against the full window width */
 }
+
+/* ─── edit_file pending-confirmation flow ─────────────────────────────────
+   Two surfaces work together:
+   1. `.markon-chat-edit-pending` — diff card rendered inline in the message
+      stream. Shows path, line, old → new, and a status pill that flips when
+      the user resolves the proposal.
+   2. `.markon-chat-edit-bar` — bottom-row bar that *replaces* the textarea
+      input group while at least one edit is pending. Apply / Reject map to
+      the same backend endpoints as the card; Enter/Esc keybindings live on
+      the panel-level keydown handler. */
+.markon-chat-edit-pending {
+    margin: 6px 0;
+    border: 1px solid var(--markon-chat-border, rgba(0, 0, 0, 0.12));
+    border-left: 3px solid #d97706;
+    border-radius: 6px;
+    background: rgba(217, 119, 6, 0.06);
+    overflow: hidden;
+    font-size: 13px;
+}
+html[data-theme="dark"] .markon-chat-edit-pending {
+    background: rgba(217, 119, 6, 0.12);
+}
+.markon-chat-edit-pending[data-status="applied"]  { border-left-color: #16a34a; background: rgba(22,163,74,0.08); }
+.markon-chat-edit-pending[data-status="rejected"] { border-left-color: #6b7280; background: rgba(107,114,128,0.08); opacity: 0.7; }
+.markon-chat-edit-pending[data-status="drifted"]  { border-left-color: #ca8a04; background: rgba(202,138,4,0.08); }
+
+.markon-chat-edit-pending-head {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    gap: 8px;
+    padding: 6px 10px;
+    border-bottom: 1px solid var(--markon-chat-border, rgba(0, 0, 0, 0.08));
+    font-weight: 500;
+}
+.markon-chat-edit-pending-path { font-family: var(--markon-mono, monospace); font-size: 12px; }
+.markon-chat-edit-pending-status {
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: #92400e;
+}
+html[data-theme="dark"] .markon-chat-edit-pending-status { color: #fbbf24; }
+.markon-chat-edit-pending[data-status="applied"]  .markon-chat-edit-pending-status { color: #166534; }
+.markon-chat-edit-pending[data-status="rejected"] .markon-chat-edit-pending-status { color: #4b5563; }
+.markon-chat-edit-pending[data-status="drifted"]  .markon-chat-edit-pending-status { color: #854d0e; }
+
+.markon-chat-edit-pending-diff {
+    font-family: var(--markon-mono, monospace);
+    font-size: 12px;
+    line-height: 1.45;
+    white-space: pre-wrap;
+    word-break: break-word;
+}
+.markon-chat-edit-pending-old,
+.markon-chat-edit-pending-new {
+    padding: 4px 10px;
+}
+.markon-chat-edit-pending-old {
+    background: rgba(220, 38, 38, 0.10);
+    color: #991b1b;
+    text-decoration: line-through;
+    text-decoration-color: rgba(153, 27, 27, 0.45);
+}
+.markon-chat-edit-pending-new {
+    background: rgba(22, 163, 74, 0.10);
+    color: #166534;
+}
+html[data-theme="dark"] .markon-chat-edit-pending-old { color: #fca5a5; }
+html[data-theme="dark"] .markon-chat-edit-pending-new { color: #86efac; }
+
+/* Bottom bar — appears in place of `.markon-chat-input-group` whenever the
+   pending-edit queue is non-empty. Matches the input group's height so the
+   panel footer doesn't jump. */
+.markon-chat-edit-bar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    padding: 6px 10px;
+    min-height: 44px;
+    border: 1px solid var(--markon-chat-border, rgba(0, 0, 0, 0.12));
+    border-radius: 8px;
+    background: var(--markon-chat-bg, rgba(0, 0, 0, 0.02));
+    font-size: 13px;
+}
+html[data-theme="dark"] .markon-chat-edit-bar {
+    background: rgba(255, 255, 255, 0.04);
+}
+.markon-chat-edit-bar-label {
+    font-family: var(--markon-mono, monospace);
+    font-size: 12px;
+    color: var(--markon-chat-text-muted, #6b7280);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    flex: 1 1 auto;
+    min-width: 0;
+}
+.markon-chat-edit-bar-buttons { display: flex; gap: 6px; flex: 0 0 auto; }
+.markon-chat-edit-bar-buttons button {
+    padding: 4px 12px;
+    border-radius: 6px;
+    font-size: 13px;
+    font-weight: 500;
+    border: 1px solid var(--markon-chat-border, rgba(0, 0, 0, 0.15));
+    cursor: pointer;
+}
+.markon-chat-edit-bar-reject {
+    background: transparent;
+    color: var(--markon-chat-text, inherit);
+}
+.markon-chat-edit-bar-reject:hover { background: rgba(0, 0, 0, 0.04); }
+html[data-theme="dark"] .markon-chat-edit-bar-reject:hover { background: rgba(255, 255, 255, 0.06); }
+.markon-chat-edit-bar-apply {
+    background: #16a34a;
+    color: white;
+    border-color: #15803d;
+}
+.markon-chat-edit-bar-apply:hover { background: #15803d; }

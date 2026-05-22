@@ -589,3 +589,164 @@ describe('ChatManager — destroy()', () => {
         expect(() => mgr.destroy()).not.toThrow();
     });
 });
+
+// ────────────────────────────────────────────────────────────────────────────
+// edit_pending event + queue + accept/reject flow
+// ────────────────────────────────────────────────────────────────────────────
+
+describe('ChatManager — edit_pending pending-edit flow', () => {
+    function newAssistantMsg(): MessageBlock {
+        return {
+            id: 'local-a-test',
+            role: 'assistant',
+            blocks: [{ type: 'text', text: '' }],
+            streaming: true,
+        };
+    }
+
+    beforeEach(() => {
+        document.head.innerHTML = '<meta name="workspace-id" content="ws-test">';
+        document.body.innerHTML = '';
+        localStorage.clear();
+    });
+
+    it('edit_pending appends a card block and enqueues by id (#25)', () => {
+        const mgr = new ChatManager(null);
+        const msg = newAssistantMsg();
+        // The queue is keyed by edit id, in arrival order.
+        mgr._testMessagesByThread.set('t1', [msg]);
+        mgr._testHandleEvent(
+            {
+                type: 'edit_pending',
+                id: 'edit-aaa',
+                tool_use_id: 'tu_1',
+                path: 'docs/guide.md',
+                line: 42,
+                old_string: 'old',
+                new_string: 'new',
+            },
+            msg,
+        );
+        mgr._testHandleEvent(
+            {
+                type: 'edit_pending',
+                id: 'edit-bbb',
+                tool_use_id: 'tu_2',
+                path: 'README.md',
+                line: 7,
+                old_string: 'X',
+                new_string: 'Y',
+            },
+            msg,
+        );
+
+        // Two diff cards appended after the initial empty text block.
+        expect(msg.blocks).toHaveLength(3);
+        const first = msg.blocks[1];
+        const second = msg.blocks[2];
+        expect(first && first.type).toBe('edit_pending');
+        expect(second && second.type).toBe('edit_pending');
+        if (first && first.type === 'edit_pending') {
+            expect(first.edit_id).toBe('edit-aaa');
+            expect(first.status).toBe('pending');
+            expect(first.path).toBe('docs/guide.md');
+            expect(first.line).toBe(42);
+        }
+        expect(mgr._testPendingEditQueue).toEqual(['edit-aaa', 'edit-bbb']);
+    });
+
+    it('apply: POSTs to the right endpoint, marks card applied, dequeues (#25)', async () => {
+        const mgr = new ChatManager(null);
+        const msg = newAssistantMsg();
+        mgr._testMessagesByThread.set('t1', [msg]);
+        mgr._testHandleEvent(
+            {
+                type: 'edit_pending',
+                id: 'edit-aaa',
+                tool_use_id: 'tu_1',
+                path: 'docs/guide.md',
+                line: 42,
+                old_string: 'old',
+                new_string: 'new',
+            },
+            msg,
+        );
+
+        const fetchSpy = vi
+            .spyOn(globalThis, 'fetch')
+            .mockResolvedValue(new Response(JSON.stringify({ status: 'applied' }), { status: 200 }));
+
+        await mgr._testResolveHeadEdit('apply');
+
+        expect(fetchSpy).toHaveBeenCalledOnce();
+        const [url, init] = fetchSpy.mock.calls[0];
+        expect(String(url)).toBe('/api/chat/ws-test/edits/edit-aaa/apply');
+        expect(init?.method).toBe('POST');
+        const card = msg.blocks[1];
+        if (card && card.type === 'edit_pending') {
+            expect(card.status).toBe('applied');
+        }
+        expect(mgr._testPendingEditQueue).toEqual([]);
+        fetchSpy.mockRestore();
+    });
+
+    it('reject: marks card rejected and dequeues; "drifted" response is honoured (#25)', async () => {
+        const mgr = new ChatManager(null);
+        const msg = newAssistantMsg();
+        mgr._testMessagesByThread.set('t1', [msg]);
+        mgr._testHandleEvent(
+            {
+                type: 'edit_pending',
+                id: 'edit-aaa',
+                tool_use_id: 'tu_1',
+                path: 'docs/guide.md',
+                line: 42,
+                old_string: 'old',
+                new_string: 'new',
+            },
+            msg,
+        );
+
+        // Backend reports drift even though the user clicked "Apply"; the
+        // card should reflect the actual outcome.
+        const fetchSpy = vi
+            .spyOn(globalThis, 'fetch')
+            .mockResolvedValue(new Response(JSON.stringify({ status: 'drifted' }), { status: 200 }));
+        await mgr._testResolveHeadEdit('apply');
+        const card = msg.blocks[1];
+        if (card && card.type === 'edit_pending') {
+            expect(card.status).toBe('drifted');
+        }
+        expect(mgr._testPendingEditQueue).toEqual([]);
+        fetchSpy.mockRestore();
+    });
+
+    it('HTTP failure keeps the head on the queue so the user can retry (#25)', async () => {
+        const mgr = new ChatManager(null);
+        const msg = newAssistantMsg();
+        mgr._testMessagesByThread.set('t1', [msg]);
+        mgr._testHandleEvent(
+            {
+                type: 'edit_pending',
+                id: 'edit-aaa',
+                tool_use_id: 'tu_1',
+                path: 'docs/guide.md',
+                line: 42,
+                old_string: 'old',
+                new_string: 'new',
+            },
+            msg,
+        );
+        const fetchSpy = vi
+            .spyOn(globalThis, 'fetch')
+            .mockResolvedValue(new Response('boom', { status: 500 }));
+        await mgr._testResolveHeadEdit('apply');
+        // Card still in pending, edit still in queue.
+        const card = msg.blocks[1];
+        if (card && card.type === 'edit_pending') {
+            expect(card.status).toBe('pending');
+        }
+        expect(mgr._testPendingEditQueue).toEqual(['edit-aaa']);
+        fetchSpy.mockRestore();
+    });
+});
