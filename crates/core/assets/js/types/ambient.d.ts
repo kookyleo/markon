@@ -36,6 +36,7 @@ declare global {
     isSharedAnnotationMode?: boolean;
     openEditorAtLine?: (line: number) => void;
     clearPageAnnotations?: (event?: Event) => void;
+    markonExportAnnotations?: (anchor?: HTMLElement | null) => void;
 
     /** Native WebSocket assigned by main.ts after the ws-manager connects. */
     ws?: WebSocket;

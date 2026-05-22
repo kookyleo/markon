@@ -287,6 +287,13 @@
     "web.viewed.print.popup":      "Please allow popups to print sections.\n\nOr use the browser menu Print to print the full page.",
     "web.viewed.print.failed":     "Could not open print window. Please use the browser menu Print.",
 
+    // ── Annotation export ───────────────────────────────────
+    "web.export.label":     "Export annotations",
+    "web.export.tip":       "Copy this page's annotations as Markdown for pasting into an AI",
+    "web.export.copied":    "✓ Copied",
+    "web.export.empty":     "No annotations on this page",
+    "web.export.failed":    "Copy failed",
+
     // ── Keyboard shortcuts panel ─────────────────────────────
     "web.kbd.title":        "Keyboard Shortcuts",
     "web.kbd.cat.core":     "Core",

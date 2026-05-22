@@ -114,6 +114,116 @@ export class AnnotationManager {
     }
 
     /**
+     * Return annotations sorted by their current position in the document,
+     * derived from the rendered `[data-annotation-id]` wrappers. An
+     * annotation can be split across multiple wrappers (per-text-node split
+     * in #wrapRange) — we use the first wrapper as the anchor for ordering.
+     * Annotations with no wrapper (drift, not yet rendered) fall to the end.
+     */
+    getAllInDocumentOrder(): Annotation[] {
+        const positions = new Map<string, number>();
+        let i = 0;
+        this.#markdownBody
+            .querySelectorAll<HTMLElement>('[data-annotation-id]')
+            .forEach((el) => {
+                const id = el.dataset.annotationId;
+                if (id && !positions.has(id)) positions.set(id, i++);
+            });
+        return [...this.#annotations].sort((a, b) => {
+            const ai = positions.get(a.id) ?? Number.POSITIVE_INFINITY;
+            const bi = positions.get(b.id) ?? Number.POSITIVE_INFINITY;
+            if (ai !== bi) return ai - bi;
+            return a.createdAt - b.createdAt;
+        });
+    }
+
+    /**
+     * Find the nearest heading ancestor for an annotation (so the export can
+     * group annotations by section). Returns null if the annotation isn't
+     * rendered or sits before the first heading.
+     */
+    #headingForAnnotation(id: string): { level: number; text: string } | null {
+        const wrapper = this.#markdownBody.querySelector<HTMLElement>(
+            `[data-annotation-id="${id}"]`,
+        );
+        if (!wrapper) return null;
+        // Walk previous siblings (and ancestors' previous siblings) looking
+        // for the closest preceding h1..h6 — that's the section the
+        // annotation lives under.
+        let node: Element | null = wrapper;
+        while (node) {
+            let prev: Element | null = node.previousElementSibling;
+            while (prev) {
+                if (/^H[1-6]$/.test(prev.tagName)) {
+                    // Strip the toolbar/checkbox label clones the viewed
+                    // feature injects into headings.
+                    const clone = prev.cloneNode(true) as HTMLElement;
+                    clone.querySelectorAll(
+                        '.viewed-checkbox-label, .viewed-toolbar, .section-actions, .section-action, .section-action-separator',
+                    ).forEach((el) => el.remove());
+                    return {
+                        level: parseInt(prev.tagName.substring(1), 10),
+                        text: (clone.textContent ?? '').trim(),
+                    };
+                }
+                prev = prev.previousElementSibling;
+            }
+            node = node.parentElement;
+            if (node === this.#markdownBody) break;
+        }
+        return null;
+    }
+
+    /**
+     * Format every annotation on the page as Markdown suitable for pasting
+     * into an AI tool. Annotations are listed in document order and grouped
+     * by their containing heading.
+     */
+    formatAsMarkdown(opts: { documentTitle?: string } = {}): string {
+        const annotations = this.getAllInDocumentOrder();
+        if (annotations.length === 0) return '';
+
+        const typeLabel = (a: Annotation): string => {
+            switch (a.type) {
+                case 'highlight-orange': return 'Orange highlight';
+                case 'highlight-green':  return 'Green highlight';
+                case 'highlight-yellow': return 'Yellow highlight';
+                case 'strikethrough':    return 'Strikethrough';
+                case 'has-note':         return 'Note';
+            }
+        };
+        const escapeBlockquote = (s: string): string =>
+            s.replace(/\r?\n/g, '\n> ');
+
+        const title = opts.documentTitle?.trim();
+        const lines: string[] = [];
+        if (title) lines.push(`# Annotations — ${title}`, '');
+        else lines.push('# Annotations', '');
+        lines.push(`*${annotations.length} annotation${annotations.length === 1 ? '' : 's'}*`, '', '---', '');
+
+        let lastHeadingKey = '';
+        annotations.forEach((a, idx) => {
+            const heading = this.#headingForAnnotation(a.id);
+            const key = heading ? `${heading.level}|${heading.text}` : '';
+            if (key !== lastHeadingKey && heading) {
+                lines.push(`## ${heading.text}`, '');
+                lastHeadingKey = key;
+            }
+            const label = typeLabel(a);
+            // Anchor text: for `has-note` (no highlight color) the text is
+            // still the original selection; for the others it's the
+            // highlighted span.
+            lines.push(`${idx + 1}. **${label}** — "${a.text.trim()}"`);
+            if (a.note && a.note.trim()) {
+                lines.push(`   > ${escapeBlockquote(a.note.trim())}`);
+            }
+            lines.push('');
+        });
+
+        return lines.join('\n').trimEnd() + '\n';
+    }
+
+    /**
      * Add or upsert an annotation. Returns the op_id of the outgoing
      * WebSocket frame (when in shared mode), or `null` in local-only mode
      * and for remote-originating updates (`skipSave === true`).

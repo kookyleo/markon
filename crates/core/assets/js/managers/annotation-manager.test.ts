@@ -349,4 +349,72 @@ describe('AnnotationManager', () => {
         expect(mgr.getAll()).toHaveLength(1);
         expect(mgr.getById('anno-seed')).not.toBeNull();
     });
+
+    it('formatAsMarkdown returns empty string when there are no annotations (#13)', () => {
+        const article = setupArticle('<p>nothing here</p>');
+        const mgr = new AnnotationManager(makeStorage(), article);
+        expect(mgr.formatAsMarkdown()).toBe('');
+    });
+
+    it('formatAsMarkdown groups annotations by heading in document order (#13)', async () => {
+        const article = setupArticle(
+            '<h1 id="t">Title</h1>'
+            + '<h2 id="a">Section A</h2>'
+            + '<p>alpha bravo charlie</p>'
+            + '<h2 id="b">Section B</h2>'
+            + '<p>delta echo foxtrot</p>',
+        );
+        const mgr = new AnnotationManager(makeStorage(), article);
+        // Two highlights under Section A (one with a note), one strike under Section B,
+        // plus a standalone Note also under Section B. Creation order != document order
+        // to make sure sorting works.
+        const pA = article.querySelectorAll('p')[0]!;
+        const pB = article.querySelectorAll('p')[1]!;
+
+        // Section B annotation created first — out of document order on purpose.
+        const strike = mgr.createAnnotation(makeRange(pB.firstChild!, 0, 5), 'strikethrough', 's');
+        await mgr.add(strike);
+        mgr.applyToDOM([strike]);
+
+        // Section A
+        const yellow = mgr.createAnnotation(makeRange(pA.firstChild!, 0, 5), 'highlight-yellow', 'span');
+        await mgr.add(yellow);
+        mgr.applyToDOM([yellow]);
+
+        // Re-resolve the text node — applyToDOM split it when wrapping 'alpha'.
+        const pAtail = (pA.lastChild as Text); // remaining ' bravo charlie'
+        const orange = mgr.createAnnotation(makeRange(pAtail, 1, 6), 'highlight-orange', 'span', 'remember this');
+        await mgr.add(orange);
+        mgr.applyToDOM([orange]);
+
+        const pBtail = (pB.lastChild as Text);
+        const note = mgr.createAnnotation(makeRange(pBtail, 1, 5), 'has-note', 'span', 'a free-floating note');
+        await mgr.add(note);
+        mgr.applyToDOM([note]);
+
+        const md = mgr.formatAsMarkdown({ documentTitle: 'My Doc' });
+
+        expect(md).toContain('# Annotations — My Doc');
+        expect(md).toContain('*4 annotations*');
+        expect(md).toContain('## Section A');
+        expect(md).toContain('## Section B');
+
+        // Document order: yellow (alpha) → orange+note (bravo) → strike (delta) → note (echo)
+        const yellowIdx = md.indexOf('Yellow highlight');
+        const orangeIdx = md.indexOf('Orange highlight');
+        const strikeIdx = md.indexOf('Strikethrough');
+        const noteIdx   = md.indexOf('**Note**');
+        expect(yellowIdx).toBeGreaterThan(-1);
+        expect(orangeIdx).toBeGreaterThan(yellowIdx);
+        expect(strikeIdx).toBeGreaterThan(orangeIdx);
+        expect(noteIdx).toBeGreaterThan(strikeIdx);
+
+        // Section headers should appear before their first annotation
+        expect(md.indexOf('## Section A')).toBeLessThan(yellowIdx);
+        expect(md.indexOf('## Section B')).toBeLessThan(strikeIdx);
+
+        // Notes attached as blockquote under their entry
+        expect(md).toContain('> remember this');
+        expect(md).toContain('> a free-floating note');
+    });
 });

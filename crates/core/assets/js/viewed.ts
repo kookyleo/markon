@@ -899,6 +899,8 @@ export class SectionViewedManager {
             <a class="btn-expand-all">${_t('web.viewed.expandall')}</a>
             <span class="viewed-toolbar-separator">|</span>
             <a class="btn-print-page">${_t('web.viewed.print')}</a>
+            <span class="viewed-toolbar-separator">|</span>
+            <a class="btn-export-annotations" title="${_t('web.export.tip')}">${_t('web.export.label')}</a>
         `;
 
         h1.appendChild(toolbar);
@@ -924,6 +926,13 @@ export class SectionViewedManager {
             console.log('[ViewedManager] Printing full page');
             window.print();
         });
+        toolbar.querySelector<HTMLElement>('.btn-export-annotations')?.addEventListener(
+            'click',
+            (e) => {
+                const link = e.currentTarget as HTMLElement;
+                window.markonExportAnnotations?.(link);
+            },
+        );
     }
 
     markAllViewed(): void {

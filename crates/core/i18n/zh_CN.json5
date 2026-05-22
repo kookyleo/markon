@@ -286,6 +286,13 @@
     "web.viewed.print.popup":      "请允许弹出窗口以打印章节。\n\n或使用浏览器菜单中的「打印」功能打印整个页面。",
     "web.viewed.print.failed":     "无法打开打印窗口。请使用浏览器菜单中的「打印」功能。",
 
+    // ── 导出批注 ────────────────────────────────────────────
+    "web.export.label":     "导出批注",
+    "web.export.tip":       "将本页批注复制为 Markdown，便于贴给 AI",
+    "web.export.copied":    "✓ 已复制",
+    "web.export.empty":     "本页无批注",
+    "web.export.failed":    "复制失败",
+
     // ── 快捷键面板 ───────────────────────────────────────────
     "web.kbd.title":        "快捷键",
     "web.kbd.cat.core":     "核心",

@@ -1257,6 +1257,39 @@ export class MarkonApp {
         );
     }
 
+    /**
+     * Copy every annotation on the current page to the clipboard as Markdown
+     * suitable for pasting into an AI tool. Briefly flips the trigger link's
+     * label to confirm the action.
+     */
+    async exportAnnotations(anchor?: HTMLElement | null): Promise<void> {
+        if (!this.#annotationManager) return;
+        const title = document.title || this.#filePath || undefined;
+        const markdown = this.#annotationManager.formatAsMarkdown({ documentTitle: title });
+        const t = window.__MARKON_I18N__?.t ?? ((k: string): string => k);
+        const flash = (key: string): void => {
+            if (!anchor) return;
+            const original = anchor.textContent ?? '';
+            anchor.textContent = t(key);
+            anchor.classList.add('is-flashing');
+            setTimeout(() => {
+                anchor.textContent = original;
+                anchor.classList.remove('is-flashing');
+            }, 1500);
+        };
+        if (!markdown) {
+            flash('web.export.empty');
+            return;
+        }
+        try {
+            await navigator.clipboard.writeText(markdown);
+            flash('web.export.copied');
+        } catch (err) {
+            Logger.warn('MarkonApp', 'Clipboard write failed', err);
+            flash('web.export.failed');
+        }
+    }
+
     /** Initialize search. @private */
     #initSearch(): void {
         if (this.#enableSearch) {
@@ -1326,6 +1359,12 @@ window.openEditorAtLine = function (line: number): void {
 window.clearPageAnnotations = function (event?: Event): void {
     if (window.markonApp) {
         void window.markonApp.clearAllAnnotations(event ?? null);
+    }
+};
+
+window.markonExportAnnotations = function (anchor?: HTMLElement | null): void {
+    if (window.markonApp) {
+        void window.markonApp.exportAnnotations(anchor ?? null);
     }
 };
 

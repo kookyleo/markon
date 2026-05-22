@@ -287,6 +287,13 @@
     "web.viewed.print.popup":      "セクションを印刷するにはポップアップを許可してください。\n\nまたはブラウザメニューの「印刷」でページ全体を印刷できます。",
     "web.viewed.print.failed":     "印刷ウィンドウを開けませんでした。ブラウザメニューの「印刷」をご利用ください。",
 
+    // ── 注釈エクスポート ─────────────────────────────────────
+    "web.export.label":     "注釈をエクスポート",
+    "web.export.tip":       "このページの注釈を Markdown としてコピーし、AI に貼り付け可能にする",
+    "web.export.copied":    "✓ コピーしました",
+    "web.export.empty":     "このページに注釈はありません",
+    "web.export.failed":    "コピーに失敗しました",
+
     // ── Keyboard shortcuts panel ─────────────────────────────
     "web.kbd.title":        "キーボードショートカット",
     "web.kbd.cat.core":     "基本操作",
