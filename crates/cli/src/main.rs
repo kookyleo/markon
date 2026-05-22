@@ -9,6 +9,8 @@ use std::io::IsTerminal;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 
+mod feedback;
+
 fn get_available_hosts() -> Vec<(String, String)> {
     available_bind_hosts()
         .into_iter()
@@ -124,6 +126,33 @@ enum Commands {
     },
     /// Shutdown the background Markon server.
     Shutdown,
+    /// File a bug report on GitHub (requires `gh`, authenticated).
+    Bug {
+        /// Issue title. If omitted, you'll be prompted.
+        #[arg(long, short = 't')]
+        title: Option<String>,
+        /// Issue body (markdown). If omitted, opens $EDITOR with a template.
+        #[arg(long, short = 'b')]
+        body: Option<String>,
+    },
+    /// File a feature idea as a GitHub Discussion (requires `gh`).
+    Idea {
+        /// Discussion title. If omitted, you'll be prompted.
+        #[arg(long, short = 't')]
+        title: Option<String>,
+        /// Discussion body (markdown). If omitted, opens $EDITOR.
+        #[arg(long, short = 'b')]
+        body: Option<String>,
+    },
+    /// Ask a question on GitHub Discussions (requires `gh`).
+    Ask {
+        /// Discussion title. If omitted, you'll be prompted.
+        #[arg(long, short = 't')]
+        title: Option<String>,
+        /// Discussion body (markdown). If omitted, opens $EDITOR.
+        #[arg(long, short = 'b')]
+        body: Option<String>,
+    },
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, clap::ValueEnum)]
@@ -613,8 +642,50 @@ async fn main() {
     let cli_entry = cli.entry.clone();
     println!("Markon v{}", env!("CARGO_PKG_VERSION"));
 
-    // Handle subcommands for workspace management.
+    // Handle subcommands.
     if let Some(cmd) = cli.command {
+        // Feedback commands run without a server.
+        match &cmd {
+            Commands::Bug { title, body } => {
+                if let Err(e) = feedback::submit(
+                    feedback::FeedbackKind::Bug,
+                    title.clone(),
+                    body.clone(),
+                    "auto",
+                ) {
+                    eprintln!("Error: {e}");
+                    std::process::exit(1);
+                }
+                return;
+            }
+            Commands::Idea { title, body } => {
+                if let Err(e) = feedback::submit(
+                    feedback::FeedbackKind::Idea,
+                    title.clone(),
+                    body.clone(),
+                    "auto",
+                ) {
+                    eprintln!("Error: {e}");
+                    std::process::exit(1);
+                }
+                return;
+            }
+            Commands::Ask { title, body } => {
+                if let Err(e) = feedback::submit(
+                    feedback::FeedbackKind::Ask,
+                    title.clone(),
+                    body.clone(),
+                    "auto",
+                ) {
+                    eprintln!("Error: {e}");
+                    std::process::exit(1);
+                }
+                return;
+            }
+            _ => {}
+        }
+
+        // Workspace-management commands talk to the running server.
         let lock = ServerLock::read();
         let (port, token) = match lock {
             Some(ref l) if l.is_alive() => (l.port, l.token.clone()),
@@ -630,6 +701,9 @@ async fn main() {
             }
             Commands::Detach { target } => detach_workspace(port, &token, &target).await,
             Commands::Shutdown => shutdown_server(port, &token).await,
+            Commands::Bug { .. } | Commands::Idea { .. } | Commands::Ask { .. } => {
+                unreachable!("handled above")
+            }
         };
 
         if let Err(e) = res {
