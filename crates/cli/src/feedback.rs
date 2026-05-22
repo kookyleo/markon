@@ -79,11 +79,9 @@ fn ensure_gh_ready() -> Result<(), String> {
         .stderr(Stdio::null())
         .status();
     if !matches!(which, Ok(s) if s.success()) {
-        return Err(
-            "`gh` (GitHub CLI) not found on PATH.\n\
+        return Err("`gh` (GitHub CLI) not found on PATH.\n\
              Install: https://github.com/cli/cli#installation"
-                .to_string(),
-        );
+            .to_string());
     }
     let auth = Command::new("gh")
         .args(["auth", "status"])
@@ -91,11 +89,9 @@ fn ensure_gh_ready() -> Result<(), String> {
         .stderr(Stdio::null())
         .status();
     if !matches!(auth, Ok(s) if s.success()) {
-        return Err(
-            "`gh` is installed but not authenticated.\n\
+        return Err("`gh` is installed but not authenticated.\n\
              Run `gh auth login` and try again."
-                .to_string(),
-        );
+            .to_string());
     }
     Ok(())
 }
@@ -167,11 +163,7 @@ fn submit_bug(title: &str, body: &str) -> Result<(), String> {
     let repo = format!("{REPO_OWNER}/{REPO_NAME}");
     let output = Command::new("gh")
         .args([
-            "issue", "create",
-            "--repo", &repo,
-            "--label", "bug",
-            "--title", title,
-            "--body", body,
+            "issue", "create", "--repo", &repo, "--label", "bug", "--title", title, "--body", body,
         ])
         .output()
         .map_err(|e| format!("failed to invoke gh: {e}"))?;
@@ -205,7 +197,9 @@ fn submit_discussion(title: &str, body: &str, category_slug: &str) -> Result<(),
         .iter()
         .find(|n| n["slug"] == category_slug)
         .ok_or_else(|| {
-            format!("discussion category slug '{category_slug}' not found on {REPO_OWNER}/{REPO_NAME}")
+            format!(
+                "discussion category slug '{category_slug}' not found on {REPO_OWNER}/{REPO_NAME}"
+            )
         })?["id"]
         .as_str()
         .ok_or("graphql response missing category.id")?
