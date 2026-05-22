@@ -30,7 +30,7 @@ fn check_js_bundle_present() {
 
 /// Scan i18n/*.json5 at build time, generate LANGS array so no manual registration needed.
 fn generate_langs_registry() {
-    let i18n_dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../i18n");
+    let i18n_dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("i18n");
     let out_dir = std::env::var("OUT_DIR").unwrap();
     let dest = Path::new(&out_dir).join("langs_generated.rs");
 
