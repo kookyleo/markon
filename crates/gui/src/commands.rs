@@ -299,6 +299,10 @@ pub fn get_workspaces(state: State<AppState>) -> Vec<serde_json::Value> {
                 "enable_chat": info.flags.enable_chat,
                 "shared_annotation": info.flags.shared_annotation,
                 "search_ready": info.search_ready,
+                // Surfaced so the Settings UI can filter out Open-With
+                // single-file workspaces (see `ui/index.html: refreshWorkspaces`).
+                "ephemeral": info.ephemeral,
+                "single_file": info.single_file,
             })
         })
         .collect()

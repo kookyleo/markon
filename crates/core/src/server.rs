@@ -1170,6 +1170,9 @@ fn render_markdown_file(
             context.insert("theme", state.theme.as_str());
             context.insert("content", &html_content);
             // Back link: parent dir of this file within the workspace.
+            // Suppressed for single-file workspaces — `/{id}/` 303-redirects
+            // back to this same file (see `handle_workspace_root`), so a
+            // "Back to file list" link would be a no-op trap.
             let back_link = std::path::Path::new(file_path)
                 .parent()
                 .and_then(|p| p.strip_prefix(&ws.root).ok())
@@ -1183,7 +1186,7 @@ fn render_markdown_file(
                 })
                 .unwrap_or_else(|| format!("/{workspace_id}/"));
             context.insert("back_link", &back_link);
-            context.insert("show_back_link", &true);
+            context.insert("show_back_link", &!ws.is_ephemeral());
             context.insert("has_mermaid", &has_mermaid);
             context.insert("toc", &toc);
             let flags = ws.flags();
@@ -1511,6 +1514,22 @@ async fn save_file_handler(
             message: "Access denied".into(),
         })
         .into_response();
+    }
+    // Single-file gate, mirroring `handle_workspace_path`: writes outside
+    // the pinned file (and its allowed assets) are rejected even when the
+    // path resolves inside `ws.root`. No-op for normal directory workspaces.
+    if ws.is_ephemeral() {
+        let rel = canonical
+            .strip_prefix(&ws.root)
+            .map(|p| p.to_string_lossy().to_string())
+            .unwrap_or_default();
+        if !ws.allows(&rel) {
+            return Json(SaveFileResponse {
+                success: false,
+                message: "Access denied".into(),
+            })
+            .into_response();
+        }
     }
     if !canonical.is_file() {
         return Json(SaveFileResponse {

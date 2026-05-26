@@ -105,6 +105,11 @@ impl WorkspaceEntry {
 #[derive(Serialize)]
 pub struct WorkspaceInfo {
     pub id: String,
+    /// Workspace **serving root** — what `/{id}/…` resolves under. For
+    /// single-file (ephemeral) workspaces this is the parent directory, not
+    /// the file itself; the file name lives in `single_file`. Consumers that
+    /// render a user-visible path **must** join the two for ephemeral entries
+    /// (or filter ephemeral entries out entirely).
     pub path: String,
     #[serde(flatten)]
     pub flags: WorkspaceFlags,
