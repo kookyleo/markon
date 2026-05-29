@@ -171,6 +171,18 @@ Same steps as the CI job, but runs locally — useful for hotfixes or first
 publish when CI isn't set up yet. Requires clean git tree and
 `CARGO_REGISTRY_TOKEN` env (or prior `cargo login`).
 
+### 7. Homebrew / Scoop auto-update
+
+`Casks/markon.rb` (Homebrew) and `bucket/markon.json` (Scoop) live in this repo
+and double as the personal taps. On a stable promote, `promote.yml` bumps their
+version + installer SHAs and commits them back to `main`.
+
+Because `main` is protected and the default `GITHUB_TOKEN` cannot bypass it,
+those pushes use the **`RELEASE_PUSH_TOKEN`** secret — a PAT from an admin
+account (fine-grained, only `Contents: Read and write`). Branch protection has
+`enforce_admins=off`, so an admin push bypasses. If the secret is absent the
+push is skipped with a warning (no job failure).
+
 ## Update Channels
 
 Clients check for updates from a permanent GitHub release tagged `updater`:

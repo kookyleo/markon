@@ -166,6 +166,17 @@ scripts/publish-crates.sh
 流程与 CI job 一致，本地运行。需要 git 工作区干净 +
 `CARGO_REGISTRY_TOKEN` 环境变量（或提前 `cargo login`）。
 
+### 7. Homebrew / Scoop 自动更新
+
+`Casks/markon.rb`（Homebrew）和 `bucket/markon.json`（Scoop）就在本仓库里，
+兼作个人 tap。`promote.yml` 在晋升 stable 时会更新它们的版本号与安装包 SHA，
+并提交回 `main`。
+
+由于 `main` 受分支保护、默认 `GITHUB_TOKEN` 无法绕过，这两步的推送使用
+Secret **`RELEASE_PUSH_TOKEN`** —— 一个管理员账号的 PAT（fine-grained，
+仅需 `Contents: Read and write`）。分支保护 `enforce_admins=off`，管理员推送即可
+bypass。未配置该 secret 时推送会发出 warning 并跳过（不导致 job 失败）。
+
 ## 更新通道
 
 客户端从 GitHub 上一个固定的 `updater` release 检查更新：
