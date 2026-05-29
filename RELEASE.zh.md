@@ -15,7 +15,7 @@ flowchart TD
     G --> H["发布为 prerelease"]
     H --> I["上传 latest-rc.json<br/>到 updater release"]
 
-    I --> J{{"7 天无 release-blocker issue"}}
+    I --> J{{"满 7 天的最新 RC<br/>无 release-blocker"}}
     J --> K["Auto Promote<br/>(auto-promote.yml, 每日定时)"]
     K --> L["Promote<br/>(promote.yml)"]
     L --> M["复制 RC 资产 → 创建 stable release v0.13.0"]
@@ -111,16 +111,17 @@ sequenceDiagram
 
 1. **auto-rc.yml** 检测版本变化，创建 tag `v0.13.0-rc.1`，dispatch 触发 Release
 2. **release.yml** 构建六目标（macOS / Linux / Windows 各自 x86_64 + aarch64），签名 updater 归档，创建 prerelease，上传 `latest-rc.json` 到永久的 `updater` release
-3. **auto-promote.yml** 每天 08:00 UTC 运行，检查最新 RC 是否满足晋升条件（见下），满足则 dispatch 触发 Promote
+3. **auto-promote.yml** 每天 08:00 UTC 运行，选出「已满 7 天里最新的 RC」并校验晋升条件（见下），满足则 dispatch 触发 Promote
 4. **promote.yml** 复制 RC 全部资产到新的 stable release `v0.13.0`，上传 `latest.json`
 
 ### 3. 自动晋升条件
 
-以下条件必须全部满足：
+每天选出**满 7 天的 RC 里最新的那个**，满足以下两条即晋升：
 
-- RC 发布已满 7 天
-- 没有标记 `release-blocker` 标签的 open issue
-- 同版本号的 stable release 尚不存在
+- 比当前最新 stable 更新（不倒退、不重发）
+- 无 `release-blocker` 标签的 open issue
+
+> 取「满 7 天里最新」而非「绝对最新」：否则高频发版时新 RC 永远没满 7 天，crates.io 会一直停在旧版（0.13.x 曾因此卡住一个月）。详细取舍见 `auto-promote.yml` 注释。
 
 ### 4. 阻止发布
 

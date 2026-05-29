@@ -27,37 +27,56 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          # Get the latest RC prerelease
-          RC_TAG=$(gh release list --json tagName,isPrerelease,publishedAt \
-            -q '[.[] | select(.isPrerelease)] | sort_by(.publishedAt) | last | .tagName // empty')
+          # Pick the NEWEST RC that has already aged past the soak window —
+          # NOT the absolute newest RC. The absolute-newest approach starves
+          # promotion whenever RCs are cut faster than the soak window: a fresh
+          # RC is always "too young", and since only the latest was considered,
+          # older RCs that long since matured never got promoted (this is why
+          # the entire 0.13.x line never reached crates.io). Filtering by age
+          # first, then taking the newest survivor, keeps crates.io trailing
+          # HEAD by ~PROMOTE_MIN_MINUTES and never stalls.
+          #
+          # Identify RCs by tag SHAPE (contains -rc.), not by the isPrerelease
+          # flag — that flag is unreliable here (leftover draft releases carry
+          # isPrerelease=false on -rc tags). Drafts must also be dropped before
+          # the age filter: their publishedAt is the zero time (0001-01-01),
+          # which makes fromdate throw and silently empties the whole result.
+          RC_TAG=$(gh release list --limit 100 --json tagName,isDraft,publishedAt \
+            -q "[.[]
+                  | select(.isDraft | not)
+                  | select(.tagName | test(\"-rc\\\\.\"))
+                  | select(((now - (.publishedAt | fromdate)) / 60) >= ${PROMOTE_MIN_MINUTES})]
+                | sort_by(.publishedAt) | last | .tagName // empty")
 
           if [ -z "$RC_TAG" ]; then
-            echo "No RC releases found"
+            echo "No RC has cleared the ${PROMOTE_MIN_MINUTES}-minute soak window yet, skipping"
             echo "promote=false" >> "$GITHUB_OUTPUT"
             exit 0
           fi
 
-          echo "Latest RC: $RC_TAG"
+          echo "Newest matured RC: $RC_TAG"
 
           # Extract base version: v0.9.0-rc.2 → v0.9.0
           STABLE_TAG=$(echo "$RC_TAG" | sed 's/-rc\.[0-9]*//')
 
-          # Check if stable release already exists
-          if gh release view "$STABLE_TAG" >/dev/null 2>&1; then
-            echo "Stable $STABLE_TAG already exists, skipping"
-            echo "promote=false" >> "$GITHUB_OUTPUT"
-            exit 0
-          fi
+          # Never go backwards. The candidate is the newest *matured* RC, which
+          # can be older than HEAD — and may even be older than a stable that
+          # was already published (e.g. after a manual promotion that jumped
+          # ahead). Promote only when the candidate is strictly newer than the
+          # latest existing stable, so we never republish or downgrade.
+          # Detect stables by tag shape (pure vX.Y.Z, no -rc / non-version tags
+          # like "updater"), dropping drafts — again, isPrerelease is unreliable.
+          LATEST_STABLE=$(gh release list --limit 100 --json tagName,isDraft \
+            -q '.[] | select(.isDraft | not) | .tagName | select(test("^v[0-9]+\\.[0-9]+\\.[0-9]+$"))' \
+            | sort -V | tail -1)
 
-          # Check age
-          PUBLISHED=$(gh release view "$RC_TAG" --json publishedAt -q '.publishedAt')
-          AGE_MINUTES=$(( ($(date +%s) - $(date -d "$PUBLISHED" +%s)) / 60 ))
-          echo "Age: ${AGE_MINUTES} minutes (need ${PROMOTE_MIN_MINUTES})"
-
-          if [ "$AGE_MINUTES" -lt "$PROMOTE_MIN_MINUTES" ]; then
-            echo "Too young, skipping"
-            echo "promote=false" >> "$GITHUB_OUTPUT"
-            exit 0
+          if [ -n "$LATEST_STABLE" ]; then
+            NEWEST=$(printf '%s\n%s\n' "$STABLE_TAG" "$LATEST_STABLE" | sort -V | tail -1)
+            if [ "$NEWEST" != "$STABLE_TAG" ] || [ "$STABLE_TAG" = "$LATEST_STABLE" ]; then
+              echo "Latest stable $LATEST_STABLE >= candidate $STABLE_TAG — already ahead, skipping"
+              echo "promote=false" >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
           fi
 
           # Check for open issues with blocker label

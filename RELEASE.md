@@ -15,7 +15,7 @@ flowchart TD
     G --> H["Publish as prerelease"]
     H --> I["Upload latest-rc.json<br/>to updater release"]
 
-    I --> J{{"7 days, no release-blocker issues"}}
+    I --> J{{"newest RC ≥ 7 days<br/>no release-blocker"}}
     J --> K["Auto Promote<br/>(auto-promote.yml, daily cron)"]
     K --> L["Promote<br/>(promote.yml)"]
     L --> M["Copy RC assets → stable release v0.13.0"]
@@ -114,16 +114,17 @@ sequenceDiagram
 
 1. **auto-rc.yml** detects the version change, creates tag `v0.13.0-rc.1`, dispatches Release
 2. **release.yml** builds all 6 targets (macOS / Linux / Windows, each in x86_64 and aarch64), signs updater archives, creates a prerelease, uploads `latest-rc.json` to the permanent `updater` release
-3. **auto-promote.yml** runs daily at 08:00 UTC -- checks the latest RC against promotion criteria (see below), dispatches Promote if all pass
+3. **auto-promote.yml** runs daily at 08:00 UTC -- picks the newest RC past the 7-day soak window and checks promotion criteria (see below), dispatches Promote if all pass
 4. **promote.yml** copies all RC assets to a new stable release `v0.13.0` and uploads `latest.json`
 
 ### 3. Auto-promote criteria
 
-All conditions must be met:
+Each day, pick the **newest RC that is at least 7 days old** and promote it if:
 
-- RC is >= 7 days old
-- No open issues with `release-blocker` label
-- No stable release for the same version already exists
+- It is newer than the current latest stable (no downgrade, no re-publish)
+- No open issue has the `release-blocker` label
+
+> Newest *matured* RC, not the absolute newest: otherwise, under rapid releases the newest RC is never 7 days old and crates.io stalls on an old version (this stalled the whole 0.13.x line for a month). See the `auto-promote.yml` comments for the full rationale.
 
 ### 4. Blocking a release
 
