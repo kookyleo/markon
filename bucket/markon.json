@@ -1,16 +1,16 @@
 {
-    "version": "0.0.0",
+    "version": "0.13.10",
     "description": "Turn your markdown on. Lightweight Markdown renderer with GitHub styling.",
     "homepage": "https://github.com/kookyleo/markon",
     "license": "Apache-2.0",
     "architecture": {
         "64bit": {
-            "url": "https://github.com/kookyleo/markon/releases/download/v0.0.0/Markon_0.0.0_x64-setup.exe",
-            "hash": "0000000000000000000000000000000000000000000000000000000000000000"
+            "url": "https://github.com/kookyleo/markon/releases/download/v0.13.10/Markon_0.13.10_x64-setup.exe",
+            "hash": "d0c26098287cb9555d4dbb2069fad8203bf561822cc20c1f38ed92baac82d01a"
         },
         "arm64": {
-            "url": "https://github.com/kookyleo/markon/releases/download/v0.0.0/Markon_0.0.0_arm64-setup.exe",
-            "hash": "0000000000000000000000000000000000000000000000000000000000000000"
+            "url": "https://github.com/kookyleo/markon/releases/download/v0.13.10/Markon_0.13.10_arm64-setup.exe",
+            "hash": "914130a6293e9921cddb87e6484afce349b4229ad9b21b323c980baceccda899"
         }
     },
     "installer": {
