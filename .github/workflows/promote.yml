@@ -56,12 +56,24 @@ jobs:
             /tmp/latest-rc.json > /tmp/latest.json
           gh release upload updater /tmp/latest.json --clobber
 
-      # Bump Casks/markon.rb so `brew upgrade --cask markon` pulls the new
-      # stable. The file doubles as the personal tap content — users install
-      # via `brew tap kookyleo/markon https://github.com/kookyleo/markon`.
+      # The Homebrew cask (Casks/markon.rb) and Scoop manifest (bucket/markon.json)
+      # live in this repo and double as the personal taps, so they must be
+      # committed to main. main is a protected branch and the default
+      # GITHUB_TOKEN (github-actions[bot]) cannot bypass it, so these commits
+      # are pushed with RELEASE_PUSH_TOKEN — a PAT from an admin account
+      # (branch protection has enforce_admins off, so an admin push bypasses
+      # the PR / status-check rules). We commit on top of the LATEST main, not
+      # the rc tag this job is checked out at: by promote time (≥7 days later)
+      # main has usually moved on, so committing on the stale tag would be a
+      # non-fast-forward and get rejected.
+      - name: Check out latest main for tap updates
+        run: |
+          git fetch origin main
+          git checkout -B main origin/main
+          git config user.name  "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
       - name: Update Homebrew cask
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           STABLE="${{ steps.ver.outputs.stable }}"
           VER="${STABLE#v}"
@@ -91,21 +103,12 @@ jobs:
           p.write_text(text)
           PY
 
-          git config user.name  "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add Casks/markon.rb
-          if git diff --cached --quiet; then
-            echo "Cask already up to date"
-          else
-            git commit -m "cask: bump markon to $VER"
-            git push
-          fi
+          git diff --cached --quiet || git commit -m "cask: bump markon to $VER"
 
       # Bump bucket/markon.json so `scoop update markon` pulls the new
       # stable. Same tap-in-source pattern as the cask.
       - name: Update Scoop manifest
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           STABLE="${{ steps.ver.outputs.stable }}"
           VER="${STABLE#v}"
@@ -139,12 +142,25 @@ jobs:
           PY
 
           git add bucket/markon.json
-          if git diff --cached --quiet; then
-            echo "Scoop manifest already up to date"
-          else
-            git commit -m "scoop: bump markon to $VER"
-            git push
+          git diff --cached --quiet || git commit -m "scoop: bump markon to $VER"
+
+      # Single push of whatever the two steps above committed. Uses the admin
+      # PAT to bypass branch protection; skips gracefully (no job failure) when
+      # the secret isn't configured.
+      - name: Push tap updates to main
+        env:
+          RELEASE_PUSH_TOKEN: ${{ secrets.RELEASE_PUSH_TOKEN }}
+        run: |
+          if git diff --quiet origin/main HEAD; then
+            echo "No cask/Scoop changes to push"
+            exit 0
           fi
+          if [ -z "$RELEASE_PUSH_TOKEN" ]; then
+            echo "::warning::RELEASE_PUSH_TOKEN not set — cask/Scoop commits were not pushed. Add a PAT (admin account, contents:write) as that secret to enable auto-updates."
+            exit 0
+          fi
+          git push "https://x-access-token:${RELEASE_PUSH_TOKEN}@github.com/${{ github.repository }}.git" HEAD:main
+          echo "Pushed cask + Scoop updates to main"
 
   publish-crates:
     needs: promote
