@@ -22,7 +22,41 @@ env:
   CARGO_INCREMENTAL: "0"
 
 jobs:
+  # Create the GitHub release ONCE, up front. The 6-way build matrix then
+  # uploads into this single release via releaseId. Previously each matrix job
+  # ran tauri-action with releaseDraft:true and created its own release — two
+  # jobs could race and create two releases for the same tag, splitting the
+  # build artifacts across them (installers on one, updater archives on the
+  # other) and leaving an orphan draft. Creating it here removes that race.
+  create-release:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    outputs:
+      release_id: ${{ steps.create.outputs.release_id }}
+    steps:
+      - name: Create or reuse the draft release
+        id: create
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          TAG="${{ env.RELEASE_TAG }}"
+          # Match by tag across ALL releases (the /releases/tags endpoint hides
+          # drafts, so a re-run after a failed build would otherwise create a
+          # second draft). Reuse if found, else create one draft.
+          id=$(gh api "repos/${{ github.repository }}/releases" --paginate \
+            -q "[.[] | select(.tag_name==\"$TAG\")] | .[0].id // empty")
+          if [ -z "$id" ]; then
+            id=$(gh api -X POST "repos/${{ github.repository }}/releases" \
+              -f tag_name="$TAG" -f name="Markon $TAG" -F draft=true -q '.id')
+            echo "Created draft release $id for $TAG"
+          else
+            echo "Reusing existing release $id for $TAG"
+          fi
+          echo "release_id=$id" >> "$GITHUB_OUTPUT"
+
   build:
+    needs: create-release
     permissions:
       contents: write
     strategy:
@@ -123,9 +157,9 @@ jobs:
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
         with:
           projectPath: crates/gui
-          tagName: ${{ env.RELEASE_TAG }}
-          releaseName: Markon ${{ env.RELEASE_TAG }}
-          releaseDraft: true
+          # Upload into the single release pre-created by create-release —
+          # do NOT let the matrix create releases itself (that races).
+          releaseId: ${{ needs.create-release.outputs.release_id }}
           includeUpdaterJson: false
           args: ${{ matrix.args }}
 
