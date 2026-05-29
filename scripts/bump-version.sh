@@ -56,22 +56,37 @@ if ! git diff --cached --quiet -- Cargo.toml Cargo.lock; then
   fail "Cargo.toml or Cargo.lock is staged — unstage or commit first"
 fi
 
-step "1/7  cargo fmt --check"
+step "1/9  cargo fmt --check"
 cargo fmt --check || fail "Formatting issues — run 'cargo fmt' first"
 
-step "2/7  cargo clippy --all-targets -- -D warnings"
+# Build the frontend bundle so every gate below sees the same assets/dist/ a
+# release would embed. It is gitignored, so a fresh or stale checkout would
+# otherwise compile against an absent/old bundle.
+step "2/9  npm run build"
+npm run build || fail "Frontend build failed"
+
+step "3/9  cargo clippy --all-targets -- -D warnings"
 cargo clippy --all-targets --quiet -- -D warnings || fail "Clippy warnings must be resolved"
 
-step "3/7  cargo test"
+step "4/9  cargo test"
 cargo test --quiet || fail "Rust tests failed"
 
-step "4/7  JS lint"
+step "5/9  JS lint"
 npx eslint --max-warnings 0 'crates/core/assets/js/**/*.js' || fail "ESLint warnings must be resolved"
 
-step "5/7  JS tests"
+step "6/9  JS tests"
 npm test --silent || fail "JS tests failed"
 
-step "6/7  Bumping version to $NEW"
+# Publishability gate. Packages markon-core into the exact tarball crates.io
+# would receive and compiles it — the ONLY local check that catches packaging
+# regressions, e.g. assets/dist/ dropped from the tarball because it is
+# gitignored and not in `include`. Plain `cargo test` always passes (the
+# bundle exists on disk); only the packaged tarball reveals the gap.
+# --allow-dirty: the included, gitignored assets/dist/ always reads as dirty.
+step "7/9  cargo publish --dry-run -p markon-core"
+cargo publish --dry-run -p markon-core --allow-dirty || fail "markon-core would not publish to crates.io"
+
+step "8/9  Bumping version to $NEW"
 sed -i.bak -E "s/^version = \"[0-9]+\.[0-9]+\.[0-9]+\"/version = \"$NEW\"/" Cargo.toml
 sed -i.bak -E "s/(markon-core = \{ path = \"crates\/core\", version = )\"[0-9]+(\.[0-9]+)?\"/\1\"$MINOR\"/" Cargo.toml
 rm -f Cargo.toml.bak
@@ -86,7 +101,7 @@ if [ "$changed" != "$expected" ]; then
   fail "Refusing to commit — expected only Cargo.toml + Cargo.lock"
 fi
 
-step "7/7  Commit and push"
+step "9/9  Commit and push"
 git add Cargo.toml Cargo.lock
 git commit -m "chore: bump to $NEW"
 
