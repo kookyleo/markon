@@ -34,25 +34,33 @@ VER=$(grep -m1 '^version = "' Cargo.toml | sed -E 's/version = "(.*)"/\1/')
 step "Publishing markon-core@$VER and markon@$VER to crates.io"
 
 # --- Quality gates (same as bump-version) ---
-step "1/7  cargo fmt --check"
+step "1/8  cargo fmt --check"
 cargo fmt --check || fail "Formatting issues"
 
-step "2/7  cargo clippy --all-targets -- -D warnings"
+# Build the frontend bundle BEFORE any cargo compile. markon-core's build.rs
+# and rust_embed require assets/dist/ (gitignored), so clippy/test/package all
+# fail without it. This is also what `include` in crates/core/Cargo.toml ships
+# into the published tarball.
+step "2/8  npm ci && npm run build"
+npm ci || fail "npm ci failed"
+npm run build || fail "frontend build failed"
+
+step "3/8  cargo clippy --all-targets -- -D warnings"
 cargo clippy --all-targets --quiet -- -D warnings || fail "Clippy warnings"
 
-step "3/7  cargo test"
+step "4/8  cargo test"
 cargo test --quiet || fail "Rust tests failed"
 
-step "4/7  JS lint + tests"
+step "5/8  JS lint + tests"
 npx eslint --max-warnings 0 'crates/core/assets/js/**/*.js' || fail "ESLint warnings"
 npm test --silent || fail "JS tests failed"
 
 # --- Dry runs ---
-step "5/7  cargo publish --dry-run -p markon-core"
+step "6/8  cargo publish --dry-run -p markon-core"
 cargo publish --dry-run -p markon-core || fail "markon-core dry-run failed"
 
 # --- Publish core ---
-step "6/7  cargo publish -p markon-core"
+step "7/8  cargo publish -p markon-core"
 cargo publish -p markon-core || fail "markon-core publish failed"
 
 # Wait for crates.io index to propagate
@@ -60,7 +68,7 @@ step "    Waiting 30s for crates.io index to update…"
 sleep 30
 
 # --- Publish cli ---
-step "7/7  cargo publish -p markon"
+step "8/8  cargo publish -p markon"
 cargo publish -p markon || fail "markon publish failed"
 
 printf '\n\033[1;32m✓ Published markon-core@%s and markon@%s\033[0m\n' "$VER" "$VER"

@@ -9,6 +9,23 @@ homepage.workspace = true
 description = "markon core - Turn your markdown on."
 keywords = ["markdown", "preview", "github", "mermaid", "toc"]
 categories = ["command-line-utilities", "text-processing", "web-programming"]
+# Explicit package contents. `include` ignores .gitignore, so the generated
+# frontend bundle under assets/dist/ (gitignored, produced by `npm run build`)
+# is shipped in the published crate — it is embedded at compile time by
+# `rust_embed` in src/assets.rs, so consumers of `cargo install` (who have no
+# Node toolchain) need it inside the tarball. This list must cover everything
+# the crate needs to compile standalone: sources, build.rs, the i18n files
+# build.rs reads, and all four rust_embed asset folders.
+include = [
+    "src/**/*.rs",
+    "build.rs",
+    "Cargo.toml",
+    "i18n/**/*.json5",
+    "assets/css/**/*",
+    "assets/dist/**/*",
+    "assets/icons/**/*",
+    "assets/templates/**/*",
+]
 
 [lib]
 name = "markon_core"

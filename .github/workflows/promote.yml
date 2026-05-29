@@ -170,6 +170,18 @@ jobs:
         with:
           toolchain: stable
 
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Build frontend bundle
+        # markon-core embeds assets/dist/ (gitignored, produced by npm) via
+        # rust_embed. It must exist before cargo packages the crate, otherwise
+        # the published tarball ships without it and fails to compile for
+        # `cargo install` consumers.
+        run: npm ci && npm run build
+
       - name: Check CARGO_REGISTRY_TOKEN
         id: token
         env:
