@@ -15,6 +15,7 @@ use rusqlite::Connection;
 use serde::{Deserialize, Serialize};
 use std::fs;
 use std::net::SocketAddr;
+use std::path::{Path as FsPath, PathBuf};
 use std::sync::{Arc, Mutex};
 use tera::Tera;
 use tokio::net::TcpListener;
@@ -158,6 +159,32 @@ pub fn build_workspace_url(base: &str, workspace_path: &str) -> String {
         format!("/{workspace_path}")
     };
     format!("{}{}", base.trim_end_matches('/'), suffix)
+}
+
+fn canonicalize_route_path(path: &FsPath) -> std::io::Result<PathBuf> {
+    // `std::fs::canonicalize` returns verbatim (`\\?\`) paths on Windows.
+    // Workspace roots are stored through `dunce`, so route containment checks
+    // must use the same representation or valid files are rejected as outside
+    // the workspace.
+    dunce::canonicalize(path)
+}
+
+fn canonical_workspace_root(ws: &WorkspaceEntry) -> PathBuf {
+    canonicalize_route_path(&ws.root).unwrap_or_else(|_| ws.root.clone())
+}
+
+fn workspace_relative_path(path: &FsPath, ws: &WorkspaceEntry) -> Option<PathBuf> {
+    path.strip_prefix(canonical_workspace_root(ws))
+        .ok()
+        .map(PathBuf::from)
+}
+
+fn is_inside_workspace(path: &FsPath, ws: &WorkspaceEntry) -> bool {
+    path.starts_with(canonical_workspace_root(ws))
+}
+
+fn path_to_route(path: &FsPath) -> String {
+    path.to_string_lossy().replace('\\', "/")
 }
 
 pub fn print_compact_qr(data: &str) -> Result<(), Box<dyn std::error::Error>> {
@@ -1025,14 +1052,14 @@ async fn handle_workspace_path(
     }
     let full_path = ws.root.join(rel);
 
-    let canonical = match full_path.canonicalize() {
+    let canonical = match canonicalize_route_path(&full_path) {
         Ok(p) => p,
         Err(_) => {
             return (StatusCode::NOT_FOUND, format!("Path not found: {decoded}")).into_response()
         }
     };
 
-    if !canonical.starts_with(&ws.root) {
+    if !is_inside_workspace(&canonical, &ws) {
         return (StatusCode::FORBIDDEN, "Access denied").into_response();
     }
 
@@ -1175,9 +1202,9 @@ fn render_markdown_file(
             // "Back to file list" link would be a no-op trap.
             let back_link = std::path::Path::new(file_path)
                 .parent()
-                .and_then(|p| p.strip_prefix(&ws.root).ok())
+                .and_then(|p| workspace_relative_path(p, ws))
                 .map(|rel| {
-                    let rel_str = rel.to_string_lossy();
+                    let rel_str = path_to_route(&rel);
                     if rel_str.is_empty() {
                         format!("/{workspace_id}/")
                     } else {
@@ -1262,8 +1289,6 @@ fn render_directory_listing(
     dir_param: Option<&str>,
     state: &AppState,
 ) -> Response {
-    use std::path::PathBuf;
-
     let current_dir = if let Some(dir_str) = dir_param {
         let p = PathBuf::from(dir_str);
         if p.is_absolute() {
@@ -1275,12 +1300,13 @@ fn render_directory_listing(
         ws.root.clone()
     };
 
-    let current_dir = match current_dir.canonicalize() {
+    let current_dir = match canonicalize_route_path(&current_dir) {
         Ok(p) => p,
         Err(e) => {
             return (StatusCode::BAD_REQUEST, format!("Invalid directory: {e}")).into_response()
         }
     };
+    let root = canonical_workspace_root(ws);
 
     #[derive(serde::Serialize)]
     struct Entry {
@@ -1304,16 +1330,13 @@ fn render_directory_listing(
                     Err(_) => return None,
                 };
                 let is_dir = file_type.is_dir();
-                let rel = path
-                    .strip_prefix(&ws.root)
-                    .unwrap_or(&path)
-                    .to_string_lossy()
-                    .to_string();
+                let rel = path.strip_prefix(&root).unwrap_or(&path).to_path_buf();
+                let rel_url = path_to_route(&rel);
                 if is_dir {
                     Some(Entry {
                         name,
                         is_dir: true,
-                        link: format!("/{workspace_id}/{rel}/"),
+                        link: format!("/{workspace_id}/{rel_url}/"),
                     })
                 } else {
                     let is_md = path
@@ -1323,7 +1346,7 @@ fn render_directory_listing(
                         Some(Entry {
                             name,
                             is_dir: false,
-                            link: format!("/{workspace_id}/{rel}"),
+                            link: format!("/{workspace_id}/{rel_url}"),
                         })
                     } else {
                         None
@@ -1346,12 +1369,12 @@ fn render_directory_listing(
         _ => a.name.cmp(&b.name),
     });
 
-    let show_parent = current_dir != ws.root;
+    let show_parent = current_dir != root;
     let parent_link: Option<String> = if show_parent {
         current_dir.parent().map(|parent| {
             let rel = parent
-                .strip_prefix(&ws.root)
-                .map(|p| p.to_string_lossy().to_string())
+                .strip_prefix(&root)
+                .map(path_to_route)
                 .unwrap_or_default();
             if rel.is_empty() {
                 format!("/{workspace_id}/")
@@ -1497,7 +1520,7 @@ async fn save_file_handler(
     } else {
         ws.root.join(decoded.trim_start_matches('/'))
     };
-    let canonical = match full_path.canonicalize() {
+    let canonical = match canonicalize_route_path(&full_path) {
         Ok(p) => p,
         Err(_) => {
             return Json(SaveFileResponse {
@@ -1508,7 +1531,7 @@ async fn save_file_handler(
         }
     };
 
-    if !canonical.starts_with(&ws.root) {
+    if !is_inside_workspace(&canonical, &ws) {
         return Json(SaveFileResponse {
             success: false,
             message: "Access denied".into(),
@@ -1520,8 +1543,8 @@ async fn save_file_handler(
     // path resolves inside `ws.root`. No-op for normal directory workspaces.
     if ws.is_ephemeral() {
         let rel = canonical
-            .strip_prefix(&ws.root)
-            .map(|p| p.to_string_lossy().to_string())
+            .strip_prefix(canonical_workspace_root(&ws))
+            .map(path_to_route)
             .unwrap_or_default();
         if !ws.allows(&rel) {
             return Json(SaveFileResponse {
@@ -1592,10 +1615,74 @@ async fn preview_handler(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use axum::body::to_bytes;
     use serde_json::json;
 
     use axum::http::HeaderMap;
     use std::net::{IpAddr, Ipv4Addr};
+
+    fn test_tera() -> Tera {
+        let mut tera = Tera::default();
+        for file_name in Templates::iter() {
+            let file = Templates::get(&file_name).expect("embedded template");
+            let content = std::str::from_utf8(&file.data).expect("utf-8 template");
+            tera.add_raw_template(&file_name, content)
+                .expect("template registration");
+        }
+        tera
+    }
+
+    fn test_state(registry: Arc<WorkspaceRegistry>) -> AppState {
+        let (shutdown_tx, _) = tokio::sync::mpsc::channel(1);
+        AppState {
+            theme: Arc::new("light".into()),
+            tera: Arc::new(test_tera()),
+            shared_annotation: false,
+            db: None,
+            tx: None,
+            workspace_registry: registry,
+            management_token: Arc::new("test-token".into()),
+            i18n_json: Arc::new(i18n::load_i18n()),
+            i18n_lang: Arc::new("en".into()),
+            shortcuts_json: Arc::new("null".into()),
+            styles_css: Arc::new("".into()),
+            default_chat_mode: Arc::new("in_page".into()),
+            print_collapsed_content: false,
+            shutdown_tx,
+            #[cfg(debug_assertions)]
+            dev_reload_tx: Arc::new(broadcast::channel::<()>(1).0),
+        }
+    }
+
+    fn add_test_workspace(
+        registry: &WorkspaceRegistry,
+        root: PathBuf,
+        flags: WorkspaceFlags,
+    ) -> String {
+        registry.add(WorkspaceConfig {
+            path: dunce::canonicalize(root).expect("canonical workspace root"),
+            flags,
+            single_file: None,
+        })
+    }
+
+    async fn response_text(response: Response) -> String {
+        let bytes = to_bytes(response.into_body(), usize::MAX)
+            .await
+            .expect("response body");
+        String::from_utf8(bytes.to_vec()).expect("utf-8 response")
+    }
+
+    fn all_flags() -> WorkspaceFlags {
+        WorkspaceFlags {
+            enable_search: true,
+            enable_viewed: true,
+            enable_edit: true,
+            enable_live: true,
+            enable_chat: true,
+            shared_annotation: true,
+        }
+    }
 
     fn headers_with(origin: Option<&str>, host: Option<&str>) -> HeaderMap {
         let mut h = HeaderMap::new();
@@ -1789,5 +1876,213 @@ mod tests {
             "http://192.168.1.20:6419"
         );
         assert_eq!(browser_base_url("::1", 6419), "http://[::1]:6419");
+    }
+
+    #[cfg(target_os = "windows")]
+    #[test]
+    fn canonicalize_route_path_strips_windows_verbatim_prefix() {
+        let dir = tempfile::tempdir().unwrap();
+        let std_path = std::fs::canonicalize(dir.path()).unwrap();
+        let route_path = canonicalize_route_path(dir.path()).unwrap();
+
+        assert!(
+            std_path.to_string_lossy().starts_with(r"\\?\"),
+            "test expects Windows std::fs::canonicalize to return verbatim paths, got {std_path:?}"
+        );
+        assert!(
+            !route_path.to_string_lossy().starts_with(r"\\?\"),
+            "route canonicalization must match workspace roots stored through dunce: {route_path:?}"
+        );
+    }
+
+    #[tokio::test]
+    async fn workspace_path_handler_renders_markdown_inside_workspace() {
+        let dir = tempfile::tempdir().unwrap();
+        let file = dir.path().join("README.md");
+        fs::write(&file, "# Windows route check\n\nalpha beta gamma").unwrap();
+
+        let registry = Arc::new(WorkspaceRegistry::new("route-test".into()));
+        let id = add_test_workspace(&registry, dir.path().to_path_buf(), all_flags());
+        let state = test_state(registry);
+
+        let response = handle_workspace_path(State(state), AxumPath((id, "README.md".to_string())))
+            .await
+            .into_response();
+        assert_eq!(response.status(), StatusCode::OK);
+        let body = response_text(response).await;
+        assert!(body.contains("Windows route check"));
+        assert!(body.contains("alpha beta gamma"));
+        assert!(body.contains("enable-edit"));
+        assert!(body.contains("enable-search"));
+    }
+
+    #[tokio::test]
+    async fn workspace_path_handler_rejects_parent_traversal() {
+        let dir = tempfile::tempdir().unwrap();
+        let outside = tempfile::NamedTempFile::new().unwrap();
+        fs::write(outside.path(), "# outside").unwrap();
+
+        let registry = Arc::new(WorkspaceRegistry::new("traversal-test".into()));
+        let id = add_test_workspace(
+            &registry,
+            dir.path().to_path_buf(),
+            WorkspaceFlags::default(),
+        );
+        let state = test_state(registry);
+        let outside_name = outside.path().file_name().unwrap().to_string_lossy();
+        let route = format!("../{outside_name}");
+
+        let response = handle_workspace_path(State(state), AxumPath((id, route)))
+            .await
+            .into_response();
+        assert_eq!(response.status(), StatusCode::FORBIDDEN);
+    }
+
+    #[tokio::test]
+    async fn directory_listing_uses_workspace_relative_links() {
+        let dir = tempfile::tempdir().unwrap();
+        let sub = dir.path().join("sub");
+        fs::create_dir(&sub).unwrap();
+        fs::write(sub.join("README.md"), "# nested").unwrap();
+        fs::write(sub.join("notes.txt"), "not listed").unwrap();
+
+        let registry = Arc::new(WorkspaceRegistry::new("listing-test".into()));
+        let id = add_test_workspace(
+            &registry,
+            dir.path().to_path_buf(),
+            WorkspaceFlags::default(),
+        );
+        let state = test_state(registry);
+
+        let response = handle_workspace_path(State(state), AxumPath((id.clone(), "sub/".into())))
+            .await
+            .into_response();
+        assert_eq!(response.status(), StatusCode::OK);
+        let body = html_escape::decode_html_entities(&response_text(response).await).to_string();
+        assert!(body.contains(&format!("/{id}/sub/README.md")));
+        assert!(body.contains(&format!("/{id}/")));
+        assert!(!body.contains("notes.txt"));
+    }
+
+    #[tokio::test]
+    async fn save_file_handler_writes_relative_and_absolute_workspace_paths() {
+        let dir = tempfile::tempdir().unwrap();
+        let file = dir.path().join("README.md");
+        fs::write(&file, "# before").unwrap();
+
+        let registry = Arc::new(WorkspaceRegistry::new("save-test".into()));
+        let id = add_test_workspace(
+            &registry,
+            dir.path().to_path_buf(),
+            WorkspaceFlags {
+                enable_edit: true,
+                ..WorkspaceFlags::default()
+            },
+        );
+        let state = test_state(registry);
+
+        let relative = SaveFileRequest {
+            workspace_id: id.clone(),
+            file_path: "README.md".into(),
+            content: "# relative save".into(),
+        };
+        let response = save_file_handler(State(state.clone()), Json(relative))
+            .await
+            .into_response();
+        assert_eq!(response.status(), StatusCode::OK);
+        let body: serde_json::Value = serde_json::from_str(&response_text(response).await).unwrap();
+        assert_eq!(body["success"], true);
+        assert_eq!(fs::read_to_string(&file).unwrap(), "# relative save");
+
+        let absolute = SaveFileRequest {
+            workspace_id: id,
+            file_path: file.to_string_lossy().to_string(),
+            content: "# absolute save".into(),
+        };
+        let response = save_file_handler(State(state), Json(absolute))
+            .await
+            .into_response();
+        assert_eq!(response.status(), StatusCode::OK);
+        let body: serde_json::Value = serde_json::from_str(&response_text(response).await).unwrap();
+        assert_eq!(body["success"], true);
+        assert_eq!(fs::read_to_string(&file).unwrap(), "# absolute save");
+    }
+
+    #[tokio::test]
+    async fn save_file_handler_rejects_outside_workspace_paths() {
+        let dir = tempfile::tempdir().unwrap();
+        let outside = tempfile::NamedTempFile::new().unwrap();
+        fs::write(outside.path(), "# outside").unwrap();
+
+        let registry = Arc::new(WorkspaceRegistry::new("save-outside-test".into()));
+        let id = add_test_workspace(
+            &registry,
+            dir.path().to_path_buf(),
+            WorkspaceFlags {
+                enable_edit: true,
+                ..WorkspaceFlags::default()
+            },
+        );
+        let state = test_state(registry);
+
+        let request = SaveFileRequest {
+            workspace_id: id,
+            file_path: outside.path().to_string_lossy().to_string(),
+            content: "# should not write".into(),
+        };
+        let response = save_file_handler(State(state), Json(request))
+            .await
+            .into_response();
+        assert_eq!(response.status(), StatusCode::OK);
+        let body: serde_json::Value = serde_json::from_str(&response_text(response).await).unwrap();
+        assert_eq!(body["success"], false);
+        assert_eq!(body["message"], "Access denied");
+        assert_eq!(fs::read_to_string(outside.path()).unwrap(), "# outside");
+    }
+
+    #[tokio::test]
+    async fn single_file_workspace_redirects_and_hides_siblings() {
+        let dir = tempfile::tempdir().unwrap();
+        fs::write(dir.path().join("opened.md"), "# opened\n\n![pic](pic.png)").unwrap();
+        fs::write(dir.path().join("sibling.md"), "# sibling").unwrap();
+        fs::write(dir.path().join("pic.png"), b"png").unwrap();
+
+        let registry = Arc::new(WorkspaceRegistry::new("single-file-test".into()));
+        let id = registry.add(WorkspaceConfig {
+            path: dunce::canonicalize(dir.path()).unwrap(),
+            flags: WorkspaceFlags::default(),
+            single_file: Some("opened.md".into()),
+        });
+        let state = test_state(registry);
+
+        let root = handle_workspace_root(State(state.clone()), AxumPath(id.clone()))
+            .await
+            .into_response();
+        assert_eq!(root.status(), StatusCode::SEE_OTHER);
+        assert_eq!(
+            root.headers().get(header::LOCATION).unwrap(),
+            &format!("/{id}/opened.md")
+        );
+
+        let opened = handle_workspace_path(
+            State(state.clone()),
+            AxumPath((id.clone(), "opened.md".into())),
+        )
+        .await
+        .into_response();
+        assert_eq!(opened.status(), StatusCode::OK);
+
+        let asset = handle_workspace_path(
+            State(state.clone()),
+            AxumPath((id.clone(), "pic.png".into())),
+        )
+        .await
+        .into_response();
+        assert_eq!(asset.status(), StatusCode::OK);
+
+        let sibling = handle_workspace_path(State(state), AxumPath((id, "sibling.md".into())))
+            .await
+            .into_response();
+        assert_eq!(sibling.status(), StatusCode::NOT_FOUND);
     }
 }
