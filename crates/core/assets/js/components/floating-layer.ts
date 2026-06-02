@@ -201,6 +201,7 @@ export class FloatingLayer {
     // so collapse / mutual-exclusion / re-expand can cancel cleanly.
     private _morphAnim: Animation | null = null;
     private _classObserver: MutationObserver | null = null;
+    private _resizeRaf: number | null = null;
 
     constructor(opts: FloatingLayerOpts) {
         if (!opts || !opts.name) throw new Error('FloatingLayer: name required');
@@ -637,8 +638,12 @@ export class FloatingLayer {
         // never drift off-screen after a window resize.
         window.addEventListener('resize', () => {
             if (this._passive) return;
-            if (this._home) this._home = this._clampToViewport(this._home);
-            this._applyDisplayed();
+            if (this._resizeRaf !== null) return;
+            this._resizeRaf = requestAnimationFrame(() => {
+                this._resizeRaf = null;
+                if (this._home) this._home = this._clampToViewport(this._home);
+                this._applyDisplayed();
+            });
         });
     }
 

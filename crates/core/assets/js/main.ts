@@ -843,40 +843,6 @@ export class MarkonApp {
             collapseExpanded: () => tocContainer.classList.remove('active'),
         });
         tocLayer.init();
-
-        this.#fixTocLinks();
-    }
-
-    /** Fix TOC links — intercept anchor navigation, smart-scroll, sync TOC. @private */
-    #fixTocLinks(): void {
-        const tocItems = document.querySelectorAll<HTMLAnchorElement>('.toc-item a');
-        tocItems.forEach((item) => {
-            item.addEventListener('click', (e) => {
-                e.preventDefault();
-                e.stopPropagation();
-
-                const href = item.getAttribute('href');
-                if (!href) return;
-                history.pushState(null, '', href);
-
-                const targetId = href.substring(1);
-                const targetElement = document.getElementById(targetId);
-                if (targetElement) {
-                    document.querySelectorAll('.heading-focused').forEach((el) => {
-                        el.classList.remove('heading-focused');
-                    });
-
-                    targetElement.classList.add('heading-focused');
-
-                    Position.smartScrollToHeading(targetElement);
-                }
-
-                const tocContainer = document.querySelector(CONFIG.SELECTORS.TOC_CONTAINER);
-                if (tocContainer && window.innerWidth <= CONFIG.BREAKPOINTS.WIDE_SCREEN) {
-                    tocContainer.classList.remove('active');
-                }
-            });
-        });
     }
 
     /** Fix TOC HTML entities. @private */

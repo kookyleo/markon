@@ -22,6 +22,24 @@ function buildArticle(headings: string[] = ['h2-a', 'h3-b', 'h2-c']): HTMLElemen
     return article;
 }
 
+function buildNestedArticle(): HTMLElement {
+    const article = document.createElement('article');
+    article.className = 'markdown-body';
+    article.innerHTML = `
+        <h1 id="title">Doc</h1>
+        <div class="heading-section">
+            <h2 id="h2-a">Section h2-a</h2>
+            <p>body of h2-a</p>
+            <div class="heading-section">
+                <h3 id="h3-b">Section h3-b</h3>
+                <p>body of h3-b</p>
+            </div>
+        </div>
+    `;
+    document.body.appendChild(article);
+    return article;
+}
+
 function seedMeta(name: string, value: string): void {
     const meta = document.createElement('meta');
     meta.setAttribute('name', name);
@@ -125,6 +143,25 @@ describe('SectionViewedManager', () => {
         mgr.expandAll();
         expect(btnFor('h2-a')?.textContent).toBe('web.viewed.collapse');
         expect(btnFor('h2-b')?.textContent).toBe('web.viewed.collapse');
+    });
+
+    it('expandAll clears hidden state from nested section wrappers', async () => {
+        seedMeta('file-path', 'docs/x.md');
+        seedMeta('enable-viewed', 'true');
+        buildNestedArticle();
+
+        const mgr = new SectionViewedManager(false, null);
+        await mgr.ready;
+
+        mgr.collapseAll();
+        expect(document.querySelectorAll('.section-collapsed').length).toBe(2);
+        expect(document.querySelectorAll('.section-content-hidden').length).toBeGreaterThan(0);
+
+        mgr.expandAll();
+        expect(document.querySelectorAll('.section-collapsed').length).toBe(0);
+        expect(document.querySelectorAll('.section-collapsed-placeholder').length).toBe(0);
+        expect(document.querySelectorAll('.section-content-hidden').length).toBe(0);
+        expect(document.querySelectorAll('.section-content-temp-visible').length).toBe(0);
     });
 
     it('toggleCollapse (o shortcut path) keeps the toggle button label in sync (#15)', async () => {

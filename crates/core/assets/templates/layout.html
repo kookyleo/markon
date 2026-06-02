@@ -828,40 +828,76 @@
             const toc = document.querySelector('.toc');
             if (!toc) return;
 
-            const tocLinks = toc.querySelectorAll('.toc-item a');
+            const tocLinks = Array.from(toc.querySelectorAll('.toc-item a'));
             if (tocLinks.length === 0) return;
 
             const headings = Array.from(document.querySelectorAll('h1[id], h2[id], h3[id], h4[id], h5[id], h6[id]'));
             if (headings.length === 0) return;
 
+            const tocContainer = document.getElementById('toc-container');
+            const tocLinkByHref = new Map();
+            tocLinks.forEach(function(link) {
+                const href = link.getAttribute('href');
+                if (!href) return;
+                tocLinkByHref.set(href, link);
+                try {
+                    tocLinkByHref.set(decodeURIComponent(href), link);
+                } catch (_) {}
+            });
+
+            function tocLinkForId(id) {
+                if (!id) return null;
+                return tocLinkByHref.get('#' + id) || tocLinkByHref.get('#' + encodeURIComponent(id)) || null;
+            }
+
             // ── Cached section ranges (rebuilt on resize/DOM, not on scroll) ──
             // ── Section position cache ─────────────────────────────
             // Built once, rebuilt on resize / DOM changes. Scroll handler does pure arithmetic.
             var sectionCache = [];
+            var rebuildTimer = null;
+            var rebuildFrame = null;
+            var activeLink = null;
+
             function rebuildCache() {
-                sectionCache = [];
                 var sy = window.scrollY;
+                var docBottom = document.documentElement.scrollHeight;
+                var visible = [];
                 for (var i = 0; i < headings.length; i++) {
                     var h = headings[i];
                     if (h.offsetHeight === 0) continue;
-                    var top = h.getBoundingClientRect().top + sy;
-                    var bottom = document.documentElement.scrollHeight;
-                    for (var j = i + 1; j < headings.length; j++) {
-                        if (headings[j].offsetHeight === 0) continue;
-                        bottom = headings[j].getBoundingClientRect().top + sy;
-                        break;
-                    }
-                    var href = '#' + h.id;
-                    var link = toc.querySelector('.toc-item a[href="' + CSS.escape(href) + '"]');
-                    if (link) {
-                        sectionCache.push({ id: h.id, li: link.closest('.toc-item'), link: link, top: top, bottom: bottom });
-                    }
+                    var link = tocLinkForId(h.id);
+                    var li = link && link.closest('.toc-item');
+                    if (!link || !li) continue;
+                    visible.push({ id: h.id, li: li, link: link, top: h.getBoundingClientRect().top + sy });
                 }
+                sectionCache = visible.map(function(s, i) {
+                    return {
+                        id: s.id,
+                        li: s.li,
+                        link: s.link,
+                        top: s.top,
+                        bottom: i + 1 < visible.length ? visible[i + 1].top : docBottom,
+                    };
+                });
             }
+
+            function scheduleRebuild(delay) {
+                if (rebuildTimer) clearTimeout(rebuildTimer);
+                rebuildTimer = setTimeout(function() {
+                    rebuildTimer = null;
+                    if (rebuildFrame) cancelAnimationFrame(rebuildFrame);
+                    rebuildFrame = requestAnimationFrame(function() {
+                        rebuildFrame = null;
+                        rebuildCache();
+                        updateViewport();
+                    });
+                }, delay);
+            }
+
             rebuildCache();
-            window.addEventListener('resize', function() { setTimeout(function() { rebuildCache(); updateViewport(); }, 100); });
+            window.addEventListener('resize', function() { scheduleRebuild(100); });
             // Rebuild when sections collapse/expand (class changes on .heading-section)
-            new MutationObserver(function() { setTimeout(function() { rebuildCache(); updateViewport(); }, 50); })
+            new MutationObserver(function() { scheduleRebuild(50); })
                 .observe(document.querySelector('.markdown-body') || document.body, { attributes: true, subtree: true, attributeFilter: ['class'] });
 
             // ── State 1: Viewport highlight (sliding overlay) ──────
@@ -877,8 +913,20 @@
                 var vpTop = window.scrollY;
                 var vpBottom = vpTop + window.innerHeight;
                 var firstVp = null, lastVp = null;
-                for (var i = 0; i < sectionCache.length; i++) {
+                var lo = 0, hi = sectionCache.length - 1, start = 0;
+                while (lo <= hi) {
+                    var mid = (lo + hi) >> 1;
+                    if (sectionCache[mid].top <= vpTop) {
+                        start = mid;
+                        lo = mid + 1;
+                    } else {
+                        hi = mid - 1;
+                    }
+                }
+                start = Math.max(0, start - 1);
+                for (var i = start; i < sectionCache.length; i++) {
                     var s = sectionCache[i];
+                    if (s.top > vpBottom) break;
                     var overlap = Math.min(s.bottom, vpBottom) - Math.max(s.top, vpTop);
                     if (overlap > 30) {
                         if (!firstVp) firstVp = s.li;
@@ -889,7 +937,7 @@
                 if (firstVp && tocList) {
                     var listRect = tocList.getBoundingClientRect();
                     var firstRect = firstVp.getBoundingClientRect();
-                    var lastRect = lastVp.getBoundingClientRect();
+                    var lastRect = (lastVp || firstVp).getBoundingClientRect();
                     var top = firstRect.top - listRect.top + tocList.scrollTop;
                     var height = lastRect.bottom - firstRect.top;
                     vpHighlight.style.top = top + 'px';
@@ -901,7 +949,7 @@
                 if (firstVp) {
                     var tocRect = toc.getBoundingClientRect();
                     var lineH = firstVp.offsetHeight || 24;
-                    var lastR = lastVp.getBoundingClientRect();
+                    var lastR = (lastVp || firstVp).getBoundingClientRect();
                     if (lastR.bottom > tocRect.bottom - lineH * 4) {
                         toc.scrollTop += (lastR.bottom - tocRect.bottom + lineH * 4);
                     }
@@ -921,8 +969,9 @@
                 isScrolling = false;
                 updateViewport();
                 if (pendingActiveId) {
-                    for (var i = 0; i < sectionCache.length; i++)
-                        sectionCache[i].link.classList.toggle('active', sectionCache[i].id === pendingActiveId);
+                    if (activeLink) activeLink.classList.remove('active');
+                    activeLink = tocLinkForId(pendingActiveId);
+                    if (activeLink) activeLink.classList.add('active');
                     pendingActiveId = null;
                 }
             }
@@ -934,9 +983,6 @@
             }
 
             window.addEventListener('scroll', resetSettleTimer, { passive: true });
-            window.addEventListener('resize', function() {
-                setTimeout(function() { rebuildCache(); onSettle(); }, 100);
-            });
             if ('onscrollend' in window) window.addEventListener('scrollend', onSettle);
 
             // Initial render
@@ -945,10 +991,17 @@
             // ── State 2: .active scheduling ──────────────────────────
             function scheduleActive(id) {
                 // Clear old .active immediately
-                for (var i = 0; i < sectionCache.length; i++)
-                    sectionCache[i].link.classList.remove('active');
+                if (activeLink) activeLink.classList.remove('active');
+                activeLink = null;
                 pendingActiveId = id;
                 resetSettleTimer();
+            }
+
+            function focusHeading(heading) {
+                document.querySelectorAll('.heading-focused').forEach(function(el) {
+                    el.classList.remove('heading-focused');
+                });
+                heading.classList.add('heading-focused');
             }
 
             // ── TOC click: schedule selected + smooth scroll ────────
@@ -957,14 +1010,22 @@
                     const href = link.getAttribute('href');
                     if (href && href.startsWith('#')) {
                         e.preventDefault();
-                        e.stopPropagation();
-                        const targetId = href.substring(1);
-                        const targetElement = document.getElementById(targetId);
+                        e.stopImmediatePropagation();
+                        const rawTargetId = href.substring(1);
+                        let targetId = rawTargetId;
+                        try {
+                            targetId = decodeURIComponent(rawTargetId);
+                        } catch (_) {}
+                        const targetElement = document.getElementById(targetId) || document.getElementById(rawTargetId);
                         if (targetElement) {
                             scheduleActive(targetId);
+                            focusHeading(targetElement);
                             const targetTop = targetElement.getBoundingClientRect().top + window.scrollY - 20;
                             window.scrollTo({ top: targetTop, behavior: 'smooth' });
                             history.pushState(null, '', href);
+                            if (tocContainer && window.innerWidth <= 1400) {
+                                tocContainer.classList.remove('active');
+                            }
                         }
                     }
                 });

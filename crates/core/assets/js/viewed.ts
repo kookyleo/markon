@@ -1020,9 +1020,23 @@ export class SectionViewedManager {
 
         headingsArray.forEach((heading) => {
             if (heading.id) {
-                this.expandSection(heading.id);
+                heading.classList.remove('section-collapsed');
+                heading.classList.remove('section-temp-expanded');
+                this.removeCollapsedPlaceholder(heading);
+                delete this.tempExpandedState[heading.id];
+                this.syncToggleBtn(heading, false);
             }
         });
+
+        document
+            .querySelectorAll<HTMLElement>(
+                '.markdown-body .section-content-hidden, .markdown-body .section-content-temp-visible',
+            )
+            .forEach((el) => {
+                el.classList.remove('section-content-hidden');
+                el.classList.remove('section-content-temp-visible');
+                delete el.dataset.markonRevealToken;
+            });
     }
 
     // ============================================================

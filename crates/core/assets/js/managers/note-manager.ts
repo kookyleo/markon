@@ -42,7 +42,6 @@ export class NoteManager {
     #connectorSvg: SVGSVGElement | null = null;
     #connectorPath: SVGPathElement | null = null;
     #resizeObserver: ResizeObserver | null = null;
-    #scrollHandler: (() => void) | null = null;
 
     constructor(annotationManager: AnnotationManager, markdownBody: HTMLElement) {
         this.#annotationManager = annotationManager;
@@ -144,14 +143,6 @@ export class NoteManager {
                 this.#drawConnector();
             }).catch(() => { /* font load failures are non-fatal */ });
         }
-
-        // Connector follows the active card while the user scrolls. Cards are
-        // absolutely positioned in document coords, so only the SVG dimensions
-        // need refreshing — the path itself stays valid.
-        this.#scrollHandler = (): void => {
-            if (this.#activeAnnotationId) this.#drawConnector();
-        };
-        window.addEventListener('scroll', this.#scrollHandler, { passive: true });
 
         Logger.log('NoteManager', 'Responsive layout setup complete');
     }
