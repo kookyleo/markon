@@ -765,8 +765,6 @@ async fn main() {
             settings.salt.clone()
         }
     });
-    let id = markon_core::workspace::hash_id(&ws_root, &effective_salt);
-
     let open_browser_target = cli.open_browser.clone().or_else(|| {
         if cli.file.is_some() {
             Some("local".to_string())
@@ -808,39 +806,38 @@ async fn main() {
         }
     }
 
+    #[cfg(unix)]
     if !cli.daemon_internal {
-        let current_exe = std::env::current_exe().expect("Failed to get current executable");
         let mut args: Vec<String> = std::env::args().skip(1).collect();
         args.push("--daemon-internal".to_string());
 
-        #[cfg(unix)]
-        {
-            use std::process::Stdio;
-            let res = std::process::Command::new(current_exe)
-                .args(&args)
-                .stdin(Stdio::null())
-                .stdout(Stdio::null())
-                .stderr(Stdio::null())
-                .spawn();
+        use std::process::Stdio;
+        let id = markon_core::workspace::hash_id(&ws_root, &effective_salt);
+        let current_exe = std::env::current_exe().expect("Failed to get current executable");
+        let res = std::process::Command::new(current_exe)
+            .args(&args)
+            .stdin(Stdio::null())
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .spawn();
 
-            match res {
-                Ok(_) => {
-                    let local_base = format!("http://127.0.0.1:{}", cli.port);
-                    let summary = build_workspace_access_summary(
-                        &ws_root,
-                        flags,
-                        &local_base,
-                        &id,
-                        initial_path.as_deref(),
-                        cli.entry.as_deref(),
-                    );
-                    println!("Starting Markon server in background...");
-                    print_workspace_access_summary(&summary);
-                    return;
-                }
-                Err(e) => {
-                    tracing::warn!("failed to daemonize: {e}; falling back to foreground");
-                }
+        match res {
+            Ok(_) => {
+                let local_base = format!("http://127.0.0.1:{}", cli.port);
+                let summary = build_workspace_access_summary(
+                    &ws_root,
+                    flags,
+                    &local_base,
+                    &id,
+                    initial_path.as_deref(),
+                    cli.entry.as_deref(),
+                );
+                println!("Starting Markon server in background...");
+                print_workspace_access_summary(&summary);
+                return;
+            }
+            Err(e) => {
+                tracing::warn!("failed to daemonize: {e}; falling back to foreground");
             }
         }
     }
