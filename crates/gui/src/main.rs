@@ -7,7 +7,7 @@ mod server_manager;
 use markon_core::settings::AppSettings;
 use server_manager::ServerManager;
 use std::path::Path;
-#[cfg(any(target_os = "macos", target_os = "ios"))]
+#[cfg(any(target_os = "macos", target_os = "ios", test))]
 use std::path::PathBuf;
 use std::sync::{
     atomic::{AtomicBool, Ordering},
@@ -111,6 +111,45 @@ pub struct AppState {
 fn pending_opens() -> &'static Mutex<Vec<PathBuf>> {
     static PENDING: std::sync::OnceLock<Mutex<Vec<PathBuf>>> = std::sync::OnceLock::new();
     PENDING.get_or_init(|| Mutex::new(Vec::new()))
+}
+
+#[cfg(any(target_os = "macos", test))]
+fn launch_arg_path(arg: &str) -> Option<PathBuf> {
+    if arg.contains("://") {
+        let Ok(url) = url::Url::parse(arg) else {
+            return None;
+        };
+        if url.scheme() == "file" {
+            return url.to_file_path().ok();
+        }
+        return None;
+    }
+    Some(PathBuf::from(arg))
+}
+
+#[cfg(any(target_os = "macos", test))]
+fn is_markdown_file(path: &Path) -> bool {
+    if !path.is_file() {
+        return false;
+    }
+    matches!(
+        path.extension()
+            .and_then(|ext| ext.to_str())
+            .map(|ext| ext.to_ascii_lowercase()),
+        Some(ext) if ext == "md" || ext == "markdown"
+    )
+}
+
+#[cfg(any(target_os = "macos", test))]
+fn markdown_file_launch_args<I, S>(args: I) -> Vec<PathBuf>
+where
+    I: IntoIterator<Item = S>,
+    S: AsRef<str>,
+{
+    args.into_iter()
+        .filter_map(|arg| launch_arg_path(arg.as_ref()))
+        .filter(|path| is_markdown_file(path))
+        .collect()
 }
 
 // ── Path-open logic ───────────────────────────────────────────────────────────
@@ -245,14 +284,12 @@ fn main() {
         .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_process::init())
         .plugin(tauri_plugin_single_instance::init(|app, args, _cwd| {
-            // On macOS, file-open intents come through Apple Events
-            // (RunEvent::Opened), never argv. Older macOS passes Finder's
-            // current directory as argv[1] when launching an app that
-            // claims public.folder (see Info.plist), which used to get
-            // mistakenly added as a workspace (e.g. /Applications when
-            // the app is launched from the Applications folder). Ignore
-            // argv on macOS; Linux/Windows still rely on it for file
-            // associations.
+            // macOS normally delivers Open With through Apple Events
+            // (RunEvent::Opened), but older Finder/AppKit paths can surface a
+            // Markdown file in argv when the resident instance is already
+            // running. Only trust explicit Markdown files here; directories in
+            // argv can be Finder's front folder (e.g. /Applications), not the
+            // user's target.
             #[cfg(not(target_os = "macos"))]
             if let Some(path_str) = args.get(1) {
                 handle_open_path(app, Path::new(path_str));
@@ -260,7 +297,18 @@ fn main() {
             }
             #[cfg(target_os = "macos")]
             {
-                let _ = args;
+                let paths = markdown_file_launch_args(args.iter().map(String::as_str));
+                if !paths.is_empty() {
+                    if let Some(state) = app.try_state::<AppState>() {
+                        state.file_just_opened.store(true, Ordering::Relaxed);
+                        for p in &paths {
+                            handle_open_path(app, p);
+                        }
+                    } else {
+                        pending_opens().lock().unwrap().extend(paths);
+                    }
+                    return;
+                }
             }
             show_settings_window(app);
         }))
@@ -456,12 +504,28 @@ fn main() {
             };
 
             #[cfg(target_os = "macos")]
-            if !tray_resident_init && !drained_pending {
+            let opened_launch_arg: bool = {
+                let paths = markdown_file_launch_args(std::env::args().skip(1));
+                let had = !paths.is_empty();
+                if had {
+                    app.state::<AppState>()
+                        .file_just_opened
+                        .store(true, Ordering::Relaxed);
+                    let handle = app.app_handle().clone();
+                    for p in &paths {
+                        handle_open_path(&handle, p);
+                    }
+                }
+                had
+            };
+
+            #[cfg(target_os = "macos")]
+            if !tray_resident_init && !drained_pending && !opened_launch_arg {
                 // Tray is hidden, so Settings must show for the app to be
                 // reachable on launch. With tray_resident=true the tray
                 // icon stays visible and Reopen/Opened cover navigation.
-                // If a pending Open just got drained, the user explicitly
-                // asked for a file — don't pop the Settings window over it.
+                // If an Open With path was handled, the user explicitly asked
+                // for a file — don't pop the Settings window over it.
                 if let Some(w) = app.get_webview_window("settings") {
                     let _ = w.show();
                     let _ = w.set_focus();
@@ -537,4 +601,46 @@ fn main() {
             _ => {}
         }
     });
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::fs;
+    use std::time::{SystemTime, UNIX_EPOCH};
+
+    fn temp_case_dir() -> PathBuf {
+        let stamp = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        std::env::temp_dir().join(format!(
+            "markon-launch-arg-test-{}-{stamp}",
+            std::process::id()
+        ))
+    }
+
+    #[test]
+    fn markdown_launch_args_accept_files_but_not_directories() {
+        let dir = temp_case_dir();
+        fs::create_dir_all(&dir).unwrap();
+        let md = dir.join("note.md");
+        let markdown = dir.join("other.markdown");
+        let txt = dir.join("note.txt");
+        fs::write(&md, "# hi").unwrap();
+        fs::write(&markdown, "# hi").unwrap();
+        fs::write(&txt, "hi").unwrap();
+        let file_url = url::Url::from_file_path(&md).unwrap().to_string();
+
+        let paths = markdown_file_launch_args([
+            "Markon.app/Contents/MacOS/Markon".to_string(),
+            dir.to_string_lossy().into_owned(),
+            txt.to_string_lossy().into_owned(),
+            markdown.to_string_lossy().into_owned(),
+            file_url,
+        ]);
+
+        assert_eq!(paths, vec![markdown, md]);
+        let _ = fs::remove_dir_all(dir);
+    }
 }

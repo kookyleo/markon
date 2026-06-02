@@ -52,6 +52,7 @@ export class SectionViewedManager {
     enableViewed: boolean;
     allViewedCheckbox: HTMLInputElement | null;
     updatingAllViewedCheckbox: boolean;
+    revealSeq: number;
 
     /** Latest WS handler — kept so we can detach it before re-attaching. */
     private _wsMessageHandler: ((event: MessageEvent) => void) | null;
@@ -75,6 +76,7 @@ export class SectionViewedManager {
         // Check if viewed feature is enabled
         const enableViewedMeta = document.querySelector('meta[name="enable-viewed"]');
         this.enableViewed = enableViewedMeta ? enableViewedMeta.getAttribute('content') === 'true' : true;
+        this.revealSeq = 0;
 
         if (this.isSharedMode && this.ws) {
             this.setupWebSocketListeners();
@@ -321,18 +323,7 @@ export class SectionViewedManager {
 
         // Trigger expand animation.
         requestAnimationFrame(() => {
-            content.forEach((el) => {
-                el.classList.remove('section-content-hidden');
-                el.classList.add('section-content-temp-visible');
-
-                const cleanup = (e: TransitionEvent): void => {
-                    if (e.target === el && e.propertyName === 'opacity') {
-                        el.classList.remove('section-content-temp-visible');
-                        el.removeEventListener('transitionend', cleanup);
-                    }
-                };
-                el.addEventListener('transitionend', cleanup);
-            });
+            this.revealContent(content);
         });
 
         delete this.tempExpandedState[headingId];
@@ -351,10 +342,7 @@ export class SectionViewedManager {
         if (isCollapsed) {
             heading.classList.remove('section-collapsed');
             this.removeCollapsedPlaceholder(heading);
-            content.forEach((el) => {
-                el.classList.remove('section-content-hidden');
-                el.classList.add('section-content-temp-visible');
-            });
+            this.revealContent(content);
             if (toggleBtn) {
                 toggleBtn.textContent = _t('web.viewed.collapse');
             }
@@ -371,6 +359,35 @@ export class SectionViewedManager {
             this.tempExpandedState[headingId] = true;
             this.ensureCollapsedPlaceholder(heading, headingId);
         }
+    }
+
+    revealContent(content: HTMLElement[]): void {
+        content.forEach((el) => {
+            const token = String(++this.revealSeq);
+            el.dataset.markonRevealToken = token;
+            el.classList.remove('section-content-hidden');
+            el.classList.add('section-content-temp-visible');
+
+            let done = false;
+            let fallback: number | undefined;
+            const cleanup = (e?: TransitionEvent): void => {
+                if (done) return;
+                if (e && e.target !== el) return;
+                if (e && e.propertyName !== 'opacity') return;
+                done = true;
+                if (el.dataset.markonRevealToken === token) {
+                    el.classList.remove('section-content-temp-visible');
+                    delete el.dataset.markonRevealToken;
+                }
+                el.removeEventListener('transitionend', cleanup);
+                if (fallback !== undefined) {
+                    window.clearTimeout(fallback);
+                }
+            };
+
+            el.addEventListener('transitionend', cleanup);
+            fallback = window.setTimeout(() => cleanup(), 450);
+        });
     }
 
     async printSection(headingId: string): Promise<void> {
@@ -695,10 +712,7 @@ export class SectionViewedManager {
         if (isCollapsed) {
             heading.classList.remove('section-collapsed');
             this.removeCollapsedPlaceholder(heading);
-            content.forEach((el) => {
-                el.classList.remove('section-content-hidden');
-                el.classList.add('section-content-temp-visible');
-            });
+            this.revealContent(content);
             this.syncToggleBtn(heading, false);
         } else {
             heading.classList.add('section-collapsed');

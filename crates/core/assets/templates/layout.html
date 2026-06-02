@@ -47,6 +47,12 @@
         /* ========================================
            BASE LAYOUT
            ======================================== */
+        :root {
+            --markon-wide-toc-width: 280px;
+            --markon-wide-note-reserve: 320px;
+            --markon-wide-content-gap: 24px;
+        }
+
         body {
             box-sizing: border-box;
             min-width: 200px;
@@ -58,6 +64,14 @@
         @media (max-width: 768px) {
             body {
                 padding: 45px 20px;
+            }
+        }
+
+        @media screen and (min-width: 1401px) {
+            body {
+                max-width: none;
+                margin-left: calc(var(--markon-wide-toc-width) + var(--markon-wide-content-gap));
+                margin-right: calc(var(--markon-wide-note-reserve) + var(--markon-wide-content-gap));
             }
         }
 
@@ -217,7 +231,7 @@
                 position: fixed;
                 left: 0;
                 top: 0;
-                width: 280px;
+                width: var(--markon-wide-toc-width);
                 max-height: 100vh;
                 overflow-y: auto;
                 border: 1px solid transparent; /* Always have border for consistent width */

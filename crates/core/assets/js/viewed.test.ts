@@ -44,6 +44,7 @@ describe('SectionViewedManager', () => {
     });
 
     afterEach(() => {
+        vi.useRealTimers();
         logSpy.mockRestore();
         warnSpy.mockRestore();
         vi.restoreAllMocks();
@@ -142,6 +143,26 @@ describe('SectionViewedManager', () => {
 
         mgr.toggleCollapse('h2-a');
         expect(btn.textContent).toBe('web.viewed.collapse');
+    });
+
+    it('toggleCollapse removes temporary expand sizing after the expand transition', async () => {
+        seedMeta('file-path', 'docs/x.md');
+        seedMeta('enable-viewed', 'true');
+        buildArticle(['h2-a']);
+
+        const mgr = new SectionViewedManager(false, null);
+        await mgr.ready;
+
+        mgr.toggleCollapse('h2-a');
+        const paragraph = document.querySelector<HTMLElement>('p')!;
+        expect(paragraph.classList.contains('section-content-hidden')).toBe(true);
+
+        mgr.toggleCollapse('h2-a');
+        expect(paragraph.classList.contains('section-content-hidden')).toBe(false);
+        expect(paragraph.classList.contains('section-content-temp-visible')).toBe(true);
+
+        paragraph.dispatchEvent(new TransitionEvent('transitionend', { propertyName: 'opacity' }));
+        expect(paragraph.classList.contains('section-content-temp-visible')).toBe(false);
     });
 
     it('shared-mode: WS viewed_state push updates viewedState and reflects in checkboxes', async () => {
