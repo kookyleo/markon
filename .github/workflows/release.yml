@@ -163,6 +163,32 @@ jobs:
           includeUpdaterJson: false
           args: ${{ matrix.args }}
 
+      # tauri-bundler names the AppImage with mixed arch styles: x86_64 ->
+      # `amd64` (Debian) but aarch64 stays `aarch64` (GNU). Rename the ARM
+      # build to `arm64` so all four Linux artifacts (.deb + .AppImage) share
+      # the Debian convention amd64/arm64. The raw .AppImage is download-only
+      # — the updater manifest uses the separate `*.AppImage.tar.gz` archives,
+      # so this rename touches nothing downstream.
+      - name: Normalize AppImage arch name (aarch64 -> arm64)
+        if: matrix.target == 'aarch64-unknown-linux-gnu'
+        shell: bash
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          TAG="${{ env.RELEASE_TAG }}"
+          SRC=$(find target/aarch64-unknown-linux-gnu/release/bundle/appimage \
+                  -maxdepth 1 -name '*aarch64.AppImage' | head -1)
+          if [ -z "$SRC" ]; then
+            echo "No aarch64 AppImage found — nothing to rename"
+            exit 0
+          fi
+          OLD=$(basename "$SRC")
+          NEW="${OLD/aarch64.AppImage/arm64.AppImage}"
+          cp "$SRC" "$(dirname "$SRC")/$NEW"
+          gh release upload "$TAG" "$(dirname "$SRC")/$NEW" --clobber
+          gh release delete-asset "$TAG" "$OLD" --yes || true
+          echo "Renamed release asset: $OLD -> $NEW"
+
       # Create updater signature ourselves since tauri-action doesn't
       # reliably upload them.
       #

@@ -16,8 +16,8 @@
 | Windows (ARM64) | `Markon_x.x.x_arm64-setup.exe` |
 | Linux Debian/Ubuntu (amd64) | `Markon_x.x.x_amd64.deb` |
 | Linux Debian/Ubuntu (arm64) | `Markon_x.x.x_arm64.deb` |
-| Linux AppImage (x86_64) | `Markon_x.x.x_amd64.AppImage` |
-| Linux AppImage (aarch64) | `Markon_x.x.x_aarch64.AppImage` |
+| Linux AppImage (amd64) | `Markon_x.x.x_amd64.AppImage` |
+| Linux AppImage (arm64) | `Markon_x.x.x_arm64.AppImage` |
 
 ### 2. 打开 Markdown
 
