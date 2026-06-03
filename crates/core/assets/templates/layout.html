@@ -179,6 +179,12 @@
            narrow-screen icon morphs into a panel whose corner arc matches the
            icon's circle. */
         .toc {
+            /* border-box so the rendered footprint equals --markon-toc-width
+               (padding + border included), matching .note-card-margin. Without
+               this the TOC is 280 + 2×15 padding + 2×1 border = 312px wide and
+               punches ~8px into the content that --markon-reserve-left sized
+               against 280. */
+            box-sizing: border-box;
             padding: 15px;
             border-radius: 20px;
             font-size: 0.85rem;

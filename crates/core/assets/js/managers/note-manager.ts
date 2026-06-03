@@ -231,7 +231,13 @@ export class NoteManager {
         const edgeGap =
             parseFloat(root.getPropertyValue('--markon-rail-edge-gap')) ||
             CONFIG.DIMENSIONS.NOTE_CARD_RIGHT_MARGIN;
-        const rightEdge = window.innerWidth - noteWidth - edgeGap;
+        // Use the layout viewport width (scrollbar excluded) so the cards share
+        // the same coordinate system as the body's CSS margins; window.innerWidth
+        // would include the scrollbar and push the cards ~15px further right than
+        // the reserved gutter, breaking symmetry with the left rail.
+        const viewportWidth =
+            document.documentElement.clientWidth || window.innerWidth;
+        const rightEdge = viewportWidth - noteWidth - edgeGap;
 
         // Apply the computed positions.
         notes.forEach(note => {
