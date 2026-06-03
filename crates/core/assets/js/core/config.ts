@@ -39,8 +39,12 @@ export const CONFIG = {
 
     // Dimension configuration
     DIMENSIONS: {
-        NOTE_CARD_WIDTH: 250,           // Note card width
-        NOTE_CARD_RIGHT_MARGIN: 70,     // Note card right margin (avoid scrollbar)
+        // Fallbacks only — the live values are the CSS custom properties
+        // --markon-note-width / --markon-rail-edge-gap in layout.html :root,
+        // which note-manager reads at layout time. Keep these mirrored so the
+        // fallback (jsdom / missing vars) matches the real geometry.
+        NOTE_CARD_WIDTH: 280,           // mirrors --markon-note-width
+        NOTE_CARD_RIGHT_MARGIN: 40,     // mirrors --markon-rail-edge-gap (clears scrollbar)
         HEADING_TOP_MARGIN: 64,         // Heading top margin (sufficient space)
         HEADING_TOP_MARGIN_TIGHT: 5,    // Heading top margin (tight space)
         POPOVER_OFFSET: 10,             // Popover offset distance

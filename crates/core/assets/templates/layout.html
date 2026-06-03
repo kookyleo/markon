@@ -48,9 +48,23 @@
            BASE LAYOUT
            ======================================== */
         :root {
-            --markon-wide-toc-width: 280px;
-            --markon-wide-note-reserve: 320px;
-            --markon-wide-content-gap: 24px;
+            /* Wide-screen side-rail geometry — the single source of truth for
+               the layout. The content area is NOT fixed-width; it is derived as
+               viewport − left reserve − right reserve. note-manager.ts reads
+               --markon-note-width / --markon-rail-edge-gap to place the cards,
+               so the cards and the gutter reserved for them can never drift. */
+            --markon-toc-width: 280px;     /* left rail (TOC) width */
+            --markon-note-width: 280px;    /* right rail (note card) width */
+            --markon-rail-edge-gap: 40px;  /* rail outer edge → viewport edge (clears the scrollbar) */
+            --markon-content-gap: 24px;    /* gap between the content frame and either rail */
+
+            /* Distance from each viewport edge the content must not cross. The
+               selection frame (.heading-section) draws its border on the
+               content-box edge, so reserving the rail + one content-gap also
+               reserves room for that frame border — it lands exactly one gap
+               away from the rail instead of overlapping it. */
+            --markon-reserve-left: calc(var(--markon-toc-width) + var(--markon-content-gap));
+            --markon-reserve-right: calc(var(--markon-rail-edge-gap) + var(--markon-note-width) + var(--markon-content-gap));
         }
 
         body {
@@ -70,8 +84,14 @@
         @media screen and (min-width: 1401px) {
             body {
                 max-width: none;
-                margin-left: calc(var(--markon-wide-toc-width) + var(--markon-wide-content-gap));
-                margin-right: calc(var(--markon-wide-note-reserve) + var(--markon-wide-content-gap));
+                /* The 45px horizontal padding is a narrow-screen affordance; in
+                   wide mode it would silently add to the gutter and push the
+                   content-box edge inward, breaking the derived alignment. Zero
+                   it so the content-box edge coincides with the reserve. */
+                padding-left: 0;
+                padding-right: 0;
+                margin-left: var(--markon-reserve-left);
+                margin-right: var(--markon-reserve-right);
             }
         }
 
@@ -231,7 +251,7 @@
                 position: fixed;
                 left: 0;
                 top: 0;
-                width: var(--markon-wide-toc-width);
+                width: var(--markon-toc-width);
                 max-height: 100vh;
                 overflow-y: auto;
                 border: 1px solid transparent; /* Always have border for consistent width */

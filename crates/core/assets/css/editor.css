@@ -351,7 +351,7 @@ html[data-theme="dark"] .markdown-body h6.heading-focused {
 
 .note-card-margin {
     position: absolute;
-    width: 280px; /* Match TOC width */
+    width: var(--markon-note-width, 280px); /* right-rail width — single source of truth in layout.html :root */
     padding: 12px 16px;
     background: var(--markon-subtle);
     border-left: 3px solid var(--markon-primary); /* Left border for symmetry with TOC */

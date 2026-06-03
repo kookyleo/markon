@@ -218,11 +218,20 @@ export class NoteManager {
         // Compute positions through the physics engine.
         const notes = this.#layoutEngine.calculate(this.#noteCardsData);
 
-        // Compute the horizontal position (right-aligned).
-        const rightEdge =
-            window.innerWidth -
-            CONFIG.DIMENSIONS.NOTE_CARD_WIDTH -
+        // Compute the horizontal position (right-aligned). Card width and the
+        // edge gap come from the same CSS custom properties that drive the
+        // content's right reserve (layout.html :root), so the cards land
+        // exactly inside the gutter reserved for them — no parallel constants
+        // to keep in sync. CONFIG.DIMENSIONS only acts as a fallback when the
+        // vars are absent (e.g. jsdom in unit tests).
+        const root = getComputedStyle(document.documentElement);
+        const noteWidth =
+            parseFloat(root.getPropertyValue('--markon-note-width')) ||
+            CONFIG.DIMENSIONS.NOTE_CARD_WIDTH;
+        const edgeGap =
+            parseFloat(root.getPropertyValue('--markon-rail-edge-gap')) ||
             CONFIG.DIMENSIONS.NOTE_CARD_RIGHT_MARGIN;
+        const rightEdge = window.innerWidth - noteWidth - edgeGap;
 
         // Apply the computed positions.
         notes.forEach(note => {
