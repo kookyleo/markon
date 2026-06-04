@@ -52,7 +52,10 @@ export default defineConfig({
   ],
 
   themeConfig: {
-    logo: { light: '/logo-light.svg', dark: '/logo-dark.svg', alt: 'Markon' },
+    // Logo is a baked wordmark (mark + "Markon" as vector paths), so the
+    // text title is hidden to avoid duplicating the brand name.
+    logo: { light: '/logo-wordmark-light.svg', dark: '/logo-wordmark-dark.svg', alt: 'Markon' },
+    siteTitle: false,
     search: { provider: 'local' },
     socialLinks: [
       { icon: 'github', link: 'https://github.com/kookyleo/markon' },

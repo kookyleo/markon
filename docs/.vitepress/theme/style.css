@@ -6,23 +6,6 @@
   white-space: nowrap;
 }
 
-/* Brand wordmark font — WongSans (SIL OFL, https://github.com/solution9th/WongSans).
-   Self-hosted webfont; the relative url() lets Vite emit a hashed asset under
-   the correct base. ~13 KB woff2, so it loads without a flash penalty. */
-@font-face {
-  font-family: 'WongSans';
-  src: url('./fonts/WongSans-Regular.woff2') format('woff2');
-  font-weight: 400;
-  font-style: normal;
-  font-display: swap;
-}
-
-/* Apply it to the navbar "Markon" wordmark only (the bare <span> after the
-   logo image inside the title link). */
-.VPNavBarTitle .title span {
-  font-family: 'WongSans', var(--vp-font-family-base);
-}
-
 /* The VitePress navbar exposes only `nav-bar-content-before` (puts our
    download pill at the very start of the right region, ahead of search) and
    `nav-bar-content-after` (after every native control). Neither matches the
