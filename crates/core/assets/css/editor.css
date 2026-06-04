@@ -20,6 +20,17 @@
     --markon-overlay:       #ffffff; /* recessed popover/dropdown background */
     --markon-border-strong: #d0d7de; /* stronger border: float edges, strokes on dark surfaces */
 
+    /* ── Code syntax palette (light) ───────────────────────── */
+    /* GitHub-light palette: high contrast on the #f6f8fa code background.
+       Comments reuse the muted token; the rest are overridable like any other. */
+    --markon-code-comment:  var(--markon-muted); /* comments */
+    --markon-code-keyword:  #cf222e;             /* keywords, storage (fn/let/if) */
+    --markon-code-string:   #0a3069;             /* strings */
+    --markon-code-constant: #0550ae;             /* numbers, booleans, constants */
+    --markon-code-entity:   #8250df;             /* function / type / class names */
+    --markon-code-support:  #0550ae;             /* built-in types & functions */
+    --markon-code-variable: #953800;             /* variables, parameters */
+
     /* ── Typography ────────────────────────────────────────── */
     --markon-ui-font: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
     --markon-ui-font-size: 0.80rem;
@@ -49,6 +60,15 @@ html[data-theme="dark"] {
     --markon-primary-hover: color-mix(in srgb, var(--markon-primary) 80%, white);
     --markon-muted-hover:   color-mix(in srgb, var(--markon-muted) 60%, white);
     --markon-primary-bg:    color-mix(in srgb, var(--markon-primary) 15%, transparent);
+
+    /* ── Code syntax palette (dark) — GitHub-dark, high contrast ──── */
+    --markon-code-comment:  var(--markon-muted);
+    --markon-code-keyword:  #ff7b72;
+    --markon-code-string:   #a5d6ff;
+    --markon-code-constant: #79c0ff;
+    --markon-code-entity:   #d2a8ff;
+    --markon-code-support:  #79c0ff;
+    --markon-code-variable: #ffa657;
 }
 
 :root {
@@ -182,6 +202,35 @@ html[data-theme="dark"] .highlight-green {
 
 html[data-theme="dark"] .highlight-yellow {
     background-color: rgba(187, 128, 9, 0.35);
+}
+
+/* ── Code syntax highlighting ───────────────────────────────────────────
+   Server-side syntect emits class-based spans (prefix `mk-`, see
+   markdown.rs); colours come from the `--markon-code-*` tokens so they track
+   the theme and stay overridable. Default text (identifiers, operators,
+   punctuation) inherits the code block's `--markon-text` foreground. */
+.markdown-body pre code.mk-code .mk-comment {
+    color: var(--markon-code-comment);
+    font-style: italic;
+}
+.markdown-body pre code.mk-code .mk-keyword,
+.markdown-body pre code.mk-code .mk-storage {
+    color: var(--markon-code-keyword);
+}
+.markdown-body pre code.mk-code .mk-string {
+    color: var(--markon-code-string);
+}
+.markdown-body pre code.mk-code .mk-constant {
+    color: var(--markon-code-constant);
+}
+.markdown-body pre code.mk-code .mk-entity {
+    color: var(--markon-code-entity);
+}
+.markdown-body pre code.mk-code .mk-support {
+    color: var(--markon-code-support);
+}
+.markdown-body pre code.mk-code .mk-variable {
+    color: var(--markon-code-variable);
 }
 
 .strikethrough {

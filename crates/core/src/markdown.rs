@@ -1,10 +1,8 @@
 use lazy_static::lazy_static;
 use pulldown_cmark::{html, CodeBlockKind, CowStr, Event, Options, Parser, Tag, TagEnd};
 use regex::Regex;
-use syntect::easy::HighlightLines;
-use syntect::highlighting::ThemeSet;
-use syntect::html::{styled_line_to_highlighted_html, IncludeBackground};
-use syntect::parsing::SyntaxSet;
+use syntect::html::{ClassStyle, ClassedHTMLGenerator};
+use syntect::parsing::{SyntaxReference, SyntaxSet};
 use syntect::util::LinesWithEndings;
 
 #[derive(Debug)]
@@ -27,7 +25,6 @@ lazy_static! {
     static ref MULTI_HYPHEN_REGEX: Regex = Regex::new(r"-+")
         .expect("Failed to compile MULTI_HYPHEN_REGEX");
     static ref SYNTAX_SET: SyntaxSet = SyntaxSet::load_defaults_newlines();
-    static ref THEME_SET: ThemeSet = ThemeSet::load_defaults();
     /// `<img src=…>`, `<source src=…>`, `<video|audio … src=…>` — case-insensitive
     /// tag and attribute, single or double quotes.
     static ref HTML_SRC_REGEX: Regex = Regex::new(
@@ -131,15 +128,36 @@ pub(crate) struct TocItem {
     pub text: String,
 }
 
-pub(crate) struct MarkdownRenderer {
-    theme: String,
+/// Render a code block to class-based HTML (`<span class="mk-…">`) with no
+/// inline colors, so the syntax palette is fully driven by the `--markon-code-*`
+/// CSS tokens (and therefore theme-switchable + user-overridable). Falls back to
+/// escaped plain text if syntect errors on a line.
+fn highlight_code_to_classed_html(syntax: &SyntaxReference, ss: &SyntaxSet, code: &str) -> String {
+    let mut generator = ClassedHTMLGenerator::new_with_class_style(
+        syntax,
+        ss,
+        ClassStyle::SpacedPrefixed { prefix: "mk-" },
+    );
+    for line in LinesWithEndings::from(code) {
+        if generator
+            .parse_html_for_line_which_includes_newline(line)
+            .is_err()
+        {
+            return html_escape::encode_text(code).into_owned();
+        }
+    }
+    generator.finalize()
 }
 
+pub(crate) struct MarkdownRenderer;
+
 impl MarkdownRenderer {
-    pub(crate) fn new(theme: &str) -> Self {
-        Self {
-            theme: theme.to_string(),
-        }
+    /// `_theme` is accepted for API compatibility but no longer affects
+    /// highlighting: code is emitted as CSS classes (see
+    /// `highlight_code_to_classed_html`) and coloured by the `--markon-code-*`
+    /// design tokens, which switch with the page's `data-theme`.
+    pub(crate) fn new(_theme: &str) -> Self {
+        Self
     }
 
     pub(crate) fn render(&self, markdown: &str) -> (String, bool, Vec<TocItem>) {
@@ -151,14 +169,6 @@ impl MarkdownRenderer {
         options.insert(Options::ENABLE_HEADING_ATTRIBUTES);
 
         let ss: &SyntaxSet = &SYNTAX_SET;
-        let ts: &ThemeSet = &THEME_SET;
-
-        let theme_name = match self.theme.as_str() {
-            "light" => "Solarized (light)",
-            "dark" => "base16-ocean.dark",
-            _ => "base16-ocean.dark",
-        };
-        let theme = &ts.themes[theme_name];
 
         let parser = Parser::new_ext(markdown, options);
         let mut new_events = Vec::new();
@@ -187,31 +197,18 @@ impl MarkdownRenderer {
                             );
                             new_events.push(Event::Html(CowStr::from(mermaid_html)));
                         } else {
-                            // Regular code block with syntax highlighting
+                            // Regular code block: emit class-based spans (no
+                            // inline colors) so the palette lives in CSS tokens.
+                            // `by_token` matches the fence label against both the
+                            // language name (`rust`, `python`) and file extension
+                            // (`rs`, `py`); `by_extension` alone misses name-only
+                            // fences and silently fell back to plain text.
                             let syntax = ss
-                                .find_syntax_by_extension(&code_lang)
+                                .find_syntax_by_token(&code_lang)
                                 .unwrap_or_else(|| ss.find_syntax_plain_text());
-                            let mut highlighter = HighlightLines::new(syntax, theme);
-
-                            let mut highlighted_html = String::from("<pre><code>");
-                            for line in LinesWithEndings::from(&code_buffer) {
-                                match highlighter.highlight_line(line, ss) {
-                                    Ok(ranges) => {
-                                        match styled_line_to_highlighted_html(
-                                            &ranges[..],
-                                            IncludeBackground::No,
-                                        ) {
-                                            Ok(escaped) => highlighted_html.push_str(&escaped),
-                                            Err(_) => highlighted_html
-                                                .push_str(&html_escape::encode_text(line)),
-                                        }
-                                    }
-                                    Err(_) => {
-                                        highlighted_html.push_str(&html_escape::encode_text(line))
-                                    }
-                                }
-                            }
-                            highlighted_html.push_str("</code></pre>");
+                            let inner = highlight_code_to_classed_html(syntax, ss, &code_buffer);
+                            let highlighted_html =
+                                format!("<pre><code class=\"mk-code\">{inner}</code></pre>");
                             new_events.push(Event::Html(CowStr::from(highlighted_html)));
                         }
 
@@ -536,6 +533,7 @@ impl MarkdownRenderer {
 #[cfg(test)]
 mod assets_tests {
     use super::extract_referenced_assets;
+    use super::MarkdownRenderer;
 
     fn assert_set(actual: std::collections::HashSet<String>, expected: &[&str]) {
         let want: std::collections::HashSet<String> =
@@ -597,5 +595,35 @@ mod assets_tests {
         // href on <a> is navigation, not an asset to allowlist.
         let s = r#"<a href="other.md">x</a>"#;
         assert_set(extract_referenced_assets(s), &[]);
+    }
+
+    #[test]
+    fn code_blocks_emit_css_classes_not_inline_colors() {
+        let md = "```rust\nfn main() { let x = 1; }\n```\n";
+        let (html, _has_mermaid, _toc) = MarkdownRenderer::new("light").render(md);
+        // Class-based output, namespaced with the `mk-` prefix.
+        assert!(
+            html.contains("<pre><code class=\"mk-code\">"),
+            "html: {html}"
+        );
+        assert!(
+            html.contains("mk-keyword") || html.contains("mk-storage"),
+            "html: {html}"
+        );
+        // No inline colors — the palette is entirely CSS/token driven.
+        assert!(
+            !html.contains("style=\"color"),
+            "unexpected inline color: {html}"
+        );
+    }
+
+    #[test]
+    fn code_highlight_is_theme_independent() {
+        // `new()` ignores the theme now; light and dark render identical markup
+        // (colours come from CSS tokens that switch via data-theme).
+        let md = "```js\nconst a = 'hi';\n```\n";
+        let light = MarkdownRenderer::new("light").render(md).0;
+        let dark = MarkdownRenderer::new("dark").render(md).0;
+        assert_eq!(light, dark);
     }
 }
