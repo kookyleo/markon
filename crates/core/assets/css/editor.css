@@ -1676,86 +1676,47 @@ html[data-theme="dark"] .shortcuts-help-modal {
    Segmented control for split ↔ full-width layout
    ============================================================ */
 
+/* Segmented control: [ split | full ]. One unified pill with no gap — the two
+   icon buttons share a border and the active segment fills with the primary
+   token, so it reads as a single toggle rather than two loose buttons. All
+   colours come from --markon-* tokens, so it tracks the theme automatically. */
 .editor-layout-toggle {
-    display: flex;
-    align-items: center;
-    gap: 1px;
-    background: none;
-    border-radius: 4px;
+    display: inline-flex;
+    align-items: stretch;
+    background: var(--markon-subtle);
+    border: 1px solid var(--markon-border-strong);
+    border-radius: 6px;
+    overflow: hidden;
     padding: 0;
     flex-shrink: 0;
 }
 
 .editor-layout-btn {
     background: none;
-    border: 1px solid transparent;
-    color: #777777;
-    padding: 4px 7px;
+    border: none;
+    color: var(--markon-muted);
+    padding: 4px 11px;
     cursor: pointer;
-    border-radius: 3px;
     display: flex;
     align-items: center;
     justify-content: center;
-    transition: color 0.15s, background-color 0.15s, border-color 0.15s;
+    transition: color 0.15s, background-color 0.15s;
     line-height: 1;
 }
 
-.editor-layout-btn:hover {
-    color: #aaaaaa;
-    background-color: rgba(255, 255, 255, 0.06);
-    border-color: transparent;
+/* Hairline divider between the two segments. */
+.editor-layout-btn + .editor-layout-btn {
+    border-left: 1px solid var(--markon-border-strong);
+}
+
+.editor-layout-btn:hover:not(.active) {
+    color: var(--markon-text);
+    background-color: color-mix(in srgb, var(--markon-text) 8%, transparent);
 }
 
 .editor-layout-btn.active {
-    color: #4dabf7;
-    background-color: rgba(14, 99, 156, 0.15);
-    border-color: rgba(14, 99, 156, 0.6);
-}
-
-/* Light theme overrides */
-@media (prefers-color-scheme: light) {
-    .editor-layout-toggle {
-        background: none;
-    }
-
-    .editor-layout-btn {
-        color: #888888;
-        border-color: transparent;
-    }
-
-    .editor-layout-btn:hover {
-        color: #444444;
-        background-color: rgba(0, 0, 0, 0.06);
-        border-color: transparent;
-    }
-
-    .editor-layout-btn.active {
-        color: #0e639c;
-        background-color: rgba(14, 99, 156, 0.10);
-        border-color: rgba(14, 99, 156, 0.5);
-    }
-}
-
-/* Dark theme (html[data-theme="dark"]) */
-html[data-theme="dark"] .editor-layout-toggle {
-    background: none;
-}
-
-html[data-theme="dark"] .editor-layout-btn {
-    color: #6e7681;
-    border-color: transparent;
-}
-
-html[data-theme="dark"] .editor-layout-btn:hover {
-    color: #b0b8c1;
-    background-color: rgba(240, 246, 252, 0.06);
-    border-color: transparent;
-}
-
-html[data-theme="dark"] .editor-layout-btn.active {
-    color: #79c0ff;
-    background-color: rgba(31, 111, 235, 0.15);
-    border-color: rgba(31, 111, 235, 0.5);
+    color: #fff;
+    background-color: var(--markon-primary);
 }
 
 /* ============================================================
