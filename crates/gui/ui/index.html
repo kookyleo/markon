@@ -152,6 +152,19 @@
       min-height: 36px;
     }
     .pref-label, .st-name, .sc-name { font-size: 13px; color: var(--text); flex: 1; }
+    /* Inline help affordance: a small ⓘ next to a label, with the explanation
+       in its native hover tooltip (data-i18n-title) instead of a wrapping
+       inline paragraph. */
+    .pref-info {
+      display: inline-flex;
+      margin-left: 5px;
+      color: var(--text-3);
+      font-size: 12px;
+      cursor: help;
+      vertical-align: middle;
+      transition: color 0.15s;
+    }
+    .pref-info:hover { color: var(--text-2); }
     .pref-control {
       display: flex;
       align-items: center;
@@ -917,10 +930,11 @@
             </div>
           </div>
           <div class="pref-row" id="advertised-row" style="display:none">
-            <span class="pref-label" data-i18n="pref.advertised"></span>
+            <span class="pref-label">
+              <span data-i18n="pref.advertised"></span><span class="pref-info" data-i18n-title="advertised.hint" title="" aria-hidden="true">&#9432;</span>
+            </span>
             <div class="pref-control">
               <select id="advertised-host" style="width:240px"></select>
-              <div data-i18n="advertised.hint" style="color:#888;font-size:12px;line-height:1.4;max-width:380px;margin-top:4px"></div>
             </div>
           </div>
           <div id="bind-warning" class="pref-row" style="display:none">
