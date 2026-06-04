@@ -1676,15 +1676,16 @@ html[data-theme="dark"] .shortcuts-help-modal {
    Segmented control for split ↔ full-width layout
    ============================================================ */
 
-/* Segmented control: [ split | full ]. One unified pill with no gap — the two
-   icon buttons share a border and the active segment fills with the primary
-   token, so it reads as a single toggle rather than two loose buttons. All
-   colours come from --markon-* tokens, so it tracks the theme automatically. */
+/* Segmented control: [ split | full ]. One unified pill framed by a single
+   primary-coloured border; the active segment fills with the same primary
+   token. The inner segments never carry a border in any state, keeping the
+   control as simple as possible. Vertical padding matches the sibling Copy /
+   Download buttons so the whole control sits level with them. */
 .editor-layout-toggle {
     display: inline-flex;
     align-items: stretch;
     background: var(--markon-subtle);
-    border: 1px solid var(--markon-border-strong);
+    border: 1px solid var(--markon-primary);
     border-radius: 6px;
     overflow: hidden;
     padding: 0;
@@ -1695,18 +1696,13 @@ html[data-theme="dark"] .shortcuts-help-modal {
     background: none;
     border: none;
     color: var(--markon-muted);
-    padding: 4px 11px;
+    padding: 6px 11px;
     cursor: pointer;
     display: flex;
     align-items: center;
     justify-content: center;
     transition: color 0.15s, background-color 0.15s;
     line-height: 1;
-}
-
-/* Hairline divider between the two segments. */
-.editor-layout-btn + .editor-layout-btn {
-    border-left: 1px solid var(--markon-border-strong);
 }
 
 .editor-layout-btn:hover:not(.active) {
@@ -2068,11 +2064,19 @@ html[data-theme="dark"] .export-item-badge.highlight-yellow { background-color: 
     background: var(--markon-subtle);
 }
 
+/* Download = the primary-filled twin of the outlined Copy / Back buttons:
+   same radius, padding and height so the header reads as one button family. */
 .editor-download-btn {
     display: block;
+    padding: 6px 14px;
+    font-size: 13px;
+    border: 1px solid var(--markon-primary);
+    border-radius: 6px;
     background-color: var(--markon-primary);
+    color: #fff;
 }
 
 .editor-download-btn:hover {
     background-color: var(--markon-primary-hover);
+    border-color: var(--markon-primary-hover);
 }
