@@ -366,11 +366,7 @@ html[data-theme="dark"] .markon-chat-thread-menu {
 }
 
 .markon-chat-thread-row:hover {
-    background: rgba(0, 0, 0, 0.05);
-}
-
-html[data-theme="dark"] .markon-chat-thread-row:hover {
-    background: rgba(255, 255, 255, 0.06);
+    background: var(--markon-hover);
 }
 
 .markon-chat-thread-row.active {
@@ -968,11 +964,7 @@ html[data-theme="dark"] .markon-chat-mention-popup {
 }
 
 .markon-chat-mention-row:hover {
-    background: rgba(0, 0, 0, 0.05);
-}
-
-html[data-theme="dark"] .markon-chat-mention-row:hover {
-    background: rgba(255, 255, 255, 0.06);
+    background: var(--markon-hover);
 }
 
 .markon-chat-mention-row.is-active {
@@ -1181,8 +1173,7 @@ html[data-theme="dark"] .markon-chat-edit-pending-status { color: #fbbf24; }
     cursor: pointer;
     line-height: 1.4;
 }
-.markon-chat-edit-pending-undo:hover { background: rgba(0, 0, 0, 0.05); }
-html[data-theme="dark"] .markon-chat-edit-pending-undo:hover { background: rgba(255, 255, 255, 0.06); }
+.markon-chat-edit-pending-undo:hover { background: var(--markon-hover); }
 
 .markon-chat-edit-pending-diff {
     font-family: var(--markon-mono, monospace);

@@ -350,11 +350,7 @@ html[data-theme="dark"] .markon-live-body .mode-group {
 }
 
 .markon-live-body .mode-btn:hover {
-    background: rgba(0, 0, 0, 0.05);
-}
-
-html[data-theme="dark"] .markon-live-body .mode-btn:hover {
-    background: rgba(255, 255, 255, 0.06);
+    background: var(--markon-hover);
 }
 
 .markon-live-body .mode-btn.active {
