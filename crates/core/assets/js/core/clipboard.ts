@@ -30,6 +30,30 @@ export async function copyText(text: string): Promise<boolean> {
 }
 
 /**
+ * Show a small transient feedback bubble next to `anchor` (to its left),
+ * without touching the anchor's own content. Used for icon buttons where
+ * swapping the label would garble the glyph — e.g. the per-annotation
+ * quick-copy button on note cards.
+ */
+export function flashBeside(anchor: HTMLElement, message: string, ms = 1200): void {
+    const tip = document.createElement('span');
+    tip.className = 'markon-copy-flash';
+    tip.textContent = message;
+    document.body.appendChild(tip);
+
+    const r = anchor.getBoundingClientRect();
+    tip.style.top = `${r.top + r.height / 2}px`;
+    tip.style.left = `${r.left}px`;
+
+    // Fade in next frame, then out, then remove.
+    requestAnimationFrame(() => tip.classList.add('is-visible'));
+    window.setTimeout(() => {
+        tip.classList.remove('is-visible');
+        window.setTimeout(() => tip.remove(), 200);
+    }, ms);
+}
+
+/**
  * Briefly swap an element's text to `message`, then restore the original.
  * Used for the inline "✓ Copied" / "Failed" feedback. Re-entrant: a second
  * call before the timer fires restores the true original, not the flashed text.

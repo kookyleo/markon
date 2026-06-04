@@ -1685,8 +1685,14 @@ html[data-theme="dark"] .shortcuts-help-modal {
     display: inline-flex;
     align-items: stretch;
     background: var(--markon-subtle);
-    border: 1px solid var(--markon-primary);
     border-radius: 6px;
+    /* Frame drawn as an inset outline rather than a border: a border would sit
+       between the rounded `overflow:hidden` clip and the filled segment, leaving
+       a 1px ring of the track colour at the corners. An outline paints on top of
+       the segments and isn't clipped by the element's own overflow, so the
+       active fill reaches the edge cleanly with no seam. */
+    outline: 1px solid var(--markon-primary);
+    outline-offset: -1px;
     overflow: hidden;
     padding: 0;
     flex-shrink: 0;
@@ -1803,6 +1809,32 @@ html[data-theme="dark"] .editor-tab.active {
 .note-copy:hover {
     opacity: 1;
     transform: scale(1.1);
+}
+
+/* Transient "Copied" bubble shown beside an icon copy button (clipboard.ts
+   flashBeside). Sits to the left of the anchor and fades, leaving the icon
+   itself untouched. */
+.markon-copy-flash {
+    position: fixed;
+    z-index: var(--markon-z-chrome-top);
+    transform: translate(-100%, -50%) translateX(-8px);
+    /* Dark tooltip surface in both themes (like the selection popover) so the
+       feedback always reads clearly, whatever sits behind it. */
+    background: rgba(28, 33, 40, 0.95);
+    color: #fff;
+    border-radius: 6px;
+    padding: 4px 10px;
+    font-size: 12px;
+    line-height: 1.4;
+    white-space: nowrap;
+    pointer-events: none;
+    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.25);
+    opacity: 0;
+    transition: opacity 0.15s ease;
+}
+
+.markon-copy-flash.is-visible {
+    opacity: 1;
 }
 
 /* ── Step 1: selection wizard (full-screen overlay) ────────────────────── */

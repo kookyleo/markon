@@ -8,7 +8,7 @@
 
 import { CONFIG } from './core/config';
 import { Logger } from './core/utils';
-import { copyText, flashText } from './core/clipboard';
+import { copyText, flashBeside } from './core/clipboard';
 import { Meta } from './services/dom';
 import { Position } from './services/position';
 import { Text } from './services/text';
@@ -1289,7 +1289,7 @@ export class MarkonApp {
         if (!annotation) return;
         const markdown = annotationManager.formatAnnotation(annotation);
         const ok = await copyText(markdown);
-        if (button) flashText(button, _t(ok ? 'web.export.copied' : 'web.export.failed'));
+        if (button) flashBeside(button, _t(ok ? 'web.export.copied' : 'web.export.failed'));
     }
 
     /** Initialize search. @private */
