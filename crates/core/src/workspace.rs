@@ -446,6 +446,13 @@ fn start_file_watcher(index: Arc<SearchIndex>, root: PathBuf) {
 pub struct ServerLock {
     pub port: u16,
     pub token: String,
+    /// Bind host the daemon was started with (e.g. `0.0.0.0`). Lets a CLI that
+    /// registers a workspace into an already-running daemon reproduce the same
+    /// reachable/featured URLs. `#[serde(default)]` keeps old lock files (which
+    /// predate this field) readable — they deserialize to an empty string,
+    /// which callers treat as loopback.
+    #[serde(default)]
+    pub host: String,
 }
 impl ServerLock {
     pub(crate) fn path() -> PathBuf {
@@ -508,5 +515,29 @@ mod tests {
     fn hash_id_depends_on_salt() {
         let p = std::path::Path::new("/tmp/test");
         assert_ne!(hash_id(p, "a"), hash_id(p, "b"));
+    }
+
+    #[test]
+    fn server_lock_host_defaults_when_absent() {
+        // Old lock files predate the `host` field; they must still deserialize.
+        let old = r#"{"port":6419,"token":"abc"}"#;
+        let lock: ServerLock = serde_json::from_str(old).unwrap();
+        assert_eq!(lock.port, 6419);
+        assert_eq!(lock.token, "abc");
+        assert_eq!(lock.host, "");
+    }
+
+    #[test]
+    fn server_lock_host_round_trips() {
+        let lock = ServerLock {
+            port: 6419,
+            token: "tok".into(),
+            host: "0.0.0.0".into(),
+        };
+        let json = serde_json::to_string(&lock).unwrap();
+        let back: ServerLock = serde_json::from_str(&json).unwrap();
+        assert_eq!(back.host, "0.0.0.0");
+        assert_eq!(back.port, 6419);
+        assert_eq!(back.token, "tok");
     }
 }

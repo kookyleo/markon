@@ -24,6 +24,9 @@
     "bind.stale":      "(no longer on this machine)",
     "bind.unavailable": "{host} is not on any current network interface — switch to 0.0.0.0 to keep the server reachable.",
     "bind.bind_failed": "Server failed to start: {error}",
+    "pref.advertised": "Shared address",
+    "advertised.auto": "Auto (first LAN address)",
+    "advertised.hint": "Which LAN address to show in links and QR codes when bound to 0.0.0.0.",
     "bind.save_failed": "Save failed: {error}",
 
     // ── General — Appearance ─────────────────────────────────

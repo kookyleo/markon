@@ -165,7 +165,11 @@ enum WorkspaceListFormat {
 struct WorkspaceAccessSummary {
     workspace_path: String,
     flags: WorkspaceFlags,
-    local_url: String,
+    /// Every reachable workspace URL (localhost first, then each LAN interface).
+    local_urls: Vec<server::ReachableUrl>,
+    /// The featured workspace URL (LAN IP for wildcard binds) — used for the
+    /// browser auto-open and as the QR fallback.
+    featured_url: String,
     public_url: Option<String>,
     qr_url: Option<String>,
 }
@@ -314,22 +318,45 @@ fn pad_right(text: &str, width: usize) -> String {
     format!("{text}{}", " ".repeat(pad))
 }
 
+/// Resolve the bind host used for printed / opened URLs without prompting.
+/// Precedence: explicit `--host` (ignoring the interactive `select` sentinel)
+/// > global config `settings.host` (when non-empty) > loopback.
+fn configured_bind_host(cli_host: Option<&str>, settings_host: &str) -> String {
+    match cli_host {
+        Some(h) if h != "select" => h.to_string(),
+        _ if !settings_host.trim().is_empty() => settings_host.to_string(),
+        _ => "127.0.0.1".to_string(),
+    }
+}
+
+#[allow(clippy::too_many_arguments)]
 fn build_workspace_access_summary(
     workspace_root: &Path,
     flags: WorkspaceFlags,
-    local_base: &str,
+    bind_host: &str,
+    advertised_host: &str,
+    port: u16,
     workspace_id: &str,
     initial_path: Option<&str>,
     entry: Option<&str>,
 ) -> WorkspaceAccessSummary {
     let workspace_path = server::workspace_url_path(workspace_id, initial_path);
-    let local_url = server::build_workspace_url(local_base, &workspace_path);
+    let reach = server::reachable_urls(bind_host, advertised_host, port);
+    let local_urls: Vec<server::ReachableUrl> = reach
+        .all
+        .iter()
+        .map(|r| server::ReachableUrl {
+            label: r.label.clone(),
+            url: server::build_workspace_url(&r.url, &workspace_path),
+        })
+        .collect();
+    let featured_url = server::build_workspace_url(&reach.featured, &workspace_path);
     let public_url = entry
         .filter(|base| *base != "missing")
         .map(|base| server::build_workspace_url(base, &workspace_path));
     let qr_url = entry.map(|base| {
         if base == "missing" {
-            local_url.clone()
+            featured_url.clone()
         } else {
             server::build_workspace_url(base, &workspace_path)
         }
@@ -338,14 +365,15 @@ fn build_workspace_access_summary(
     WorkspaceAccessSummary {
         workspace_path: display_workspace_path(workspace_root),
         flags,
-        local_url,
+        local_urls,
+        featured_url,
         public_url,
         qr_url,
     }
 }
 
 fn build_browser_target_url(
-    local_base: &str,
+    featured_base: &str,
     workspace_id: &str,
     initial_path: Option<&str>,
     open_browser: Option<&str>,
@@ -353,17 +381,25 @@ fn build_browser_target_url(
     let workspace_path = server::workspace_url_path(workspace_id, initial_path);
     open_browser.map(|base| {
         if base == "local" {
-            server::build_workspace_url(local_base, &workspace_path)
+            server::build_workspace_url(featured_base, &workspace_path)
         } else {
             server::build_workspace_url(base, &workspace_path)
         }
     })
 }
 
-fn resolve_workspace_list_base(port: u16, entry: Option<&str>) -> (String, bool) {
+fn resolve_workspace_list_base(
+    bind_host: &str,
+    advertised_host: &str,
+    port: u16,
+    entry: Option<&str>,
+) -> (String, bool) {
     match entry.filter(|base| *base != "missing") {
         Some(base) => (base.to_string(), true),
-        None => (format!("http://127.0.0.1:{port}"), false),
+        None => (
+            server::featured_base_url(bind_host, advertised_host, port),
+            false,
+        ),
     }
 }
 
@@ -376,7 +412,16 @@ fn print_workspace_access_summary(summary: &WorkspaceAccessSummary) {
     );
     println!("{}", format_workspace_flags(summary.flags, false, colors));
     println!();
-    println!("{}", colors.local_url(&summary.local_url));
+    // One line per reachable URL. For wildcard binds this lists localhost plus
+    // every LAN interface (with its name), so the user picks the right address
+    // for their network instead of getting a single guessed IP.
+    for entry in &summary.local_urls {
+        if entry.label.is_empty() || entry.label == "localhost" {
+            println!("{}", colors.local_url(&entry.url));
+        } else {
+            println!("{}  ({})", colors.local_url(&entry.url), entry.label);
+        }
+    }
     if let Some(public_url) = summary.public_url.as_ref() {
         println!("{}", colors.public_url(public_url));
     }
@@ -389,6 +434,8 @@ fn print_workspace_access_summary(summary: &WorkspaceAccessSummary) {
 }
 
 async fn list_workspaces(
+    bind_host: &str,
+    advertised_host: &str,
     port: u16,
     token: &str,
     format: WorkspaceListFormat,
@@ -415,7 +462,8 @@ async fn list_workspaces(
     }
 
     let colors = CliColors::detect();
-    let (url_base, use_entry_url) = resolve_workspace_list_base(port, entry);
+    let (url_base, use_entry_url) =
+        resolve_workspace_list_base(bind_host, advertised_host, port, entry);
     match format {
         WorkspaceListFormat::Cards => {
             for (i, ws) in workspaces.iter().enumerate() {
@@ -687,8 +735,8 @@ async fn main() {
 
         // Workspace-management commands talk to the running server.
         let lock = ServerLock::read();
-        let (port, token) = match lock {
-            Some(ref l) if l.is_alive() => (l.port, l.token.clone()),
+        let (port, token, lock_host) = match lock {
+            Some(ref l) if l.is_alive() => (l.port, l.token.clone(), l.host.clone()),
             _ => {
                 eprintln!("Error: No running Markon server found.");
                 return;
@@ -697,7 +745,23 @@ async fn main() {
 
         let res = match cmd {
             Commands::Ls { format } => {
-                list_workspaces(port, &token, format, cli_entry.as_deref()).await
+                // Reproduce the daemon's reachable URLs: bind host from the
+                // lock, advertised preference from the shared global config.
+                let advertised_host = AppSettings::load().advertised_host;
+                let bind_host = if lock_host.trim().is_empty() {
+                    "127.0.0.1".to_string()
+                } else {
+                    lock_host.clone()
+                };
+                list_workspaces(
+                    &bind_host,
+                    &advertised_host,
+                    port,
+                    &token,
+                    format,
+                    cli_entry.as_deref(),
+                )
+                .await
             }
             Commands::Detach { target } => detach_workspace(port, &token, &target).await,
             Commands::Shutdown => shutdown_server(port, &token).await,
@@ -773,24 +837,41 @@ async fn main() {
         }
     });
 
+    let advertised_host = settings.advertised_host.clone();
+    // Bind host used to build the printed / opened URLs in the register and
+    // spawn paths (never prompts; `--host select` is resolved interactively
+    // only in the foreground server path below).
+    let configured_host = configured_bind_host(cli.host.as_deref(), &settings.host);
+
     if let Some(lock) = ServerLock::read() {
         if lock.is_alive() {
             match add_or_update_workspace(lock.port, &lock.token, &ws_root.to_string_lossy(), flags)
                 .await
             {
                 Ok(workspace_id) => {
-                    let local_base = format!("http://127.0.0.1:{}", lock.port);
+                    // Prefer the running daemon's actual bind host (recorded in
+                    // the lock); fall back to our own resolved host for locks
+                    // written before the field existed.
+                    let bind_host = if lock.host.trim().is_empty() {
+                        configured_host.clone()
+                    } else {
+                        lock.host.clone()
+                    };
                     let summary = build_workspace_access_summary(
                         &ws_root,
                         flags,
-                        &local_base,
+                        &bind_host,
+                        &advertised_host,
+                        lock.port,
                         &workspace_id,
                         initial_path.as_deref(),
                         cli.entry.as_deref(),
                     );
                     print_workspace_access_summary(&summary);
+                    let featured_base =
+                        server::featured_base_url(&bind_host, &advertised_host, lock.port);
                     if let Some(browser_url) = build_browser_target_url(
-                        &local_base,
+                        &featured_base,
                         &workspace_id,
                         initial_path.as_deref(),
                         open_browser_target.as_deref(),
@@ -823,11 +904,12 @@ async fn main() {
 
         match res {
             Ok(_) => {
-                let local_base = format!("http://127.0.0.1:{}", cli.port);
                 let summary = build_workspace_access_summary(
                     &ws_root,
                     flags,
-                    &local_base,
+                    &configured_host,
+                    &advertised_host,
+                    cli.port,
                     &id,
                     initial_path.as_deref(),
                     cli.entry.as_deref(),
@@ -876,17 +958,19 @@ async fn main() {
     registry.set_persist_hook(AppSettings::persist_hook(settings.clone()));
 
     if let Err(e) = server::start(ServerConfig {
-        host: match cli.host {
-            None => "127.0.0.1".to_string(),
-            Some(ref h) if h == "select" => match select_host() {
+        // `--host select` prompts interactively; otherwise reuse the resolved
+        // host (--host > global config settings.host > loopback).
+        host: match &cli.host {
+            Some(h) if h == "select" => match select_host() {
                 Ok(h) => h,
                 Err(e) => {
                     eprintln!("Failed to select host: {e}");
                     return;
                 }
             },
-            Some(h) => h,
+            _ => configured_host.clone(),
         },
+        advertised_host,
         port: cli.port,
         theme,
         qr: cli.entry,
@@ -927,7 +1011,9 @@ mod tests {
         let summary = build_workspace_access_summary(
             Path::new("/tmp/Downloads"),
             flags,
-            "http://127.0.0.1:5050",
+            "127.0.0.1",
+            "",
+            5050,
             "30c52d3e",
             None,
             Some("http://md.s17.kookyleo.space/"),
@@ -938,7 +1024,10 @@ mod tests {
             format_workspace_flags(summary.flags, false, CliColors::plain()),
             "[x] Search  [x] Viewed tracking  [x] Edit  [x] Live  [ ] Chat  [ ] Shared notes"
         );
-        assert_eq!(summary.local_url, "http://127.0.0.1:5050/30c52d3e/");
+        // Loopback bind → a single localhost URL.
+        assert_eq!(summary.local_urls.len(), 1);
+        assert_eq!(summary.local_urls[0].url, "http://127.0.0.1:5050/30c52d3e/");
+        assert_eq!(summary.featured_url, "http://127.0.0.1:5050/30c52d3e/");
         assert_eq!(
             summary.public_url.as_deref(),
             Some("http://md.s17.kookyleo.space/30c52d3e/")
@@ -962,7 +1051,9 @@ mod tests {
         let summary = build_workspace_access_summary(
             Path::new("/tmp/notes"),
             flags,
-            "http://127.0.0.1:5050",
+            "127.0.0.1",
+            "",
+            5050,
             "30c52d3e",
             Some("notes/demo.md"),
             Some("missing"),
@@ -973,13 +1064,100 @@ mod tests {
             "[ ] Search  [x] Viewed tracking  [ ] Edit  [ ] Live  [ ] Chat  [x] Shared notes"
         );
         assert_eq!(
-            summary.local_url,
+            summary.local_urls[0].url,
+            "http://127.0.0.1:5050/30c52d3e/notes/demo.md"
+        );
+        assert_eq!(
+            summary.featured_url,
             "http://127.0.0.1:5050/30c52d3e/notes/demo.md"
         );
         assert_eq!(summary.public_url, None);
+        // No --entry → QR falls back to the featured (loopback) workspace URL.
         assert_eq!(
             summary.qr_url.as_deref(),
             Some("http://127.0.0.1:5050/30c52d3e/notes/demo.md")
+        );
+    }
+
+    #[test]
+    fn configured_bind_host_precedence() {
+        // Explicit --host wins over everything.
+        assert_eq!(
+            configured_bind_host(Some("0.0.0.0"), "192.168.1.5"),
+            "0.0.0.0"
+        );
+        assert_eq!(
+            configured_bind_host(Some("10.0.0.9"), ""),
+            "10.0.0.9".to_string()
+        );
+        // No --host → fall back to global config when set.
+        assert_eq!(configured_bind_host(None, "0.0.0.0"), "0.0.0.0");
+        assert_eq!(
+            configured_bind_host(None, "  192.168.1.5  "),
+            "  192.168.1.5  "
+        );
+        // No --host and empty config → loopback.
+        assert_eq!(configured_bind_host(None, ""), "127.0.0.1");
+        assert_eq!(configured_bind_host(None, "   "), "127.0.0.1");
+        // The interactive `select` sentinel is not a real host → fall back.
+        assert_eq!(configured_bind_host(Some("select"), "0.0.0.0"), "0.0.0.0");
+        assert_eq!(configured_bind_host(Some("select"), ""), "127.0.0.1");
+    }
+
+    #[test]
+    fn workspace_summary_for_specific_bind_lists_single_url() {
+        let flags = WorkspaceFlags {
+            enable_search: false,
+            enable_viewed: false,
+            enable_edit: false,
+            enable_live: false,
+            enable_chat: false,
+            shared_annotation: false,
+        };
+        // A documentation-range IP that is not on this machine: a specific
+        // (non-loopback) bind exposes exactly that address, no localhost.
+        let summary = build_workspace_access_summary(
+            Path::new("/tmp/docs"),
+            flags,
+            "198.51.100.7",
+            "",
+            6419,
+            "abc123",
+            None,
+            None,
+        );
+        assert_eq!(summary.local_urls.len(), 1);
+        assert_eq!(
+            summary.local_urls[0].url,
+            "http://198.51.100.7:6419/abc123/"
+        );
+        assert_eq!(summary.featured_url, "http://198.51.100.7:6419/abc123/");
+        assert_eq!(summary.public_url, None);
+        // No --entry/--qr flag → no QR is emitted at all.
+        assert_eq!(summary.qr_url, None);
+    }
+
+    #[test]
+    fn resolve_workspace_list_base_prefers_entry_then_featured() {
+        // --entry / public prefix takes precedence and marks use_entry_url.
+        assert_eq!(
+            resolve_workspace_list_base("0.0.0.0", "", 6419, Some("https://md.example.com")),
+            ("https://md.example.com".to_string(), true)
+        );
+        // "missing" sentinel is treated as no entry.
+        assert_eq!(
+            resolve_workspace_list_base("127.0.0.1", "", 6419, Some("missing")),
+            ("http://127.0.0.1:6419".to_string(), false)
+        );
+        // No entry, loopback bind → loopback base.
+        assert_eq!(
+            resolve_workspace_list_base("127.0.0.1", "", 5050, None),
+            ("http://127.0.0.1:5050".to_string(), false)
+        );
+        // No entry, specific bind → that address (deterministic; not on host).
+        assert_eq!(
+            resolve_workspace_list_base("198.51.100.7", "", 5050, None),
+            ("http://198.51.100.7:5050".to_string(), false)
         );
     }
 
@@ -1031,18 +1209,6 @@ mod tests {
         assert_eq!(
             format_workspace_feature_tags(flags, true),
             "Search ready | Viewed | Live"
-        );
-    }
-
-    #[test]
-    fn workspace_list_base_prefers_entry_when_present() {
-        assert_eq!(
-            resolve_workspace_list_base(6419, Some("http://docs.example.com")),
-            ("http://docs.example.com".to_string(), true)
-        );
-        assert_eq!(
-            resolve_workspace_list_base(6419, Some("missing")),
-            ("http://127.0.0.1:6419".to_string(), false)
         );
     }
 }

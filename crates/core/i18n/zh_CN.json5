@@ -24,6 +24,9 @@
     "bind.stale":      "（已不在本机网卡上）",
     "bind.unavailable": "{host} 已不在当前任意网卡上，建议切换到 0.0.0.0 以保持可访问。",
     "bind.bind_failed": "服务启动失败：{error}",
+    "pref.advertised": "对外地址",
+    "advertised.auto": "自动（第一个局域网地址）",
+    "advertised.hint": "绑定 0.0.0.0 时，链接与二维码中展示哪个局域网地址。",
     "bind.save_failed": "保存失败：{error}",
 
     // ── 全局设置 — 外观 ──────────────────────────────────────

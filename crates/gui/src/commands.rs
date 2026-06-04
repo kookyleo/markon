@@ -197,8 +197,11 @@ fn flags_from_params(
 }
 
 fn browser_base_url_for_state(state: &State<AppState>, port: u16) -> String {
-    let bind_host = state.settings.lock().unwrap().host.clone();
-    server::browser_base_url(&bind_host, port)
+    let (bind_host, advertised_host) = {
+        let s = state.settings.lock().unwrap();
+        (s.host.clone(), s.advertised_host.clone())
+    };
+    server::featured_base_url(&bind_host, &advertised_host, port)
 }
 
 #[tauri::command]

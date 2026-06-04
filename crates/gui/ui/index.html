@@ -916,6 +916,13 @@
               </select>
             </div>
           </div>
+          <div class="pref-row" id="advertised-row" style="display:none">
+            <span class="pref-label" data-i18n="pref.advertised"></span>
+            <div class="pref-control">
+              <select id="advertised-host" style="width:240px"></select>
+              <div data-i18n="advertised.hint" style="color:#888;font-size:12px;line-height:1.4;max-width:380px;margin-top:4px"></div>
+            </div>
+          </div>
           <div id="bind-warning" class="pref-row" style="display:none">
             <span class="pref-label"></span>
             <div class="pref-control" style="color:#d93025;font-size:12px;line-height:1.4;max-width:380px"></div>
@@ -1440,6 +1447,8 @@
     document.querySelector(`input[name="port_mode"][value="${mode}"]`).checked = true;
     document.getElementById('port').value = s.port;
     document.getElementById('host').value = s.host;
+    document.getElementById('advertised-host').value = s.advertised_host || '';
+    updateAdvertisedVisibility(s.host);
     document.getElementById('theme').value = s.theme;
     document.getElementById('language').value = s.language || 'auto';
     document.getElementById('web_theme').value = s.web_theme || 'auto';
@@ -1493,6 +1502,7 @@
       port_mode: document.querySelector('input[name="port_mode"]:checked')?.value ?? 'spec',
       port:      parseInt(document.getElementById('port').value) || 6419,
       host:      document.getElementById('host').value,
+      advertised_host: document.getElementById('advertised-host').value,
       theme:     document.getElementById('theme').value,
       language:  document.getElementById('language').value,
       web_theme: document.getElementById('web_theme').value,
@@ -1569,8 +1579,11 @@
   });
 
   // Wire change handlers: save + live-apply where applicable.
-  ['port', 'host'].forEach(id =>
+  ['port', 'host', 'advertised-host'].forEach(id =>
     document.getElementById(id).addEventListener('change', saveSettings)
+  );
+  document.getElementById('host').addEventListener('change', e =>
+    updateAdvertisedVisibility(e.target.value)
   );
   document.getElementById('theme').addEventListener('change', e => {
     liveApply.theme(e.target.value);
@@ -1993,7 +2006,30 @@
     }
     cliSel.value = currentCliHost;
 
+    // Advertised (shared) address: only the real LAN interfaces, plus an
+    // "auto" entry (= first interface). Relevant only for wildcard binds.
+    const advSel = document.getElementById('advertised-host');
+    const currentAdv = advSel.value || '';
+    advSel.innerHTML = '';
+    appendSelectOption(advSel, '', T('advertised.auto'));
+    bindHosts
+      .filter(host => host.kind === 'interface')
+      .forEach(host => appendSelectOption(advSel, host.address, bindHostLabel(host)));
+    if (currentAdv && !hasSelectOption(advSel, currentAdv)) {
+      appendSelectOption(advSel, currentAdv, `⚠️ ${currentAdv} ${T('bind.stale')}`);
+    }
+    advSel.value = currentAdv;
+    updateAdvertisedVisibility(currentHost);
+
     updateBindWarning(currentHost, isHostInList(currentHost, bindHosts));
+  }
+
+  // The shared-address picker only matters when bound to a wildcard (0.0.0.0),
+  // where there are multiple reachable LAN IPs to choose between.
+  function updateAdvertisedVisibility(host) {
+    const row = document.getElementById('advertised-row');
+    if (!row) return;
+    row.style.display = ['0.0.0.0', '::', '[::]', ''].includes(host) ? '' : 'none';
   }
 
   async function loadBindHosts(settingsHost) {

@@ -204,7 +204,11 @@ fn handle_open_path(app: &tauri::AppHandle, path: &Path) {
                 enable_chat: settings.default_chat,
                 shared_annotation: settings.default_shared_annotation,
             },
-            markon_core::server::browser_base_url(&settings.host, server.port()),
+            markon_core::server::featured_base_url(
+                &settings.host,
+                &settings.advertised_host,
+                server.port(),
+            ),
         )
     };
 

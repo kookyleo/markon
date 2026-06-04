@@ -52,6 +52,10 @@ pub struct WorkspaceInit {
 /// Server configuration
 pub struct ServerConfig {
     pub host: String,
+    /// Preferred address to feature when bound to a wildcard (0.0.0.0/::):
+    /// the LAN IP used for the headline URL, QR code, and browser auto-open.
+    /// Empty = no preference (fall back to the first interface).
+    pub advertised_host: String,
     pub port: u16,
     pub theme: String,
     pub qr: Option<String>,
@@ -139,17 +143,125 @@ pub fn workspace_url_path(workspace_id: &str, initial_path: Option<&str>) -> Str
     }
 }
 
-pub fn browser_base_url(bind_host: &str, port: u16) -> String {
+/// One reachable base URL with a human-facing label (network interface name,
+/// or "localhost" for the loopback entry).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ReachableUrl {
+    pub label: String,
+    pub url: String,
+}
+
+/// Every base URL a client could use to reach this server, plus the single one
+/// we feature by default (headline link, QR code, browser auto-open).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ReachableUrls {
+    /// The featured base URL, e.g. `http://192.168.1.20:6419`.
+    pub featured: String,
+    /// All reachable base URLs (localhost first, then each LAN interface).
+    pub all: Vec<ReachableUrl>,
+}
+
+/// Bracket a bare IPv6 literal for use in a URL; everything else passes through.
+fn url_host_literal(host: &str) -> String {
+    match host.parse::<std::net::IpAddr>() {
+        Ok(std::net::IpAddr::V6(addr)) => format!("[{addr}]"),
+        _ => host.to_string(),
+    }
+}
+
+/// Pure core of reachable-URL computation, taking the currently-available bind
+/// hosts explicitly so it can be unit-tested without touching real interfaces.
+///
+/// Rules:
+///   - `localhost` (127.0.0.1) is always reachable from the same machine.
+///   - wildcard binds (0.0.0.0 / ::) additionally expose every non-loopback
+///     interface IP; the featured one is `advertised_host` when it is still a
+///     live interface, otherwise the first interface, otherwise localhost.
+///   - a specific (non-loopback) bind exposes exactly that address.
+///   - a loopback bind exposes only localhost.
+fn assemble_reachable_urls(
+    bind_host: &str,
+    advertised_host: &str,
+    port: u16,
+    hosts: &[crate::net::BindHostOption],
+) -> ReachableUrls {
+    use crate::net::BindHostKind;
+
     let trimmed = bind_host.trim();
-    let host = match trimmed {
-        "" | "0.0.0.0" | "::" | "[::]" => "127.0.0.1".to_string(),
-        other if other.starts_with('[') && other.ends_with(']') => other.to_string(),
-        other => match other.parse::<std::net::IpAddr>() {
-            Ok(std::net::IpAddr::V6(addr)) => format!("[{addr}]"),
-            _ => other.to_string(),
-        },
+    let is_wildcard = matches!(trimmed, "" | "0.0.0.0" | "::" | "[::]");
+    let is_loopback = matches!(trimmed, "127.0.0.1" | "::1" | "[::1]");
+
+    // (label, address) entries. Only a wildcard bind also serves loopback, so
+    // for a specific bind we list exactly that one address (127.0.0.1 is NOT
+    // reachable when the socket is bound to a single LAN IP).
+    let mut entries: Vec<(String, String)> = Vec::new();
+    if is_wildcard {
+        entries.push(("localhost".to_string(), "127.0.0.1".to_string()));
+        for h in hosts.iter().filter(|h| h.kind == BindHostKind::Interface) {
+            entries.push((h.interface.clone().unwrap_or_default(), h.address.clone()));
+        }
+    } else {
+        let label = if is_loopback {
+            "localhost".to_string()
+        } else {
+            hosts
+                .iter()
+                .find(|h| h.address == trimmed)
+                .and_then(|h| h.interface.clone())
+                .unwrap_or_default()
+        };
+        entries.push((label, trimmed.to_string()));
+    }
+
+    let all: Vec<ReachableUrl> = entries
+        .iter()
+        .map(|(label, addr)| ReachableUrl {
+            label: label.clone(),
+            url: format!("http://{}:{}", url_host_literal(addr), port),
+        })
+        .collect();
+
+    let featured_addr: String = if is_wildcard {
+        let adv = advertised_host.trim();
+        let lan: Vec<&String> = entries
+            .iter()
+            .filter(|(label, _)| label != "localhost")
+            .map(|(_, addr)| addr)
+            .collect();
+        if !adv.is_empty() && lan.iter().any(|a| a.as_str() == adv) {
+            adv.to_string()
+        } else if let Some(first) = lan.first() {
+            (*first).clone()
+        } else {
+            "127.0.0.1".to_string()
+        }
+    } else {
+        trimmed.to_string()
     };
-    format!("http://{host}:{port}")
+    let featured = format!("http://{}:{}", url_host_literal(&featured_addr), port);
+
+    ReachableUrls { featured, all }
+}
+
+/// All reachable base URLs for the current machine + bind configuration.
+pub fn reachable_urls(bind_host: &str, advertised_host: &str, port: u16) -> ReachableUrls {
+    assemble_reachable_urls(
+        bind_host,
+        advertised_host,
+        port,
+        &crate::net::available_bind_hosts(),
+    )
+}
+
+/// The single featured base URL (LAN IP for wildcard binds, honouring an
+/// `advertised_host` preference; localhost only as a fallback).
+pub fn featured_base_url(bind_host: &str, advertised_host: &str, port: u16) -> String {
+    reachable_urls(bind_host, advertised_host, port).featured
+}
+
+/// Back-compat shim: the featured base URL with no advertised-host preference.
+pub fn browser_base_url(bind_host: &str, port: u16) -> String {
+    featured_base_url(bind_host, "", port)
 }
 
 pub fn build_workspace_url(base: &str, workspace_path: &str) -> String {
@@ -261,6 +373,7 @@ enum WebSocketMessage {
 pub async fn start(config: ServerConfig) -> Result<(), String> {
     let ServerConfig {
         host,
+        advertised_host,
         port,
         theme,
         qr,
@@ -473,9 +586,15 @@ pub async fn start(config: ServerConfig) -> Result<(), String> {
     let addr = listener
         .local_addr()
         .map_err(|e| format!("Failed to get local address: {e}"))?;
+    // `addr` is the bound socket (may be 0.0.0.0 for a wildcard bind, which is
+    // not a usable URL host). `local_base` is the reachable, featured URL —
+    // a LAN IP for wildcard binds, honouring the advertised-host preference.
+    let local_base = featured_base_url(&host, &advertised_host, addr.port());
+    // Keep "listening on" as the raw bind addr (it reports which interfaces are
+    // served), but surface a clickable, reachable URL for the workspace.
     println!("listening on http://{addr}");
     if let Some(ref p) = first_workspace_url_path {
-        println!("workspace: http://{addr}{p}");
+        println!("workspace: {}", build_workspace_url(&local_base, p));
     }
 
     // Write lock file so CLI can discover this server.
@@ -483,6 +602,7 @@ pub async fn start(config: ServerConfig) -> Result<(), String> {
         if let Err(e) = (ServerLock {
             port: addr.port(),
             token: token.as_ref().clone(),
+            host: host.clone(),
         })
         .write()
         {
@@ -500,7 +620,7 @@ pub async fn start(config: ServerConfig) -> Result<(), String> {
     // Helper: build a full URL from a base option string.
     let make_url = |base_option: &str, ws_path: &Option<String>| -> String {
         let base = if base_option == "local" {
-            format!("http://{addr}")
+            local_base.clone()
         } else {
             base_option.to_string()
         };
@@ -524,7 +644,7 @@ pub async fn start(config: ServerConfig) -> Result<(), String> {
     if let Some(ref qr_option) = qr {
         println!();
         let qr_url = if qr_option == "missing" {
-            format!("http://{addr}")
+            make_url("local", &first_workspace_url_path)
         } else {
             make_url(qr_option, &first_workspace_url_path)
         };
@@ -1863,19 +1983,116 @@ mod tests {
         assert_eq!(state.management_token.as_str(), "token");
     }
 
-    #[test]
-    fn browser_base_url_uses_localhost_for_wildcard_binds() {
-        assert_eq!(browser_base_url("0.0.0.0", 6419), "http://127.0.0.1:6419");
-        assert_eq!(browser_base_url("::", 6419), "http://127.0.0.1:6419");
+    fn sample_hosts() -> Vec<crate::net::BindHostOption> {
+        use crate::net::{BindHostKind, BindHostOption};
+        vec![
+            BindHostOption {
+                address: "127.0.0.1".into(),
+                kind: BindHostKind::Localhost,
+                interface: None,
+            },
+            BindHostOption {
+                address: "0.0.0.0".into(),
+                kind: BindHostKind::AllInterfaces,
+                interface: None,
+            },
+            BindHostOption {
+                address: "192.168.1.20".into(),
+                kind: BindHostKind::Interface,
+                interface: Some("en0".into()),
+            },
+            BindHostOption {
+                address: "10.0.0.5".into(),
+                kind: BindHostKind::Interface,
+                interface: Some("eth1".into()),
+            },
+        ]
     }
 
     #[test]
-    fn browser_base_url_preserves_specific_hosts() {
+    fn reachable_wildcard_lists_localhost_then_interfaces() {
+        let r = assemble_reachable_urls("0.0.0.0", "", 6419, &sample_hosts());
+        assert_eq!(r.all.len(), 3);
+        assert_eq!(r.all[0].label, "localhost");
+        assert_eq!(r.all[0].url, "http://127.0.0.1:6419");
+        assert_eq!(r.all[1].url, "http://192.168.1.20:6419");
+        assert_eq!(r.all[2].url, "http://10.0.0.5:6419");
+        // No advertised preference → first interface is featured (not localhost).
+        assert_eq!(r.featured, "http://192.168.1.20:6419");
+    }
+
+    #[test]
+    fn reachable_wildcard_honours_advertised_host_and_falls_back() {
+        let hosts = sample_hosts();
+        // Advertised host is a live interface → used verbatim.
         assert_eq!(
-            browser_base_url("192.168.1.20", 6419),
+            assemble_reachable_urls("0.0.0.0", "10.0.0.5", 6419, &hosts).featured,
+            "http://10.0.0.5:6419"
+        );
+        // Stale advertised host (not currently bound) → first interface.
+        assert_eq!(
+            assemble_reachable_urls("0.0.0.0", "172.16.9.9", 6419, &hosts).featured,
             "http://192.168.1.20:6419"
         );
-        assert_eq!(browser_base_url("::1", 6419), "http://[::1]:6419");
+    }
+
+    #[test]
+    fn reachable_wildcard_without_interfaces_falls_back_to_localhost() {
+        use crate::net::{BindHostKind, BindHostOption};
+        let hosts = vec![
+            BindHostOption {
+                address: "127.0.0.1".into(),
+                kind: BindHostKind::Localhost,
+                interface: None,
+            },
+            BindHostOption {
+                address: "0.0.0.0".into(),
+                kind: BindHostKind::AllInterfaces,
+                interface: None,
+            },
+        ];
+        let r = assemble_reachable_urls("0.0.0.0", "", 6419, &hosts);
+        assert_eq!(r.all.len(), 1);
+        assert_eq!(r.featured, "http://127.0.0.1:6419");
+    }
+
+    #[test]
+    fn reachable_specific_bind_lists_only_that_address() {
+        let r = assemble_reachable_urls("192.168.1.20", "", 6419, &sample_hosts());
+        // A specific bind does NOT serve loopback, so localhost is absent.
+        assert_eq!(r.all.len(), 1);
+        assert_eq!(r.all[0].label, "en0");
+        assert_eq!(r.featured, "http://192.168.1.20:6419");
+    }
+
+    #[test]
+    fn reachable_loopback_binds() {
+        let hosts = sample_hosts();
+        let v4 = assemble_reachable_urls("127.0.0.1", "", 6419, &hosts);
+        assert_eq!(v4.all.len(), 1);
+        assert_eq!(v4.featured, "http://127.0.0.1:6419");
+        // IPv6 loopback is preserved (bracketed), not collapsed to 127.0.0.1.
+        let v6 = assemble_reachable_urls("::1", "", 6419, &hosts);
+        assert_eq!(v6.featured, "http://[::1]:6419");
+    }
+
+    #[test]
+    fn featured_base_url_loopback_and_specific_are_network_independent() {
+        // These paths don't enumerate interfaces, so the public wrappers are
+        // deterministic regardless of the machine running the test.
+        assert_eq!(
+            featured_base_url("127.0.0.1", "", 6419),
+            "http://127.0.0.1:6419"
+        );
+        assert_eq!(
+            featured_base_url("198.51.100.7", "", 6419),
+            "http://198.51.100.7:6419"
+        );
+        let r = reachable_urls("127.0.0.1", "", 6419);
+        assert_eq!(r.all.len(), 1);
+        assert_eq!(r.featured, "http://127.0.0.1:6419");
+        // Back-compat shim resolves the same featured URL.
+        assert_eq!(browser_base_url("127.0.0.1", 6419), "http://127.0.0.1:6419");
     }
 
     #[cfg(target_os = "windows")]
