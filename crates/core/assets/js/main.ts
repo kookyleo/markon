@@ -8,6 +8,7 @@
 
 import { CONFIG } from './core/config';
 import { Logger } from './core/utils';
+import { copyText, flashText } from './core/clipboard';
 import { Meta } from './services/dom';
 import { Position } from './services/position';
 import { Text } from './services/text';
@@ -21,12 +22,17 @@ import { KeyboardShortcutsManager } from './managers/keyboard-shortcuts';
 import { SearchManager } from './managers/search-manager';
 import { HighlightManager } from './managers/highlight-manager';
 import { EditorManager } from './managers/editor-manager';
+import { ExportManager } from './managers/export-manager';
 import { CollaborationManager } from './managers/collaboration-manager';
 import { ChatManager } from './managers/chat-manager';
 import { TOCNavigator } from './navigators/toc-navigator';
 import { AnnotationNavigator } from './navigators/annotation-navigator';
 import { ModalManager, showConfirmDialog } from './components/modal';
 import { FloatingLayer } from './components/floating-layer';
+
+const _t: (key: string, ...args: unknown[]) => string =
+    (typeof window !== 'undefined' && window.__MARKON_I18N__ && window.__MARKON_I18N__.t) ||
+    ((k: string) => k);
 
 // ── Public types ───────────────────────────────────────────────────────────
 
@@ -67,6 +73,7 @@ export class MarkonApp {
     #shortcutsManager: KeyboardShortcutsManager | null = null;
     #searchManager: SearchManager | null = null;
     #editorManager: EditorManager | null = null;
+    #exportManager: ExportManager | null = null;
     #collaboration: CollaborationManager | null = null;
     #tocNavigator: TOCNavigator | null = null;
     #annotationNavigator: AnnotationNavigator | null = null;
@@ -494,6 +501,13 @@ export class MarkonApp {
                     });
                 }
             }
+        } else if (action === 'copy-annotation') {
+            if (highlightedElement instanceof HTMLElement) {
+                const annotationId = highlightedElement.dataset.annotationId;
+                if (annotationId) await this.copyAnnotation(annotationId);
+            }
+            this.#popoverManager?.hide();
+            return;
         } else if (action.startsWith('highlight-')) {
             if (!selection) return;
             const annotation = annotationManager.createAnnotation(
@@ -707,6 +721,14 @@ export class MarkonApp {
         document.body.addEventListener('click', async (e) => {
             const target = e.target as HTMLElement | null;
             if (!target || !this.#annotationManager || !this.#noteManager || !this.#undoManager) return;
+
+            // Quick-copy button (quote + note → clipboard)
+            if (target.classList.contains('note-copy')) {
+                const annotationId = target.dataset.annotationId;
+                if (annotationId) void this.copyAnnotation(annotationId, target);
+                e.stopPropagation();
+                return;
+            }
 
             // Edit button
             if (target.classList.contains('note-edit')) {
@@ -1228,32 +1250,46 @@ export class MarkonApp {
      * suitable for pasting into an AI tool. Briefly flips the trigger link's
      * label to confirm the action.
      */
-    async exportAnnotations(anchor?: HTMLElement | null): Promise<void> {
-        if (!this.#annotationManager) return;
-        const title = document.title || this.#filePath || undefined;
-        const markdown = this.#annotationManager.formatAsMarkdown({ documentTitle: title });
+    /**
+     * Open the annotation export wizard (selection → Markdown editor). When the
+     * page has no annotations, flash an inline hint on the toolbar link instead.
+     */
+    exportAnnotations(anchor?: HTMLElement | null): void {
+        const annotationManager = this.#annotationManager;
+        if (!annotationManager) return;
         const t = window.__MARKON_I18N__?.t ?? ((k: string): string => k);
-        const flash = (key: string): void => {
-            if (!anchor) return;
+        if (!this.#exportManager) {
+            this.#exportManager = new ExportManager({
+                annotationManager,
+                getDocumentTitle: () => document.title || this.#filePath || '',
+                getFilePath: () => this.#filePath,
+            });
+        }
+        const opened = this.#exportManager.open();
+        if (!opened && anchor) {
             const original = anchor.textContent ?? '';
-            anchor.textContent = t(key);
+            anchor.textContent = t('web.export.empty');
             anchor.classList.add('is-flashing');
             setTimeout(() => {
                 anchor.textContent = original;
                 anchor.classList.remove('is-flashing');
             }, 1500);
-        };
-        if (!markdown) {
-            flash('web.export.empty');
-            return;
         }
-        try {
-            await navigator.clipboard.writeText(markdown);
-            flash('web.export.copied');
-        } catch (err) {
-            Logger.warn('MarkonApp', 'Clipboard write failed', err);
-            flash('web.export.failed');
-        }
+    }
+
+    /**
+     * Copy a single annotation (quote + note) to the clipboard as Markdown.
+     * Backs the per-annotation quick-copy buttons on note cards and the
+     * highlight popover.
+     */
+    async copyAnnotation(annotationId: string, button?: HTMLElement | null): Promise<void> {
+        const annotationManager = this.#annotationManager;
+        if (!annotationManager) return;
+        const annotation = annotationManager.getById(annotationId);
+        if (!annotation) return;
+        const markdown = annotationManager.formatAnnotation(annotation);
+        const ok = await copyText(markdown);
+        if (button) flashText(button, _t(ok ? 'web.export.copied' : 'web.export.failed'));
     }
 
     /** Initialize search. @private */

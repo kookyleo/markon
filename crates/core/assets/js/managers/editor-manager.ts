@@ -7,6 +7,8 @@ import { CONFIG } from '../core/config';
 import { Logger } from '../core/utils';
 import { Meta } from '../services/dom';
 import { Text } from '../services/text';
+import { downloadTextFile, toMarkdownFilename } from '../core/download';
+import { copyText, flashText } from '../core/clipboard';
 
 const _t: (key: string, ...args: unknown[]) => string =
     (typeof window !== 'undefined' && window.__MARKON_I18N__ && window.__MARKON_I18N__.t) ||
@@ -21,12 +23,29 @@ export type EditorLayout = 'split' | 'full';
 /** Narrow-screen tab state. */
 export type EditorTab = 'edit' | 'preview';
 
+/**
+ * Editor mode:
+ *  - `edit`   — bound to the source file; Save writes back to the server.
+ *  - `export` — ephemeral buffer seeded from a string (annotation export);
+ *               Save downloads a local `.md`, plus a Copy button, and closing
+ *               does not reload the page or write to the server.
+ */
+export type EditorMode = 'edit' | 'export';
+
 /** Optional configuration accepted by `EditorManager.open()`. */
 export interface EditorOpenOptions {
     /** Text to find and select in editor. */
     selectedText?: string;
     /** Line number to jump to (1-based). */
     line?: number;
+    /** Editor mode (defaults to `edit`). */
+    mode?: EditorMode;
+    /** Initial content for `export` mode (used instead of fetching the file). */
+    content?: string;
+    /** Display name + default download filename for `export` mode. */
+    exportFileName?: string;
+    /** Callback for the "Back" button in `export` mode (re-open the wizard). */
+    onBack?: () => void;
 }
 
 /** Request body sent to POST /api/save. */
@@ -67,6 +86,12 @@ export class EditorManager {
     #isSyncingScroll = false;
     /** function to remove scroll listeners */
     #scrollSyncCleanup: (() => void) | null = null;
+    /** Current mode — `export` repurposes Save as a local download. */
+    #mode: EditorMode = 'edit';
+    /** Display name / default download filename in export mode. */
+    #exportFileName = 'annotations.md';
+    /** Back-to-wizard callback in export mode. */
+    #onBack: (() => void) | null = null;
 
     constructor(filePath: string) {
         this.#filePath = filePath;
@@ -87,12 +112,22 @@ export class EditorManager {
      * Open the editor.
      */
     async open(options: EditorOpenOptions = {}): Promise<void> {
-        // Fetch current file content
-        const content = await this.#fetchCurrentContent();
-        if (content === null) {
-            Logger.error('EditorManager', 'Failed to fetch file content');
-            alert('Failed to load file content. Please ensure edit feature is enabled.');
-            return;
+        this.#mode = options.mode ?? 'edit';
+        this.#onBack = options.onBack ?? null;
+
+        let content: string | null;
+        if (this.#mode === 'export') {
+            // Ephemeral buffer: seed from the supplied string, never touch the
+            // file or the `#original-markdown-data` blob.
+            content = options.content ?? '';
+            this.#exportFileName = toMarkdownFilename(options.exportFileName);
+        } else {
+            content = await this.#fetchCurrentContent();
+            if (content === null) {
+                Logger.error('EditorManager', 'Failed to fetch file content');
+                alert('Failed to load file content. Please ensure edit feature is enabled.');
+                return;
+            }
         }
 
         // Capture the loaded content as the dirty-comparison baseline
@@ -112,7 +147,7 @@ export class EditorManager {
             this.#focusEditor();
         }
 
-        Logger.log('EditorManager', 'Editor opened');
+        Logger.log('EditorManager', `Editor opened (${this.#mode} mode)`);
     }
 
     /**
@@ -120,8 +155,9 @@ export class EditorManager {
      */
     close(): void {
         if (this.#editorModal) {
-            // Prompt user if there are unsaved changes
-            if (this.#isDirty) {
+            // In `edit` mode, unsaved changes risk data loss → confirm. In
+            // `export` mode the buffer is a throwaway copy, so just close.
+            if (this.#mode === 'edit' && this.#isDirty) {
                 const confirmClose = confirm('You have unsaved changes. Close anyway?');
                 if (!confirmClose) return;
             }
@@ -137,6 +173,7 @@ export class EditorManager {
                 clearTimeout(this.#previewDebounceId);
                 this.#previewDebounceId = null;
             }
+            const wasExport = this.#mode === 'export';
             this.#editorModal.remove();
             this.#editorModal = null;
             this.#textarea = null;
@@ -147,8 +184,11 @@ export class EditorManager {
             this.#isDirty = false;
             this.#baselineContent = '';
 
-            // Reload page to return to view mode
-            window.location.reload();
+            // Edit mode reloads to re-render the just-saved file; export mode
+            // is a non-destructive overlay, so leave the page as-is.
+            if (!wasExport) {
+                window.location.reload();
+            }
 
             Logger.log('EditorManager', 'Editor closed');
         }
@@ -161,6 +201,16 @@ export class EditorManager {
         if (!this.#textarea) return;
 
         const content = this.#textarea.value;
+
+        // Export mode: "Save" means download a local .md, never hit the server.
+        if (this.#mode === 'export') {
+            downloadTextFile(this.#exportFileName, content);
+            if (this.#saveButton) flashText(this.#saveButton, _t('web.export.downloaded'));
+            this.#baselineContent = content;
+            this.#isDirty = false;
+            return;
+        }
+
         const success = await this.#saveToServer(content);
 
         if (success) {
@@ -249,12 +299,27 @@ export class EditorManager {
     }
 
     #createEditorUI(content: string): void {
+        const isExport = this.#mode === 'export';
+        const fileName = isExport ? this.#exportFileName : this.#filePath;
+        // Export mode swaps the file-bound Save for a Copy + Download pair and
+        // (when the wizard supplied one) a Back button that re-opens step 1.
+        const backBtn = isExport && this.#onBack
+            ? `<button class="editor-back-btn">${_t('web.export.back')}</button>`
+            : '';
+        const copyBtn = isExport
+            ? `<button class="editor-copy-btn">${_t('web.export.copy')}</button>`
+            : '';
+        const saveBtn = isExport
+            ? `<button class="editor-save-btn editor-download-btn">${_t('web.export.download')}</button>`
+            : `<button class="editor-save-btn" style="display: none;">${_t('web.editor.save')}</button>`;
+
         const modal = document.createElement('div');
-        modal.className = 'editor-modal';
+        modal.className = isExport ? 'editor-modal editor-modal-export' : 'editor-modal';
         modal.innerHTML = `
             <div class="editor-header">
                 <button class="editor-close" title="${_t('web.editor.close.tip')}">✕</button>
-                <span class="editor-file-name">${Text.escape(this.#filePath)}</span>
+                ${backBtn}
+                <span class="editor-file-name">${Text.escape(fileName)}</span>
                 <div class="editor-tab-bar">
                     <button class="editor-tab editor-tab-edit active" data-tab="edit">Edit</button>
                     <button class="editor-tab editor-tab-preview" data-tab="preview">Preview</button>
@@ -272,7 +337,8 @@ export class EditorManager {
                         </svg>
                     </button>
                 </div>
-                <button class="editor-save-btn" style="display: none;">${_t('web.editor.save')}</button>
+                ${copyBtn}
+                ${saveBtn}
             </div>
             <div class="editor-body">
                 <div class="editor-split">
@@ -335,10 +401,30 @@ export class EditorManager {
             this.close();
         });
 
-        // Save button
+        // Save button (in export mode this downloads a local .md)
         this.#saveButton?.addEventListener('click', () => {
             void this.save();
         });
+
+        // Export-mode Copy button: copy the current buffer to the clipboard.
+        this.#editorModal
+            ?.querySelector<HTMLButtonElement>('.editor-copy-btn')
+            ?.addEventListener('click', (e) => {
+                const btn = e.currentTarget as HTMLButtonElement;
+                const content = this.#textarea?.value ?? '';
+                void copyText(content).then(ok => {
+                    flashText(btn, _t(ok ? 'web.export.copied' : 'web.export.failed'));
+                });
+            });
+
+        // Export-mode Back button: close this overlay and re-open the wizard.
+        this.#editorModal
+            ?.querySelector<HTMLButtonElement>('.editor-back-btn')
+            ?.addEventListener('click', () => {
+                const back = this.#onBack;
+                this.close();
+                back?.();
+            });
 
         if (!this.#textarea) return;
         const textarea = this.#textarea;
@@ -404,6 +490,8 @@ export class EditorManager {
     }
 
     #updateSaveButtonState(): void {
+        // Export mode keeps the Download button permanently visible.
+        if (this.#mode === 'export') return;
         if (this.#saveButton) {
             if (this.#isDirty) {
                 this.#saveButton.style.display = 'block';
@@ -416,6 +504,8 @@ export class EditorManager {
     }
 
     #updateTitleDirtyIndicator(): void {
+        // Export mode shows a download filename, not the live source path.
+        if (this.#mode === 'export') return;
         const fileNameElement = this.#editorModal?.querySelector('.editor-file-name');
         if (!fileNameElement) return;
 

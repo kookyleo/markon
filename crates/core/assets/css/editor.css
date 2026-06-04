@@ -1770,3 +1770,299 @@ html[data-theme="dark"] .editor-tab.active {
     color: var(--markon-text);
     border-bottom-color: var(--markon-primary);
 }
+
+/* ─────────────────────────────────────────────────────────────────────────
+   Annotation export: per-item quick copy + two-step wizard + export editor
+   ───────────────────────────────────────────────────────────────────────── */
+
+/* Note-card / popup quick-copy button (sits beside ✎ / ×). */
+.note-copy {
+    width: 20px;
+    height: 20px;
+    border: none;
+    color: white;
+    border-radius: 50%;
+    font-size: 13px;
+    line-height: 1;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    opacity: 0.7;
+    transition: opacity 0.2s, transform 0.2s;
+    padding: 0;
+    background: var(--markon-primary);
+}
+
+.note-copy:hover {
+    opacity: 1;
+    transform: scale(1.1);
+}
+
+/* ── Step 1: selection wizard (full-screen overlay) ────────────────────── */
+.export-modal {
+    position: fixed;
+    inset: 0;
+    z-index: var(--markon-z-chrome);
+    background: var(--markon-canvas);
+    color: var(--markon-text);
+    display: flex;
+    flex-direction: column;
+    font-family: var(--markon-ui-font);
+    font-size: var(--markon-ui-font-size);
+}
+
+.export-header {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 14px 20px;
+    border-bottom: 1px solid var(--markon-border-strong);
+}
+
+.export-title {
+    margin: 0;
+    font-size: 16px;
+    font-weight: 600;
+    flex: 1;
+}
+
+.export-close {
+    border: none;
+    background: transparent;
+    color: var(--markon-muted);
+    font-size: 18px;
+    line-height: 1;
+    cursor: pointer;
+    padding: 4px 8px;
+    border-radius: 4px;
+}
+
+.export-close:hover {
+    background: var(--markon-subtle);
+    color: var(--markon-text);
+}
+
+.export-toolbar {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 12px;
+    padding: 12px 20px;
+    border-bottom: 1px solid var(--markon-border);
+}
+
+.export-bulk {
+    display: flex;
+    gap: 6px;
+}
+
+.export-bulk button {
+    border: 1px solid var(--markon-border-strong);
+    background: var(--markon-canvas);
+    color: var(--markon-text);
+    border-radius: 6px;
+    padding: 4px 12px;
+    font-size: 13px;
+    cursor: pointer;
+}
+
+.export-bulk button:hover {
+    background: var(--markon-subtle);
+}
+
+.export-filters {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+}
+
+.export-chip {
+    border: 1px solid var(--markon-border-strong);
+    background: var(--markon-canvas);
+    color: var(--markon-muted);
+    border-radius: 999px;
+    padding: 3px 12px;
+    font-size: 12px;
+    cursor: pointer;
+    transition: background 0.15s, color 0.15s, border-color 0.15s;
+}
+
+.export-chip:hover {
+    background: var(--markon-subtle);
+}
+
+.export-chip.is-active {
+    background: var(--markon-primary);
+    border-color: var(--markon-primary);
+    color: #fff;
+}
+
+.export-actions {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 10px 20px;
+}
+
+.export-actions-top {
+    border-bottom: 1px solid var(--markon-border);
+}
+
+.export-actions-bottom {
+    border-top: 1px solid var(--markon-border);
+}
+
+.export-actions-spacer {
+    flex: 1;
+}
+
+.export-count {
+    color: var(--markon-muted);
+    font-size: 13px;
+}
+
+.export-cancel,
+.export-next {
+    border-radius: 6px;
+    padding: 6px 16px;
+    font-size: 13px;
+    font-weight: 500;
+    cursor: pointer;
+    border: 1px solid var(--markon-border-strong);
+    background: var(--markon-canvas);
+    color: var(--markon-text);
+}
+
+.export-cancel:hover {
+    background: var(--markon-subtle);
+}
+
+.export-next {
+    background: var(--markon-primary);
+    border-color: var(--markon-primary);
+    color: #fff;
+}
+
+.export-next:hover {
+    background: var(--markon-primary-hover);
+}
+
+.export-next:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+.export-body {
+    flex: 1;
+    overflow-y: auto;
+    padding: 8px 20px 24px;
+}
+
+.export-group {
+    margin-top: 16px;
+}
+
+.export-group-head {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 0;
+    cursor: pointer;
+    border-bottom: 1px solid var(--markon-border);
+}
+
+.export-group-title {
+    font-weight: 600;
+    font-size: 14px;
+}
+
+.export-group-items {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    padding: 4px 0 0;
+}
+
+.export-item {
+    display: grid;
+    grid-template-columns: auto auto 1fr;
+    align-items: baseline;
+    gap: 8px;
+    padding: 7px 10px;
+    border-radius: 6px;
+    cursor: pointer;
+}
+
+.export-item:hover {
+    background: var(--markon-subtle);
+}
+
+.export-item-check,
+.export-group-check {
+    cursor: pointer;
+    margin: 0;
+    align-self: center;
+}
+
+.export-item-badge {
+    font-size: 11px;
+    line-height: 1.6;
+    padding: 0 8px;
+    border-radius: 999px;
+    white-space: nowrap;
+    color: #3a3a3a;
+}
+
+.export-item-badge.highlight-orange { background-color: rgba(255, 165, 0, 0.5); }
+.export-item-badge.highlight-green  { background-color: rgba(144, 238, 144, 0.6); }
+.export-item-badge.highlight-yellow { background-color: rgba(255, 255, 0, 0.5); }
+.export-item-badge.strikethrough    { background-color: var(--markon-subtle); text-decoration: line-through; color: var(--markon-muted); }
+.export-item-badge.has-note         { background-color: var(--markon-subtle); color: var(--markon-text); }
+
+html[data-theme="dark"] .export-item-badge { color: #f0f0f0; }
+html[data-theme="dark"] .export-item-badge.highlight-orange { background-color: rgba(224, 108, 43, 0.45); }
+html[data-theme="dark"] .export-item-badge.highlight-green  { background-color: rgba(46, 160, 67, 0.45); }
+html[data-theme="dark"] .export-item-badge.highlight-yellow { background-color: rgba(187, 128, 9, 0.45); }
+
+.export-item-text {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.export-item-note {
+    grid-column: 3;
+    color: var(--markon-muted);
+    font-size: 12px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+/* ── Step 2: export-mode editor (Copy / Download / Back) ───────────────── */
+.editor-copy-btn,
+.editor-back-btn {
+    border: 1px solid var(--markon-border-strong);
+    background: var(--markon-canvas);
+    color: var(--markon-text);
+    padding: 6px 14px;
+    font-size: 13px;
+    border-radius: 6px;
+    cursor: pointer;
+    flex-shrink: 0;
+}
+
+.editor-copy-btn:hover,
+.editor-back-btn:hover {
+    background: var(--markon-subtle);
+}
+
+.editor-download-btn {
+    display: block;
+    background-color: var(--markon-primary);
+}
+
+.editor-download-btn:hover {
+    background-color: var(--markon-primary-hover);
+}

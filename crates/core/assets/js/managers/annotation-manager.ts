@@ -34,6 +34,29 @@ export type AnnotationType =
  */
 export type AnnotationTagName = 'span' | 's';
 
+/** Human-readable label for an annotation type (English; used in exported Markdown). */
+export function annotationTypeLabel(type: AnnotationType): string {
+    switch (type) {
+        case 'highlight-orange': return 'Orange highlight';
+        case 'highlight-green':  return 'Green highlight';
+        case 'highlight-yellow': return 'Yellow highlight';
+        case 'strikethrough':    return 'Strikethrough';
+        case 'has-note':         return 'Note';
+    }
+}
+
+/** A heading reference resolved for an annotation. */
+export interface AnnotationHeading {
+    level: number;
+    text: string;
+}
+
+/** One section group: a heading (or null for pre-heading content) and its annotations. */
+export interface AnnotationGroup {
+    heading: AnnotationHeading | null;
+    items: Annotation[];
+}
+
 /**
  * Canonical Annotation schema. Persisted by storage-manager,
  * round-tripped through WebSocket, and consumed by note-manager,
@@ -142,7 +165,7 @@ export class AnnotationManager {
      * group annotations by section). Returns null if the annotation isn't
      * rendered or sits before the first heading.
      */
-    #headingForAnnotation(id: string): { level: number; text: string } | null {
+    headingForAnnotation(id: string): AnnotationHeading | null {
         const wrapper = this.#markdownBody.querySelector<HTMLElement>(
             `[data-annotation-id="${id}"]`,
         );
@@ -175,23 +198,55 @@ export class AnnotationManager {
     }
 
     /**
-     * Format every annotation on the page as Markdown suitable for pasting
-     * into an AI tool. Annotations are listed in document order and grouped
-     * by their containing heading.
+     * Group annotations (in document order) by their containing heading.
+     * When `ids` is given, only those annotations are included (preserving
+     * document order). Consecutive annotations under the same heading share a
+     * group; content before the first heading lands in a `heading: null` group.
      */
-    formatAsMarkdown(opts: { documentTitle?: string } = {}): string {
-        const annotations = this.getAllInDocumentOrder();
+    getGroupedByHeading(ids?: Iterable<string>): AnnotationGroup[] {
+        const filter = ids ? new Set(ids) : null;
+        const annotations = this.getAllInDocumentOrder()
+            .filter(a => !filter || filter.has(a.id));
+
+        const groups: AnnotationGroup[] = [];
+        let lastKey: string | null = null;
+        annotations.forEach(a => {
+            const heading = this.headingForAnnotation(a.id);
+            const key = heading ? `${heading.level}|${heading.text}` : '\0none';
+            if (key !== lastKey) {
+                groups.push({ heading, items: [] });
+                lastKey = key;
+            }
+            groups[groups.length - 1].items.push(a);
+        });
+        return groups;
+    }
+
+    /**
+     * Format a single annotation as a standalone Markdown snippet centered on
+     * the quoted text, with the note (if any) following it. Used by the
+     * per-annotation quick-copy buttons.
+     */
+    formatAnnotation(a: Annotation): string {
+        const lines: string[] = a.text.trim().split(/\r?\n/).map(l => `> ${l}`);
+        if (a.note && a.note.trim()) {
+            lines.push('', a.note.trim());
+        }
+        return lines.join('\n') + '\n';
+    }
+
+    /**
+     * Format annotations on the page as Markdown suitable for pasting into an
+     * AI tool. Annotations are listed in document order and grouped by their
+     * containing heading. When `ids` is given, only those annotations are
+     * exported (used by the selection wizard); otherwise the whole page is.
+     */
+    formatAsMarkdown(opts: { documentTitle?: string; ids?: Iterable<string> } = {}): string {
+        const filter = opts.ids ? new Set(opts.ids) : null;
+        const annotations = this.getAllInDocumentOrder()
+            .filter(a => !filter || filter.has(a.id));
         if (annotations.length === 0) return '';
 
-        const typeLabel = (a: Annotation): string => {
-            switch (a.type) {
-                case 'highlight-orange': return 'Orange highlight';
-                case 'highlight-green':  return 'Green highlight';
-                case 'highlight-yellow': return 'Yellow highlight';
-                case 'strikethrough':    return 'Strikethrough';
-                case 'has-note':         return 'Note';
-            }
-        };
         const escapeBlockquote = (s: string): string =>
             s.replace(/\r?\n/g, '\n> ');
 
@@ -203,13 +258,13 @@ export class AnnotationManager {
 
         let lastHeadingKey = '';
         annotations.forEach((a, idx) => {
-            const heading = this.#headingForAnnotation(a.id);
+            const heading = this.headingForAnnotation(a.id);
             const key = heading ? `${heading.level}|${heading.text}` : '';
             if (key !== lastHeadingKey && heading) {
                 lines.push(`## ${heading.text}`, '');
                 lastHeadingKey = key;
             }
-            const label = typeLabel(a);
+            const label = annotationTypeLabel(a.type);
             // Anchor text: for `has-note` (no highlight color) the text is
             // still the original selection; for the others it's the
             // highlighted span.

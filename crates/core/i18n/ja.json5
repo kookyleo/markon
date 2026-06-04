@@ -301,10 +301,22 @@
 
     // ── 注釈エクスポート ─────────────────────────────────────
     "web.export.label":     "注釈をエクスポート",
-    "web.export.tip":       "このページの注釈を Markdown としてコピーし、AI に貼り付け可能にする",
+    "web.export.tip":       "このページの注釈を選択して Markdown としてエクスポート",
     "web.export.copied":    "✓ コピーしました",
     "web.export.empty":     "このページに注釈はありません",
     "web.export.failed":    "コピーに失敗しました",
+    "web.export.copy":      "コピー",
+    "web.export.copyitem":  "この注釈をコピー",
+    "web.export.wizard.title": "注釈をエクスポート",
+    "web.export.selectall": "すべて選択",
+    "web.export.selectnone": "選択解除",
+    "web.export.next":      "次へ →",
+    "web.export.back":      "← 戻る",
+    "web.export.cancel":    "キャンセル",
+    "web.export.selected":  "件を選択",
+    "web.export.nosection": "（セクションなし）",
+    "web.export.download":  ".md をダウンロード",
+    "web.export.downloaded": "✓ ダウンロードしました",
 
     // ── Keyboard shortcuts panel ─────────────────────────────
     "web.kbd.title":        "キーボードショートカット",

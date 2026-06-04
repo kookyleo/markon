@@ -417,4 +417,65 @@ describe('AnnotationManager', () => {
         expect(md).toContain('> remember this');
         expect(md).toContain('> a free-floating note');
     });
+
+    it('formatAsMarkdown with ids exports only the selected subset (#13 wizard)', async () => {
+        const article = setupArticle('<h2 id="a">Section A</h2><p>alpha bravo charlie</p>');
+        const mgr = new AnnotationManager(makeStorage(), article);
+        const p = article.querySelector('p')!;
+
+        const yellow = mgr.createAnnotation(makeRange(p.firstChild!, 0, 5), 'highlight-yellow', 'span');
+        await mgr.add(yellow);
+        mgr.applyToDOM([yellow]);
+        const tail = p.lastChild as Text;
+        const orange = mgr.createAnnotation(makeRange(tail, 1, 6), 'highlight-orange', 'span');
+        await mgr.add(orange);
+        mgr.applyToDOM([orange]);
+
+        const md = mgr.formatAsMarkdown({ ids: new Set([orange.id]) });
+        expect(md).toContain('*1 annotation*');
+        expect(md).toContain('Orange highlight');
+        expect(md).not.toContain('Yellow highlight');
+
+        // Empty selection yields an empty document.
+        expect(mgr.formatAsMarkdown({ ids: new Set<string>() })).toBe('');
+    });
+
+    it('formatAnnotation renders quote and note for a single annotation', async () => {
+        const article = setupArticle('<p>alpha bravo charlie</p>');
+        const mgr = new AnnotationManager(makeStorage(), article);
+        const p = article.querySelector('p')!;
+
+        const withNote = mgr.createAnnotation(makeRange(p.firstChild!, 0, 5), 'has-note', 'span', 'remember this');
+        expect(mgr.formatAnnotation(withNote)).toBe('> alpha\n\nremember this\n');
+
+        const plain = mgr.createAnnotation(makeRange(p.firstChild!, 0, 5), 'highlight-orange', 'span');
+        expect(mgr.formatAnnotation(plain)).toBe('> alpha\n');
+    });
+
+    it('getGroupedByHeading groups annotations under their heading in document order', async () => {
+        const article = setupArticle(
+            '<h2 id="a">Section A</h2><p>alpha bravo</p>'
+            + '<h2 id="b">Section B</h2><p>charlie delta</p>',
+        );
+        const mgr = new AnnotationManager(makeStorage(), article);
+        const pA = article.querySelectorAll('p')[0]!;
+        const pB = article.querySelectorAll('p')[1]!;
+
+        const a = mgr.createAnnotation(makeRange(pA.firstChild!, 0, 5), 'highlight-yellow', 'span');
+        await mgr.add(a);
+        mgr.applyToDOM([a]);
+        const b = mgr.createAnnotation(makeRange(pB.firstChild!, 0, 7), 'highlight-green', 'span');
+        await mgr.add(b);
+        mgr.applyToDOM([b]);
+
+        const groups = mgr.getGroupedByHeading();
+        expect(groups.map(g => g.heading?.text)).toEqual(['Section A', 'Section B']);
+        expect(groups[0].items.map(i => i.id)).toEqual([a.id]);
+        expect(groups[1].items.map(i => i.id)).toEqual([b.id]);
+
+        // Filtering narrows to a single group.
+        const onlyB = mgr.getGroupedByHeading(new Set([b.id]));
+        expect(onlyB).toHaveLength(1);
+        expect(onlyB[0].heading?.text).toBe('Section B');
+    });
 });

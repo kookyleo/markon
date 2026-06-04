@@ -184,8 +184,10 @@ export class NoteManager {
 
         const editLabel = _t('web.note.edit');
         const deleteLabel = _t('web.note.delete');
+        const copyLabel = _t('web.export.copyitem');
         noteCard.innerHTML = `
             <div class="note-actions">
+                <button class="note-copy" data-annotation-id="${annotation.id}" title="${copyLabel}" aria-label="${copyLabel}">⧉</button>
                 <button class="note-edit" data-annotation-id="${annotation.id}" title="${editLabel}" aria-label="${editLabel}">✎</button>
                 <button class="note-delete" data-annotation-id="${annotation.id}" title="${deleteLabel}" aria-label="${deleteLabel}">×</button>
             </div>
@@ -427,8 +429,10 @@ export class NoteManager {
         popup.dataset.annotationId = annotationId;
         const popupEditLabel = _t('web.note.edit');
         const popupDeleteLabel = _t('web.note.delete');
+        const popupCopyLabel = _t('web.export.copyitem');
         popup.innerHTML = `
             <div class="note-actions">
+                <button class="note-copy" data-annotation-id="${annotationId}" title="${popupCopyLabel}" aria-label="${popupCopyLabel}">⧉</button>
                 <button class="note-edit" data-annotation-id="${annotationId}" title="${popupEditLabel}" aria-label="${popupEditLabel}">✎</button>
                 <button class="note-delete" data-annotation-id="${annotationId}" title="${popupDeleteLabel}" aria-label="${popupDeleteLabel}">×</button>
             </div>

@@ -301,10 +301,22 @@
 
     // ── Annotation export ───────────────────────────────────
     "web.export.label":     "Export annotations",
-    "web.export.tip":       "Copy this page's annotations as Markdown for pasting into an AI",
+    "web.export.tip":       "Select this page's annotations and export them as Markdown",
     "web.export.copied":    "✓ Copied",
     "web.export.empty":     "No annotations on this page",
     "web.export.failed":    "Copy failed",
+    "web.export.copy":      "Copy",
+    "web.export.copyitem":  "Copy this annotation",
+    "web.export.wizard.title": "Export annotations",
+    "web.export.selectall": "Select all",
+    "web.export.selectnone": "Clear all",
+    "web.export.next":      "Next →",
+    "web.export.back":      "← Back",
+    "web.export.cancel":    "Cancel",
+    "web.export.selected":  "selected",
+    "web.export.nosection": "(No section)",
+    "web.export.download":  "Download .md",
+    "web.export.downloaded": "✓ Downloaded",
 
     // ── Keyboard shortcuts panel ─────────────────────────────
     "web.kbd.title":        "Keyboard Shortcuts",

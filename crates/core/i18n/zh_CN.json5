@@ -300,10 +300,22 @@
 
     // ── 导出批注 ────────────────────────────────────────────
     "web.export.label":     "导出批注",
-    "web.export.tip":       "将本页批注复制为 Markdown，便于贴给 AI",
+    "web.export.tip":       "选择本页批注并导出为 Markdown",
     "web.export.copied":    "✓ 已复制",
     "web.export.empty":     "本页无批注",
     "web.export.failed":    "复制失败",
+    "web.export.copy":      "复制",
+    "web.export.copyitem":  "复制此条批注",
+    "web.export.wizard.title": "导出批注",
+    "web.export.selectall": "全选",
+    "web.export.selectnone": "全不选",
+    "web.export.next":      "下一步 →",
+    "web.export.back":      "← 返回",
+    "web.export.cancel":    "取消",
+    "web.export.selected":  "项已选",
+    "web.export.nosection": "（无所属标题）",
+    "web.export.download":  "下载 .md",
+    "web.export.downloaded": "✓ 已下载",
 
     // ── 快捷键面板 ───────────────────────────────────────────
     "web.kbd.title":        "快捷键",
