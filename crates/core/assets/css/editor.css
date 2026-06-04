@@ -378,15 +378,15 @@ html[data-theme="dark"] .markdown-body h6.heading-focused {
 }
 
 .note-input-actions button {
-    padding: 6px 16px;
+    padding: 6px 14px;
     border-radius: 6px;
-    font-size: 14px;
+    font-size: 13px;
     font-weight: 500;
     cursor: pointer;
     border: 1px solid var(--markon-border-strong);
     background: var(--markon-canvas);
     color: var(--markon-text);
-    transition: all 0.1s;
+    transition: background-color 0.15s, border-color 0.15s, color 0.15s;
 }
 
 .note-input-actions button:hover {
@@ -553,15 +553,15 @@ html[data-theme="dark"] .markdown-body h6.heading-focused {
 }
 
 .confirm-actions button {
-    padding: 4px 12px;
-    border-radius: 4px;
-    font-size: 12px;
+    padding: 6px 14px;
+    border-radius: 6px;
+    font-size: 13px;
     font-weight: 500;
     cursor: pointer;
     border: 1px solid var(--markon-border-strong);
     background: var(--markon-canvas);
     color: var(--markon-text);
-    transition: all 0.1s;
+    transition: background-color 0.15s, border-color 0.15s, color 0.15s;
 }
 
 .confirm-actions button:hover {
