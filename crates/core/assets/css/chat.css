@@ -405,7 +405,7 @@ html[data-theme="dark"] .markon-chat-thread-row:hover {
 
 .markon-chat-thread-row-delete:hover {
     background: rgba(220, 53, 69, 0.15);
-    color: #dc3545;
+    color: var(--markon-danger);
     opacity: 1;
 }
 
@@ -887,7 +887,7 @@ html[data-theme="dark"] .markon-chat-quote-dismiss:hover {
 /* Streaming: turn into a small filled stop button (red) so the action is
    unambiguous mid-stream. */
 .markon-chat-send.streaming {
-    background: #dc3545;
+    background: var(--markon-danger);
     color: white;
 }
 
