@@ -1818,19 +1818,20 @@ html[data-theme="dark"] .editor-tab.active {
     font-size: var(--markon-ui-font-size);
 }
 
+/* Background scroll lock while the wizard is open — blocks wheel scroll-through
+   to the page behind the full-screen overlay. */
+.export-scroll-lock {
+    overflow: hidden !important;
+}
+
+/* Single header bar: close (X) on the left like the step-2 editor, title, then
+   the live count and the primary Next action concentrated on the right. No
+   border here — the toolbar below carries the only divider before the list. */
 .export-header {
     display: flex;
     align-items: center;
     gap: 12px;
-    padding: 14px 20px;
-    border-bottom: 1px solid var(--markon-border-strong);
-}
-
-.export-title {
-    margin: 0;
-    font-size: 16px;
-    font-weight: 600;
-    flex: 1;
+    padding: 12px 20px 10px;
 }
 
 .export-close {
@@ -1841,7 +1842,7 @@ html[data-theme="dark"] .editor-tab.active {
     line-height: 1;
     cursor: pointer;
     padding: 4px 8px;
-    border-radius: 4px;
+    border-radius: 6px;
 }
 
 .export-close:hover {
@@ -1849,21 +1850,51 @@ html[data-theme="dark"] .editor-tab.active {
     color: var(--markon-text);
 }
 
+.export-title {
+    margin: 0;
+    font-size: 16px;
+    font-weight: 600;
+    flex: 1;
+}
+
+.export-count {
+    color: var(--markon-muted);
+    font-size: 13px;
+}
+
+.export-next {
+    border-radius: 6px;
+    padding: 6px 16px;
+    font-size: 13px;
+    font-weight: 500;
+    cursor: pointer;
+    border: 1px solid var(--markon-primary);
+    background: var(--markon-primary);
+    color: #fff;
+}
+
+.export-next:hover {
+    background: var(--markon-primary-hover);
+    border-color: var(--markon-primary-hover);
+}
+
+.export-next:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+/* Selection toolbar — the single divider before the list. */
 .export-toolbar {
     display: flex;
     align-items: center;
     flex-wrap: wrap;
-    gap: 12px;
-    padding: 12px 20px;
+    gap: 8px;
+    padding: 0 20px 12px;
     border-bottom: 1px solid var(--markon-border);
 }
 
-.export-bulk {
-    display: flex;
-    gap: 6px;
-}
-
-.export-bulk button {
+.export-selectall,
+.export-selectnone {
     border: 1px solid var(--markon-border-strong);
     background: var(--markon-canvas);
     color: var(--markon-text);
@@ -1873,8 +1904,16 @@ html[data-theme="dark"] .editor-tab.active {
     cursor: pointer;
 }
 
-.export-bulk button:hover {
+.export-selectall:hover,
+.export-selectnone:hover {
     background: var(--markon-subtle);
+}
+
+.export-toolbar-sep {
+    width: 1px;
+    align-self: stretch;
+    margin: 2px 4px;
+    background: var(--markon-border);
 }
 
 .export-filters {
@@ -1904,78 +1943,29 @@ html[data-theme="dark"] .editor-tab.active {
     color: #fff;
 }
 
-.export-actions {
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    padding: 10px 20px;
-}
-
-.export-actions-top {
-    border-bottom: 1px solid var(--markon-border);
-}
-
-.export-actions-bottom {
-    border-top: 1px solid var(--markon-border);
-}
-
-.export-actions-spacer {
-    flex: 1;
-}
-
-.export-count {
-    color: var(--markon-muted);
-    font-size: 13px;
-}
-
-.export-cancel,
-.export-next {
-    border-radius: 6px;
-    padding: 6px 16px;
-    font-size: 13px;
-    font-weight: 500;
-    cursor: pointer;
-    border: 1px solid var(--markon-border-strong);
-    background: var(--markon-canvas);
-    color: var(--markon-text);
-}
-
-.export-cancel:hover {
-    background: var(--markon-subtle);
-}
-
-.export-next {
-    background: var(--markon-primary);
-    border-color: var(--markon-primary);
-    color: #fff;
-}
-
-.export-next:hover {
-    background: var(--markon-primary-hover);
-}
-
-.export-next:disabled {
-    opacity: 0.5;
-    cursor: not-allowed;
-}
-
 .export-body {
     flex: 1;
     overflow-y: auto;
+    overscroll-behavior: contain;
     padding: 8px 20px 24px;
 }
 
+/* Groups are separated by whitespace + a bolder heading rather than rules, to
+   keep the list calm (no per-group horizontal lines). */
 .export-group {
-    margin-top: 16px;
+    margin-top: 18px;
+}
+
+.export-group:first-child {
+    margin-top: 8px;
 }
 
 .export-group-head {
     display: flex;
     align-items: center;
     gap: 8px;
-    padding: 6px 0;
+    padding: 4px 0;
     cursor: pointer;
-    border-bottom: 1px solid var(--markon-border);
 }
 
 .export-group-title {

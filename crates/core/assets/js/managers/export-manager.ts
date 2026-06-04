@@ -83,6 +83,7 @@ export class ExportManager {
         document.removeEventListener('keydown', this.#onKeydown);
         this.#overlay?.remove();
         this.#overlay = null;
+        document.documentElement.classList.remove('export-scroll-lock');
     }
 
     // ── internals ──────────────────────────────────────────────────────────
@@ -113,37 +114,33 @@ export class ExportManager {
         const overlay = document.createElement('div');
         overlay.className = 'export-modal';
 
-        const actionsHtml = (pos: 'top' | 'bottom'): string => `
-            <div class="export-actions export-actions-${pos}">
-                <span class="export-count"></span>
-                <span class="export-actions-spacer"></span>
-                <button class="export-cancel" data-export-action="cancel">${_t('web.export.cancel')}</button>
-                <button class="export-next" data-export-action="next">${_t('web.export.next')}</button>
-            </div>`;
-
         const chipsHtml = this.#presentTypes().map(t =>
             `<button class="export-chip" data-export-type="${t}">${_t(TYPE_LABEL_KEYS[t])}</button>`,
         ).join('');
 
+        // Single header bar (X on the left, like the step-2 editor), with the
+        // primary action concentrated on the right; one toolbar row of
+        // selection tools below it is the only divider before the list.
         overlay.innerHTML = `
             <div class="export-header">
-                <h2 class="export-title">${_t('web.export.wizard.title')}</h2>
                 <button class="export-close" data-export-action="cancel" title="${_t('web.editor.close.tip')}" aria-label="${_t('web.export.cancel')}">✕</button>
+                <h2 class="export-title">${_t('web.export.wizard.title')}</h2>
+                <span class="export-count"></span>
+                <button class="export-next" data-export-action="next">${_t('web.export.next')}</button>
             </div>
             <div class="export-toolbar">
-                <div class="export-bulk">
-                    <button class="export-selectall" data-export-action="selectall">${_t('web.export.selectall')}</button>
-                    <button class="export-selectnone" data-export-action="selectnone">${_t('web.export.selectnone')}</button>
-                </div>
-                <div class="export-filters">${chipsHtml}</div>
+                <button class="export-selectall" data-export-action="selectall">${_t('web.export.selectall')}</button>
+                <button class="export-selectnone" data-export-action="selectnone">${_t('web.export.selectnone')}</button>
+                <span class="export-toolbar-sep"></span>
+                <span class="export-filters">${chipsHtml}</span>
             </div>
-            ${actionsHtml('top')}
             <div class="export-body">${this.#groupsHtml()}</div>
-            ${actionsHtml('bottom')}
         `;
 
         document.body.appendChild(overlay);
         this.#overlay = overlay;
+        // Lock the background page so the wheel can't scroll it behind the modal.
+        document.documentElement.classList.add('export-scroll-lock');
         this.#bindStep1(overlay);
         this.#syncUI();
         document.addEventListener('keydown', this.#onKeydown);
