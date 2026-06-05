@@ -903,12 +903,14 @@ export class SectionViewedManager {
         label.appendChild(checkbox);
         label.appendChild(text);
 
-        // One toolbar row under the title: collapse/expand/print/export links
-        // plus the All-Viewed toggle, so the checkbox no longer dangles off the
-        // end of the heading text.
+        // Assemble the bar. All-Viewed goes FIRST so the title's action row
+        // matches the per-section rows (Viewed | Print | Collapse) — uniform
+        // across the page.
         const toolbar = document.createElement('span');
         toolbar.className = 'viewed-toolbar';
-        toolbar.innerHTML = `
+        toolbar.appendChild(label);
+        toolbar.insertAdjacentHTML('beforeend', `
+            <span class="viewed-toolbar-separator">|</span>
             <a class="btn-collapse-all">${_t('web.viewed.collapseall')}</a>
             <span class="viewed-toolbar-separator">|</span>
             <a class="btn-expand-all">${_t('web.viewed.expandall')}</a>
@@ -916,11 +918,37 @@ export class SectionViewedManager {
             <a class="btn-print-page">${_t('web.viewed.print')}</a>
             <span class="viewed-toolbar-separator">|</span>
             <a class="btn-export-annotations" title="${_t('web.export.tip')}">${_t('web.export.label')}</a>
-            <span class="viewed-toolbar-separator">|</span>
-        `;
-        toolbar.appendChild(label);
+        `);
 
-        h1.appendChild(toolbar);
+        // Attach the bar inline right after the title when it fits on the same
+        // line; if it would wrap, drop the WHOLE bar onto its own line below the
+        // heading instead — never leave it half-wrapped inside the <h1>. This
+        // mirrors how shorter headings carry their actions inline.
+        const placeToolbar = (): void => {
+            if (toolbar.parentElement !== h1) h1.appendChild(toolbar);
+            toolbar.classList.remove('viewed-toolbar--block');
+            const withBar = h1.offsetHeight;
+            toolbar.style.display = 'none';
+            const titleOnly = h1.offsetHeight;
+            toolbar.style.display = '';
+            // If the bar made the heading taller, it spilled onto a new line —
+            // lift it out of the heading onto its own row.
+            if (withBar > titleOnly) {
+                toolbar.classList.add('viewed-toolbar--block');
+                h1.after(toolbar);
+            }
+        };
+        placeToolbar();
+
+        // Re-evaluate when the width (or web-font metrics) change.
+        let placeTimer = 0;
+        window.addEventListener('resize', () => {
+            window.clearTimeout(placeTimer);
+            placeTimer = window.setTimeout(placeToolbar, 150);
+        });
+        if (document.fonts && document.fonts.ready) {
+            void document.fonts.ready.then(placeToolbar);
+        }
 
         this.allViewedCheckbox = checkbox;
         this.updatingAllViewedCheckbox = false;

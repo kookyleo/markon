@@ -885,6 +885,13 @@ html[data-theme="dark"] .markdown-body h6.heading-focused {
     margin-left: 0;
 }
 
+/* When the bar can't fit after the title it's relocated below the heading as
+   its own row (JS toggles this) — a normal flex line, not wrapped in the H1. */
+.viewed-toolbar--block {
+    display: flex;
+    margin: 8px 0 0;
+}
+
 /* Dark theme adjustments — now handled by CSS variables above */
 
 /* ============================================================
