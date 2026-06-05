@@ -105,13 +105,14 @@
     --markon-radius-lg: 8px;  /* large containers: modals, panels */
 
     /* ── Overlay top bars ──────────────────────────────────── */
-    /* One height + style for every full-screen overlay's top bar (export
-       wizard, source editor, search …). The skirt is extra blank below the
-       control row so content scrolling up underneath doesn't pack tight
-       against the bar. */
+    /* One fixed height + horizontal inset for every full-screen overlay's top
+       bar (export wizard, source editor, search …) so they all match and their
+       controls sit vertically centred. The skirt is breathing room applied to
+       the *content region's* top — never to the bar's own padding, which would
+       push the bar controls off-centre. */
+    --markon-bar-height: 52px;
     --markon-bar-pad-x: 20px;
-    --markon-bar-pad-y: 12px;
-    --markon-bar-skirt: 10px;
+    --markon-bar-skirt: 14px;
 
     /* ── Elevation (floating surfaces) ─────────────────────── */
     --markon-shadow-pop:   0 2px 8px rgba(0, 0, 0, 0.12);   /* popovers, dialogs, mobile note */

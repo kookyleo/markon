@@ -542,15 +542,22 @@
             width: 100%;
             display: flex;
             justify-content: center;
+            align-items: center;
+            /* Shared overlay-bar fixed height (see --markon-bar-* tokens);
+               border-box so the 1px divider is counted in, matching the export
+               and editor bars exactly. */
+            height: var(--markon-bar-height);
+            box-sizing: border-box;
             flex-shrink: 0;
         }
 
         #search-input {
             width: 100%;
             max-width: 980px;
-            /* Shared overlay-bar vertical rhythm (see --markon-bar-* tokens);
+            height: 100%;
+            /* Full-height field, text vertically centred by the input itself;
                wider horizontal inset keeps the query text off the edges. */
-            padding: var(--markon-bar-pad-y) 45px;
+            padding: 0 45px;
             font-size: 1.1em;
             border: none;
             outline: none;
@@ -563,6 +570,9 @@
             overflow-y: auto;
             display: flex;
             justify-content: center;
+            /* Top skirt: breathing room below the bar (on the content, so the
+               bar stays vertically centred). */
+            padding-top: var(--markon-bar-skirt);
         }
 
         #search-results {
@@ -576,7 +586,7 @@
 
         @media (max-width: 768px) {
             #search-input {
-                padding: var(--markon-bar-pad-y) 20px;
+                padding: 0 20px;
             }
         }
 
@@ -649,10 +659,8 @@
 
         .search-input-container {
             background: var(--markon-subtle);
-            /* Same bar treatment as export / editor: 1px divider + a blank
-               skirt below the field so results don't crowd the bar. */
+            /* Same bar treatment as export / editor: a 1px divider. */
             border-bottom: 1px solid var(--markon-border);
-            padding-bottom: var(--markon-bar-skirt);
         }
 
         #search-input {

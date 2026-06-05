@@ -1227,9 +1227,11 @@ html[data-theme="dark"] .toc-item.viewed > a:hover {
     display: flex;
     align-items: center;
     gap: 16px;
-    /* Shared overlay-bar metrics — same height + skirt as the export header. */
-    padding: var(--markon-bar-pad-y) var(--markon-bar-pad-x)
-        calc(var(--markon-bar-pad-y) + var(--markon-bar-skirt));
+    /* Shared overlay-bar metrics — same fixed height as the export header. */
+    height: var(--markon-bar-height);
+    flex-shrink: 0;
+    padding: 0 var(--markon-bar-pad-x);
+    box-sizing: border-box;
     background-color: #2d2d2d;
     border-bottom: 1px solid #3e3e3e;
 }
@@ -1797,10 +1799,13 @@ html[data-theme="dark"] .editor-tab.active {
     display: flex;
     align-items: center;
     gap: 12px;
-    /* Shared overlay-bar metrics: one height across export / editor / search,
-       plus a blank skirt below the controls (see --markon-bar-* tokens). */
-    padding: var(--markon-bar-pad-y) var(--markon-bar-pad-x)
-        calc(var(--markon-bar-pad-y) + var(--markon-bar-skirt));
+    /* Shared overlay-bar metrics: one fixed height + horizontal inset across
+       export / editor / search, controls vertically centred (see
+       --markon-bar-* tokens). */
+    height: var(--markon-bar-height);
+    flex-shrink: 0;
+    padding: 0 var(--markon-bar-pad-x);
+    box-sizing: border-box;
     background: var(--markon-subtle);
     border-bottom: 1px solid var(--markon-border);
 }
@@ -1876,7 +1881,9 @@ html[data-theme="dark"] .editor-tab.active {
     flex: 1;
     overflow-y: auto;
     overscroll-behavior: contain;
-    padding: 8px 20px 24px;
+    /* Top skirt = breathing room below the bar (kept on the content, not the
+       bar, so the bar's controls stay vertically centred). */
+    padding: var(--markon-bar-skirt) 20px 24px;
 }
 
 /* Groups are separated by whitespace + a bolder heading rather than rules, to
