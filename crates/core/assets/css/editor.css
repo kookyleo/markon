@@ -1228,7 +1228,7 @@ html[data-theme="dark"] .markdown-body h6.heading-focused {
     right: 0;
     bottom: 0;
     z-index: var(--markon-z-chrome);
-    background-color: #1e1e1e;
+    background-color: var(--mk-editor-bg);
     display: flex;
     flex-direction: column;
 }
@@ -1243,14 +1243,14 @@ html[data-theme="dark"] .markdown-body h6.heading-focused {
     flex-shrink: 0;
     padding: 0 var(--markon-bar-pad-x);
     box-sizing: border-box;
-    background-color: #2d2d2d;
-    border-bottom: 1px solid #3e3e3e;
+    background-color: var(--mk-editor-header-bg);
+    border-bottom: 1px solid var(--mk-editor-header-border);
 }
 
 .editor-close {
     background: none;
     border: none;
-    color: #cccccc;
+    color: var(--mk-editor-chrome-fg);
     font-size: 18px;
     cursor: pointer;
     padding: 4px 8px;
@@ -1260,13 +1260,13 @@ html[data-theme="dark"] .markdown-body h6.heading-focused {
 }
 
 .editor-close:hover {
-    color: #ffffff;
+    color: var(--mk-editor-chrome-fg-strong);
 }
 
 .editor-file-name {
     flex: 1;
     font-family: monospace;
-    color: #ffffff;
+    color: var(--mk-editor-chrome-fg-strong);
     font-size: 14px;
     overflow: hidden;
     text-overflow: ellipsis;
@@ -1309,14 +1309,14 @@ html[data-theme="dark"] .markdown-body h6.heading-focused {
 .editor-split-divider {
     width: 5px;
     flex-shrink: 0;
-    background-color: #3e3e3e;
+    background-color: var(--mk-editor-divider);
     cursor: col-resize;
     transition: background-color 0.15s;
 }
 
 .editor-split-divider:hover,
 .editor-split-divider:active {
-    background-color: #0e639c;
+    background-color: var(--mk-editor-accent);
 }
 
 /* Preview content: reset body styles, use markdown-body */
@@ -1338,7 +1338,7 @@ html[data-theme="dark"] .markdown-body h6.heading-focused {
     background: none;
     border: none;
     border-bottom: 2px solid transparent;
-    color: #cccccc;
+    color: var(--mk-editor-chrome-fg);
     font-size: 13px;
     padding: 4px 14px;
     cursor: pointer;
@@ -1346,12 +1346,12 @@ html[data-theme="dark"] .markdown-body h6.heading-focused {
 }
 
 .editor-tab:hover {
-    color: #ffffff;
+    color: var(--mk-editor-chrome-fg-strong);
 }
 
 .editor-tab.active {
-    color: #ffffff;
-    border-bottom-color: #0e639c;
+    color: var(--mk-editor-chrome-fg-strong);
+    border-bottom-color: var(--mk-editor-accent);
 }
 
 .editor-container {
@@ -1366,15 +1366,15 @@ html[data-theme="dark"] .markdown-body h6.heading-focused {
     width: 50px;
     overflow-y: hidden;
     overflow-x: hidden;
-    background-color: #1e1e1e;
-    border-right: 1px solid #3e3e3e;
+    background-color: var(--mk-editor-gutter-bg);
+    border-right: 1px solid var(--mk-editor-gutter-border);
     padding: 0;
     user-select: none;
     text-align: right;
     font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
     font-size: 14px;
     line-height: 1.6;
-    color: #858585;
+    color: var(--mk-editor-gutter-fg);
 }
 
 .editor-line-number {
@@ -1407,8 +1407,8 @@ html[data-theme="dark"] .markdown-body h6.heading-focused {
     overflow-y: auto;
     overflow-x: auto;
     pointer-events: none;
-    background-color: #1e1e1e;
-    color: #d4d4d4;
+    background-color: var(--mk-editor-bg);
+    color: var(--mk-editor-fg);
     tab-size: 4;
     scrollbar-width: none; /* Firefox */
 }
@@ -1435,7 +1435,7 @@ html[data-theme="dark"] .markdown-body h6.heading-focused {
     bottom: 0;
     background-color: transparent;
     color: transparent;
-    caret-color: #ffffff;
+    caret-color: var(--mk-editor-caret);
     border: none;
     outline: none;
     font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
@@ -1449,64 +1449,65 @@ html[data-theme="dark"] .markdown-body h6.heading-focused {
 }
 
 .editor-textarea::selection {
-    background-color: rgba(38, 79, 120, 0.6);
+    background-color: var(--mk-editor-selection);
     color: transparent;
 }
 
-/* Markdown syntax highlighting colors */
+/* Markdown syntax highlighting — colours come from the active editor
+   preset (--mk-editor-syn-*; follow-page tracks data-theme). */
 .md-header {
-    color: #569cd6;
+    color: var(--mk-editor-syn-header);
     font-weight: bold;
 }
 
 .md-header-text {
-    color: #4ec9b0;
+    color: var(--mk-editor-syn-header-text);
     font-weight: bold;
 }
 
 .md-bold {
-    color: #dcdcaa;
+    color: var(--mk-editor-syn-bold);
     font-weight: bold;
 }
 
 .md-italic {
-    color: #ce9178;
+    color: var(--mk-editor-syn-italic);
     font-style: italic;
 }
 
 .md-code {
-    color: #d16969;
-    background-color: rgba(255, 255, 255, 0.1);
+    color: var(--mk-editor-syn-code);
+    background-color: var(--mk-editor-syn-code-bg);
 }
 
 .md-code-fence {
-    color: #808080;
+    color: var(--mk-editor-syn-fence);
 }
 
 .md-link {
-    color: #3794ff;
+    color: var(--mk-editor-syn-link);
 }
 
 .md-image {
-    color: #c586c0;
+    color: var(--mk-editor-syn-image);
 }
 
 .md-quote {
-    color: #6a9955;
+    color: var(--mk-editor-syn-quote);
 }
 
 .md-list {
-    color: #dcdcaa;
+    color: var(--mk-editor-syn-list);
 }
 
 .md-hr {
-    color: #808080;
+    color: var(--mk-editor-syn-hr);
 }
 
 
 .editor-save-btn {
-    background-color: #0e639c;
-    color: #ffffff;
+    background-color: var(--mk-editor-btn-bg);
+    color: var(--mk-editor-btn-fg);
     border: none;
     padding: 6px 16px;
     font-size: 13px;
@@ -1517,130 +1518,33 @@ html[data-theme="dark"] .markdown-body h6.heading-focused {
 }
 
 .editor-save-btn:hover {
-    background-color: #1177bb;
+    background-color: var(--mk-editor-btn-bg-hover);
 }
 
 .editor-save-btn:active {
-    background-color: #0d5a8f;
+    background-color: var(--mk-editor-btn-bg-active);
 }
 
 .editor-save-btn:disabled {
-    background-color: #4d4d4d;
-    color: #808080;
+    background-color: var(--mk-editor-btn-disabled-bg);
+    color: var(--mk-editor-btn-disabled-fg);
     cursor: not-allowed;
 }
 
 .editor-save-btn.has-changes {
-    background-color: #0e7a0d;
+    background-color: var(--mk-editor-btn-changes-bg);
 }
 
 .editor-save-btn.has-changes:hover {
-    background-color: #13a10e;
+    background-color: var(--mk-editor-btn-changes-bg-hover);
 }
 
-/* Auto theme (prefers-color-scheme) */
-@media (prefers-color-scheme: light) {
-    .editor-modal {
-        background-color: var(--markon-bg-default);
-    }
-
-    .editor-header {
-        background-color: #f3f3f3;
-        border-color: #e0e0e0;
-    }
-
-    .editor-close {
-        color: #333333;
-    }
-
-    .editor-close:hover {
-        color: #000000;
-    }
-
-    .editor-file-name {
-        color: #000000;
-    }
-
-    .editor-line-numbers {
-        background-color: var(--markon-bg-muted);
-        border-right-color: var(--markon-border-emphasis);
-        color: var(--markon-fg-muted);
-    }
-
-    .editor-highlight-layer {
-        background-color: var(--markon-bg-default);
-        color: var(--markon-fg-default);
-    }
-
-    .editor-textarea {
-        background-color: transparent;
-        color: transparent;
-        caret-color: var(--markon-fg-default);
-    }
-
-    /* Light theme syntax colors */
-    .md-header {
-        color: #0550ae;
-    }
-
-    .md-header-text {
-        color: #0a3069;
-    }
-
-    .md-bold {
-        color: #8250df;
-    }
-
-    .md-italic {
-        color: #cf222e;
-    }
-
-    .md-code {
-        color: #a40e26;
-        background-color: rgba(175, 184, 193, 0.2);
-    }
-
-    .md-code-fence {
-        color: #57606a;
-    }
-
-    .md-link {
-        color: #0969da;
-    }
-
-    .md-image {
-        color: #8250df;
-    }
-
-    .md-quote {
-        color: #1a7f37;
-    }
-
-    .md-list {
-        color: #8250df;
-    }
-
-    .md-hr {
-        color: #57606a;
-    }
-
-    .editor-textarea::selection {
-        background-color: #add6ff;
-    }
-
-    .editor-status {
-        color: var(--markon-fg-muted);
-    }
-
-    /* Light preview pane stays white regardless of color-scheme */
-    .editor-preview-content {
-        background-color: var(--markon-bg-default);
-        color: var(--markon-fg-default);
-    }
-
-    .editor-pane-preview {
-        background-color: var(--markon-bg-default);
-    }
+/* Editor status text — theme-following like the rest of the chrome. The
+   old prefers-color-scheme light override is gone: the editor now themes
+   through the --mk-editor-* preset layer (default "follow page"), so a
+   single base rule covers both themes. */
+.editor-status {
+    color: var(--markon-fg-muted);
 }
 
 /* ============================================================

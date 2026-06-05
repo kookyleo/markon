@@ -158,6 +158,49 @@
     --markon-accent-hover:   color-mix(in srgb, var(--markon-accent) 80%, black);
     --markon-fg-muted-hover: color-mix(in srgb, var(--markon-fg-muted) 60%, black);
     --markon-accent-muted:   color-mix(in srgb, var(--markon-accent) 10%, transparent);
+
+    /* ── Source-editor preset layer ──────────────────────────
+       editor.css references only these --mk-editor-* vars. The defaults
+       below are the "follow page" preset: chrome maps to the page tokens
+       (so it tracks data-theme) and markdown syntax uses the light GitHub
+       palette here + the GitHub-dark palette in the dark block. A named
+       preset overrides the whole set under html[data-editor-theme="…"]
+       (see "VSCode Dark" below). Adding a preset = one such block + one
+       settings option; nothing in editor.css changes. */
+    --mk-editor-bg:               var(--markon-bg-default);
+    --mk-editor-fg:               var(--markon-fg-default);
+    --mk-editor-header-bg:        var(--markon-bg-muted);
+    --mk-editor-header-border:    var(--markon-border-default);
+    --mk-editor-chrome-fg:        var(--markon-fg-muted);    /* close/tab idle */
+    --mk-editor-chrome-fg-strong: var(--markon-fg-default);  /* filename, hover/active */
+    --mk-editor-gutter-bg:        var(--markon-bg-default);
+    --mk-editor-gutter-border:    var(--markon-border-default);
+    --mk-editor-gutter-fg:        var(--markon-fg-muted);
+    --mk-editor-divider:          var(--markon-border-default);
+    --mk-editor-accent:           var(--markon-accent);      /* divider hover, tab active, save */
+    --mk-editor-caret:            var(--markon-fg-default);
+    --mk-editor-selection:        var(--markon-selection);
+    --mk-editor-btn-fg:           var(--markon-fg-on-emphasis);
+    --mk-editor-btn-bg:           var(--markon-accent);
+    --mk-editor-btn-bg-hover:     var(--markon-accent-hover);
+    --mk-editor-btn-bg-active:    var(--markon-accent-hover);
+    --mk-editor-btn-changes-bg:       var(--markon-success);
+    --mk-editor-btn-changes-bg-hover: var(--markon-success-hover);
+    --mk-editor-btn-disabled-bg:  var(--markon-bg-muted);
+    --mk-editor-btn-disabled-fg:  var(--markon-fg-subtle);
+    /* markdown syntax — light (GitHub-light, preserves the prior light editor) */
+    --mk-editor-syn-header:       #0550ae;
+    --mk-editor-syn-header-text:  #0a3069;
+    --mk-editor-syn-bold:         #8250df;
+    --mk-editor-syn-italic:       #cf222e;
+    --mk-editor-syn-code:         #a40e26;
+    --mk-editor-syn-code-bg:      rgba(175, 184, 193, 0.2);
+    --mk-editor-syn-fence:        #57606a;
+    --mk-editor-syn-link:         #0969da;
+    --mk-editor-syn-image:        #8250df;
+    --mk-editor-syn-quote:        #1a7f37;
+    --mk-editor-syn-list:         #8250df;
+    --mk-editor-syn-hr:           #57606a;
 }
 
 html[data-theme="dark"] {
@@ -200,7 +243,63 @@ html[data-theme="dark"] {
     --markon-search-hit-ring:   rgba(255, 193, 7, 0.2);
     --markon-selection:         rgba(31, 111, 235, 0.6);
 
+    /* Source editor "follow page" dark — GitHub-dark markdown syntax.
+       The chrome vars need no dark entries: they reference page tokens
+       that already switch in this block. */
+    --mk-editor-syn-header:       #79c0ff;
+    --mk-editor-syn-header-text:  #7ee787;
+    --mk-editor-syn-bold:         #d2a8ff;
+    --mk-editor-syn-italic:       #ff7b72;
+    --mk-editor-syn-code:         #ffa657;
+    --mk-editor-syn-code-bg:      rgba(255, 255, 255, 0.1);
+    --mk-editor-syn-fence:        #8b949e;
+    --mk-editor-syn-link:         #58a6ff;
+    --mk-editor-syn-image:        #d2a8ff;
+    --mk-editor-syn-quote:        #7ee787;
+    --mk-editor-syn-list:         #d2a8ff;
+    --mk-editor-syn-hr:           #8b949e;
+
     /* Elevation needs more depth on a dark canvas. */
     --markon-shadow-pop:   0 2px 8px rgba(0, 0, 0, 0.4);
     --markon-shadow-modal: 0 10px 28px rgba(0, 0, 0, 0.5);
+}
+
+/* ── "VSCode Dark" source-editor preset (opt-in) ─────────────────────────
+   Reproduces the editor's original dark look as a named preset, applied via
+   html[data-editor-theme="vscode-dark"]. Always dark regardless of the page
+   theme — this is the template for plugging in further editor presets. */
+html[data-editor-theme="vscode-dark"] {
+    --mk-editor-bg:               #1e1e1e;
+    --mk-editor-fg:               #d4d4d4;
+    --mk-editor-header-bg:        #2d2d2d;
+    --mk-editor-header-border:    #3e3e3e;
+    --mk-editor-chrome-fg:        #cccccc;
+    --mk-editor-chrome-fg-strong: #ffffff;
+    --mk-editor-gutter-bg:        #1e1e1e;
+    --mk-editor-gutter-border:    #3e3e3e;
+    --mk-editor-gutter-fg:        #858585;
+    --mk-editor-divider:          #3e3e3e;
+    --mk-editor-accent:           #0e639c;
+    --mk-editor-caret:            #ffffff;
+    --mk-editor-selection:        rgba(38, 79, 120, 0.6);
+    --mk-editor-btn-fg:           #ffffff;
+    --mk-editor-btn-bg:           #0e639c;
+    --mk-editor-btn-bg-hover:     #1177bb;
+    --mk-editor-btn-bg-active:    #0d5a8f;
+    --mk-editor-btn-changes-bg:       #0e7a0d;
+    --mk-editor-btn-changes-bg-hover: #13a10e;
+    --mk-editor-btn-disabled-bg:  #4d4d4d;
+    --mk-editor-btn-disabled-fg:  #808080;
+    --mk-editor-syn-header:       #569cd6;
+    --mk-editor-syn-header-text:  #4ec9b0;
+    --mk-editor-syn-bold:         #dcdcaa;
+    --mk-editor-syn-italic:       #ce9178;
+    --mk-editor-syn-code:         #d16969;
+    --mk-editor-syn-code-bg:      rgba(255, 255, 255, 0.1);
+    --mk-editor-syn-fence:        #808080;
+    --mk-editor-syn-link:         #3794ff;
+    --mk-editor-syn-image:        #c586c0;
+    --mk-editor-syn-quote:        #6a9955;
+    --mk-editor-syn-list:         #dcdcaa;
+    --mk-editor-syn-hr:           #808080;
 }

@@ -440,52 +440,9 @@
             margin-bottom: 0;
         }
 
-        /* Editor modal */
-        .editor-modal {
-            background-color: var(--markon-bg-default);
-        }
-        .editor-header {
-            background-color: var(--markon-bg-muted);
-            border-color: var(--markon-border-default);
-        }
-        .editor-close {
-            color: var(--markon-fg-muted);
-        }
-        .editor-file-name {
-            color: var(--markon-fg-default);
-        }
-        .editor-close:hover {
-            color: var(--markon-fg-default);
-        }
-        .editor-line-numbers {
-            background-color: var(--markon-bg-default);
-            border-right-color: var(--markon-border-default);
-            color: var(--markon-fg-muted);
-        }
-        .editor-highlight-layer {
-            background-color: var(--markon-bg-default);
-            color: var(--markon-fg-default);
-        }
-        .editor-textarea {
-            background-color: transparent;
-            color: transparent;
-            caret-color: var(--markon-fg-default);
-        }
-        /* Selection wash — alpha varies by theme via --markon-selection. */
-        .editor-textarea::selection {
-            background-color: var(--markon-selection);
-            color: transparent;
-        }
-        .editor-status {
-            color: var(--markon-fg-muted);
-        }
-        .editor-split-divider { background-color: var(--markon-border-default); }
-        .editor-split-divider:hover, .editor-split-divider:active { background-color: var(--markon-accent); }
-        .editor-preview-content { background-color: var(--markon-bg-default); color: var(--markon-fg-default); }
-        .editor-pane-preview { background-color: var(--markon-bg-default); }
-        .editor-tab { color: var(--markon-fg-muted); }
-        .editor-tab:hover { color: var(--markon-fg-default); }
-        .editor-tab.active { color: var(--markon-fg-default); border-bottom-color: var(--markon-accent); }
+        /* Editor modal chrome is owned by editor.css via the --mk-editor-*
+           preset layer (default "follow page"); no inline overrides here so
+           the data-editor-theme presets can take effect. */
 
         /* ========================================
            SEARCH MODAL
