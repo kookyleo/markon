@@ -20,7 +20,7 @@
     display: none;
     z-index: var(--markon-z-chrome-toolbar);
     box-shadow: var(--markon-shadow-pop);
-    color: white;
+    color: var(--markon-fg-on-emphasis);
 }
 
 /* Drag handle — the only region that initiates a popover drag. */
@@ -59,7 +59,7 @@
 .selection-popover button {
     background: none;
     border: none;
-    color: white;
+    color: var(--markon-fg-on-emphasis);
     padding: 5px 8px;
     cursor: pointer;
     font-size: 12px;
@@ -309,7 +309,7 @@ html[data-theme="dark"] .markdown-body h6.heading-focused {
    beats the earlier `.note-input-actions button` (0,2,0) generic style. */
 .note-input-actions button.note-save {
     background: var(--markon-success);
-    color: white;
+    color: var(--markon-fg-on-emphasis);
     border-color: var(--markon-success);
 }
 
@@ -522,7 +522,7 @@ html[data-theme="dark"] .markdown-body h6.heading-focused {
    beats the earlier `.confirm-actions button` (0,2,0) generic style. */
 .confirm-actions button.confirm-ok {
     background: var(--markon-danger);
-    color: white;
+    color: var(--markon-fg-on-emphasis);
     border-color: var(--markon-danger);
 }
 
@@ -1859,7 +1859,7 @@ html[data-theme="dark"] .editor-tab.active {
     cursor: pointer;
     border: 1px solid var(--markon-accent);
     background: var(--markon-accent);
-    color: #fff;
+    color: var(--markon-fg-on-emphasis);
 }
 
 .export-next:hover {

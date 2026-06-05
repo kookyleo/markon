@@ -456,7 +456,7 @@ html[data-theme="dark"] .markon-chat-thread-menu {
     left: 50%;
     transform: translateX(-50%);
     background: var(--markon-chat-accent);
-    color: white;
+    color: var(--markon-fg-on-emphasis);
     padding: 6px 14px;
     border-radius: 999px;
     font-size: 12px;
@@ -685,7 +685,7 @@ html[data-theme="dark"] .markon-chat-error {
 
 .markon-chat-retry:hover {
     background: currentColor;
-    color: #ffffff;
+    color: var(--markon-fg-on-emphasis);
 }
 
 .markon-chat-stopped {
@@ -886,7 +886,7 @@ html[data-theme="dark"] .markon-chat-quote-dismiss:hover {
    unambiguous mid-stream. */
 .markon-chat-send.streaming {
     background: var(--markon-danger);
-    color: white;
+    color: var(--markon-fg-on-emphasis);
 }
 
 /* ─── Mention pill (in user message bubbles) ─────────────────────────── */
@@ -1248,7 +1248,7 @@ html[data-theme="dark"] .markon-chat-edit-bar {
 html[data-theme="dark"] .markon-chat-edit-bar-reject:hover { background: rgba(255, 255, 255, 0.06); }
 .markon-chat-edit-bar-apply {
     background: #16a34a;
-    color: white;
+    color: var(--markon-fg-on-emphasis);
     border-color: #15803d;
 }
 .markon-chat-edit-bar-apply:hover { background: #15803d; }

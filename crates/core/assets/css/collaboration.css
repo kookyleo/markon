@@ -281,7 +281,7 @@ html[data-theme="dark"] .markon-live-face .leader-info {
     display: flex;
     align-items: center;
     justify-content: center;
-    color: #fff;
+    color: var(--markon-fg-on-emphasis);
     font-size: 10px;
     font-weight: 600;
     line-height: 1;
@@ -354,7 +354,7 @@ html[data-theme="dark"] .markon-live-body .mode-group {
 
 .markon-live-body .mode-btn.active {
     background: var(--markon-accent);
-    color: #fff;
+    color: var(--markon-fg-on-emphasis);
 }
 
 /* Breathing pulse on the focused heading-section. Starts as a ring in the
