@@ -82,6 +82,7 @@
     --markon-success-emphasis-hover: #2ea043;
     --markon-warning:       #bf8700; /* attention/pending fg */
     --markon-warning-hover: #9a6700;
+    --markon-scrim:         rgba(0, 0, 0, 0.5); /* dim backdrop behind a modal */
     /* Dark tooltip / popover surface, kept dark in BOTH themes. */
     --markon-overlay-dark:  #2c2c2c;
     /* Standard hover wash over a surface (overridden per theme below). */
