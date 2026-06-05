@@ -909,15 +909,15 @@ export class SectionViewedManager {
         const toolbar = document.createElement('span');
         toolbar.className = 'viewed-toolbar';
         toolbar.appendChild(label);
+        // Each "| label" is one non-breaking unit (.viewed-toolbar-item) — the
+        // separator stays glued to its label and a multi-word label never
+        // splits. Whitespace BETWEEN units is the only break opportunity, so
+        // the bar wraps unit-by-unit, never mid-unit.
         toolbar.insertAdjacentHTML('beforeend', `
-            <span class="viewed-toolbar-separator">|</span>
-            <a class="btn-collapse-all">${_t('web.viewed.collapseall')}</a>
-            <span class="viewed-toolbar-separator">|</span>
-            <a class="btn-expand-all">${_t('web.viewed.expandall')}</a>
-            <span class="viewed-toolbar-separator">|</span>
-            <a class="btn-print-page">${_t('web.viewed.print')}</a>
-            <span class="viewed-toolbar-separator">|</span>
-            <a class="btn-export-annotations" title="${_t('web.export.tip')}">${_t('web.export.label')}</a>
+            <span class="viewed-toolbar-item"><span class="viewed-toolbar-separator">|</span><a class="btn-collapse-all">${_t('web.viewed.collapseall')}</a></span>
+            <span class="viewed-toolbar-item"><span class="viewed-toolbar-separator">|</span><a class="btn-expand-all">${_t('web.viewed.expandall')}</a></span>
+            <span class="viewed-toolbar-item"><span class="viewed-toolbar-separator">|</span><a class="btn-print-page">${_t('web.viewed.print')}</a></span>
+            <span class="viewed-toolbar-item"><span class="viewed-toolbar-separator">|</span><a class="btn-export-annotations" title="${_t('web.export.tip')}">${_t('web.export.label')}</a></span>
         `);
 
         // The bar is a child of the <h1> and flows inline after the title:

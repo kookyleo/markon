@@ -867,6 +867,13 @@ html[data-theme="dark"] .markdown-body h6.heading-focused {
     vertical-align: middle;
 }
 
+/* "| label" is the atomic unit: it never breaks internally (separator stays
+   with its label, multi-word labels stay whole). Wrapping happens only at the
+   whitespace BETWEEN units. */
+.viewed-toolbar-item {
+    white-space: nowrap;
+}
+
 .viewed-toolbar a {
     color: var(--markon-primary);
     text-decoration: none;
