@@ -83,7 +83,7 @@ export class ExportManager {
         document.removeEventListener('keydown', this.#onKeydown);
         this.#overlay?.remove();
         this.#overlay = null;
-        document.documentElement.classList.remove('export-scroll-lock');
+        document.documentElement.classList.remove('markon-scroll-lock');
     }
 
     // ── internals ──────────────────────────────────────────────────────────
@@ -140,7 +140,7 @@ export class ExportManager {
         document.body.appendChild(overlay);
         this.#overlay = overlay;
         // Lock the background page so the wheel can't scroll it behind the modal.
-        document.documentElement.classList.add('export-scroll-lock');
+        document.documentElement.classList.add('markon-scroll-lock');
         this.#bindStep1(overlay);
         this.#syncUI();
         document.addEventListener('keydown', this.#onKeydown);

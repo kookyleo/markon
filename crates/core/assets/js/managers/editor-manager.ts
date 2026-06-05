@@ -137,6 +137,9 @@ export class EditorManager {
         this.#createEditorUI(content);
         this.#setupEventListeners();
         this.#updateLineNumbers();
+        // Lock the background page so the wheel can't scroll it behind the
+        // full-screen editor (same guard as the export wizard).
+        document.documentElement.classList.add('markon-scroll-lock');
 
         // If line number provided, jump to that line
         if (options.line && options.line > 0) {
@@ -176,6 +179,7 @@ export class EditorManager {
             const wasExport = this.#mode === 'export';
             this.#editorModal.remove();
             this.#editorModal = null;
+            document.documentElement.classList.remove('markon-scroll-lock');
             this.#textarea = null;
             this.#lineNumbers = null;
             this.#saveButton = null;

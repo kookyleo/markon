@@ -1863,9 +1863,9 @@ html[data-theme="dark"] .editor-tab.active {
     font-size: var(--markon-ui-font-size);
 }
 
-/* Background scroll lock while the wizard is open — blocks wheel scroll-through
-   to the page behind the full-screen overlay. */
-.export-scroll-lock {
+/* Background scroll lock applied to <html> while a full-screen overlay (export
+   wizard, editor) is open — blocks wheel scroll-through to the page behind. */
+.markon-scroll-lock {
     overflow: hidden !important;
 }
 
