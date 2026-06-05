@@ -311,7 +311,7 @@ export class EditorManager {
             ? `<button class="editor-back-btn">${_t('web.export.back')}</button>`
             : '';
         const copyBtn = isExport
-            ? `<button class="editor-copy-btn">${_t('web.export.copy')}</button>`
+            ? `<button class="editor-copy-btn">${_t('web.export.copytext')}</button>`
             : '';
         const saveBtn = isExport
             ? `<button class="editor-save-btn editor-download-btn">${_t('web.export.download')}</button>`
@@ -410,16 +410,33 @@ export class EditorManager {
             void this.save();
         });
 
-        // Export-mode Copy button: copy the current buffer to the clipboard.
-        this.#editorModal
-            ?.querySelector<HTMLButtonElement>('.editor-copy-btn')
-            ?.addEventListener('click', (e) => {
-                const btn = e.currentTarget as HTMLButtonElement;
-                const content = this.#textarea?.value ?? '';
-                void copyText(content).then(ok => {
-                    flashText(btn, _t(ok ? 'web.export.copied' : 'web.export.failed'));
-                });
+        // Export-mode Copy button. Label + payload follow the textarea
+        // selection: nothing selected → "Copy text" copies the whole buffer;
+        // a selection → "Copy selection" copies just that range.
+        const copyBtn = this.#editorModal?.querySelector<HTMLButtonElement>('.editor-copy-btn');
+        const hasSelection = (): boolean =>
+            !!this.#textarea && this.#textarea.selectionStart !== this.#textarea.selectionEnd;
+        const refreshCopyLabel = (): void => {
+            if (copyBtn) {
+                copyBtn.textContent = _t(hasSelection() ? 'web.export.copyselection' : 'web.export.copytext');
+            }
+        };
+        copyBtn?.addEventListener('click', () => {
+            const ta = this.#textarea;
+            if (!ta || !copyBtn) return;
+            const content = hasSelection()
+                ? ta.value.slice(ta.selectionStart, ta.selectionEnd)
+                : ta.value;
+            void copyText(content).then(ok => {
+                copyBtn.textContent = _t(ok ? 'web.export.copied' : 'web.export.failed');
+                copyBtn.classList.add('is-flashing');
+                window.setTimeout(() => {
+                    copyBtn.classList.remove('is-flashing');
+                    refreshCopyLabel();
+                }, 1500);
             });
+        });
+        refreshCopyLabel();
 
         // Export-mode Back button: close this overlay and re-open the wizard.
         this.#editorModal
@@ -432,6 +449,11 @@ export class EditorManager {
 
         if (!this.#textarea) return;
         const textarea = this.#textarea;
+
+        // Keep the Copy button label (Copy text / Copy selection) in sync with
+        // the current textarea selection.
+        ['select', 'keyup', 'mouseup'].forEach(ev =>
+            textarea.addEventListener(ev, refreshCopyLabel));
 
         // Ctrl+S / Cmd+S to save
         textarea.addEventListener('keydown', (e: KeyboardEvent) => {

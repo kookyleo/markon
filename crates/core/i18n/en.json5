@@ -309,6 +309,8 @@
     "web.export.empty":     "No annotations on this page",
     "web.export.failed":    "Copy failed",
     "web.export.copy":      "Copy",
+    "web.export.copytext":  "Copy text",
+    "web.export.copyselection": "Copy selection",
     "web.export.copyitem":  "Copy this annotation",
     "web.export.wizard.title": "Export annotations",
     "web.export.selectall": "Select all",

@@ -308,6 +308,8 @@
     "web.export.empty":     "本页无批注",
     "web.export.failed":    "复制失败",
     "web.export.copy":      "复制",
+    "web.export.copytext":  "复制文本",
+    "web.export.copyselection": "复制选中",
     "web.export.copyitem":  "复制此条批注",
     "web.export.wizard.title": "导出批注",
     "web.export.selectall": "全选",

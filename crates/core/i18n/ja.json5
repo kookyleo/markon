@@ -309,6 +309,8 @@
     "web.export.empty":     "このページに注釈はありません",
     "web.export.failed":    "コピーに失敗しました",
     "web.export.copy":      "コピー",
+    "web.export.copytext":  "テキストをコピー",
+    "web.export.copyselection": "選択範囲をコピー",
     "web.export.copyitem":  "この注釈をコピー",
     "web.export.wizard.title": "注釈をエクスポート",
     "web.export.selectall": "すべて選択",
