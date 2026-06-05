@@ -394,12 +394,12 @@ describe('AnnotationManager', () => {
 
         const md = mgr.formatAsMarkdown();
 
-        // No preamble and no section headings — a flat numbered list.
+        // No preamble, no headings, no list numbering.
         expect(md).not.toContain('# Notes');
         expect(md).not.toContain('## ');
-        // Items carry the quoted anchor text, not a type label.
         expect(md).not.toContain('**');
-        expect(md.trimStart().startsWith('1. ')).toBe(true);
+        expect(md).not.toMatch(/^\s*\d+\.\s/m); // no "1." style numbering
+        expect(md.trimStart().startsWith('"alpha"')).toBe(true);
 
         // Items stay in document order: alpha → bravo → delta → echo.
         const alphaIdx = md.indexOf('"alpha"');

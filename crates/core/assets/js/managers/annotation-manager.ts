@@ -250,14 +250,14 @@ export class AnnotationManager {
         const escapeBlockquote = (s: string): string =>
             s.replace(/\r?\n/g, '\n> ');
 
-        // No preamble and no section headings — just a flat, numbered list of
-        // notes. Each item is the anchor quote (the annotated text) followed by
-        // the note as a blockquote; everything is a note, so no type label.
+        // No preamble, no headings, no list numbering — each note is just its
+        // anchor quote (the annotated text) followed by the note as a
+        // blockquote, separated by a blank line.
         const lines: string[] = [];
-        annotations.forEach((a, idx) => {
-            lines.push(`${idx + 1}. "${a.text.trim()}"`);
+        annotations.forEach((a) => {
+            lines.push(`"${a.text.trim()}"`);
             if (a.note && a.note.trim()) {
-                lines.push(`   > ${escapeBlockquote(a.note.trim())}`);
+                lines.push(`> ${escapeBlockquote(a.note.trim())}`);
             }
             lines.push('');
         });
