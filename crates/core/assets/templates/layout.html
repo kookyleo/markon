@@ -548,7 +548,9 @@
         #search-input {
             width: 100%;
             max-width: 980px;
-            padding: 16px 45px;
+            /* Shared overlay-bar vertical rhythm (see --markon-bar-* tokens);
+               wider horizontal inset keeps the query text off the edges. */
+            padding: var(--markon-bar-pad-y) 45px;
             font-size: 1.1em;
             border: none;
             outline: none;
@@ -574,7 +576,7 @@
 
         @media (max-width: 768px) {
             #search-input {
-                padding: 16px 20px;
+                padding: var(--markon-bar-pad-y) 20px;
             }
         }
 
@@ -647,7 +649,10 @@
 
         .search-input-container {
             background: var(--markon-subtle);
-            border-bottom: 2px solid var(--markon-border-strong);
+            /* Same bar treatment as export / editor: 1px divider + a blank
+               skirt below the field so results don't crowd the bar. */
+            border-bottom: 1px solid var(--markon-border);
+            padding-bottom: var(--markon-bar-skirt);
         }
 
         #search-input {

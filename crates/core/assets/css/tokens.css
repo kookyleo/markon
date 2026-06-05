@@ -104,6 +104,15 @@
     --markon-radius-sm: 6px;  /* default: buttons, inputs, cards, chips */
     --markon-radius-lg: 8px;  /* large containers: modals, panels */
 
+    /* ── Overlay top bars ──────────────────────────────────── */
+    /* One height + style for every full-screen overlay's top bar (export
+       wizard, source editor, search …). The skirt is extra blank below the
+       control row so content scrolling up underneath doesn't pack tight
+       against the bar. */
+    --markon-bar-pad-x: 20px;
+    --markon-bar-pad-y: 12px;
+    --markon-bar-skirt: 10px;
+
     /* ── Elevation (floating surfaces) ─────────────────────── */
     --markon-shadow-pop:   0 2px 8px rgba(0, 0, 0, 0.12);   /* popovers, dialogs, mobile note */
     --markon-shadow-modal: 0 8px 24px rgba(0, 0, 0, 0.14);  /* full modals */

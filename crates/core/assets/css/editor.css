@@ -1227,7 +1227,9 @@ html[data-theme="dark"] .toc-item.viewed > a:hover {
     display: flex;
     align-items: center;
     gap: 16px;
-    padding: 12px 20px;
+    /* Shared overlay-bar metrics — same height + skirt as the export header. */
+    padding: var(--markon-bar-pad-y) var(--markon-bar-pad-x)
+        calc(var(--markon-bar-pad-y) + var(--markon-bar-skirt));
     background-color: #2d2d2d;
     border-bottom: 1px solid #3e3e3e;
 }
@@ -1795,7 +1797,10 @@ html[data-theme="dark"] .editor-tab.active {
     display: flex;
     align-items: center;
     gap: 12px;
-    padding: 10px 20px;
+    /* Shared overlay-bar metrics: one height across export / editor / search,
+       plus a blank skirt below the controls (see --markon-bar-* tokens). */
+    padding: var(--markon-bar-pad-y) var(--markon-bar-pad-x)
+        calc(var(--markon-bar-pad-y) + var(--markon-bar-skirt));
     background: var(--markon-subtle);
     border-bottom: 1px solid var(--markon-border);
 }
