@@ -1648,7 +1648,7 @@ html[data-theme="dark"] .toc-item.viewed > a:hover {
        a 1px ring of the track colour at the corners. An outline paints on top of
        the segments and isn't clipped by the element's own overflow, so the
        active fill reaches the edge cleanly with no seam. */
-    outline: 1px solid var(--markon-primary);
+    outline: 1px solid var(--markon-border);
     outline-offset: -1px;
     overflow: hidden;
     padding: 0;
@@ -1673,9 +1673,11 @@ html[data-theme="dark"] .toc-item.viewed > a:hover {
     background-color: color-mix(in srgb, var(--markon-text) 8%, transparent);
 }
 
+/* Selected segment: a quiet raised pill (canvas on the subtle track) with a
+   darkened icon — a supporting control, so no saturated fill to pull the eye. */
 .editor-layout-btn.active {
-    color: #fff;
-    background-color: var(--markon-primary);
+    color: var(--markon-text);
+    background-color: var(--markon-canvas);
 }
 
 /* ============================================================
