@@ -1318,6 +1318,7 @@ fn render_markdown_file(
             context.insert("file_path", file_path);
             context.insert("workspace_id", workspace_id);
             context.insert("theme", state.theme.as_str());
+            context.insert("version", env!("CARGO_PKG_VERSION"));
             context.insert("content", &html_content);
             // Back link: parent dir of this file within the workspace.
             // Suppressed for single-file workspaces — `/{id}/` 303-redirects
@@ -1378,6 +1379,7 @@ fn render_markdown_file(
             let mut context = tera::Context::new();
             context.insert("title", "Error");
             context.insert("theme", state.theme.as_str());
+            context.insert("version", env!("CARGO_PKG_VERSION"));
             context.insert(
                 "content",
                 &format!(
