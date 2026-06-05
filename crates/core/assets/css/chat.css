@@ -1116,18 +1116,15 @@ body.markon-chat-popout-mode .markon-chat-header {
 .markon-chat-edit-pending {
     margin: 6px 0;
     border: 1px solid var(--markon-chat-border, rgba(0, 0, 0, 0.12));
-    border-left: 3px solid #d97706;
+    border-left: 3px solid var(--markon-warning);
     border-radius: 6px;
-    background: rgba(217, 119, 6, 0.06);
+    background: color-mix(in srgb, var(--markon-warning) 10%, transparent);
     overflow: hidden;
     font-size: 13px;
 }
-html[data-theme="dark"] .markon-chat-edit-pending {
-    background: rgba(217, 119, 6, 0.12);
-}
 .markon-chat-edit-pending[data-status="applied"]  { border-left-color: #16a34a; background: rgba(22,163,74,0.08); }
 .markon-chat-edit-pending[data-status="rejected"] { border-left-color: #6b7280; background: rgba(107,114,128,0.08); opacity: 0.7; }
-.markon-chat-edit-pending[data-status="drifted"]  { border-left-color: #ca8a04; background: rgba(202,138,4,0.08); }
+.markon-chat-edit-pending[data-status="drifted"]  { border-left-color: var(--markon-warning); background: color-mix(in srgb, var(--markon-warning) 14%, transparent); }
 .markon-chat-edit-pending[data-status="reverted"] { border-left-color: #6b7280; background: rgba(107,114,128,0.05); opacity: 0.6; }
 .markon-chat-edit-pending[data-status="reverted"] .markon-chat-edit-pending-old,
 .markon-chat-edit-pending[data-status="reverted"] .markon-chat-edit-pending-new {
@@ -1150,12 +1147,11 @@ html[data-theme="dark"] .markon-chat-edit-pending {
     font-weight: 600;
     text-transform: uppercase;
     letter-spacing: 0.04em;
-    color: #92400e;
+    color: var(--markon-warning);
 }
-html[data-theme="dark"] .markon-chat-edit-pending-status { color: #fbbf24; }
 .markon-chat-edit-pending[data-status="applied"]  .markon-chat-edit-pending-status { color: #166534; }
 .markon-chat-edit-pending[data-status="rejected"] .markon-chat-edit-pending-status { color: #4b5563; }
-.markon-chat-edit-pending[data-status="drifted"]  .markon-chat-edit-pending-status { color: #854d0e; }
+.markon-chat-edit-pending[data-status="drifted"]  .markon-chat-edit-pending-status { color: var(--markon-warning); }
 .markon-chat-edit-pending[data-status="reverted"] .markon-chat-edit-pending-status { color: #4b5563; }
 
 .markon-chat-edit-pending-head-right {
