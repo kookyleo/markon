@@ -98,7 +98,7 @@
 .markdown-body a:focus {
     /* Specificity (0,2,1) matches github-markdown's `.markdown-body a:hover`
        and beats `.markdown-body a` (0,1,1); later source order wins ties. */
-    color: var(--markon-primary);
+    color: var(--markon-accent);
 }
 
 /* ============================================================
@@ -136,7 +136,7 @@ html[data-theme="dark"] .highlight-yellow {
    Server-side syntect emits class-based spans (prefix `mk-`, see
    markdown.rs); colours come from the `--markon-code-*` tokens so they track
    the theme and stay overridable. Default text (identifiers, operators,
-   punctuation) inherits the code block's `--markon-text` foreground. */
+   punctuation) inherits the code block's `--markon-fg-default` foreground. */
 .markdown-body pre code.mk-code .mk-comment {
     color: var(--markon-code-comment);
     font-style: italic;
@@ -169,7 +169,7 @@ html[data-theme="dark"] .highlight-yellow {
    on hover; we override it here (editor.css loads after the vendored sheet). */
 .markdown-body a:hover {
     text-decoration: none;
-    color: var(--markon-primary-hover);
+    color: var(--markon-accent-hover);
 }
 
 .has-note {
@@ -179,7 +179,7 @@ html[data-theme="dark"] .highlight-yellow {
 
 /* Annotation focus indicator for keyboard navigation */
 .annotation-focused {
-    outline: 2px solid var(--markon-primary);
+    outline: 2px solid var(--markon-accent);
     outline-offset: 2px;
     border-radius: var(--markon-radius-sm);
 }
@@ -199,11 +199,11 @@ html[data-theme="dark"] .highlight-yellow {
 
 /* Change border color when heading inside is focused */
 .heading-section:has(.heading-focused) {
-    border-color: color-mix(in srgb, var(--markon-primary) 30%, transparent);
+    border-color: color-mix(in srgb, var(--markon-accent) 30%, transparent);
 }
 
 html[data-theme="dark"] .heading-section:has(.heading-focused) {
-    border-color: color-mix(in srgb, var(--markon-primary) 40%, transparent);
+    border-color: color-mix(in srgb, var(--markon-accent) 40%, transparent);
 }
 
 /* Headings use negative margin to align with container border */
@@ -245,7 +245,7 @@ html[data-theme="dark"] .heading-section:has(.heading-focused) {
 .markdown-body h4.heading-focused,
 .markdown-body h5.heading-focused,
 .markdown-body h6.heading-focused {
-    background-color: color-mix(in srgb, var(--markon-primary) 10%, transparent);
+    background-color: color-mix(in srgb, var(--markon-accent) 10%, transparent);
     /* Specificity (0,2,2) beats github-markdown's `.markdown-body h2` (0,1,1). */
     border-bottom: none;
     /* Top corners rounded, bottom square — matches the section focus frame. */
@@ -258,7 +258,7 @@ html[data-theme="dark"] .markdown-body h3.heading-focused,
 html[data-theme="dark"] .markdown-body h4.heading-focused,
 html[data-theme="dark"] .markdown-body h5.heading-focused,
 html[data-theme="dark"] .markdown-body h6.heading-focused {
-    background-color: color-mix(in srgb, var(--markon-primary) 15%, transparent);
+    background-color: color-mix(in srgb, var(--markon-accent) 15%, transparent);
 }
 
 /* ============================================================
@@ -269,8 +269,8 @@ html[data-theme="dark"] .markdown-body h6.heading-focused {
 .note-input-modal {
     position: absolute;
     z-index: var(--markon-z-modal-inline);
-    background: var(--markon-canvas);
-    border: 1px solid var(--markon-border-strong);
+    background: var(--markon-bg-default);
+    border: 1px solid var(--markon-border-emphasis);
     border-radius: var(--markon-radius-lg);
     padding: 12px;
     box-shadow: var(--markon-shadow-pop);
@@ -280,7 +280,7 @@ html[data-theme="dark"] .markdown-body h6.heading-focused {
 .note-textarea {
     width: 100%;
     padding: 8px 12px;
-    border: 1px solid var(--markon-border-strong);
+    border: 1px solid var(--markon-border-emphasis);
     border-radius: var(--markon-radius-sm);
     font-size: 14px;
     font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Noto Sans", Helvetica, Arial, sans-serif;
@@ -292,8 +292,8 @@ html[data-theme="dark"] .markdown-body h6.heading-focused {
 
 .note-textarea:focus {
     outline: none;
-    border-color: var(--markon-primary);
-    box-shadow: 0 0 0 3px color-mix(in srgb, var(--markon-primary) 10%, transparent);
+    border-color: var(--markon-accent);
+    box-shadow: 0 0 0 3px color-mix(in srgb, var(--markon-accent) 10%, transparent);
 }
 
 .note-input-actions {
@@ -308,14 +308,14 @@ html[data-theme="dark"] .markdown-body h6.heading-focused {
     font-size: 13px;
     font-weight: 500;
     cursor: pointer;
-    border: 1px solid var(--markon-border-strong);
-    background: var(--markon-canvas);
-    color: var(--markon-text);
+    border: 1px solid var(--markon-border-emphasis);
+    background: var(--markon-bg-default);
+    color: var(--markon-fg-default);
     transition: background-color 0.15s, border-color 0.15s, color 0.15s;
 }
 
 .note-input-actions button:hover {
-    background: var(--markon-subtle);
+    background: var(--markon-bg-muted);
 }
 
 /* Specificity raised to `.note-input-actions button.note-save` (0,3,1) so it
@@ -339,13 +339,13 @@ html[data-theme="dark"] .markdown-body h6.heading-focused {
     position: absolute;
     width: var(--markon-note-width, 280px); /* right-rail width — single source of truth in layout.html :root */
     padding: 12px 16px;
-    background: var(--markon-elevated);
+    background: var(--markon-bg-elevated);
     /* Flat: a 0.5px hairline border instead of a shadow, with a 3px left stripe
        for symmetry with the TOC. The stripe reuses the soft blue of the
        focused heading-section frame so it reads as a quiet accent, not a heavy
        bar. Single source of truth — layout.html no longer re-declares this. */
-    border: 0.5px solid var(--markon-border);
-    border-left: 3px solid color-mix(in srgb, var(--markon-primary) 30%, transparent);
+    border: 0.5px solid var(--markon-border-default);
+    border-left: 3px solid color-mix(in srgb, var(--markon-accent) 30%, transparent);
     border-radius: var(--markon-radius-sm);
     font-size: 13px;
     line-height: 1.6;
@@ -355,16 +355,16 @@ html[data-theme="dark"] .markdown-body h6.heading-focused {
 }
 
 .note-card-margin:hover {
-    background: color-mix(in srgb, var(--markon-primary) 10%, var(--markon-canvas));
-    border-left-color: color-mix(in srgb, var(--markon-primary) 50%, transparent);
+    background: color-mix(in srgb, var(--markon-accent) 10%, var(--markon-bg-default));
+    border-left-color: color-mix(in srgb, var(--markon-accent) 50%, transparent);
 }
 
 .note-card-margin.highlight-active {
-    background: color-mix(in srgb, var(--markon-primary) 12%, var(--markon-canvas));
+    background: color-mix(in srgb, var(--markon-accent) 12%, var(--markon-bg-default));
     /* Active: stripe deepens toward primary, but the rest of the hairline only
        picks up the same soft accent rather than a full-strength frame. */
-    border-color: color-mix(in srgb, var(--markon-primary) 30%, transparent);
-    border-left-color: var(--markon-primary);
+    border-color: color-mix(in srgb, var(--markon-accent) 30%, transparent);
+    border-left-color: var(--markon-accent);
 }
 
 /* ============================================================
@@ -378,7 +378,7 @@ html[data-theme="dark"] .markdown-body h6.heading-focused {
 
 .note-connector-path {
     fill: none;
-    stroke: var(--markon-primary);
+    stroke: var(--markon-accent);
     stroke-width: 1.4;
     stroke-linecap: round;
     stroke-dasharray: 5 4;
@@ -410,8 +410,8 @@ html[data-theme="dark"] .markdown-body h6.heading-focused {
        floating over the note text. */
     padding: 1px;
     border-radius: var(--markon-radius-sm);
-    background: var(--markon-canvas);
-    border: 0.5px solid var(--markon-border);
+    background: var(--markon-bg-default);
+    border: 0.5px solid var(--markon-border-default);
     box-shadow: var(--markon-shadow-pop);
 }
 
@@ -442,7 +442,7 @@ html[data-theme="dark"] .markdown-body h6.heading-focused {
     display: flex;
     align-items: center;
     justify-content: center;
-    color: var(--markon-muted);
+    color: var(--markon-fg-muted);
     opacity: 0.85;
     transition: color 0.15s, background 0.15s, opacity 0.15s;
 }
@@ -456,8 +456,8 @@ html[data-theme="dark"] .markdown-body h6.heading-focused {
 
 .note-copy:hover,
 .note-edit:hover {
-    color: var(--markon-text);
-    background: var(--markon-subtle);
+    color: var(--markon-fg-default);
+    background: var(--markon-bg-muted);
     opacity: 1;
 }
 
@@ -474,7 +474,7 @@ html[data-theme="dark"] .markdown-body h6.heading-focused {
 }
 
 .note-content {
-    color: var(--markon-text);
+    color: var(--markon-fg-default);
     white-space: pre-wrap;
     word-wrap: break-word;
 }
@@ -492,8 +492,8 @@ html[data-theme="dark"] .markdown-body h6.heading-focused {
 
 .confirm-dialog {
     position: fixed;
-    background: var(--markon-canvas);
-    border: 1px solid var(--markon-border-strong);
+    background: var(--markon-bg-default);
+    border: 1px solid var(--markon-border-emphasis);
     border-radius: var(--markon-radius-sm);
     padding: 10px 12px;
     box-shadow: var(--markon-shadow-pop);
@@ -505,7 +505,7 @@ html[data-theme="dark"] .markdown-body h6.heading-focused {
 .confirm-message {
     margin: 0 0 10px 0;
     font-size: 13px;
-    color: var(--markon-text);
+    color: var(--markon-fg-default);
     line-height: 1.4;
 }
 
@@ -521,14 +521,14 @@ html[data-theme="dark"] .markdown-body h6.heading-focused {
     font-size: 13px;
     font-weight: 500;
     cursor: pointer;
-    border: 1px solid var(--markon-border-strong);
-    background: var(--markon-canvas);
-    color: var(--markon-text);
+    border: 1px solid var(--markon-border-emphasis);
+    background: var(--markon-bg-default);
+    color: var(--markon-fg-default);
     transition: background-color 0.15s, border-color 0.15s, color 0.15s;
 }
 
 .confirm-actions button:hover {
-    background: var(--markon-subtle);
+    background: var(--markon-bg-muted);
 }
 
 /* Specificity raised to `.confirm-actions button.confirm-ok` (0,3,1) so it
@@ -561,9 +561,9 @@ html[data-theme="dark"] .markdown-body h6.heading-focused {
 }
 
 .has-note.highlight-active {
-    background-color: color-mix(in srgb, var(--markon-primary) 20%, transparent);
-    border-bottom: 2px solid var(--markon-primary);
-    box-shadow: 0 0 0 2px color-mix(in srgb, var(--markon-primary) 10%, transparent);
+    background-color: color-mix(in srgb, var(--markon-accent) 20%, transparent);
+    border-bottom: 2px solid var(--markon-accent);
+    box-shadow: 0 0 0 2px color-mix(in srgb, var(--markon-accent) 10%, transparent);
 }
 
 /* ============================================================
@@ -574,8 +574,8 @@ html[data-theme="dark"] .markdown-body h6.heading-focused {
 .note-popup {
     position: fixed;
     max-width: 300px;
-    background: var(--markon-subtle);
-    border: 1px solid var(--markon-primary);
+    background: var(--markon-bg-muted);
+    border: 1px solid var(--markon-accent);
     border-radius: var(--markon-radius-sm);
     padding: 12px 16px;
     box-shadow: var(--markon-shadow-pop);
@@ -610,7 +610,7 @@ html[data-theme="dark"] .markdown-body h6.heading-focused {
 #toc-icon {
     width: 40px;
     height: 40px;
-    background-color: var(--markon-elevated);
+    background-color: var(--markon-bg-elevated);
     border-radius: 50%;
     cursor: pointer;
     display: none;
@@ -620,7 +620,7 @@ html[data-theme="dark"] .markdown-body h6.heading-focused {
     /* 2.5px border matches the Live sphere's "off" stroke width — same
        visual weight across all three floating-layer family members
        (ToC, Live, Chat). */
-    border: 2.5px solid var(--markon-border-strong);
+    border: 2.5px solid var(--markon-border-emphasis);
     box-sizing: border-box;
 }
 
@@ -632,13 +632,13 @@ html[data-theme="dark"] .markdown-body h6.heading-focused {
     width: 20px;
     height: 2px;
     border-radius: 1px;
-    background-color: var(--markon-text);
+    background-color: var(--markon-fg-default);
     margin: 2px 0;
 }
 
 #toc-icon .toc-close {
     display: none;
-    color: var(--markon-text);
+    color: var(--markon-fg-default);
     pointer-events: none;
     transition: transform 0.35s ease;
 }
@@ -670,8 +670,8 @@ html[data-theme="dark"] .markdown-body h6.heading-focused {
         margin-bottom: 0;
         max-height: calc(100vh - 40px);
         overflow-y: auto;
-        background-color: var(--markon-elevated);
-        border: 2.5px solid var(--markon-border-strong);
+        background-color: var(--markon-bg-elevated);
+        border: 2.5px solid var(--markon-border-emphasis);
         border-radius: 20px;
         overscroll-behavior: contain;
         box-sizing: border-box;
@@ -710,7 +710,7 @@ html[data-theme="dark"] .markdown-body h6.heading-focused {
     font-size: var(--markon-ui-font-size);
     font-family: var(--markon-ui-font);
     font-weight: normal;
-    color: var(--markon-muted);
+    color: var(--markon-fg-muted);
     cursor: pointer;
     -webkit-user-select: none;
     -moz-user-select: none;
@@ -746,7 +746,7 @@ html[data-theme="dark"] .markdown-body h6.heading-focused {
 .section-action {
     font-size: var(--markon-ui-font-size);
     font-family: var(--markon-ui-font);
-    color: var(--markon-muted);
+    color: var(--markon-fg-muted);
     font-weight: normal;
     cursor: pointer;
     margin-left: 0.5em;
@@ -761,7 +761,7 @@ html[data-theme="dark"] .markdown-body h6.heading-focused {
 }
 
 .section-action:hover {
-    color: var(--markon-text);
+    color: var(--markon-fg-default);
 }
 
 /* Section action that immediately follows a separator needs no extra left margin */
@@ -773,7 +773,7 @@ html[data-theme="dark"] .markdown-body h6.heading-focused {
 .section-action-separator {
     margin: 0 0.25rem;
     font-size: var(--markon-ui-font-size);
-    color: var(--markon-muted);
+    color: var(--markon-fg-muted);
     -webkit-user-select: none;
     -moz-user-select: none;
     -ms-user-select: none;
@@ -865,7 +865,7 @@ html[data-theme="dark"] .markdown-body h6.heading-focused {
     transition: opacity 0.2s ease-out, max-height 0.35s ease-out, margin 0.35s ease-out, padding 0.35s ease-out;
 }
 
-/* Dark theme adjustments — handled automatically by --markon-muted token */
+/* Dark theme adjustments — handled automatically by --markon-fg-muted token */
 
 
 /* ============================================================
@@ -878,7 +878,7 @@ html[data-theme="dark"] .markdown-body h6.heading-focused {
     font-size: var(--markon-ui-font-size);
     font-family: var(--markon-ui-font);
     font-weight: normal;
-    color: var(--markon-muted);
+    color: var(--markon-fg-muted);
     -webkit-user-select: none;
     -moz-user-select: none;
     -ms-user-select: none;
@@ -898,7 +898,7 @@ html[data-theme="dark"] .markdown-body h6.heading-focused {
 }
 
 .viewed-toolbar a {
-    color: var(--markon-primary);
+    color: var(--markon-accent);
     text-decoration: none;
     cursor: pointer;
     padding: 2px 4px;
@@ -907,11 +907,11 @@ html[data-theme="dark"] .markdown-body h6.heading-focused {
 }
 
 .viewed-toolbar a:hover {
-    color: var(--markon-primary-hover);
+    color: var(--markon-accent-hover);
 }
 
 .viewed-toolbar-separator {
-    color: var(--markon-muted);
+    color: var(--markon-fg-muted);
     margin: 0 4px;
     font-size: var(--markon-ui-font-size);
 }
@@ -960,7 +960,7 @@ html[data-theme="dark"] .toc-item.viewed > a:hover {
 
 /* Keyboard focus (destination) - hollow border, no background */
 .toc-item a.toc-focused {
-    outline: 2px solid var(--markon-primary);
+    outline: 2px solid var(--markon-accent);
     outline-offset: 2px;
     border-radius: var(--markon-radius-sm);
 }
@@ -1096,7 +1096,7 @@ html[data-theme="dark"] .toc-item.viewed > a:hover {
 
 .shortcuts-help-modal {
     position: relative;
-    background: var(--markon-canvas);
+    background: var(--markon-bg-default);
     border-radius: var(--markon-radius-lg);
     box-shadow: var(--markon-shadow-modal);
     max-width: 750px;
@@ -1108,8 +1108,8 @@ html[data-theme="dark"] .toc-item.viewed > a:hover {
 
 .shortcuts-help-header {
     padding: 0px 18px;
-    border-bottom: 1px solid var(--markon-border-strong);
-    background: var(--markon-subtle);
+    border-bottom: 1px solid var(--markon-border-emphasis);
+    background: var(--markon-bg-muted);
 }
 
 .shortcuts-help-content {
@@ -1130,7 +1130,7 @@ html[data-theme="dark"] .toc-item.viewed > a:hover {
     margin: 0 0 8px 0;
     font-size: 0.75rem;
     font-weight: 600;
-    color: var(--markon-muted);
+    color: var(--markon-fg-muted);
     text-transform: uppercase;
     letter-spacing: 0.5px;
 }
@@ -1156,7 +1156,7 @@ html[data-theme="dark"] .toc-item.viewed > a:hover {
 
 .shortcut-desc {
     flex: 1;
-    color: var(--markon-text);
+    color: var(--markon-fg-default);
     font-size: 0.8rem;
     line-height: 1.4;
     text-align: right;
@@ -1167,21 +1167,21 @@ html[data-theme="dark"] .toc-item.viewed > a:hover {
     padding: 2px 6px;
     font-family: 'SFMono-Regular', 'Consolas', 'Liberation Mono', 'Menlo', monospace;
     font-size: 0.7rem;
-    color: var(--markon-text);
-    background: var(--markon-subtle);
-    border: 1px solid var(--markon-border-strong);
+    color: var(--markon-fg-default);
+    background: var(--markon-bg-muted);
+    border: 1px solid var(--markon-border-emphasis);
     border-radius: var(--markon-radius-sm);
-    box-shadow: inset 0 -1px 0 var(--markon-border-strong);
+    box-shadow: inset 0 -1px 0 var(--markon-border-emphasis);
     margin-right: 3px;
 }
 
 .shortcuts-help-footer {
     padding: 10px 18px;
-    border-top: 1px solid var(--markon-border-strong);
-    background: var(--markon-subtle);
+    border-top: 1px solid var(--markon-border-emphasis);
+    background: var(--markon-bg-muted);
     text-align: center;
     font-size: 0.75rem;
-    color: var(--markon-muted);
+    color: var(--markon-fg-muted);
 }
 
 .shortcuts-help-footer kbd {
@@ -1189,9 +1189,9 @@ html[data-theme="dark"] .toc-item.viewed > a:hover {
     padding: 2px 5px;
     font-family: 'SFMono-Regular', 'Consolas', 'Liberation Mono', 'Menlo', monospace;
     font-size: 0.7rem;
-    color: var(--markon-text);
-    background: var(--markon-canvas);
-    border: 1px solid var(--markon-border-strong);
+    color: var(--markon-fg-default);
+    background: var(--markon-bg-default);
+    border: 1px solid var(--markon-border-emphasis);
     border-radius: var(--markon-radius-sm);
     margin: 0 2px;
 }
@@ -1325,7 +1325,7 @@ html[data-theme="dark"] .toc-item.viewed > a:hover {
 .editor-pane-preview {
     flex: 1;
     overflow-y: auto;
-    background-color: var(--markon-canvas);
+    background-color: var(--markon-bg-default);
 }
 
 .editor-split-divider {
@@ -1346,8 +1346,8 @@ html[data-theme="dark"] .toc-item.viewed > a:hover {
     padding: 20px 24px;
     box-sizing: border-box;
     min-height: 100%;
-    background-color: var(--markon-canvas);
-    color: var(--markon-text);
+    background-color: var(--markon-bg-default);
+    color: var(--markon-fg-default);
 }
 
 /* Narrow-screen tab bar */
@@ -1563,7 +1563,7 @@ html[data-theme="dark"] .toc-item.viewed > a:hover {
 /* Auto theme (prefers-color-scheme) */
 @media (prefers-color-scheme: light) {
     .editor-modal {
-        background-color: var(--markon-canvas);
+        background-color: var(--markon-bg-default);
     }
 
     .editor-header {
@@ -1584,20 +1584,20 @@ html[data-theme="dark"] .toc-item.viewed > a:hover {
     }
 
     .editor-line-numbers {
-        background-color: var(--markon-subtle);
-        border-right-color: var(--markon-border-strong);
-        color: var(--markon-muted);
+        background-color: var(--markon-bg-muted);
+        border-right-color: var(--markon-border-emphasis);
+        color: var(--markon-fg-muted);
     }
 
     .editor-highlight-layer {
-        background-color: var(--markon-canvas);
-        color: var(--markon-text);
+        background-color: var(--markon-bg-default);
+        color: var(--markon-fg-default);
     }
 
     .editor-textarea {
         background-color: transparent;
         color: transparent;
-        caret-color: var(--markon-text);
+        caret-color: var(--markon-fg-default);
     }
 
     /* Light theme syntax colors */
@@ -1651,17 +1651,17 @@ html[data-theme="dark"] .toc-item.viewed > a:hover {
     }
 
     .editor-status {
-        color: var(--markon-muted);
+        color: var(--markon-fg-muted);
     }
 
     /* Light preview pane stays white regardless of color-scheme */
     .editor-preview-content {
-        background-color: var(--markon-canvas);
-        color: var(--markon-text);
+        background-color: var(--markon-bg-default);
+        color: var(--markon-fg-default);
     }
 
     .editor-pane-preview {
-        background-color: var(--markon-canvas);
+        background-color: var(--markon-bg-default);
     }
 }
 
@@ -1678,14 +1678,14 @@ html[data-theme="dark"] .toc-item.viewed > a:hover {
 .editor-layout-toggle {
     display: inline-flex;
     align-items: stretch;
-    background: var(--markon-subtle);
+    background: var(--markon-bg-muted);
     border-radius: var(--markon-radius-sm);
     /* Frame drawn as an inset outline rather than a border: a border would sit
        between the rounded `overflow:hidden` clip and the filled segment, leaving
        a 1px ring of the track colour at the corners. An outline paints on top of
        the segments and isn't clipped by the element's own overflow, so the
        active fill reaches the edge cleanly with no seam. */
-    outline: 1px solid var(--markon-border);
+    outline: 1px solid var(--markon-border-default);
     outline-offset: -1px;
     overflow: hidden;
     padding: 0;
@@ -1695,7 +1695,7 @@ html[data-theme="dark"] .toc-item.viewed > a:hover {
 .editor-layout-btn {
     background: none;
     border: none;
-    color: var(--markon-muted);
+    color: var(--markon-fg-muted);
     padding: 6px 11px;
     cursor: pointer;
     display: flex;
@@ -1706,16 +1706,16 @@ html[data-theme="dark"] .toc-item.viewed > a:hover {
 }
 
 .editor-layout-btn:hover:not(.active) {
-    color: var(--markon-text);
-    background-color: color-mix(in srgb, var(--markon-text) 8%, transparent);
+    color: var(--markon-fg-default);
+    background-color: color-mix(in srgb, var(--markon-fg-default) 8%, transparent);
 }
 
 /* Selected segment: a soft brand tint — a pale-blue pill (clearly lighter +
    bluer than the grey track) with a blue icon. Clearly legible without the
    saturated fill that pulled the eye before. */
 .editor-layout-btn.active {
-    color: var(--markon-primary);
-    background-color: color-mix(in srgb, var(--markon-primary) 15%, var(--markon-canvas));
+    color: var(--markon-accent);
+    background-color: color-mix(in srgb, var(--markon-accent) 15%, var(--markon-bg-default));
 }
 
 /* ============================================================
@@ -1753,31 +1753,31 @@ html[data-theme="dark"] .toc-item.viewed > a:hover {
 
 /* ============================================================
    DARK THEME: preview pane / split / tab overrides
-   Preview canvas + text are driven by --markon-canvas / --markon-text
+   Preview canvas + text are driven by --markon-bg-default / --markon-fg-default
    tokens (see :root + html[data-theme="dark"] at top of file). The
    rules below remain dark-only because the *light* IDE chrome
    (split-divider, tab) intentionally uses VS Code chrome colors.
    ============================================================ */
 html[data-theme="dark"] .editor-split-divider {
-    background-color: var(--markon-border);
+    background-color: var(--markon-border-default);
 }
 
 html[data-theme="dark"] .editor-split-divider:hover,
 html[data-theme="dark"] .editor-split-divider:active {
-    background-color: var(--markon-primary);
+    background-color: var(--markon-accent);
 }
 
 html[data-theme="dark"] .editor-tab {
-    color: var(--markon-muted);
+    color: var(--markon-fg-muted);
 }
 
 html[data-theme="dark"] .editor-tab:hover {
-    color: var(--markon-text);
+    color: var(--markon-fg-default);
 }
 
 html[data-theme="dark"] .editor-tab.active {
-    color: var(--markon-text);
-    border-bottom-color: var(--markon-primary);
+    color: var(--markon-fg-default);
+    border-bottom-color: var(--markon-accent);
 }
 
 /* ─────────────────────────────────────────────────────────────────────────
@@ -1793,7 +1793,7 @@ html[data-theme="dark"] .editor-tab.active {
     position: fixed;
     z-index: var(--markon-z-chrome-top);
     transform: translate(-100%, -50%) translateX(-8px);
-    color: var(--markon-muted);
+    color: var(--markon-fg-muted);
     font-size: 12px;
     line-height: 1.4;
     white-space: nowrap;
@@ -1811,8 +1811,8 @@ html[data-theme="dark"] .editor-tab.active {
     position: fixed;
     inset: 0;
     z-index: var(--markon-z-chrome);
-    background: var(--markon-canvas);
-    color: var(--markon-text);
+    background: var(--markon-bg-default);
+    color: var(--markon-fg-default);
     display: flex;
     flex-direction: column;
     font-family: var(--markon-ui-font);
@@ -1839,14 +1839,14 @@ html[data-theme="dark"] .editor-tab.active {
     flex-shrink: 0;
     padding: 0 var(--markon-bar-pad-x);
     box-sizing: border-box;
-    background: var(--markon-subtle);
-    border-bottom: 1px solid var(--markon-border);
+    background: var(--markon-bg-muted);
+    border-bottom: 1px solid var(--markon-border-default);
 }
 
 .export-close {
     border: none;
     background: transparent;
-    color: var(--markon-muted);
+    color: var(--markon-fg-muted);
     font-size: 18px;
     line-height: 1;
     cursor: pointer;
@@ -1855,8 +1855,8 @@ html[data-theme="dark"] .editor-tab.active {
 }
 
 .export-close:hover {
-    background: var(--markon-subtle);
-    color: var(--markon-text);
+    background: var(--markon-bg-muted);
+    color: var(--markon-fg-default);
 }
 
 .export-title {
@@ -1869,7 +1869,7 @@ html[data-theme="dark"] .editor-tab.active {
    left, right after the title. */
 .export-count {
     margin-left: auto;
-    color: var(--markon-muted);
+    color: var(--markon-fg-muted);
     font-size: 13px;
 }
 
@@ -1879,14 +1879,14 @@ html[data-theme="dark"] .editor-tab.active {
     font-size: 13px;
     font-weight: 500;
     cursor: pointer;
-    border: 1px solid var(--markon-primary);
-    background: var(--markon-primary);
+    border: 1px solid var(--markon-accent);
+    background: var(--markon-accent);
     color: #fff;
 }
 
 .export-next:hover {
-    background: var(--markon-primary-hover);
-    border-color: var(--markon-primary-hover);
+    background: var(--markon-accent-hover);
+    border-color: var(--markon-accent-hover);
 }
 
 .export-next:disabled {
@@ -1896,9 +1896,9 @@ html[data-theme="dark"] .editor-tab.active {
 
 .export-selectall,
 .export-selectnone {
-    border: 1px solid var(--markon-border-strong);
-    background: var(--markon-canvas);
-    color: var(--markon-text);
+    border: 1px solid var(--markon-border-emphasis);
+    background: var(--markon-bg-default);
+    color: var(--markon-fg-default);
     border-radius: var(--markon-radius-sm);
     padding: 4px 12px;
     font-size: 13px;
@@ -1907,7 +1907,7 @@ html[data-theme="dark"] .editor-tab.active {
 
 .export-selectall:hover,
 .export-selectnone:hover {
-    background: var(--markon-subtle);
+    background: var(--markon-bg-muted);
 }
 
 .export-body {
@@ -1960,7 +1960,7 @@ html[data-theme="dark"] .editor-tab.active {
 }
 
 .export-item:hover {
-    background: var(--markon-subtle);
+    background: var(--markon-bg-muted);
 }
 
 .export-item-check,
@@ -1986,7 +1986,7 @@ html[data-theme="dark"] .editor-tab.active {
 }
 
 .export-item-note {
-    color: var(--markon-text);
+    color: var(--markon-fg-default);
     font-size: 13px;
     overflow: hidden;
     text-overflow: ellipsis;
@@ -1994,7 +1994,7 @@ html[data-theme="dark"] .editor-tab.active {
 }
 
 .export-item-quote {
-    color: var(--markon-muted);
+    color: var(--markon-fg-muted);
     font-size: 12px;
     overflow: hidden;
     text-overflow: ellipsis;
@@ -2004,9 +2004,9 @@ html[data-theme="dark"] .editor-tab.active {
 /* ── Step 2: export-mode editor (Copy / Download / Back) ───────────────── */
 .editor-copy-btn,
 .editor-back-btn {
-    border: 1px solid var(--markon-border-strong);
-    background: var(--markon-canvas);
-    color: var(--markon-text);
+    border: 1px solid var(--markon-border-emphasis);
+    background: var(--markon-bg-default);
+    color: var(--markon-fg-default);
     padding: 6px 14px;
     font-size: 13px;
     border-radius: var(--markon-radius-sm);
@@ -2016,7 +2016,7 @@ html[data-theme="dark"] .editor-tab.active {
 
 .editor-copy-btn:hover,
 .editor-back-btn:hover {
-    background: var(--markon-subtle);
+    background: var(--markon-bg-muted);
 }
 
 /* Download = the primary-filled twin of the outlined Copy / Back buttons:
@@ -2026,14 +2026,14 @@ html[data-theme="dark"] .editor-tab.active {
     display: block;
     padding: 6px 14px;
     font-size: 13px;
-    border: 1px solid var(--markon-border-strong);
+    border: 1px solid var(--markon-border-emphasis);
     border-radius: var(--markon-radius-sm);
-    background: var(--markon-canvas);
-    color: var(--markon-text);
+    background: var(--markon-bg-default);
+    color: var(--markon-fg-default);
     cursor: pointer;
 }
 
 .editor-download-btn:hover {
-    background: var(--markon-subtle);
-    border-color: var(--markon-border-strong);
+    background: var(--markon-bg-muted);
+    border-color: var(--markon-border-emphasis);
 }

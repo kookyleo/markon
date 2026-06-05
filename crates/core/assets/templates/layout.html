@@ -101,11 +101,11 @@
 
         /* Body theme colors — driven by tokens (light/dark switched in editor.css) */
         body {
-            background-color: var(--markon-canvas);
-            color: var(--markon-text);
+            background-color: var(--markon-bg-default);
+            color: var(--markon-fg-default);
         }
         @media (min-width: 1401px) {
-            #main-content { background-color: var(--markon-canvas); }
+            #main-content { background-color: var(--markon-bg-default); }
         }
 
         /* ========================================
@@ -119,7 +119,7 @@
         }
 
         .back-link a {
-            color: var(--markon-primary);
+            color: var(--markon-accent);
             text-decoration: none;
         }
 
@@ -134,16 +134,16 @@
             font-size: 0.9rem;
             text-align: left;
             margin-left: -1px;
-            color: var(--markon-muted);
+            color: var(--markon-fg-muted);
         }
 
         .footer a {
             text-decoration: none;
-            color: var(--markon-muted);
+            color: var(--markon-fg-muted);
         }
 
         .footer a:visited {
-            color: var(--markon-muted);
+            color: var(--markon-fg-muted);
         }
 
         .footer a:hover {
@@ -151,19 +151,19 @@
         }
 
         .footer-separator {
-            color: var(--markon-muted);
+            color: var(--markon-fg-muted);
             margin: 0 8px;
         }
 
         .footer-clear-link {
-            color: var(--markon-muted);
+            color: var(--markon-fg-muted);
             text-decoration: none;
             cursor: pointer;
             transition: color 0.2s;
         }
 
         .footer-clear-link:visited {
-            color: var(--markon-muted);
+            color: var(--markon-fg-muted);
         }
 
         .footer-clear-link:hover {
@@ -232,7 +232,7 @@
                long titles don't touch the band edge — gives it inner breathing
                room without moving the text. */
             left: -8px; right: -8px;
-            background-color: var(--markon-primary-bg);
+            background-color: var(--markon-accent-muted);
             border-radius: 6px;
             transition: top 0.25s ease, height 0.25s ease;
             pointer-events: none;
@@ -244,7 +244,7 @@
         }
         /* User-selected section */
         .toc-item a.active {
-            color: var(--markon-primary);
+            color: var(--markon-accent);
         }
 
         /* Indent based on heading level */
@@ -298,47 +298,47 @@
 
         /* TOC Theme Colors */
         .toc-title {
-            color: var(--markon-text);
+            color: var(--markon-fg-default);
         }
         .toc-item a {
-            color: var(--markon-muted);
+            color: var(--markon-fg-muted);
         }
         .toc-item a:hover {
-            color: var(--markon-primary);
+            color: var(--markon-accent);
         }
 
         /* TOC Icon & Floating Menu (Narrow Screens). Borders match the Live
            sphere/panel surface treatment — no drop shadow, just a 1px hairline
            that thickens slightly under the dark-theme palette. */
         #toc-icon {
-            background-color: var(--markon-elevated);
-            border-color: var(--markon-border-strong);
+            background-color: var(--markon-bg-elevated);
+            border-color: var(--markon-border-emphasis);
             opacity: var(--markon-panel-opacity, 0.9);
         }
-        /* TOC icon uses --markon-text-muted so it reads as a secondary chrome
+        /* TOC icon uses --markon-fg-subtle so it reads as a secondary chrome
            glyph (not as bold as document body text). The token swaps modes
            by itself (light = #656d76, dark = #adbac7). */
         #toc-icon .toc-bar {
-            background-color: var(--markon-text-muted);
+            background-color: var(--markon-fg-subtle);
         }
         #toc-icon .toc-close {
-            color: var(--markon-text-muted);
+            color: var(--markon-fg-subtle);
         }
         /* Floating TOC menu on narrow screens — same surface + border as icon */
         @media (max-width: 1400px) {
             .toc {
-                background-color: var(--markon-elevated);
-                border-color: var(--markon-border-strong);
+                background-color: var(--markon-bg-elevated);
+                border-color: var(--markon-border-emphasis);
             }
         }
         /* TOC background on wide screens (matches body, ensures overlap is clean) */
         @media (min-width: 1401px) {
             .toc {
-                background-color: var(--markon-canvas);
+                background-color: var(--markon-bg-default);
             }
             #toc-container.toc-nav-active .toc {
-                background-color: var(--markon-elevated);
-                border: 2.5px solid var(--markon-border-strong);
+                background-color: var(--markon-bg-elevated);
+                border: 2.5px solid var(--markon-border-emphasis);
                 border-radius: 20px;
             }
         }
@@ -352,27 +352,27 @@
 
         /* Note input modal */
         .note-input-modal {
-            background: var(--markon-subtle);
-            border: 1px solid var(--markon-border);
+            background: var(--markon-bg-muted);
+            border: 1px solid var(--markon-border-default);
             box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
             opacity: var(--markon-panel-opacity, 0.9);
         }
         .note-textarea {
-            background: var(--markon-canvas);
-            border: 1px solid var(--markon-border);
-            color: var(--markon-text);
+            background: var(--markon-bg-default);
+            border: 1px solid var(--markon-border-default);
+            color: var(--markon-fg-default);
         }
         .note-textarea:focus {
-            border-color: var(--markon-primary);
-            box-shadow: 0 0 0 3px color-mix(in srgb, var(--markon-primary) 15%, transparent);
+            border-color: var(--markon-accent);
+            box-shadow: 0 0 0 3px color-mix(in srgb, var(--markon-accent) 15%, transparent);
         }
         .note-input-actions button {
-            background: var(--markon-elevated);
-            border: 1px solid var(--markon-border);
-            color: var(--markon-text);
+            background: var(--markon-bg-elevated);
+            border: 1px solid var(--markon-border-default);
+            color: var(--markon-fg-default);
         }
         .note-input-actions button:hover {
-            background: var(--markon-border);
+            background: var(--markon-border-default);
         }
         .note-save {
             background: #238636 !important;
@@ -384,32 +384,32 @@
 
         /* Note cards are styled once, in editor.css (.note-card-margin). */
         .note-content {
-            color: var(--markon-text);
+            color: var(--markon-fg-default);
         }
 
         /* Confirm dialog */
         .confirm-dialog {
-            background: var(--markon-subtle);
-            border: 1px solid var(--markon-border);
+            background: var(--markon-bg-muted);
+            border: 1px solid var(--markon-border-default);
             box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
             opacity: var(--markon-panel-opacity, 0.9);
         }
         .confirm-message {
-            color: var(--markon-text);
+            color: var(--markon-fg-default);
         }
         .confirm-actions button {
-            background: var(--markon-elevated);
-            border: 1px solid var(--markon-border);
-            color: var(--markon-text);
+            background: var(--markon-bg-elevated);
+            border: 1px solid var(--markon-border-default);
+            color: var(--markon-fg-default);
         }
         .confirm-actions button:hover {
-            background: var(--markon-border);
+            background: var(--markon-border-default);
         }
 
         /* Note popup */
         .note-popup {
-            background: var(--markon-subtle);
-            border: 1px solid var(--markon-primary);
+            background: var(--markon-bg-muted);
+            border: 1px solid var(--markon-accent);
             box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
             opacity: var(--markon-panel-opacity, 0.9);
         }
@@ -425,9 +425,9 @@
             border-bottom-color: rgba(187, 128, 9, 0.6);
         }
         .has-note.highlight-active {
-            background-color: color-mix(in srgb, var(--markon-primary) 15%, transparent);
-            border-bottom: 2px solid var(--markon-primary);
-            box-shadow: 0 0 0 2px color-mix(in srgb, var(--markon-primary) 15%, transparent);
+            background-color: color-mix(in srgb, var(--markon-accent) 15%, transparent);
+            border-bottom: 2px solid var(--markon-accent);
+            box-shadow: 0 0 0 2px color-mix(in srgb, var(--markon-accent) 15%, transparent);
         }
 
         /* Highlight colors — fixed rgba for stable visibility on either theme */
@@ -447,16 +447,16 @@
         .markdown-body a:hover,
         .markdown-body a:active,
         .markdown-body a:focus {
-            color: var(--markon-primary) !important;
+            color: var(--markon-accent) !important;
         }
 
         /* Viewed toolbar */
         .viewed-toolbar {
-            border-color: var(--markon-border);
-            color: var(--markon-muted);
+            border-color: var(--markon-border-default);
+            color: var(--markon-fg-muted);
         }
         .viewed-toolbar a {
-            color: var(--markon-primary);
+            color: var(--markon-accent);
         }
 
         /* Remove H1 bottom margin when followed by viewed toolbar */
@@ -466,34 +466,34 @@
 
         /* Editor modal */
         .editor-modal {
-            background-color: var(--markon-canvas);
+            background-color: var(--markon-bg-default);
         }
         .editor-header {
-            background-color: var(--markon-subtle);
-            border-color: var(--markon-border);
+            background-color: var(--markon-bg-muted);
+            border-color: var(--markon-border-default);
         }
         .editor-close {
-            color: var(--markon-muted);
+            color: var(--markon-fg-muted);
         }
         .editor-file-name {
-            color: var(--markon-text);
+            color: var(--markon-fg-default);
         }
         .editor-close:hover {
-            color: var(--markon-text);
+            color: var(--markon-fg-default);
         }
         .editor-line-numbers {
-            background-color: var(--markon-canvas);
-            border-right-color: var(--markon-border);
-            color: var(--markon-muted);
+            background-color: var(--markon-bg-default);
+            border-right-color: var(--markon-border-default);
+            color: var(--markon-fg-muted);
         }
         .editor-highlight-layer {
-            background-color: var(--markon-canvas);
-            color: var(--markon-text);
+            background-color: var(--markon-bg-default);
+            color: var(--markon-fg-default);
         }
         .editor-textarea {
             background-color: transparent;
             color: transparent;
-            caret-color: var(--markon-text);
+            caret-color: var(--markon-fg-default);
         }
         /* Selection alpha varies by theme to keep the textarea legible — kept
            as fixed rgba (token primary doesn't carry an alpha component) */
@@ -505,15 +505,15 @@
             background-color: rgba(173, 214, 255, 0.6);
         }
         .editor-status {
-            color: var(--markon-muted);
+            color: var(--markon-fg-muted);
         }
-        .editor-split-divider { background-color: var(--markon-border); }
-        .editor-split-divider:hover, .editor-split-divider:active { background-color: var(--markon-primary); }
-        .editor-preview-content { background-color: var(--markon-canvas); color: var(--markon-text); }
-        .editor-pane-preview { background-color: var(--markon-canvas); }
-        .editor-tab { color: var(--markon-muted); }
-        .editor-tab:hover { color: var(--markon-text); }
-        .editor-tab.active { color: var(--markon-text); border-bottom-color: var(--markon-primary); }
+        .editor-split-divider { background-color: var(--markon-border-default); }
+        .editor-split-divider:hover, .editor-split-divider:active { background-color: var(--markon-accent); }
+        .editor-preview-content { background-color: var(--markon-bg-default); color: var(--markon-fg-default); }
+        .editor-pane-preview { background-color: var(--markon-bg-default); }
+        .editor-tab { color: var(--markon-fg-muted); }
+        .editor-tab:hover { color: var(--markon-fg-default); }
+        .editor-tab.active { color: var(--markon-fg-default); border-bottom-color: var(--markon-accent); }
 
         /* ========================================
            SEARCH MODAL
@@ -650,48 +650,48 @@
 
         /* Search modal */
         .search-modal {
-            background-color: var(--markon-canvas);
+            background-color: var(--markon-bg-default);
         }
 
         .search-modal-content {
-            background-color: var(--markon-canvas);
+            background-color: var(--markon-bg-default);
         }
 
         .search-input-container {
-            background: var(--markon-subtle);
+            background: var(--markon-bg-muted);
             /* Same bar treatment as export / editor: a 1px divider. */
-            border-bottom: 1px solid var(--markon-border);
+            border-bottom: 1px solid var(--markon-border-default);
         }
 
         #search-input {
             background: transparent;
-            color: var(--markon-text);
+            color: var(--markon-fg-default);
         }
 
         #search-input::placeholder {
-            color: var(--markon-muted);
+            color: var(--markon-fg-muted);
         }
 
         .search-results-container {
-            background: var(--markon-canvas);
+            background: var(--markon-bg-default);
         }
 
         .search-result-item a {
-            color: var(--markon-text);
-            border-bottom: 1px solid var(--markon-subtle);
+            color: var(--markon-fg-default);
+            border-bottom: 1px solid var(--markon-bg-muted);
         }
 
         .search-result-item a:hover,
         .search-result-item.selected a {
-            background-color: var(--markon-subtle);
+            background-color: var(--markon-bg-muted);
         }
 
         .search-result-item.selected a {
-            border-left-color: var(--markon-primary);
+            border-left-color: var(--markon-accent);
         }
 
         .search-result-snippet b {
-            color: var(--markon-primary);
+            color: var(--markon-accent);
         }
 
         /* ========================================
@@ -822,7 +822,7 @@
             <div class="search-input-container">
                 <input type="text" id="search-input" placeholder="Search..." autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false">
             </div>
-            <div id="search-esc-hint" style="text-align:center;padding:8px 0 4px;font-size:12px;color:var(--markon-muted)"><kbd style="padding:1px 5px;border:1px solid var(--markon-border-strong);border-radius:3px;font-size:11px;font-family:monospace;background:var(--markon-subtle)">ESC</kbd> <span id="search-esc-text">to close</span></div>
+            <div id="search-esc-hint" style="text-align:center;padding:8px 0 4px;font-size:12px;color:var(--markon-fg-muted)"><kbd style="padding:1px 5px;border:1px solid var(--markon-border-emphasis);border-radius:3px;font-size:11px;font-family:monospace;background:var(--markon-bg-muted)">ESC</kbd> <span id="search-esc-text">to close</span></div>
             <div class="search-results-container">
                 <ul id="search-results"></ul>
             </div>

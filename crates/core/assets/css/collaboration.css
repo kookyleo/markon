@@ -20,13 +20,13 @@
        as the *same* element across modes — what differs is mode color, not
        chrome thickness. The same width is used by the ToC and Chat
        spheres/panels so the floating-layer family looks unified. */
-    border: 2.5px solid var(--markon-border-strong);
+    border: 2.5px solid var(--markon-border-emphasis);
     box-sizing: border-box;
     overflow: hidden;
-    background-color: var(--markon-elevated);
-    /* Sphere icon is secondary chrome — uses --markon-text-muted so it
+    background-color: var(--markon-bg-elevated);
+    /* Sphere icon is secondary chrome — uses --markon-fg-subtle so it
        doesn't punch as hard as the document body text. */
-    color: var(--markon-text-muted);
+    color: var(--markon-fg-subtle);
     user-select: none;
     display: flex;
     align-items: center;
@@ -37,7 +37,7 @@
    broadcast color. Color comes from the --markon-live-user var set by
    CollaborationManager._updateUIState. */
 .markon-live-container.broadcasting {
-    border-color: var(--markon-live-user, var(--markon-border-strong));
+    border-color: var(--markon-live-user, var(--markon-border-emphasis));
 }
 
 /* Expanded (panel) state — sphere becomes the panel rectangle in-place.
@@ -115,7 +115,7 @@
    border-strong colour as the ring, so ring + slash read as one quiet grey 🚫
    — no darker mark fighting the chrome. */
 .markon-live-container.live-off .icon-off {
-    color: var(--markon-border-strong);
+    color: var(--markon-border-emphasis);
 }
 
 /* When expanded, face becomes a 40×40 button pinned to the panel's
@@ -343,11 +343,11 @@ html[data-theme="dark"] .markon-live-body .mode-group {
 }
 
 .markon-live-body .mode-btn:hover {
-    background: var(--markon-hover);
+    background: var(--markon-bg-hover);
 }
 
 .markon-live-body .mode-btn.active {
-    background: var(--markon-primary);
+    background: var(--markon-accent);
     color: #fff;
 }
 

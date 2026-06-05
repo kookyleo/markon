@@ -14,7 +14,7 @@
        stays visually stitched to the panel chrome under both themes. The hover
        color stays theme-specific (no matching neutral mid-tone in our token
        set), so its dark override lives below. */
-    --markon-chat-resizer-color: var(--markon-border-strong);
+    --markon-chat-resizer-color: var(--markon-border-emphasis);
     --markon-chat-resizer-color-hover: #8c959f;
 }
 
@@ -35,11 +35,11 @@ html[data-theme="dark"] {
     width: 40px;
     height: 40px;
     border-radius: 50%;
-    background-color: var(--markon-elevated);
-    color: var(--markon-text-muted);
+    background-color: var(--markon-bg-elevated);
+    color: var(--markon-fg-subtle);
     /* 2.5px border matches the Live sphere's "off" stroke width — same
        visual weight across all three floating-layer family members. */
-    border: 2.5px solid var(--markon-border-strong);
+    border: 2.5px solid var(--markon-border-emphasis);
     box-sizing: border-box;
     user-select: none;
     overflow: hidden;
@@ -49,13 +49,13 @@ html[data-theme="dark"] {
 }
 
 /* Dark mode keeps a slightly muted body color on the sphere face — handled
-   by --markon-text-muted; container background + border are token-driven. */
+   by --markon-fg-subtle; container background + border are token-driven. */
 
 /* Expanded: panel rectangle. Inherits the sphere's surface + text color so
    clicking feels like a pure geometric transform (sphere → panel), not a
    skin swap. Border-radius matches the sphere radius (20px) for the corner
    continuity, and we cap width/height to the viewport so very small windows
-   still get a readable panel. Background tracks `--markon-elevated` — the
+   still get a readable panel. Background tracks `--markon-bg-elevated` — the
    same surface tone the Live panel and TOC narrow-screen menu use, so the
    three floating-layer family members read as one component class. */
 .markon-chat-container.expanded {
@@ -73,7 +73,7 @@ html[data-theme="dark"] {
        on document.body — so neither is clipped by this. */
     overflow: hidden;
     resize: both;
-    background: var(--markon-elevated);
+    background: var(--markon-bg-elevated);
 }
 
 /* Webkit-only restyle of the BR resize handle. A single 1.5px arc traced
@@ -106,7 +106,7 @@ html[data-theme="dark"] {
 }
 
 html[data-theme="dark"] .markon-chat-container.expanded {
-    color: var(--markon-text);
+    color: var(--markon-fg-default);
 }
 
 /* ─── Face (sphere face / close handle) ──────────────────────────────── */
@@ -141,7 +141,7 @@ html[data-theme="dark"] .markon-chat-container.expanded {
 /* Sphere icon joins the ToC / Live chrome family: the same muted grey, not
    the brand accent — quieter and consistent with its neighbours. */
 .markon-chat-face-icon.icon-chat {
-    color: var(--markon-text-muted);
+    color: var(--markon-fg-subtle);
 }
 
 .markon-chat-face-icon.icon-close {
@@ -337,11 +337,11 @@ html[data-theme="dark"] .markon-chat-icon-btn:hover {
     left: 48px;           /* skip the TL sphere/close button */
     right: 48px;          /* skip the [+] button on the right */
     margin-top: 4px;
-    /* Pops one tier above the elevated panel surface. --markon-overlay is
+    /* Pops one tier above the elevated panel surface. --markon-bg-overlay is
        canvas in light mode (white "highest" layer) and a recessed mid-tone
        in dark mode (#21262d, sits between subtle and elevated). */
-    background: var(--markon-overlay);
-    border: 1px solid var(--markon-border-strong);
+    background: var(--markon-bg-overlay);
+    border: 1px solid var(--markon-border-emphasis);
     border-radius: 8px;
     box-shadow: 0 6px 16px rgba(0, 0, 0, 0.12);
     z-index: var(--markon-z-popover-inline);
@@ -351,9 +351,9 @@ html[data-theme="dark"] .markon-chat-icon-btn:hover {
 }
 
 html[data-theme="dark"] .markon-chat-thread-menu {
-    /* Dark border drops to the softer `--markon-border` because the strong
+    /* Dark border drops to the softer `--markon-border-default` because the strong
        value (#484f58) is too loud against the recessed overlay surface. */
-    border-color: var(--markon-border);
+    border-color: var(--markon-border-default);
     box-shadow: 0 6px 16px rgba(0, 0, 0, 0.5);
 }
 
@@ -368,7 +368,7 @@ html[data-theme="dark"] .markon-chat-thread-menu {
 }
 
 .markon-chat-thread-row:hover {
-    background: var(--markon-hover);
+    background: var(--markon-bg-hover);
 }
 
 .markon-chat-thread-row.active {
@@ -495,11 +495,11 @@ html[data-theme="dark"] .markon-chat-thread-menu {
     overflow-wrap: anywhere;
 }
 
-/* User bubble: one tier above the panel (--markon-elevated-2) so the
+/* User bubble: one tier above the panel (--markon-bg-elevated-2) so the
    message stands out from the assistant's prose-on-canvas style. */
 .markon-chat-message-user .markon-chat-message-body {
-    background: var(--markon-elevated-2);
-    color: var(--markon-text);
+    background: var(--markon-bg-elevated-2);
+    color: var(--markon-fg-default);
     padding: 8px 12px;
     border-radius: 14px 14px 4px 14px;
 }
@@ -531,8 +531,8 @@ html[data-theme="dark"] .markon-chat-text code {
 }
 
 .markon-chat-text pre {
-    background: var(--markon-subtle);
-    border: 1px solid var(--markon-border-strong);
+    background: var(--markon-bg-muted);
+    border: 1px solid var(--markon-border-emphasis);
     border-radius: 6px;
     padding: 10px 12px;
     overflow-x: auto;
@@ -551,10 +551,10 @@ html[data-theme="dark"] .markon-chat-text code {
 html[data-theme="dark"] .markon-chat-text pre {
     /* GitHub-dark recesses code blocks below `subtle` (#161b22) — `#0d1117`
        (canvas in dark) reads as a deeper well against the panel. Border drops
-       to `--markon-border` so the chrome stays understated against this
+       to `--markon-border-default` so the chrome stays understated against this
        darker fill. */
-    background: var(--markon-canvas);
-    border-color: var(--markon-border);
+    background: var(--markon-bg-default);
+    border-color: var(--markon-border-default);
 }
 
 .markon-chat-text ul,
@@ -577,9 +577,9 @@ html[data-theme="dark"] .markon-chat-text pre {
 .markon-chat-tool-call,
 .markon-chat-tool-result {
     margin: 6px 0;
-    border: 1px solid var(--markon-border-strong);
+    border: 1px solid var(--markon-border-emphasis);
     border-radius: 6px;
-    background: var(--markon-subtle);
+    background: var(--markon-bg-muted);
     overflow: hidden;
 }
 
@@ -587,8 +587,8 @@ html[data-theme="dark"] .markon-chat-tool-call,
 html[data-theme="dark"] .markon-chat-tool-result {
     /* Mirrors `.markon-chat-text pre` — tool pills sink below the `subtle`
        step in dark mode for a visible "well" against the elevated panel. */
-    background: var(--markon-canvas);
-    border-color: var(--markon-border);
+    background: var(--markon-bg-default);
+    border-color: var(--markon-border-default);
 }
 
 .markon-chat-tool-call > summary,
@@ -632,7 +632,7 @@ html[data-theme="dark"] .markon-chat-tool-result {
 .markon-chat-tool-output {
     margin: 0;
     padding: 8px 12px;
-    border-top: 1px solid var(--markon-border-strong);
+    border-top: 1px solid var(--markon-border-emphasis);
     font-size: 11px;
     line-height: 1.45;
     white-space: pre-wrap;
@@ -644,7 +644,7 @@ html[data-theme="dark"] .markon-chat-tool-result {
 html[data-theme="dark"] .markon-chat-tool-args,
 html[data-theme="dark"] .markon-chat-tool-output {
     /* Match the parent pill's softened dark border. */
-    border-top-color: var(--markon-border);
+    border-top-color: var(--markon-border-default);
 }
 
 .markon-chat-tool-result-error {
@@ -714,9 +714,9 @@ html[data-theme="dark"] .markon-chat-error {
    presence. */
 .markon-chat-input-group {
     position: relative;
-    border: 1px solid var(--markon-border-strong);
+    border: 1px solid var(--markon-border-emphasis);
     border-radius: 14px;
-    background: var(--markon-canvas);
+    background: var(--markon-bg-default);
     color: inherit;
     overflow: hidden;       /* clips chip's tinted bg into the rounded corner */
     transition: border-color 0.15s, box-shadow 0.15s;
@@ -731,10 +731,10 @@ html[data-theme="dark"] .markon-chat-error {
 }
 
 html[data-theme="dark"] .markon-chat-input-group {
-    /* Dark side keeps the input border softer than `--markon-border-strong`
-       (#484f58) — #30363d (= `--markon-border`) preserves the original quiet
+    /* Dark side keeps the input border softer than `--markon-border-emphasis`
+       (#484f58) — #30363d (= `--markon-border-default`) preserves the original quiet
        outline against the canvas-dark fill. */
-    border-color: var(--markon-border);
+    border-color: var(--markon-border-default);
 }
 
 /* Quote chip — appears in the upper half of the group when "聊聊" / Chat is
@@ -924,9 +924,9 @@ html[data-theme="dark"] .markon-chat-mention-pill {
 .markon-chat-mention-popup {
     position: fixed;
     z-index: var(--markon-z-chrome-top);
-    background: var(--markon-overlay);
-    color: var(--markon-text);
-    border: 1px solid var(--markon-border-strong);
+    background: var(--markon-bg-overlay);
+    color: var(--markon-fg-default);
+    border: 1px solid var(--markon-border-emphasis);
     border-radius: 8px;
     box-shadow: 0 6px 18px rgba(0, 0, 0, 0.15);
     padding: 4px;
@@ -946,9 +946,9 @@ html[data-theme="dark"] .markon-chat-mention-pill {
 }
 
 html[data-theme="dark"] .markon-chat-mention-popup {
-    /* Border drops to `--markon-border` to keep the chrome quiet against
+    /* Border drops to `--markon-border-default` to keep the chrome quiet against
        the deeper overlay fill (same softening as .markon-chat-thread-menu). */
-    border-color: var(--markon-border);
+    border-color: var(--markon-border-default);
     box-shadow: 0 6px 18px rgba(0, 0, 0, 0.55);
 }
 
@@ -966,7 +966,7 @@ html[data-theme="dark"] .markon-chat-mention-popup {
 }
 
 .markon-chat-mention-row:hover {
-    background: var(--markon-hover);
+    background: var(--markon-bg-hover);
 }
 
 .markon-chat-mention-row.is-active {
@@ -1004,8 +1004,8 @@ html[data-theme="dark"] .markon-chat-mention-popup {
     align-items: center;
     padding: 1px 8px;
     border-radius: 999px;
-    background: color-mix(in srgb, var(--markon-primary) 14%, transparent);
-    color: var(--markon-primary);
+    background: color-mix(in srgb, var(--markon-accent) 14%, transparent);
+    color: var(--markon-accent);
     font-family: 'SF Mono', Monaco, 'Cascadia Code', 'Roboto Mono', Consolas, 'Courier New', monospace;
     font-size: 0.85em;
     font-weight: 500;
@@ -1019,8 +1019,8 @@ html[data-theme="dark"] .markon-chat-mention-popup {
 }
 
 .markon-chat-citation:hover {
-    background: color-mix(in srgb, var(--markon-primary) 22%, transparent);
-    border-color: color-mix(in srgb, var(--markon-primary) 35%, transparent);
+    background: color-mix(in srgb, var(--markon-accent) 22%, transparent);
+    border-color: color-mix(in srgb, var(--markon-accent) 35%, transparent);
 }
 
 /* ─── Popout window mode ─────────────────────────────────────────────── */
@@ -1034,7 +1034,7 @@ html[data-theme="dark"] .markon-chat-mention-popup {
 body.markon-chat-popout-mode {
     margin: 0;
     overflow: hidden;
-    background: var(--markon-elevated);
+    background: var(--markon-bg-elevated);
 }
 
 /* Hide everything else but the chat surface. The mention-popup lives on
@@ -1174,7 +1174,7 @@ html[data-theme="dark"] .markon-chat-edit-pending-status { color: #fbbf24; }
     cursor: pointer;
     line-height: 1.4;
 }
-.markon-chat-edit-pending-undo:hover { background: var(--markon-hover); }
+.markon-chat-edit-pending-undo:hover { background: var(--markon-bg-hover); }
 
 .markon-chat-edit-pending-diff {
     font-family: var(--markon-mono, monospace);
