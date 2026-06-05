@@ -55,20 +55,23 @@
    same `--markon-*` variables. Override via Settings → Page styles.
    ============================================================ */
 :root {
-    /* ── Core palette (light) ──────────────────────────────── */
-    --markon-primary:   #0969da;   /* links, accents, TOC selected, buttons */
-    --markon-muted:     #656d76;   /* secondary text, toolbar, separators */
-    --markon-border:    #d1d9e0;   /* heading underlines, panel borders */
-    --markon-subtle:    #f6f8fa;   /* subtle backgrounds */
-
-    /* ── Surfaces & contrast (light) ──────────────────────── */
-    --markon-canvas:        #ffffff; /* page / editor canvas base */
-    --markon-text:          #1f2328; /* body text */
-    --markon-text-muted:    #656d76; /* secondary text on elevated surfaces (sphere icons, TOC bar) */
-    --markon-elevated:      #f6f8fa; /* one step above subtle: floats, cards, TOC icon */
-    --markon-elevated-2:    #f1f5f9; /* one step above elevated: chat user bubble */
-    --markon-overlay:       #ffffff; /* recessed popover/dropdown background */
-    --markon-border-strong: #d0d7de; /* stronger border: float edges, strokes on dark surfaces */
+    /* ── Base palette (light) — Primer-style role/modifier names ──────────
+       Roles: bg- (surfaces) / fg- (ink) / border- / accent (brand).
+       Modifiers: default / muted / subtle / emphasis / elevated / overlay /
+       on-emphasis. See .internal/color-system design notes. Legacy aliases for
+       the old flat names are defined at the end of this block. */
+    --markon-accent:        #0969da; /* brand: links, buttons, TOC selected, accents */
+    --markon-fg-default:    #1f2328; /* body text */
+    --markon-fg-muted:      #656d76; /* secondary text, toolbar, separators */
+    --markon-fg-subtle:     #656d76; /* secondary text on elevated/chrome surfaces */
+    --markon-fg-on-emphasis: #ffffff; /* text/icon on a solid fill (accent/danger button) */
+    --markon-bg-default:    #ffffff; /* page / editor canvas base */
+    --markon-bg-muted:      #f6f8fa; /* subtle backgrounds: code blocks, cards, bars */
+    --markon-bg-elevated:   #f6f8fa; /* one step up: floats, note cards, TOC icon */
+    --markon-bg-elevated-2: #f1f5f9; /* one step above elevated: chat user bubble */
+    --markon-bg-overlay:    #ffffff; /* popover / dropdown / modal background */
+    --markon-border-default: #d1d9e0; /* heading underlines, panel borders, hairlines */
+    --markon-border-emphasis: #d0d7de; /* stronger border: float edges, strokes on dark */
 
     /* ── Semantic status (theme-agnostic) ──────────────────── */
     --markon-danger:        #dc3545; /* destructive: delete, stop */
@@ -78,12 +81,12 @@
     /* Dark tooltip / popover surface, kept dark in BOTH themes. */
     --markon-overlay-dark:  #2c2c2c;
     /* Standard hover wash over a surface (overridden per theme below). */
-    --markon-hover:         rgba(0, 0, 0, 0.05);
+    --markon-bg-hover:      rgba(0, 0, 0, 0.05);
 
     /* ── Code syntax palette (light) ───────────────────────── */
     /* GitHub-light palette: high contrast on the #f6f8fa code background.
        Comments reuse the muted token; the rest are overridable like any other. */
-    --markon-code-comment:  var(--markon-muted); /* comments */
+    --markon-code-comment:  var(--markon-fg-muted); /* comments */
     --markon-code-keyword:  #cf222e;             /* keywords, storage (fn/let/if) */
     --markon-code-string:   #0a3069;             /* strings */
     --markon-code-constant: #0550ae;             /* numbers, booleans, constants */
@@ -125,30 +128,50 @@
     --markon-overlay-hover:       #4a4a4a;  /* button hover wash */
 
     /* ── Derived (auto-computed, not user-configurable) ───── */
-    --markon-primary-hover: color-mix(in srgb, var(--markon-primary) 80%, black);
-    --markon-muted-hover:   color-mix(in srgb, var(--markon-muted) 60%, black);
-    --markon-primary-bg:    color-mix(in srgb, var(--markon-primary) 10%, transparent);
+    --markon-accent-hover:   color-mix(in srgb, var(--markon-accent) 80%, black);
+    --markon-fg-muted-hover: color-mix(in srgb, var(--markon-fg-muted) 60%, black);
+    --markon-accent-muted:   color-mix(in srgb, var(--markon-accent) 10%, transparent);
+
+    /* ── Legacy aliases (old flat name → new role). Kept so not-yet-swept
+          references keep resolving during the rename; remove after the sweep. */
+    --markon-primary:        var(--markon-accent);
+    --markon-primary-hover:  var(--markon-accent-hover);
+    --markon-primary-bg:     var(--markon-accent-muted);
+    --markon-text:           var(--markon-fg-default);
+    --markon-muted:          var(--markon-fg-muted);
+    --markon-muted-hover:    var(--markon-fg-muted-hover);
+    --markon-text-muted:     var(--markon-fg-subtle);
+    --markon-canvas:         var(--markon-bg-default);
+    --markon-subtle:         var(--markon-bg-muted);
+    --markon-elevated:       var(--markon-bg-elevated);
+    --markon-elevated-2:     var(--markon-bg-elevated-2);
+    --markon-overlay:        var(--markon-bg-overlay);
+    --markon-hover:          var(--markon-bg-hover);
+    --markon-border:         var(--markon-border-default);
+    --markon-border-strong:  var(--markon-border-emphasis);
 }
 
 html[data-theme="dark"] {
-    --markon-primary:   #58a6ff;
-    --markon-muted:     #8b949e;
-    --markon-border:    #30363d;
-    --markon-subtle:    #161b22;
-    --markon-canvas:        #0d1117;
-    --markon-text:          #f0f6fc;
-    --markon-text-muted:    #adbac7;
-    --markon-elevated:      #2d333b;
-    --markon-elevated-2:    #373e47;
-    --markon-overlay:       #21262d;
-    --markon-border-strong: #484f58;
-    --markon-primary-hover: color-mix(in srgb, var(--markon-primary) 80%, white);
-    --markon-muted-hover:   color-mix(in srgb, var(--markon-muted) 60%, white);
-    --markon-primary-bg:    color-mix(in srgb, var(--markon-primary) 15%, transparent);
-    --markon-hover:         rgba(255, 255, 255, 0.06);
+    /* Only the canonical role names need dark values; the :root legacy aliases
+       indirect through these and follow the theme automatically. */
+    --markon-accent:         #58a6ff;
+    --markon-fg-default:     #f0f6fc;
+    --markon-fg-muted:       #8b949e;
+    --markon-fg-subtle:      #adbac7;
+    --markon-bg-default:     #0d1117;
+    --markon-bg-muted:       #161b22;
+    --markon-bg-elevated:    #2d333b;
+    --markon-bg-elevated-2:  #373e47;
+    --markon-bg-overlay:     #21262d;
+    --markon-border-default: #30363d;
+    --markon-border-emphasis: #484f58;
+    --markon-accent-hover:   color-mix(in srgb, var(--markon-accent) 80%, white);
+    --markon-fg-muted-hover: color-mix(in srgb, var(--markon-fg-muted) 60%, white);
+    --markon-accent-muted:   color-mix(in srgb, var(--markon-accent) 15%, transparent);
+    --markon-bg-hover:       rgba(255, 255, 255, 0.06);
 
     /* ── Code syntax palette (dark) — GitHub-dark, high contrast ──── */
-    --markon-code-comment:  var(--markon-muted);
+    --markon-code-comment:  var(--markon-fg-muted);
     --markon-code-keyword:  #ff7b72;
     --markon-code-string:   #a5d6ff;
     --markon-code-constant: #79c0ff;
