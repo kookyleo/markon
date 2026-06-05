@@ -236,6 +236,7 @@
     "web.search.esc":     "で閉じる",
     "web.kbd.link":        "ショートカットキー (?)",
     "web.footer":          "Powered by markon",
+    "web.footer.feedback": "フィードバック",
 
     // ── Annotations / Highlights ─────────────────────────────
     "web.annot.unhighlight": "ハイライト解除",

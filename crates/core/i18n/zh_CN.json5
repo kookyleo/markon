@@ -235,6 +235,7 @@
     "web.search.esc":     "退出搜索",
     "web.kbd.link":        "快捷键 (?)",
     "web.footer":          "Powered by markon",
+    "web.footer.feedback": "反馈",
 
     // ── 批注 / 高亮 ─────────────────────────────────────────
     "web.annot.unhighlight": "取消高亮",

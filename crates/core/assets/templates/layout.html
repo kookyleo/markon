@@ -808,10 +808,8 @@
         <a href="https://kookyleo.github.io/markon/" id="footer-text">Powered by markon</a>
         <span class="footer-separator"> | </span>
         <a href="#" class="footer-clear-link" id="clear-annot-text" onclick="clearPageAnnotations(event, window.ws, window.isSharedAnnotationMode); return false;">Clear Annotations in this page</a>
-        {% if enable_search %}
         <span class="footer-separator"> | </span>
-        <a href="#" id="search-link-text" onclick="window.searchManager.show(); return false;">Search</a>
-        {% endif %}
+        <a href="https://github.com/kookyleo/markon/issues/new?title=%5BFeedback%5D%20&body=One-line%20summary%3A%0A%0A%23%23%20Environment%0A-%20markon%20version%3A%0A-%20OS%3A%0A-%20Browser%3A%0A%0A%23%23%20Steps%20to%20reproduce%0A1.%0A%0A%23%23%20Expected%0A%0A%23%23%20Actual%0A" id="feedback-link-text" target="_blank" rel="noopener noreferrer">Feedback</a>
         <span class="footer-separator"> | </span>
         <a href="#" id="kbd-link-text" onclick="window.shortcutsManager.showHelp(); return false;">Keyboard Shortcuts (?)</a>
     </footer>
@@ -1089,7 +1087,7 @@
         'back-link-text': 'web.back',
         'footer-text': 'web.footer',
         'clear-annot-text': 'web.annot.clear',
-        'search-link-text': 'web.search',
+        'feedback-link-text': 'web.footer.feedback',
         'kbd-link-text': 'web.kbd.link'
       };
       for(var id in m){ var el=document.getElementById(id); if(el) el.textContent=t(m[id]); }

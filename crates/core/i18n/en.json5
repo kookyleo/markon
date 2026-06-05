@@ -236,6 +236,7 @@
     "web.search.esc":     "to close",
     "web.kbd.link":        "Keyboard Shortcuts (?)",
     "web.footer":          "Powered by markon",
+    "web.footer.feedback": "Feedback",
 
     // ── Annotations / Highlights ─────────────────────────────
     "web.annot.unhighlight": "Unhighlight",

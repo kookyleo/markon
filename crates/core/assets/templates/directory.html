@@ -583,10 +583,8 @@
     </ul>
     <footer class="container footer">
         <a id="dir-footer" href="https://kookyleo.github.io/markon/">Powered by markon</a>
-        {% if enable_search %}
         <span class="footer-separator"> | </span>
-        <a id="dir-search-link" href="#" onclick="window.searchManager.show(); return false;">Search</a>
-        {% endif %}
+        <a id="dir-feedback-link" href="https://github.com/kookyleo/markon/issues/new?title=%5BFeedback%5D%20&body=One-line%20summary%3A%0A%0A%23%23%20Environment%0A-%20markon%20version%3A%0A-%20OS%3A%0A-%20Browser%3A%0A%0A%23%23%20Steps%20to%20reproduce%0A1.%0A%0A%23%23%20Expected%0A%0A%23%23%20Actual%0A" target="_blank" rel="noopener noreferrer">Feedback</a>
         <span class="footer-separator"> | </span>
         <a id="dir-kbd-link" href="#" onclick="window.shortcutsManager.showHelp(); return false;">Keyboard Shortcuts (?)</a>
     </footer>
@@ -612,7 +610,7 @@
         'dir-heading': 'web.dir.heading',
         'dir-current-label': 'web.dir.current',
         'dir-footer': 'web.footer',
-        'dir-search-link': 'web.search',
+        'dir-feedback-link': 'web.footer.feedback',
         'dir-kbd-link': 'web.kbd.link'
       };
       for(var id in m){ var el=document.getElementById(id); if(el) el.textContent=t(m[id]); }
