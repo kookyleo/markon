@@ -73,6 +73,8 @@ export function makeOpId(): string {
 const OP_ID_MAX_ENTRIES = 256;
 /** TTL for a recorded op_id (ms). A round-trip is sub-second; 30s is safe. */
 const OP_ID_TTL_MS = 30_000;
+/** Max buffered pre-handler frames per type (only the connect-time burst). */
+const PENDING_PER_TYPE_MAX = 16;
 
 /** Type-narrowed handler for a specific inbound message type. */
 export type WsHandler<T extends WsInbound['type']> = (
@@ -90,6 +92,16 @@ export class WebSocketManager {
     #reconnectTimer: ReturnType<typeof setTimeout> | null = null;
     #stabilityTimer: ReturnType<typeof setTimeout> | null = null;
     #messageHandlers = new Map<string, Array<(msg: WsInbound) => void>>();
+    /**
+     * Inbound frames that arrived before any handler was registered for their
+     * type. The server pushes `all_annotations` (and `viewed_state`) the instant
+     * it receives our file-path frame — which can land before the app finishes
+     * wiring its handlers right after `connect()` resolves. Without this buffer
+     * that initial state was silently dropped and the page looked empty until
+     * the next mutation. Flushed (and cleared) the moment a handler for the type
+     * registers. Bounded so a never-handled type can't grow without limit.
+     */
+    #pendingByType = new Map<string, WsInbound[]>();
     #onStateChange: StateChangeCallback | null = null;
     /**
      * Recently-sent op_ids → expiry timestamp (ms since epoch). An entry is
@@ -251,6 +263,20 @@ export class WebSocketManager {
         list.push(handler as (msg: WsInbound) => void);
         this.#messageHandlers.set(type, list);
         Logger.log('WebSocket', `Registered handler for message type: ${type}`);
+
+        // Replay any frames of this type that arrived before this handler
+        // existed (e.g. the server's connect-time `all_annotations` push).
+        const pending = this.#pendingByType.get(type);
+        if (pending && pending.length) {
+            this.#pendingByType.delete(type);
+            for (const msg of pending) {
+                try {
+                    (handler as (m: WsInbound) => void)(msg);
+                } catch (error) {
+                    Logger.error('WebSocket', `Replay handler error for ${type}:`, error);
+                }
+            }
+        }
     }
 
     /** Unregisters a previously registered handler. */
@@ -287,7 +313,15 @@ export class WebSocketManager {
             if (!raw || typeof raw !== 'object' || !('type' in raw)) return;
             const message = raw as WsInbound;
             const handlers = this.#messageHandlers.get(message.type);
-            if (!handlers) return;
+            if (!handlers || handlers.length === 0) {
+                // No handler yet — buffer (bounded) so it can be replayed once
+                // one registers. Drop the oldest if a never-handled type fills.
+                const queue = this.#pendingByType.get(message.type) ?? [];
+                queue.push(message);
+                if (queue.length > PENDING_PER_TYPE_MAX) queue.shift();
+                this.#pendingByType.set(message.type, queue);
+                return;
+            }
             handlers.forEach((handler) => {
                 try {
                     handler(message);

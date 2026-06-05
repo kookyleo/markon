@@ -741,21 +741,24 @@ fn check_ws_origin(headers: &axum::http::HeaderMap, peer: &std::net::SocketAddr)
 /// - Non-empty and at most 1024 bytes (db keys should be modest).
 /// - No NUL bytes (defends downstream code that might pass the value to C
 ///   string APIs in syntect, sqlite, etc.).
-/// - No `..` path components and no absolute path prefixes.
+/// - No `..` path components (a client must not normalise its way onto another
+///   key).
+///
+/// Absolute paths ARE allowed: the server hands the browser the file's absolute
+/// path in `<meta name="file-path">`, and the client echoes it back as the very
+/// first WS frame, so the legitimate identity is always absolute. Rejecting it
+/// here silently broke shared-annotation persistence — the socket closed right
+/// after the handshake and no annotation was ever stored. The real access
+/// boundary is the same-origin rule in `check_ws_origin`; this value is only
+/// ever used as a parameterised SQL key and a broadcast match, never to open a
+/// file, so an absolute shape carries no extra risk.
 fn is_valid_ws_file_path(path: &str) -> bool {
     if path.is_empty() || path.len() > 1024 || path.contains('\0') {
         return false;
     }
     let p = std::path::Path::new(path);
-    for comp in p.components() {
-        match comp {
-            std::path::Component::ParentDir
-            | std::path::Component::RootDir
-            | std::path::Component::Prefix(_) => return false,
-            _ => {}
-        }
-    }
-    true
+    !p.components()
+        .any(|comp| matches!(comp, std::path::Component::ParentDir))
 }
 
 /// True when `origin` (e.g. `http://192.168.1.10:1618`) and `host` (e.g.
@@ -1878,14 +1881,19 @@ mod tests {
     }
 
     #[test]
-    fn ws_file_path_rejects_parent_traversal() {
-        assert!(!is_valid_ws_file_path("../etc/passwd"));
-        assert!(!is_valid_ws_file_path("notes/../../etc/passwd"));
+    fn ws_file_path_accepts_absolute_path() {
+        // The server issues the file's absolute path; the client echoes it back
+        // as its WS identity. Absolute paths must be accepted or shared-mode
+        // persistence never connects.
+        assert!(is_valid_ws_file_path("/tmp/workspace/doc.md"));
+        assert!(is_valid_ws_file_path("/Users/me/notes/intro.md"));
     }
 
     #[test]
-    fn ws_file_path_rejects_absolute_path() {
-        assert!(!is_valid_ws_file_path("/etc/passwd"));
+    fn ws_file_path_rejects_parent_traversal() {
+        assert!(!is_valid_ws_file_path("../etc/passwd"));
+        assert!(!is_valid_ws_file_path("notes/../../etc/passwd"));
+        assert!(!is_valid_ws_file_path("/tmp/ws/../../etc/passwd"));
     }
 
     #[test]

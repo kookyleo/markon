@@ -138,6 +138,13 @@ export class MarkonApp {
         // 3. Load data
         await this.#loadData();
 
+        // 3b. Now that managers exist and the (empty) shared load is done, wire
+        // the shared-annotation WS handlers. WebSocketManager replays the
+        // server's buffered connect-time `all_annotations` into them here.
+        if (this.#isSharedMode) {
+            this.#setupWebSocketHandlers();
+        }
+
         // 4. Apply to DOM
         this.#applyToDOM();
 
@@ -197,10 +204,11 @@ export class MarkonApp {
                 Logger.error('MarkonApp', 'WebSocket connection failed:', error);
             }
 
-            // Shared-annotation message handlers only when that feature is on.
-            if (this.#isSharedMode) {
-                this.#setupWebSocketHandlers();
-            }
+            // NOTE: shared-annotation message handlers (all_annotations, …) are
+            // registered later, after #initManagers + #loadData — they need the
+            // managers to exist, and they must run *after* the (empty) shared
+            // load so the server's connect-time `all_annotations` push isn't
+            // clobbered. The frame is buffered by WebSocketManager until then.
 
             // External-edit auto-reload: applies to any workspace whose pages
             // hold a WS connection, not just shared-annotation ones.
