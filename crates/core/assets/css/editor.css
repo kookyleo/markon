@@ -165,6 +165,13 @@ html[data-theme="dark"] .highlight-yellow {
     text-decoration: line-through;
 }
 
+/* Body links: hover shifts colour only. GitHub's stylesheet adds an underline
+   on hover; we override it here (editor.css loads after the vendored sheet). */
+.markdown-body a:hover {
+    text-decoration: none;
+    color: var(--markon-primary-hover);
+}
+
 .has-note {
     background-color: rgba(255, 99, 71, 0.2); /* Light tomato background */
     cursor: pointer;
@@ -866,6 +873,12 @@ html[data-theme="dark"] .markdown-body h6.heading-focused {
     color: var(--markon-muted);
     margin: 0 4px;
     font-size: var(--markon-ui-font-size);
+}
+
+/* The All-Viewed toggle now lives inside the toolbar row; the row's gap +
+   separators handle spacing, so drop its standalone left margin. */
+.viewed-toolbar .viewed-checkbox-label {
+    margin-left: 0;
 }
 
 /* Dark theme adjustments — now handled by CSS variables above */

@@ -902,9 +902,10 @@ export class SectionViewedManager {
 
         label.appendChild(checkbox);
         label.appendChild(text);
-        h1.appendChild(label);
 
-        // Toolbar with collapse/expand/print links.
+        // One toolbar row under the title: collapse/expand/print/export links
+        // plus the All-Viewed toggle, so the checkbox no longer dangles off the
+        // end of the heading text.
         const toolbar = document.createElement('span');
         toolbar.className = 'viewed-toolbar';
         toolbar.innerHTML = `
@@ -915,7 +916,9 @@ export class SectionViewedManager {
             <a class="btn-print-page">${_t('web.viewed.print')}</a>
             <span class="viewed-toolbar-separator">|</span>
             <a class="btn-export-annotations" title="${_t('web.export.tip')}">${_t('web.export.label')}</a>
+            <span class="viewed-toolbar-separator">|</span>
         `;
+        toolbar.appendChild(label);
 
         h1.appendChild(toolbar);
 
