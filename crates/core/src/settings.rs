@@ -415,6 +415,30 @@ impl AppSettings {
     /// HashMap iteration over individual properties is unordered.
     /// Returns `None` when neither selector would have any content.
     pub fn render_styles_css(&self) -> Option<String> {
+        // Map a legacy flat colour key to its Primer-style canonical token, so
+        // Page Styles overrides saved under the old names keep applying after
+        // the token rename. Non-colour keys (typography, opacity, …) and
+        // already-canonical names pass through unchanged.
+        fn canonical(name: &str) -> &str {
+            match name {
+                "primary" => "accent",
+                "primary-hover" => "accent-hover",
+                "primary-bg" => "accent-muted",
+                "canvas" => "bg-default",
+                "subtle" => "bg-muted",
+                "elevated" => "bg-elevated",
+                "elevated-2" => "bg-elevated-2",
+                "overlay" => "bg-overlay",
+                "hover" => "bg-hover",
+                "text" => "fg-default",
+                "muted" => "fg-muted",
+                "muted-hover" => "fg-muted-hover",
+                "text-muted" => "fg-subtle",
+                "border" => "border-default",
+                "border-strong" => "border-emphasis",
+                other => other,
+            }
+        }
         if self.web_styles.is_empty() {
             return None;
         }
@@ -422,9 +446,9 @@ impl AppSettings {
         let mut dark: Vec<String> = Vec::new();
         for (k, v) in &self.web_styles {
             if let Some(base) = k.strip_suffix(".light") {
-                root.push(format!("--markon-{base}: {v};"));
+                root.push(format!("--markon-{}: {v};", canonical(base)));
             } else if let Some(base) = k.strip_suffix(".dark") {
-                dark.push(format!("--markon-{base}: {v};"));
+                dark.push(format!("--markon-{}: {v};", canonical(base)));
             } else {
                 // Bare key (single-value token) or unknown suffix — both go
                 // to `:root` so unexpected data is rendered harmlessly rather
@@ -616,8 +640,9 @@ mod tests {
         let s = settings_with_styles(&[("primary.light", "#0969da"), ("muted.light", "#656d76")]);
         let css = s.render_styles_css().expect("should render");
         assert!(css.starts_with(":root { "), "got: {css}");
-        assert!(css.contains("--markon-primary: #0969da;"), "got: {css}");
-        assert!(css.contains("--markon-muted: #656d76;"), "got: {css}");
+        // Legacy keys migrate to the Primer-style canonical tokens.
+        assert!(css.contains("--markon-accent: #0969da;"), "got: {css}");
+        assert!(css.contains("--markon-fg-muted: #656d76;"), "got: {css}");
         assert!(
             !css.contains("html[data-theme=\"dark\"]"),
             "dark block must be absent when no dark keys: {css}"
@@ -636,7 +661,7 @@ mod tests {
             "no :root block when no light/single-value keys: {css}"
         );
         assert!(
-            css.contains("html[data-theme=\"dark\"] { --markon-primary: #58a6ff; }"),
+            css.contains("html[data-theme=\"dark\"] { --markon-accent: #58a6ff; }"),
             "got: {css}"
         );
         assert!(!css.contains("primary.dark:"), "leaked dotted key: {css}");
@@ -669,11 +694,11 @@ mod tests {
         // Use HashMap-order-agnostic membership checks.
         let root_block = &css[root_idx..dark_idx];
         assert!(
-            root_block.contains("--markon-primary: #0969da;"),
+            root_block.contains("--markon-accent: #0969da;"),
             "got: {root_block}"
         );
         assert!(
-            root_block.contains("--markon-muted: #656d76;"),
+            root_block.contains("--markon-fg-muted: #656d76;"),
             "got: {root_block}"
         );
         assert!(
@@ -693,7 +718,7 @@ mod tests {
         // must NOT leak into the dark block.
         let dark_block = &css[dark_idx..];
         assert!(
-            dark_block.contains("--markon-primary: #58a6ff;"),
+            dark_block.contains("--markon-accent: #58a6ff;"),
             "got: {dark_block}"
         );
         assert!(
