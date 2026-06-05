@@ -974,6 +974,15 @@
             </div>
           </div>
           <div class="pref-row">
+            <span class="pref-label" data-i18n="pref.web.editor_theme"></span>
+            <div class="pref-control">
+              <select id="web_editor_theme" style="width:150px">
+                <option value="follow"      data-i18n="editor_theme.follow"></option>
+                <option value="vscode-dark" data-i18n="editor_theme.vscode_dark"></option>
+              </select>
+            </div>
+          </div>
+          <div class="pref-row">
             <span class="pref-label"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" style="vertical-align:-2px;margin-right:3px;opacity:.6"><circle cx="12" cy="12" r="10"/><path d="M2 12h20M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg><span data-i18n="pref.web.lang"></span></span>
             <div class="pref-control">
               <select id="web_language" style="width:150px">
@@ -1466,6 +1475,7 @@
     document.getElementById('theme').value = s.theme;
     document.getElementById('language').value = s.language || 'auto';
     document.getElementById('web_theme').value = s.web_theme || 'auto';
+    document.getElementById('web_editor_theme').value = s.web_editor_theme || 'follow';
     document.getElementById('web_language').value = s.web_language || 'auto';
     updateDbPathDisplay(s.db_path ?? '');
     document.getElementById('tray_resident').checked = s.tray_resident ?? true;
@@ -1520,6 +1530,7 @@
       theme:     document.getElementById('theme').value,
       language:  document.getElementById('language').value,
       web_theme: document.getElementById('web_theme').value,
+      web_editor_theme: document.getElementById('web_editor_theme').value,
       web_language: document.getElementById('web_language').value,
       db_path:   currentDbPath || null,
       default_search: document.getElementById('default_search').checked,
@@ -1607,7 +1618,7 @@
     liveApply.language(e.target.value, systemLocale);
     saveSettings();
   });
-  ['web_theme', 'web_language'].forEach(id =>
+  ['web_theme', 'web_editor_theme', 'web_language'].forEach(id =>
     document.getElementById(id).addEventListener('change', saveSettings)
   );
   document.querySelectorAll('input[name="port_mode"]').forEach(radio => {

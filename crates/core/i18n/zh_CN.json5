@@ -38,6 +38,9 @@
     "pref.lang":       "面板语言",
     "lang.auto":       "跟随系统",
     "pref.web.theme":  "阅读页主题",
+    "pref.web.editor_theme":   "编辑器主题",
+    "editor_theme.follow":     "跟随页面",
+    "editor_theme.vscode_dark": "VSCode 深色",
     "pref.web.lang":   "阅读页语言",
     "web.auto":        "跟随面板",
 

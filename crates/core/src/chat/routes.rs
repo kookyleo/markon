@@ -808,6 +808,7 @@ mod tests {
             shortcuts_json: Arc::new("null".into()),
             styles_css: Arc::new(String::new()),
             default_chat_mode: Arc::new("in_page".into()),
+            editor_theme: Arc::new("follow".into()),
             print_collapsed_content: false,
             shutdown_tx,
             #[cfg(debug_assertions)]

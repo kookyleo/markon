@@ -38,6 +38,9 @@
     "pref.lang":       "Panel language",
     "lang.auto":       "Follow system",
     "pref.web.theme":  "Viewer theme",
+    "pref.web.editor_theme":   "Editor theme",
+    "editor_theme.follow":     "Follow page",
+    "editor_theme.vscode_dark": "VSCode Dark",
     "pref.web.lang":   "Viewer language",
     "web.auto":        "Follow panel",
 

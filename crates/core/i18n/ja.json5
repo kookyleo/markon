@@ -38,6 +38,9 @@
     "pref.lang":       "パネル言語",
     "lang.auto":       "システムに従う",
     "pref.web.theme":  "ビューアテーマ",
+    "pref.web.editor_theme":   "エディタテーマ",
+    "editor_theme.follow":     "ページに従う",
+    "editor_theme.vscode_dark": "VSCode ダーク",
     "pref.web.lang":   "ビューア言語",
     "web.auto":        "パネルに従う",
 

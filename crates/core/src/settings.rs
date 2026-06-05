@@ -53,6 +53,9 @@ fn default_auto() -> String {
 fn default_in_page() -> String {
     "in_page".to_string()
 }
+fn default_follow() -> String {
+    "follow".to_string()
+}
 
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
@@ -134,6 +137,11 @@ pub struct AppSettings {
     pub web_theme: String,
     #[serde(default = "default_auto")]
     pub web_language: String,
+    /// Source-editor colour preset for the web view: "follow" (track the page
+    /// theme via the --mk-editor-* layer) or "vscode-dark" (the named dark
+    /// preset). Emitted as the `data-editor-theme` attribute on <html>.
+    #[serde(default = "default_follow")]
+    pub web_editor_theme: String,
     pub db_path: Option<String>,
     /// Per-install random salt for workspace-id hashing. Empty on first run;
     /// `load()` lazily generates one and persists it. Keeping it stable across
@@ -197,6 +205,7 @@ impl Default for AppSettings {
             language: "auto".to_string(),
             web_theme: "auto".to_string(),
             web_language: "auto".to_string(),
+            web_editor_theme: "follow".to_string(),
             db_path: None,
             salt: String::new(),
             workspaces: vec![],
@@ -276,6 +285,9 @@ impl AppSettings {
         if self.default_chat_mode != "popout" {
             self.default_chat_mode = "in_page".to_string();
         }
+        if self.web_editor_theme != "vscode-dark" {
+            self.web_editor_theme = "follow".to_string();
+        }
     }
     pub(crate) fn save_at(&self, home: &Path) -> Result<(), String> {
         let p = Self::settings_path_at(home);
@@ -344,6 +356,7 @@ impl AppSettings {
             styles_css: self.render_styles_css(),
             shortcuts_json: self.render_shortcuts_json(),
             default_chat_mode: self.default_chat_mode.clone(),
+            editor_theme: self.web_editor_theme.clone(),
             print_collapsed_content: self.print_collapsed_content,
         }
     }
@@ -593,6 +606,16 @@ mod tests {
         s.default_chat_mode = "popout".to_string();
         s.normalize();
         assert_eq!(s.default_chat_mode, "popout");
+
+        // web_editor_theme: default is "follow"; unknown/blank values are
+        // canonicalized back to "follow", and "vscode-dark" is preserved.
+        assert_eq!(s.web_editor_theme, "follow");
+        s.web_editor_theme = "vscode-dark".to_string();
+        s.normalize();
+        assert_eq!(s.web_editor_theme, "vscode-dark");
+        s.web_editor_theme = "bogus".to_string();
+        s.normalize();
+        assert_eq!(s.web_editor_theme, "follow");
     }
 
     #[test]
@@ -770,6 +793,8 @@ mod tests {
         assert_eq!(cfg.port, 7777);
         assert_eq!(cfg.initial_workspaces.len(), 1);
         assert_eq!(cfg.initial_workspaces[0].path, Path::new("/docs"));
+        // editor preset defaults to "follow" and rides through to the config.
+        assert_eq!(cfg.editor_theme, "follow");
     }
 
     #[test]

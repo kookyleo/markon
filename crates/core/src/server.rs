@@ -85,6 +85,10 @@ pub struct ServerConfig {
     /// Default chat surface: "in_page" or "popout". Surfaced to the browser
     /// via the `default-chat-mode` meta tag.
     pub default_chat_mode: String,
+    /// Source-editor colour preset: "follow" (track page theme) or
+    /// "vscode-dark". Mirrored to the browser as the `data-editor-theme`
+    /// attribute on <html>; resolved by the --mk-editor-* token layer.
+    pub editor_theme: String,
     /// When true, collapsed sections are forced visible during print so their
     /// content ends up on paper. When false (default) the content stays hidden
     /// and a small placeholder marks the position of the collapsed section.
@@ -111,6 +115,9 @@ pub(crate) struct AppState {
     pub styles_css: Arc<String>,
     /// Default chat surface ("in_page" or "popout").
     pub default_chat_mode: Arc<String>,
+    /// Source-editor colour preset ("follow" or "vscode-dark"). Mirrored to
+    /// the browser as the `data-editor-theme` attribute on <html>.
+    pub editor_theme: Arc<String>,
     /// Whether collapsed sections should be printed (true) or replaced by a
     /// placeholder (false). Mirrored to the browser as a `<html>` data attr.
     pub print_collapsed_content: bool,
@@ -388,6 +395,7 @@ pub async fn start(config: ServerConfig) -> Result<(), String> {
         shortcuts_json,
         styles_css,
         default_chat_mode,
+        editor_theme,
         print_collapsed_content,
     } = config;
 
@@ -504,6 +512,7 @@ pub async fn start(config: ServerConfig) -> Result<(), String> {
         shortcuts_json: Arc::new(shortcuts_json.unwrap_or_else(|| "null".to_string())),
         styles_css: Arc::new(styles_css.unwrap_or_default()),
         default_chat_mode: Arc::new(default_chat_mode),
+        editor_theme: Arc::new(editor_theme),
         print_collapsed_content,
         shutdown_tx,
         #[cfg(debug_assertions)]
@@ -1364,6 +1373,7 @@ fn render_markdown_file(
             context.insert("shortcuts_json", state.shortcuts_json.as_str());
             context.insert("styles_css", state.styles_css.as_str());
             context.insert("default_chat_mode", state.default_chat_mode.as_str());
+            context.insert("editor_theme", state.editor_theme.as_str());
             context.insert("print_collapsed_content", &state.print_collapsed_content);
 
             match state.tera.render("layout.html", &context) {
@@ -1394,6 +1404,7 @@ fn render_markdown_file(
             context.insert("shortcuts_json", state.shortcuts_json.as_str());
             context.insert("styles_css", state.styles_css.as_str());
             context.insert("default_chat_mode", state.default_chat_mode.as_str());
+            context.insert("editor_theme", state.editor_theme.as_str());
             context.insert("print_collapsed_content", &state.print_collapsed_content);
 
             match state.tera.render("layout.html", &context) {
@@ -1772,6 +1783,7 @@ mod tests {
             shortcuts_json: Arc::new("null".into()),
             styles_css: Arc::new("".into()),
             default_chat_mode: Arc::new("in_page".into()),
+            editor_theme: Arc::new("follow".into()),
             print_collapsed_content: false,
             shutdown_tx,
             #[cfg(debug_assertions)]
@@ -1985,6 +1997,7 @@ mod tests {
             shortcuts_json: Arc::new("{}".into()),
             styles_css: Arc::new("".into()),
             default_chat_mode: Arc::new("in_page".into()),
+            editor_theme: Arc::new("follow".into()),
             print_collapsed_content: false,
             shutdown_tx: tx,
             #[cfg(debug_assertions)]
