@@ -920,22 +920,21 @@ export class SectionViewedManager {
             <a class="btn-export-annotations" title="${_t('web.export.tip')}">${_t('web.export.label')}</a>
         `);
 
-        // Attach the bar inline right after the title when it fits on the same
-        // line; if it would wrap, drop the WHOLE bar onto its own line below the
-        // heading instead — never leave it half-wrapped inside the <h1>. This
-        // mirrors how shorter headings carry their actions inline.
+        // The bar lives as a CHILD of the <h1> so it's always inside the heading
+        // block — above the heading's bottom divider — whether it sits inline
+        // after the title or, when it can't fit, drops onto its own full-width
+        // row (a block child, never half-wrapped, never below the divider).
+        h1.appendChild(toolbar);
         const placeToolbar = (): void => {
-            if (toolbar.parentElement !== h1) h1.appendChild(toolbar);
             toolbar.classList.remove('viewed-toolbar--block');
             const withBar = h1.offsetHeight;
             toolbar.style.display = 'none';
             const titleOnly = h1.offsetHeight;
             toolbar.style.display = '';
             // If the bar made the heading taller, it spilled onto a new line —
-            // lift it out of the heading onto its own row.
+            // give it its own full-width row (still inside the <h1>).
             if (withBar > titleOnly) {
                 toolbar.classList.add('viewed-toolbar--block');
-                h1.after(toolbar);
             }
         };
         placeToolbar();
