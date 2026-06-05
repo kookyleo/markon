@@ -241,7 +241,7 @@ export class AnnotationManager {
      * containing heading. When `ids` is given, only those annotations are
      * exported (used by the selection wizard); otherwise the whole page is.
      */
-    formatAsMarkdown(opts: { documentTitle?: string; ids?: Iterable<string> } = {}): string {
+    formatAsMarkdown(opts: { ids?: Iterable<string> } = {}): string {
         const filter = opts.ids ? new Set(opts.ids) : null;
         const annotations = this.getAllInDocumentOrder()
             .filter(a => !filter || filter.has(a.id));
@@ -250,11 +250,9 @@ export class AnnotationManager {
         const escapeBlockquote = (s: string): string =>
             s.replace(/\r?\n/g, '\n> ');
 
-        const title = opts.documentTitle?.trim();
+        // No title/count/--- preamble — the export drops straight into the
+        // first section so it reads as content, not a report.
         const lines: string[] = [];
-        if (title) lines.push(`# Notes — ${title}`, '');
-        else lines.push('# Notes', '');
-        lines.push(`*${annotations.length} note${annotations.length === 1 ? '' : 's'}*`, '', '---', '');
 
         let lastHeadingKey = '';
         annotations.forEach((a, idx) => {
@@ -264,11 +262,9 @@ export class AnnotationManager {
                 lines.push(`## ${heading.text}`, '');
                 lastHeadingKey = key;
             }
-            const label = annotationTypeLabel(a.type);
-            // Anchor text: for `has-note` (no highlight color) the text is
-            // still the original selection; for the others it's the
-            // highlighted span.
-            lines.push(`${idx + 1}. **${label}** — "${a.text.trim()}"`);
+            // Anchor quote (the annotated text) then the note as a blockquote.
+            // Everything here is a note, so no per-item type label.
+            lines.push(`${idx + 1}. "${a.text.trim()}"`);
             if (a.note && a.note.trim()) {
                 lines.push(`   > ${escapeBlockquote(a.note.trim())}`);
             }

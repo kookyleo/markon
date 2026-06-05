@@ -392,26 +392,30 @@ describe('AnnotationManager', () => {
         await mgr.add(note);
         mgr.applyToDOM([note]);
 
-        const md = mgr.formatAsMarkdown({ documentTitle: 'My Doc' });
+        const md = mgr.formatAsMarkdown();
 
-        expect(md).toContain('# Notes — My Doc');
-        expect(md).toContain('*4 notes*');
+        // No title/count/--- preamble — straight into the first section.
+        expect(md).not.toContain('# Notes');
+        expect(md.trimStart().startsWith('## Section A')).toBe(true);
         expect(md).toContain('## Section A');
         expect(md).toContain('## Section B');
 
-        // Document order: yellow (alpha) → orange+note (bravo) → strike (delta) → note (echo)
-        const yellowIdx = md.indexOf('Yellow highlight');
-        const orangeIdx = md.indexOf('Orange highlight');
-        const strikeIdx = md.indexOf('Strikethrough');
-        const noteIdx   = md.indexOf('**Note**');
-        expect(yellowIdx).toBeGreaterThan(-1);
-        expect(orangeIdx).toBeGreaterThan(yellowIdx);
-        expect(strikeIdx).toBeGreaterThan(orangeIdx);
-        expect(noteIdx).toBeGreaterThan(strikeIdx);
+        // Items carry the quoted anchor text, not a type label.
+        expect(md).not.toContain('**');
+
+        // Document order: alpha (Section A) → bravo → delta (Section B) → echo
+        const alphaIdx = md.indexOf('"alpha"');
+        const bravoIdx = md.indexOf('"bravo"');
+        const deltaIdx = md.indexOf('"delta"');
+        const echoIdx  = md.indexOf('"echo"');
+        expect(alphaIdx).toBeGreaterThan(-1);
+        expect(bravoIdx).toBeGreaterThan(alphaIdx);
+        expect(deltaIdx).toBeGreaterThan(bravoIdx);
+        expect(echoIdx).toBeGreaterThan(deltaIdx);
 
         // Section headers should appear before their first annotation
-        expect(md.indexOf('## Section A')).toBeLessThan(yellowIdx);
-        expect(md.indexOf('## Section B')).toBeLessThan(strikeIdx);
+        expect(md.indexOf('## Section A')).toBeLessThan(alphaIdx);
+        expect(md.indexOf('## Section B')).toBeLessThan(deltaIdx);
 
         // Notes attached as blockquote under their entry
         expect(md).toContain('> remember this');
@@ -432,9 +436,8 @@ describe('AnnotationManager', () => {
         mgr.applyToDOM([orange]);
 
         const md = mgr.formatAsMarkdown({ ids: new Set([orange.id]) });
-        expect(md).toContain('*1 note*');
-        expect(md).toContain('Orange highlight');
-        expect(md).not.toContain('Yellow highlight');
+        expect(md).toContain('"bravo"');
+        expect(md).not.toContain('"alpha"');
 
         // Empty selection yields an empty document.
         expect(mgr.formatAsMarkdown({ ids: new Set<string>() })).toBe('');

@@ -228,7 +228,6 @@ export class ExportManager {
         if (this.#selected.size === 0) return;
         const title = this.#deps.getDocumentTitle();
         const markdown = this.#deps.annotationManager.formatAsMarkdown({
-            documentTitle: title || undefined,
             ids: this.#selected,
         });
 
