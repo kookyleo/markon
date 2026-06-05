@@ -192,12 +192,6 @@ export class FloatingLayer {
     private _home: Point | null = null;
     private _intentionalHome: Point | null = null;
     private _isDragging = false;
-    /** Set true when a drag actually moved the layer, so the native `click`
-     *  the browser synthesises right after mouseup is swallowed instead of
-     *  toggling the panel. Consumed by that click, and reset at the start of
-     *  every fresh press so a move-less click always opens. More robust than
-     *  racing a setTimeout against the native click dispatch. */
-    private _suppressClick = false;
     private _dragStart: Point | null = null;
     // When set (true|false), all geometry helpers behave as if
     // isExpanded returned this value — used to "what-if" the target
@@ -598,13 +592,6 @@ export class FloatingLayer {
         if (this._expandable) {
             handle.addEventListener('click', (e: MouseEvent) => {
                 if (this._isDragging) return;
-                // A drag just moved the layer — swallow the trailing synthetic
-                // click so a reposition never also toggles the panel.
-                if (this._suppressClick) {
-                    this._suppressClick = false;
-                    e.stopPropagation();
-                    return;
-                }
                 // Suppress the handle's own click from also reaching the
                 // document outside-collapse listener — without this the
                 // toggle call below would expand and the document handler
@@ -682,9 +669,6 @@ export class FloatingLayer {
 
     private _beginDrag(e: MouseEvent): void {
         e.preventDefault();
-        // Fresh press: a prior drag that produced no click must not keep the
-        // suppression armed and swallow this interaction's click.
-        this._suppressClick = false;
         const startPointer: Point = { x: e.clientX, y: e.clientY };
         const startHome: Point = { ...(this._home as Point) };
         let moved = false;
@@ -712,13 +696,24 @@ export class FloatingLayer {
         const onUp = (): void => {
             document.removeEventListener('mousemove', onMove);
             document.removeEventListener('mouseup', onUp);
-            if (moved) {
-                this._persistHome();
-                // Arm one-shot click suppression for the trailing synthetic
-                // click. Deterministic — no race with a setTimeout.
-                this._suppressClick = true;
-            }
             this._isDragging = false;
+            if (!moved) return;
+            this._persistHome();
+            // A real drag just ended. The browser synthesises a `click` on
+            // mouseup; swallow it once at capture phase on window so NO handler
+            // mistakes the drag for a click — not this layer's own toggle, and
+            // not foreign handlers (e.g. Chat's capture-phase popout intercept
+            // on the same sphere). stopImmediatePropagation kills every
+            // remaining listener for that event, capture or bubble, anywhere.
+            const swallow = (ev: MouseEvent): void => {
+                ev.stopImmediatePropagation();
+                ev.preventDefault();
+                window.removeEventListener('click', swallow, true);
+            };
+            window.addEventListener('click', swallow, true);
+            // If the gesture produced no click (released off the handle), drop
+            // the one-shot next tick so it can't swallow a later real click.
+            setTimeout(() => window.removeEventListener('click', swallow, true), 0);
         };
         document.addEventListener('mousemove', onMove);
         document.addEventListener('mouseup', onUp);
