@@ -5,10 +5,10 @@ use regex::Regex;
 // `SyntaxSet` produced by `two_face::syntax::extra_newlines()` matches the
 // syntect types we reference here. Cargo unifies both to a single 5.3.0, but
 // re-exporting keeps this robust against any future version skew.
-use two_face::re_exports::syntect;
 use syntect::html::{ClassStyle, ClassedHTMLGenerator};
 use syntect::parsing::{SyntaxReference, SyntaxSet};
 use syntect::util::LinesWithEndings;
+use two_face::re_exports::syntect;
 
 #[derive(Debug)]
 struct FenceWarning {
