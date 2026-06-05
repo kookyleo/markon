@@ -44,6 +44,9 @@ log = "0.4.29"
 uuid = { version = "1.23.1", features = ["v4"] }
 pulldown-cmark = "0.13.3"
 syntect = "5.3.0"
+# Extended syntax set bundled from bat's ~200 Sublime grammars. Pinned to a
+# version built against syntect 5.3.0 so Cargo unifies on a single syntect.
+two-face = "0.5.1"
 tower-http = { version = "0.6.8", features = ["fs", "trace"] }
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"

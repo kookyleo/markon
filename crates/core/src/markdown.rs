@@ -1,8 +1,13 @@
 use lazy_static::lazy_static;
 use pulldown_cmark::{html, CodeBlockKind, CowStr, Event, Options, Parser, Tag, TagEnd};
 use regex::Regex;
+// Use the syntect that `two-face` was built against (re-exported), so the
+// `SyntaxSet` produced by `two_face::syntax::extra_newlines()` matches the
+// syntect types we reference here. Cargo unifies both to a single 5.3.0, but
+// re-exporting keeps this robust against any future version skew.
+use two_face::re_exports::syntect;
 use syntect::html::{ClassStyle, ClassedHTMLGenerator};
-use syntect::parsing::{SyntaxDefinition, SyntaxReference, SyntaxSet};
+use syntect::parsing::{SyntaxReference, SyntaxSet};
 use syntect::util::LinesWithEndings;
 
 #[derive(Debug)]
@@ -12,28 +17,39 @@ struct FenceWarning {
     backtick_count: usize,
 }
 
-/// Bundled Protocol Buffers (proto2 + proto3) syntax definition. The default
-/// syntect set ships no protobuf grammar, so ```protobuf / ```proto fences would
-/// otherwise render as plain text. Embedded at compile time and folded into the
-/// set at startup.
-const PROTOBUF_SYNTAX: &str = include_str!("syntaxes/Protocol Buffer.sublime-syntax");
+/// Lowercase fence-token aliases mapped to a token that `find_syntax_by_token`
+/// resolves against two-face's extended set. Only entries where the common
+/// fence label differs from the grammar's own name/extension are needed; most
+/// languages (rust, python, kotlin, swift, …) resolve directly.
+const FENCE_ALIASES: &[(&str, &str)] = &[
+    // "Protocol Buffer" grammar: name has a space, extension is `proto`.
+    ("protobuf", "proto"),
+    ("proto3", "proto"),
+    ("proto2", "proto"),
+    // F# grammar resolves by `f#` but not by the common `fsharp` label.
+    ("fsharp", "f#"),
+];
 
-/// Build the syntax set used for highlighting: the syntect defaults plus the
-/// bundled Protocol Buffers grammar. On a parse failure of the (trusted) bundled
-/// grammar we fall back to the plain defaults rather than panicking the server.
-fn build_syntax_set() -> SyntaxSet {
-    let defaults = SyntaxSet::load_defaults_newlines();
-    match SyntaxDefinition::load_from_str(PROTOBUF_SYNTAX, true, Some("Protocol Buffer")) {
-        Ok(def) => {
-            let mut builder = defaults.into_builder();
-            builder.add(def);
-            builder.build()
-        }
-        Err(e) => {
-            eprintln!("warning: failed to parse bundled Protocol Buffer syntax: {e}");
-            SyntaxSet::load_defaults_newlines()
+/// Resolve a fence label to a syntax. Tries the alias map first, then
+/// `find_syntax_by_token` (matches grammar name and file extension), then
+/// `find_syntax_by_name`, falling back to plain text. Matching is
+/// case-insensitive via the lowercased token where helpful.
+fn resolve_syntax<'a>(ss: &'a SyntaxSet, token: &str) -> &'a SyntaxReference {
+    let lower = token.to_ascii_lowercase();
+    let aliased = FENCE_ALIASES
+        .iter()
+        .find(|(k, _)| *k == lower)
+        .map(|(_, v)| *v);
+
+    if let Some(target) = aliased {
+        if let Some(s) = ss.find_syntax_by_token(target) {
+            return s;
         }
     }
+    ss.find_syntax_by_token(token)
+        .or_else(|| ss.find_syntax_by_token(&lower))
+        .or_else(|| ss.find_syntax_by_name(token))
+        .unwrap_or_else(|| ss.find_syntax_plain_text())
 }
 
 lazy_static! {
@@ -48,7 +64,10 @@ lazy_static! {
         .expect("Failed to compile HTML_TAG_REGEX");
     static ref MULTI_HYPHEN_REGEX: Regex = Regex::new(r"-+")
         .expect("Failed to compile MULTI_HYPHEN_REGEX");
-    static ref SYNTAX_SET: SyntaxSet = build_syntax_set();
+    /// two-face's extended syntax set (bat's ~200 Sublime grammars), the
+    /// *newlines* variant required by `ClassedHTMLGenerator` (it parses lines
+    /// that include their trailing newline).
+    static ref SYNTAX_SET: SyntaxSet = two_face::syntax::extra_newlines();
     /// `<img src=…>`, `<source src=…>`, `<video|audio … src=…>` — case-insensitive
     /// tag and attribute, single or double quotes.
     static ref HTML_SRC_REGEX: Regex = Regex::new(
@@ -223,13 +242,10 @@ impl MarkdownRenderer {
                         } else {
                             // Regular code block: emit class-based spans (no
                             // inline colors) so the palette lives in CSS tokens.
-                            // `by_token` matches the fence label against both the
-                            // language name (`rust`, `python`) and file extension
-                            // (`rs`, `py`); `by_extension` alone misses name-only
-                            // fences and silently fell back to plain text.
-                            let syntax = ss
-                                .find_syntax_by_token(&code_lang)
-                                .unwrap_or_else(|| ss.find_syntax_plain_text());
+                            // `resolve_syntax` matches the fence label against the
+                            // grammar name and file extension (plus a small alias
+                            // map), falling back to plain text when nothing fits.
+                            let syntax = resolve_syntax(ss, &code_lang);
                             let inner = highlight_code_to_classed_html(syntax, ss, &code_buffer);
                             let highlighted_html =
                                 format!("<pre><code class=\"mk-code\">{inner}</code></pre>");
@@ -660,18 +676,14 @@ mod assets_tests {
             "fence `{fence_lang}` not rendered as a code block: {html}"
         );
         // Proto keywords/types/comments must be wrapped in mk-* spans, proving
-        // the bundled grammar matched (otherwise it would be plain text).
-        assert!(
-            html.contains("mk-keyword"),
-            "fence `{fence_lang}` missing mk-keyword span: {html}"
-        );
-        assert!(
-            html.contains("mk-storage"),
-            "fence `{fence_lang}` missing mk-storage span (scalar types): {html}"
-        );
+        // two-face's "Protocol Buffer" grammar matched (otherwise plain text).
         assert!(
             html.contains("mk-comment"),
             "fence `{fence_lang}` missing mk-comment span: {html}"
+        );
+        assert!(
+            html.contains("mk-keyword") || html.contains("mk-storage"),
+            "fence `{fence_lang}` missing mk-keyword/mk-storage span: {html}"
         );
         // No inline colors — palette is CSS/token driven.
         assert!(
@@ -688,6 +700,126 @@ mod assets_tests {
     #[test]
     fn proto_fence_is_highlighted() {
         assert_proto_highlighted("proto");
+    }
+
+    /// Render a fenced block in `lang` and assert it became a class-based,
+    /// highlighted code block (not a plain dump and not inline-coloured). At
+    /// least one of the supplied highlight classes must be present.
+    fn assert_lang_highlighted(lang: &str, code: &str, expect_classes: &[&str]) {
+        let md = format!("```{lang}\n{code}\n```\n");
+        let (html, _has_mermaid, _toc) = MarkdownRenderer::new("light").render(&md);
+        assert!(
+            html.contains("<pre><code class=\"mk-code\">"),
+            "fence `{lang}` not rendered as a code block: {html}"
+        );
+        assert!(
+            expect_classes.iter().any(|c| html.contains(c)),
+            "fence `{lang}` missing any of {expect_classes:?}: {html}"
+        );
+        assert!(
+            !html.contains("style=\"color"),
+            "fence `{lang}` unexpected inline color: {html}"
+        );
+    }
+
+    #[test]
+    fn typescript_fence_is_highlighted() {
+        assert_lang_highlighted(
+            "typescript",
+            "// c\nconst x: string = \"hi\";\nfunction f() {}",
+            &["mk-keyword", "mk-storage", "mk-string", "mk-comment"],
+        );
+    }
+
+    #[test]
+    fn tsx_fence_is_highlighted() {
+        assert_lang_highlighted(
+            "tsx",
+            "// c\nconst App = () => <div className=\"a\">hi</div>;",
+            &["mk-keyword", "mk-storage", "mk-string", "mk-comment"],
+        );
+    }
+
+    #[test]
+    fn kotlin_fence_is_highlighted() {
+        assert_lang_highlighted(
+            "kotlin",
+            "// c\nfun main() { val s = \"hi\" }",
+            &["mk-keyword", "mk-storage", "mk-string", "mk-comment"],
+        );
+    }
+
+    #[test]
+    fn swift_fence_is_highlighted() {
+        assert_lang_highlighted(
+            "swift",
+            "// c\nlet s = \"hi\"\nfunc f() {}",
+            &["mk-keyword", "mk-storage", "mk-string", "mk-comment"],
+        );
+    }
+
+    #[test]
+    fn toml_fence_is_highlighted() {
+        assert_lang_highlighted(
+            "toml",
+            "# c\nname = \"markon\"\n[deps]",
+            &["mk-string", "mk-comment", "mk-keyword"],
+        );
+    }
+
+    #[test]
+    fn dockerfile_fence_is_highlighted() {
+        assert_lang_highlighted(
+            "dockerfile",
+            "# c\nFROM rust:1 AS build\nRUN echo hi",
+            &["mk-keyword", "mk-comment"],
+        );
+    }
+
+    #[test]
+    fn graphql_fence_is_highlighted() {
+        assert_lang_highlighted(
+            "graphql",
+            "# c\ntype Query { name: String }",
+            &["mk-keyword", "mk-comment", "mk-support"],
+        );
+    }
+
+    #[test]
+    fn powershell_fence_is_highlighted() {
+        assert_lang_highlighted(
+            "powershell",
+            "# c\n$x = \"hi\"\nWrite-Host $x",
+            &["mk-keyword", "mk-string", "mk-comment", "mk-variable"],
+        );
+    }
+
+    #[test]
+    fn elixir_fence_is_highlighted() {
+        assert_lang_highlighted(
+            "elixir",
+            "# c\ndef hello do\n  \"world\"\nend",
+            &["mk-keyword", "mk-string", "mk-comment"],
+        );
+    }
+
+    #[test]
+    fn zig_fence_is_highlighted() {
+        assert_lang_highlighted(
+            "zig",
+            "// c\nconst std = @import(\"std\");\npub fn main() void {}",
+            &["mk-keyword", "mk-storage", "mk-string", "mk-comment"],
+        );
+    }
+
+    #[test]
+    fn fsharp_fence_resolves_via_alias() {
+        // `fsharp` is not a native token; the alias map maps it to `f#`.
+        assert_lang_highlighted(
+            "fsharp",
+            "// c\nlet x = \"hi\"\nlet add a b = a + b",
+            &["mk-keyword", "mk-string", "mk-comment"],
+        );
     }
 
     #[test]
