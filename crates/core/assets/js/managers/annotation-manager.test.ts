@@ -356,7 +356,7 @@ describe('AnnotationManager', () => {
         expect(mgr.formatAsMarkdown()).toBe('');
     });
 
-    it('formatAsMarkdown groups annotations by heading in document order (#13)', async () => {
+    it('formatAsMarkdown lists annotations in document order without headings (#13)', async () => {
         const article = setupArticle(
             '<h1 id="t">Title</h1>'
             + '<h2 id="a">Section A</h2>'
@@ -394,16 +394,14 @@ describe('AnnotationManager', () => {
 
         const md = mgr.formatAsMarkdown();
 
-        // No title/count/--- preamble — straight into the first section.
+        // No preamble and no section headings — a flat numbered list.
         expect(md).not.toContain('# Notes');
-        expect(md.trimStart().startsWith('## Section A')).toBe(true);
-        expect(md).toContain('## Section A');
-        expect(md).toContain('## Section B');
-
+        expect(md).not.toContain('## ');
         // Items carry the quoted anchor text, not a type label.
         expect(md).not.toContain('**');
+        expect(md.trimStart().startsWith('1. ')).toBe(true);
 
-        // Document order: alpha (Section A) → bravo → delta (Section B) → echo
+        // Items stay in document order: alpha → bravo → delta → echo.
         const alphaIdx = md.indexOf('"alpha"');
         const bravoIdx = md.indexOf('"bravo"');
         const deltaIdx = md.indexOf('"delta"');
@@ -412,10 +410,6 @@ describe('AnnotationManager', () => {
         expect(bravoIdx).toBeGreaterThan(alphaIdx);
         expect(deltaIdx).toBeGreaterThan(bravoIdx);
         expect(echoIdx).toBeGreaterThan(deltaIdx);
-
-        // Section headers should appear before their first annotation
-        expect(md.indexOf('## Section A')).toBeLessThan(alphaIdx);
-        expect(md.indexOf('## Section B')).toBeLessThan(deltaIdx);
 
         // Notes attached as blockquote under their entry
         expect(md).toContain('> remember this');

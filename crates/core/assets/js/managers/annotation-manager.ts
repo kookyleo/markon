@@ -250,20 +250,11 @@ export class AnnotationManager {
         const escapeBlockquote = (s: string): string =>
             s.replace(/\r?\n/g, '\n> ');
 
-        // No title/count/--- preamble — the export drops straight into the
-        // first section so it reads as content, not a report.
+        // No preamble and no section headings — just a flat, numbered list of
+        // notes. Each item is the anchor quote (the annotated text) followed by
+        // the note as a blockquote; everything is a note, so no type label.
         const lines: string[] = [];
-
-        let lastHeadingKey = '';
         annotations.forEach((a, idx) => {
-            const heading = this.headingForAnnotation(a.id);
-            const key = heading ? `${heading.level}|${heading.text}` : '';
-            if (key !== lastHeadingKey && heading) {
-                lines.push(`## ${heading.text}`, '');
-                lastHeadingKey = key;
-            }
-            // Anchor quote (the annotated text) then the note as a blockquote.
-            // Everything here is a note, so no per-item type label.
             lines.push(`${idx + 1}. "${a.text.trim()}"`);
             if (a.note && a.note.trim()) {
                 lines.push(`   > ${escapeBlockquote(a.note.trim())}`);
