@@ -131,24 +131,6 @@
     --markon-accent-hover:   color-mix(in srgb, var(--markon-accent) 80%, black);
     --markon-fg-muted-hover: color-mix(in srgb, var(--markon-fg-muted) 60%, black);
     --markon-accent-muted:   color-mix(in srgb, var(--markon-accent) 10%, transparent);
-
-    /* ── Legacy aliases (old flat name → new role). Kept so not-yet-swept
-          references keep resolving during the rename; remove after the sweep. */
-    --markon-primary:        var(--markon-accent);
-    --markon-primary-hover:  var(--markon-accent-hover);
-    --markon-primary-bg:     var(--markon-accent-muted);
-    --markon-text:           var(--markon-fg-default);
-    --markon-muted:          var(--markon-fg-muted);
-    --markon-muted-hover:    var(--markon-fg-muted-hover);
-    --markon-text-muted:     var(--markon-fg-subtle);
-    --markon-canvas:         var(--markon-bg-default);
-    --markon-subtle:         var(--markon-bg-muted);
-    --markon-elevated:       var(--markon-bg-elevated);
-    --markon-elevated-2:     var(--markon-bg-elevated-2);
-    --markon-overlay:        var(--markon-bg-overlay);
-    --markon-hover:          var(--markon-bg-hover);
-    --markon-border:         var(--markon-border-default);
-    --markon-border-strong:  var(--markon-border-emphasis);
 }
 
 html[data-theme="dark"] {
