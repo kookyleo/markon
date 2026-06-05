@@ -1673,11 +1673,12 @@ html[data-theme="dark"] .toc-item.viewed > a:hover {
     background-color: color-mix(in srgb, var(--markon-text) 8%, transparent);
 }
 
-/* Selected segment: a quiet raised pill (canvas on the subtle track) with a
-   darkened icon — a supporting control, so no saturated fill to pull the eye. */
+/* Selected segment: a soft brand tint — a pale-blue pill (clearly lighter +
+   bluer than the grey track) with a blue icon. Clearly legible without the
+   saturated fill that pulled the eye before. */
 .editor-layout-btn.active {
-    color: var(--markon-text);
-    background-color: var(--markon-canvas);
+    color: var(--markon-primary);
+    background-color: color-mix(in srgb, var(--markon-primary) 15%, var(--markon-canvas));
 }
 
 /* ============================================================
