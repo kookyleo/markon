@@ -252,9 +252,9 @@ export class AnnotationManager {
 
         const title = opts.documentTitle?.trim();
         const lines: string[] = [];
-        if (title) lines.push(`# Annotations — ${title}`, '');
-        else lines.push('# Annotations', '');
-        lines.push(`*${annotations.length} annotation${annotations.length === 1 ? '' : 's'}*`, '', '---', '');
+        if (title) lines.push(`# Notes — ${title}`, '');
+        else lines.push('# Notes', '');
+        lines.push(`*${annotations.length} note${annotations.length === 1 ? '' : 's'}*`, '', '---', '');
 
         let lastHeadingKey = '';
         annotations.forEach((a, idx) => {

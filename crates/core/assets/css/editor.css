@@ -1778,15 +1778,16 @@ html[data-theme="dark"] .editor-tab.active {
     overflow: hidden !important;
 }
 
-/* Single header bar: close (X) on the left like the step-2 editor, title, then
-   the live count and the primary Next action concentrated on the right. No
-   border here — the toolbar below carries the only divider before the list. */
+/* Single header bar mirrors the step-2 editor: close (X), title, the selection
+   tools, then the live count and the primary Next action on the right. It also
+   carries the only divider before the list. */
 .export-header {
     display: flex;
     align-items: center;
     gap: 12px;
-    padding: 12px 20px 10px;
+    padding: 10px 20px;
     background: var(--markon-subtle);
+    border-bottom: 1px solid var(--markon-border);
 }
 
 .export-close {
@@ -1809,10 +1810,12 @@ html[data-theme="dark"] .editor-tab.active {
     margin: 0;
     font-size: 16px;
     font-weight: 600;
-    flex: 1;
 }
 
+/* Pushes the count + Next group to the far right; the selection tools stay
+   left, right after the title. */
 .export-count {
+    margin-left: auto;
     color: var(--markon-muted);
     font-size: 13px;
 }
@@ -1838,17 +1841,6 @@ html[data-theme="dark"] .editor-tab.active {
     cursor: not-allowed;
 }
 
-/* Selection toolbar — the single divider before the list. */
-.export-toolbar {
-    display: flex;
-    align-items: center;
-    flex-wrap: wrap;
-    gap: 8px;
-    padding: 8px 20px 12px;
-    background: var(--markon-subtle);
-    border-bottom: 1px solid var(--markon-border);
-}
-
 .export-selectall,
 .export-selectnone {
     border: 1px solid var(--markon-border-strong);
@@ -1863,40 +1855,6 @@ html[data-theme="dark"] .editor-tab.active {
 .export-selectall:hover,
 .export-selectnone:hover {
     background: var(--markon-subtle);
-}
-
-.export-toolbar-sep {
-    width: 1px;
-    align-self: stretch;
-    margin: 2px 4px;
-    background: var(--markon-border);
-}
-
-.export-filters {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 6px;
-}
-
-.export-chip {
-    border: 1px solid var(--markon-border-strong);
-    background: var(--markon-canvas);
-    color: var(--markon-muted);
-    border-radius: 999px;
-    padding: 3px 12px;
-    font-size: 12px;
-    cursor: pointer;
-    transition: background 0.15s, color 0.15s, border-color 0.15s;
-}
-
-.export-chip:hover {
-    background: var(--markon-subtle);
-}
-
-.export-chip.is-active {
-    background: var(--markon-primary);
-    border-color: var(--markon-primary);
-    color: #fff;
 }
 
 .export-body {
@@ -1938,8 +1896,8 @@ html[data-theme="dark"] .editor-tab.active {
 
 .export-item {
     display: grid;
-    grid-template-columns: auto auto 1fr;
-    align-items: baseline;
+    grid-template-columns: auto 1fr;
+    align-items: start;
     gap: 8px;
     padding: 7px 10px;
     border-radius: 6px;
@@ -1954,37 +1912,33 @@ html[data-theme="dark"] .editor-tab.active {
 .export-group-check {
     cursor: pointer;
     margin: 0;
+}
+
+.export-item-check {
+    margin-top: 2px;
+}
+
+.export-group-check {
     align-self: center;
 }
 
-.export-item-badge {
-    font-size: 11px;
-    line-height: 1.6;
-    padding: 0 8px;
-    border-radius: 999px;
-    white-space: nowrap;
-    color: #3a3a3a;
+/* The note is the primary line; the quoted source sits below it, muted. */
+.export-item-body {
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
 }
 
-.export-item-badge.highlight-orange { background-color: rgba(255, 165, 0, 0.5); }
-.export-item-badge.highlight-green  { background-color: rgba(144, 238, 144, 0.6); }
-.export-item-badge.highlight-yellow { background-color: rgba(255, 255, 0, 0.5); }
-.export-item-badge.strikethrough    { background-color: var(--markon-subtle); text-decoration: line-through; color: var(--markon-muted); }
-.export-item-badge.has-note         { background-color: var(--markon-subtle); color: var(--markon-text); }
-
-html[data-theme="dark"] .export-item-badge { color: #f0f0f0; }
-html[data-theme="dark"] .export-item-badge.highlight-orange { background-color: rgba(224, 108, 43, 0.45); }
-html[data-theme="dark"] .export-item-badge.highlight-green  { background-color: rgba(46, 160, 67, 0.45); }
-html[data-theme="dark"] .export-item-badge.highlight-yellow { background-color: rgba(187, 128, 9, 0.45); }
-
-.export-item-text {
+.export-item-note {
+    color: var(--markon-text);
+    font-size: 13px;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
 }
 
-.export-item-note {
-    grid-column: 3;
+.export-item-quote {
     color: var(--markon-muted);
     font-size: 12px;
     overflow: hidden;

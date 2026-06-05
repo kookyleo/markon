@@ -394,8 +394,8 @@ describe('AnnotationManager', () => {
 
         const md = mgr.formatAsMarkdown({ documentTitle: 'My Doc' });
 
-        expect(md).toContain('# Annotations — My Doc');
-        expect(md).toContain('*4 annotations*');
+        expect(md).toContain('# Notes — My Doc');
+        expect(md).toContain('*4 notes*');
         expect(md).toContain('## Section A');
         expect(md).toContain('## Section B');
 
@@ -432,7 +432,7 @@ describe('AnnotationManager', () => {
         mgr.applyToDOM([orange]);
 
         const md = mgr.formatAsMarkdown({ ids: new Set([orange.id]) });
-        expect(md).toContain('*1 annotation*');
+        expect(md).toContain('*1 note*');
         expect(md).toContain('Orange highlight');
         expect(md).not.toContain('Yellow highlight');
 

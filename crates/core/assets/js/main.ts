@@ -501,13 +501,6 @@ export class MarkonApp {
                     });
                 }
             }
-        } else if (action === 'copy-annotation') {
-            if (highlightedElement instanceof HTMLElement) {
-                const annotationId = highlightedElement.dataset.annotationId;
-                if (annotationId) await this.copyAnnotation(annotationId);
-            }
-            this.#popoverManager?.hide();
-            return;
         } else if (action.startsWith('highlight-')) {
             if (!selection) return;
             const annotation = annotationManager.createAnnotation(

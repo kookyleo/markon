@@ -1,44 +1,25 @@
 /**
- * ExportManager — two-step annotation export wizard.
+ * ExportManager — two-step note export wizard.
  *
- * Step 1: a full-screen overlay listing every annotation on the page, grouped
- *         by heading, each selectable. Bulk select/clear and per-type quick
- *         toggles make narrowing the set fast. Action bars sit at both the top
- *         and bottom of the (potentially long) list.
- * Step 2: the chosen annotations are rendered to Markdown and handed to the
- *         editor in `export` mode (see EditorManager), where the user can edit,
- *         copy to clipboard, or download a local `.md`.
+ * Step 1: a full-screen overlay listing every note on the page, grouped by
+ *         heading, each selectable. Bulk select/clear lives in the single
+ *         header row, which mirrors the step-2 editor bar.
+ * Step 2: the chosen notes are rendered to Markdown and handed to the editor
+ *         in `export` mode (see EditorManager), where the user can edit, copy
+ *         to clipboard, or download a local `.md`.
  */
 
 import { Logger } from '../core/utils';
 import { Text } from '../services/text';
 import {
-    annotationTypeLabel,
     type AnnotationGroup,
     type AnnotationManager,
-    type AnnotationType,
 } from './annotation-manager';
 import { EditorManager } from './editor-manager';
 
 const _t: (key: string, ...args: unknown[]) => string =
     (typeof window !== 'undefined' && window.__MARKON_I18N__ && window.__MARKON_I18N__.t) ||
     ((k: string) => k);
-
-/** Order + i18n keys for the per-type quick-filter chips and row badges. */
-const TYPE_LABEL_KEYS: Record<AnnotationType, string> = {
-    'highlight-orange': 'web.annot.orange',
-    'highlight-green': 'web.annot.green',
-    'highlight-yellow': 'web.annot.yellow',
-    strikethrough: 'web.annot.strike',
-    'has-note': 'web.annot.note',
-};
-const TYPE_ORDER: AnnotationType[] = [
-    'highlight-orange',
-    'highlight-green',
-    'highlight-yellow',
-    'strikethrough',
-    'has-note',
-];
 
 export interface ExportManagerDeps {
     annotationManager: AnnotationManager;
@@ -65,12 +46,13 @@ export class ExportManager {
     }
 
     /**
-     * Enter the wizard fresh from the toolbar: rebuild the grouped model and
-     * select everything by default. Returns false (without opening) when the
-     * page has no annotations, so the caller can flash the "empty" hint.
+     * Enter the wizard fresh from the toolbar: rebuild the grouped model
+     * (notes only) and select everything by default. Returns false (without
+     * opening) when the page has no notes, so the caller can flash the
+     * "empty" hint.
      */
     open(): boolean {
-        this.#groups = this.#deps.annotationManager.getGroupedByHeading();
+        this.#groups = this.#notesGroups();
         const all = this.#allIds();
         if (all.length === 0) return false;
         this.#selected = new Set(all);
@@ -88,14 +70,15 @@ export class ExportManager {
 
     // ── internals ──────────────────────────────────────────────────────────
 
-    #allIds(): string[] {
-        return this.#groups.flatMap(g => g.items.map(a => a.id));
+    /** Grouped model with empty (note-less) annotations and groups dropped. */
+    #notesGroups(): AnnotationGroup[] {
+        return this.#deps.annotationManager.getGroupedByHeading()
+            .map(g => ({ ...g, items: g.items.filter(a => !!a.note && a.note.trim() !== '') }))
+            .filter(g => g.items.length > 0);
     }
 
-    #presentTypes(): AnnotationType[] {
-        const present = new Set<AnnotationType>();
-        this.#groups.forEach(g => g.items.forEach(a => present.add(a.type)));
-        return TYPE_ORDER.filter(t => present.has(t));
+    #allIds(): string[] {
+        return this.#groups.flatMap(g => g.items.map(a => a.id));
     }
 
     #onKeydown = (e: KeyboardEvent): void => {
@@ -114,25 +97,16 @@ export class ExportManager {
         const overlay = document.createElement('div');
         overlay.className = 'export-modal';
 
-        const chipsHtml = this.#presentTypes().map(t =>
-            `<button class="export-chip" data-export-type="${t}">${_t(TYPE_LABEL_KEYS[t])}</button>`,
-        ).join('');
-
-        // Single header bar (X on the left, like the step-2 editor), with the
-        // primary action concentrated on the right; one toolbar row of
-        // selection tools below it is the only divider before the list.
+        // One header bar mirrors the step-2 editor: close on the left, title,
+        // selection tools, then the count + primary Next on the right.
         overlay.innerHTML = `
             <div class="export-header">
                 <button class="export-close" data-export-action="cancel" title="${_t('web.editor.close.tip')}" aria-label="${_t('web.export.cancel')}">✕</button>
                 <h2 class="export-title">${_t('web.export.wizard.title')}</h2>
-                <span class="export-count"></span>
-                <button class="export-next" data-export-action="next">${_t('web.export.next')}</button>
-            </div>
-            <div class="export-toolbar">
                 <button class="export-selectall" data-export-action="selectall">${_t('web.export.selectall')}</button>
                 <button class="export-selectnone" data-export-action="selectnone">${_t('web.export.selectnone')}</button>
-                <span class="export-toolbar-sep"></span>
-                <span class="export-filters">${chipsHtml}</span>
+                <span class="export-count"></span>
+                <button class="export-next" data-export-action="next">${_t('web.export.next')}</button>
             </div>
             <div class="export-body">${this.#groupsHtml()}</div>
         `;
@@ -144,7 +118,7 @@ export class ExportManager {
         this.#bindStep1(overlay);
         this.#syncUI();
         document.addEventListener('keydown', this.#onKeydown);
-        Logger.log('ExportManager', `Step 1 rendered (${this.#allIds().length} annotations)`);
+        Logger.log('ExportManager', `Step 1 rendered (${this.#allIds().length} notes)`);
     }
 
     #groupsHtml(): string {
@@ -153,15 +127,16 @@ export class ExportManager {
                 ? Text.escape(group.heading.text)
                 : _t('web.export.nosection');
             const items = group.items.map(a => {
-                const note = a.note && a.note.trim()
-                    ? `<span class="export-item-note">${Text.escape(a.note.trim())}</span>`
+                const quote = a.text && a.text.trim()
+                    ? `<span class="export-item-quote">${Text.escape(a.text.trim())}</span>`
                     : '';
                 return `
                     <label class="export-item">
                         <input type="checkbox" class="export-item-check" data-export-id="${a.id}">
-                        <span class="export-item-badge ${a.type}">${_t(TYPE_LABEL_KEYS[a.type])}</span>
-                        <span class="export-item-text">${Text.escape(a.text.trim())}</span>
-                        ${note}
+                        <span class="export-item-body">
+                            <span class="export-item-note">${Text.escape((a.note ?? '').trim())}</span>
+                            ${quote}
+                        </span>
                     </label>`;
             }).join('');
             return `
@@ -179,17 +154,11 @@ export class ExportManager {
         overlay.addEventListener('click', (e) => {
             const el = e.target as HTMLElement | null;
             const action = el?.closest<HTMLElement>('[data-export-action]')?.dataset.exportAction;
-            if (action) {
-                if (action === 'cancel') this.close();
-                else if (action === 'next') this.#toStep2();
-                else if (action === 'selectall') this.#selectAll(true);
-                else if (action === 'selectnone') this.#selectAll(false);
-                return;
-            }
-            const type = el?.closest<HTMLElement>('[data-export-type]')?.dataset.exportType;
-            if (type) {
-                this.#toggleType(type as AnnotationType);
-            }
+            if (!action) return;
+            if (action === 'cancel') this.close();
+            else if (action === 'next') this.#toStep2();
+            else if (action === 'selectall') this.#selectAll(true);
+            else if (action === 'selectnone') this.#selectAll(false);
         });
 
         overlay.addEventListener('change', (e) => {
@@ -224,24 +193,7 @@ export class ExportManager {
         this.#syncUI();
     }
 
-    #toggleType(type: AnnotationType): void {
-        const ids = this.#allIds().filter(id => this.#typeOf(id) === type);
-        // If every item of this type is already selected, the chip deselects
-        // them; otherwise it selects the whole type.
-        const allOn = ids.every(id => this.#selected.has(id));
-        ids.forEach(id => { if (allOn) this.#selected.delete(id); else this.#selected.add(id); });
-        this.#syncUI();
-    }
-
-    #typeOf(id: string): AnnotationType | null {
-        for (const g of this.#groups) {
-            const hit = g.items.find(a => a.id === id);
-            if (hit) return hit.type;
-        }
-        return null;
-    }
-
-    /** Reflect `#selected` across item/group checkboxes, chips, count, and Next. */
+    /** Reflect `#selected` across item/group checkboxes, count, and Next. */
     #syncUI(): void {
         const overlay = this.#overlay;
         if (!overlay) return;
@@ -259,15 +211,6 @@ export class ExportManager {
             const on = group.items.filter(a => this.#selected.has(a.id)).length;
             cb.checked = on === total && total > 0;
             cb.indeterminate = on > 0 && on < total;
-        });
-
-        const present = this.#presentTypes();
-        present.forEach(type => {
-            const chip = overlay.querySelector<HTMLElement>(`.export-chip[data-export-type="${type}"]`);
-            if (!chip) return;
-            const ids = this.#allIds().filter(id => this.#typeOf(id) === type);
-            const allOn = ids.length > 0 && ids.every(id => this.#selected.has(id));
-            chip.classList.toggle('is-active', allOn);
         });
 
         const total = this.#allIds().length;
@@ -299,9 +242,9 @@ export class ExportManager {
         void this.#editor.open({
             mode: 'export',
             content: markdown,
-            exportFileName: title || 'annotations',
+            exportFileName: title || 'notes',
             onBack: () => this.#renderStep1(),
         });
-        Logger.log('ExportManager', `Step 2 opened with ${this.#selected.size} annotations`);
+        Logger.log('ExportManager', `Step 2 opened with ${this.#selected.size} notes`);
     }
 }

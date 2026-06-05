@@ -376,27 +376,22 @@ export class PopoverManager {
         // Drag handle on the left edge — the only region that initiates a drag.
         const dragHandle = '<span class="popover-drag-handle" aria-hidden="true"></span>';
 
-        // Quick-copy (quote + note → clipboard) whenever an existing annotation
-        // is the target.
-        const copyButton = `<span class="popover-separator">|</span><button data-action="copy-annotation">${_t('web.export.copy')}</button>`;
-
         if (highlightedElement) {
             if (hasSelection) {
-                // Highlighted with selection: Unhighlight + Note + Copy + Edit + Chat
-                Logger.log('PopoverManager', 'Showing: Unhighlight + Note + Copy + Edit + Chat');
+                // Highlighted with selection: Unhighlight + Note + Edit + Chat
+                Logger.log('PopoverManager', 'Showing: Unhighlight + Note + Edit + Chat');
                 this.#element.innerHTML = `
                     ${dragHandle}
                     <button data-action="unhighlight">${_t('web.annot.unhighlight')}</button>
                     <span class="popover-separator">|</span>
                     <button data-action="add-note">${_t('web.annot.note')}</button>
-                    ${copyButton}
                     ${editButton}
                     ${chatButton}
                 `;
             } else {
-                // Highlighted without selection (just click): Unhighlight + Copy
-                Logger.log('PopoverManager', 'Showing: Unhighlight + Copy');
-                this.#element.innerHTML = `${dragHandle}<button data-action="unhighlight">${_t('web.annot.unhighlight')}</button>${copyButton}`;
+                // Highlighted without selection (just click): Unhighlight
+                Logger.log('PopoverManager', 'Showing: Unhighlight');
+                this.#element.innerHTML = `${dragHandle}<button data-action="unhighlight">${_t('web.annot.unhighlight')}</button>`;
             }
         } else {
             // Not highlighted: show annotation buttons + Edit + Chat
