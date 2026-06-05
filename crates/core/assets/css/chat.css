@@ -1214,6 +1214,9 @@ html[data-theme="dark"] .markon-chat-edit-pending-new { color: #86efac; }
     background: var(--markon-chat-bg, rgba(0, 0, 0, 0.02));
     font-size: 13px;
 }
+/* `display: flex` above would otherwise beat the UA `[hidden]` rule and keep
+   the bar visible with no pending edit — restore the hidden behaviour. */
+.markon-chat-edit-bar[hidden] { display: none; }
 html[data-theme="dark"] .markon-chat-edit-bar {
     background: rgba(255, 255, 255, 0.04);
 }
