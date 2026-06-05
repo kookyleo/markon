@@ -191,7 +191,9 @@ html[data-theme="dark"] .highlight-yellow {
     scroll-margin-top: 40px;
     /* Border always exists to prevent layout shift */
     border: 2px solid transparent;
-    border-radius: var(--markon-radius-lg);
+    /* Focus frame: round the top corners only, square bottom so it sits flush
+       against the content below. */
+    border-radius: var(--markon-radius-lg) var(--markon-radius-lg) 0 0;
     padding: 4px 8px;
     padding-bottom: 5px;
 }
@@ -247,7 +249,8 @@ html[data-theme="dark"] .heading-section:has(.heading-focused) {
     background-color: color-mix(in srgb, var(--markon-primary) 10%, transparent);
     /* Specificity (0,2,2) beats github-markdown's `.markdown-body h2` (0,1,1). */
     border-bottom: none;
-    border-radius: var(--markon-radius-sm);
+    /* Top corners rounded, bottom square — matches the section focus frame. */
+    border-radius: var(--markon-radius-sm) var(--markon-radius-sm) 0 0;
 }
 
 html[data-theme="dark"] .markdown-body h1.heading-focused,
