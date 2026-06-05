@@ -74,10 +74,14 @@
     --markon-border-emphasis: #d0d7de; /* stronger border: float edges, strokes on dark */
 
     /* ── Semantic status (theme-agnostic) ──────────────────── */
-    --markon-danger:        #dc3545; /* destructive: delete, stop */
+    --markon-danger:        #dc3545; /* destructive fg/solid: delete, stop */
     --markon-danger-hover:  #c82333;
-    --markon-success:       #2da44e; /* confirm / saved */
+    --markon-success:       #2da44e; /* success fg: confirm, TOC viewed */
     --markon-success-hover: #2c974b;
+    --markon-success-emphasis: #238636; /* solid success button (save) */
+    --markon-success-emphasis-hover: #2ea043;
+    --markon-warning:       #bf8700; /* attention/pending fg */
+    --markon-warning-hover: #9a6700;
     /* Dark tooltip / popover surface, kept dark in BOTH themes. */
     --markon-overlay-dark:  #2c2c2c;
     /* Standard hover wash over a surface (overridden per theme below). */
@@ -160,6 +164,12 @@ html[data-theme="dark"] {
     --markon-code-entity:   #d2a8ff;
     --markon-code-support:  #79c0ff;
     --markon-code-variable: #ffa657;
+
+    /* Status — GitHub-dark variants (success fg brighter on the dark canvas). */
+    --markon-success:       #3fb950;
+    --markon-success-hover: #56d364;
+    --markon-warning:       #d29922;
+    --markon-warning-hover: #e3b341;
 
     /* Elevation needs more depth on a dark canvas. */
     --markon-shadow-pop:   0 2px 8px rgba(0, 0, 0, 0.4);

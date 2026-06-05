@@ -816,7 +816,7 @@ html[data-theme="dark"] .markdown-body h6.heading-focused {
     padding: 4px 10px;
     margin: 2px 0 12px;
     font-size: 12px;
-    color: var(--color-fg-muted, #6e7781);
+    color: var(--color-fg-muted, var(--markon-fg-muted));
     font-style: italic;
     opacity: 0.65;
     transition: opacity 0.15s ease, background 0.15s ease;
@@ -943,16 +943,7 @@ html[data-theme="dark"] .markdown-body h6.heading-focused {
 .toc-item.viewed > a:hover {
     color: var(--markon-success-hover);
 }
-
-/* Dark theme adjustments for TOC viewed state */
-html[data-theme="dark"] .toc-item.viewed > a {
-    color: #3fb950;
-    font-weight: 500;
-}
-
-html[data-theme="dark"] .toc-item.viewed > a:hover {
-    color: #56d364;
-}
+/* Dark adjustments are automatic — --markon-success carries a dark variant. */
 
 /* ============================================================
    TOC Keyboard Navigation Focus Styles
