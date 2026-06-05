@@ -15,6 +15,24 @@ const _t: (key: string, ...args: unknown[]) => string =
 
 const SVG_NS = 'http://www.w3.org/2000/svg';
 
+/* Flat line icons for the note-card actions — stroked, no fill, sized by the
+   button's font-size via `width/height: 1em`. The delete glyph is a trash can,
+   deliberately distinct from a close "×". */
+const ICON_ATTRS =
+    'viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" ' +
+    'stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"';
+const ICON_COPY =
+    `<svg ${ICON_ATTRS}><rect x="5.5" y="5.5" width="8" height="8" rx="1.5"/>` +
+    `<path d="M3.5 10.5H3a1 1 0 0 1-1-1V3a1 1 0 0 1 1-1h6.5a1 1 0 0 1 1 1v.5"/></svg>`;
+const ICON_EDIT =
+    `<svg ${ICON_ATTRS}><path d="M2.5 13.5l1-3.2 7.3-7.3a1.3 1.3 0 0 1 1.8 1.8l-7.3 7.3z"/>` +
+    `<path d="M9.5 4.5l2 2"/></svg>`;
+const ICON_DELETE =
+    `<svg ${ICON_ATTRS}><path d="M3 4.5h10"/>` +
+    `<path d="M6.5 4.5V3a1 1 0 0 1 1-1h1a1 1 0 0 1 1 1v1.5"/>` +
+    `<path d="M4.5 4.5l.6 8a1 1 0 0 0 1 .9h3.8a1 1 0 0 0 1-.9l.6-8"/>` +
+    `<path d="M6.8 7v4M9.2 7v4"/></svg>`;
+
 /**
  * Internal in-memory record kept per rendered note card. Exposed via
  * `getNoteCardsData()` so peers (e.g. popover-manager) can locate the
@@ -187,9 +205,9 @@ export class NoteManager {
         const copyLabel = _t('web.export.copyitem');
         noteCard.innerHTML = `
             <div class="note-actions">
-                <button class="note-copy" data-annotation-id="${annotation.id}" title="${copyLabel}" aria-label="${copyLabel}">⧉</button>
-                <button class="note-edit" data-annotation-id="${annotation.id}" title="${editLabel}" aria-label="${editLabel}">✎</button>
-                <button class="note-delete" data-annotation-id="${annotation.id}" title="${deleteLabel}" aria-label="${deleteLabel}">×</button>
+                <button class="note-copy" data-annotation-id="${annotation.id}" title="${copyLabel}" aria-label="${copyLabel}">${ICON_COPY}</button>
+                <button class="note-edit" data-annotation-id="${annotation.id}" title="${editLabel}" aria-label="${editLabel}">${ICON_EDIT}</button>
+                <button class="note-delete" data-annotation-id="${annotation.id}" title="${deleteLabel}" aria-label="${deleteLabel}">${ICON_DELETE}</button>
             </div>
             <div class="note-content">${Text.escape(annotation.note ?? '')}</div>
         `;
@@ -432,9 +450,9 @@ export class NoteManager {
         const popupCopyLabel = _t('web.export.copyitem');
         popup.innerHTML = `
             <div class="note-actions">
-                <button class="note-copy" data-annotation-id="${annotationId}" title="${popupCopyLabel}" aria-label="${popupCopyLabel}">⧉</button>
-                <button class="note-edit" data-annotation-id="${annotationId}" title="${popupEditLabel}" aria-label="${popupEditLabel}">✎</button>
-                <button class="note-delete" data-annotation-id="${annotationId}" title="${popupDeleteLabel}" aria-label="${popupDeleteLabel}">×</button>
+                <button class="note-copy" data-annotation-id="${annotationId}" title="${popupCopyLabel}" aria-label="${popupCopyLabel}">${ICON_COPY}</button>
+                <button class="note-edit" data-annotation-id="${annotationId}" title="${popupEditLabel}" aria-label="${popupEditLabel}">${ICON_EDIT}</button>
+                <button class="note-delete" data-annotation-id="${annotationId}" title="${popupDeleteLabel}" aria-label="${popupDeleteLabel}">${ICON_DELETE}</button>
             </div>
             <div class="note-content">${Text.escape(noteData.note)}</div>
         `;

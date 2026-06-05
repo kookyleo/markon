@@ -331,11 +331,12 @@ html[data-theme="dark"] .markdown-body h6.heading-focused {
     width: var(--markon-note-width, 280px); /* right-rail width — single source of truth in layout.html :root */
     padding: 12px 16px;
     background: var(--markon-elevated);
-    /* Flat: a 0.5px hairline border instead of a shadow, with the 3px primary
-       stripe on the left for symmetry with the TOC. Single source of truth —
-       layout.html no longer re-declares this card. */
+    /* Flat: a 0.5px hairline border instead of a shadow, with a 3px left stripe
+       for symmetry with the TOC. The stripe reuses the soft blue of the
+       focused heading-section frame so it reads as a quiet accent, not a heavy
+       bar. Single source of truth — layout.html no longer re-declares this. */
     border: 0.5px solid var(--markon-border);
-    border-left: 3px solid var(--markon-primary);
+    border-left: 3px solid color-mix(in srgb, var(--markon-primary) 30%, transparent);
     border-radius: 6px;
     font-size: 13px;
     line-height: 1.6;
@@ -346,13 +347,15 @@ html[data-theme="dark"] .markdown-body h6.heading-focused {
 
 .note-card-margin:hover {
     background: color-mix(in srgb, var(--markon-primary) 10%, var(--markon-canvas));
-    border-left-color: var(--markon-primary-hover);
+    border-left-color: color-mix(in srgb, var(--markon-primary) 50%, transparent);
 }
 
 .note-card-margin.highlight-active {
     background: color-mix(in srgb, var(--markon-primary) 12%, var(--markon-canvas));
-    /* Flat active state: the whole hairline goes primary instead of a glow. */
-    border-color: var(--markon-primary);
+    /* Active: stripe deepens toward primary, but the rest of the hairline only
+       picks up the same soft accent rather than a full-strength frame. */
+    border-color: color-mix(in srgb, var(--markon-primary) 30%, transparent);
+    border-left-color: var(--markon-primary);
 }
 
 /* ============================================================
@@ -396,40 +399,44 @@ html[data-theme="dark"] .markdown-body h6.heading-focused {
     gap: 4px;
 }
 
+/* Flat line-icon actions: no filled circles, a muted stroke that warms on
+   hover (delete warms to danger). Icons are stroked SVGs (see note-manager). */
+.note-copy,
 .note-edit,
 .note-delete {
-    width: 20px;
-    height: 20px;
+    width: 22px;
+    height: 22px;
     border: none;
-    color: white;
-    border-radius: 50%;
-    font-size: 14px;
-    line-height: 1;
+    background: none;
+    border-radius: 6px;
+    padding: 0;
     cursor: pointer;
     display: flex;
     align-items: center;
     justify-content: center;
-    opacity: 0.7;
-    transition: opacity 0.2s, transform 0.2s;
-    padding: 0;
+    color: var(--markon-muted);
+    opacity: 0.85;
+    transition: color 0.15s, background 0.15s, opacity 0.15s;
 }
 
-.note-edit {
-    background: var(--markon-primary);
+.note-copy svg,
+.note-edit svg,
+.note-delete svg {
+    width: 15px;
+    height: 15px;
 }
 
+.note-copy:hover,
 .note-edit:hover {
+    color: var(--markon-text);
+    background: var(--markon-subtle);
     opacity: 1;
-    transform: scale(1.1);
-}
-
-.note-delete {
-    background: var(--markon-danger);
 }
 
 .note-delete:hover {
+    color: var(--markon-danger);
+    background: color-mix(in srgb, var(--markon-danger) 12%, transparent);
     opacity: 1;
-    transform: scale(1.1);
 }
 
 .note-content {
@@ -1716,29 +1723,8 @@ html[data-theme="dark"] .editor-tab.active {
    Annotation export: per-item quick copy + two-step wizard + export editor
    ───────────────────────────────────────────────────────────────────────── */
 
-/* Note-card / popup quick-copy button (sits beside ✎ / ×). */
-.note-copy {
-    width: 20px;
-    height: 20px;
-    border: none;
-    color: white;
-    border-radius: 50%;
-    font-size: 13px;
-    line-height: 1;
-    cursor: pointer;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    opacity: 0.7;
-    transition: opacity 0.2s, transform 0.2s;
-    padding: 0;
-    background: var(--markon-primary);
-}
-
-.note-copy:hover {
-    opacity: 1;
-    transform: scale(1.1);
-}
+/* Note-card / popup quick-copy button is styled with .note-edit / .note-delete
+   as one flat line-icon family (see the rule near the note-actions block). */
 
 /* Transient "Copied" feedback shown beside an icon copy button (clipboard.ts
    flashBeside) — just text, no pill, fading next to the anchor. */
