@@ -379,22 +379,7 @@
             background: #2ea043 !important;
         }
 
-        /* Note cards */
-        .note-card-margin {
-            background: var(--markon-elevated);
-            border-left: 3px solid var(--markon-primary);
-            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
-        }
-        .note-card-margin:hover {
-            background: color-mix(in srgb, var(--markon-elevated) 92%, var(--markon-text) 8%);
-            border-left-color: var(--markon-primary);
-            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.4);
-        }
-        .note-card-margin.highlight-active {
-            border: 2px solid var(--markon-primary);
-            border-left: 3px solid var(--markon-primary);
-            box-shadow: 0 0 0 3px color-mix(in srgb, var(--markon-primary) 15%, transparent);
-        }
+        /* Note cards are styled once, in editor.css (.note-card-margin). */
         .note-content {
             color: var(--markon-text);
         }

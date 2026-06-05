@@ -414,13 +414,16 @@ html[data-theme="dark"] .markdown-body h6.heading-focused {
     position: absolute;
     width: var(--markon-note-width, 280px); /* right-rail width — single source of truth in layout.html :root */
     padding: 12px 16px;
-    background: var(--markon-subtle);
-    border-left: 3px solid var(--markon-primary); /* Left border for symmetry with TOC */
+    background: var(--markon-elevated);
+    /* Flat: a 0.5px hairline border instead of a shadow, with the 3px primary
+       stripe on the left for symmetry with the TOC. Single source of truth —
+       layout.html no longer re-declares this card. */
+    border: 0.5px solid var(--markon-border);
+    border-left: 3px solid var(--markon-primary);
     border-radius: 6px;
     font-size: 13px;
     line-height: 1.6;
     cursor: pointer;
-    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
     z-index: var(--markon-z-note-card);
     box-sizing: border-box;
 }
@@ -428,14 +431,12 @@ html[data-theme="dark"] .markdown-body h6.heading-focused {
 .note-card-margin:hover {
     background: color-mix(in srgb, var(--markon-primary) 10%, var(--markon-canvas));
     border-left-color: var(--markon-primary-hover);
-    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
 }
 
 .note-card-margin.highlight-active {
     background: color-mix(in srgb, var(--markon-primary) 12%, var(--markon-canvas));
-    border-left-color: var(--markon-primary-hover);
-    box-shadow: 0 0 0 2px color-mix(in srgb, var(--markon-primary) 25%, transparent),
-                0 2px 8px rgba(0, 0, 0, 0.1);
+    /* Flat active state: the whole hairline goes primary instead of a glow. */
+    border-color: var(--markon-primary);
 }
 
 /* ============================================================
