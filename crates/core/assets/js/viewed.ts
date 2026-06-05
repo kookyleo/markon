@@ -920,34 +920,10 @@ export class SectionViewedManager {
             <a class="btn-export-annotations" title="${_t('web.export.tip')}">${_t('web.export.label')}</a>
         `);
 
-        // The bar lives as a CHILD of the <h1> so it's always inside the heading
-        // block — above the heading's bottom divider — whether it sits inline
-        // after the title or, when it can't fit, drops onto its own full-width
-        // row (a block child, never half-wrapped, never below the divider).
+        // The bar is a child of the <h1> and flows inline after the title:
+        // it simply wraps line-by-line when it doesn't fit, like the per-section
+        // action rows. No measuring, no whole-bar relocation.
         h1.appendChild(toolbar);
-        const placeToolbar = (): void => {
-            toolbar.classList.remove('viewed-toolbar--block');
-            const withBar = h1.offsetHeight;
-            toolbar.style.display = 'none';
-            const titleOnly = h1.offsetHeight;
-            toolbar.style.display = '';
-            // If the bar made the heading taller, it spilled onto a new line —
-            // give it its own full-width row (still inside the <h1>).
-            if (withBar > titleOnly) {
-                toolbar.classList.add('viewed-toolbar--block');
-            }
-        };
-        placeToolbar();
-
-        // Re-evaluate when the width (or web-font metrics) change.
-        let placeTimer = 0;
-        window.addEventListener('resize', () => {
-            window.clearTimeout(placeTimer);
-            placeTimer = window.setTimeout(placeToolbar, 150);
-        });
-        if (document.fonts && document.fonts.ready) {
-            void document.fonts.ready.then(placeToolbar);
-        }
 
         this.allViewedCheckbox = checkbox;
         this.updatingAllViewedCheckbox = false;

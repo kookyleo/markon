@@ -858,9 +858,9 @@ html[data-theme="dark"] .markdown-body h6.heading-focused {
     -ms-user-select: none;
     user-select: none;
     -webkit-touch-callout: none;
-    display: inline-flex;
-    align-items: center;
-    gap: 0.3rem;
+    /* Plain inline flow so the items wrap line-by-line naturally (like the
+       per-section action rows) — no inline-flex atomic box, no JS placement. */
+    display: inline;
     vertical-align: middle;
 }
 
@@ -891,10 +891,6 @@ html[data-theme="dark"] .markdown-body h6.heading-focused {
 
 /* When the bar can't fit after the title it's relocated below the heading as
    its own row (JS toggles this) — a normal flex line, not wrapped in the H1. */
-.viewed-toolbar--block {
-    display: flex;
-    margin: 8px 0 0;
-}
 
 /* Dark theme adjustments — now handled by CSS variables above */
 
