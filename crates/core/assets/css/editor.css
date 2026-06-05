@@ -106,30 +106,17 @@
    Color-coded text highlighting with theme support
    ============================================================ */
 
-/* Light mode highlights */
+/* Colour-pick highlights — theme-agnostic translucent washes (tokens). */
 .highlight-orange {
-    background-color: rgba(255, 165, 0, 0.5);
+    background-color: var(--markon-hl-orange);
 }
 
 .highlight-green {
-    background-color: rgba(144, 238, 144, 0.6);
+    background-color: var(--markon-hl-green);
 }
 
 .highlight-yellow {
-    background-color: rgba(255, 255, 0, 0.5);
-}
-
-/* Dark mode highlights - softer, more readable */
-html[data-theme="dark"] .highlight-orange {
-    background-color: rgba(224, 108, 43, 0.35);
-}
-
-html[data-theme="dark"] .highlight-green {
-    background-color: rgba(46, 160, 67, 0.35);
-}
-
-html[data-theme="dark"] .highlight-yellow {
-    background-color: rgba(187, 128, 9, 0.35);
+    background-color: var(--markon-hl-yellow);
 }
 
 /* ── Code syntax highlighting ───────────────────────────────────────────
@@ -173,7 +160,7 @@ html[data-theme="dark"] .highlight-yellow {
 }
 
 .has-note {
-    background-color: rgba(255, 99, 71, 0.2); /* Light tomato background */
+    background-color: var(--markon-hl-note);
     cursor: pointer;
 }
 
@@ -549,21 +536,21 @@ html[data-theme="dark"] .markdown-body h6.heading-focused {
    ============================================================ */
 
 .has-note {
-    background-color: rgba(255, 99, 71, 0.2);
+    background-color: var(--markon-hl-note);
     cursor: pointer;
-    border-bottom: 2px dotted rgba(255, 99, 71, 0.5);
+    border-bottom: 2px dotted var(--markon-hl-note-line);
     transition: all 0.2s;
 }
 
 .has-note:hover {
-    background-color: rgba(255, 99, 71, 0.35);
-    border-bottom-color: rgba(255, 99, 71, 0.8);
+    background-color: var(--markon-hl-note-strong);
+    border-bottom-color: var(--markon-hl-note-line-strong);
 }
 
 .has-note.highlight-active {
-    background-color: color-mix(in srgb, var(--markon-accent) 20%, transparent);
+    background-color: color-mix(in srgb, var(--markon-accent) 15%, transparent);
     border-bottom: 2px solid var(--markon-accent);
-    box-shadow: 0 0 0 2px color-mix(in srgb, var(--markon-accent) 10%, transparent);
+    box-shadow: 0 0 0 2px color-mix(in srgb, var(--markon-accent) 15%, transparent);
 }
 
 /* ============================================================

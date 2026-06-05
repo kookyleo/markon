@@ -83,6 +83,18 @@
     --markon-warning:       #bf8700; /* attention/pending fg */
     --markon-warning-hover: #9a6700;
     --markon-scrim:         rgba(0, 0, 0, 0.5); /* dim backdrop behind a modal */
+
+    /* ── Annotation highlights (theme-agnostic) ──────────────
+       Translucent washes painted over body text; the same alpha reads on
+       both canvases, so there are no per-theme variants. The colour-pick
+       trio (orange/green/yellow) plus the amber note marker. */
+    --markon-hl-orange:           rgba(224, 108, 43, 0.35);
+    --markon-hl-green:            rgba(46, 160, 67, 0.35);
+    --markon-hl-yellow:           rgba(187, 128, 9, 0.35);
+    --markon-hl-note:             rgba(187, 128, 9, 0.15); /* note fill */
+    --markon-hl-note-strong:      rgba(187, 128, 9, 0.25); /* note fill, hover */
+    --markon-hl-note-line:        rgba(187, 128, 9, 0.4);  /* dotted underline */
+    --markon-hl-note-line-strong: rgba(187, 128, 9, 0.6);  /* underline, hover */
     /* Dark tooltip / popover surface, kept dark in BOTH themes. */
     --markon-overlay-dark:  #2c2c2c;
     /* Standard hover wash over a surface (overridden per theme below). */

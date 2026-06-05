@@ -414,32 +414,8 @@
             opacity: var(--markon-panel-opacity, 0.9);
         }
 
-        /* Has-note highlight (tomato/amber accent — kept as fixed rgba so it
-           reads consistently across themes) */
-        .has-note {
-            background-color: rgba(187, 128, 9, 0.15);
-            border-bottom: 2px dotted rgba(187, 128, 9, 0.4);
-        }
-        .has-note:hover {
-            background-color: rgba(187, 128, 9, 0.25);
-            border-bottom-color: rgba(187, 128, 9, 0.6);
-        }
-        .has-note.highlight-active {
-            background-color: color-mix(in srgb, var(--markon-accent) 15%, transparent);
-            border-bottom: 2px solid var(--markon-accent);
-            box-shadow: 0 0 0 2px color-mix(in srgb, var(--markon-accent) 15%, transparent);
-        }
-
-        /* Highlight colors — fixed rgba for stable visibility on either theme */
-        .highlight-orange {
-            background-color: rgba(224, 108, 43, 0.35);
-        }
-        .highlight-green {
-            background-color: rgba(46, 160, 67, 0.35);
-        }
-        .highlight-yellow {
-            background-color: rgba(187, 128, 9, 0.35);
-        }
+        /* Note markers + colour-pick highlights live in editor.css, driven by
+           the --markon-hl-* tokens (single source, theme-agnostic). */
 
         /* Link colors in markdown body */
         .markdown-body a:link,
