@@ -341,7 +341,9 @@ export class PopoverManager {
         // Wire up the click handler.
         this.#element.addEventListener('click', (e: MouseEvent) => {
             const target = e.target as HTMLElement | null;
-            const action = target?.dataset?.action;
+            // Resolve the owning [data-action] button via closest() so a click
+            // on any child node (icon, nested span) still maps to its action.
+            const action = target?.closest<HTMLElement>('[data-action]')?.dataset.action;
             if (!action) return;
 
             if (this.#onAction) {

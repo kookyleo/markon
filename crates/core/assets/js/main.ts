@@ -715,17 +715,25 @@ export class MarkonApp {
             const target = e.target as HTMLElement | null;
             if (!target || !this.#annotationManager || !this.#noteManager || !this.#undoManager) return;
 
+            // Action buttons carry inline SVG icons, so a click can land on the
+            // <svg>/<path> child — resolve the owning button via closest()
+            // rather than matching e.target directly (else clicks on the icon
+            // strokes silently miss).
+            const copyBtn = target.closest<HTMLElement>('.note-copy');
+            const editBtn = target.closest<HTMLElement>('.note-edit');
+            const deleteBtn = target.closest<HTMLElement>('.note-delete');
+
             // Quick-copy button (quote + note → clipboard)
-            if (target.classList.contains('note-copy')) {
-                const annotationId = target.dataset.annotationId;
-                if (annotationId) void this.copyAnnotation(annotationId, target);
+            if (copyBtn) {
+                const annotationId = copyBtn.dataset.annotationId;
+                if (annotationId) void this.copyAnnotation(annotationId, copyBtn);
                 e.stopPropagation();
                 return;
             }
 
             // Edit button
-            if (target.classList.contains('note-edit')) {
-                const annotationId = target.dataset.annotationId;
+            if (editBtn) {
+                const annotationId = editBtn.dataset.annotationId;
                 if (!annotationId) return;
                 const annotation = this.#annotationManager.getById(annotationId);
                 if (annotation) {
@@ -745,8 +753,8 @@ export class MarkonApp {
             }
 
             // Delete button
-            if (target.classList.contains('note-delete')) {
-                const annotationId = target.dataset.annotationId;
+            if (deleteBtn) {
+                const annotationId = deleteBtn.dataset.annotationId;
                 if (!annotationId) return;
                 showConfirmDialog(
                     'Delete this note?',
@@ -763,16 +771,18 @@ export class MarkonApp {
                             annotation: { id: annotationId } as Annotation,
                         });
                     },
-                    target,
+                    deleteBtn,
                     'Delete',
                 );
                 e.stopPropagation();
                 return;
             }
 
-            // Click on a note element
-            if (target.classList.contains('has-note')) {
-                const annotationId = target.dataset.annotationId;
+            // Click on a note element — a highlight may wrap inline markup
+            // (bold/code/…), so resolve the owning .has-note via closest().
+            const noteEl = target.closest<HTMLElement>('.has-note');
+            if (noteEl) {
+                const annotationId = noteEl.dataset.annotationId;
                 if (!annotationId) return;
 
                 if (window.innerWidth > CONFIG.BREAKPOINTS.WIDE_SCREEN) {
@@ -788,7 +798,7 @@ export class MarkonApp {
                     }
                 } else {
                     // Narrow screen: show popup
-                    this.#noteManager.showNotePopup(target, annotationId);
+                    this.#noteManager.showNotePopup(noteEl, annotationId);
                 }
 
                 e.stopPropagation();
