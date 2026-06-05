@@ -451,7 +451,7 @@ export class CollaborationManager {
             <div id="markon-live-container" class="markon-live-container">
                 <div class="markon-live-face" title="Markon Live">
                     <svg class="icon-live" viewBox="0 0 24 24" width="22" height="22" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
-                        <circle cx="12" cy="12" r="2.6" fill="#e74c3c"/>
+                        <circle cx="12" cy="12" r="2.6"/>
                         <path d="M7.5 8 Q5.5 12 7.5 16" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>
                         <path d="M4.5 5.5 Q1.5 12 4.5 18.5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>
                         <path d="M16.5 8 Q18.5 12 16.5 16" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>

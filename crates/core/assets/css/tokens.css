@@ -83,6 +83,7 @@
     --markon-warning:       #bf8700; /* attention/pending fg */
     --markon-warning-hover: #9a6700;
     --markon-scrim:         rgba(0, 0, 0, 0.5); /* dim backdrop behind a modal */
+    --markon-live-record:   #e74c3c; /* live broadcast "rec" dot (same in both themes) */
 
     /* ── Annotation highlights (theme-agnostic) ──────────────
        Translucent washes painted over body text; the same alpha reads on

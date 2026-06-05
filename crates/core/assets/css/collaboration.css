@@ -72,6 +72,12 @@
     pointer-events: none;
 }
 
+/* The "rec" dot at the icon's centre — a fixed live-broadcast red in both
+   themes (token, replaces the inline fill on the <circle>). */
+.markon-live-face .icon-live circle {
+    fill: var(--markon-live-record);
+}
+
 .markon-live-face .icon-close {
     display: none;
 }
