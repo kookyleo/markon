@@ -228,7 +228,10 @@
         }
         .toc-viewport-highlight {
             position: absolute;
-            left: 0; right: 0;
+            /* Extend past the text on both sides (into the .toc 15px padding) so
+               long titles don't touch the band edge — gives it inner breathing
+               room without moving the text. */
+            left: -8px; right: -8px;
             background-color: var(--markon-primary-bg);
             border-radius: 6px;
             transition: top 0.25s ease, height 0.25s ease;
