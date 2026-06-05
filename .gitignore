@@ -38,3 +38,6 @@ crates/gui/gen/schemas/*-schema.json
 
 # Claude Code local overrides
 .claude/
+
+# Internal / working notes — outside the docs site, never committed
+.internal/
