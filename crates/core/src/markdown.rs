@@ -2,7 +2,7 @@ use lazy_static::lazy_static;
 use pulldown_cmark::{html, CodeBlockKind, CowStr, Event, Options, Parser, Tag, TagEnd};
 use regex::Regex;
 use syntect::html::{ClassStyle, ClassedHTMLGenerator};
-use syntect::parsing::{SyntaxReference, SyntaxSet};
+use syntect::parsing::{SyntaxDefinition, SyntaxReference, SyntaxSet};
 use syntect::util::LinesWithEndings;
 
 #[derive(Debug)]
@@ -10,6 +10,30 @@ struct FenceWarning {
     line: usize,
     outer_start: usize,
     backtick_count: usize,
+}
+
+/// Bundled Protocol Buffers (proto2 + proto3) syntax definition. The default
+/// syntect set ships no protobuf grammar, so ```protobuf / ```proto fences would
+/// otherwise render as plain text. Embedded at compile time and folded into the
+/// set at startup.
+const PROTOBUF_SYNTAX: &str = include_str!("syntaxes/Protocol Buffer.sublime-syntax");
+
+/// Build the syntax set used for highlighting: the syntect defaults plus the
+/// bundled Protocol Buffers grammar. On a parse failure of the (trusted) bundled
+/// grammar we fall back to the plain defaults rather than panicking the server.
+fn build_syntax_set() -> SyntaxSet {
+    let defaults = SyntaxSet::load_defaults_newlines();
+    match SyntaxDefinition::load_from_str(PROTOBUF_SYNTAX, true, Some("Protocol Buffer")) {
+        Ok(def) => {
+            let mut builder = defaults.into_builder();
+            builder.add(def);
+            builder.build()
+        }
+        Err(e) => {
+            eprintln!("warning: failed to parse bundled Protocol Buffer syntax: {e}");
+            SyntaxSet::load_defaults_newlines()
+        }
+    }
 }
 
 lazy_static! {
@@ -24,7 +48,7 @@ lazy_static! {
         .expect("Failed to compile HTML_TAG_REGEX");
     static ref MULTI_HYPHEN_REGEX: Regex = Regex::new(r"-+")
         .expect("Failed to compile MULTI_HYPHEN_REGEX");
-    static ref SYNTAX_SET: SyntaxSet = SyntaxSet::load_defaults_newlines();
+    static ref SYNTAX_SET: SyntaxSet = build_syntax_set();
     /// `<img src=…>`, `<source src=…>`, `<video|audio … src=…>` — case-insensitive
     /// tag and attribute, single or double quotes.
     static ref HTML_SRC_REGEX: Regex = Regex::new(
@@ -615,6 +639,55 @@ mod assets_tests {
             !html.contains("style=\"color"),
             "unexpected inline color: {html}"
         );
+    }
+
+    fn assert_proto_highlighted(fence_lang: &str) {
+        let md = format!(
+            "```{fence_lang}\n\
+             // a leading comment\n\
+             syntax = \"proto3\";\n\
+             message Person {{\n\
+             \x20 string name = 1;\n\
+             \x20 int32 id = 2;\n\
+             \x20 repeated string emails = 3;\n\
+             }}\n\
+             ```\n"
+        );
+        let (html, _has_mermaid, _toc) = MarkdownRenderer::new("light").render(&md);
+        // Must be a highlighted code block, not a single plain <code> dump.
+        assert!(
+            html.contains("<pre><code class=\"mk-code\">"),
+            "fence `{fence_lang}` not rendered as a code block: {html}"
+        );
+        // Proto keywords/types/comments must be wrapped in mk-* spans, proving
+        // the bundled grammar matched (otherwise it would be plain text).
+        assert!(
+            html.contains("mk-keyword"),
+            "fence `{fence_lang}` missing mk-keyword span: {html}"
+        );
+        assert!(
+            html.contains("mk-storage"),
+            "fence `{fence_lang}` missing mk-storage span (scalar types): {html}"
+        );
+        assert!(
+            html.contains("mk-comment"),
+            "fence `{fence_lang}` missing mk-comment span: {html}"
+        );
+        // No inline colors — palette is CSS/token driven.
+        assert!(
+            !html.contains("style=\"color"),
+            "fence `{fence_lang}` unexpected inline color: {html}"
+        );
+    }
+
+    #[test]
+    fn protobuf_fence_is_highlighted() {
+        assert_proto_highlighted("protobuf");
+    }
+
+    #[test]
+    fn proto_fence_is_highlighted() {
+        assert_proto_highlighted("proto");
     }
 
     #[test]
