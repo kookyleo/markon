@@ -110,20 +110,12 @@
     display: none;
 }
 
-/* OFF mode: the container's 2.5px border is the ring of the prohibited
-   sign and the SVG draws only the slash on top. Ring and slash share the
-   same disabled color so they read as a single 🚫 glyph. */
-.markon-live-container.live-off {
-    --markon-disabled: rgba(107, 114, 128, 0.75);
-    /* Keep the shared border-strong ring so the sphere stays part of the
-       ToC / Chat / Live chrome family (same weight + colour). The "off" state
-       reads from the grey slash-over-waves glyph, not a heavier ring. */
-}
-html[data-theme="dark"] .markon-live-container.live-off {
-    --markon-disabled: rgba(180, 188, 200, 0.55);
-}
+/* OFF mode: the container's 2.5px border is the ring of the prohibited sign
+   and the SVG draws only the slash on top. The slash takes the SAME
+   border-strong colour as the ring, so ring + slash read as one quiet grey 🚫
+   — no darker mark fighting the chrome. */
 .markon-live-container.live-off .icon-off {
-    color: var(--markon-disabled);
+    color: var(--markon-border-strong);
 }
 
 /* When expanded, face becomes a 40×40 button pinned to the panel's

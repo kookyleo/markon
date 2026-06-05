@@ -601,9 +601,11 @@ html[data-theme="dark"] .markdown-body h6.heading-focused {
 #toc-icon .toc-bar {
     display: block;
     /* Sized so the ≡ glyph fills a similar share of the 40px sphere as the
-       Chat / Live icons (~half), keeping the floating-layer family balanced. */
+       Chat / Live icons (~half); rounded caps echo the Live waves' round
+       stroke ends so all three read as one thin-stroke family. */
     width: 20px;
     height: 2px;
+    border-radius: 1px;
     background-color: var(--markon-text);
     margin: 2px 0;
 }

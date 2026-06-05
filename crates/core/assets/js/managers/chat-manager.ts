@@ -350,15 +350,13 @@ export function parseCitation(text: string): Citation | null {
 // SVG icons. Kept inline so we don't ship a separate icon font / sprite.
 // ────────────────────────────────────────────────────────────────────────────
 
-// Speech bubble + 3 short text lines — the bubble's body (excluding the
-// bottom-left tail) is centered on the viewBox so the icon doesn't look
-// top-heavy. Inside, three horizontal lines of decreasing length suggest
-// a paragraph of dialogue text, reading as "a conversation about
-// content" without leaning on a glyph.
+// Plain speech bubble with two short lines inside — pared back from a
+// three-line "paragraph" to read as a quiet, simple message glyph that sits
+// in the same thin-stroke family as the Live waves and the ToC bars.
 const ICON_CHAT = `
 <svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
     <path d="M4 4.5 H20 A2 2 0 0 1 22 6.5 V17.5 A2 2 0 0 1 20 19.5 H10 L7 22.5 V19.5 H4 A2 2 0 0 1 2 17.5 V6.5 A2 2 0 0 1 4 4.5 Z"/>
-    <path d="M7 9.5 H17 M7 12 H17 M7 14.5 H13"/>
+    <path d="M7 10.5 H17 M7 13.5 H13"/>
 </svg>`;
 
 const ICON_CLOSE = `

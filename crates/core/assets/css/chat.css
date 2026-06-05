@@ -138,8 +138,10 @@ html[data-theme="dark"] .markon-chat-container.expanded {
    at a glance — no separate corner dot needed since the icon itself carries
    the brand color. The close X (expanded state) reverts to currentColor so
    it matches the panel's text. */
+/* Sphere icon joins the ToC / Live chrome family: the same muted grey, not
+   the brand accent — quieter and consistent with its neighbours. */
 .markon-chat-face-icon.icon-chat {
-    color: var(--markon-chat-accent);
+    color: var(--markon-text-muted);
 }
 
 .markon-chat-face-icon.icon-close {
