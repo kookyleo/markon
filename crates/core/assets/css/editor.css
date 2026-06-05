@@ -440,6 +440,12 @@ html[data-theme="dark"] .markdown-body h6.heading-focused {
     opacity: 1;
 }
 
+/* Successful-copy flash: the icon swaps to a check and turns green. */
+.note-copy.is-copied {
+    color: var(--markon-success);
+    opacity: 1;
+}
+
 .note-delete:hover {
     color: var(--markon-danger);
     background: color-mix(in srgb, var(--markon-danger) 12%, transparent);

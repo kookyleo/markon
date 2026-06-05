@@ -53,6 +53,37 @@ export function flashBeside(anchor: HTMLElement, message: string, ms = 1200): vo
     }, ms);
 }
 
+/** Check glyph shown on a successful icon-button copy (matches the stroked
+ *  line-icon family used by the note-card actions). */
+const CHECK_SVG =
+    '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.7" ' +
+    'stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' +
+    '<path d="M3 8.5l3.2 3.2L13 4.5"/></svg>';
+
+/**
+ * Flash an icon button green with a check mark, then restore its original
+ * icon. Used for the per-annotation quick-copy buttons so the click lands as
+ * visible feedback on the control itself. Re-entrant: a rapid second click
+ * resets the timer and always restores the true icon (never the check).
+ */
+export function flashCopied(button: HTMLElement, ms = 1100): void {
+    if (button.dataset.copiedOriginal === undefined) {
+        button.dataset.copiedOriginal = button.innerHTML;
+    }
+    if (button.dataset.copiedTimer) {
+        window.clearTimeout(Number(button.dataset.copiedTimer));
+    }
+    button.innerHTML = CHECK_SVG;
+    button.classList.add('is-copied');
+    const timer = window.setTimeout(() => {
+        button.innerHTML = button.dataset.copiedOriginal ?? '';
+        button.classList.remove('is-copied');
+        delete button.dataset.copiedOriginal;
+        delete button.dataset.copiedTimer;
+    }, ms);
+    button.dataset.copiedTimer = String(timer);
+}
+
 /**
  * Briefly swap an element's text to `message`, then restore the original.
  * Used for the inline "✓ Copied" / "Failed" feedback. Re-entrant: a second
