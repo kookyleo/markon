@@ -115,11 +115,12 @@
    same disabled color so they read as a single 🚫 glyph. */
 .markon-live-container.live-off {
     --markon-disabled: rgba(107, 114, 128, 0.75);
-    border-color: var(--markon-disabled);
+    /* Keep the shared border-strong ring so the sphere stays part of the
+       ToC / Chat / Live chrome family (same weight + colour). The "off" state
+       reads from the grey slash-over-waves glyph, not a heavier ring. */
 }
 html[data-theme="dark"] .markon-live-container.live-off {
     --markon-disabled: rgba(180, 188, 200, 0.55);
-    border-color: var(--markon-disabled);
 }
 .markon-live-container.live-off .icon-off {
     color: var(--markon-disabled);

@@ -600,10 +600,12 @@ html[data-theme="dark"] .markdown-body h6.heading-focused {
 
 #toc-icon .toc-bar {
     display: block;
-    width: 16px;
-    height: 1.5px;
+    /* Sized so the ≡ glyph fills a similar share of the 40px sphere as the
+       Chat / Live icons (~half), keeping the floating-layer family balanced. */
+    width: 20px;
+    height: 2px;
     background-color: var(--markon-text);
-    margin: 1.5px 0;
+    margin: 2px 0;
 }
 
 #toc-icon .toc-close {
