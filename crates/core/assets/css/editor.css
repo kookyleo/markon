@@ -403,10 +403,29 @@ html[data-theme="dark"] .markdown-body h6.heading-focused {
 
 .note-actions {
     position: absolute;
-    top: 8px;
-    right: 8px;
+    top: 6px;
+    right: 6px;
     display: flex;
-    gap: 4px;
+    gap: 2px;
+    /* One backdrop chip behind the whole cluster so the icons stay legible
+       floating over the note text. */
+    padding: 1px;
+    border-radius: var(--markon-radius-sm);
+    background: var(--markon-canvas);
+    border: 0.5px solid var(--markon-border);
+    box-shadow: var(--markon-shadow-pop);
+}
+
+/* Margin card: the cluster floats over the text and only appears on hover, so
+   the text uses the full width and no space is reserved for it. */
+.note-card-margin .note-actions {
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.12s ease;
+}
+.note-card-margin:hover .note-actions {
+    opacity: 1;
+    pointer-events: auto;
 }
 
 /* Flat line-icon actions: no filled circles, a muted stroke that warms on
@@ -459,7 +478,12 @@ html[data-theme="dark"] .markdown-body h6.heading-focused {
     color: var(--markon-text);
     white-space: pre-wrap;
     word-wrap: break-word;
-    padding-right: 52px; /* Make room for edit and delete buttons */
+}
+
+/* The mobile popup shows its actions persistently (no hover on touch), so it
+   still reserves room for them. */
+.note-popup .note-content {
+    padding-right: 52px;
 }
 
 /* ============================================================
