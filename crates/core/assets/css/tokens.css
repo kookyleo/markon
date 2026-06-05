@@ -100,6 +100,20 @@
     --markon-collapsed-opacity: 0.6;
     --markon-collapsed-opacity-hover: 0.85;
 
+    /* ── Radius ────────────────────────────────────────────── */
+    --markon-radius-sm: 6px;  /* default: buttons, inputs, cards, chips */
+    --markon-radius-lg: 8px;  /* large containers: modals, panels */
+
+    /* ── Elevation (floating surfaces) ─────────────────────── */
+    --markon-shadow-pop:   0 2px 8px rgba(0, 0, 0, 0.12);   /* popovers, dialogs, mobile note */
+    --markon-shadow-modal: 0 8px 24px rgba(0, 0, 0, 0.14);  /* full modals */
+
+    /* ── On the dark overlay surface (--markon-overlay-dark, dark in both
+          themes): chrome grays that must read against a dark fill. ──────── */
+    --markon-overlay-line:        #666;     /* grip / separator */
+    --markon-overlay-line-strong: #aaa;     /* grip hover */
+    --markon-overlay-hover:       #4a4a4a;  /* button hover wash */
+
     /* ── Derived (auto-computed, not user-configurable) ───── */
     --markon-primary-hover: color-mix(in srgb, var(--markon-primary) 80%, black);
     --markon-muted-hover:   color-mix(in srgb, var(--markon-muted) 60%, black);
@@ -131,4 +145,8 @@ html[data-theme="dark"] {
     --markon-code-entity:   #d2a8ff;
     --markon-code-support:  #79c0ff;
     --markon-code-variable: #ffa657;
+
+    /* Elevation needs more depth on a dark canvas. */
+    --markon-shadow-pop:   0 2px 8px rgba(0, 0, 0, 0.4);
+    --markon-shadow-modal: 0 10px 28px rgba(0, 0, 0, 0.5);
 }

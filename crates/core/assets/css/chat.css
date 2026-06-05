@@ -1017,7 +1017,6 @@ html[data-theme="dark"] .markon-chat-mention-popup {
 }
 
 .markon-chat-citation:hover {
-    text-decoration: underline;
     background: color-mix(in srgb, var(--markon-primary) 22%, transparent);
     border-color: color-mix(in srgb, var(--markon-primary) 35%, transparent);
 }
