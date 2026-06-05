@@ -34,7 +34,7 @@ export const zh = {
             { text: '已读追踪 (Viewed)', link: '/features/viewed' },
             { text: '快捷编辑', link: '/features/edit' },
             { text: '注解与笔记', link: '/features/annotations' },
-            { text: '批注导出', link: '/features/export' },
+            { text: '导出便条', link: '/features/export' },
             { text: '实时协作 (Live)', link: '/features/live' },
             { text: '章节打印', link: '/features/print' },
           ],

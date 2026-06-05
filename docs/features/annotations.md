@@ -77,4 +77,4 @@
 
 ## 导出
 
-读完后想把标注整理给 AI 或存档？整页标注可挑选、整理为 Markdown 复制或下载 —— 详见 [批注导出](/features/export)。
+读完后想把便条整理给 AI 或存档？整页便条可挑选、整理为 Markdown 复制或下载 —— 详见 [导出便条](/features/export)。
