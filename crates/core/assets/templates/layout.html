@@ -471,14 +471,10 @@
             color: transparent;
             caret-color: var(--markon-fg-default);
         }
-        /* Selection alpha varies by theme to keep the textarea legible — kept
-           as fixed rgba (token primary doesn't carry an alpha component) */
+        /* Selection wash — alpha varies by theme via --markon-selection. */
         .editor-textarea::selection {
-            background-color: rgba(31, 111, 235, 0.6);
+            background-color: var(--markon-selection);
             color: transparent;
-        }
-        html[data-theme="light"] .editor-textarea::selection {
-            background-color: rgba(173, 214, 255, 0.6);
         }
         .editor-status {
             color: var(--markon-fg-muted);
@@ -673,17 +669,20 @@
         /* ========================================
            SEARCH HIGHLIGHTING
            ======================================== */
+        /* Hit colours come from --markon-search-hit* (dark variants in the
+           token block). The pulse keyframes stay literal so the animation
+           keeps its exact two-theme behaviour. */
         .search-highlight {
-            background-color: rgba(255, 235, 59, 0.4);
+            background-color: var(--markon-search-hit);
             padding: 2px 0;
             border-radius: 2px;
             transition: all 0.3s ease;
         }
 
         .search-highlight-active {
-            background-color: rgba(255, 193, 7, 0.6);
+            background-color: var(--markon-search-hit-active);
             animation: highlight-pulse 0.6s ease-in-out 3;
-            box-shadow: 0 0 0 3px rgba(255, 193, 7, 0.3);
+            box-shadow: 0 0 0 3px var(--markon-search-hit-ring);
         }
 
         @keyframes highlight-pulse {
@@ -693,19 +692,6 @@
             50% {
                 background-color: rgba(255, 235, 59, 0.8);
             }
-        }
-
-        /* Dark theme softens search-highlight alpha for readability against
-           dark canvas. The inline <head> script normalizes data-theme="auto"
-           to a concrete light|dark value before stylesheets apply, so a single
-           attribute selector covers both explicit-dark and auto-dark cases. */
-        html[data-theme="dark"] .search-highlight {
-            background-color: rgba(255, 193, 7, 0.25);
-        }
-
-        html[data-theme="dark"] .search-highlight-active {
-            background-color: rgba(255, 193, 7, 0.4);
-            box-shadow: 0 0 0 3px rgba(255, 193, 7, 0.2);
         }
 
         @media (prefers-color-scheme: dark) {

@@ -95,6 +95,15 @@
     --markon-hl-note-strong:      rgba(187, 128, 9, 0.25); /* note fill, hover */
     --markon-hl-note-line:        rgba(187, 128, 9, 0.4);  /* dotted underline */
     --markon-hl-note-line-strong: rgba(187, 128, 9, 0.6);  /* underline, hover */
+
+    /* ── Search hit + textarea selection (theme-divergent) ───
+       Search hit is amber-on-yellow; the active hit glows brighter with a
+       ring. Selection is the source-editor textarea highlight. Dark values
+       live in the dark block below. */
+    --markon-search-hit:        rgba(255, 235, 59, 0.4);
+    --markon-search-hit-active: rgba(255, 193, 7, 0.6);
+    --markon-search-hit-ring:   rgba(255, 193, 7, 0.3);
+    --markon-selection:         rgba(173, 214, 255, 0.6);
     /* Dark tooltip / popover surface, kept dark in BOTH themes. */
     --markon-overlay-dark:  #2c2c2c;
     /* Standard hover wash over a surface (overridden per theme below). */
@@ -183,6 +192,12 @@ html[data-theme="dark"] {
     --markon-success-hover: #56d364;
     --markon-warning:       #d29922;
     --markon-warning-hover: #e3b341;
+
+    /* Search hit + selection — softer amber alphas read better on dark. */
+    --markon-search-hit:        rgba(255, 193, 7, 0.25);
+    --markon-search-hit-active: rgba(255, 193, 7, 0.4);
+    --markon-search-hit-ring:   rgba(255, 193, 7, 0.2);
+    --markon-selection:         rgba(31, 111, 235, 0.6);
 
     /* Elevation needs more depth on a dark canvas. */
     --markon-shadow-pop:   0 2px 8px rgba(0, 0, 0, 0.4);
