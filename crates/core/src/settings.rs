@@ -142,6 +142,11 @@ pub struct AppSettings {
     /// preset). Emitted as the `data-editor-theme` attribute on <html>.
     #[serde(default = "default_follow")]
     pub web_editor_theme: String,
+    /// Server-level access code, stored as a salted hash (see
+    /// `workspace::hash_access_code`). Empty = no gate (current behaviour).
+    /// A workspace's own `access_code_hash` overrides this for that workspace.
+    #[serde(default)]
+    pub access_code_hash: String,
     pub db_path: Option<String>,
     /// Per-install random salt for workspace-id hashing. Empty on first run;
     /// `load()` lazily generates one and persists it. Keeping it stable across
@@ -206,6 +211,7 @@ impl Default for AppSettings {
             web_theme: "auto".to_string(),
             web_language: "auto".to_string(),
             web_editor_theme: "follow".to_string(),
+            access_code_hash: String::new(),
             db_path: None,
             salt: String::new(),
             workspaces: vec![],
@@ -355,6 +361,7 @@ impl AppSettings {
             shortcuts_json: self.render_shortcuts_json(),
             default_chat_mode: self.default_chat_mode.clone(),
             editor_theme: self.web_editor_theme.clone(),
+            access_code_hash: self.access_code_hash.clone(),
             print_collapsed_content: self.print_collapsed_content,
         }
     }

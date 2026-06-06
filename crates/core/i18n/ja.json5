@@ -43,6 +43,12 @@
     "editor_theme.vscode_dark": "VSCode ダーク",
     "pref.web.lang":   "ビューア言語",
     "web.auto":        "パネルに従う",
+    "access.title":         "アクセスコード",
+    "access.prompt":        "このスペースは保護されています。続けるにはアクセスコードを入力してください。",
+    "access.placeholder":   "アクセスコード",
+    "access.submit":        "ロック解除",
+    "access.err.wrong":     "コードが違います。もう一度お試しください。",
+    "access.err.cooldown":  "試行回数が多すぎます。{n} 秒後に再試行してください。",
 
     // ── General — Behavior ───────────────────────────────────
     "sec.behavior":   "その他",

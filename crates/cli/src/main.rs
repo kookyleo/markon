@@ -946,6 +946,7 @@ async fn main() {
     let styles_css = settings.render_styles_css();
     let default_chat_mode = settings.default_chat_mode.clone();
     let editor_theme = settings.web_editor_theme.clone();
+    let access_code_hash = settings.access_code_hash.clone();
     // CLI flag forces inclusion; otherwise inherit the persisted preference so
     // GUI-set values still apply when launching from the command line.
     let print_collapsed_content = cli.print_collapsed_content || settings.print_collapsed_content;
@@ -987,6 +988,7 @@ async fn main() {
         styles_css,
         default_chat_mode,
         editor_theme,
+        access_code_hash,
         print_collapsed_content,
     })
     .await

@@ -154,6 +154,19 @@ pub fn hash_id(path: &Path, salt: &str) -> String {
     )
 }
 
+/// Hash an access code for storage and comparison. Salted with the per-install
+/// salt (so the stored value isn't a bare SHA-256 of a often-weak code, and so
+/// it can't be precomputed without reading the 0600 settings file) and
+/// domain-separated from workspace-id hashing. Returns the full digest as hex.
+pub fn hash_access_code(salt: &str, code: &str) -> String {
+    use sha2::{Digest, Sha256};
+    let mut h = Sha256::new();
+    h.update(salt.as_bytes());
+    h.update(b"\0mk-access\0");
+    h.update(code.as_bytes());
+    h.finalize().iter().map(|b| format!("{b:02x}")).collect()
+}
+
 /// Cryptographically-random 32-hex-char token. Used as the management API
 /// bearer (`X-Markon-Token`) and as the per-install salt for workspace IDs.
 /// Backed by `uuid::Uuid::new_v4` which sources 122 bits of entropy from the

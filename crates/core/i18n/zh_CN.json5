@@ -43,6 +43,12 @@
     "editor_theme.vscode_dark": "VSCode 深色",
     "pref.web.lang":   "阅读页语言",
     "web.auto":        "跟随面板",
+    "access.title":         "访问码",
+    "access.prompt":        "此空间受保护,请输入访问码以继续。",
+    "access.placeholder":   "访问码",
+    "access.submit":        "解锁",
+    "access.err.wrong":     "访问码错误,请重试。",
+    "access.err.cooldown":  "尝试过多,请在 {n} 秒后重试。",
 
     // ── 全局设置 — 行为 ──────────────────────────────────────
     "sec.behavior":   "更多",

@@ -809,6 +809,9 @@ mod tests {
             styles_css: Arc::new(String::new()),
             default_chat_mode: Arc::new("in_page".into()),
             editor_theme: Arc::new("follow".into()),
+            access_code_hash: Arc::new(String::new()),
+            access_secret: Arc::new("test-salt".into()),
+            access_attempts: Arc::new(std::sync::Mutex::new(std::collections::HashMap::new())),
             print_collapsed_content: false,
             shutdown_tx,
             #[cfg(debug_assertions)]

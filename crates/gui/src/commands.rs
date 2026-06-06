@@ -129,8 +129,13 @@ pub fn save_settings(
 ) -> Result<(), String> {
     // Preserve existing workspaces — they are managed separately via add/remove/update commands.
     let existing_workspaces = state.settings.lock().unwrap().workspaces.clone();
+    // Preserve the access-code hash — it is set via the dedicated
+    // set_access_code command (which hashes the plaintext), never through the
+    // settings form, so the form round-trip must not clobber it.
+    let existing_access_code = state.settings.lock().unwrap().access_code_hash.clone();
     let mut settings = settings;
     settings.workspaces = existing_workspaces;
+    settings.access_code_hash = existing_access_code;
 
     update_tray_language(&app, &settings.language);
 

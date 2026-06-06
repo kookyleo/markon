@@ -43,6 +43,12 @@
     "editor_theme.vscode_dark": "VSCode Dark",
     "pref.web.lang":   "Viewer language",
     "web.auto":        "Follow panel",
+    "access.title":         "Access code",
+    "access.prompt":        "This space is protected. Enter the access code to continue.",
+    "access.placeholder":   "Access code",
+    "access.submit":        "Unlock",
+    "access.err.wrong":     "Wrong code, try again.",
+    "access.err.cooldown":  "Too many attempts. Try again in {n}s.",
 
     // ── General — Behavior ───────────────────────────────────
     "sec.behavior":   "More",

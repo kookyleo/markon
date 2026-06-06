@@ -1,0 +1,87 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="{{ theme }}">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Markon</title>
+  <link rel="stylesheet" href="/_/css/tokens.css">
+  <style>
+    html, body { height: 100%; }
+    body {
+      margin: 0;
+      font-family: var(--markon-ui-font);
+      background: var(--markon-bg-default);
+      color: var(--markon-fg-default);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .gate {
+      width: 320px;
+      max-width: calc(100vw - 32px);
+      box-sizing: border-box;
+      padding: 28px 24px;
+      background: var(--markon-bg-elevated);
+      border: 1px solid var(--markon-border-default);
+      border-radius: var(--markon-radius-lg);
+      box-shadow: var(--markon-shadow-modal);
+    }
+    .gate h1 { font-size: 16px; margin: 0 0 4px; }
+    .gate p { font-size: 13px; color: var(--markon-fg-muted); margin: 0 0 16px; line-height: 1.5; }
+    .gate input[type=password] {
+      width: 100%;
+      box-sizing: border-box;
+      padding: 8px 10px;
+      font-size: 14px;
+      border: 1px solid var(--markon-border-default);
+      border-radius: var(--markon-radius-sm);
+      background: var(--markon-bg-default);
+      color: var(--markon-fg-default);
+    }
+    .gate button {
+      width: 100%;
+      margin-top: 12px;
+      padding: 9px;
+      font-size: 14px;
+      font-weight: 500;
+      border: none;
+      border-radius: var(--markon-radius-sm);
+      background: var(--markon-accent);
+      color: var(--markon-fg-on-emphasis);
+      cursor: pointer;
+    }
+    .gate button:disabled { opacity: 0.5; cursor: not-allowed; }
+    .gate .err { margin-top: 10px; font-size: 12px; color: var(--markon-danger); min-height: 1em; }
+  </style>
+</head>
+<body>
+  <form class="gate" method="POST" action="/_/unlock"
+        data-error="{{ error | default(value='') }}" data-cooldown="{{ cooldown | default(value=0) }}">
+    <h1 data-i18n="access.title"></h1>
+    <p data-i18n="access.prompt"></p>
+    <input type="password" name="code" autocomplete="current-password" autofocus
+           data-i18n-ph="access.placeholder"{% if error == "cooldown" %} disabled{% endif %}>
+    <input type="hidden" name="workspace_id" value="{{ workspace_id }}">
+    <input type="hidden" name="redirect" value="{{ redirect }}">
+    <button type="submit" data-i18n="access.submit"{% if error == "cooldown" %} disabled{% endif %}></button>
+    <div class="err" id="err"></div>
+  </form>
+  <script>
+    window.__MARKON_I18N__ = (function () {
+      var all = {{ i18n_json | safe }};
+      var lang = "{{ i18n_lang | default(value='en') }}";
+      var dict = all[lang] || all.en || {};
+      return { t: function (k) { return dict[k] || (all.en && all.en[k]) || k; } };
+    })();
+    (function () {
+      var I = window.__MARKON_I18N__;
+      document.querySelectorAll('[data-i18n]').forEach(function (el) { el.textContent = I.t(el.getAttribute('data-i18n')); });
+      document.querySelectorAll('[data-i18n-ph]').forEach(function (el) { el.placeholder = I.t(el.getAttribute('data-i18n-ph')); });
+      var f = document.querySelector('.gate'), err = document.getElementById('err');
+      var e = f.getAttribute('data-error');
+      if (e === 'wrong') err.textContent = I.t('access.err.wrong');
+      else if (e === 'cooldown') err.textContent = I.t('access.err.cooldown').replace('{n}', f.getAttribute('data-cooldown'));
+    })();
+  </script>
+</body>
+</html>

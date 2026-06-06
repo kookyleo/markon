@@ -89,10 +89,22 @@ pub struct ServerConfig {
     /// "vscode-dark". Mirrored to the browser as the `data-editor-theme`
     /// attribute on <html>; resolved by the --mk-editor-* token layer.
     pub editor_theme: String,
+    /// Server-level access-code hash (salted SHA-256; empty = no gate). A
+    /// workspace's own code overrides this for that workspace.
+    pub access_code_hash: String,
     /// When true, collapsed sections are forced visible during print so their
     /// content ends up on paper. When false (default) the content stays hidden
     /// and a small placeholder marks the position of the collapsed section.
     pub print_collapsed_content: bool,
+}
+
+/// Per-IP failed-unlock state for the access-code brute-force cooldown.
+#[derive(Default)]
+pub(crate) struct AccessAttempts {
+    /// Consecutive failures since the last success / reset.
+    pub fails: u32,
+    /// If set, unlock attempts are rejected until this instant.
+    pub locked_until: Option<std::time::Instant>,
 }
 
 #[derive(Clone)]
@@ -118,6 +130,13 @@ pub(crate) struct AppState {
     /// Source-editor colour preset ("follow" or "vscode-dark"). Mirrored to
     /// the browser as the `data-editor-theme` attribute on <html>.
     pub editor_theme: Arc<String>,
+    /// Access gate: server-level access-code hash (empty = no server gate).
+    pub access_code_hash: Arc<String>,
+    /// Secret for signing access cookies — the persistent per-install salt, so
+    /// unlock cookies survive restarts (30-day persistence).
+    pub access_secret: Arc<String>,
+    /// Per-source-IP failed-unlock tracking for the brute-force cooldown.
+    pub access_attempts: Arc<std::sync::Mutex<std::collections::HashMap<std::net::IpAddr, AccessAttempts>>>,
     /// Whether collapsed sections should be printed (true) or replaced by a
     /// placeholder (false). Mirrored to the browser as a `<html>` data attr.
     pub print_collapsed_content: bool,
@@ -396,6 +415,7 @@ pub async fn start(config: ServerConfig) -> Result<(), String> {
         styles_css,
         default_chat_mode,
         editor_theme,
+        access_code_hash,
         print_collapsed_content,
     } = config;
 
@@ -468,6 +488,8 @@ pub async fn start(config: ServerConfig) -> Result<(), String> {
 
     // Build workspace registry and register initial workspaces.
     let effective_salt = salt.unwrap_or_else(|| format!("markon:{port}"));
+    // Sign access cookies with the persistent salt so they survive restarts.
+    let access_cookie_secret = effective_salt.clone();
     let registry = registry.unwrap_or_else(|| Arc::new(WorkspaceRegistry::new(effective_salt)));
     // Hand the broadcaster to the registry **before** seeding initial
     // workspaces so single-file watchers spawned from inside `add()` already
@@ -513,6 +535,9 @@ pub async fn start(config: ServerConfig) -> Result<(), String> {
         styles_css: Arc::new(styles_css.unwrap_or_default()),
         default_chat_mode: Arc::new(default_chat_mode),
         editor_theme: Arc::new(editor_theme),
+        access_code_hash: Arc::new(access_code_hash),
+        access_secret: Arc::new(access_cookie_secret),
+        access_attempts: Arc::new(std::sync::Mutex::new(std::collections::HashMap::new())),
         print_collapsed_content,
         shutdown_tx,
         #[cfg(debug_assertions)]
@@ -545,6 +570,8 @@ pub async fn start(config: ServerConfig) -> Result<(), String> {
         // Read-only public APIs
         .route("/search", get(search_handler))
         .route("/api/preview", post(preview_handler))
+        // Access-code gate: unlock endpoint (not itself gated).
+        .route("/_/unlock", post(unlock_handler))
         // Workspace content routes
         // Chat popout — minimal chat-only page that ChatManager opens via
         // window.open. Registered before the catch-all `{*path}` so the
@@ -580,6 +607,12 @@ pub async fn start(config: ServerConfig) -> Result<(), String> {
     let app = app.merge(
         crate::chat::routes::router().route_layer(axum::middleware::from_fn(require_same_origin)),
     );
+
+    // Access-code gate over every workspace-scoped route (no-op when unset).
+    let app = app.layer(axum::middleware::from_fn_with_state(
+        state.clone(),
+        require_access_code,
+    ));
 
     let app = app.with_state(state);
 
@@ -790,6 +823,261 @@ fn origin_matches_host(origin: &str, host: Option<&str>) -> bool {
 }
 
 /// Middleware: management API only accepts loopback source + valid token header.
+// ════════════════════════ Access gate ════════════════════════
+// Optional per-server (and, later, per-workspace) access code. A device that
+// hasn't unlocked the relevant scope is shown a gate page; on success a signed
+// 30-day cookie auto-unlocks subsequent requests. Brute force is slowed by a
+// per-source-IP cooldown. Fully disabled (nothing gated) when no code is set.
+
+const ACCESS_COOKIE: &str = "markon_access";
+const ACCESS_TTL_SECS: u64 = 30 * 24 * 60 * 60; // 30 days
+const ACCESS_MAX_FAILS: u32 = 5;
+const ACCESS_BASE_COOLDOWN_SECS: u64 = 30;
+const ACCESS_MAX_COOLDOWN_SECS: u64 = 60 * 60; // 1h cap
+
+fn access_now_unix() -> u64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .unwrap_or(0)
+}
+
+fn access_hex(bytes: &[u8]) -> String {
+    bytes.iter().map(|b| format!("{b:02x}")).collect()
+}
+
+/// Keyed integrity tag for the cookie. Secret is the per-install salt (in the
+/// 0600 settings file), so a client can't forge or tamper with a cookie.
+fn access_sig(secret: &str, payload_hex: &str) -> String {
+    use sha2::{Digest, Sha256};
+    let mut h = Sha256::new();
+    h.update(secret.as_bytes());
+    h.update(b"\0mk-cookie\0");
+    h.update(payload_hex.as_bytes());
+    access_hex(&h.finalize())
+}
+
+/// Build the `Set-Cookie` value carrying the unlocked scopes until `exp`.
+fn make_access_cookie(secret: &str, scopes: &[String], exp: u64) -> String {
+    let payload = format!("{exp}|{}", scopes.join(","));
+    let payload_hex = access_hex(payload.as_bytes());
+    let sig = access_sig(secret, &payload_hex);
+    format!(
+        "{ACCESS_COOKIE}={payload_hex}.{sig}; Path=/; Max-Age={ACCESS_TTL_SECS}; HttpOnly; SameSite=Lax"
+    )
+}
+
+/// Verify the request's cookie and return the still-valid unlocked scopes.
+fn access_cookie_scopes(secret: &str, cookie_header: Option<&str>) -> Vec<String> {
+    let Some(header) = cookie_header else {
+        return Vec::new();
+    };
+    let Some(token) = header
+        .split(';')
+        .filter_map(|kv| kv.trim().split_once('='))
+        .find(|(k, _)| *k == ACCESS_COOKIE)
+        .map(|(_, v)| v)
+    else {
+        return Vec::new();
+    };
+    let Some((payload_hex, sig)) = token.split_once('.') else {
+        return Vec::new();
+    };
+    if payload_hex.len() % 2 != 0 || !constant_time_eq(access_sig(secret, payload_hex).as_bytes(), sig.as_bytes())
+    {
+        return Vec::new();
+    }
+    let Ok(payload_bytes) = (0..payload_hex.len())
+        .step_by(2)
+        .map(|i| u8::from_str_radix(&payload_hex[i..i + 2], 16))
+        .collect::<Result<Vec<u8>, _>>()
+    else {
+        return Vec::new();
+    };
+    let Ok(payload) = String::from_utf8(payload_bytes) else {
+        return Vec::new();
+    };
+    let Some((exp_str, scope_csv)) = payload.split_once('|') else {
+        return Vec::new();
+    };
+    match exp_str.parse::<u64>() {
+        Ok(exp) if access_now_unix() < exp => scope_csv
+            .split(',')
+            .filter(|s| !s.is_empty())
+            .map(|s| s.to_string())
+            .collect(),
+        _ => Vec::new(),
+    }
+}
+
+/// The workspace id a request targets, for access-gating. `None` means the
+/// route isn't workspace-scoped (static assets, mgmt, unlock, preview) and is
+/// allowed through the gate.
+fn access_gated_workspace(path: &str) -> Option<String> {
+    let segs: Vec<&str> = path.trim_start_matches('/').split('/').collect();
+    if segs.len() >= 3 && segs[0] == "api" && segs[1] == "chat" {
+        return Some(segs[2].to_string());
+    }
+    if segs.len() >= 3 && segs[0] == "_" && segs[1] == "ws" {
+        return Some(segs[2].to_string());
+    }
+    if let Some(first) = segs.first() {
+        if first.len() == 8 && first.bytes().all(|b| b.is_ascii_hexdigit()) {
+            return Some(first.to_string());
+        }
+    }
+    None
+}
+
+/// Only allow same-site relative redirect targets (no open redirect / no `//`).
+fn access_safe_redirect(redirect: &str, ws_id: &str) -> String {
+    if redirect.starts_with('/') && !redirect.starts_with("//") {
+        redirect.to_string()
+    } else {
+        format!("/{ws_id}/")
+    }
+}
+
+fn access_cooldown_remaining(state: &AppState, ip: std::net::IpAddr) -> Option<u64> {
+    let map = state.access_attempts.lock().unwrap();
+    let until = map.get(&ip)?.locked_until?;
+    let now = std::time::Instant::now();
+    (until > now).then(|| (until - now).as_secs() + 1)
+}
+
+/// Record a failed unlock; returns the cooldown seconds if it just locked.
+fn access_record_failure(state: &AppState, ip: std::net::IpAddr) -> Option<u64> {
+    let mut map = state.access_attempts.lock().unwrap();
+    let st = map.entry(ip).or_default();
+    st.fails += 1;
+    if st.fails >= ACCESS_MAX_FAILS {
+        let over = (st.fails - ACCESS_MAX_FAILS).min(7);
+        let secs = (ACCESS_BASE_COOLDOWN_SECS << over).min(ACCESS_MAX_COOLDOWN_SECS);
+        st.locked_until = Some(std::time::Instant::now() + std::time::Duration::from_secs(secs));
+        Some(secs)
+    } else {
+        None
+    }
+}
+
+fn access_record_success(state: &AppState, ip: std::net::IpAddr) {
+    state.access_attempts.lock().unwrap().remove(&ip);
+}
+
+/// The effective access-code hash for a workspace. Increment 1: server-level
+/// only (a workspace's own code will override this in a later increment).
+fn access_effective_hash<'a>(state: &'a AppState, _ws_id: &str) -> &'a str {
+    state.access_code_hash.as_str()
+}
+
+/// Render the access-code gate page (HTTP 200 + form). `err` is None on first
+/// prompt, or a (kind, cooldown) pair for feedback.
+fn render_access_gate(
+    state: &AppState,
+    ws_id: &str,
+    redirect: &str,
+    err: Option<(&str, u64)>,
+) -> Response {
+    let mut ctx = tera::Context::new();
+    ctx.insert("workspace_id", ws_id);
+    ctx.insert("redirect", &access_safe_redirect(redirect, ws_id));
+    ctx.insert("theme", state.theme.as_str());
+    ctx.insert("i18n_json", state.i18n_json.as_str());
+    ctx.insert("i18n_lang", state.i18n_lang.as_str());
+    // Always define these so the template's `{% if error == ... %}` is valid
+    // even on the first (errorless) prompt.
+    ctx.insert("error", "");
+    ctx.insert("cooldown", &0u64);
+    if let Some((kind, cooldown)) = err {
+        ctx.insert("error", kind);
+        ctx.insert("cooldown", &cooldown);
+    }
+    match state.tera.render("access-gate.html", &ctx) {
+        Ok(html) => (StatusCode::OK, Html(html)).into_response(),
+        Err(e) => {
+            tracing::error!("access gate render failed: {e}");
+            (StatusCode::INTERNAL_SERVER_ERROR, "gate error").into_response()
+        }
+    }
+}
+
+/// Middleware: gate workspace-scoped routes behind the access code. No-op when
+/// the workspace's effective code is empty.
+async fn require_access_code(
+    State(state): State<AppState>,
+    req: axum::extract::Request,
+    next: axum::middleware::Next,
+) -> Response {
+    let path = req.uri().path().to_string();
+    let Some(ws_id) = access_gated_workspace(&path) else {
+        return next.run(req).await;
+    };
+    let effective = access_effective_hash(&state, &ws_id);
+    if effective.is_empty() {
+        return next.run(req).await;
+    }
+    let needed = "s"; // increment 1: server scope
+    let cookie = req
+        .headers()
+        .get(axum::http::header::COOKIE)
+        .and_then(|v| v.to_str().ok());
+    if access_cookie_scopes(&state.access_secret, cookie)
+        .iter()
+        .any(|s| s == needed)
+    {
+        return next.run(req).await;
+    }
+    if req.method() == axum::http::Method::GET && !path.starts_with("/api/") {
+        render_access_gate(&state, &ws_id, &path, None)
+    } else {
+        (StatusCode::UNAUTHORIZED, "Access code required").into_response()
+    }
+}
+
+#[derive(serde::Deserialize)]
+struct UnlockForm {
+    code: String,
+    workspace_id: String,
+    redirect: String,
+}
+
+/// `POST /_/unlock` — verify the submitted code, set the cookie, redirect back.
+async fn unlock_handler(
+    State(state): State<AppState>,
+    axum::extract::ConnectInfo(addr): axum::extract::ConnectInfo<std::net::SocketAddr>,
+    axum::extract::Form(form): axum::extract::Form<UnlockForm>,
+) -> Response {
+    let ip = addr.ip();
+    let redirect = access_safe_redirect(&form.redirect, &form.workspace_id);
+    if let Some(remaining) = access_cooldown_remaining(&state, ip) {
+        tracing::warn!(%ip, ws = %form.workspace_id, "access unlock blocked: cooldown {remaining}s");
+        return render_access_gate(&state, &form.workspace_id, &redirect, Some(("cooldown", remaining)));
+    }
+    let effective = access_effective_hash(&state, &form.workspace_id);
+    if effective.is_empty() {
+        return Redirect::to(&redirect).into_response();
+    }
+    let candidate = crate::workspace::hash_access_code(&state.access_secret, &form.code);
+    if constant_time_eq(candidate.as_bytes(), effective.as_bytes()) {
+        access_record_success(&state, ip);
+        tracing::info!(%ip, ws = %form.workspace_id, "access unlocked");
+        let cookie = make_access_cookie(
+            &state.access_secret,
+            &["s".to_string()],
+            access_now_unix() + ACCESS_TTL_SECS,
+        );
+        return (
+            [(axum::http::header::SET_COOKIE, cookie)],
+            Redirect::to(&redirect),
+        )
+            .into_response();
+    }
+    let cooldown = access_record_failure(&state, ip);
+    tracing::warn!(%ip, ws = %form.workspace_id, "access unlock failed");
+    let err = cooldown.map_or(("wrong", 0), |s| ("cooldown", s));
+    render_access_gate(&state, &form.workspace_id, &redirect, Some(err))
+}
+
 /// Same-origin guard for the chat API. Chat endpoints are reachable from the
 /// (unauthenticated) viewer page, so they can't require the management token;
 /// instead reject any request whose `Origin` doesn't match `Host`. A mutating
@@ -1834,6 +2122,9 @@ mod tests {
             styles_css: Arc::new("".into()),
             default_chat_mode: Arc::new("in_page".into()),
             editor_theme: Arc::new("follow".into()),
+            access_code_hash: Arc::new(String::new()),
+            access_secret: Arc::new("test-salt".into()),
+            access_attempts: Arc::new(std::sync::Mutex::new(std::collections::HashMap::new())),
             print_collapsed_content: false,
             shutdown_tx,
             #[cfg(debug_assertions)]
@@ -2048,6 +2339,9 @@ mod tests {
             styles_css: Arc::new("".into()),
             default_chat_mode: Arc::new("in_page".into()),
             editor_theme: Arc::new("follow".into()),
+            access_code_hash: Arc::new(String::new()),
+            access_secret: Arc::new("test-salt".into()),
+            access_attempts: Arc::new(std::sync::Mutex::new(std::collections::HashMap::new())),
             print_collapsed_content: false,
             shutdown_tx: tx,
             #[cfg(debug_assertions)]
@@ -2147,6 +2441,47 @@ mod tests {
         // IPv6 loopback is preserved (bracketed), not collapsed to 127.0.0.1.
         let v6 = assemble_reachable_urls("::1", "", 6419, &hosts);
         assert_eq!(v6.featured, "http://[::1]:6419");
+    }
+
+    #[test]
+    fn access_cookie_round_trips_and_rejects_tamper() {
+        let secret = "test-secret";
+        let raw = make_access_cookie(secret, &["s".to_string()], access_now_unix() + 100);
+        let kv = raw.split(';').next().unwrap(); // markon_access=PAYLOAD.SIG
+        assert_eq!(access_cookie_scopes(secret, Some(kv)), vec!["s".to_string()]);
+        // Wrong secret, tampered value, and an expired cookie are all rejected.
+        assert!(access_cookie_scopes("other-secret", Some(kv)).is_empty());
+        assert!(access_cookie_scopes(secret, Some(&format!("{kv}00"))).is_empty());
+        let expired = make_access_cookie(secret, &["s".to_string()], 1);
+        assert!(access_cookie_scopes(secret, Some(expired.split(';').next().unwrap())).is_empty());
+    }
+
+    #[test]
+    fn access_cooldown_locks_after_threshold() {
+        let state = test_state(Arc::new(WorkspaceRegistry::new("s".into())));
+        let ip: std::net::IpAddr = "1.2.3.4".parse().unwrap();
+        for _ in 0..ACCESS_MAX_FAILS - 1 {
+            assert!(access_record_failure(&state, ip).is_none());
+        }
+        assert!(access_cooldown_remaining(&state, ip).is_none());
+        assert!(access_record_failure(&state, ip).is_some()); // crosses threshold → locks
+        assert!(access_cooldown_remaining(&state, ip).is_some());
+        access_record_success(&state, ip);
+        assert!(access_cooldown_remaining(&state, ip).is_none());
+    }
+
+    #[test]
+    fn access_gated_workspace_recognizes_routes() {
+        assert_eq!(access_gated_workspace("/abcd1234/doc.md").as_deref(), Some("abcd1234"));
+        assert_eq!(
+            access_gated_workspace("/api/chat/abcd1234/threads").as_deref(),
+            Some("abcd1234")
+        );
+        assert_eq!(access_gated_workspace("/_/ws/abcd1234").as_deref(), Some("abcd1234"));
+        assert!(access_gated_workspace("/_/css/tokens.css").is_none());
+        assert!(access_gated_workspace("/_/unlock").is_none());
+        assert!(access_gated_workspace("/api/preview").is_none());
+        assert!(access_gated_workspace("/favicon.ico").is_none());
     }
 
     #[test]
