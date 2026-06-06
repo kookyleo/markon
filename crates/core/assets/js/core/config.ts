@@ -127,6 +127,7 @@ export const CONFIG = {
         VIEWED: (filePath: string): string => `markon-viewed-${filePath}`,
         LIVE_POS: 'markon-live-pos',
         LIVE_COLOR: 'markon-user-color',
+        IDENTITY_NAME: 'markon-user-name',
         LIVE_MODE: 'markon-live-mode',
         CLIENT_ID: 'markon-client-id',
         CHAT_POS: 'markon-chat-pos',

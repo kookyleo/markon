@@ -7,6 +7,7 @@
  */
 
 import { Ids, Logger } from '../core/utils';
+import { Identity, type Author } from '../core/identity';
 import { XPath } from '../services/xpath';
 import { Text } from '../services/text';
 
@@ -83,6 +84,10 @@ export interface Annotation {
     note: string | null;
     /** Creation timestamp (ms since epoch). */
     createdAt: number;
+    /** Author stamp (colour + optional nickname), snapshotted at creation.
+     *  Absent on annotations created before authorship existed → render
+     *  anonymously (neutral). */
+    author?: Author;
 }
 
 /** Storage strategy contract used by AnnotationManager.
@@ -410,6 +415,7 @@ export class AnnotationManager {
             text: range.toString(),
             note,
             createdAt: Date.now(),
+            author: Identity.author(),
         };
     }
 
