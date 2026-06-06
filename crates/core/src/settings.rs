@@ -295,12 +295,10 @@ impl AppSettings {
             let _ = std::fs::create_dir_all(parent);
         }
         let c = serde_json::to_string_pretty(self).unwrap();
-        std::fs::write(&p, c).map_err(|e| e.to_string())?;
-        // The file stores plaintext provider api_key fields. Tighten
-        // permissions on Unix so other users on the same machine cannot
-        // read it. Windows files under the user profile are already
-        // restricted to the owning user by default ACLs — we don't
-        // attempt to re-tighten there.
+        // The file stores plaintext provider api_key fields and the salt.
+        // Create it 0600 up front (no world-readable window) on Unix; Windows
+        // files under the user profile inherit restrictive per-user ACLs.
+        crate::workspace::write_file_user_private(&p, c.as_bytes()).map_err(|e| e.to_string())?;
         restrict_user_only(&p);
         if self.has_sensitive_provider_secret() {
             warn_sensitive_secret_persisted_once(&p);

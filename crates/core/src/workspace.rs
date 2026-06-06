@@ -162,6 +162,33 @@ pub(crate) fn generate_token() -> String {
     uuid::Uuid::new_v4().simple().to_string()
 }
 
+/// Write a file that holds secrets (management token, salt, provider api keys)
+/// with owner-only (0600) permissions and **no world-readable window**: on Unix
+/// the file is created with mode 0600 up front (closing the create-then-chmod
+/// TOCTOU gap), then re-tightened afterwards in case it pre-existed with looser
+/// bits (`mode()` only applies on creation). On non-Unix we fall back to a plain
+/// write — files under the user profile inherit restrictive per-user ACLs.
+pub(crate) fn write_file_user_private(path: &Path, contents: &[u8]) -> std::io::Result<()> {
+    #[cfg(unix)]
+    {
+        use std::io::Write;
+        use std::os::unix::fs::{OpenOptionsExt, PermissionsExt};
+        let mut f = std::fs::OpenOptions::new()
+            .write(true)
+            .create(true)
+            .truncate(true)
+            .mode(0o600)
+            .open(path)?;
+        f.write_all(contents)?;
+        let _ = std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o600));
+        Ok(())
+    }
+    #[cfg(not(unix))]
+    {
+        std::fs::write(path, contents)
+    }
+}
+
 /// Expand `~` / `～` and canonicalize (dunce strips the `\\?\` verbatim prefix
 /// on Windows so UI-visible paths stay clean).
 pub fn expand_and_canonicalize(raw: &str) -> std::io::Result<PathBuf> {
@@ -466,7 +493,7 @@ impl ServerLock {
         if let Some(parent) = path.parent() {
             std::fs::create_dir_all(parent)?;
         }
-        std::fs::write(&path, serde_json::to_string(self).unwrap())
+        write_file_user_private(&path, serde_json::to_string(self).unwrap().as_bytes())
     }
     pub fn read() -> Option<Self> {
         let path = Self::path();
