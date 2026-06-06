@@ -16,10 +16,7 @@ function makeAnno(partial: Partial<Annotation> & { id: string }): Annotation {
     return {
         type: 'has-note',
         tagName: 'span',
-        startPath: '//article[1]/P[1]',
-        endPath: '//article[1]/P[1]',
-        startOffset: 0,
-        endOffset: 1,
+        anchor: { position: 0, exact: 'x', prefix: '', suffix: '' },
         text: 'x',
         note: 'a note',
         createdAt: 1,

@@ -1,6 +1,10 @@
 /**
  * AnnotationManager - Core annotation manager
- * Handles CRUD operations, DOM application, and XPath handling for annotations.
+ * Handles CRUD operations and DOM application for annotations.
+ *
+ * Annotations are anchored to the rendered **text content** (see text-anchor):
+ * the stored anchor re-finds its quote on every apply, so it survives DOM
+ * re-renders and moderate edits instead of breaking when the DOM shifts.
  *
  * The `Annotation` interface declared here is the canonical schema consumed
  * downstream by storage-manager, popover-manager, and the collaboration layer.
@@ -8,8 +12,7 @@
 
 import { Ids, Logger } from '../core/utils';
 import { Identity, type Author } from '../core/identity';
-import { XPath } from '../services/xpath';
-import { Text } from '../services/text';
+import { TextAnchoring, type TextAnchor } from '../services/text-anchor';
 
 /**
  * Annotation type union, matching the values produced by `main.js`:
@@ -70,15 +73,12 @@ export interface Annotation {
     type: AnnotationType;
     /** HTML tag used to wrap the range. */
     tagName: AnnotationTagName;
-    /** XPath of the start container's parent element. */
-    startPath: string;
-    /** Absolute character offset within `startPath`'s element. */
-    startOffset: number;
-    /** XPath of the end container's parent element. */
-    endPath: string;
-    /** Absolute character offset within `endPath`'s element. */
-    endOffset: number;
-    /** Original selected text (used for drift detection). */
+    /** Content anchor — re-finds the quoted text in the rendered body (exact
+     *  quote + surrounding context + position hint). Replaces DOM/XPath
+     *  anchoring; survives re-renders and moderate edits. */
+    anchor: TextAnchor;
+    /** Original selected text. Mirrors `anchor.exact`; kept as the canonical
+     *  display/export field consumed widely downstream. */
     text: string;
     /** Optional attached note body. `null` when absent. */
     note: string | null;
@@ -342,13 +342,12 @@ export class AnnotationManager {
             return;
         }
 
-        // Sort by path and offset, applying from end to start to avoid offset shifts.
-        const sorted = [...annotations].sort((a, b) => {
-            if (a.startPath !== b.startPath) {
-                return a.startPath.localeCompare(b.startPath);
-            }
-            return b.startOffset - a.startOffset;
-        });
+        // Each annotation re-anchors independently against the live DOM, and
+        // wrapping preserves text content, so application order doesn't affect
+        // correctness. Sort by anchor position for deterministic ordering.
+        const sorted = [...annotations].sort(
+            (a, b) => a.anchor.position - b.anchor.position,
+        );
 
         sorted.forEach(anno => this.#applyAnnotation(anno));
 
@@ -397,22 +396,14 @@ export class AnnotationManager {
         tagName: AnnotationTagName,
         note: string | null = null,
     ): Annotation {
-        const getPathNode = (container: Node): Node => {
-            return container.nodeType === 3 ? (container.parentNode as Node) : container;
-        };
-
-        const startPath = XPath.create(getPathNode(range.startContainer));
-        const endPath = XPath.create(getPathNode(range.endContainer));
+        const anchor = TextAnchoring.describe(this.#markdownBody, range);
 
         return {
             id: `anno-${Ids.uuid()}`,
             type,
             tagName,
-            startPath,
-            startOffset: XPath.getAbsoluteOffset(range.startContainer, range.startOffset),
-            endPath,
-            endOffset: XPath.getAbsoluteOffset(range.endContainer, range.endOffset),
-            text: range.toString(),
+            anchor,
+            text: anchor.exact,
             note,
             createdAt: Date.now(),
             author: Identity.author(),
@@ -430,55 +421,22 @@ export class AnnotationManager {
             return;  // already present, skip
         }
 
-        const startNode = XPath.resolve(anno.startPath);
-        const endNode = XPath.resolve(anno.endPath);
-
-        if (!startNode || !endNode) {
-            Logger.warn('AnnotationManager', `XPath nodes not found for annotation: ${anno.id}`);
+        // Re-find the anchor against the live DOM. This both locates the range
+        // and validates it: anchor() only returns a range whose text equals the
+        // stored quote, so a null result means the quoted text is gone
+        // (orphaned) — no separate drift check needed.
+        const range = TextAnchoring.anchor(this.#markdownBody, anno.anchor);
+        if (!range) {
+            Logger.warn('AnnotationManager', `Anchor text not found (orphaned): ${anno.id}`);
             return;
         }
 
         try {
-            // Validate offsets against the resolved containers.
-            const startTextLen = (startNode.textContent ?? '').length;
-            const endTextLen = (endNode.textContent ?? '').length;
-            if (anno.startOffset > startTextLen || anno.endOffset > endTextLen) {
-                Logger.warn('AnnotationManager', `Invalid offset for annotation: ${anno.id}`);
-                return;
-            }
-
-            // Locate the text node and intra-node offset.
-            const start = XPath.findNode(startNode, anno.startOffset);
-            const end = XPath.findNode(endNode, anno.endOffset);
-
-            if (!start.node || !end.node) {
-                Logger.warn('AnnotationManager', `Text nodes not found for annotation: ${anno.id}`);
-                return;
-            }
-
-            // Build the live Range.
-            const range = document.createRange();
-            range.setStart(start.node, start.offset);
-            range.setEnd(end.node, end.offset);
-
-            // Verify the text still matches what was stored (drift detection).
-            const storedText = Text.normalize(anno.text);
-            const currentText = Text.normalize(range.toString());
-
-            if (currentText !== storedText) {
-                Logger.warn('AnnotationManager', `Text mismatch for annotation ${anno.id}:`, {
-                    stored: storedText,
-                    current: currentText,
-                });
-                return;
-            }
-
             // Wrap each intersecting text node individually instead of
             // calling extractContents() + insertNode(), which would slice
             // inline elements (e.g. <code>) at the range boundary and leave
             // empty shells behind after unwrap. See #wrapRange.
             this.#wrapRange(range, anno);
-
         } catch (error) {
             Logger.error('AnnotationManager', `Failed to apply annotation ${anno.id}:`, error);
         }

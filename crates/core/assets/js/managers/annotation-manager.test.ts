@@ -88,10 +88,9 @@ describe('AnnotationManager', () => {
         expect(anno.id).toMatch(/^anno-/);
         expect(anno.type).toBe('highlight-yellow');
         expect(anno.tagName).toBe('span');
-        expect(anno.startPath).toContain('//article[1]');
-        expect(anno.endPath).toContain('//article[1]');
-        expect(anno.startOffset).toBe(0);
-        expect(anno.endOffset).toBe(5);
+        expect(anno.anchor.exact).toBe('hello');
+        expect(anno.anchor.position).toBe(0);
+        expect(anno.anchor.suffix.startsWith(' world')).toBe(true);
         expect(anno.text).toBe('hello');
         expect(anno.note).toBeNull();
         expect(typeof anno.createdAt).toBe('number');
@@ -335,10 +334,7 @@ describe('AnnotationManager', () => {
             id: 'anno-seed',
             type: 'highlight-orange',
             tagName: 'span',
-            startPath: '//article[1]/P[1]',
-            endPath: '//article[1]/P[1]',
-            startOffset: 0,
-            endOffset: 1,
+            anchor: { position: 0, exact: 'x', prefix: '', suffix: '' },
             text: 'x',
             note: null,
             createdAt: 1,

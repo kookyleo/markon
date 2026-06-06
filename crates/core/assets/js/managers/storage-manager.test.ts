@@ -45,10 +45,7 @@ function makeAnno(overrides: Partial<Annotation> & { id: string }): Annotation {
     return {
         type: 'highlight-yellow',
         tagName: 'span',
-        startPath: '/p[1]',
-        startOffset: 0,
-        endPath: '/p[1]',
-        endOffset: 0,
+        anchor: { position: 0, exact: '', prefix: '', suffix: '' },
         text: '',
         note: null,
         createdAt: 0,
