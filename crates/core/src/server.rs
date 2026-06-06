@@ -574,7 +574,12 @@ pub async fn start(config: ServerConfig) -> Result<(), String> {
     // Chat endpoints: SSE chat stream + thread/file REST. Each handler
     // checks `enable_chat` per-workspace and 403s otherwise, so it's safe
     // to register unconditionally.
-    let app = app.merge(crate::chat::routes::router());
+    // Chat endpoints are public (no mgmt token, served to the viewer page) but
+    // mutating, so guard them with a same-origin check to block cross-site /
+    // CSRF / DNS-rebinding fetches.
+    let app = app.merge(
+        crate::chat::routes::router().route_layer(axum::middleware::from_fn(require_same_origin)),
+    );
 
     let app = app.with_state(state);
 
@@ -785,6 +790,44 @@ fn origin_matches_host(origin: &str, host: Option<&str>) -> bool {
 }
 
 /// Middleware: management API only accepts loopback source + valid token header.
+/// Same-origin guard for the chat API. Chat endpoints are reachable from the
+/// (unauthenticated) viewer page, so they can't require the management token;
+/// instead reject any request whose `Origin` doesn't match `Host`. A mutating
+/// cross-site `fetch` always sends `Origin`, so a missing `Origin` (a same-origin
+/// simple GET, or a local non-browser tool) is allowed through.
+async fn require_same_origin(
+    req: axum::extract::Request,
+    next: axum::middleware::Next,
+) -> Response {
+    let headers = req.headers();
+    if let Some(origin) = headers
+        .get(axum::http::header::ORIGIN)
+        .and_then(|v| v.to_str().ok())
+    {
+        let host = headers
+            .get(axum::http::header::HOST)
+            .and_then(|v| v.to_str().ok());
+        if !origin_matches_host(origin, host) {
+            return StatusCode::FORBIDDEN.into_response();
+        }
+    }
+    next.run(req).await
+}
+
+/// Constant-time comparison for the management token, so a timing side channel
+/// can't recover it byte by byte. Length is not secret (the token is a
+/// fixed-width hex string), so an early length check is fine.
+fn constant_time_eq(a: &[u8], b: &[u8]) -> bool {
+    if a.len() != b.len() {
+        return false;
+    }
+    let mut diff = 0u8;
+    for (x, y) in a.iter().zip(b) {
+        diff |= x ^ y;
+    }
+    diff == 0
+}
+
 async fn require_local_and_token(
     State(state): State<AppState>,
     axum::extract::ConnectInfo(addr): axum::extract::ConnectInfo<std::net::SocketAddr>,
@@ -798,7 +841,7 @@ async fn require_local_and_token(
         .headers()
         .get("X-Markon-Token")
         .and_then(|v| v.to_str().ok())
-        .map(|t| t == state.management_token.as_str())
+        .map(|t| constant_time_eq(t.as_bytes(), state.management_token.as_bytes()))
         .unwrap_or(false);
     if !ok {
         return StatusCode::UNAUTHORIZED.into_response();
@@ -1443,6 +1486,13 @@ fn render_directory_listing(
         }
     };
     let root = canonical_workspace_root(ws);
+    // Defense in depth: the caller's gate trims the leading slash before its
+    // boundary check, but this function re-derives `current_dir` from the raw
+    // (possibly absolute) `dir_param`. Re-verify the canonical dir is inside the
+    // workspace so an absolute path like `/etc` can't list outside the root.
+    if !current_dir.starts_with(&root) {
+        return StatusCode::NOT_FOUND.into_response();
+    }
 
     #[derive(serde::Serialize)]
     struct Entry {
