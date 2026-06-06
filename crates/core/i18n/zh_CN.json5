@@ -373,6 +373,10 @@
     "web.live.off":         "关闭",
     "web.live.broadcast":   "主控",
     "web.live.follow":      "被控",
+    "web.collab.title":     "协作",
+    "web.collab.you":       "你",
+    "web.collab.nickname":  "昵称(可选)",
+    "web.collab.live":      "Live",
     "web.live.color.prompt": "选择你的代表色",
     "web.live.color.desc":   "选择你的广播色"
 }

@@ -374,6 +374,10 @@
     "web.live.off":         "オフ",
     "web.live.broadcast":   "送信",
     "web.live.follow":      "受信",
+    "web.collab.title":     "コラボレーション",
+    "web.collab.you":       "あなた",
+    "web.collab.nickname":  "ニックネーム(任意)",
+    "web.collab.live":      "Live",
     "web.live.color.prompt": "カラーを選択",
     "web.live.color.desc":   "送信カラーを選択"
 }

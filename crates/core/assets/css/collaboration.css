@@ -20,7 +20,9 @@
        as the *same* element across modes — what differs is mode color, not
        chrome thickness. The same width is used by the ToC and Chat
        spheres/panels so the floating-layer family looks unified. */
-    border: 2.5px solid var(--markon-border-emphasis);
+    /* Ring = your identity colour (always). Falls back to a neutral border
+       before a colour is assigned. */
+    border: 2.5px solid var(--markon-live-user, var(--markon-border-emphasis));
     box-sizing: border-box;
     overflow: hidden;
     background-color: var(--markon-bg-elevated);
@@ -33,11 +35,16 @@
     justify-content: center;
 }
 
-/* Broadcasting (speaker) — same 2.5px stroke, recolored to the user's
-   broadcast color. Color comes from the --markon-live-user var set by
-   CollaborationManager._updateUIState. */
+/* Broadcasting (speaker) — the identity-coloured inner ring (border) is joined
+   by a soft outer ring (box-shadow, drawn outside the frame, not clipped by the
+   container's overflow) that breathes slowly. Inner solid + outer breathing =
+   "I'm broadcasting", calmer than a fast pulse. */
 .markon-live-container.broadcasting {
-    border-color: var(--markon-live-user, var(--markon-border-emphasis));
+    animation: markon-collab-breathe 3s ease-in-out infinite;
+}
+@keyframes markon-collab-breathe {
+    0%, 100% { box-shadow: 0 0 0 3px color-mix(in srgb, var(--markon-live-user) 72%, transparent); }
+    50%      { box-shadow: 0 0 0 3px color-mix(in srgb, var(--markon-live-user) 18%, transparent); }
 }
 
 /* Expanded (panel) state — sphere becomes the panel rectangle in-place.
@@ -67,22 +74,16 @@
     cursor: pointer;
 }
 
-.markon-live-face .icon-live,
+.markon-live-face .icon-collab,
 .markon-live-face .icon-close {
     pointer-events: none;
-}
-
-/* The "rec" dot at the icon's centre — a fixed live-broadcast red in both
-   themes (token, replaces the inline fill on the <circle>). */
-.markon-live-face .icon-live circle {
-    fill: var(--markon-live-record);
 }
 
 .markon-live-face .icon-close {
     display: none;
 }
 
-.markon-live-container.expanded .markon-live-face .icon-live {
+.markon-live-container.expanded .markon-live-face .icon-collab {
     display: none;
 }
 
@@ -93,7 +94,7 @@
 /* The three face icons (live, off, close) are stacked at the same center so
    OFF can overlay its prohibited sign on top of the live icon, and the X
    (expanded state) replaces everything. */
-.markon-live-face .icon-live,
+.markon-live-face .icon-collab,
 .markon-live-face .icon-off,
 .markon-live-face .icon-close {
     position: absolute;
@@ -111,7 +112,7 @@
     display: block;
 }
 /* Expanded: X replaces both — X is later in DOM so it overlays naturally. */
-.markon-live-container.expanded .markon-live-face .icon-live,
+.markon-live-container.expanded .markon-live-face .icon-collab,
 .markon-live-container.expanded .markon-live-face .icon-off {
     display: none;
 }
@@ -146,23 +147,11 @@
     transform: translate(-50%, -50%) rotate(180deg);
 }
 
-.markon-live-container.broadcasting .markon-live-face::after {
-    content: '';
-    position: absolute;
-    inset: -5px;
-    border-radius: 50%;
-    border: 2px solid currentColor;
-    animation: markon-live-pulse 2s infinite;
-}
-
-/* Broadcasting pulse makes no sense once the face is a small corner button. */
-.markon-live-container.expanded.broadcasting .markon-live-face::after {
-    display: none;
-}
-
-@keyframes markon-live-pulse {
-    0%   { transform: scale(1);   opacity: 1; }
-    100% { transform: scale(1.4); opacity: 0; }
+/* The breathing ring (see .broadcasting above) makes no sense once the face
+   collapses to a small corner button inside the expanded panel. */
+.markon-live-container.expanded.broadcasting {
+    animation: none;
+    box-shadow: none;
 }
 
 /* Leader indicator — a colored dot above the sphere when following. Identity
@@ -234,31 +223,36 @@ html[data-theme="dark"] .markon-live-face .leader-info {
     align-items: center;
 }
 
-/* Color picker is a sub-option of the Mode row, only meaningful when the
-   current mode is Broadcast. The ↳ glyph + small centered label express the
-   dependency; the whole row dims and becomes non-interactive otherwise. */
+/* Section label — small caption above the identity / Live groups. */
+.markon-live-body .panel-section-label {
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    opacity: 0.5;
+    margin: -6px 0 -8px;
+}
+
+/* Identity row: colour picker + nickname input. Always interactive — your
+   colour is your shared identity (used by annotation authorship), not a
+   broadcast-only sub-option. */
 .markon-live-body .panel-row-color {
     display: flex;
     flex-direction: column;
     align-items: stretch;
-    gap: 6px;
-    opacity: 0.4;
-    pointer-events: none;
-    transition: opacity 0.15s;
+    gap: 8px;
 }
 
-.markon-live-body .panel-row-color[aria-disabled="false"] {
-    opacity: 1;
-    pointer-events: auto;
-}
-
-.markon-live-body .panel-row-label {
+.markon-live-body .identity-name {
+    width: 100%;
+    box-sizing: border-box;
+    padding: 5px 8px;
+    font: inherit;
+    font-size: 12px;
+    border: 1px solid var(--markon-border-default);
+    border-radius: var(--markon-radius-sm);
+    background: var(--markon-bg-default);
+    color: var(--markon-fg-default);
     text-align: center;
-    font-size: 10px;
-    opacity: 0.55;
-    line-height: 1.2;
-    letter-spacing: 0.02em;
-    padding: 5px 0;
 }
 
 /* Picker centers on the panel center ⇒ same center as the Broadcast button

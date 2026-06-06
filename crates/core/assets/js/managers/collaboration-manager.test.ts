@@ -6,6 +6,7 @@ import {
     type LiveAction,
 } from './collaboration-manager';
 import type { WebSocketManager, WsHandler, WsInbound } from './websocket-manager';
+import { CONFIG } from '../core/config';
 
 /**
  * Minimal WebSocketManager fake — satisfies the slice of the interface
@@ -113,8 +114,10 @@ describe('CollaborationManager', () => {
         expect(typeof mgr.clientId).toBe('string');
         expect(sessionStorage.getItem('markon-client-id')).toBe(mgr.clientId);
         expect(mgr.mode).toBe(LiveMode.OFF);
-        // First default color from CONFIG.COLLABORATION.COLORS.
-        expect(mgr.userColor).toBe('#3451B2');
+        // A colour is auto-assigned from the palette and persisted (shared
+        // identity source, also used by annotation authorship).
+        expect(CONFIG.COLLABORATION.COLORS).toContain(mgr.userColor);
+        expect(localStorage.getItem('markon-user-color')).toBe(mgr.userColor);
     });
 
     it('constructor: restores saved color and mode from localStorage', () => {

@@ -14,6 +14,7 @@
  */
 
 import { CONFIG } from '../core/config';
+import { Identity } from '../core/identity';
 import { Ids, Logger } from '../core/utils';
 import { Meta } from '../services/dom';
 import { Position } from '../services/position';
@@ -94,6 +95,10 @@ export class CollaborationManager {
     app: CollaborationApp;
     clientId: string;
     userColor: string;
+    /** Whether Live broadcast/follow is enabled. When false the sphere still
+     *  appears (for shared-annotation identity) but the Live mode section is
+     *  hidden. */
+    liveEnabled = false;
     mode: LiveModeValue;
     activeLeader: LiveAction | null;
     leaderTimer: ReturnType<typeof setTimeout> | null;
@@ -116,9 +121,10 @@ export class CollaborationManager {
     constructor(app: CollaborationApp) {
         this.app = app;
         this.clientId = this._getOrCreateClientId();
-        this.userColor = this._loadSavedColor();
-        this._hasChosenColor =
-            localStorage.getItem(CONFIG.STORAGE_KEYS.LIVE_COLOR) !== null;
+        // Single identity colour source (auto-assigns + persists on first use);
+        // shared with annotation authorship.
+        this.userColor = Identity.color();
+        this._hasChosenColor = true;
         this.mode = this._loadSavedMode();
         this.activeLeader = null;
         this.leaderTimer = null;
@@ -133,10 +139,14 @@ export class CollaborationManager {
     get isFollowing(): boolean    { return this.mode === LiveMode.FOLLOW; }
 
     init(): void {
-        const enabled = this.app.enableLive ?? Meta.flag(CONFIG.META_TAGS.ENABLE_LIVE);
-        if (!enabled) return;
+        this.liveEnabled = this.app.enableLive ?? Meta.flag(CONFIG.META_TAGS.ENABLE_LIVE);
+        const sharedEnabled = Meta.flag(CONFIG.META_TAGS.SHARED_ANNOTATION);
+        // The sphere is the collaboration identity surface: show it whenever the
+        // workspace is shared in any way (annotation identity needs a home even
+        // without Live). The Live mode section inside is gated on liveEnabled.
+        if (!this.liveEnabled && !sharedEnabled) return;
         if (!this.app.ws) {
-            Logger.warn('Live', 'enable_live is on but WebSocket is unavailable');
+            Logger.warn('Collab', 'shared/live is on but WebSocket is unavailable');
             return;
         }
 
@@ -447,33 +457,39 @@ export class CollaborationManager {
                 `<button type="button" class="mode-btn ${m === this.mode ? 'active' : ''}" data-mode="${m}">${modeLabel(m)}</button>`,
             )
             .join('');
+        const liveSection = this.liveEnabled
+            ? `
+                    <div class="panel-section-label">${t('web.collab.live')}</div>
+                    <div class="panel-row panel-row-mode">
+                        <div class="mode-group">${modeButtons}</div>
+                    </div>`
+            : '';
         const html = `
             <div id="markon-live-container" class="markon-live-container">
-                <div class="markon-live-face" title="Markon Live">
-                    <svg class="icon-live" viewBox="0 0 24 24" width="22" height="22" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
-                        <circle cx="12" cy="12" r="2.6"/>
-                        <path d="M7.5 8 Q5.5 12 7.5 16" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>
-                        <path d="M4.5 5.5 Q1.5 12 4.5 18.5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>
-                        <path d="M16.5 8 Q18.5 12 16.5 16" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>
-                        <path d="M19.5 5.5 Q22.5 12 19.5 18.5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>
+                <div class="markon-live-face" title="${t('web.collab.title')}">
+                    <svg class="icon-collab" viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                        <circle cx="6" cy="9.2" r="1.9"/>
+                        <path d="M2.6 16.6v-.3a3.4 3.4 0 0 1 5-3"/>
+                        <circle cx="18" cy="9.2" r="1.9"/>
+                        <path d="M21.4 16.6v-.3a3.4 3.4 0 0 0-5-3"/>
+                        <circle cx="12" cy="8.2" r="2.5"/>
+                        <path d="M7.4 17.2v-.8a4.6 4.6 0 0 1 9.2 0v.8"/>
                     </svg>
                     <svg class="icon-off" viewBox="0 0 24 24" width="40" height="40" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
                         <line x1="3.5" y1="3.5" x2="20.5" y2="20.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
                     </svg>
-                    <svg class="icon-close" viewBox="0 0 24 24" width="18" height="18" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
-                        <path d="M7 7 L17 17 M17 7 L7 17" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/>
+                    <svg class="icon-close" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true">
+                        <path d="M7 7 L17 17 M17 7 L7 17"/>
                     </svg>
                     <div class="leader-info"></div>
                 </div>
                 <div class="markon-live-body">
-                    <div class="panel-header">Live</div>
-                    <div class="panel-row panel-row-mode">
-                        <div class="mode-group">${modeButtons}</div>
-                    </div>
-                    <div class="panel-row-color" aria-disabled="true">
+                    <div class="panel-header">${t('web.collab.title')}</div>
+                    <div class="panel-section-label">${t('web.collab.you')}</div>
+                    <div class="panel-row-color">
                         <div class="color-picker">${colorDots}</div>
-                        <span class="panel-row-label"></span>
-                    </div>
+                        <input type="text" class="identity-name" maxlength="24" placeholder="${t('web.collab.nickname')}">
+                    </div>${liveSection}
                 </div>
             </div>
         `;
@@ -501,7 +517,7 @@ export class CollaborationManager {
             container: this.container,
             handle: this.container.querySelector('.markon-live-face') as HTMLElement,
             body: this.panel,
-            panelSize: { width: 260, height: 160 },
+            panelSize: { width: 260, height: 210 },
             homeAnchor: 'BR',
             // Panel grows down-right from the sphere's TL — the "L" letter
             // in the sphere becomes the "L" of the "Live" title at the
@@ -509,7 +525,7 @@ export class CollaborationManager {
             panelAnchor: 'TL',
             initialOffset: { right: 20, bottom: 20 },
             storageKey: CONFIG.STORAGE_KEYS.LIVE_POS,
-            nonDragSelector: '.panel-row.clickable, .color-dot, .mode-btn',
+            nonDragSelector: '.panel-row.clickable, .color-dot, .mode-btn, .identity-name',
         });
         this.layer.init();
     }
@@ -529,10 +545,21 @@ export class CollaborationManager {
                 if (!c) return;
                 this.userColor = c;
                 this._hasChosenColor = true;
-                localStorage.setItem(CONFIG.STORAGE_KEYS.LIVE_COLOR, this.userColor);
+                Identity.setColor(c); // single identity source (shared w/ annotations)
                 this._updateUIState();
             });
         });
+
+        // Identity nickname — used by shared-annotation authorship (and shown
+        // on author tooltips). Persisted per device; future annotations carry it.
+        const nameInput = this.panel.querySelector<HTMLInputElement>('.identity-name');
+        if (nameInput) {
+            nameInput.value = Identity.name();
+            nameInput.addEventListener('change', () => {
+                Identity.setName(nameInput.value);
+                nameInput.value = Identity.name();
+            });
+        }
 
         // Live sync is semantic, not geometric — we track the focused
         // section, the text selection, and viewed-checkbox toggles. Scroll
@@ -559,36 +586,16 @@ export class CollaborationManager {
 
     _updateUIState(): void {
         if (!this.sphere || !this.container || !this.panel) return;
-        // Three visual modes on the container:
-        //   .broadcasting — ring in the user's color (speaker)
-        //   .live-off     — muted grey ring + slash across the icon
-        //   (neither)     — default look (follower)
-        this.sphere.classList.toggle('broadcasting', this.isBroadcasting);
-        this.sphere.classList.toggle('live-off', this.mode === LiveMode.OFF);
+        // Ring colour = your identity colour (always). Broadcasting adds the
+        // breathing outer ring; live-off shows the slash — both only when Live
+        // is enabled (a shared-annotation-only sphere is neither).
+        this.sphere.classList.toggle('broadcasting', this.liveEnabled && this.isBroadcasting);
+        this.sphere.classList.toggle('live-off', this.liveEnabled && this.mode === LiveMode.OFF);
         this.container.style.setProperty('--markon-live-user', this.userColor);
 
         this.panel.querySelectorAll<HTMLButtonElement>('.mode-btn').forEach((btn) => {
             btn.classList.toggle('active', btn.dataset.mode === this.mode);
         });
-
-        // Color only matters while broadcasting — dim + disable the picker
-        // otherwise to make the attachment relationship obvious.
-        const colorRow = this.panel.querySelector('.panel-row-color');
-        if (colorRow) {
-            colorRow.setAttribute('aria-disabled', this.isBroadcasting ? 'false' : 'true');
-        }
-
-        // Label swaps between a prompt (before first pick) and a description
-        // of what the chosen color affects (after first pick).
-        const label = this.panel.querySelector('.panel-row-label');
-        if (label) {
-            const t =
-                (window.__MARKON_I18N__ && window.__MARKON_I18N__.t) ||
-                ((k: string) => k);
-            label.textContent = this._hasChosenColor
-                ? t('web.live.color.desc')
-                : t('web.live.color.prompt');
-        }
 
         this.panel.querySelectorAll<HTMLElement>('.color-dot').forEach((dot) => {
             dot.classList.toggle('active', dot.dataset.color === this.userColor);
