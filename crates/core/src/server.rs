@@ -47,6 +47,8 @@ pub struct WorkspaceInit {
     pub flags: WorkspaceFlags,
     /// Path within this workspace to open in the browser (e.g. "notes/file.md").
     pub initial_path: Option<String>,
+    /// Per-workspace access-code hash (empty = inherit the server code).
+    pub access_code_hash: String,
 }
 
 /// Server configuration
@@ -507,6 +509,7 @@ pub async fn start(config: ServerConfig) -> Result<(), String> {
             path,
             flags: ws_init.flags,
             single_file: None,
+            access_code_hash: ws_init.access_code_hash,
         });
         if first_workspace_url_path.is_none() {
             let url_path = workspace_url_path(&id, ws_init.initial_path.as_deref());
@@ -964,10 +967,20 @@ fn access_record_success(state: &AppState, ip: std::net::IpAddr) {
     state.access_attempts.lock().unwrap().remove(&ip);
 }
 
-/// The effective access-code hash for a workspace. Increment 1: server-level
-/// only (a workspace's own code will override this in a later increment).
-fn access_effective_hash<'a>(state: &'a AppState, _ws_id: &str) -> &'a str {
-    state.access_code_hash.as_str()
+/// The effective access requirement for a workspace: `(code_hash, scope)`, or
+/// `None` when nothing gates it. A workspace's own code **overrides** the
+/// server code; the scope ("w:{id}" vs "s") identifies which lock the cookie
+/// must carry, so unlocking the server doesn't unlock a separately-coded
+/// workspace and vice versa.
+fn access_scope_for(state: &AppState, ws_id: &str) -> Option<(String, String)> {
+    if let Some(entry) = state.workspace_registry.get(ws_id) {
+        let wc = entry.access_code_hash();
+        if !wc.is_empty() {
+            return Some((wc, format!("w:{ws_id}")));
+        }
+    }
+    let server = state.access_code_hash.as_str();
+    (!server.is_empty()).then(|| (server.to_string(), "s".to_string()))
 }
 
 /// Render the access-code gate page (HTTP 200 + form). `err` is None on first
@@ -1012,18 +1025,16 @@ async fn require_access_code(
     let Some(ws_id) = access_gated_workspace(&path) else {
         return next.run(req).await;
     };
-    let effective = access_effective_hash(&state, &ws_id);
-    if effective.is_empty() {
+    let Some((_hash, needed)) = access_scope_for(&state, &ws_id) else {
         return next.run(req).await;
-    }
-    let needed = "s"; // increment 1: server scope
+    };
     let cookie = req
         .headers()
         .get(axum::http::header::COOKIE)
         .and_then(|v| v.to_str().ok());
     if access_cookie_scopes(&state.access_secret, cookie)
         .iter()
-        .any(|s| s == needed)
+        .any(|s| s == &needed)
     {
         return next.run(req).await;
     }
@@ -1045,6 +1056,7 @@ struct UnlockForm {
 async fn unlock_handler(
     State(state): State<AppState>,
     axum::extract::ConnectInfo(addr): axum::extract::ConnectInfo<std::net::SocketAddr>,
+    headers: axum::http::HeaderMap,
     axum::extract::Form(form): axum::extract::Form<UnlockForm>,
 ) -> Response {
     let ip = addr.ip();
@@ -1053,17 +1065,25 @@ async fn unlock_handler(
         tracing::warn!(%ip, ws = %form.workspace_id, "access unlock blocked: cooldown {remaining}s");
         return render_access_gate(&state, &form.workspace_id, &redirect, Some(("cooldown", remaining)));
     }
-    let effective = access_effective_hash(&state, &form.workspace_id);
-    if effective.is_empty() {
+    let Some((effective, scope)) = access_scope_for(&state, &form.workspace_id) else {
         return Redirect::to(&redirect).into_response();
-    }
+    };
     let candidate = crate::workspace::hash_access_code(&state.access_secret, &form.code);
     if constant_time_eq(candidate.as_bytes(), effective.as_bytes()) {
         access_record_success(&state, ip);
         tracing::info!(%ip, ws = %form.workspace_id, "access unlocked");
+        // Merge with any scopes the device already unlocked, so unlocking one
+        // workspace doesn't drop access to another.
+        let cookie_hdr = headers
+            .get(axum::http::header::COOKIE)
+            .and_then(|v| v.to_str().ok());
+        let mut scopes = access_cookie_scopes(&state.access_secret, cookie_hdr);
+        if !scopes.iter().any(|s| s == &scope) {
+            scopes.push(scope);
+        }
         let cookie = make_access_cookie(
             &state.access_secret,
-            &["s".to_string()],
+            &scopes,
             access_now_unix() + ACCESS_TTL_SECS,
         );
         return (
@@ -1574,6 +1594,7 @@ async fn add_workspace_handler(
         path,
         flags: req.flags,
         single_file: None,
+        access_code_hash: String::new(),
     });
     Json(AddWorkspaceResponse { id }).into_response()
 }
@@ -2141,6 +2162,7 @@ mod tests {
             path: dunce::canonicalize(root).expect("canonical workspace root"),
             flags,
             single_file: None,
+            access_code_hash: String::new(),
         })
     }
 
@@ -2677,6 +2699,7 @@ mod tests {
             path: dunce::canonicalize(dir.path()).unwrap(),
             flags: WorkspaceFlags::default(),
             single_file: Some("opened.md".into()),
+            access_code_hash: String::new(),
         });
         let state = test_state(registry);
 

@@ -70,6 +70,10 @@ pub struct WorkspaceSettings {
     pub path: String,
     #[serde(flatten, default)]
     pub flags: WorkspaceFlags,
+    /// Per-workspace access code (salted hash); overrides the server-level code
+    /// for this workspace. Empty = inherit the server code (or no gate).
+    #[serde(default)]
+    pub access_code_hash: String,
 }
 
 /// Per-provider configuration block. Each provider keeps its own complete
@@ -333,6 +337,7 @@ impl AppSettings {
                 path: PathBuf::from(&w.path),
                 flags: w.flags,
                 initial_path: None,
+                access_code_hash: w.access_code_hash.clone(),
             })
             .collect();
         ServerConfig {
@@ -407,6 +412,7 @@ impl AppSettings {
             .map(|info| WorkspaceSettings {
                 path: info.path,
                 flags: info.flags,
+                access_code_hash: info.access_code_hash,
             })
             .collect();
     }
@@ -581,14 +587,17 @@ mod tests {
                 WorkspaceSettings {
                     path: "/a".to_string(),
                     flags: WorkspaceFlags::default(),
+                    access_code_hash: String::new(),
                 },
                 WorkspaceSettings {
                     path: "/b".to_string(),
                     flags: WorkspaceFlags::default(),
+                    access_code_hash: String::new(),
                 },
                 WorkspaceSettings {
                     path: "/a".to_string(),
                     flags: WorkspaceFlags::default(),
+                    access_code_hash: String::new(),
                 },
             ],
             language: String::new(),
@@ -633,11 +642,13 @@ mod tests {
             path: ws_path.clone(),
             flags: WorkspaceFlags::default(),
             single_file: None,
+            access_code_hash: String::new(),
         });
         reg.add(WorkspaceConfig {
             path: ws_path.clone(),
             flags: WorkspaceFlags::default(),
             single_file: Some("note.md".to_string()),
+            access_code_hash: String::new(),
         });
 
         let mut s = AppSettings::default();
@@ -788,6 +799,7 @@ mod tests {
             workspaces: vec![WorkspaceSettings {
                 path: "/docs".to_string(),
                 flags: WorkspaceFlags::default(),
+                access_code_hash: String::new(),
             }],
             ..AppSettings::default()
         };

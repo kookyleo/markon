@@ -786,6 +786,7 @@ mod tests {
             path: tmp.path().to_path_buf(),
             flags,
             single_file: None,
+            access_code_hash: String::new(),
         });
 
         let db_tmp = tempfile::NamedTempFile::new().expect("sqlite tmpfile");

@@ -813,6 +813,7 @@ async fn main() {
         path: ws_root.clone(),
         flags,
         initial_path: initial_path.clone(),
+        access_code_hash: String::new(),
     };
 
     // Workspace IDs are SHA-256(salt + path). For URLs to survive restarts the
@@ -937,6 +938,7 @@ async fn main() {
             path: PathBuf::from(&w.path),
             flags: w.flags,
             initial_path: None,
+            access_code_hash: w.access_code_hash.clone(),
         })
         .collect();
     initial_workspaces.push(ws_init);
