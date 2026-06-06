@@ -332,6 +332,7 @@
     "web.kbd.cat.search":   "搜索 (需启用)",
     "web.kbd.cat.edit":     "编辑 (需启用)",
     "web.kbd.cat.viewed":   "已读追踪 (需启用)",
+    "web.kbd.cat.live":     "实时协作 (需启用)",
     "web.kbd.cat.chat":     "AI 对话 (需启用)",
     "web.kbd.footer":       "按 ESC 或 ? 关闭",
     "web.kbd.undo":         "撤销操作",
