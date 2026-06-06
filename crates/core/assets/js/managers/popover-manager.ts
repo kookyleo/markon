@@ -10,6 +10,7 @@
 import { CONFIG, i18n } from '../core/config';
 import { Logger } from '../core/utils';
 import { DOM } from '../services/dom';
+import { Text } from '../services/text';
 import { DraggableManager } from '../components/draggable';
 import { Position } from '../services/position';
 
@@ -379,11 +380,15 @@ export class PopoverManager {
         const dragHandle = '<span class="popover-drag-handle" aria-hidden="true"></span>';
 
         if (highlightedElement) {
+            // In shared workspaces, merge the author attribution (colour dot +
+            // nickname + time) into this menu instead of a separate tooltip.
+            const author = this.#authorSegment(highlightedElement);
             if (hasSelection) {
-                // Highlighted with selection: Unhighlight + Note + Edit + Chat
+                // Highlighted with selection: [author] Unhighlight + Note + Edit + Chat
                 Logger.log('PopoverManager', 'Showing: Unhighlight + Note + Edit + Chat');
                 this.#element.innerHTML = `
                     ${dragHandle}
+                    ${author}
                     <button data-action="unhighlight">${_t('web.annot.unhighlight')}</button>
                     <span class="popover-separator">|</span>
                     <button data-action="add-note">${_t('web.annot.note')}</button>
@@ -391,9 +396,9 @@ export class PopoverManager {
                     ${chatButton}
                 `;
             } else {
-                // Highlighted without selection (just click): Unhighlight
+                // Highlighted without selection (just click): [author] Unhighlight
                 Logger.log('PopoverManager', 'Showing: Unhighlight');
-                this.#element.innerHTML = `${dragHandle}<button data-action="unhighlight">${_t('web.annot.unhighlight')}</button>`;
+                this.#element.innerHTML = `${dragHandle}${author}<button data-action="unhighlight">${_t('web.annot.unhighlight')}</button>`;
             }
         } else {
             // Not highlighted: show annotation buttons + Edit + Chat
@@ -409,6 +414,33 @@ export class PopoverManager {
                 ${chatButton}
             `;
         }
+    }
+
+    /** Author attribution segment for the popover (shared workspaces only):
+     *  a colour dot + nickname + compact time, read from the element's data
+     *  attrs. The colour is validated to a hex literal so a hostile peer's
+     *  author colour can't inject CSS into the style attribute; the nickname is
+     *  HTML-escaped. */
+    #authorSegment(el: Element): string {
+        if (!document.body.classList.contains('markon-shared')) return '';
+        const he = el as HTMLElement;
+        const raw = he.style.getPropertyValue('--anno-author').trim();
+        const color = /^#[0-9a-f]{3,8}$/i.test(raw) ? raw : 'var(--markon-fg-muted)';
+        const name = he.dataset.authorName || _t('web.author.anon');
+        let time = '';
+        const ts = Number(he.dataset.authorTime);
+        if (ts) {
+            const d = new Date(ts);
+            const p = (n: number): string => String(n).padStart(2, '0');
+            time = `${d.getMonth() + 1}/${d.getDate()} ${p(d.getHours())}:${p(d.getMinutes())}`;
+        }
+        return (
+            '<span class="popover-author">' +
+            `<span class="popover-author-dot" style="background:${color}"></span>` +
+            `<span class="popover-author-name">${Text.escape(name)}</span>` +
+            (time ? `<span class="popover-author-time">${time}</span>` : '') +
+            '</span><span class="popover-separator">|</span>'
+        );
     }
 
     #shouldSkipElement(element: Element): boolean {

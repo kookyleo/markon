@@ -60,69 +60,11 @@ export class NoteManager {
     #connectorSvg: SVGSVGElement | null = null;
     #connectorPath: SVGPathElement | null = null;
     #resizeObserver: ResizeObserver | null = null;
-    #authorTooltip: HTMLElement | null = null;
-    #authorTooltipTimer: number | null = null;
 
     constructor(annotationManager: AnnotationManager, markdownBody: HTMLElement) {
         this.#annotationManager = annotationManager;
         this.#markdownBody = markdownBody;
         this.#layoutEngine = new LayoutEngine();
-        this.#setupAuthorTooltip();
-    }
-
-    /** In shared workspaces, clicking an annotation floats its author (colour +
-     *  nickname) and creation time beside the click; auto-dismisses. Click is
-     *  used (not hover) so it works on touch. */
-    #setupAuthorTooltip(): void {
-        this.#markdownBody.addEventListener('click', (e) => {
-            if (!document.body.classList.contains('markon-shared')) return;
-            const el = (e.target as HTMLElement).closest<HTMLElement>('[data-annotation-id]');
-            const id = el?.dataset.annotationId;
-            if (!id) {
-                this.#hideAuthorTooltip();
-                return;
-            }
-            const anno = this.#annotationManager.getById(id);
-            if (anno) this.#showAuthorTooltip(anno, e as MouseEvent);
-        });
-    }
-
-    #showAuthorTooltip(anno: Annotation, e: MouseEvent): void {
-        this.#hideAuthorTooltip();
-        const t = (window.__MARKON_I18N__ && window.__MARKON_I18N__.t) || ((k: string) => k);
-        const color = anno.author?.color ?? 'var(--markon-fg-muted)';
-        const name = anno.author?.name || t('web.author.anon');
-        const time = new Date(anno.createdAt).toLocaleString();
-        const tip = document.createElement('div');
-        tip.className = 'anno-author-tip';
-        const dot = document.createElement('span');
-        dot.className = 'anno-author-dot';
-        dot.style.background = color;
-        const nameEl = document.createElement('span');
-        nameEl.className = 'anno-author-name';
-        nameEl.textContent = name;
-        const timeEl = document.createElement('span');
-        timeEl.className = 'anno-author-time';
-        timeEl.textContent = time;
-        tip.append(dot, nameEl, timeEl);
-        document.body.appendChild(tip);
-        const x = Math.min(e.clientX + 8, window.innerWidth - tip.offsetWidth - 8);
-        tip.style.left = `${Math.max(8, x)}px`;
-        tip.style.top = `${e.clientY + 14}px`;
-        requestAnimationFrame(() => tip.classList.add('show'));
-        this.#authorTooltip = tip;
-        this.#authorTooltipTimer = window.setTimeout(() => this.#hideAuthorTooltip(), 2600);
-    }
-
-    #hideAuthorTooltip(): void {
-        if (this.#authorTooltipTimer !== null) {
-            clearTimeout(this.#authorTooltipTimer);
-            this.#authorTooltipTimer = null;
-        }
-        if (this.#authorTooltip) {
-            this.#authorTooltip.remove();
-            this.#authorTooltip = null;
-        }
     }
 
     render(): void {
@@ -223,6 +165,26 @@ export class NoteManager {
         Logger.log('NoteManager', 'Responsive layout setup complete');
     }
 
+    /** Author attribution footer for a note card (shared workspaces only):
+     *  colour dot + nickname + compact time. Colour validated to a hex literal
+     *  so a peer's value can't inject CSS; nickname HTML-escaped. */
+    #noteAuthorLine(anno: Annotation): string {
+        if (!document.body.classList.contains('markon-shared') || !anno.author) return '';
+        const raw = (anno.author.color || '').trim();
+        const color = /^#[0-9a-f]{3,8}$/i.test(raw) ? raw : 'var(--markon-fg-muted)';
+        const name = anno.author.name || _t('web.author.anon');
+        const d = new Date(anno.createdAt);
+        const p = (n: number): string => String(n).padStart(2, '0');
+        const time = `${d.getMonth() + 1}/${d.getDate()} ${p(d.getHours())}:${p(d.getMinutes())}`;
+        return (
+            '<div class="note-author">' +
+            `<span class="note-author-dot" style="background:${color}"></span>` +
+            `<span class="note-author-name">${Text.escape(name)}</span>` +
+            `<span class="note-author-time">${time}</span>` +
+            '</div>'
+        );
+    }
+
     #filterOutermost(elements: NodeListOf<HTMLElement>): HTMLElement[] {
         const outermostMap = new Map<string, HTMLElement>();
 
@@ -268,6 +230,7 @@ export class NoteManager {
                 <button class="note-delete" data-annotation-id="${annotation.id}" title="${deleteLabel}" aria-label="${deleteLabel}">${ICON_DELETE}</button>
             </div>
             <div class="note-content">${Text.escape(annotation.note ?? '')}</div>
+            ${this.#noteAuthorLine(annotation)}
         `;
 
         noteCard.style.position = 'absolute';

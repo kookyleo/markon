@@ -171,38 +171,47 @@
     text-decoration-color: var(--anno-author, var(--markon-fg-muted));
 }
 
-/* Floating author tooltip — shown on click of an annotation (shared mode). */
-.anno-author-tip {
-    position: fixed;
-    z-index: var(--markon-z-chrome-top);
-    display: flex;
+/* Author attribution merged into the selection popover (dark toolbar) on an
+   annotation click — a colour dot + nickname + compact time, before the
+   actions. One menu instead of a separate tooltip. */
+.selection-popover .popover-author {
+    display: inline-flex;
     align-items: center;
-    gap: 7px;
-    padding: 5px 10px;
+    gap: 5px;
+    padding: 0 4px;
     font-size: 12px;
-    background: var(--markon-bg-overlay);
-    color: var(--markon-fg-default);
-    border: 1px solid var(--markon-border-default);
-    border-radius: var(--markon-radius-sm);
-    box-shadow: var(--markon-shadow-pop);
-    pointer-events: none;
     white-space: nowrap;
-    opacity: 0;
-    transform: translateY(3px);
-    transition: opacity 0.12s ease, transform 0.12s ease;
 }
-.anno-author-tip.show {
-    opacity: 1;
-    transform: none;
-}
-.anno-author-tip .anno-author-dot {
+.selection-popover .popover-author-dot {
     width: 9px;
     height: 9px;
     border-radius: 50%;
     flex: 0 0 auto;
 }
-.anno-author-tip .anno-author-time {
-    opacity: 0.55;
+.selection-popover .popover-author-time {
+    opacity: 0.6;
+}
+
+/* Author footer on a note card — the note's attribution home. */
+.note-author {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    margin-top: 6px;
+    padding-top: 6px;
+    border-top: 1px solid var(--markon-border-default);
+    font-size: 11px;
+    color: var(--markon-fg-muted);
+}
+.note-author-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    flex: 0 0 auto;
+}
+.note-author-time {
+    margin-left: auto;
+    opacity: 0.75;
 }
 
 /* Body links: hover shifts colour only. GitHub's stylesheet adds an underline

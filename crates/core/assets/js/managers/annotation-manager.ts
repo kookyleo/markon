@@ -543,10 +543,16 @@ export class AnnotationManager {
             wrapper.className = anno.type;
             wrapper.dataset.annotationId = anno.id;
             // Author colour drives the left identity line / strikethrough colour
-            // in CSS; absent (anonymous) falls back to a neutral token.
+            // in CSS; absent (anonymous) falls back to a neutral token. Name +
+            // time are mirrored onto data attrs so the selection popover can show
+            // attribution without a manager lookup.
             if (anno.author?.color) {
                 wrapper.style.setProperty('--anno-author', anno.author.color);
             }
+            if (anno.author?.name) {
+                wrapper.dataset.authorName = anno.author.name;
+            }
+            wrapper.dataset.authorTime = String(anno.createdAt);
             if (anno.note) {
                 wrapper.dataset.note = anno.note;
                 wrapper.classList.add('has-note');
