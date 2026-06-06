@@ -983,6 +983,13 @@
             </div>
           </div>
           <div class="pref-row">
+            <span class="pref-label" data-i18n="pref.access_code"></span>
+            <div class="pref-control">
+              <input type="password" id="access_code" style="width:104px" autocomplete="new-password">
+              <button id="access_code_apply" data-i18n="access.code.apply"></button>
+            </div>
+          </div>
+          <div class="pref-row">
             <span class="pref-label"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" style="vertical-align:-2px;margin-right:3px;opacity:.6"><circle cx="12" cy="12" r="10"/><path d="M2 12h20M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg><span data-i18n="pref.web.lang"></span></span>
             <div class="pref-control">
               <select id="web_language" style="width:150px">
@@ -1476,6 +1483,9 @@
     document.getElementById('language').value = s.language || 'auto';
     document.getElementById('web_theme').value = s.web_theme || 'auto';
     document.getElementById('web_editor_theme').value = s.web_editor_theme || 'follow';
+    var _ac = document.getElementById('access_code');
+    _ac.value = '';
+    _ac.placeholder = s.access_code_hash ? T('access.code.set') : T('access.code.ph');
     document.getElementById('web_language').value = s.web_language || 'auto';
     updateDbPathDisplay(s.db_path ?? '');
     document.getElementById('tray_resident').checked = s.tray_resident ?? true;
@@ -1629,6 +1639,17 @@
   });
   document.getElementById('tray_resident').addEventListener('change', e => {
     invoke('set_tray_resident', { value: e.target.checked });
+  });
+  // Server-level access code (empty + Apply clears). Triggers a server
+  // restart so the running gate picks up the change.
+  document.getElementById('access_code_apply').addEventListener('click', async () => {
+    const el = document.getElementById('access_code');
+    try {
+      await invoke('set_access_code', { workspaceId: null, code: el.value });
+      el.value = '';
+      el.placeholder = T('access.code.set');
+      toast(T('access.code.saved'), 'ok');
+    } catch (e) { toast(String(e), 'err'); }
   });
   [
     'default_search', 'default_viewed', 'default_edit', 'default_live', 'default_shared',
@@ -1852,6 +1873,12 @@
               <line x1="10" y1="14" x2="21" y2="3"/>
             </svg>
           </button>
+          <button class="ws-icon-btn lock-btn" title="${ws.access_code_hash ? T('ws.lock.on') : T('ws.lock.tip')}" style="${ws.access_code_hash ? 'color:var(--accent)' : ''}">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <rect x="3" y="11" width="18" height="11" rx="2"/>
+              <path d="M7 11V7a5 5 0 0 1 10 0v4"/>
+            </svg>
+          </button>
           <button class="ws-icon-btn remove-btn" title="${T('ws.remove')}">
             <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
               <line x1="18" y1="6" x2="6" y2="18"/>
@@ -1871,6 +1898,16 @@
       card.querySelector('.remove-btn').addEventListener('click', async () => {
         await invoke('remove_workspace', { id: ws.id });
         refreshWorkspaces();
+      });
+
+      // Per-workspace access code (overrides the server code; empty clears)
+      card.querySelector('.lock-btn').addEventListener('click', async () => {
+        const code = prompt(T(ws.access_code_hash ? 'ws.lock.prompt.change' : 'ws.lock.prompt'));
+        if (code === null) return;
+        try {
+          await invoke('set_access_code', { workspaceId: ws.id, code });
+          refreshWorkspaces();
+        } catch (e) { toast(T('ws.update.fail') + ': ' + e, 'err'); }
       });
 
       // Toggle flags

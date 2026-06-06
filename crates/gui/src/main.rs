@@ -252,6 +252,7 @@ fn handle_open_path(app: &tauri::AppHandle, path: &Path) {
             path: ws_root,
             flags,
             single_file,
+            access_code_hash: String::new(),
         });
     drop(server);
 
@@ -567,6 +568,7 @@ fn main() {
         .invoke_handler(tauri::generate_handler![
             commands::get_settings,
             commands::save_settings,
+            commands::set_access_code,
             commands::set_tray_resident,
             commands::add_workspace,
             commands::update_workspace,

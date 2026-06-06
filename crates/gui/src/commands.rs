@@ -235,6 +235,7 @@ pub fn add_workspace(
         path: canonical,
         flags,
         single_file: None,
+        access_code_hash: String::new(),
     });
     let port = server.port();
     drop(server);
@@ -541,6 +542,56 @@ pub async fn list_chat_models(
 ) -> Result<Vec<String>, String> {
     let kind = ProviderKind::parse(&provider);
     models::list_models(kind, &api_key, &base_url).await
+}
+
+/// Set or clear an access code. `workspace_id` None/empty → the server-level
+/// code (needs a server restart so the running AppState picks it up);
+/// otherwise the named workspace's code is updated live on the registry. An
+/// empty `code` clears. The plaintext is hashed here (salted) and never stored.
+#[tauri::command]
+pub fn set_access_code(
+    workspace_id: Option<String>,
+    code: String,
+    app: tauri::AppHandle,
+    state: State<AppState>,
+) -> Result<(), String> {
+    let salt = state.settings.lock().unwrap().salt.clone();
+    let code = code.trim();
+    let hash = if code.is_empty() {
+        String::new()
+    } else {
+        markon_core::workspace::hash_access_code(&salt, code)
+    };
+    match workspace_id {
+        Some(id) if !id.is_empty() => {
+            // Per-workspace: live update on the shared registry (persists via
+            // the registry's persist hook). No restart needed.
+            if state.server.lock().unwrap().registry.set_access_code(&id, &hash) {
+                Ok(())
+            } else {
+                Err("workspace not found".into())
+            }
+        }
+        _ => {
+            // Server-level: persist + restart so the new AppState carries it.
+            {
+                let mut s = state.settings.lock().unwrap();
+                s.access_code_hash = hash;
+                s.save()?;
+            }
+            let settings = state.settings.lock().unwrap().clone();
+            let port = if settings.port_mode == PortMode::Auto {
+                0
+            } else {
+                settings.port
+            };
+            let config = settings.to_server_config(port);
+            let persist = AppSettings::persist_hook(state.settings.clone());
+            let start_result = state.server.lock().unwrap().start(config, Some(persist));
+            let _ = app.emit("server-status-changed", server_status_payload(&state));
+            start_result
+        }
+    }
 }
 
 #[tauri::command]

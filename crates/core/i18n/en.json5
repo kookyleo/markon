@@ -49,6 +49,15 @@
     "access.submit":        "Unlock",
     "access.err.wrong":     "Wrong code, try again.",
     "access.err.cooldown":  "Too many attempts. Try again in {n}s.",
+    "pref.access_code":       "Access code",
+    "access.code.ph":         "Set a code…",
+    "access.code.set":        "Set · change or clear",
+    "access.code.apply":      "Apply",
+    "access.code.saved":      "Access code updated",
+    "ws.lock.tip":            "Set workspace access code",
+    "ws.lock.on":             "Workspace access code set",
+    "ws.lock.prompt":         "Enter an access code for this workspace (empty to clear):",
+    "ws.lock.prompt.change":  "Change this workspace's access code (empty to clear):",
 
     // ── General — Behavior ───────────────────────────────────
     "sec.behavior":   "More",

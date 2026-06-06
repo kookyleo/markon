@@ -49,6 +49,15 @@
     "access.submit":        "ロック解除",
     "access.err.wrong":     "コードが違います。もう一度お試しください。",
     "access.err.cooldown":  "試行回数が多すぎます。{n} 秒後に再試行してください。",
+    "pref.access_code":       "アクセスコード",
+    "access.code.ph":         "コードを設定…",
+    "access.code.set":        "設定済 · 変更/クリア",
+    "access.code.apply":      "適用",
+    "access.code.saved":      "アクセスコードを更新しました",
+    "ws.lock.tip":            "ワークスペースのアクセスコードを設定",
+    "ws.lock.on":             "ワークスペースのアクセスコード設定済",
+    "ws.lock.prompt":         "このワークスペースのアクセスコードを入力(空でクリア):",
+    "ws.lock.prompt.change":  "このワークスペースのアクセスコードを変更(空でクリア):",
 
     // ── General — Behavior ───────────────────────────────────
     "sec.behavior":   "その他",

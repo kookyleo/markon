@@ -49,6 +49,15 @@
     "access.submit":        "解锁",
     "access.err.wrong":     "访问码错误,请重试。",
     "access.err.cooldown":  "尝试过多,请在 {n} 秒后重试。",
+    "pref.access_code":       "访问码",
+    "access.code.ph":         "设置访问码…",
+    "access.code.set":        "已设置 · 改/清空",
+    "access.code.apply":      "应用",
+    "access.code.saved":      "访问码已更新",
+    "ws.lock.tip":            "设置此工作区访问码",
+    "ws.lock.on":             "已设此工作区访问码",
+    "ws.lock.prompt":         "输入此工作区访问码(留空清除):",
+    "ws.lock.prompt.change":  "修改此工作区访问码(留空清除):",
 
     // ── 全局设置 — 行为 ──────────────────────────────────────
     "sec.behavior":   "更多",
