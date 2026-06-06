@@ -74,3 +74,29 @@ Markon 的用户数据**独立于进程**,持久在 `~/.markon/`:
   1. `markon ls` 列出的每个 workspace id 与升级前**逐一一致**(URL 未变);
   2. 任一 workspace 的批注 / 已读在页面上仍可见(数据未丢);
   3. `settings.json` 的 `salt` 与升级前相同。
+
+## 设计决策
+
+### D-1. 不内建 TLS / 安全通道,委托外层(2026-06)
+
+**决策:markon 自身只服务明文 HTTP(`axum::serve`),不内建 TLS,也不内建证书 / CA 管理。**
+传输加密交给前置层终止:面向公网用**反向代理**(Caddy / nginx + Let's Encrypt,见
+`REVERSE_PROXY.zh.md`);面向 IP / 内网 / 远程自用用**网络层**(Tailscale / WireGuard)。
+
+**理由(性价比评估的结论)**:
+- TLS 的真实成本不在代码(axum + rustls 仅数十行),而在**证书与信任**。
+- 公网 CA(Let's Encrypt 等)**不为 IP / 内网地址签发**,且需域名 + challenge + 续期 ——
+  内建 ACME 复杂,且对最常见的「按 IP 访问」根本走不通。
+- 唯一能便宜内建的是**自签名**,但只给「加密不认证」(浏览器警告 / 需每设备装根证书),
+  挡不住主动 MITM,且会让 markon 退化成 mini-CA,与「保持简单」相悖。
+- 反代(真证书、零警告)与 Tailscale(真证书 + 天然设备级准入 + 全程加密、零 app 改动)
+  在各自层面都做得更干净。**关注点分离:通道在 markon 之下,app 保持纯 HTTP。**
+
+**正交的应用层控制(markon 确实提供)**:
+- **可选访问码门禁**(认证层,见 `server.rs` 的 access gate / `access_scope_for`)——
+  解决「知道 URL 就能进」;与 TLS(保密层)是**两件不同的事**。
+- 一旦经任意 HTTPS 暴露,访问码 cookie 应按 `X-Forwarded-Proto: https` 条件追加 `Secure`
+  (**尚未实现**,留作正式上线 HTTPS 时的小跟进)。
+
+**按访问方式的推荐**:`localhost` → 无需任何加密;内网 IP 自用 → Tailscale(或纯本地、
+零依赖时用可选自签名);公网域名 → 反代 + Let's Encrypt。
