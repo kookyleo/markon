@@ -60,11 +60,69 @@ export class NoteManager {
     #connectorSvg: SVGSVGElement | null = null;
     #connectorPath: SVGPathElement | null = null;
     #resizeObserver: ResizeObserver | null = null;
+    #authorTooltip: HTMLElement | null = null;
+    #authorTooltipTimer: number | null = null;
 
     constructor(annotationManager: AnnotationManager, markdownBody: HTMLElement) {
         this.#annotationManager = annotationManager;
         this.#markdownBody = markdownBody;
         this.#layoutEngine = new LayoutEngine();
+        this.#setupAuthorTooltip();
+    }
+
+    /** In shared workspaces, clicking an annotation floats its author (colour +
+     *  nickname) and creation time beside the click; auto-dismisses. Click is
+     *  used (not hover) so it works on touch. */
+    #setupAuthorTooltip(): void {
+        this.#markdownBody.addEventListener('click', (e) => {
+            if (!document.body.classList.contains('markon-shared')) return;
+            const el = (e.target as HTMLElement).closest<HTMLElement>('[data-annotation-id]');
+            const id = el?.dataset.annotationId;
+            if (!id) {
+                this.#hideAuthorTooltip();
+                return;
+            }
+            const anno = this.#annotationManager.getById(id);
+            if (anno) this.#showAuthorTooltip(anno, e as MouseEvent);
+        });
+    }
+
+    #showAuthorTooltip(anno: Annotation, e: MouseEvent): void {
+        this.#hideAuthorTooltip();
+        const t = (window.__MARKON_I18N__ && window.__MARKON_I18N__.t) || ((k: string) => k);
+        const color = anno.author?.color ?? 'var(--markon-fg-muted)';
+        const name = anno.author?.name || t('web.author.anon');
+        const time = new Date(anno.createdAt).toLocaleString();
+        const tip = document.createElement('div');
+        tip.className = 'anno-author-tip';
+        const dot = document.createElement('span');
+        dot.className = 'anno-author-dot';
+        dot.style.background = color;
+        const nameEl = document.createElement('span');
+        nameEl.className = 'anno-author-name';
+        nameEl.textContent = name;
+        const timeEl = document.createElement('span');
+        timeEl.className = 'anno-author-time';
+        timeEl.textContent = time;
+        tip.append(dot, nameEl, timeEl);
+        document.body.appendChild(tip);
+        const x = Math.min(e.clientX + 8, window.innerWidth - tip.offsetWidth - 8);
+        tip.style.left = `${Math.max(8, x)}px`;
+        tip.style.top = `${e.clientY + 14}px`;
+        requestAnimationFrame(() => tip.classList.add('show'));
+        this.#authorTooltip = tip;
+        this.#authorTooltipTimer = window.setTimeout(() => this.#hideAuthorTooltip(), 2600);
+    }
+
+    #hideAuthorTooltip(): void {
+        if (this.#authorTooltipTimer !== null) {
+            clearTimeout(this.#authorTooltipTimer);
+            this.#authorTooltipTimer = null;
+        }
+        if (this.#authorTooltip) {
+            this.#authorTooltip.remove();
+            this.#authorTooltip = null;
+        }
     }
 
     render(): void {

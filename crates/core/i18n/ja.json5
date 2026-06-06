@@ -378,6 +378,7 @@
     "web.collab.you":       "あなた",
     "web.collab.nickname":  "ニックネーム(任意)",
     "web.collab.live":      "Live",
+    "web.author.anon":      "匿名",
     "web.live.color.prompt": "カラーを選択",
     "web.live.color.desc":   "送信カラーを選択"
 }

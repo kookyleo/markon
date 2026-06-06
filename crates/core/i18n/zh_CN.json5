@@ -377,6 +377,7 @@
     "web.collab.you":       "你",
     "web.collab.nickname":  "昵称(可选)",
     "web.collab.live":      "Live",
+    "web.author.anon":      "匿名",
     "web.live.color.prompt": "选择你的代表色",
     "web.live.color.desc":   "选择你的广播色"
 }

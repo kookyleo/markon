@@ -152,6 +152,59 @@
     text-decoration: line-through;
 }
 
+/* ── Annotation author identity (shared workspaces only) ─────────────────
+   Each annotation carries its author's colour in --anno-author (set by
+   annotation-manager). A left identity line attributes it at a glance; a
+   white separator keeps that line from clashing with the content highlight
+   fill. Anonymous (pre-authorship) annotations fall back to a neutral grey.
+   Gated on `.markon-shared` so a single local user sees no attribution noise. */
+.markon-shared .highlight-orange,
+.markon-shared .highlight-green,
+.markon-shared .highlight-yellow,
+.markon-shared .has-note {
+    box-shadow:
+        inset 2px 0 0 var(--anno-author, var(--markon-fg-muted)),
+        inset 4px 0 0 #ffffff;
+}
+/* Strikethrough: the line itself takes the author colour. */
+.markon-shared .strikethrough {
+    text-decoration-color: var(--anno-author, var(--markon-fg-muted));
+}
+
+/* Floating author tooltip — shown on click of an annotation (shared mode). */
+.anno-author-tip {
+    position: fixed;
+    z-index: var(--markon-z-chrome-top);
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    padding: 5px 10px;
+    font-size: 12px;
+    background: var(--markon-bg-overlay);
+    color: var(--markon-fg-default);
+    border: 1px solid var(--markon-border-default);
+    border-radius: var(--markon-radius-sm);
+    box-shadow: var(--markon-shadow-pop);
+    pointer-events: none;
+    white-space: nowrap;
+    opacity: 0;
+    transform: translateY(3px);
+    transition: opacity 0.12s ease, transform 0.12s ease;
+}
+.anno-author-tip.show {
+    opacity: 1;
+    transform: none;
+}
+.anno-author-tip .anno-author-dot {
+    width: 9px;
+    height: 9px;
+    border-radius: 50%;
+    flex: 0 0 auto;
+}
+.anno-author-tip .anno-author-time {
+    opacity: 0.55;
+}
+
 /* Body links: hover shifts colour only. GitHub's stylesheet adds an underline
    on hover; we override it here (editor.css loads after the vendored sheet). */
 .markdown-body a:hover {

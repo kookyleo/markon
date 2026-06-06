@@ -378,6 +378,7 @@
     "web.collab.you":       "You",
     "web.collab.nickname":  "Nickname (optional)",
     "web.collab.live":      "Live",
+    "web.author.anon":      "Anonymous",
     "web.live.color.prompt": "Pick your color",
     "web.live.color.desc":   "Pick your broadcast color"
 }

@@ -143,6 +143,9 @@ export class MarkonApp {
         // server's buffered connect-time `all_annotations` into them here.
         if (this.#isSharedMode) {
             this.#setupWebSocketHandlers();
+            // Gate annotation author colouring on shared mode — attribution is
+            // meaningless for a single local user.
+            document.body.classList.add('markon-shared');
         }
 
         // 4. Apply to DOM

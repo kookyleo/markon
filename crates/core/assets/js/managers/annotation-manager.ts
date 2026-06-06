@@ -542,6 +542,11 @@ export class AnnotationManager {
             const wrapper = document.createElement(anno.tagName);
             wrapper.className = anno.type;
             wrapper.dataset.annotationId = anno.id;
+            // Author colour drives the left identity line / strikethrough colour
+            // in CSS; absent (anonymous) falls back to a neutral token.
+            if (anno.author?.color) {
+                wrapper.style.setProperty('--anno-author', anno.author.color);
+            }
             if (anno.note) {
                 wrapper.dataset.note = anno.note;
                 wrapper.classList.add('has-note');
