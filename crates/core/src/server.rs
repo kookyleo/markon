@@ -617,6 +617,9 @@ pub async fn start(config: ServerConfig) -> Result<(), String> {
         require_access_code,
     ));
 
+    // Hardening headers (CSP / nosniff / frame options) on every response.
+    let app = app.layer(axum::middleware::from_fn(security_headers));
+
     let app = app.with_state(state);
 
     let listener = if let Some(std_listener) = bound_listener {
@@ -1098,6 +1101,42 @@ async fn unlock_handler(
     render_access_gate(&state, &form.workspace_id, &redirect, Some(err))
 }
 
+/// Max inbound WebSocket message (annotation payload). Caps SQLite growth and
+/// broadcast amplification from a hostile peer; real annotations are tiny.
+const MAX_WS_MSG_BYTES: usize = 256 * 1024;
+
+/// Conservative Content-Security-Policy. `'unsafe-inline'` is required because
+/// the templates ship inline `<script>`/`<style>` and inject `styles_css`; even
+/// so this blocks **external** script/style loads, plugins, framing and base
+/// hijacking, so an injection can't pull in a remote payload or be clickjacked.
+/// `img/media-src *` keeps cross-origin images in user docs working. The full
+/// fix for inline injection is HTML sanitisation (see security review H-1).
+const SECURITY_CSP: &str = "default-src 'self'; \
+script-src 'self' 'unsafe-inline'; \
+style-src 'self' 'unsafe-inline'; \
+img-src * data: blob:; media-src * data: blob:; font-src 'self' data:; \
+connect-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'; \
+frame-ancestors 'self'";
+
+/// Attach hardening headers to every response (CSP + nosniff + frame options).
+async fn security_headers(req: axum::extract::Request, next: axum::middleware::Next) -> Response {
+    let mut resp = next.run(req).await;
+    let h = resp.headers_mut();
+    h.insert(
+        axum::http::header::X_CONTENT_TYPE_OPTIONS,
+        axum::http::HeaderValue::from_static("nosniff"),
+    );
+    h.insert(
+        axum::http::header::X_FRAME_OPTIONS,
+        axum::http::HeaderValue::from_static("SAMEORIGIN"),
+    );
+    h.insert(
+        axum::http::header::CONTENT_SECURITY_POLICY,
+        axum::http::HeaderValue::from_static(SECURITY_CSP),
+    );
+    resp
+}
+
 /// Same-origin guard for the chat API. Chat endpoints are reachable from the
 /// (unauthenticated) viewer page, so they can't require the management token;
 /// instead reject any request whose `Origin` doesn't match `Host`. A mutating
@@ -1166,7 +1205,9 @@ async fn ws_handler(
     if !check_ws_origin(&headers, &addr) {
         return StatusCode::FORBIDDEN.into_response();
     }
-    ws.on_upgrade(move |socket| handle_socket(socket, state))
+    ws.max_message_size(MAX_WS_MSG_BYTES)
+        .max_frame_size(MAX_WS_MSG_BYTES)
+        .on_upgrade(move |socket| handle_socket(socket, state))
         .into_response()
 }
 
@@ -1451,6 +1492,10 @@ async fn handle_socket(socket: WebSocket, state: AppState) {
 
     let mut recv_task = tokio::spawn(async move {
         while let Some(Ok(Message::Text(text))) = receiver.next().await {
+            if text.len() > MAX_WS_MSG_BYTES {
+                tracing::warn!("dropping oversized ws message ({} bytes)", text.len());
+                continue;
+            }
             let Ok(msg) = serde_json::from_str::<WebSocketMessage>(&text) else {
                 continue;
             };
