@@ -1,0 +1,28 @@
+#!/usr/bin/env bash
+# Lightweight pre-push gate: refuse to push unformatted Rust.
+#
+# `cargo fmt --check` is fast (~a few hundred ms) and catches the one class of
+# CI red that's purely mechanical — the rustfmt "Format" job. Heavier gates
+# (clippy, tests, JS) stay in scripts/bump-version.sh and CI; this hook only
+# guards the cheap, always-applicable one so day-to-day pushes don't drag.
+#
+# Enable once per clone:  git config core.hooksPath .githooks
+# Bypass for a single push (e.g. WIP branch):  git push --no-verify
+set -euo pipefail
+
+# cargo may be absent in minimal/CI environments — don't block those.
+if ! command -v cargo >/dev/null 2>&1; then
+  exit 0
+fi
+
+repo_root="$(git rev-parse --show-toplevel)"
+cd "$repo_root"
+
+if ! cargo fmt --check >/dev/null 2>&1; then
+  printf '\033[1;31m✗ pre-push: Rust formatting issues.\033[0m\n' >&2
+  printf "  Run 'cargo fmt', commit, then push again.\n" >&2
+  printf '  (Bypass once with: git push --no-verify)\n' >&2
+  # Show the offending diff so the fix is obvious.
+  cargo fmt --check 2>&1 | sed 's/^/  /' >&2 || true
+  exit 1
+fi
