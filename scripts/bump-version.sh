@@ -5,6 +5,7 @@
 #
 # Runs (in order):
 #   Pre-flight checks:
+#     - Arm tracked git hooks (core.hooksPath = .githooks) if not already
 #     - Cargo.toml / Cargo.lock have no pending edits (no half-finished bump)
 #   Quality gates (all must pass with zero warnings):
 #     - cargo fmt --check
@@ -49,6 +50,14 @@ step() { printf '\n\033[1;34m==>\033[0m %s\n' "$1"; }
 fail() { printf '\033[1;31m✗ %s\033[0m\n' "$1" >&2; exit 1; }
 
 step "0/7  Pre-flight checks"
+# Ensure the tracked git hooks (.githooks/pre-push → cargo fmt --check) are
+# active for this clone. core.hooksPath is local config, not carried by a
+# checkout, so wire it up here idempotently — a bump is a natural moment to
+# make sure the push gate is armed.
+if [ "$(git config core.hooksPath || true)" != ".githooks" ]; then
+  git config core.hooksPath .githooks
+  printf '   enabled git hooks (core.hooksPath = .githooks)\n'
+fi
 if ! git diff --quiet HEAD -- Cargo.toml Cargo.lock; then
   fail "Cargo.toml or Cargo.lock has uncommitted edits — commit or stash first"
 fi
