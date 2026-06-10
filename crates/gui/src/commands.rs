@@ -566,7 +566,13 @@ pub fn set_access_code(
         Some(id) if !id.is_empty() => {
             // Per-workspace: live update on the shared registry (persists via
             // the registry's persist hook). No restart needed.
-            if state.server.lock().unwrap().registry.set_access_code(&id, &hash) {
+            if state
+                .server
+                .lock()
+                .unwrap()
+                .registry
+                .set_access_code(&id, &hash)
+            {
                 Ok(())
             } else {
                 Err("workspace not found".into())

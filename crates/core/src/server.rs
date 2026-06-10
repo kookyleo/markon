@@ -138,7 +138,8 @@ pub(crate) struct AppState {
     /// unlock cookies survive restarts (30-day persistence).
     pub access_secret: Arc<String>,
     /// Per-source-IP failed-unlock tracking for the brute-force cooldown.
-    pub access_attempts: Arc<std::sync::Mutex<std::collections::HashMap<std::net::IpAddr, AccessAttempts>>>,
+    pub access_attempts:
+        Arc<std::sync::Mutex<std::collections::HashMap<std::net::IpAddr, AccessAttempts>>>,
     /// Whether collapsed sections should be printed (true) or replaced by a
     /// placeholder (false). Mirrored to the browser as a `<html>` data attr.
     pub print_collapsed_content: bool,
@@ -828,7 +829,6 @@ fn origin_matches_host(origin: &str, host: Option<&str>) -> bool {
     authority.eq_ignore_ascii_case(host)
 }
 
-/// Middleware: management API only accepts loopback source + valid token header.
 // ════════════════════════ Access gate ════════════════════════
 // Optional per-server (and, later, per-workspace) access code. A device that
 // hasn't unlocked the relevant scope is shown a gate page; on success a signed
@@ -889,7 +889,8 @@ fn access_cookie_scopes(secret: &str, cookie_header: Option<&str>) -> Vec<String
     let Some((payload_hex, sig)) = token.split_once('.') else {
         return Vec::new();
     };
-    if payload_hex.len() % 2 != 0 || !constant_time_eq(access_sig(secret, payload_hex).as_bytes(), sig.as_bytes())
+    if payload_hex.len() % 2 != 0
+        || !constant_time_eq(access_sig(secret, payload_hex).as_bytes(), sig.as_bytes())
     {
         return Vec::new();
     }
@@ -1066,7 +1067,12 @@ async fn unlock_handler(
     let redirect = access_safe_redirect(&form.redirect, &form.workspace_id);
     if let Some(remaining) = access_cooldown_remaining(&state, ip) {
         tracing::warn!(%ip, ws = %form.workspace_id, "access unlock blocked: cooldown {remaining}s");
-        return render_access_gate(&state, &form.workspace_id, &redirect, Some(("cooldown", remaining)));
+        return render_access_gate(
+            &state,
+            &form.workspace_id,
+            &redirect,
+            Some(("cooldown", remaining)),
+        );
     }
     let Some((effective, scope)) = access_scope_for(&state, &form.workspace_id) else {
         return Redirect::to(&redirect).into_response();
@@ -1175,6 +1181,7 @@ fn constant_time_eq(a: &[u8], b: &[u8]) -> bool {
     diff == 0
 }
 
+/// Middleware: management API only accepts loopback source + valid token header.
 async fn require_local_and_token(
     State(state): State<AppState>,
     axum::extract::ConnectInfo(addr): axum::extract::ConnectInfo<std::net::SocketAddr>,
@@ -2515,7 +2522,10 @@ mod tests {
         let secret = "test-secret";
         let raw = make_access_cookie(secret, &["s".to_string()], access_now_unix() + 100);
         let kv = raw.split(';').next().unwrap(); // markon_access=PAYLOAD.SIG
-        assert_eq!(access_cookie_scopes(secret, Some(kv)), vec!["s".to_string()]);
+        assert_eq!(
+            access_cookie_scopes(secret, Some(kv)),
+            vec!["s".to_string()]
+        );
         // Wrong secret, tampered value, and an expired cookie are all rejected.
         assert!(access_cookie_scopes("other-secret", Some(kv)).is_empty());
         assert!(access_cookie_scopes(secret, Some(&format!("{kv}00"))).is_empty());
@@ -2539,12 +2549,18 @@ mod tests {
 
     #[test]
     fn access_gated_workspace_recognizes_routes() {
-        assert_eq!(access_gated_workspace("/abcd1234/doc.md").as_deref(), Some("abcd1234"));
+        assert_eq!(
+            access_gated_workspace("/abcd1234/doc.md").as_deref(),
+            Some("abcd1234")
+        );
         assert_eq!(
             access_gated_workspace("/api/chat/abcd1234/threads").as_deref(),
             Some("abcd1234")
         );
-        assert_eq!(access_gated_workspace("/_/ws/abcd1234").as_deref(), Some("abcd1234"));
+        assert_eq!(
+            access_gated_workspace("/_/ws/abcd1234").as_deref(),
+            Some("abcd1234")
+        );
         assert!(access_gated_workspace("/_/css/tokens.css").is_none());
         assert!(access_gated_workspace("/_/unlock").is_none());
         assert!(access_gated_workspace("/api/preview").is_none());
