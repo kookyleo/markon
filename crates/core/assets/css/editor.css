@@ -191,9 +191,8 @@ html[data-theme="dark"] .highlight-yellow {
     scroll-margin-top: 40px;
     /* Border always exists to prevent layout shift */
     border: 2px solid transparent;
-    /* Focus frame: round the top corners only, square bottom so it sits flush
-       against the content below. */
-    border-radius: var(--markon-radius-lg) var(--markon-radius-lg) 0 0;
+    /* Focus frame: round all four corners consistently. */
+    border-radius: var(--markon-radius-lg);
     padding: 4px 8px;
     padding-bottom: 5px;
 }
