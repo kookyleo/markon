@@ -36,6 +36,11 @@
       </array>
     </dict>
   </array>
+  <!-- Shown in the Automation consent prompt. Clicking the Markon icon in a
+       Finder toolbar reopens the app, which reads the front Finder window's
+       path (via Apple Events to Finder) to open that folder as a workspace. -->
+  <key>NSAppleEventsUsageDescription</key>
+  <string>Markon reads the front Finder window's folder so the toolbar button can open it.</string>
   <key>NSHumanReadableCopyright</key>
   <string>Copyright © 2024 kookyleo. Apache-2.0.</string>
 </dict>

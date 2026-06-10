@@ -12,7 +12,7 @@ use std::path::Path;
 #[cfg(any(target_os = "macos", target_os = "ios", test))]
 use std::path::PathBuf;
 use std::sync::{
-    atomic::{AtomicBool, Ordering},
+    atomic::{AtomicBool, AtomicU64, Ordering},
     Arc, Mutex,
 };
 use tauri::{
@@ -98,10 +98,37 @@ fn install_exe_window_icon(window: &tauri::WebviewWindow) {
 pub struct AppState {
     pub settings: Arc<Mutex<AppSettings>>,
     pub server: Mutex<ServerManager>,
-    /// Set to true when RunEvent::Opened fires so Reopen doesn't override it with Settings.
-    pub file_just_opened: Arc<AtomicBool>,
+    /// UNIX-millis of the most recent file/folder open intent (RunEvent::Opened).
+    /// A paired Reopen Apple Event arrives right after Opened; we suppress that
+    /// one so an "Open With" doesn't *also* adopt the front Finder folder. Stored
+    /// as a timestamp rather than a sticky bool so a mark left behind by an Opened
+    /// with no trailing Reopen can't later swallow an unrelated toolbar click.
+    pub last_file_open_ms: Arc<AtomicU64>,
     /// Live tray_resident flag — written by menu handler, read by window close handler.
     pub tray_resident: Arc<AtomicBool>,
+}
+
+impl AppState {
+    fn now_ms() -> u64 {
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_millis() as u64)
+            .unwrap_or(0)
+    }
+
+    /// Record that a file/folder open was just handled (RunEvent::Opened).
+    pub fn mark_file_opened(&self) {
+        self.last_file_open_ms.store(Self::now_ms(), Ordering::Relaxed);
+    }
+
+    /// Consume a recent open mark. Returns true (and clears it) only when an
+    /// Opened fired within the last `WINDOW_MS` — i.e. this Reopen is the paired
+    /// activation and should be skipped. A stale mark is cleared but ignored.
+    pub fn consume_recent_file_open(&self) -> bool {
+        const WINDOW_MS: u64 = 2_000;
+        let last = self.last_file_open_ms.swap(0, Ordering::Relaxed);
+        last != 0 && Self::now_ms().saturating_sub(last) < WINDOW_MS
+    }
 }
 
 /// On macOS, `RunEvent::Opened` for "Open With Markon" can fire **before** `setup()`
@@ -306,7 +333,7 @@ fn main() {
                 let paths = markdown_file_launch_args(args.iter().map(String::as_str));
                 if !paths.is_empty() {
                     if let Some(state) = app.try_state::<AppState>() {
-                        state.file_just_opened.store(true, Ordering::Relaxed);
+                        state.mark_file_opened();
                         for p in &paths {
                             handle_open_path(app, p);
                         }
@@ -342,7 +369,7 @@ fn main() {
             let state = AppState {
                 settings: settings_arc,
                 server: Mutex::new(ServerManager::new()),
-                file_just_opened: Arc::new(AtomicBool::new(false)),
+                last_file_open_ms: Arc::new(AtomicU64::new(0)),
                 tray_resident: Arc::new(AtomicBool::new(tray_resident_init)),
             };
             let mut server = state.server.lock().unwrap();
@@ -498,9 +525,7 @@ fn main() {
                 let pending: Vec<PathBuf> = std::mem::take(&mut *pending_opens().lock().unwrap());
                 let had = !pending.is_empty();
                 if had {
-                    app.state::<AppState>()
-                        .file_just_opened
-                        .store(true, Ordering::Relaxed);
+                    app.state::<AppState>().mark_file_opened();
                     let handle = app.app_handle().clone();
                     for p in &pending {
                         handle_open_path(&handle, p);
@@ -514,9 +539,7 @@ fn main() {
                 let paths = markdown_file_launch_args(std::env::args().skip(1));
                 let had = !paths.is_empty();
                 if had {
-                    app.state::<AppState>()
-                        .file_just_opened
-                        .store(true, Ordering::Relaxed);
+                    app.state::<AppState>().mark_file_opened();
                     let handle = app.app_handle().clone();
                     for p in &paths {
                         handle_open_path(&handle, p);
@@ -576,7 +599,7 @@ fn main() {
                 let paths: Vec<PathBuf> =
                     urls.iter().filter_map(|u| u.to_file_path().ok()).collect();
                 if let Some(state) = app_handle.try_state::<AppState>() {
-                    state.file_just_opened.store(true, Ordering::Relaxed);
+                    state.mark_file_opened();
                     for p in &paths {
                         handle_open_path(app_handle, p);
                     }
@@ -589,9 +612,18 @@ fn main() {
                 has_visible_windows,
                 ..
             } => {
-                let flag = app_handle.state::<AppState>().file_just_opened.clone();
-                // If Opened just fired (file/folder drag or right-click Open With), skip.
-                if flag.swap(false, Ordering::Relaxed) {
+                // try_state, not state(): Reopen is an Apple Event and can fire
+                // before setup() runs `app.manage(state)` (same race Opened
+                // guards). The panicking state() here would crash on an early
+                // toolbar reopen; if state isn't live yet there's nothing to do.
+                let Some(state) = app_handle.try_state::<AppState>() else {
+                    return;
+                };
+                // If an Opened just fired (file/folder drag or right-click Open
+                // With), this is its paired activation — skip so we don't also
+                // adopt the front Finder folder. Time-bounded: a stale mark won't
+                // swallow an unrelated, much-later toolbar click.
+                if state.consume_recent_file_open() {
                     return;
                 }
                 // Adopt the front Finder window as a workspace ONLY for a real
