@@ -50,8 +50,9 @@ step() { printf '\n\033[1;34m==>\033[0m %s\n' "$1"; }
 fail() { printf '\033[1;31m✗ %s\033[0m\n' "$1" >&2; exit 1; }
 
 step "0/7  Pre-flight checks"
-# Ensure the tracked git hooks (.githooks/pre-push → cargo fmt --check) are
-# active for this clone. core.hooksPath is local config, not carried by a
+# Ensure the tracked git hooks (.githooks/pre-push → full fmt/clippy/test +
+# tsc/eslint/vitest gate) are active for this clone. core.hooksPath is local
+# config, not carried by a
 # checkout, so wire it up here idempotently — a bump is a natural moment to
 # make sure the push gate is armed.
 if [ "$(git config core.hooksPath || true)" != ".githooks" ]; then
