@@ -35,97 +35,27 @@
             line-height: 1.6;
         }
 
-        {% if theme == "dark" %}
-        /* Dark theme (forced) */
+        /* Colours resolve from tokens.css via html[data-theme]; the head
+           script settles auto → light/dark before paint, so no per-theme
+           branching is needed here. */
         body {
-            background-color: #0d1117;
-            color: #f0f6fc;
+            background-color: var(--markon-bg-default);
+            color: var(--markon-fg-default);
         }
-        a {
-            color: #58a6ff !important;
-        }
+        a,
         a:visited {
-            color: #58a6ff !important;
+            color: var(--markon-accent) !important;
         }
         li {
-            border-bottom: 1px solid #30363d;
+            border-bottom: 1px solid var(--markon-border-default);
         }
         h1 {
-            color: #f0f6fc;
-            border-bottom: 2px solid #30363d;
+            color: var(--markon-fg-default);
+            border-bottom: 2px solid var(--markon-border-default);
         }
         .dir-path {
-            color: #8b949e;
+            color: var(--markon-fg-muted);
         }
-        {% elif theme == "light" %}
-        /* Light theme (forced) */
-        body {
-            background-color: #ffffff;
-            color: #1f2328;
-        }
-        a {
-            color: #0969da !important;
-        }
-        a:visited {
-            color: #0969da !important;
-        }
-        li {
-            border-bottom: 1px solid #f0f0f0;
-        }
-        h1 {
-            color: #1f2328;
-            border-bottom: 2px solid #eee;
-        }
-        .dir-path {
-            color: #656d76;
-        }
-        {% else %}
-        /* Auto theme (follows system preference) */
-        @media (prefers-color-scheme: dark) {
-            body {
-                background-color: #0d1117;
-                color: #f0f6fc;
-            }
-            a {
-                color: #58a6ff !important;
-            }
-            a:visited {
-                color: #58a6ff !important;
-            }
-            li {
-                border-bottom: 1px solid #30363d;
-            }
-            h1 {
-                color: #f0f6fc;
-                border-bottom: 2px solid #30363d;
-            }
-            .dir-path {
-                color: #8b949e;
-            }
-        }
-        @media (prefers-color-scheme: light) {
-            body {
-                background-color: #ffffff;
-                color: #1f2328;
-            }
-            a {
-                color: #0969da !important;
-            }
-            a:visited {
-                color: #0969da !important;
-            }
-            li {
-                border-bottom: 1px solid #f0f0f0;
-            }
-            h1 {
-                color: #1f2328;
-                border-bottom: 2px solid #eee;
-            }
-            .dir-path {
-                color: #656d76;
-            }
-        }
-        {% endif %}
 
         h1 {
             padding-bottom: 10px;
@@ -189,13 +119,15 @@
             margin-left: -1px;
         }
 
-        .footer a {
-            text-decoration: none;
-            color: #8b949e;
+        .footer,
+        .footer a,
+        .footer a:visited,
+        .footer-separator {
+            color: var(--markon-fg-muted);
         }
 
-        .footer a:visited {
-            color: #8b949e;
+        .footer a {
+            text-decoration: none;
         }
 
         .footer a:hover {
@@ -203,46 +135,8 @@
         }
 
         .footer-separator {
-            color: #8b949e;
             margin: 0 8px;
         }
-
-        {% if theme == "dark" %}
-        .footer {
-            color: #8b949e;
-        }
-        .footer a,
-        .footer a:visited {
-            color: #8b949e;
-        }
-        {% elif theme == "light" %}
-        .footer {
-            color: #656d76;
-        }
-        .footer a,
-        .footer a:visited {
-            color: #656d76;
-        }
-        {% else %}
-        @media (prefers-color-scheme: dark) {
-            .footer {
-                color: #8b949e;
-            }
-            .footer a,
-            .footer a:visited {
-                color: #8b949e;
-            }
-        }
-        @media (prefers-color-scheme: light) {
-            .footer {
-                color: #656d76;
-            }
-            .footer a,
-            .footer a:visited {
-                color: #656d76;
-            }
-        }
-        {% endif %}
 
         /* ========================================
            SEARCH MODAL
@@ -365,192 +259,43 @@
             opacity: 1;
         }
 
-        /* Light theme */
-        {% if theme == "light" %}
-        .search-modal {
-            background-color: #ffffff;
-        }
-
-        .search-modal-content {
-            background-color: #ffffff;
+        .search-modal,
+        .search-modal-content,
+        .search-results-container {
+            background-color: var(--markon-bg-default);
         }
 
         .search-input-container {
-            background: #f6f8fa;
-            border-bottom: 2px solid #d0d7de;
+            background: var(--markon-bg-muted);
+            border-bottom: 2px solid var(--markon-border-default);
         }
 
         #search-input {
             background: transparent;
-            color: #1f2328;
+            color: var(--markon-fg-default);
         }
 
         #search-input::placeholder {
-            color: #656d76;
-        }
-
-        .search-results-container {
-            background: #ffffff;
+            color: var(--markon-fg-muted);
         }
 
         .search-result-item a {
-            color: #1f2328;
-            border-bottom: 1px solid #f6f8fa;
+            color: var(--markon-fg-default);
+            border-bottom: 1px solid var(--markon-bg-muted);
         }
 
         .search-result-item a:hover,
         .search-result-item.selected a {
-            background-color: #f6f8fa;
+            background-color: var(--markon-bg-muted);
         }
 
         .search-result-item.selected a {
-            border-left-color: #0969da;
+            border-left-color: var(--markon-accent);
         }
 
         .search-result-snippet b {
-            color: #0969da;
+            color: var(--markon-accent);
         }
-
-        /* Dark theme */
-        {% elif theme == "dark" %}
-        .search-modal {
-            background-color: #0d1117;
-        }
-
-        .search-modal-content {
-            background-color: #0d1117;
-        }
-
-        .search-input-container {
-            background: #161b22;
-            border-bottom: 2px solid #30363d;
-        }
-
-        #search-input {
-            background: transparent;
-            color: #f0f6fc;
-        }
-
-        #search-input::placeholder {
-            color: #8b949e;
-        }
-
-        .search-results-container {
-            background: #0d1117;
-        }
-
-        .search-result-item a {
-            color: #f0f6fc;
-            border-bottom: 1px solid #161b22;
-        }
-
-        .search-result-item a:hover,
-        .search-result-item.selected a {
-            background-color: #161b22;
-        }
-
-        .search-result-item.selected a {
-            border-left-color: #58a6ff;
-        }
-
-        .search-result-snippet b {
-            color: #58a6ff;
-        }
-
-        /* Auto theme */
-        {% else %}
-        @media (prefers-color-scheme: light) {
-            .search-modal {
-                background-color: #ffffff;
-            }
-
-            .search-modal-content {
-                background-color: #ffffff;
-            }
-
-            .search-input-container {
-                background: #f6f8fa;
-                border-bottom: 2px solid #d0d7de;
-            }
-
-            #search-input {
-                background: transparent;
-                color: #1f2328;
-            }
-
-            #search-input::placeholder {
-                color: #656d76;
-            }
-
-            .search-results-container {
-                background: #ffffff;
-            }
-
-            .search-result-item a {
-                color: #1f2328;
-                border-bottom: 1px solid #f6f8fa;
-            }
-
-            .search-result-item a:hover,
-            .search-result-item.selected a {
-                background-color: #f6f8fa;
-            }
-
-            .search-result-item.selected a {
-                border-left-color: #0969da;
-            }
-
-            .search-result-snippet b {
-                color: #0969da;
-            }
-        }
-
-        @media (prefers-color-scheme: dark) {
-            .search-modal {
-                background-color: #0d1117;
-            }
-
-            .search-modal-content {
-                background-color: #0d1117;
-            }
-
-            .search-input-container {
-                background: #161b22;
-                border-bottom: 2px solid #30363d;
-            }
-
-            #search-input {
-                background: transparent;
-                color: #f0f6fc;
-            }
-
-            #search-input::placeholder {
-                color: #8b949e;
-            }
-
-            .search-results-container {
-                background: #0d1117;
-            }
-
-            .search-result-item a {
-                color: #f0f6fc;
-                border-bottom: 1px solid #161b22;
-            }
-
-            .search-result-item a:hover,
-            .search-result-item.selected a {
-                background-color: #161b22;
-            }
-
-            .search-result-item.selected a {
-                border-left-color: #58a6ff;
-            }
-
-            .search-result-snippet b {
-                color: #58a6ff;
-            }
-        }
-        {% endif %}
     </style>
     {% if styles_css %}<style>{{ styles_css | safe }}</style>{% endif %}
     {% if shortcuts_json %}<script>window.__MARKON_SHORTCUTS__ = {{ shortcuts_json | safe }};</script>{% endif %}
@@ -596,7 +341,7 @@
                 <input type="text" id="search-input" placeholder="Search..."
                        autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false">
             </div>
-            <div id="search-esc-hint" style="text-align:center;padding:8px 0 4px;font-size:12px;color:#8b949e"><kbd style="padding:1px 5px;border:1px solid #d0d7de;border-radius:3px;font-size:11px;font-family:monospace;background:#f6f8fa">ESC</kbd> <span id="search-esc-text">to close</span></div>
+            <div id="search-esc-hint" style="text-align:center;padding:8px 0 4px;font-size:12px;color:var(--markon-fg-muted)"><kbd style="padding:1px 5px;border:1px solid var(--markon-border-default);border-radius:3px;font-size:11px;font-family:monospace;background:var(--markon-bg-muted)">ESC</kbd> <span id="search-esc-text">to close</span></div>
             <div class="search-results-container">
                 <ul id="search-results"></ul>
             </div>

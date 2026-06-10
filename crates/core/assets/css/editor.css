@@ -155,8 +155,9 @@
 /* ── Annotation author identity (shared workspaces only) ─────────────────
    Each annotation carries its author's colour in --anno-author (set by
    annotation-manager). A left identity line attributes it at a glance; a
-   white separator keeps that line from clashing with the content highlight
-   fill. Anonymous (pre-authorship) annotations fall back to a neutral grey.
+   canvas-coloured separator keeps that line from clashing with the content
+   highlight fill (tracks the page background in both themes). Anonymous
+   (pre-authorship) annotations fall back to a neutral grey.
    Gated on `.markon-shared` so a single local user sees no attribution noise. */
 .markon-shared .highlight-orange,
 .markon-shared .highlight-green,
@@ -164,7 +165,7 @@
 .markon-shared .has-note {
     box-shadow:
         inset 2px 0 0 var(--anno-author, var(--markon-fg-muted)),
-        inset 4px 0 0 #ffffff;
+        inset 4px 0 0 var(--markon-bg-default);
 }
 /* Strikethrough: the line itself takes the author colour. */
 .markon-shared .strikethrough {
