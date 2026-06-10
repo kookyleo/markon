@@ -118,7 +118,8 @@ impl AppState {
 
     /// Record that a file/folder open was just handled (RunEvent::Opened).
     pub fn mark_file_opened(&self) {
-        self.last_file_open_ms.store(Self::now_ms(), Ordering::Relaxed);
+        self.last_file_open_ms
+            .store(Self::now_ms(), Ordering::Relaxed);
     }
 
     /// Consume a recent open mark. Returns true (and clears it) only when an
