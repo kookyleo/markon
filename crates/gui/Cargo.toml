@@ -35,6 +35,12 @@ dunce.workspace = true
 tracing.workspace = true
 tracing-subscriber.workspace = true
 
+# objc2: read the reopen Apple Event's sender (keySenderPIDAttr) so only a real
+# Finder-toolbar click adopts the front Finder folder — not Dock/Spotlight
+# reactivations. See crates/gui/src/reopen_origin.rs.
+[target.'cfg(target_os = "macos")'.dependencies]
+objc2 = "0.6"
+
 # Raw Win32 for SetIcon — Tauri's set_icon path goes through winit with a
 # single scaled PNG, which bilinears horribly into the 16 px titlebar slot.
 # WM_SETICON with LoadImage from the .exe resource lets Windows pick the

@@ -1,6 +1,8 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 mod commands;
+#[cfg(target_os = "macos")]
+mod reopen_origin;
 mod server_manager;
 // settings moved to markon_core::settings
 
@@ -592,12 +594,22 @@ fn main() {
                 if flag.swap(false, Ordering::Relaxed) {
                     return;
                 }
-                // Finder toolbar click: Finder has a front window → open its directory.
-                if let Some(dir) = finder_front_directory() {
-                    handle_open_path(app_handle, std::path::Path::new(&dir));
-                    return;
+                // Adopt the front Finder window as a workspace ONLY for a real
+                // Finder-toolbar click. `Reopen` fires for every reactivation
+                // (Dock, Spotlight, `open`, ⌘-Tab + Dock), and a front Finder
+                // window merely existing doesn't mean the click came from its
+                // toolbar — so gate on the reopen event's sender being Finder.
+                // Without this, launching the app via Dock/Spotlight while any
+                // Finder window is open silently adds that folder. See
+                // reopen_origin for how the sender is read race-free.
+                if reopen_origin::reopen_came_from_finder() {
+                    if let Some(dir) = finder_front_directory() {
+                        handle_open_path(app_handle, std::path::Path::new(&dir));
+                        return;
+                    }
                 }
-                // No target (Dock icon click, no Finder window open) → show Settings.
+                // No Finder-toolbar intent → behave like a plain reactivation:
+                // surface Settings if there's nothing else visible.
                 if !has_visible_windows {
                     show_settings_window(app_handle);
                 }

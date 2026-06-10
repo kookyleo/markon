@@ -3361,6 +3361,7 @@ dependencies = [
  "dunce",
  "font-kit",
  "markon-core",
+ "objc2",
  "open",
  "rfd",
  "serde",
