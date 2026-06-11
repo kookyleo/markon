@@ -892,6 +892,8 @@ export class MarkonApp {
             name: 'toc',
             container: tocContainer,
             passive: true,
+            // Fixed obstacle: highest priority, pushes everything, yields to none.
+            rolePriority: 0,
             expandedClass: 'active',
             getObstacleRect: () => {
                 const active = tocContainer.classList.contains('active');

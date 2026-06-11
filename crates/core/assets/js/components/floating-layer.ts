@@ -6,9 +6,13 @@
 //   • automatically push itself away from other registered layers so multiple
 //     spheres/panels never overlap (circle/rect collision with shadow gap)
 //
-// Layers are registered globally; on every state change a layer broadcasts
-// to its peers so they re-derive their displayed position. ToC is the
-// canonical "passive" peer — fixed, but participates as an obstacle.
+// This class is a thin ADAPTER over the pure layout-engine (./layout-engine):
+// it owns everything impure — reading DOM rects / viewport size, choosing the
+// box/shape per item, driving morph animations, persisting positions, handling
+// drag input, mutual exclusion, and writing CSS edges — while the engine owns
+// all geometry (collision avoidance, viewport clamp, panel fit). Every state
+// change snapshots the live scene into plain `LayoutItem`s, calls the engine's
+// synchronous `solve()` once, and applies each `Placement` to its layer's CSS.
 //
 // Internal coordinate model:
 //   • home {x, y}: sphere top-left in screen-space (anchored to the homeAnchor
@@ -19,18 +23,28 @@
 // anchor, so persisted positions visually "stick" to the chosen viewport
 // corner across resizes.
 
+import {
+    SPHERE_SIZE,
+    clamp as clampEngine,
+    place,
+    rectAt,
+    solve,
+    type Anchor,
+    type BoxRect,
+    type LayoutItem,
+    type Obstacle,
+    type Placement,
+    type Point,
+    type Scene,
+    type Shape,
+} from './layout-engine';
+
 const REGISTRY: Map<string, FloatingLayer> = new Map();
 
-const SPHERE_SIZE = 40;
 const MIN_VISIBLE = 20;
+const PANEL_INSET = 8;
 const DEFAULT_GAP = 10;
 const DRAG_THRESHOLD_PX = 5;
-// Iterative pushAway can ping-pong when a sphere is squeezed between two
-// obstacles (push out of A overlaps B, push out of B overlaps A). 8 passes
-// give the relaxation enough rounds to converge in practice; the explicit
-// post-pass overlap check + deterministic ring search in `_resolveAgainst`
-// handles the cases where it still hasn't.
-const COLLISION_PASSES = 8;
 const PHASE_MS = 60;
 const RELOCATE_THRESHOLD_PX = 4;
 // Pixel value rather than '50%' on purpose: CSS can't interpolate between
@@ -49,60 +63,18 @@ const SPHERE_BORDER_RADIUS = '20px';
 // matches the user mental model of the sphere being a draggable handle and
 // the panel being its content.
 
-/** Viewport corner anchor. */
-export type Anchor = 'TL' | 'TR' | 'BL' | 'BR';
+// Fallback role priorities by name when `rolePriority` opt is omitted. Lower
+// number wins: ToC (passive obstacle) pushes everything, Chat is the primary
+// movable, Live yields the most. Anything else defaults to Chat's tier.
+const ROLE_DEFAULTS: Record<string, number> = { toc: 0, chat: 1, live: 2 };
+const ROLE_FALLBACK = 2;
+
+// Re-export the shared geometry types so existing consumers/imports keep
+// working without reaching into layout-engine directly.
+export type { Anchor, BoxRect, Point };
 
 /** Obstacle shape for collision math. */
-export type ObstacleShape = 'circle' | 'rect';
-
-/** A 2D point used for sphere top-left coordinates. */
-export interface Point {
-    x: number;
-    y: number;
-}
-
-/** Box-shape rect with both edges and dimensions; mirrors {@link DOMRect}. */
-export interface BoxRect {
-    left: number;
-    top: number;
-    right: number;
-    bottom: number;
-    width: number;
-    height: number;
-}
-
-/** Quick rect interface: { left, top, right, bottom }. */
-interface EdgeRect {
-    left: number;
-    top: number;
-    right: number;
-    bottom: number;
-}
-
-const rectFromBox = (left: number, top: number, w: number, h: number): EdgeRect => ({
-    left,
-    top,
-    right: left + w,
-    bottom: top + h,
-});
-
-/** An obstacle snapshot the solver places layers against. `name`+`priority`
- *  give a STABLE ordering key so the solve never depends on registry /
- *  broadcast order. */
-interface ResolvedObstacle {
-    name: string;
-    priority: number;
-    rect: DOMRect | BoxRect;
-    shape: ObstacleShape;
-}
-
-/** Stable obstacle ordering: highest priority first (lowest number), then by
- *  name. Deterministic regardless of how the registry was populated. */
-function sortObstacles(list: ResolvedObstacle[]): ResolvedObstacle[] {
-    return list.sort((a, b) =>
-        a.priority - b.priority || (a.name < b.name ? -1 : a.name > b.name ? 1 : 0),
-    );
-}
+export type ObstacleShape = Shape;
 
 /** Initial-offset opts (any subset of edges; missing edges default to 0). */
 export interface InitialOffset {
@@ -134,6 +106,9 @@ export interface FloatingLayerOpts {
     panelAnchor?: Anchor;
     /** Minimum pixel gap between this layer and any other obstacle (covers shadow blur). */
     gap?: number;
+    /** Static product-role priority for collision ordering. Lower number wins.
+     *  Optional: omitted → name fallback (toc=0, chat=1, live=2, else 2). */
+    rolePriority?: number;
     /** Required if expandable. */
     panelSize?: { width: number; height: number };
     /** Default sphere offset from its home anchor (used until storageKey persists). */
@@ -182,6 +157,7 @@ export class FloatingLayer {
     private _homeAnchor: Anchor;
     private _panelAnchor: Anchor;
     private _gap: number;
+    private _rolePriority: number;
 
     // ── State model ────────────────────────────────────────────────
     //
@@ -205,11 +181,6 @@ export class FloatingLayer {
     private _home: Point | null = null;
     private _intentionalHome: Point | null = null;
     private _isDragging = false;
-    private _dragStart: Point | null = null;
-    // When set (true|false), all geometry helpers behave as if
-    // isExpanded returned this value — used to "what-if" the target
-    // panel position before actually morphing into a panel.
-    private _simulateExpanded: boolean | null = null;
     // The Web Animation handle for an in-flight sphere↔panel morph,
     // so collapse / mutual-exclusion / re-expand can cancel cleanly.
     private _morphAnim: Animation | null = null;
@@ -234,6 +205,7 @@ export class FloatingLayer {
         this._homeAnchor = opts.homeAnchor || 'BR';
         this._panelAnchor = opts.panelAnchor || this._homeAnchor;
         this._gap = opts.gap ?? DEFAULT_GAP;
+        this._rolePriority = opts.rolePriority ?? ROLE_DEFAULTS[opts.name] ?? ROLE_FALLBACK;
 
         REGISTRY.set(this.name, this);
     }
@@ -241,7 +213,7 @@ export class FloatingLayer {
     init(): void {
         if (this._passive) {
             this._observeObstacleClass();
-            this._notifyOthers();
+            FloatingLayer._relayout();
             return;
         }
 
@@ -251,7 +223,7 @@ export class FloatingLayer {
         this._intentionalHome = { ...this._home };
         this._applyDisplayed();
         this._bindEvents();
-        this._notifyOthers();
+        FloatingLayer._relayout();
     }
 
     destroy(): void {
@@ -311,15 +283,16 @@ export class FloatingLayer {
 
         // Compute glide endpoints. startPos is where the sphere visually
         // sits right now; endPos is where it must sit so the panel will
-        // fit (panel-fit math via _withSimulatedExpanded). The panel-fit
-        // computation seeds from _intentionalHome — the user-declared
-        // coordinate — not from _home, because _home may have been
-        // auto-modified by a prior cycle that we haven't fully unwound.
+        // fit. The panel-fit computation seeds from _intentionalHome — the
+        // user-declared coordinate — not from _home, because _home may have
+        // been auto-modified by a prior cycle that we haven't fully unwound.
+        // We synchronously ask the engine to `place()` an *active* version
+        // of this layer (panel-sized box) against the current peers, which
+        // preserves the morph pipeline while the engine stays synchronous.
         this._applyDisplayed();
         const startRect = this._opts.container.getBoundingClientRect();
         const startPos: Point = { x: startRect.left, y: startRect.top };
-        const endPos = this._withSimulatedExpanded(true,
-            () => this._clampToViewport(this._avoidObstacles(this._intentionalHome as Point)));
+        const endPos = this._placeSelf(true, this._intentionalHome as Point);
 
         // Working _home moves to the auto-relocated panel position so
         // _applyDisplayed renders the panel there. _intentionalHome is
@@ -366,7 +339,7 @@ export class FloatingLayer {
         }
 
         if (this._opts.onExpand) this._opts.onExpand();
-        this._notifyOthers();
+        FloatingLayer._relayout();
     }
 
     /** Phase 2 of expand: panel reveals from sphere's TL. Switches the
@@ -405,6 +378,10 @@ export class FloatingLayer {
                 this._morphAnim.cancel();
                 this._morphAnim = null;
             }
+            // The panel has reached its natural size; run one global solve so
+            // peers settle against the now-measurable live panel rect and any
+            // change that happened during the animation is caught up.
+            FloatingLayer._relayout();
         };
     }
 
@@ -443,13 +420,13 @@ export class FloatingLayer {
             if (!this._morphAnim) return;
             try { this._morphAnim.commitStyles(); } catch { /* */ }
             this._morphAnim.cancel();
-            // Null _morphAnim here so _beginCollapsePhase2's _applyDisplayed
-            // sees this layer as idle (priority 2) and computes the *final*
-            // resting position — including avoidance of idle peers — as the
-            // animation endpoint. Otherwise phase 2 would slide to a
-            // priority-1 displayed position (only avoiding passive/operated
-            // obstacles) and then snap to the priority-2 position when the
-            // animation ended, producing a visible second jump at the end.
+            // Null _morphAnim here so _beginCollapsePhase2's geometry sees
+            // this layer as idle and computes the *final* resting position —
+            // including avoidance of idle peers — as the animation endpoint.
+            // Otherwise phase 2 would slide to an active-priority displayed
+            // position (only avoiding passive/operated obstacles) and then
+            // snap to the idle position when the animation ended, producing a
+            // visible second jump at the end.
             this._morphAnim = null;
             this._beginCollapsePhase2();
         };
@@ -470,12 +447,11 @@ export class FloatingLayer {
         // Restore working _home to the user-declared coordinate. The
         // expand cycle may have auto-relocated _home for panel-fit; the
         // collapse undoes that. Re-clamp in case the viewport changed
-        // while open. Force simulate=false so the clamp uses *sphere*
-        // bounds, not panel — `.expanded` is still on the element here
-        // and would otherwise pull _intentionalHome inward to fit a
+        // while open. Force the *sphere* (collapsed) box so the clamp uses
+        // sphere bounds, not panel — `.expanded` is still on the element
+        // here and would otherwise pull _intentionalHome inward to fit a
         // panel we're about to dismiss.
-        const targetHome = this._withSimulatedExpanded(false,
-            () => this._clampToViewport(this._intentionalHome as Point));
+        const targetHome = this._clampSelf(false, this._intentionalHome as Point);
         this._home = targetHome;
 
         // Switch out of expanded state in one synchronous block:
@@ -490,22 +466,21 @@ export class FloatingLayer {
         c.style.transform = '';
         this._applyDisplayed();
 
-        // _applyDisplayed renders at _avoidObstacles(_home), not _home —
-        // when peers (e.g. ToC opening simultaneously) push the sphere off
+        // _applyDisplayed renders at the solved (avoided) position, not _home
+        // — when peers (e.g. ToC opening simultaneously) push the sphere off
         // its home, the *displayed* position is the real CSS-edge target.
         // Counter-translate must be measured from there or the sphere will
         // appear to fly in from a phantom location instead of from the
-        // panel's TL. Compute via simulate=false so it stays a sphere even
-        // though `.expanded` was just removed (DOM still in same JS turn).
-        const displayed = this._withSimulatedExpanded(false,
-            () => this._avoidObstacles(targetHome));
+        // panel's TL. Compute as a collapsed sphere even though `.expanded`
+        // was just removed (DOM still in same JS turn).
+        const displayed = this._placeSelf(false, targetHome);
         const dx = visualPos.x - displayed.x;
         const dy = visualPos.y - displayed.y;
 
         if (Math.hypot(dx, dy) < RELOCATE_THRESHOLD_PX) {
             // Sphere already where it needs to be — no glide.
             if (this._opts.onCollapse) this._opts.onCollapse();
-            this._notifyOthers();
+            FloatingLayer._relayout();
             return;
         }
 
@@ -526,7 +501,7 @@ export class FloatingLayer {
             // sphere is purely BR-anchored from CSS+inline edges.
             c.style.transform = '';
             if (this._opts.onCollapse) this._opts.onCollapse();
-            this._notifyOthers();
+            FloatingLayer._relayout();
         };
     }
 
@@ -544,10 +519,9 @@ export class FloatingLayer {
 
         // Snap-collapse always reverts to the user-declared home, since
         // any current _home offset is auto-relocation that must unwind.
-        // simulate=false makes the clamp use sphere bounds; `.expanded`
-        // is still set so a plain clamp would re-apply panel-fit pull.
-        this._home = this._withSimulatedExpanded(false,
-            () => this._clampToViewport(this._intentionalHome as Point));
+        // Force the collapsed sphere box so the clamp uses sphere bounds;
+        // `.expanded` is still set so a panel clamp would re-apply panel-fit.
+        this._home = this._clampSelf(false, this._intentionalHome as Point);
 
         const c = this._opts.container;
         c.classList.remove(this._expandedClass);
@@ -558,20 +532,7 @@ export class FloatingLayer {
         this._applyDisplayed();
 
         if (this._opts.onCollapse) this._opts.onCollapse();
-        this._notifyOthers();
-    }
-
-    private _withSimulatedExpanded<T>(value: boolean, fn: () => T): T {
-        const prev = this._simulateExpanded;
-        this._simulateExpanded = value;
-        try { return fn(); }
-        finally { this._simulateExpanded = prev; }
-    }
-
-    /** Effective state for geometry math: the simulate override if set,
-     *  otherwise the real DOM state. */
-    private _effectiveExpanded(): boolean {
-        return this._simulateExpanded !== null ? this._simulateExpanded : this.isExpanded;
+        FloatingLayer._relayout();
     }
 
     // ── Obstacle interface (what other layers see) ───────────────────────
@@ -593,11 +554,7 @@ export class FloatingLayer {
             // Mid-morph (or before first layout): report the layer's *eventual*
             // panel rect rather than its current sphere-sized bbox, so a peer
             // yields once upfront instead of chasing the growth.
-            const r = this._withSimulatedExpanded(true, () => this._effectiveRectAt(this._home as Point));
-            return {
-                left: r.left, top: r.top, right: r.right, bottom: r.bottom,
-                width: r.right - r.left, height: r.bottom - r.top,
-            };
+            return rectAt(this._toLayoutItem(true), this._home as Point);
         }
 
         const r = this._opts.container.getBoundingClientRect();
@@ -672,11 +629,11 @@ export class FloatingLayer {
             if (this._resizeRaf !== null) return;
             this._resizeRaf = requestAnimationFrame(() => {
                 this._resizeRaf = null;
-                if (this._home) this._home = this._clampToViewport(this._home);
+                if (this._home) this._home = this._clampSelf(this.isExpanded, this._home);
                 // Re-clamp this layer's home, then run ONE global solve so the
                 // whole layout stays deterministic and consistent after the
                 // viewport changed (not each layer recomputing on its own).
-                this._notifyOthers();
+                FloatingLayer._relayout();
             });
         };
         window.addEventListener('resize', this._resizeHandler);
@@ -693,11 +650,18 @@ export class FloatingLayer {
      *  (e.g. ToC's `.active`) — that changes their obstacle shape, so we
      *  need to nudge peers whenever the class set on the container changes. */
     private _observeObstacleClass(): void {
-        this._classObserver = new MutationObserver(() => this._notifyOthers());
+        this._classObserver = new MutationObserver(() => FloatingLayer._relayout());
         this._classObserver.observe(this._opts.container, {
             attributes: true,
             attributeFilter: ['class'],
         });
+    }
+
+    /** Re-solve and re-apply the whole layout. Public-internal so consumers
+     *  with their own resize observers (e.g. a user-resizable Chat panel) can
+     *  tell the layout to catch up after the live panel box changed. */
+    relayout(): void {
+        FloatingLayer._relayout();
     }
 
     // ── Drag ─────────────────────────────────────────────────────────────
@@ -719,14 +683,14 @@ export class FloatingLayer {
             // (viewport-clamped) into both the working _home and the
             // user-intent _intentionalHome so a collapse after the drag
             // settles at exactly where the user dropped the layer.
-            const next = this._clampToViewport({
+            const next = this._clampSelf(this.isExpanded, {
                 x: startHome.x + dx,
                 y: startHome.y + dy,
             });
             this._home = next;
             this._intentionalHome = { ...next };
             this._applyDisplayed();
-            this._notifyOthers();
+            FloatingLayer._relayout();
         };
         const onUp = (): void => {
             document.removeEventListener('mousemove', onMove);
@@ -739,7 +703,7 @@ export class FloatingLayer {
             // the corner by which viewport half the centre was in, so any drag
             // that didn't cross the midline sprang back (right/down felt stuck).
             this._persistHome();
-            this._notifyOthers();
+            FloatingLayer._relayout();
             // A real drag just ended. The browser synthesises a `click` on
             // mouseup; swallow it once at capture phase on window so NO handler
             // mistakes the drag for a click — not this layer's own toggle, and
@@ -760,7 +724,7 @@ export class FloatingLayer {
         document.addEventListener('mouseup', onUp);
     }
 
-    // ── Position storage & math ──────────────────────────────────────────
+    // ── Position storage ──────────────────────────────────────────────────
 
     private _loadHome(): Point {
         const opts = this._opts;
@@ -771,16 +735,16 @@ export class FloatingLayer {
                     const obj = raw as Record<string, unknown>;
                     // New format: { x, y } screen coords.
                     if (typeof obj.x === 'number' && typeof obj.y === 'number') {
-                        return this._clampToViewport({ x: obj.x, y: obj.y });
+                        return this._clampSelf(false, { x: obj.x, y: obj.y });
                     }
                     // Legacy format (Live pre-refactor): { right, bottom }.
                     if (typeof obj.right === 'number' || typeof obj.bottom === 'number') {
-                        return this._clampToViewport(this._offsetToScreen(obj as InitialOffset));
+                        return this._clampSelf(false, this._offsetToScreen(obj as InitialOffset));
                     }
                 }
             } catch { /* fall through to default */ }
         }
-        return this._clampToViewport(this._offsetToScreen(opts.initialOffset || { right: 20, bottom: 20 }));
+        return this._clampSelf(false, this._offsetToScreen(opts.initialOffset || { right: 20, bottom: 20 }));
     }
 
     private _persistHome(): void {
@@ -804,400 +768,85 @@ export class FloatingLayer {
         return { x, y };
     }
 
-    /** Keep ≥ MIN_VISIBLE of the sphere on screen at all times. When the
-     *  layer is expanded, also pull the entire panel back inside an 8px
-     *  margin — a sphere alone needs only a corner to remain reachable, but
-     *  a panel must keep its content readable. */
-    private _clampToViewport({ x, y }: Point): Point {
-        const vw = window.innerWidth, vh = window.innerHeight;
-        let cx = Math.max(MIN_VISIBLE - SPHERE_SIZE, Math.min(Number(x) || 0, vw - MIN_VISIBLE));
-        let cy = Math.max(MIN_VISIBLE - SPHERE_SIZE, Math.min(Number(y) || 0, vh - MIN_VISIBLE));
+    // ── Engine bridge (snapshot live DOM/window state → pure LayoutItem) ──
 
-        if (this._effectiveExpanded() && this._opts.panelSize) {
-            const MARGIN = 8;
-            const rect = this._effectiveRectAt({ x: cx, y: cy });
-            if (rect.right  > vw - MARGIN) cx -= (rect.right  - (vw - MARGIN));
-            if (rect.bottom > vh - MARGIN) cy -= (rect.bottom - (vh - MARGIN));
-            // Re-apply expanded-rect floors (after the pulls above the rect
-            // may now poke off the top/left edge if the panel is bigger than
-            // the viewport — rare but possible on tiny windows).
-            const rect2 = this._effectiveRectAt({ x: cx, y: cy });
-            if (rect2.left < MARGIN) cx += (MARGIN - rect2.left);
-            if (rect2.top  < MARGIN) cy += (MARGIN - rect2.top);
-        }
-        return { x: cx, y: cy };
-    }
-
-    /** This layer's effective rect for the given sphere TL position. */
-    private _effectiveRectAt({ x, y }: Point): EdgeRect {
-        if (!this._effectiveExpanded() || !this._opts.panelSize) {
-            return rectFromBox(x, y, SPHERE_SIZE, SPHERE_SIZE);
-        }
-        const { width: W, height: H } = this._opts.panelSize;
-        const a = this._panelAnchor;
-        const left = (a === 'TL' || a === 'BL') ? x : x + SPHERE_SIZE - W;
-        const top  = (a === 'TL' || a === 'TR') ? y : y + SPHERE_SIZE - H;
-        return rectFromBox(left, top, W, H);
-    }
-
-    // ── Collision avoidance ──────────────────────────────────────────────
-
-    /** Collision priority. **Lower number = higher priority** (it wins).
-     *
-     *    0  — passive/fixed (TOC). Pushes everything; yields to nothing.
-     *    1  — operated: this layer is being dragged, is expanded, is
-     *         mid-morph, or is in a `_withSimulatedExpanded(true, …)`
-     *         block (i.e. computing its eventual panel position). Other
-     *         movables yield to it; it yields only to passive obstacles.
-     *    2  — idle movable. Yields to passive and operated. Yields
-     *         mutually with another idle peer so two idle spheres don't
-     *         sit on top of each other.
-     *
-     *  All three states fall out of existing flags — no extra book-
-     *  keeping. `_effectiveExpanded()` honors the simulate override, so
-     *  the *moment* expand() enters its simulate block to compute endPos,
-     *  this layer already reports priority 1 — peers yield to its
-     *  eventual panel rect, not its current sphere bbox. */
-    private _priority(): 0 | 1 | 2 {
-        if (this._passive) return 0;
-        if (this._effectiveExpanded() || this._morphAnim || this._isDragging) return 1;
-        return 2;
-    }
-
-    /** Resolve this layer's displayed position for `home`, avoiding the
-     *  given obstacles. This is the single deterministic placement routine
-     *  shared by the global {@link _solveLayout} (which feeds freshly-solved
-     *  peer rects) and the standalone {@link _avoidObstacles} (which reads
-     *  peers' current obstacle rects). The algorithm is:
-     *
-     *    1. Relax: push out of every obstacle, a few passes (a push out of
-     *       A may move us into B).
-     *    2. Fold the viewport clamp INTO the result.
-     *    3. Re-verify: if the clamp shoved us back into an obstacle (corner
-     *       case), deterministically search outward from `home` for the
-     *       closest clear, on-screen slot — never the random spiral, never
-     *       an off-screen position, never a silently-kept overlap.
-     *
-     *  Same input + same obstacle list ⇒ same output. No registry / broadcast
-     *  order dependence. */
-    private _resolveAgainst(home: Point, obstacles: ResolvedObstacle[]): Point {
-        let pos: Point = { ...home };
-        // Relax: pushing away from one obstacle may bring this layer into
-        // another, so iterate a bounded number of passes. Obstacles are
-        // visited in the caller's deterministic order.
-        for (let pass = 0; pass < COLLISION_PASSES; pass++) {
-            let changed = false;
-            for (const ob of obstacles) {
-                const next = this._pushAway(pos, ob.rect, ob.shape);
-                if (next.x !== pos.x || next.y !== pos.y) {
-                    pos = next;
-                    changed = true;
-                }
+    /** Measure this layer's live panel box: the settled bounding rect when
+     *  available (so a user-resized Chat panel informs layout), falling back
+     *  to opts.panelSize before the first layout. */
+    private _measurePanelBox(): { width: number; height: number } {
+        if (this._opts.panelSize) {
+            const live = this._opts.container.getBoundingClientRect();
+            if (this.isExpanded && !this._morphAnim && live.width > 0 && live.height > 0) {
+                return { width: live.width, height: live.height };
             }
-            if (!changed) break;
+            return { ...this._opts.panelSize };
         }
-        // Fold clamp into the solve so the final position is always on-screen.
-        pos = this._clampToViewport(pos);
-
-        // Re-verify after clamp: clamping is obstacle-blind, so at a viewport
-        // corner it can pull `pos` back into an obstacle. If so, search
-        // deterministically for the closest clear slot around the *intended*
-        // home (not the ping-pong endpoint). The search is exhaustive enough
-        // that it always returns an on-screen point, so we never keep a
-        // silent overlap and never land off-screen.
-        if (this._overlapsAny(pos, obstacles)) {
-            pos = this._searchClearPosition(home, obstacles);
-        }
-        return pos;
+        return { width: SPHERE_SIZE, height: SPHERE_SIZE };
     }
 
-    /** Standalone single-layer resolve: gather this layer's current
-     *  equal-or-higher-priority obstacles from the registry, then delegate to
-     *  {@link _resolveAgainst}. Obstacles are sorted deterministically by
-     *  (priority, name) so the result never depends on registry order. */
-    private _avoidObstacles(home: Point): Point {
-        const myPriority = this._priority();
-        const obstacles = this._collectObstacles(myPriority);
-        return this._resolveAgainst(home, obstacles);
-    }
-
-    /** Snapshot of an obstacle this layer must avoid, with its shape. */
-    private _collectObstacles(myPriority: number): ResolvedObstacle[] {
-        const obstacles: ResolvedObstacle[] = [];
-        for (const layer of REGISTRY.values()) {
-            if (layer === this) continue;
-            // Yield only to obstacles of equal or higher priority (lower or
-            // equal number). Strictly lower-priority peers yield to *us*.
-            if (layer._priority() > myPriority) continue;
-            const rect = layer.getObstacleRect();
-            if (!rect) continue;
-            obstacles.push({
-                name: layer.name,
-                priority: layer._priority(),
-                rect,
-                shape: layer.getObstacleShape(),
-            });
-        }
-        return sortObstacles(obstacles);
-    }
-
-    // ── Global deterministic solve ───────────────────────────────────────
-
-    /** Compute every movable layer's displayed position in ONE deterministic
-     *  pass, then apply them all. Replaces the old "each layer recomputes
-     *  independently + broadcast cascade" model, which was order-dependent
-     *  (B1) and non-convergent for mutually-yielding idle peers (D3).
-     *
-     *  Algorithm:
-     *    • Passive layers (ToC) are fixed obstacles — collected once.
-     *    • Movable layers are placed in (priority, name) order. A layer being
-     *      placed avoids: all passive obstacles + the *already-solved* rects
-     *      of equal-or-higher-priority movables placed before it. Lower-
-     *      priority movables placed later avoid IT, not the reverse.
-     *    • Same-priority idle peers therefore get a stable, symmetric result:
-     *      the name-earlier peer keeps its home, the name-later one queues
-     *      away from it — no ping-pong, no registry-order dependence.
-     *
-     *  A layer that is mid-morph keeps its frozen displayed position (it has
-     *  an in-flight visual trajectory) but still participates as an obstacle
-     *  via its solved rect so peers yield around it.
-     *
-     *  Returns the solved sphere top-left per layer name. */
-    static _solveLayout(): Map<string, Point> {
-        const solved = new Map<string, Point>();
-
-        // Passive obstacles are fixed; gather them once.
-        const passiveObstacles: ResolvedObstacle[] = [];
-        const movables: FloatingLayer[] = [];
-        for (const layer of REGISTRY.values()) {
-            if (layer._passive) {
-                const rect = layer.getObstacleRect();
-                if (rect) {
-                    passiveObstacles.push({
-                        name: layer.name, priority: 0, rect, shape: layer.getObstacleShape(),
-                    });
-                }
-            } else if (layer._home) {
-                movables.push(layer);
-            }
-        }
-
-        // Stable placement order: highest priority first, then by name.
-        movables.sort((a, b) => {
-            const pa = a._priority(), pb = b._priority();
-            return pa - pb || (a.name < b.name ? -1 : a.name > b.name ? 1 : 0);
-        });
-
-        const placed: ResolvedObstacle[] = [];
-        for (const layer of movables) {
-            const myPriority = layer._priority();
-            // Avoid all passive obstacles + already-placed equal-or-higher
-            // priority movables. `placed` is built in priority order, so a
-            // simple priority filter gives exactly that set.
-            const obstacles = sortObstacles(
-                passiveObstacles
-                    .concat(placed.filter((p) => p.priority <= myPriority))
-                    .filter((o) => o.name !== layer.name),
-            );
-            const pos = layer._resolveAgainst(layer._home as Point, obstacles);
-            solved.set(layer.name, pos);
-            placed.push({
-                name: layer.name,
-                priority: myPriority,
-                rect: layer._solvedObstacleRect(pos),
-                shape: layer._currentSelfShape(),
-            });
-        }
-        return solved;
-    }
-
-    /** This layer's obstacle rect at a solved sphere position (mirrors the
-     *  shape logic of {@link getObstacleRect} but for a hypothetical point,
-     *  not the live DOM rect). */
-    private _solvedObstacleRect(pos: Point): BoxRect {
-        const r = this._effectiveRectAt(pos);
+    /** Snapshot this layer's live state into a pure {@link LayoutItem} for the
+     *  engine. `activeOverride` forces the active/panel view regardless of the
+     *  current DOM state — used to preview a panel's eventual position before
+     *  morphing, and to advertise the eventual panel rect mid-morph. */
+    private _toLayoutItem(activeOverride?: boolean): LayoutItem {
+        const active = activeOverride ?? (this.isExpanded || !!this._morphAnim || this._isDragging);
+        // Only panel-bearing layers occupy a larger box when active; a plain
+        // draggable sphere stays a 40×40 circle even mid-drag.
+        const box = active && this._opts.panelSize
+            ? this._measurePanelBox()
+            : { width: SPHERE_SIZE, height: SPHERE_SIZE };
+        const isSphereBox = box.width === SPHERE_SIZE && box.height === SPHERE_SIZE;
         return {
-            left: r.left, top: r.top, right: r.right, bottom: r.bottom,
-            width: r.right - r.left, height: r.bottom - r.top,
+            id: this.name,
+            rolePriority: this._rolePriority,
+            active,
+            passive: this._passive,
+            home: (this._home ?? this._intentionalHome ?? { x: 0, y: 0 }) as Point,
+            homeAnchor: this._homeAnchor,
+            panelAnchor: this._panelAnchor,
+            box,
+            shape: isSphereBox ? 'circle' : 'rect',
+            gap: this._gap,
         };
     }
 
-    /** Does `pos` overlap any of `obstacles`? Mirrors the shape pairings in
-     *  `_pushAway` but only computes the yes/no answer — no displacement
-     *  vector. */
-    private _overlapsAny(pos: Point, obstacles: ResolvedObstacle[]): boolean {
-        const my = this._effectiveRectAt(pos);
-        const myShape = this._currentSelfShape();
-        const gap = this._gap;
-        for (const ob of obstacles) {
-            if (this._overlapsRect(my, myShape, ob.rect, ob.shape, gap)) {
-                return true;
-            }
-        }
-        return false;
+    /** Engine-backed single-point placement of this layer at `home`, avoiding
+     *  the *current* peers (their live obstacle rects). `active` forces the
+     *  panel/sphere view. Synchronous — the engine never blocks the morph
+     *  pipeline. Mirrors the former `_avoidObstacles` standalone resolve. */
+    private _placeSelf(active: boolean, home: Point): Point {
+        const item = this._toLayoutItem(active);
+        item.home = home;
+        const obstacles = this._collectPeerObstacles(item.rolePriority);
+        return place(item, obstacles, FloatingLayer._sceneFrame());
     }
 
-    /** Shape-aware overlap test with `gap` clearance. */
-    private _overlapsRect(
-        my: EdgeRect, myShape: ObstacleShape,
-        other: DOMRect | BoxRect, otherShape: ObstacleShape, gap: number,
-    ): boolean {
-        if (myShape === 'circle' && otherShape === 'circle') {
-            const myR = SPHERE_SIZE / 2;
-            const otR = Math.min(other.width, other.height) / 2;
-            const myCx = my.left + myR, myCy = my.top + myR;
-            const otCx = other.left + other.width / 2;
-            const otCy = other.top  + other.height / 2;
-            return Math.hypot(myCx - otCx, myCy - otCy) < (myR + otR + gap);
-        }
-        if (myShape === 'circle') {
-            const myR = SPHERE_SIZE / 2;
-            const cx = my.left + myR, cy = my.top + myR;
-            const closestX = Math.max(other.left, Math.min(cx, other.right));
-            const closestY = Math.max(other.top,  Math.min(cy, other.bottom));
-            return Math.hypot(cx - closestX, cy - closestY) < (myR + gap);
-        }
-        if (otherShape === 'circle') {
-            const otR = Math.min(other.width, other.height) / 2;
-            const otCx = other.left + other.width / 2;
-            const otCy = other.top  + other.height / 2;
-            const closestX = Math.max(my.left, Math.min(otCx, my.right));
-            const closestY = Math.max(my.top,  Math.min(otCy, my.bottom));
-            return Math.hypot(otCx - closestX, otCy - closestY) < (otR + gap);
-        }
-        // rect-rect with gap (no overlap if a gap-wide strip separates the rects on any axis)
-        return !(my.right + gap <= other.left || other.right + gap <= my.left
-              || my.bottom + gap <= other.top || other.bottom + gap <= my.top);
+    /** Engine-backed clamp of `home` for this layer, forcing the active/sphere
+     *  view. Mirrors the former `_clampToViewport` with simulate override. */
+    private _clampSelf(active: boolean, home: Point): Point {
+        const item = this._toLayoutItem(active);
+        item.home = home;
+        return clampEngine(item, home, FloatingLayer._sceneFrame());
     }
 
-    /** Deterministic outward search from `home` for the closest clear,
-     *  on-screen slot avoiding `obstacles`. Sweeps fixed concentric rings ×
-     *  fixed directions (NOT a random spiral), clamping every candidate into
-     *  the viewport so no result is ever off-screen. The first non-colliding
-     *  candidate wins (rings widen by distance, so it is the closest). If
-     *  every ring is blocked — extremely tight scene — return the on-screen
-     *  candidate with the *least* overlap rather than null, so the caller
-     *  never keeps an arbitrary worse overlap and never lands off-screen. */
-    private _searchClearPosition(home: Point, obstacles: ResolvedObstacle[]): Point {
-        // Concentric ring radii (px). Each ring sweeps 8 cardinal +
-        // diagonal directions before widening — finds the closest free
-        // slot without enumerating every pixel. Both lists are fixed and
-        // ordered, so the search is fully deterministic.
-        const STEPS = [40, 60, 90, 130, 180, 240, 320, 420, 560];
-        const DIRS: Array<{ dx: number; dy: number }> = [
-            { dx:  0, dy: -1 },
-            { dx:  1, dy:  0 },
-            { dx: -1, dy:  0 },
-            { dx:  0, dy:  1 },
-            { dx:  1, dy: -1 },
-            { dx: -1, dy: -1 },
-            { dx:  1, dy:  1 },
-            { dx: -1, dy:  1 },
-        ];
-        let best: Point | null = null;
-        let bestScore = Infinity;
-        for (const step of STEPS) {
-            for (const d of DIRS) {
-                const cand = this._clampToViewport({
-                    x: home.x + d.dx * step,
-                    y: home.y + d.dy * step,
-                });
-                if (!this._overlapsAny(cand, obstacles)) return cand;
-                // Track the least-bad on-screen candidate as a guaranteed
-                // fallback (overlap area + distance from home as tie-break).
-                const score = this._overlapScore(cand, obstacles)
-                    + Math.hypot(cand.x - home.x, cand.y - home.y) * 1e-3;
-                if (score < bestScore) {
-                    bestScore = score;
-                    best = cand;
-                }
-            }
+    /** Current peers' live obstacle rects, as engine {@link Obstacle}s. Only
+     *  equal-or-higher priority peers (lower-or-equal rolePriority) are
+     *  returned — strictly lower-priority peers yield to us, not the reverse. */
+    private _collectPeerObstacles(myPriority: number): Obstacle[] {
+        const obstacles: Obstacle[] = [];
+        for (const layer of REGISTRY.values()) {
+            if (layer === this) continue;
+            if (layer._rolePriority > myPriority) continue;
+            const rect = layer.getObstacleRect();
+            if (!rect) continue;
+            obstacles.push({
+                id: layer.name,
+                rolePriority: layer._rolePriority,
+                rect: toBoxRect(rect),
+                shape: layer.getObstacleShape(),
+            });
         }
-        // Last resort: the clamped home itself is on-screen; compare it too.
-        const clampedHome = this._clampToViewport(home);
-        const homeScore = this._overlapScore(clampedHome, obstacles);
-        if (homeScore < bestScore || best === null) best = clampedHome;
-        return best;
-    }
-
-    /** Total overlap "area" of `pos` against `obstacles` — used only to pick
-     *  the least-bad on-screen fallback when no fully-clear slot exists.
-     *  Approximated as summed AABB intersection area of effective rects. */
-    private _overlapScore(pos: Point, obstacles: ResolvedObstacle[]): number {
-        const my = this._effectiveRectAt(pos);
-        const gap = this._gap;
-        let area = 0;
-        for (const ob of obstacles) {
-            const ix = Math.min(my.right + gap, ob.rect.right) - Math.max(my.left - gap, ob.rect.left);
-            const iy = Math.min(my.bottom + gap, ob.rect.bottom) - Math.max(my.top - gap, ob.rect.top);
-            if (ix > 0 && iy > 0) area += ix * iy;
-        }
-        return area;
-    }
-
-    /** Push this layer's effective shape away from `otherRect` if they overlap. */
-    private _pushAway(pos: Point, otherRect: DOMRect | BoxRect, otherShape: ObstacleShape): Point {
-        const my = this._effectiveRectAt(pos);
-        const myShape = this._currentSelfShape();
-        const gap = this._gap;
-
-        // Circle ↔ circle: vector push from center to center.
-        if (myShape === 'circle' && otherShape === 'circle') {
-            const myR = SPHERE_SIZE / 2;
-            const otR = Math.min(otherRect.width, otherRect.height) / 2;
-            const myCx = my.left + myR, myCy = my.top + myR;
-            const otCx = otherRect.left + otherRect.width / 2;
-            const otCy = otherRect.top  + otherRect.height / 2;
-            const dx = myCx - otCx, dy = myCy - otCy;
-            const dist = Math.hypot(dx, dy);
-            const minDist = myR + otR + gap;
-            if (dist >= minDist) return pos;
-            const ux = dist === 0 ? 0  : dx / dist;
-            const uy = dist === 0 ? 1  : dy / dist;
-            const newCx = otCx + ux * minDist;
-            const newCy = otCy + uy * minDist;
-            return { x: newCx - myR, y: newCy - myR };
-        }
-
-        // Circle ↔ rect (this layer is the circle, other is rect).
-        if (myShape === 'circle' && otherShape === 'rect') {
-            const myR = SPHERE_SIZE / 2;
-            const cx = my.left + myR, cy = my.top + myR;
-            return circleAwayFromRect(cx, cy, myR, otherRect, gap, (newCx, newCy) => ({
-                x: newCx - myR, y: newCy - myR,
-            }));
-        }
-
-        // Rect ↔ circle (this layer is the rect, other is circle).
-        if (myShape === 'rect' && otherShape === 'circle') {
-            const otR = Math.min(otherRect.width, otherRect.height) / 2;
-            const otCx = otherRect.left + otherRect.width / 2;
-            const otCy = otherRect.top  + otherRect.height / 2;
-            // Inflate `my` by otR + gap so the problem reduces to "is the
-            // other circle's center inside this expanded rect?". If yes,
-            // push along the shortest axis to escape.
-            return rectAwayFromCircle(my, pos, otCx, otCy, otR + gap);
-        }
-
-        // Rect ↔ rect: AABB push along the shortest axis.
-        const overlapX = Math.min(my.right, otherRect.right) - Math.max(my.left, otherRect.left);
-        const overlapY = Math.min(my.bottom, otherRect.bottom) - Math.max(my.top, otherRect.top);
-        if (overlapX <= -gap || overlapY <= -gap) return pos;
-        const needX = overlapX + gap;
-        const needY = overlapY + gap;
-        if (needX < needY) {
-            const myCx = (my.left + my.right) / 2;
-            const otCx = (otherRect.left + otherRect.right) / 2;
-            return { x: pos.x + (myCx < otCx ? -needX : needX), y: pos.y };
-        }
-        const myCy = (my.top + my.bottom) / 2;
-        const otCy = (otherRect.top + otherRect.bottom) / 2;
-        return { x: pos.x, y: pos.y + (myCy < otCy ? -needY : needY) };
-    }
-
-    /** Shape of this layer right now (collapsed sphere = circle). */
-    private _currentSelfShape(): ObstacleShape {
-        return this._effectiveExpanded() ? 'rect' : 'circle';
+        return obstacles;
     }
 
     // ── CSS application ──────────────────────────────────────────────────
@@ -1206,7 +855,7 @@ export class FloatingLayer {
         if (this._passive) return;
         const home = this._home;
         if (!home) return;
-        this._writeDisplayed(this._avoidObstacles(home));
+        this._writeDisplayed(this._placeSelf(this.isExpanded, home));
     }
 
     /** Write CSS edges for an already-resolved displayed position. Split out
@@ -1238,107 +887,75 @@ export class FloatingLayer {
         else         c.style.right  = `${vw - displayed.x - SZ}px`;
     }
 
-    // ── Peer notification ───────────────────────────────────────────────
+    // ── Global deterministic solve ───────────────────────────────────────
 
-    /** Any state change runs ONE global solve, then applies the solved
-     *  position to every non-morph movable. This replaces N independent
-     *  recomputes: there is a single deterministic source of truth for the
-     *  whole layout, so the result never depends on who broadcast first. */
-    private _notifyOthers(): void {
-        const solved = FloatingLayer._solveLayout();
+    /** The pure-engine scene frame (viewport + margins) snapshotted from the
+     *  live window. Shared by the global solve and single-point placements. */
+    private static _sceneFrame(): Pick<Scene, 'viewport' | 'margins'> {
+        return {
+            viewport: { width: window.innerWidth, height: window.innerHeight },
+            margins: { minVisible: MIN_VISIBLE, panelInset: PANEL_INSET },
+        };
+    }
+
+    /** Snapshot the whole registry into a pure {@link Scene}: a `LayoutItem`
+     *  per registered layer (live box/shape/home measured now) plus the live
+     *  viewport and margins. The engine consumes only numbers. */
+    private static _buildScene(): Scene {
+        const items: LayoutItem[] = [];
         for (const layer of REGISTRY.values()) {
-            if (layer._passive) continue;
+            // A passive layer always participates as an obstacle; a movable one
+            // only once it has loaded a working home.
+            if (!layer._passive && !layer._home) continue;
+            const item = layer._toLayoutItem();
+            if (layer._passive) {
+                // Passive items are fixed obstacles at their reported rect.
+                // Drive the box/shape/home off getObstacleRect so the engine's
+                // `obstacleAt(item, item.home)` reproduces that exact rect.
+                const rect = layer.getObstacleRect();
+                if (!rect) continue;
+                const box = toBoxRect(rect);
+                item.home = { x: box.left, y: box.top };
+                item.box = { width: box.width, height: box.height };
+                item.shape = layer.getObstacleShape();
+                item.panelAnchor = 'TL'; // rect grows from its own TL = box rect
+            }
+            items.push(item);
+        }
+        const frame = FloatingLayer._sceneFrame();
+        return { viewport: frame.viewport, items, margins: frame.margins };
+    }
+
+    /** Any state change runs ONE global engine solve, then applies the solved
+     *  position to every non-morph movable. This is the single deterministic
+     *  source of truth for the whole layout: the result never depends on who
+     *  changed first, on registry order, or on a broadcast cascade. */
+    static _relayout(): void {
+        const placements: Placement[] = solve(FloatingLayer._buildScene());
+        for (const p of placements) {
+            const layer = REGISTRY.get(p.id);
+            if (!layer || layer._passive) continue;
             // Don't disturb a layer that is mid-morph: it has a frozen visual
-            // trajectory (panel TL → sphere home) and any external write
-            // during that window would re-anchor mid-flight, making the
-            // sphere appear to teleport. The morph's own onfinish re-applies
-            // when it's done, catching up with whatever changed meanwhile.
+            // trajectory (panel TL → sphere home) and any external write during
+            // that window would re-anchor mid-flight, making the sphere appear
+            // to teleport. The morph's own onfinish re-applies when it's done,
+            // catching up with whatever changed meanwhile.
             if (layer._morphAnim) continue;
-            const pos = solved.get(layer.name);
-            if (pos) layer._writeDisplayed(pos);
+            layer._writeDisplayed(p.pos);
         }
     }
 }
 
-// ── Geometry helpers (free functions to keep methods readable) ───────────
+// ── Engine adapters ─────────────────────────────────────────────────────
 
-/** Push a circle out of a rect with `gap` clearance. `mapCenter` projects
- *  the resulting circle center back to the caller's coord shape. When the
- *  circle's center sits inside the rect, the four edge exits are ranked
- *  first by whether they keep the circle on-screen, then by smallest
- *  displacement — otherwise a Live sphere overlapped by an opening Chat
- *  panel can pop off the right edge of the window when the only on-screen
- *  exit is leftward. */
-function circleAwayFromRect(
-    cx: number,
-    cy: number,
-    r: number,
-    rect: DOMRect | BoxRect,
-    gap: number,
-    mapCenter: (newCx: number, newCy: number) => Point,
-): Point {
-    const closestX = Math.max(rect.left, Math.min(cx, rect.right));
-    const closestY = Math.max(rect.top,  Math.min(cy, rect.bottom));
-    const dx = cx - closestX;
-    const dy = cy - closestY;
-    const dist = Math.hypot(dx, dy);
-    const minDist = r + gap;
-
-    if (dist === 0) {
-        const vw = window.innerWidth, vh = window.innerHeight;
-        const fits = (x: number, y: number): boolean =>
-            (x - r) >= 0 && (x + r) <= vw && (y - r) >= 0 && (y + r) <= vh;
-        const candidates = [
-            { newCx: rect.left   - minDist, newCy: cy, mag: cx - rect.left   }, // exit left
-            { newCx: rect.right  + minDist, newCy: cy, mag: rect.right - cx  }, // exit right
-            { newCx: cx, newCy: rect.top    - minDist, mag: cy - rect.top    }, // exit up
-            { newCx: cx, newCy: rect.bottom + minDist, mag: rect.bottom - cy }, // exit down
-        ];
-        candidates.sort((a, b) => {
-            const fa = fits(a.newCx, a.newCy), fb = fits(b.newCx, b.newCy);
-            if (fa !== fb) return fa ? -1 : 1;
-            return a.mag - b.mag;
-        });
-        const best = candidates[0];
-        return mapCenter(best.newCx, best.newCy);
-    }
-
-    if (dist >= minDist) return mapCenter(cx, cy);
-    const ux = dx / dist, uy = dy / dist;
-    return mapCenter(closestX + ux * minDist, closestY + uy * minDist);
-}
-
-/** Push a rect away from a circle (treated as inflated rect with `gap` margin). */
-function rectAwayFromCircle(
-    myRect: EdgeRect,
-    currentSpherePos: Point,
-    otCx: number,
-    otCy: number,
-    expandedRadius: number,
-): Point {
-    // Compute the closest point on `myRect` to the circle center; if the
-    // center is closer than `expandedRadius`, push the whole rect along the
-    // shortest axis until it's not.
-    const closestX = Math.max(myRect.left, Math.min(otCx, myRect.right));
-    const closestY = Math.max(myRect.top,  Math.min(otCy, myRect.bottom));
-    const dx = otCx - closestX, dy = otCy - closestY;
-    const dist = Math.hypot(dx, dy);
-    if (dist >= expandedRadius) return currentSpherePos;
-
-    // Translate the rect by some delta to put the circle outside it. Each
-    // candidate is the translation that places one chosen edge exactly at
-    // the circle's clearance boundary; we pick the one with the smallest
-    // magnitude so the layer is displaced as little as possible.
-    const candidates: Array<{ axis: 'x' | 'y'; delta: number }> = [
-        { axis: 'x', delta: (otCx - expandedRadius) - myRect.right  }, // push left
-        { axis: 'x', delta: (otCx + expandedRadius) - myRect.left   }, // push right
-        { axis: 'y', delta: (otCy - expandedRadius) - myRect.bottom }, // push up
-        { axis: 'y', delta: (otCy + expandedRadius) - myRect.top    }, // push down
-    ];
-    candidates.sort((a, b) => Math.abs(a.delta) - Math.abs(b.delta));
-    const best = candidates[0];
+/** Normalize any DOM/box rect into the engine's {@link BoxRect}. */
+function toBoxRect(r: DOMRect | BoxRect): BoxRect {
     return {
-        x: currentSpherePos.x + (best.axis === 'x' ? best.delta : 0),
-        y: currentSpherePos.y + (best.axis === 'y' ? best.delta : 0),
+        left: r.left,
+        top: r.top,
+        right: r.right,
+        bottom: r.bottom,
+        width: r.width,
+        height: r.height,
     };
 }

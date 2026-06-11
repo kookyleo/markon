@@ -676,6 +676,10 @@ export class ChatManager {
             const h = c.offsetHeight;
             if (w < 240 || h < 320) return;  // mid-morph or just-snapped sphere
             persist(w, h);
+            // Tell the layout to re-solve so peers yield to the *new* live
+            // panel box — FloatingLayer measures the panel rect on each solve,
+            // so a user-resized Chat panel now informs the whole layout.
+            this.#layer?.relayout();
         });
         this.#resizeObserver.observe(this.#container);
     }
@@ -1054,6 +1058,8 @@ export class ChatManager {
             container: this.#container,
             handle: this.#face,
             body: this.#panel,
+            // Primary movable: yields only to passive ToC, pushes Live.
+            rolePriority: 1,
             panelSize: { width: 420, height: 600 },
             homeAnchor: 'BR',
             // Same morph as the Live panel: the sphere becomes the panel's

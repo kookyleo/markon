@@ -89,207 +89,152 @@ describe('FloatingLayer / construction', () => {
     });
 });
 
-// ── _priority state machine ────────────────────────────────────────────────
+// ── rolePriority opt + name fallback ────────────────────────────────────────
+//
+// The pure geometry (priority ordering, clamp, push-away, single/global solve)
+// now lives in the engine and is covered exhaustively by layout-engine.test.ts.
+// Here we test only the ADAPTER: that it derives the right rolePriority, builds
+// a scene, and applies the engine's result to its peers.
 
-describe('FloatingLayer / priority', () => {
-    it('passive layer reports priority 0', () => {
-        const layer = freshLayer('passive', { passive: true });
-        expect((layer as unknown as { _priority(): number })._priority()).toBe(0);
+describe('FloatingLayer / rolePriority', () => {
+    type Internal = { _rolePriority: number };
+
+    it('falls back by name when rolePriority is omitted (toc/chat/live)', () => {
+        const toc = freshLayer('toc', { passive: true });
+        const chat = freshLayer('chat');
+        const live = freshLayer('live');
+        expect((toc as unknown as Internal)._rolePriority).toBe(0);
+        expect((chat as unknown as Internal)._rolePriority).toBe(1);
+        expect((live as unknown as Internal)._rolePriority).toBe(2);
     });
 
-    it('idle movable reports priority 2', () => {
-        const layer = freshLayer('idle');
-        expect((layer as unknown as { _priority(): number })._priority()).toBe(2);
+    it('falls back to a stable default for an unknown name', () => {
+        const other = freshLayer('mystery');
+        expect((other as unknown as Internal)._rolePriority).toBe(2);
     });
 
-    it('expanded movable reports priority 1', () => {
-        const layer = freshLayer('exp', {
-            panelSize: { width: 200, height: 200 },
-        });
-        layer._applyDisplayed; // ensure private touch compiles
-        // Force "expanded" by adding the expanded class directly.
-        const opts = (layer as unknown as { _opts: FloatingLayerOpts })._opts;
-        opts.container.classList.add('expanded');
-        expect((layer as unknown as { _priority(): number })._priority()).toBe(1);
+    it('honors an explicit rolePriority opt over the name fallback', () => {
+        const layer = freshLayer('chat', { rolePriority: 5 });
+        expect((layer as unknown as Internal)._rolePriority).toBe(5);
     });
+});
 
-    it('dragging movable reports priority 1', () => {
-        const layer = freshLayer('drag');
-        (layer as unknown as { _isDragging: boolean })._isDragging = true;
-        expect((layer as unknown as { _priority(): number })._priority()).toBe(1);
-    });
+// ── _toLayoutItem snapshot ──────────────────────────────────────────────────
 
-    it('simulate(true) override raises priority to 1', () => {
-        const layer = freshLayer('sim', {
-            panelSize: { width: 200, height: 200 },
-        });
-        const internal = layer as unknown as {
-            _withSimulatedExpanded<T>(v: boolean, fn: () => T): T;
-            _priority(): number;
+describe('FloatingLayer / _toLayoutItem', () => {
+    type WithItem = {
+        _home: { x: number; y: number } | null;
+        _intentionalHome: { x: number; y: number } | null;
+        _toLayoutItem(active?: boolean): {
+            id: string; rolePriority: number; active: boolean; passive: boolean;
+            box: { width: number; height: number }; shape: 'circle' | 'rect';
+            home: { x: number; y: number }; gap: number;
         };
-        const inner = internal._withSimulatedExpanded(true, () => internal._priority());
-        expect(inner).toBe(1);
-        // After the simulate block, falls back to idle.
-        expect(internal._priority()).toBe(2);
+    };
+
+    it('collapsed movable snapshots a 40×40 circle at its working home', () => {
+        const layer = freshLayer('chat', { gap: 10 });
+        const internal = layer as unknown as WithItem;
+        internal._home = { x: 120, y: 130 };
+        internal._intentionalHome = { x: 120, y: 130 };
+        const item = internal._toLayoutItem();
+        expect(item.id).toBe('chat');
+        expect(item.rolePriority).toBe(1);
+        expect(item.active).toBe(false);
+        expect(item.shape).toBe('circle');
+        expect(item.box).toEqual({ width: 40, height: 40 });
+        expect(item.home).toEqual({ x: 120, y: 130 });
+        expect(item.gap).toBe(10);
+    });
+
+    it('active override yields the panel box + rect shape', () => {
+        const layer = freshLayer('live', { panelSize: { width: 260, height: 210 } });
+        const internal = layer as unknown as WithItem;
+        internal._home = { x: 100, y: 100 };
+        internal._intentionalHome = { x: 100, y: 100 };
+        const item = internal._toLayoutItem(true);
+        expect(item.active).toBe(true);
+        expect(item.shape).toBe('rect');
+        // No live layout in jsdom (getBoundingClientRect is 0×0) → falls back
+        // to the declared panelSize.
+        expect(item.box).toEqual({ width: 260, height: 210 });
     });
 });
 
-// ── _clampToViewport ───────────────────────────────────────────────────────
+// ── Global solve applied to all peers ───────────────────────────────────────
 
-describe('FloatingLayer / _clampToViewport', () => {
-    type Internal = {
-        _clampToViewport(p: { x: number; y: number }): { x: number; y: number };
-    };
+describe('FloatingLayer / global relayout', () => {
+    type Relayout = { _relayout(): void };
+    type WithHome = { _home: { x: number; y: number }; _intentionalHome: { x: number; y: number } };
 
-    it('keeps a sphere center in-viewport (≥ MIN_VISIBLE on each side)', () => {
-        const layer = freshLayer('clamp1');
-        const internal = layer as unknown as Internal;
-        // Sphere is 40×40, MIN_VISIBLE=20 so x ranges in [-20, vw-20] = [-20, 980].
-        expect(internal._clampToViewport({ x: -1000, y: -1000 })).toEqual({ x: -20, y: -20 });
-        expect(internal._clampToViewport({ x: 5000, y: 5000 })).toEqual({ x: 980, y: 780 });
-        // Inside, untouched.
-        expect(internal._clampToViewport({ x: 100, y: 200 })).toEqual({ x: 100, y: 200 });
-    });
+    /** Build an idle movable sphere whose working home is at `home`. */
+    function idleAt(name: string, home: { x: number; y: number }, override: Partial<FloatingLayerOpts> = {}): FloatingLayer {
+        const layer = freshLayer(name, { gap: 10, ...override });
+        const internal = layer as unknown as WithHome;
+        internal._home = { ...home };
+        internal._intentionalHome = { ...home };
+        return layer;
+    }
 
-    it('expanded mode pulls the entire panel inside the 8px margin', () => {
-        const layer = freshLayer('clamp2', {
-            panelSize: { width: 300, height: 200 },
-            panelAnchor: 'TL',
+    it('one solve separates two overlapping idle peers and writes CSS edges', () => {
+        installAnimateStub();
+        // 'a' is rolePriority 2 (live fallback), 'b' rolePriority 1 (chat).
+        // The engine sorts by (rolePriority, id): chat (1) placed first keeps
+        // its home, live (2) yields. Both get CSS edges written.
+        const chat = idleAt('chat', { x: 300, y: 300 });
+        const live = idleAt('live', { x: 305, y: 302 }); // overlaps chat
+
+        (FloatingLayer as unknown as Relayout)._relayout();
+
+        // chat keeps its home (BR-anchored → right/bottom edges set).
+        const chatEl = (chat as unknown as { _opts: FloatingLayerOpts })._opts.container;
+        const liveEl = (live as unknown as { _opts: FloatingLayerOpts })._opts.container;
+        // Both layers received a fixed position from the solve.
+        expect(chatEl.style.position).toBe('fixed');
+        expect(liveEl.style.position).toBe('fixed');
+        // The two spheres no longer overlap: derive their solved TL from the
+        // BR-anchored CSS edges (x = vw - right - 40, y = vh - bottom - 40).
+        const tl = (el: HTMLElement) => ({
+            x: 1000 - parseFloat(el.style.right) - 40,
+            y: 800 - parseFloat(el.style.bottom) - 40,
         });
-        const opts = (layer as unknown as { _opts: FloatingLayerOpts })._opts;
-        opts.container.classList.add('expanded');
-        const internal = layer as unknown as Internal;
-        // Place sphere TL at (900, 700). Panel bottom-right would be at
-        // (1200, 900) which exceeds (1000-8, 800-8). Clamp pulls it back.
-        const out = internal._clampToViewport({ x: 900, y: 700 });
-        // Panel right = x + 300 must be ≤ 992, so x ≤ 692.
-        expect(out.x).toBeLessThanOrEqual(692);
-        // Panel bottom = y + 200 must be ≤ 792, so y ≤ 592.
-        expect(out.y).toBeLessThanOrEqual(592);
-    });
-});
-
-// ── _pushAway ──────────────────────────────────────────────────────────────
-
-describe('FloatingLayer / _pushAway', () => {
-    type Internal = {
-        _pushAway(
-            pos: { x: number; y: number },
-            other: { left: number; top: number; right: number; bottom: number; width: number; height: number },
-            shape: 'circle' | 'rect',
-        ): { x: number; y: number };
-    };
-
-    it('circle ↔ circle: separates by sumRadii + gap along the connecting axis', () => {
-        const layer = freshLayer('cc');
-        const internal = layer as unknown as Internal;
-        // Put `other` 40×40 circle centered at (100, 100). Place self
-        // sphere at (90, 100) (TL) → centers overlap at (110, 120) vs
-        // (120, 120); push outward.
-        const before = { x: 90, y: 100 };
-        const other = { left: 80, top: 80, right: 120, bottom: 120, width: 40, height: 40 };
-        const after = internal._pushAway(before, other, 'circle');
-        // Centers must be ≥ (20+20+10) = 50px apart after push.
-        const myCx = after.x + 20, myCy = after.y + 20;
-        const otCx = 100, otCy = 100;
-        const dist = Math.hypot(myCx - otCx, myCy - otCy);
+        const pa = tl(chatEl);
+        const pb = tl(liveEl);
+        // chat (placed first) keeps its home.
+        expect(pa).toEqual({ x: 300, y: 300 });
+        const dist = Math.hypot(pa.x - pb.x, pa.y - pb.y);
         expect(dist).toBeGreaterThanOrEqual(50 - 1e-6);
     });
 
-    it('circle ↔ rect: pushes a colliding sphere out along the closest exit', () => {
-        const layer = freshLayer('cr');
-        const internal = layer as unknown as Internal;
-        // Other rect occupies x:200-400, y:200-300. Place sphere at
-        // (210, 250) so its center (230, 270) is inside the rect.
-        const before = { x: 210, y: 250 };
-        const other = { left: 200, top: 200, right: 400, bottom: 300, width: 200, height: 100 };
-        const after = internal._pushAway(before, other, 'rect');
-        // Sphere center should now be outside the rect by ≥ r + gap = 30.
-        const myCx = after.x + 20, myCy = after.y + 20;
-        const closestX = Math.max(other.left, Math.min(myCx, other.right));
-        const closestY = Math.max(other.top, Math.min(myCy, other.bottom));
-        const dist = Math.hypot(myCx - closestX, myCy - closestY);
-        expect(dist).toBeGreaterThanOrEqual(30 - 1e-6);
+    it('is order-independent: registering in the opposite order gives the same layout', () => {
+        installAnimateStub();
+        idleAt('live', { x: 305, y: 302 });
+        idleAt('chat', { x: 300, y: 300 });
+        (FloatingLayer as unknown as Relayout)._relayout();
+        const tl = (name: string) => {
+            const el = (FloatingLayer.get(name) as unknown as { _opts: FloatingLayerOpts })._opts.container;
+            return { x: 1000 - parseFloat(el.style.right) - 40, y: 800 - parseFloat(el.style.bottom) - 40 };
+        };
+        // chat (rolePriority 1) keeps its home regardless of registration order.
+        expect(tl('chat')).toEqual({ x: 300, y: 300 });
     });
 
-    it('rect ↔ circle: pushes the panel rect along the shortest axis to clear', () => {
-        const layer = freshLayer('rc', {
-            panelSize: { width: 200, height: 100 },
-            panelAnchor: 'TL',
-        });
-        const opts = (layer as unknown as { _opts: FloatingLayerOpts })._opts;
-        opts.container.classList.add('expanded');
-        const internal = layer as unknown as Internal;
-        // Self panel @ (100, 100) covers x:100-300, y:100-200. Other
-        // circle 40×40 at center (310, 150) → just outside but within gap.
-        const before = { x: 100, y: 100 };
-        const other = { left: 290, top: 130, right: 330, bottom: 170, width: 40, height: 40 };
-        const after = internal._pushAway(before, other, 'circle');
-        // Should push the rect leftward (away from the circle).
-        expect(after.x).toBeLessThan(before.x);
-    });
-
-    it('non-overlapping shapes are returned unchanged', () => {
-        const layer = freshLayer('noover');
-        const internal = layer as unknown as Internal;
-        const before = { x: 0, y: 0 };
-        // Far-away circle, no contact.
-        const other = { left: 500, top: 500, right: 540, bottom: 540, width: 40, height: 40 };
-        const after = internal._pushAway(before, other, 'circle');
-        expect(after).toEqual(before);
-    });
-});
-
-// ── _avoidObstacles (priority + multi-pass) ────────────────────────────────
-
-describe('FloatingLayer / _avoidObstacles', () => {
-    it('idle peer yields to passive obstacle (passive priority 0)', () => {
-        // Put a passive 40×40 obstacle at fixed center; idle layer near
-        // overlapping should be pushed away.
-        const passiveBox = makeContainer();
-        Object.defineProperty(passiveBox, 'getBoundingClientRect', {
-            value: () => ({ left: 100, top: 100, right: 140, bottom: 140, width: 40, height: 40, x: 100, y: 100, toJSON: () => ({}) }) as DOMRect,
-        });
-        // Hand-build a passive layer with explicit shape via opts so we
-        // don't depend on init() side-effects.
+    it('a passive layer participates as an obstacle that movables avoid', () => {
+        installAnimateStub();
+        // Passive obstacle (rolePriority 0) at the chat sphere's home.
         new FloatingLayer({
-            name: 'pasv',
-            container: passiveBox,
+            name: 'toc',
+            container: makeContainer(),
             passive: true,
-            getObstacleRect: () => ({ left: 100, top: 100, right: 140, bottom: 140, width: 40, height: 40 }),
+            getObstacleRect: () => ({ left: 300, top: 300, right: 340, bottom: 340, width: 40, height: 40 }),
             getObstacleShape: () => 'circle',
         });
-        const idle = freshLayer('idle');
-        const internal = idle as unknown as { _avoidObstacles(p: { x: number; y: number }): { x: number; y: number } };
-        const out = internal._avoidObstacles({ x: 100, y: 100 });
-        // Must have moved away.
-        expect(out.x !== 100 || out.y !== 100).toBe(true);
-    });
-
-    it('does not move out of the way of strictly lower-priority peers', () => {
-        // Self is operated (priority 1) — peer is idle (priority 2)
-        // and asks to occupy the same spot. Self stays put.
-        const self = freshLayer('self', {
-            panelSize: { width: 200, height: 200 },
-            panelAnchor: 'TL',
-        });
-        const opts = (self as unknown as { _opts: FloatingLayerOpts })._opts;
-        opts.container.classList.add('expanded'); // priority 1
-
-        // Idle peer reporting an obstacle right where self plans to be.
-        const peerEl = makeContainer();
-        new FloatingLayer({
-            name: 'peer-idle',
-            container: peerEl,
-            getObstacleRect: () => ({ left: 50, top: 50, right: 90, bottom: 90, width: 40, height: 40 }),
-            getObstacleShape: () => 'circle',
-        });
-        const internal = self as unknown as { _avoidObstacles(p: { x: number; y: number }): { x: number; y: number } };
-        // Without priority handling, this would be pushed; with it, self
-        // ignores the lower-priority peer and only re-clamps to the
-        // viewport. With TL anchor, panel @ (50,50) extends to (250,250)
-        // — well inside viewport (1000×800), so clamp is a no-op.
-        expect(internal._avoidObstacles({ x: 50, y: 50 })).toEqual({ x: 50, y: 50 });
+        const chat = idleAt('chat', { x: 300, y: 300 }); // sits on the passive obstacle
+        (FloatingLayer as unknown as Relayout)._relayout();
+        const el = (chat as unknown as { _opts: FloatingLayerOpts })._opts.container;
+        const tl = { x: 1000 - parseFloat(el.style.right) - 40, y: 800 - parseFloat(el.style.bottom) - 40 };
+        // chat must have been pushed off the passive obstacle.
+        expect(tl).not.toEqual({ x: 300, y: 300 });
     });
 });
 
@@ -455,143 +400,47 @@ describe('FloatingLayer / expand+collapse state', () => {
     });
 });
 
-// ── Deterministic single-pass solver (the erratic-behavior fix) ─────────────
+// ── Live-panel-box re-solve (A2) ─────────────────────────────────────────────
+//
+// The deterministic-solve / convergence / on-screen guarantees are exercised
+// directly on the engine in layout-engine.test.ts. Here we only assert the
+// ADAPTER plumbing that the engine cannot see: that a user-resized panel feeds
+// its *live* measured box into the scene, and that a relayout() catches up.
 
-describe('FloatingLayer / deterministic solve', () => {
-    type SolveInternal = {
-        _home: { x: number; y: number };
-        _avoidObstacles(p: { x: number; y: number }): { x: number; y: number };
-        _priority(): number;
-    };
-    type Solver = {
-        _solveLayout(): Map<string, { x: number; y: number }>;
-    };
+describe('FloatingLayer / live panel box', () => {
+    type WithHome = { _home: { x: number; y: number }; _intentionalHome: { x: number; y: number } };
+    type WithItem = { _toLayoutItem(active?: boolean): { box: { width: number; height: number } } };
+    type Relayout = { _relayout(): void };
 
-    /** Build an idle movable sphere whose working home is at `home`. */
-    function idleAt(name: string, home: { x: number; y: number }): FloatingLayer {
-        const layer = freshLayer(name, { gap: 10 });
-        const internal = layer as unknown as SolveInternal & {
-            _intentionalHome: { x: number; y: number };
-        };
-        internal._home = { ...home };
-        internal._intentionalHome = { ...home };
-        return layer;
-    }
+    it('an expanded panel advertises its live measured box, not the declared panelSize', () => {
+        installAnimateStub();
+        const layer = freshLayer('chat', { panelSize: { width: 420, height: 600 } });
+        const opts = (layer as unknown as { _opts: FloatingLayerOpts })._opts;
+        const internal = layer as unknown as WithHome & WithItem;
+        internal._home = { x: 100, y: 100 };
+        internal._intentionalHome = { x: 100, y: 100 };
 
-    /** A fixed passive obstacle (treated as a rect). */
-    function passiveRect(name: string, r: { left: number; top: number; right: number; bottom: number }): FloatingLayer {
-        return new FloatingLayer({
-            name,
-            container: makeContainer(),
-            passive: true,
-            getObstacleRect: () => ({ ...r, width: r.right - r.left, height: r.bottom - r.top }),
-            getObstacleShape: () => 'rect',
+        // Simulate a user-resized, settled panel: .expanded set, no morph, and a
+        // live rect that differs from panelSize (e.g. dragged smaller).
+        opts.container.classList.add('expanded');
+        Object.defineProperty(opts.container, 'getBoundingClientRect', {
+            configurable: true,
+            value: () => ({ left: 100, top: 100, right: 600, bottom: 480, width: 500, height: 380, x: 100, y: 100, toJSON: () => ({}) }) as DOMRect,
         });
-    }
 
-    it('same geometry, opposite registration orders → identical solved positions', () => {
-        // Order 1: a then b.
-        idleAt('a', { x: 200, y: 200 });
-        idleAt('b', { x: 210, y: 205 }); // overlapping a
-        const solved1 = (FloatingLayer as unknown as Solver)._solveLayout();
-        const a1 = solved1.get('a')!;
-        const b1 = solved1.get('b')!;
-        for (const inst of Array.from(FloatingLayer.all())) inst.destroy();
-
-        // Order 2: b then a — same geometry, reversed insertion.
-        idleAt('b', { x: 210, y: 205 });
-        idleAt('a', { x: 200, y: 200 });
-        const solved2 = (FloatingLayer as unknown as Solver)._solveLayout();
-        const a2 = solved2.get('a')!;
-        const b2 = solved2.get('b')!;
-
-        expect(a2).toEqual(a1);
-        expect(b2).toEqual(b1);
+        const item = internal._toLayoutItem();
+        expect(item.box).toEqual({ width: 500, height: 380 });
     });
 
-    it('two idle peers → symmetric, stable placement (name-earlier keeps home)', () => {
-        const a = idleAt('a', { x: 300, y: 300 });
-        const b = idleAt('b', { x: 305, y: 302 }); // overlaps a
-        const solved = (FloatingLayer as unknown as Solver)._solveLayout();
-        const pa = solved.get('a')!;
-        const pb = solved.get('b')!;
-
-        // a (name-earlier, placed first) keeps its home; b yields.
-        expect(pa).toEqual({ x: 300, y: 300 });
-        expect(pa).not.toEqual(pb);
-
-        // No residual overlap: centers ≥ sumRadii + gap apart.
-        const dist = Math.hypot((pa.x + 20) - (pb.x + 20), (pa.y + 20) - (pb.y + 20));
-        expect(dist).toBeGreaterThanOrEqual(50 - 1e-6);
-
-        // Idempotent: solving again yields the same map (no ping-pong).
-        const ia = a as unknown as SolveInternal;
-        const ib = b as unknown as SolveInternal;
-        ia._home = pa; ib._home = pb;
-        const solved2 = (FloatingLayer as unknown as Solver)._solveLayout();
-        expect(solved2.get('a')).toEqual(pa);
-        expect(solved2.get('b')).toEqual(pb);
-    });
-
-    it('a sphere squeezed between two obstacles converges with no residual overlap', () => {
-        // Two passive rects with a narrow gap; an idle sphere starts inside.
-        passiveRect('wallL', { left: 100, top: 100, right: 300, bottom: 500 });
-        passiveRect('wallR', { left: 340, top: 100, right: 540, bottom: 500 });
-        const s = idleAt('squeezed', { x: 300, y: 280 }); // wedged near the gap
-        const internal = s as unknown as SolveInternal;
-        const out = internal._avoidObstacles(internal._home);
-
-        // The resolved position must not overlap either wall (with gap).
-        const cx = out.x + 20, cy = out.y + 20, r = 20, gap = 10;
-        const clears = (rect: { left: number; top: number; right: number; bottom: number }): boolean => {
-            const closestX = Math.max(rect.left, Math.min(cx, rect.right));
-            const closestY = Math.max(rect.top, Math.min(cy, rect.bottom));
-            return Math.hypot(cx - closestX, cy - closestY) >= (r + gap) - 1e-6;
-        };
-        expect(clears({ left: 100, top: 100, right: 300, bottom: 500 })).toBe(true);
-        expect(clears({ left: 340, top: 100, right: 540, bottom: 500 })).toBe(true);
-    });
-
-    it('expanded panel clamped at a viewport edge does NOT rebound into an obstacle', () => {
-        // A passive obstacle in the bottom-right; an expanded panel near the
-        // edge gets clamped — the clamp must not shove it back into the rect.
-        passiveRect('block', { left: 700, top: 600, right: 760, bottom: 660 });
-        const panel = freshLayer('panel', {
-            panelSize: { width: 300, height: 250 },
-            panelAnchor: 'TL',
-            gap: 10,
-        });
-        const opts = (panel as unknown as { _opts: FloatingLayerOpts })._opts;
-        opts.container.classList.add('expanded'); // priority 1
-        const internal = panel as unknown as SolveInternal;
-        internal._home = { x: 760, y: 600 }; // panel would overflow bottom-right
-
-        const out = internal._avoidObstacles({ x: 760, y: 600 });
-        // Panel rect at the solved position (TL anchor: sphere TL = panel TL).
-        const pr = { left: out.x, top: out.y, right: out.x + 300, bottom: out.y + 250 };
-        // On-screen (viewport 1000×800).
-        expect(pr.left).toBeGreaterThanOrEqual(-1);
-        expect(pr.top).toBeGreaterThanOrEqual(-1);
-        expect(pr.right).toBeLessThanOrEqual(1001);
-        expect(pr.bottom).toBeLessThanOrEqual(801);
-        // Must NOT overlap the passive block after clamping.
-        const sep =
-            pr.right + 10 <= 700 || 760 + 10 <= pr.left ||
-            pr.bottom + 10 <= 600 || 660 + 10 <= pr.top;
-        expect(sep).toBe(true);
-    });
-
-    it('never positions a sphere or panel off-screen, even in a tight scene', () => {
-        // Fill the viewport center with a big passive obstacle and crowd the
-        // corners; the solved sphere must still land on-screen.
-        passiveRect('huge', { left: 0, top: 0, right: 950, bottom: 760 });
-        const s = idleAt('crowded', { x: 500, y: 400 });
-        const internal = s as unknown as SolveInternal;
-        const out = internal._avoidObstacles(internal._home);
-        // Sphere TL must keep ≥ MIN_VISIBLE on screen: x in [-20, 980], etc.
-        expect(out.x).toBeGreaterThanOrEqual(-20);
-        expect(out.x).toBeLessThanOrEqual(980);
-        expect(out.y).toBeGreaterThanOrEqual(-20);
-        expect(out.y).toBeLessThanOrEqual(780);
+    it('relayout() is callable as the consumer-facing re-solve hook (resize path)', () => {
+        installAnimateStub();
+        const layer = freshLayer('chat', { panelSize: { width: 420, height: 600 } });
+        const internal = layer as unknown as WithHome & { relayout(): void };
+        internal._home = { x: 100, y: 100 };
+        internal._intentionalHome = { x: 100, y: 100 };
+        // The public relayout() (used by a panel ResizeObserver) and the static
+        // _relayout() both run a full solve without throwing.
+        expect(() => internal.relayout()).not.toThrow();
+        expect(() => (FloatingLayer as unknown as Relayout)._relayout()).not.toThrow();
     });
 });

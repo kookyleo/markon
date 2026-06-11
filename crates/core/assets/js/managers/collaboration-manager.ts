@@ -514,6 +514,8 @@ export class CollaborationManager {
             container: this.container,
             handle: this.container.querySelector('.markon-live-face') as HTMLElement,
             body: this.panel,
+            // Lowest-priority movable: yields to both passive ToC and Chat.
+            rolePriority: 2,
             panelSize: { width: 260, height: 210 },
             homeAnchor: 'BR',
             // Panel grows down-right from the sphere's TL — the "L" letter
