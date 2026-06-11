@@ -5,8 +5,12 @@ use std::{
     sync::{Arc, Mutex, MutexGuard},
 };
 use tantivy::{
-    collector::TopDocs, query::QueryParser, schema::*, snippet::SnippetGenerator, Index,
-    IndexReader, IndexWriter, TantivyDocument, TantivyError,
+    collector::TopDocs,
+    query::QueryParser,
+    schema::*,
+    snippet::SnippetGenerator,
+    tokenizer::{LowerCaser, TextAnalyzer},
+    Index, IndexReader, IndexWriter, TantivyDocument, TantivyError,
 };
 use tantivy_jieba::JiebaTokenizer;
 use walkdir::WalkDir;
@@ -65,8 +69,14 @@ impl SearchIndex {
         // Create index in RAM
         let index = Index::create_in_ram(schema);
 
-        // Register jieba tokenizer
-        index.tokenizers().register("jieba", JiebaTokenizer {});
+        // Register jieba + a LowerCaser so search is case-insensitive for Latin
+        // text (CJK has no case, so jieba's output is unaffected). The same
+        // analyzer runs at index and query time, so both sides lower-case
+        // consistently — "Hello" matches "hello".
+        let analyzer = TextAnalyzer::builder(JiebaTokenizer {})
+            .filter(LowerCaser)
+            .build();
+        index.tokenizers().register("jieba", analyzer);
 
         // Create writer and reader
         let writer = index.writer(50_000_000)?;
@@ -714,6 +724,28 @@ mod tests {
             delete_result.is_err(),
             "delete_file should report poisoned writer as an error"
         );
+    }
+
+    /// Search is case-insensitive: the analyzer lower-cases both the indexed
+    /// text and the query, so case never affects whether a term matches.
+    #[test]
+    fn test_search_is_case_insensitive() {
+        let temp_dir = TempDir::new().unwrap();
+        let dir_path = temp_dir.path();
+        create_test_file(dir_path, "doc.md", "# Heading\nThe Quick BrownFox jumps.").unwrap();
+        let index = SearchIndex::new(dir_path).unwrap();
+
+        assert_eq!(
+            index.search("quick", 10).unwrap().len(),
+            1,
+            "lower-case query must match mixed-case text"
+        );
+        assert_eq!(
+            index.search("QUICK", 10).unwrap().len(),
+            1,
+            "upper-case query must match too"
+        );
+        assert_eq!(index.search("brownfox", 10).unwrap().len(), 1);
     }
 
     /// A single-file index must hold exactly ONE document — the pinned file —
