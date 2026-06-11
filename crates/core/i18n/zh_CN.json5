@@ -135,6 +135,7 @@
     "ws.add.hint":    "新建工作区",
     "ws.open.tip":    "在浏览器中打开",
     "ws.remove":      "从列表中移除",
+    "ws.tag.single":  "单文件",
     "ws.flag.search": "搜索",
     "ws.flag.search.tip": "启用全文搜索索引，可在浏览器中搜索文件内容",
     "ws.flag.search.ready": "搜索索引已就绪",

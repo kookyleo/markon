@@ -348,10 +348,17 @@ impl WorkspaceRegistry {
         match single_file {
             Some(name) => {
                 // Seed allowed_assets from the file's current content, then watch
-                // for external edits to keep it fresh. Search indexing is
-                // suppressed regardless of `enable_search` — single-file mode
-                // skips the tantivy spin-up entirely (use Cmd/Ctrl+F instead).
+                // for external edits to keep it fresh. When search is enabled,
+                // build an index scoped to ONLY this file (no parent WalkDir, no
+                // sibling leakage); the single-file watcher refreshes it on edit.
                 refresh_allowed_assets(&entry, &name);
+                if config.flags.enable_search {
+                    spawn_single_file_search_indexer(
+                        config.path.clone(),
+                        entry.clone(),
+                        name.clone(),
+                    );
+                }
                 spawn_single_file_watcher(config.path, entry, name, self.live_tx.clone());
             }
             None => {
@@ -388,9 +395,17 @@ impl WorkspaceRegistry {
             .shared_annotation
             .store(flags.shared_annotation, Ordering::Relaxed);
         let _ = entry.config_tx.send(());
+        // Mirror the spawn/clear semantics for both directory and single-file
+        // workspaces: turning search on spawns the appropriate indexer, turning
+        // it off drops the index so we stop serving stale results and free RAM.
         if flags.enable_search && !was_search && entry.search_index.load().is_none() {
             let root = entry.root.clone();
-            spawn_search_indexer(root, entry);
+            match &entry.single_file {
+                Some(name) => spawn_single_file_search_indexer(root, entry.clone(), name.clone()),
+                None => spawn_search_indexer(root, entry),
+            }
+        } else if !flags.enable_search && was_search {
+            entry.search_index.store(None);
         }
         self.notify_persist();
         true
@@ -509,6 +524,11 @@ fn spawn_single_file_watcher(
                     EventKind::Create(_) | EventKind::Modify(_) => {
                         if touched_pinned {
                             refresh_allowed_assets(&entry, &file_name);
+                            // Keep the file-scoped search index in sync. No-op
+                            // when search is disabled (no index loaded).
+                            if let Some(idx) = entry.search_index.load_full() {
+                                let _ = idx.update_file(&target);
+                            }
                         }
                         should_broadcast = true;
                     }
@@ -516,6 +536,9 @@ fn spawn_single_file_watcher(
                     // reloading would 404 the tab.
                     EventKind::Remove(_) if touched_pinned => {
                         entry.allowed_assets.write().unwrap().clear();
+                        if let Some(idx) = entry.search_index.load_full() {
+                            let _ = idx.delete_file(&target);
+                        }
                     }
                     _ => {}
                 }
@@ -541,6 +564,19 @@ fn spawn_search_indexer(root: PathBuf, entry: Arc<WorkspaceEntry>) {
             let idx = Arc::new(idx);
             entry.search_index.store(Some(idx.clone()));
             start_file_watcher(idx, root);
+        }
+    });
+}
+
+/// Build a search index scoped to a single-file workspace's pinned file and
+/// store it on the entry. Unlike [`spawn_search_indexer`], this indexes only
+/// `root/file_name` (no WalkDir of the parent → no sibling leakage) and spawns
+/// no extra file watcher: the single-file watcher already owns the parent dir
+/// and refreshes this index on edit via `entry.search_index`.
+fn spawn_single_file_search_indexer(root: PathBuf, entry: Arc<WorkspaceEntry>, file_name: String) {
+    std::thread::spawn(move || {
+        if let Ok(idx) = SearchIndex::new_single_file(&root, &file_name) {
+            entry.search_index.store(Some(Arc::new(idx)));
         }
     });
 }
@@ -689,5 +725,101 @@ mod tests {
         assert_eq!(back.host, "0.0.0.0");
         assert_eq!(back.port, 6419);
         assert_eq!(back.token, "tok");
+    }
+
+    /// Block until the entry's search index is populated (it's built on a
+    /// background thread), or fail the test after a generous timeout.
+    fn wait_for_index(entry: &Arc<WorkspaceEntry>) -> Arc<SearchIndex> {
+        for _ in 0..200 {
+            if let Some(idx) = entry.search_index.load_full() {
+                return idx;
+            }
+            std::thread::sleep(std::time::Duration::from_millis(10));
+        }
+        panic!("search index was not built in time");
+    }
+
+    /// SECURITY: a single-file workspace with search enabled must index ONLY
+    /// the pinned file. A sibling `.md` carrying a unique term must never be
+    /// findable through that workspace's index, proving the parent directory is
+    /// not walked.
+    #[test]
+    fn single_file_workspace_search_no_sibling_leakage() {
+        let temp_dir = tempfile::TempDir::new().unwrap();
+        let dir = temp_dir.path();
+        std::fs::write(
+            dir.join("pinned.md"),
+            "# Pinned\nuniquepinnedtoken is here.",
+        )
+        .unwrap();
+        std::fs::write(
+            dir.join("sibling.md"),
+            "# Sibling\nuniquesiblingtoken stays private.",
+        )
+        .unwrap();
+
+        let registry = WorkspaceRegistry::new("test-salt".into());
+        let id = registry.add(WorkspaceConfig {
+            path: dir.to_path_buf(),
+            flags: WorkspaceFlags {
+                enable_search: true,
+                ..Default::default()
+            },
+            single_file: Some("pinned.md".into()),
+            access_code_hash: String::new(),
+        });
+
+        let entry = registry.get(&id).unwrap();
+        assert!(entry.is_ephemeral());
+        let idx = wait_for_index(&entry);
+
+        assert_eq!(
+            idx.search("uniquesiblingtoken", 10).unwrap().len(),
+            0,
+            "single-file workspace leaked a sibling through search"
+        );
+        assert_eq!(
+            idx.search("uniquepinnedtoken", 10).unwrap().len(),
+            1,
+            "pinned file should be searchable"
+        );
+    }
+
+    /// The search toggle must work for single-file workspaces too: turning it
+    /// on spawns the file-scoped indexer, turning it off clears the index.
+    #[test]
+    fn single_file_workspace_search_toggle_spawns_and_clears() {
+        let temp_dir = tempfile::TempDir::new().unwrap();
+        let dir = temp_dir.path();
+        std::fs::write(dir.join("note.md"), "# Note\ntoggletoken here.").unwrap();
+
+        let registry = WorkspaceRegistry::new("test-salt".into());
+        // Start with search OFF.
+        let id = registry.add(WorkspaceConfig {
+            path: dir.to_path_buf(),
+            flags: WorkspaceFlags::default(),
+            single_file: Some("note.md".into()),
+            access_code_hash: String::new(),
+        });
+        let entry = registry.get(&id).unwrap();
+        assert!(entry.search_index.load().is_none());
+
+        // Turn search ON → file-scoped index appears.
+        registry.update_flags(
+            &id,
+            WorkspaceFlags {
+                enable_search: true,
+                ..Default::default()
+            },
+        );
+        let idx = wait_for_index(&entry);
+        assert_eq!(idx.search("toggletoken", 10).unwrap().len(), 1);
+
+        // Turn search OFF → index is cleared.
+        registry.update_flags(&id, WorkspaceFlags::default());
+        assert!(
+            entry.search_index.load().is_none(),
+            "disabling search must clear the single-file index"
+        );
     }
 }

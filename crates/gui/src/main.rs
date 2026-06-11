@@ -216,14 +216,12 @@ fn handle_open_path(app: &tauri::AppHandle, path: &Path) {
 
     let (flags, browser_base) = {
         let settings = state.settings.lock().unwrap();
-        // For single-file workspaces, force search off (a tantivy index per
-        // ephemeral .md is wasteful — Cmd/Ctrl+F is the right tool for one
-        // file). enable_live still follows the user's default so external
-        // edits can sync once the live-reload client lands.
-        let is_single = single_file.is_some();
+        // Single-file workspaces follow the user's defaults for every flag.
+        // Search is safe here: the registry builds a file-scoped index (only
+        // the pinned file, no parent WalkDir), so there's no sibling leakage.
         (
             markon_core::workspace::WorkspaceFlags {
-                enable_search: settings.default_search && !is_single,
+                enable_search: settings.default_search,
                 enable_viewed: settings.default_viewed,
                 enable_edit: settings.default_edit,
                 enable_live: settings.default_live,

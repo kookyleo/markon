@@ -377,6 +377,30 @@
       border-radius: var(--radius);
       padding: 10px 12px;
     }
+    /* Single-file (transient, Open-With) workspaces: same radius/padding/bg as a
+       normal card, but a dashed border marks them as "a virtual dir of one file". */
+    .ws-card--file {
+      border-style: dashed;
+      border-color: var(--border);
+    }
+    /* Leading file glyph in the path row of a single-file card. */
+    .ws-file-icon {
+      flex-shrink: 0;
+      color: var(--text-3);
+      display: flex;
+      align-items: center;
+    }
+    /* Muted "single file" pill at the right of the path row. */
+    .ws-file-tag {
+      flex-shrink: 0;
+      padding: 2px 7px;
+      border-radius: 4px;
+      background: var(--surface-2);
+      color: var(--text-3);
+      font-size: 10.5px;
+      letter-spacing: 0.02em;
+      white-space: nowrap;
+    }
     /* Row 1: path + icon buttons */
     .ws-row-top {
       display: flex;
@@ -1908,9 +1932,10 @@
   // ── Workspace list ──────────────────────────────────────────────────────
   async function refreshWorkspaces() {
     const all = await invoke('get_workspaces');
-    // Hide ephemeral (single-file Open-With) workspaces from Settings — they're
-    // not user-configurable, not persisted, and disappear when the app exits.
-    const workspaces = all.filter(ws => !ws.ephemeral);
+    // Single-file (Open-With) workspaces ARE listed now — surfaced as dashed
+    // "single file" cards so they can be configured/shared like any workspace.
+    // They stay transient (not persisted): they vanish when the app exits.
+    const workspaces = all;
     const list = document.getElementById('ws-list');
     list.innerHTML = '';
 
@@ -1928,7 +1953,7 @@
 
     workspaces.forEach(ws => {
       const card = document.createElement('div');
-      card.className = 'ws-card';
+      card.className = ws.single_file ? 'ws-card ws-card--file' : 'ws-card';
       card.dataset.id = ws.id;
 
       const flagDefs = [
@@ -1947,13 +1972,22 @@
         </label>`
       ).join('');
 
-      // Shorten path: replace home dir with ~
-      const home = ws.path.match(/^\/Users\/[^/]+/)?.[0] || '';
-      const shortPath = home ? ws.path.replace(home, '~') : ws.path;
+      // Single-file workspaces show the FILE (parent dir + pinned name); normal
+      // workspaces show the folder. Shorten the home dir to ~.
+      const fullPath = ws.single_file ? `${ws.path}/${ws.single_file}` : ws.path;
+      const home = fullPath.match(/^\/Users\/[^/]+/)?.[0] || '';
+      const shortPath = home ? fullPath.replace(home, '~') : fullPath;
+      // Leading file glyph + a "single file" pill, only on single-file cards.
+      const fileIcon = ws.single_file
+        ? `<span class="ws-file-icon" aria-hidden="true"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg></span>`
+        : '';
+      const fileTag = ws.single_file ? `<span class="ws-file-tag">${esc(T('ws.tag.single'))}</span>` : '';
 
       card.innerHTML = `
         <div class="ws-row-top">
-          <span class="ws-path" title="${esc(ws.path)}">${esc(shortPath)}</span>
+          ${fileIcon}
+          <span class="ws-path" title="${esc(fullPath)}">${esc(shortPath)}</span>
+          ${fileTag}
           <button class="ws-icon-btn open-btn" title="${T('ws.open.tip')}">
             <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
               <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/>

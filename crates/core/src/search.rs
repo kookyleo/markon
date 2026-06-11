@@ -18,7 +18,7 @@ pub struct SearchQuery {
 }
 
 /// One hit returned by `GET /search`.
-#[derive(Serialize)]
+#[derive(Serialize, Debug)]
 pub struct SearchResult {
     pub file_path: String,
     pub file_name: String,
@@ -38,7 +38,11 @@ pub struct SearchIndex {
 }
 
 impl SearchIndex {
-    pub fn new(start_dir: &Path) -> tantivy::Result<Self> {
+    /// Build an empty index whose schema/tokenizer/reader/writer are wired up
+    /// but which holds no documents yet. `start_dir` is the prefix that
+    /// `rel_path` strips, so stored `path` values stay relative and consistent
+    /// across [`Self::new`], [`Self::new_single_file`], and `update_file`.
+    fn empty(start_dir: &Path) -> tantivy::Result<Self> {
         // Build schema
         let mut schema_builder = Schema::builder();
 
@@ -68,7 +72,7 @@ impl SearchIndex {
         let writer = index.writer(50_000_000)?;
         let reader = index.reader()?;
 
-        let search_index = Self {
+        Ok(Self {
             index,
             reader,
             writer: Arc::new(Mutex::new(writer)),
@@ -77,12 +81,50 @@ impl SearchIndex {
             field_title,
             field_content,
             start_dir: start_dir.to_path_buf(),
-        };
+        })
+    }
+
+    pub fn new(start_dir: &Path) -> tantivy::Result<Self> {
+        let search_index = Self::empty(start_dir)?;
 
         // Index all markdown files
         search_index.index_directory(start_dir)?;
 
         Ok(search_index)
+    }
+
+    /// Build an index scoped to a SINGLE file inside `start_dir`.
+    ///
+    /// Unlike [`Self::new`], this never walks `start_dir`: the resulting index
+    /// contains exactly one document — `start_dir/file_name` — so a single-file
+    /// workspace cannot leak sibling files through search. `start_dir` is still
+    /// the parent directory so the stored `path` is just `file_name`, matching
+    /// what the single-file watcher passes to `update_file` on later edits.
+    pub fn new_single_file(start_dir: &Path, file_name: &str) -> tantivy::Result<Self> {
+        let search_index = Self::empty(start_dir)?;
+        search_index.index_single_file(file_name)?;
+        Ok(search_index)
+    }
+
+    /// Index exactly the pinned file (`start_dir/file_name`). Non-markdown or
+    /// unreadable targets leave the index empty rather than erroring, mirroring
+    /// the silent-skip behaviour of `index_directory`.
+    fn index_single_file(&self, file_name: &str) -> tantivy::Result<()> {
+        let path = self.start_dir.join(file_name);
+        tracing::info!("indexing single file {path:?}");
+
+        if path.extension().is_some_and(|ext| ext == "md") {
+            if let Ok(content) = fs::read_to_string(&path) {
+                let doc = self.build_document(&path, &content);
+                let mut writer = self.writer()?;
+                writer.add_document(doc)?;
+                writer.commit()?;
+            }
+        }
+
+        self.reader.reload()?;
+        tracing::info!("single-file indexing complete");
+        Ok(())
     }
 
     /// Acquire the writer lock, mapping poisoning to a tantivy error
@@ -672,5 +714,93 @@ mod tests {
             delete_result.is_err(),
             "delete_file should report poisoned writer as an error"
         );
+    }
+
+    /// A single-file index must hold exactly ONE document — the pinned file —
+    /// regardless of how many other markdown files share its parent directory.
+    #[test]
+    fn test_single_file_index_contains_exactly_one_doc() {
+        let temp_dir = TempDir::new().unwrap();
+        let dir_path = temp_dir.path();
+
+        create_test_file(dir_path, "pinned.md", "# Pinned\nPinned content.").unwrap();
+        create_test_file(dir_path, "sibling1.md", "# Sibling One\nFirst sibling.").unwrap();
+        create_test_file(dir_path, "sibling2.md", "# Sibling Two\nSecond sibling.").unwrap();
+
+        let index = SearchIndex::new_single_file(dir_path, "pinned.md").unwrap();
+
+        assert_eq!(
+            index.reader.searcher().num_docs(),
+            1,
+            "single-file index must contain exactly one document"
+        );
+    }
+
+    /// SECURITY: a single-file index must NOT leak siblings. Build the index
+    /// over a directory that also holds a sibling `.md` carrying a unique term;
+    /// searching for that term must return nothing (proving the parent dir was
+    /// never walked), while a term from the pinned file still resolves to it.
+    #[test]
+    fn test_single_file_index_no_sibling_leakage() {
+        let temp_dir = TempDir::new().unwrap();
+        let dir_path = temp_dir.path();
+
+        create_test_file(
+            dir_path,
+            "pinned.md",
+            "# Pinned Document\nuniquepinnedtoken lives here.",
+        )
+        .unwrap();
+        // Sibling carries a term that must never surface through the index.
+        create_test_file(
+            dir_path,
+            "secret-sibling.md",
+            "# Secret Sibling\nuniquesiblingtoken must stay private.",
+        )
+        .unwrap();
+
+        let index = SearchIndex::new_single_file(dir_path, "pinned.md").unwrap();
+
+        // The sibling's unique term must NOT be findable — the parent dir was
+        // not indexed.
+        let leaked = index.search("uniquesiblingtoken", 10).unwrap();
+        assert!(
+            leaked.is_empty(),
+            "single-file index leaked a sibling file: {leaked:?}"
+        );
+
+        // The pinned file's own term still resolves to the pinned file.
+        let hits = index.search("uniquepinnedtoken", 10).unwrap();
+        assert_eq!(hits.len(), 1, "pinned file should be searchable");
+        assert_eq!(hits[0].file_path, "pinned.md");
+    }
+
+    /// The single-file index stores the relative path as the bare file name,
+    /// matching what the single-file watcher passes to `update_file` so later
+    /// edits delete-and-replace the same document instead of duplicating it.
+    #[test]
+    fn test_single_file_index_relative_path_is_file_name() {
+        let temp_dir = TempDir::new().unwrap();
+        let dir_path = temp_dir.path();
+        let file_path = dir_path.join("note.md");
+
+        create_test_file(dir_path, "note.md", "# Note\noriginaltoken here.").unwrap();
+
+        let index = SearchIndex::new_single_file(dir_path, "note.md").unwrap();
+        let hits = index.search("originaltoken", 10).unwrap();
+        assert_eq!(hits.len(), 1);
+        assert_eq!(hits[0].file_path, "note.md");
+
+        // An external edit routed through update_file must replace, not append.
+        fs::write(&file_path, "# Note\nupdatedtoken here.").unwrap();
+        index.update_file(&file_path).unwrap();
+
+        assert_eq!(
+            index.reader.searcher().num_docs(),
+            1,
+            "update_file should keep the single-file index at one document"
+        );
+        assert!(index.search("originaltoken", 10).unwrap().is_empty());
+        assert_eq!(index.search("updatedtoken", 10).unwrap().len(), 1);
     }
 }

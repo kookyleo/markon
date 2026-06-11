@@ -135,6 +135,7 @@
     "ws.add.hint":    "新しいワークスペース",
     "ws.open.tip":    "ブラウザで開く",
     "ws.remove":      "リストから削除",
+    "ws.tag.single":  "単一ファイル",
     "ws.flag.search": "検索",
     "ws.flag.search.tip": "ファイル内容の全文検索インデックスを構築",
     "ws.flag.search.ready": "検索インデックスは準備完了です",

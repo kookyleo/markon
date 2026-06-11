@@ -135,6 +135,7 @@
     "ws.add.hint":    "New workspace",
     "ws.open.tip":    "Open in browser",
     "ws.remove":      "Remove from list",
+    "ws.tag.single":  "single file",
     "ws.flag.search": "Search",
     "ws.flag.search.tip": "Build a full-text search index for file contents",
     "ws.flag.search.ready": "Search index is ready",
