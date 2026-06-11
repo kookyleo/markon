@@ -9,6 +9,7 @@
  *         to clipboard, or download a local `.md`.
  */
 
+import { i18n } from '../core/config';
 import { Logger } from '../core/utils';
 import { Text } from '../services/text';
 import {
@@ -17,9 +18,7 @@ import {
 } from './annotation-manager';
 import { EditorManager } from './editor-manager';
 
-const _t: (key: string, ...args: unknown[]) => string =
-    (typeof window !== 'undefined' && window.__MARKON_I18N__ && window.__MARKON_I18N__.t) ||
-    ((k: string) => k);
+const _t = (key: string, ...args: unknown[]): string => i18n.t(key, ...args);
 
 export interface ExportManagerDeps {
     annotationManager: AnnotationManager;

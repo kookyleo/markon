@@ -38,17 +38,6 @@ export type AnnotationType =
  */
 export type AnnotationTagName = 'span' | 's';
 
-/** Human-readable label for an annotation type (English; used in exported Markdown). */
-export function annotationTypeLabel(type: AnnotationType): string {
-    switch (type) {
-        case 'highlight-orange': return 'Orange highlight';
-        case 'highlight-green':  return 'Green highlight';
-        case 'highlight-yellow': return 'Yellow highlight';
-        case 'strikethrough':    return 'Strikethrough';
-        case 'has-note':         return 'Note';
-    }
-}
-
 /** A heading reference resolved for an annotation. */
 export interface AnnotationHeading {
     level: number;
@@ -355,39 +344,31 @@ export class AnnotationManager {
     }
 
     clearDOM(): void {
-        this.#markdownBody.querySelectorAll<HTMLElement>('[data-annotation-id]').forEach(el => {
-            const parent = el.parentNode;
-            if (!parent) return;
-            while (el.firstChild) {
-                parent.insertBefore(el.firstChild, el);
-            }
-            parent.removeChild(el);
-            (parent as Element).normalize?.();
-        });
+        this.#markdownBody
+            .querySelectorAll<HTMLElement>('[data-annotation-id]')
+            .forEach(el => this.#unwrap(el));
 
         Logger.log('AnnotationManager', 'Cleared annotations from DOM');
     }
 
     removeFromDOM(id: string): void {
-        const elements = this.#markdownBody.querySelectorAll<HTMLElement>(`[data-annotation-id="${id}"]`);
-
-        elements.forEach(el => {
-            if (el.dataset.annotationId === id) {
-                const parent = el.parentNode;
-                if (!parent) return;
-
-                // Lift child nodes out of the wrapper.
-                while (el.firstChild) {
-                    parent.insertBefore(el.firstChild, el);
-                }
-
-                // Remove the now-empty wrapper element.
-                parent.removeChild(el);
-                (parent as Element).normalize?.();
-            }
-        });
+        this.#markdownBody
+            .querySelectorAll<HTMLElement>(`[data-annotation-id="${id}"]`)
+            .forEach(el => this.#unwrap(el));
 
         Logger.log('AnnotationManager', `Removed annotation from DOM: ${id}`);
+    }
+
+    /** Lift a wrapper's children out, remove the now-empty wrapper, and
+     *  re-merge the surrounding text nodes. */
+    #unwrap(el: HTMLElement): void {
+        const parent = el.parentNode;
+        if (!parent) return;
+        while (el.firstChild) {
+            parent.insertBefore(el.firstChild, el);
+        }
+        parent.removeChild(el);
+        (parent as Element).normalize?.();
     }
 
     createAnnotation(

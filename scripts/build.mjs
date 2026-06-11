@@ -1,5 +1,5 @@
 import esbuild from 'esbuild';
-import { access, copyFile, mkdir, rm } from 'node:fs/promises';
+import { copyFile, mkdir, rm } from 'node:fs/promises';
 import { resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -39,24 +39,13 @@ function makeReloadPlugin(label) {
   };
 }
 
-async function pickEntry(name) {
-  const ts = resolve(srcDir, `${name}.ts`);
-  const js = resolve(srcDir, `${name}.js`);
-  try { await access(ts); return ts; } catch {}
-  try { await access(js); return js; } catch {}
-  throw new Error(`No entry for ${name} (.ts or .js) under ${srcDir}`);
-}
-
 async function build() {
   await rm(outDir, { recursive: true, force: true });
   await mkdir(outDir, { recursive: true });
 
-  const mainEntry = await pickEntry('main');
-  const viewedEntry = await pickEntry('viewed');
-
   const mainOpts = {
     ...shared,
-    entryPoints: [mainEntry],
+    entryPoints: [resolve(srcDir, 'main.ts')],
     outfile: resolve(outDir, 'main.js'),
     format: 'esm',
     target: ['es2022'],
@@ -64,7 +53,7 @@ async function build() {
   };
   const viewedOpts = {
     ...shared,
-    entryPoints: [viewedEntry],
+    entryPoints: [resolve(srcDir, 'viewed.ts')],
     outfile: resolve(outDir, 'viewed.js'),
     format: 'iife',
     target: ['es2022'],

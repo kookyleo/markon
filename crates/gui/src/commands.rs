@@ -10,6 +10,8 @@ use tauri::menu::{Menu, MenuItem, PredefinedMenuItem};
 use tauri::{Emitter, State};
 use tauri_plugin_updater::UpdaterExt;
 
+const MARKON_REPO: &str = "kookyleo/markon";
+
 /// Snapshot of server lifecycle + bind-host validity, broadcast on
 /// `server-status-changed` whenever it might have shifted (after save, after
 /// a network change). Mirrored by `get_server_status` for cold reads.
@@ -39,10 +41,6 @@ fn silent_command(program: &str) -> std::process::Command {
     let mut cmd = std::process::Command::new(program);
     cmd.creation_flags(CREATE_NO_WINDOW);
     cmd
-}
-#[cfg(not(target_os = "windows"))]
-fn silent_command(program: &str) -> std::process::Command {
-    std::process::Command::new(program)
 }
 
 #[cfg(target_os = "windows")]
@@ -121,18 +119,46 @@ pub fn sync_shell_context_menu(language: &str) {
     }
 }
 
+/// Port to ask the OS to bind: 0 (ephemeral) in Auto mode, the configured
+/// port otherwise.
+pub(crate) fn effective_port(settings: &AppSettings) -> u16 {
+    if settings.port_mode == PortMode::Auto {
+        0
+    } else {
+        settings.port
+    }
+}
+
+/// (Re)start the server from the current settings snapshot and broadcast the
+/// resulting status. Shared by save_settings and set_access_code.
+fn restart_server_and_broadcast(
+    app: &tauri::AppHandle,
+    state: &State<AppState>,
+) -> Result<(), String> {
+    let settings = state.settings.lock().unwrap().clone();
+    let config = settings.to_server_config(effective_port(&settings));
+    let persist = AppSettings::persist_hook(state.settings.clone());
+    let start_result = state.server.lock().unwrap().start(config, Some(persist));
+    // Always broadcast — even on failure UI needs the new (host, error) so
+    // the banner state and toast don't lag the persisted settings.
+    let _ = app.emit("server-status-changed", server_status_payload(state));
+    start_result
+}
+
 #[tauri::command]
 pub fn save_settings(
     settings: AppSettings,
     app: tauri::AppHandle,
     state: State<AppState>,
 ) -> Result<(), String> {
-    // Preserve existing workspaces — they are managed separately via add/remove/update commands.
-    let existing_workspaces = state.settings.lock().unwrap().workspaces.clone();
-    // Preserve the access-code hash — it is set via the dedicated
-    // set_access_code command (which hashes the plaintext), never through the
-    // settings form, so the form round-trip must not clobber it.
-    let existing_access_code = state.settings.lock().unwrap().access_code_hash.clone();
+    // Preserve existing workspaces (managed separately via the
+    // add/remove/update commands) and the access-code hash (set via the
+    // dedicated set_access_code command, which hashes the plaintext, never
+    // through the settings form) — the form round-trip must not clobber them.
+    let (existing_workspaces, existing_access_code) = {
+        let s = state.settings.lock().unwrap();
+        (s.workspaces.clone(), s.access_code_hash.clone())
+    };
     let mut settings = settings;
     settings.workspaces = existing_workspaces;
     settings.access_code_hash = existing_access_code;
@@ -143,36 +169,32 @@ pub fn save_settings(
     sync_shell_context_menu(&settings.language);
 
     settings.save()?;
-    let port = if settings.port_mode == PortMode::Auto {
-        0
-    } else {
-        settings.port
-    };
-    let config = settings.to_server_config(port);
     *state.settings.lock().unwrap() = settings;
-    let persist = AppSettings::persist_hook(state.settings.clone());
-    let start_result = state.server.lock().unwrap().start(config, Some(persist));
-    // Always broadcast — even on failure UI needs the new (host, error) so
-    // the banner state and toast don't lag the persisted settings.
-    let _ = app.emit("server-status-changed", server_status_payload(&state));
-    start_result
+    restart_server_and_broadcast(&app, &state)
+}
+
+/// Build the tray menu (Settings… / separator / Quit) with labels in the
+/// given language. Shared by the initial tray construction in `setup` and
+/// `update_tray_language`.
+pub(crate) fn build_tray_menu<M: tauri::Manager<tauri::Wry>>(
+    app: &M,
+    language: &str,
+) -> tauri::Result<Menu<tauri::Wry>> {
+    let data = i18n::get_lang_data(language);
+    let label_settings = data["tray.show"].as_str().unwrap_or("Settings…");
+    let label_quit = data["tray.quit"].as_str().unwrap_or("Quit Markon");
+
+    let item_settings = MenuItem::with_id(app, "settings", label_settings, true, None::<&str>)?;
+    let sep = PredefinedMenuItem::separator(app)?;
+    let item_quit = MenuItem::with_id(app, "quit", label_quit, true, None::<&str>)?;
+    Menu::with_items(app, &[&item_settings, &sep, &item_quit])
 }
 
 fn update_tray_language(app: &tauri::AppHandle, language: &str) {
     let Some(tray) = app.tray_by_id("main") else {
         return;
     };
-    let data = i18n::get_lang_data(language);
-    let label_settings = data["tray.show"].as_str().unwrap_or("Settings…");
-    let label_quit = data["tray.quit"].as_str().unwrap_or("Quit Markon");
-
-    let build = || -> tauri::Result<Menu<tauri::Wry>> {
-        let item_settings = MenuItem::with_id(app, "settings", label_settings, true, None::<&str>)?;
-        let sep = PredefinedMenuItem::separator(app)?;
-        let item_quit = MenuItem::with_id(app, "quit", label_quit, true, None::<&str>)?;
-        Menu::with_items(app, &[&item_settings, &sep, &item_quit])
-    };
-    if let Ok(menu) = build() {
+    if let Ok(menu) = build_tray_menu(app, language) {
         let _ = tray.set_menu(Some(menu));
     }
 }
@@ -307,6 +329,12 @@ pub fn get_workspaces(state: State<AppState>) -> Vec<serde_json::Value> {
                 "enable_live": info.flags.enable_live,
                 "enable_chat": info.flags.enable_chat,
                 "shared_annotation": info.flags.shared_annotation,
+                // Length of the per-workspace access code, 0 = none. The stored
+                // hash length equals the code length (see
+                // workspace::hash_access_code), so the panel both detects "code
+                // set" and renders that many • in the indicator token from this
+                // one field. Not the digest itself.
+                "access_code_len": info.access_code_hash.chars().count(),
                 "search_ready": info.search_ready,
                 // Surfaced so the Settings UI can filter out Open-With
                 // single-file workspaces (see `ui/index.html: refreshWorkspaces`).
@@ -315,22 +343,6 @@ pub fn get_workspaces(state: State<AppState>) -> Vec<serde_json::Value> {
             })
         })
         .collect()
-}
-
-#[tauri::command]
-pub fn open_browser(path: Option<String>, state: State<AppState>) -> Result<(), String> {
-    let server = state.server.lock().unwrap();
-    if server.is_running() {
-        let port = server.port();
-        drop(server);
-        let base = browser_base_url_for_state(&state, port);
-        let url = match path {
-            Some(p) => server::build_workspace_url(&base, &p),
-            None => format!("{}/", base.trim_end_matches('/')),
-        };
-        open::that(url).map_err(|e| e.to_string())?;
-    }
-    Ok(())
 }
 
 #[tauri::command]
@@ -434,7 +446,7 @@ fn updater_endpoint(channel: &str) -> String {
     } else {
         "latest.json"
     };
-    format!("https://github.com/kookyleo/markon/releases/download/updater/{file}")
+    format!("https://github.com/{MARKON_REPO}/releases/download/updater/{file}")
 }
 
 #[tauri::command]
@@ -510,19 +522,18 @@ pub fn list_fonts() -> Vec<String> {
     fonts
 }
 
-const MARKON_REPO: &str = "kookyleo/markon";
-
-fn gh_available() -> bool {
-    silent_command("gh")
+async fn gh_available() -> bool {
+    silent_tokio_command("gh")
         .args(["auth", "status"])
         .output()
+        .await
         .map(|o| o.status.success())
         .unwrap_or(false)
 }
 
 #[tauri::command]
 pub async fn star_repo() -> bool {
-    if !gh_available() {
+    if !gh_available().await {
         return false;
     }
     let result = silent_tokio_command("gh")
@@ -585,17 +596,7 @@ pub fn set_access_code(
                 s.access_code_hash = hash;
                 s.save()?;
             }
-            let settings = state.settings.lock().unwrap().clone();
-            let port = if settings.port_mode == PortMode::Auto {
-                0
-            } else {
-                settings.port
-            };
-            let config = settings.to_server_config(port);
-            let persist = AppSettings::persist_hook(state.settings.clone());
-            let start_result = state.server.lock().unwrap().start(config, Some(persist));
-            let _ = app.emit("server-status-changed", server_status_payload(&state));
-            start_result
+            restart_server_and_broadcast(&app, &state)
         }
     }
 }

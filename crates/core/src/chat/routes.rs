@@ -32,7 +32,7 @@ use crate::chat::edits::{Resolution, ResolveError};
 use crate::chat::message::{ContentBlock, Message, Role};
 use crate::chat::prompt::{build_system_blocks, render_mention_block, PromptInputs};
 use crate::chat::provider;
-use crate::chat::storage::{ChatStorage, StorageError};
+use crate::chat::storage::{ChatStorage, StorageError, Thread};
 use crate::chat::tools::{default_walker, looks_binary, ToolRegistry, MAX_FILE_BYTES};
 use crate::server::AppState;
 use crate::settings::AppSettings;
@@ -92,9 +92,7 @@ fn storage_for(state: &AppState) -> Result<ChatStorage, ChatHttpError> {
         .db
         .clone()
         .map(ChatStorage::new)
-        .ok_or(ChatHttpError::Unavailable(
-            "chat persistence not initialized",
-        ))
+        .ok_or_else(|| ChatHttpError::Unavailable("chat persistence not initialized".into()))
 }
 
 #[derive(Debug)]
@@ -102,7 +100,7 @@ enum ChatHttpError {
     NotFound,
     Disabled,
     BadRequest(String),
-    Unavailable(&'static str),
+    Unavailable(String),
     Storage(StorageError),
 }
 
@@ -124,11 +122,26 @@ impl IntoResponse for ChatHttpError {
                 "chat is not enabled for this workspace".to_string(),
             ),
             Self::BadRequest(m) => (StatusCode::BAD_REQUEST, m),
-            Self::Unavailable(m) => (StatusCode::SERVICE_UNAVAILABLE, m.to_string()),
+            Self::Unavailable(m) => (StatusCode::SERVICE_UNAVAILABLE, m),
             Self::Storage(e) => (StatusCode::INTERNAL_SERVER_ERROR, format!("storage: {e}")),
         };
         (status, body).into_response()
     }
+}
+
+/// Fetch a thread and verify it belongs to `workspace_id`. A mismatch is
+/// reported as `NotFound`, indistinguishable from a missing thread, so ids
+/// can't be probed across workspaces.
+async fn thread_in_workspace(
+    storage: &ChatStorage,
+    thread_id: &str,
+    workspace_id: &str,
+) -> Result<Thread, ChatHttpError> {
+    let thread = storage.get_thread(thread_id).await?;
+    if thread.workspace_id != workspace_id {
+        return Err(ChatHttpError::NotFound);
+    }
+    Ok(thread)
 }
 
 // ── threads ──────────────────────────────────────────────────────────────────
@@ -185,10 +198,7 @@ async fn get_thread_handler(
 ) -> Result<impl IntoResponse, ChatHttpError> {
     ensure_chat_enabled(&state, &workspace_id)?;
     let storage = storage_for(&state)?;
-    let thread = storage.get_thread(&thread_id).await?;
-    if thread.workspace_id != workspace_id {
-        return Err(ChatHttpError::NotFound);
-    }
+    let thread = thread_in_workspace(&storage, &thread_id, &workspace_id).await?;
     let messages = storage
         .list_messages(&thread_id)
         .await?
@@ -209,15 +219,43 @@ async fn delete_thread_handler(
 ) -> Result<impl IntoResponse, ChatHttpError> {
     ensure_chat_enabled(&state, &workspace_id)?;
     let storage = storage_for(&state)?;
-    let thread = storage.get_thread(&thread_id).await?;
-    if thread.workspace_id != workspace_id {
-        return Err(ChatHttpError::NotFound);
-    }
+    thread_in_workspace(&storage, &thread_id, &workspace_id).await?;
     storage.delete_thread(&thread_id).await?;
     Ok(StatusCode::NO_CONTENT)
 }
 
 // ── pending-edit resolution (edit_file tool) ────────────────────────────────
+
+/// Outcome of a [`drift_guarded_replace`] attempt.
+enum ReplaceOutcome {
+    /// The file is unreadable or `find` no longer matches exactly once.
+    Drifted,
+    /// Replacement written; `line` is the 1-based line of the match.
+    Applied { line: usize },
+    /// The drift check passed but the write-back failed.
+    WriteErr(std::io::Error),
+}
+
+/// Re-read `abs`, verify `find` occurs *exactly once*, and swap it for
+/// `replace`. Shared by the apply and undo paths so both keep identical
+/// drift semantics.
+fn drift_guarded_replace(abs: &std::path::Path, find: &str, replace: &str) -> ReplaceOutcome {
+    let current = match std::fs::read_to_string(abs) {
+        Ok(s) => s,
+        Err(_) => return ReplaceOutcome::Drifted,
+    };
+    let mut occurrences = current.match_indices(find).map(|(off, _)| off);
+    let offset = match (occurrences.next(), occurrences.next()) {
+        (Some(off), None) => off,
+        _ => return ReplaceOutcome::Drifted,
+    };
+    let line = 1 + current[..offset].bytes().filter(|b| *b == b'\n').count();
+    let updated = current.replacen(find, replace, 1);
+    match std::fs::write(abs, updated.as_bytes()) {
+        Ok(()) => ReplaceOutcome::Applied { line },
+        Err(e) => ReplaceOutcome::WriteErr(e),
+    }
+}
 
 /// Resolve a pending `edit_file` proposal by writing the new content to disk
 /// and signalling the awaiting tool.
@@ -240,37 +278,31 @@ async fn apply_edit_handler(
         .snapshot(&edit_id)
         .ok_or(ChatHttpError::NotFound)?;
 
-    // Re-resolve the path against the (still-canonical) workspace root.
-    // We can't reuse ToolContext::resolve here without dragging the chat
-    // module's machinery in; the path was already sandbox-checked when the
-    // pending was created, but file existence and uniqueness must be
-    // re-verified against the on-disk state right now.
-    let abs = ws.root.join(&snap.path);
-    let current = match std::fs::read_to_string(&abs) {
-        Ok(s) => s,
+    // Re-resolve the path against the workspace root at apply time, exactly as
+    // undo_edit_handler does. The proposal-time sandbox check (ToolContext in
+    // edit_file) can be invalidated by a symlink swapped in between proposal
+    // and apply (TOCTOU); a path that no longer canonicalizes inside the
+    // workspace is treated as drift rather than written through.
+    let ctx = crate::chat::tools::ToolContext::new(&ws.root)
+        .map_err(|e| ChatHttpError::Unavailable(format!("workspace root: {e}")))?;
+    let abs = match ctx.resolve(&snap.path) {
+        Ok(p) => p,
         Err(_) => {
-            // File vanished — treat as drift, surface "drifted" to the model.
             let _ = ws.pending_edits.resolve(&edit_id, Resolution::Drifted);
             return Ok(Json(EditResolutionResponse { status: "drifted" }));
         }
     };
-    let occurrences = current.matches(&snap.old_string).count();
-    if occurrences != 1 {
-        let _ = ws.pending_edits.resolve(&edit_id, Resolution::Drifted);
-        return Ok(Json(EditResolutionResponse { status: "drifted" }));
-    }
-
-    // Replace and write.
-    let updated = current.replacen(&snap.old_string, &snap.new_string, 1);
-    let line = 1 + current
-        .find(&snap.old_string)
-        .map(|off| current[..off].bytes().filter(|b| *b == b'\n').count())
-        .unwrap_or(0);
-    if let Err(e) = std::fs::write(&abs, updated.as_bytes()) {
-        return Err(ChatHttpError::Unavailable(Box::leak(
-            format!("write failed: {e}").into_boxed_str(),
-        )));
-    }
+    let line = match drift_guarded_replace(&abs, &snap.old_string, &snap.new_string) {
+        ReplaceOutcome::Drifted => {
+            // File vanished or changed — surface "drifted" to the model.
+            let _ = ws.pending_edits.resolve(&edit_id, Resolution::Drifted);
+            return Ok(Json(EditResolutionResponse { status: "drifted" }));
+        }
+        ReplaceOutcome::WriteErr(e) => {
+            return Err(ChatHttpError::Unavailable(format!("write failed: {e}")));
+        }
+        ReplaceOutcome::Applied { line } => line,
+    };
 
     match ws
         .pending_edits
@@ -354,30 +386,20 @@ async fn undo_edit_handler(
     let ctx = match crate::chat::tools::ToolContext::new(&ws.root) {
         Ok(c) => c,
         Err(e) => {
-            return Err(ChatHttpError::Unavailable(Box::leak(
-                format!("workspace root: {e}").into_boxed_str(),
-            )));
+            return Err(ChatHttpError::Unavailable(format!("workspace root: {e}")));
         }
     };
     let abs = ctx
         .resolve(&body.path)
         .map_err(|_| ChatHttpError::NotFound)?;
 
-    let current = match std::fs::read_to_string(&abs) {
-        Ok(s) => s,
-        Err(_) => return Ok(Json(EditResolutionResponse { status: "drifted" })),
-    };
-    if current.matches(&body.find).count() != 1 {
-        return Ok(Json(EditResolutionResponse { status: "drifted" }));
+    match drift_guarded_replace(&abs, &body.find, &body.replace_with) {
+        ReplaceOutcome::Drifted => Ok(Json(EditResolutionResponse { status: "drifted" })),
+        ReplaceOutcome::WriteErr(e) => {
+            Err(ChatHttpError::Unavailable(format!("write failed: {e}")))
+        }
+        ReplaceOutcome::Applied { .. } => Ok(Json(EditResolutionResponse { status: "reverted" })),
     }
-
-    let updated = current.replacen(&body.find, &body.replace_with, 1);
-    if let Err(e) = std::fs::write(&abs, updated.as_bytes()) {
-        return Err(ChatHttpError::Unavailable(Box::leak(
-            format!("write failed: {e}").into_boxed_str(),
-        )));
-    }
-    Ok(Json(EditResolutionResponse { status: "reverted" }))
 }
 
 // ── file autocomplete (@-mention) ────────────────────────────────────────────
@@ -406,61 +428,76 @@ async fn list_files_handler(
     let ws = ensure_chat_enabled(&state, &workspace_id)?;
     let limit = query.limit.unwrap_or(50).clamp(1, 200);
     let needle = query.q.trim().to_lowercase();
-
-    let walker = default_walker(&ws.root).build();
     let root = ws.root.clone();
-    let mut suggestions: Vec<FileSuggestion> = Vec::new();
 
-    for entry in walker {
-        let entry = match entry {
-            Ok(e) => e,
-            Err(_) => continue,
-        };
-        if !entry.file_type().map(|t| t.is_file()).unwrap_or(false) {
-            continue;
-        }
-        let path = entry.path();
-        let rel = match path.strip_prefix(&root) {
-            Ok(r) => r,
-            Err(_) => continue,
-        };
-        let rel_str = crate::chat::tools::path_to_forward_slash(rel);
+    // The walk and the text-sniffs are blocking filesystem I/O — keep them
+    // off the async pool (same policy as `ChatStorage::with_conn`).
+    let suggestions = tokio::task::spawn_blocking(move || {
+        let mut candidates: Vec<(std::path::PathBuf, FileSuggestion)> = Vec::new();
 
-        // Skip likely-binary files cheaply: by extension and by metadata size,
-        // then a NUL-byte sniff for the survivors. The autocomplete must stay
-        // fast — don't open every file.
-        if BINARY_EXT.iter().any(|ext| rel_str.ends_with(ext)) {
-            continue;
-        }
-        if let Ok(meta) = std::fs::metadata(path) {
-            if meta.len() > MAX_FILE_BYTES {
-                // Big files can be referenced by typing the path explicitly,
-                // but we keep them out of autocomplete to discourage accidents.
+        for entry in default_walker(&root).build() {
+            let entry = match entry {
+                Ok(e) => e,
+                Err(_) => continue,
+            };
+            if !entry.file_type().map(|t| t.is_file()).unwrap_or(false) {
                 continue;
             }
-        }
-        let score = match score_match(&needle, &rel_str) {
-            Some(s) => s,
-            None => continue,
-        };
+            let path = entry.path();
+            let rel = match path.strip_prefix(&root) {
+                Ok(r) => r,
+                Err(_) => continue,
+            };
+            let rel_str = crate::chat::tools::path_to_forward_slash(rel);
 
-        // Only sniff the file if the user hasn't filtered it down — we want
-        // every visible suggestion to be readable.
-        if needle.is_empty() && suggestions.len() >= limit * 4 {
-            // Keep the worker bounded when the user hasn't typed anything.
-            // We still score & sort below to surface the best limit entries.
+            // Skip likely-binary files cheaply: by extension and by metadata
+            // size. The NUL-byte sniff (which has to open the file) waits
+            // until after sorting, so only potential winners are opened.
+            if BINARY_EXT.iter().any(|ext| rel_str.ends_with(ext)) {
+                continue;
+            }
+            if let Ok(meta) = std::fs::metadata(path) {
+                if meta.len() > MAX_FILE_BYTES {
+                    // Big files can be referenced by typing the path explicitly,
+                    // but we keep them out of autocomplete to discourage accidents.
+                    continue;
+                }
+            }
+            let score = match score_match(&needle, &rel_str) {
+                Some(s) => s,
+                None => continue,
+            };
+            candidates.push((
+                path.to_path_buf(),
+                FileSuggestion {
+                    path: rel_str,
+                    score,
+                },
+            ));
         }
-        if !is_text_file_quick(path) {
-            continue;
-        }
-        suggestions.push(FileSuggestion {
-            path: rel_str,
-            score,
+
+        candidates.sort_by(|a, b| {
+            b.1.score
+                .cmp(&a.1.score)
+                .then_with(|| a.1.path.cmp(&b.1.path))
         });
-    }
 
-    suggestions.sort_by(|a, b| b.score.cmp(&a.score).then_with(|| a.path.cmp(&b.path)));
-    suggestions.truncate(limit);
+        // Sniff in sort order and stop once `limit` text files are found, so
+        // the open/read work is bounded by `limit`, not by the workspace size.
+        let mut suggestions: Vec<FileSuggestion> = Vec::new();
+        for (abs, suggestion) in candidates {
+            if suggestions.len() >= limit {
+                break;
+            }
+            if is_text_file_quick(&abs) {
+                suggestions.push(suggestion);
+            }
+        }
+        suggestions
+    })
+    .await
+    .map_err(|e| ChatHttpError::Unavailable(format!("file walk: {e}")))?;
+
     Ok(Json(suggestions))
 }
 
@@ -521,7 +558,7 @@ fn is_text_file_quick(path: &std::path::Path) -> bool {
     !looks_binary(&buf[..n])
 }
 
-// ── chat stream (SSE) — stub ─────────────────────────────────────────────────
+// ── chat stream (SSE) ────────────────────────────────────────────────────────
 
 #[derive(Debug, Deserialize)]
 pub(crate) struct ChatStreamRequest {
@@ -576,11 +613,9 @@ async fn chat_stream_handler(
 
     // Resolve / create thread.
     let thread = match body.thread_id.as_deref() {
-        Some(id) => match storage.get_thread(id).await {
-            Ok(t) if t.workspace_id == workspace_id => t,
-            Ok(_) => return ChatHttpError::NotFound.into_response(),
-            Err(StorageError::NotFound) => return ChatHttpError::NotFound.into_response(),
-            Err(e) => return ChatHttpError::Storage(e).into_response(),
+        Some(id) => match thread_in_workspace(&storage, id, &workspace_id).await {
+            Ok(t) => t,
+            Err(e) => return e.into_response(),
         },
         None => {
             let title = auto_title(user_text);
@@ -799,11 +834,11 @@ mod tests {
         let state = AppState {
             theme: Arc::new("dark".into()),
             tera: Arc::new(Tera::default()),
-            shared_annotation: false,
             db: Some(db),
             tx: None,
             workspace_registry: registry,
             management_token: Arc::new("token".into()),
+            save_token: Arc::new("save-token".into()),
             i18n_json: Arc::new("{}".into()),
             i18n_lang: Arc::new("zh".into()),
             shortcuts_json: Arc::new("null".into()),

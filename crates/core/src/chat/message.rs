@@ -43,32 +43,6 @@ pub struct Message {
     pub content: Vec<ContentBlock>,
 }
 
-impl Message {
-    #[allow(dead_code)]
-    pub(crate) fn user_text(text: impl Into<String>) -> Self {
-        Self {
-            role: Role::User,
-            content: vec![ContentBlock::Text { text: text.into() }],
-        }
-    }
-
-    #[allow(dead_code)]
-    pub(crate) fn assistant(content: Vec<ContentBlock>) -> Self {
-        Self {
-            role: Role::Assistant,
-            content,
-        }
-    }
-
-    #[allow(dead_code)]
-    pub(crate) fn tool_results(results: Vec<ContentBlock>) -> Self {
-        Self {
-            role: Role::User,
-            content: results,
-        }
-    }
-}
-
 /// Token accounting reported by the provider (Anthropic only fills cache fields).
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct Usage {

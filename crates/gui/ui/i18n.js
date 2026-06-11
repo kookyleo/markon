@@ -36,13 +36,10 @@ function buildLang(data) {
 export const availableLanguages = [];
 export const i18n = {};
 
-let initialized = false;
 let initPromise = null;
 
 export function initI18n() {
-  if (initialized) return Promise.resolve();
-  if (initPromise) return initPromise;
-  initPromise = (async () => {
+  initPromise ??= (async () => {
     const raw = await invoke('get_i18n');
     const langs = raw._languages || [];
     availableLanguages.length = 0;
@@ -51,7 +48,6 @@ export function initI18n() {
     for (const lang of langs) {
       if (raw[lang.key]) i18n[lang.key] = buildLang(raw[lang.key]);
     }
-    initialized = true;
   })();
   return initPromise;
 }

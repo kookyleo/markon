@@ -1,0 +1,19 @@
+{# Pre-paint theme bootstrap, shared by layout.html and directory.html.
+   (chat.html keeps its popout-specific copy; access-gate.html intentionally
+   has no theme-boot script.) #}
+<script>
+    // Resolve Markon's theme to a concrete light/dark value before stylesheets
+    // apply. All theme CSS targets html[data-theme="light|dark"] so the choice
+    // is under app control (not tied to prefers-color-scheme).
+    (function(){
+        var root = document.documentElement;
+        var apply = function(t){ root.setAttribute('data-theme', t); };
+        if (root.getAttribute('data-theme') === 'auto') {
+            var mql = window.matchMedia('(prefers-color-scheme: dark)');
+            apply(mql.matches ? 'dark' : 'light');
+            mql.addEventListener && mql.addEventListener('change', function(e){
+                apply(e.matches ? 'dark' : 'light');
+            });
+        }
+    })();
+    </script>

@@ -222,11 +222,6 @@
     color: var(--markon-accent-hover);
 }
 
-.has-note {
-    background-color: var(--markon-hl-note);
-    cursor: pointer;
-}
-
 /* Annotation focus indicator for keyboard navigation */
 .annotation-focused {
     outline: 2px solid var(--markon-accent);
@@ -788,9 +783,8 @@ html[data-theme="dark"] .markdown-body h6.heading-focused {
     vertical-align: middle;
 }
 
-.viewed-text {
-    /* All common styles inherited from .section-action */
-}
+/* .viewed-text needs no rules of its own — it is styled entirely by
+   .section-action below. */
 
 /* Common section action button style */
 .section-action {
@@ -849,11 +843,8 @@ html[data-theme="dark"] .markdown-body h6.heading-focused {
     opacity: var(--markon-collapsed-opacity-hover);
 }
 
-/* Expand/collapse toggle button - inherits from .section-action */
-/* Note: Additional specific class kept for potential future customization */
-.section-expand-toggle {
-    /* All common styles are inherited from .section-action */
-}
+/* The expand/collapse toggle (.section-expand-toggle) needs no rules of its
+   own — it is styled entirely by .section-action above. */
 
 /* Temporarily expanded section (viewed but expanded) */
 .section-collapsed.section-temp-expanded {

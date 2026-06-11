@@ -171,15 +171,10 @@
       gap: 6px;
       flex-shrink: 0;
     }
-    .pref-control-full {
-      flex: 1;
-      display: flex;
-      min-width: 0;
-    }
-
     /* ── Inputs ──────────────────────────────────────────────────────────── */
     input[type="number"],
     input[type="text"],
+    input[type="password"],
     select {
       padding: 4px 8px;
       border: 1px solid var(--border);
@@ -193,6 +188,7 @@
     }
     input[type="number"]:focus,
     input[type="text"]:focus,
+    input[type="password"]:focus,
     select:focus {
       border-color: var(--accent);
       box-shadow: 0 0 0 3px rgba(0,122,255,0.15);
@@ -218,40 +214,6 @@
     }
     input[type="text"].full { width: 100%; }
 
-    /* ── Password / textarea (used by AI Chat config) ────────────────────── */
-    input[type="password"] {
-      padding: 4px 8px;
-      border: 1px solid var(--border);
-      border-radius: var(--radius-sm);
-      background: var(--surface);
-      color: var(--text);
-      font-size: 13px;
-      font-family: inherit;
-      outline: none;
-      transition: border-color 0.15s, box-shadow 0.15s;
-    }
-    input[type="password"]:focus {
-      border-color: var(--accent);
-      box-shadow: 0 0 0 3px rgba(0,122,255,0.15);
-    }
-    textarea {
-      padding: 6px 8px;
-      border: 1px solid var(--border);
-      border-radius: var(--radius-sm);
-      background: var(--surface);
-      color: var(--text);
-      font-size: 13px;
-      font-family: inherit;
-      outline: none;
-      width: 100%;
-      box-sizing: border-box;
-      resize: vertical;
-      transition: border-color 0.15s, box-shadow 0.15s;
-    }
-    textarea:focus {
-      border-color: var(--accent);
-      box-shadow: 0 0 0 3px rgba(0,122,255,0.15);
-    }
     /* Toast — bottom-anchored notification. WKWebView (Tauri) silently drops
        window.alert() calls, so we render our own ephemeral banner instead. */
     .mk-toast {
@@ -265,7 +227,6 @@
       pointer-events: none;
     }
     .mk-toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
-    .mk-toast-ok  { border-color: rgba(52,199,89,0.45); background: rgba(52,199,89,0.12); }
     .mk-toast-err { border-color: rgba(255,69,58,0.45); background: rgba(255,69,58,0.12); }
     /* Inline status text — sits inside .key-row before the input, fades after
        a few seconds. Used for non-blocking per-row feedback. */
@@ -316,15 +277,6 @@
       padding: 3px 5px;
       z-index: 1;
     }
-    /* Stacked rows for full-width fields inside the chat card. */
-    .pref-row.stacked {
-      flex-direction: column;
-      align-items: stretch;
-      gap: 4px;
-    }
-    .pref-row.stacked > .pref-label { flex: 0 0 auto; }
-    .pref-row.stacked > .pref-control,
-    .pref-row.stacked > .key-row { width: 100%; }
     /* ── Toggle switch ───────────────────────────────────────────────────── */
     .switch { position: relative; display: inline-block; width: 38px; height: 22px; flex-shrink: 0; }
     .switch input { display: none; }
@@ -380,9 +332,41 @@
       gap: 4px;
       transition: background 0.1s;
     }
-    .btn:hover { background: var(--surface-2); }
-    .btn-primary { background: var(--accent); color: #fff; border-color: transparent; }
-    .btn-primary:hover { background: var(--accent-hover); }
+    .btn:hover:not(:disabled) { background: var(--surface-2); }
+    .btn:disabled { opacity: 0.4; cursor: not-allowed; }
+    /* ── Access-code editor (shared: global Server row + per-workspace lock) ──
+       One reusable widget. At rest it's just a plaintext input (showing the
+       "•"-token of the code's length when set). On focus it gains `.editing`
+       and the ✓ Apply appears. Default: a bordered button OUTSIDE the input
+       (matches the General page's action buttons) — used by the global row.
+       The `.ac-inset` variant tucks ✓ inside the input's right edge so the two
+       read as one compact control — used by the per-workspace lock slot. */
+    .ac-editor { display: inline-flex; align-items: center; gap: 6px; }
+    .ac-input { width: 150px; }
+    /* Composes with .btn (border, surface, hover, disabled come from there);
+       only the ✓-button specifics live here. */
+    .ac-apply {
+      display: none;
+      width: 30px; height: 28px;
+      padding: 0;
+      justify-content: center;
+      color: var(--accent);
+      flex-shrink: 0;
+      transition: background 0.1s, color 0.1s, border-color 0.1s;
+    }
+    .ac-editor.editing .ac-apply { display: inline-flex; }
+    /* opacity:1 keeps the success flash vivid even when the apply just turned
+       :disabled (e.g. right after a clear leaves nothing to submit). */
+    .ac-apply.ok { color: rgb(52,199,89); border-color: rgba(52,199,89,0.5); background: rgba(52,199,89,0.12); opacity: 1; }
+    /* Inset variant — ✓ inside the input (per-workspace lock). */
+    .ac-editor.ac-inset { position: relative; gap: 0; }
+    .ac-editor.ac-inset .ac-apply {
+      position: absolute; right: 4px; top: 50%; transform: translateY(-50%);
+      width: auto; height: auto; border: none; background: transparent;
+      padding: 3px 5px; border-radius: 4px;
+    }
+    .ac-editor.ac-inset.editing .ac-input { padding-right: 30px; }
+    .ac-editor.ac-inset .ac-apply.ok { background: transparent; border-color: transparent; }
 
     /* ── Workspace list ──────────────────────────────────────────────────── */
     .ws-list { display: flex; flex-direction: column; gap: 8px; padding-bottom: 60px; }
@@ -451,6 +435,13 @@
       flex-shrink: 0;
     }
     .ws-flag.checked { color: var(--text); }
+    /* Per-workspace access-code editor: lives *in* the toolbar, in the lock
+       icon's slot. Clicking the lock hides it and reveals this (input + ✓) in
+       place; collapsing reverses back to the lock. Holds the shared .ac-editor.*/
+    .ws-lock-editor {
+      display: flex;
+      align-items: center;
+    }
 
     /* Empty state */
     .empty-state {
@@ -506,21 +497,6 @@
     }
     .tips-body p { margin-bottom: 4px; }
     .tips-body p:last-child { margin-bottom: 0; }
-    .tips-cmd {
-      position: relative;
-      margin: 5px 0 8px;
-    }
-    .tips-cmd code {
-      display: block;
-      font-family: 'SF Mono', Monaco, Menlo, monospace;
-      font-size: 11.5px;
-      color: var(--text);
-      background: var(--bg);
-      padding: 6px 30px 6px 10px;
-      border-radius: 5px;
-      -webkit-user-select: text;
-      user-select: text;
-    }
     .tips-copy {
       position: absolute;
       right: 4px;
@@ -537,27 +513,6 @@
     }
     .tips-copy:hover { background: var(--surface); color: var(--accent); }
     .tips-copy.copied { color: #22c55e; }
-    .tips-kbd .tip-row {
-      display: flex;
-      align-items: center;
-      gap: 6px;
-      padding: 3px 0;
-      font-size: 12.5px;
-      color: var(--text-2);
-    }
-    .tips-kbd kbd {
-      display: inline-block;
-      padding: 1px 6px;
-      font-family: 'SF Mono', Monaco, Menlo, monospace;
-      font-size: 11px;
-      color: var(--text);
-      background: var(--bg);
-      border: 1px solid var(--border);
-      border-radius: 4px;
-      min-width: 20px;
-      text-align: center;
-    }
-    .tips-kbd .tip-row span { flex: 1; }
     /* Feature list */
     .tips-features.tips-body { display: flex; flex-direction: column; gap: 10px; padding: 16px 14px; }
     .tip-feature { }
@@ -941,6 +896,10 @@
             <span class="pref-label"></span>
             <div class="pref-control" style="color:#d93025;font-size:12px;line-height:1.4;max-width:380px"></div>
           </div>
+          <div class="pref-row">
+            <span class="pref-label" data-i18n="pref.access_code"></span>
+            <div class="pref-control" id="access_code_control"></div>
+          </div>
         </div>
       </div>
 
@@ -980,13 +939,6 @@
                 <option value="follow"      data-i18n="editor_theme.follow"></option>
                 <option value="vscode-dark" data-i18n="editor_theme.vscode_dark"></option>
               </select>
-            </div>
-          </div>
-          <div class="pref-row">
-            <span class="pref-label" data-i18n="pref.access_code"></span>
-            <div class="pref-control">
-              <input type="password" id="access_code" style="width:104px" autocomplete="new-password">
-              <button id="access_code_apply" data-i18n="access.code.apply"></button>
             </div>
           </div>
           <div class="pref-row">
@@ -1395,6 +1347,17 @@
   (async () => {
   await initI18n();
 
+  // Escape text for safe interpolation into innerHTML (both element text and
+  // double-quoted attribute values). Used for any value that isn't a fixed
+  // literal — e.g. a workspace's filesystem path, which the user controls.
+  const esc = (s) => String(s).replace(/[&<>"]/g, (c) =>
+    ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]);
+
+  // Length of the server-level access code (0 = none) — seeded by loadSettings
+  // from the stored hash's length (which equals the code length), used to draw
+  // the right number of • in the widget's "code is set" token.
+  let globalCodeLen = 0;
+
   // ── Tab navigation ──────────────────────────────────────────────────────
   function activateTab(name) {
     const item = document.querySelector(`.nav-item[data-tab="${name}"]`);
@@ -1470,8 +1433,11 @@
     anthropic: 'https://api.anthropic.com',
     openai:    'https://api.openai.com',
   };
-  async function loadSettings() {
-    const s = await invoke('get_settings');
+  // Accepts pre-fetched settings (startup passes them in to avoid a duplicate
+  // IPC round trip) and self-fetches when called without one. Returns them so
+  // the caller can reuse the resolved object.
+  async function loadSettings(s) {
+    s = s ?? await invoke('get_settings');
     await loadBindHosts(s.host);
     const mode = s.port_mode ?? 'spec';
     document.querySelector(`input[name="port_mode"][value="${mode}"]`).checked = true;
@@ -1483,9 +1449,8 @@
     document.getElementById('language').value = s.language || 'auto';
     document.getElementById('web_theme').value = s.web_theme || 'auto';
     document.getElementById('web_editor_theme').value = s.web_editor_theme || 'follow';
-    var _ac = document.getElementById('access_code');
-    _ac.value = '';
-    _ac.placeholder = s.access_code_hash ? T('access.code.set') : T('access.code.ph');
+    globalCodeLen = (s.access_code_hash || '').length;
+    renderGlobalAccessCode();
     document.getElementById('web_language').value = s.web_language || 'auto';
     updateDbPathDisplay(s.db_path ?? '');
     document.getElementById('tray_resident').checked = s.tray_resident ?? true;
@@ -1529,6 +1494,7 @@
     renderShortcuts();
     renderHelpTip();
     applyAll(s);
+    return s;
   }
 
   async function saveSettings() {
@@ -1640,17 +1606,125 @@
   document.getElementById('tray_resident').addEventListener('change', e => {
     invoke('set_tray_resident', { value: e.target.checked });
   });
-  // Server-level access code (empty + Apply clears). Triggers a server
-  // restart so the running gate picks up the change.
-  document.getElementById('access_code_apply').addEventListener('click', async () => {
-    const el = document.getElementById('access_code');
-    try {
-      await invoke('set_access_code', { workspaceId: null, code: el.value });
-      el.value = '';
-      el.placeholder = T('access.code.set');
-      toast(T('access.code.saved'), 'ok');
-    } catch (e) { toast(String(e), 'err'); }
+  // ── Shared access-code widget ────────────────────────────────────────────
+  // One reusable editor for both the global (server-level) code and each
+  // workspace's code. The input is plaintext (you see what you type — no mask,
+  // no eye, no clear). A set code is shown only via the *placeholder*: at rest
+  // it's `n` • dots (n = the code's length; we only store the salted hash, so
+  // the real code can't be displayed), and on focus it switches to "Set a new
+  // code…". The value itself is always empty until you type, so there's no
+  // token to select/replace. A single ✓ Apply button appears on focus; Apply
+  // persists (empty Apply on a set code clears it). Esc / a click outside
+  // discards the edit. (`prompt()` is unusable — the WKWebView drops it.)
+  const AC_CHECK_SVG = '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>';
+  function accessCodeEditorHTML(inset) {
+    return `
+      <div class="ac-editor${inset ? ' ac-inset' : ''}">
+        <input type="text" class="ac-input" autocomplete="off" autocapitalize="off" spellcheck="false"
+               placeholder="${T('access.code.ph')}">
+        <button type="button" class="btn ac-apply" title="${T('access.code.apply')}">${AC_CHECK_SVG}</button>
+      </div>`;
+  }
+  // opts: { len, onApply(code, btn), onCollapse?, boundary? }. `len` = length of
+  // the current code (0 = none) → that many • dots in the resting placeholder.
+  // onApply persists, then calls the returned `applied(newLen, btn)` for the
+  // shared confirmation (flash → collapse). Collapse fires on Esc / a click
+  // outside `boundary` (default the editor) — there's no Cancel button.
+  // Editors currently in edit mode. Explicit state (not a CSS-class query), so
+  // the document-level mousedown listener and the window-focus refresh guard
+  // don't walk the DOM on every event. Entries are pruned lazily if their card
+  // was re-rendered out from under them (refreshWorkspaces replaces nodes).
+  const acEditing = new Set();
+  function acAnyEditing() {
+    for (const root of acEditing) {
+      if (!root.isConnected) acEditing.delete(root);
+    }
+    return acEditing.size > 0;
+  }
+  function wireAccessCode(root, opts) {
+    const input    = root.querySelector('.ac-input');
+    const applyBtn = root.querySelector('.ac-apply');
+    let codeLen = opts.len | 0;
+    const restPlaceholder = () => codeLen > 0 ? '•'.repeat(codeLen) : T('access.code.ph');
+    function syncBtns() {
+      // Apply commits: a typed code sets it; an empty Apply on a set code clears
+      // it. Disabled only when there's nothing to do (empty + no code).
+      applyBtn.disabled = !input.value.trim() && codeLen === 0;
+    }
+    function expand() {
+      root.classList.add('editing');
+      acEditing.add(root);
+      // Swap the • indicator for an editing hint while focused.
+      input.placeholder = codeLen > 0 ? T('access.code.new') : T('access.code.ph');
+      syncBtns();
+    }
+    function collapse() {
+      if (!root.classList.contains('editing')) return;
+      root.classList.remove('editing');
+      acEditing.delete(root);
+      input.blur();                     // release focus (e.g. on Esc)
+      input.value = '';                 // discard any in-progress edit
+      input.placeholder = restPlaceholder();
+      syncBtns();
+      if (opts.onCollapse) opts.onCollapse();
+    }
+    input.addEventListener('focus', expand);
+    input.addEventListener('input', syncBtns);
+    input.addEventListener('keydown', e => {
+      if (e.key === 'Enter' && !applyBtn.disabled) opts.onApply(input.value, applyBtn);
+      else if (e.key === 'Escape') collapse();
+    });
+    applyBtn.addEventListener('click', () => { if (!applyBtn.disabled) opts.onApply(input.value, applyBtn); });
+    // Outside-click: a single shared document listener (below) calls this.
+    root.__acBoundary = opts.boundary || root;
+    root.__acCollapse = collapse;
+    input.value = '';
+    input.placeholder = restPlaceholder();
+    syncBtns();
+    // Post-persist confirmation, shared by every caller: record the new code
+    // length, show "code cleared" in the (empty) field when the apply removed
+    // a previously-set code, flash the ✓ green, then collapse back to rest.
+    function applied(n, btn) {
+      const wasSet = codeLen > 0;
+      codeLen = n | 0;
+      syncBtns();
+      input.placeholder = codeLen === 0 && wasSet ? T('access.code.cleared') : restPlaceholder();
+      flashApplyOk(btn, collapse);
+    }
+    return { input, applyBtn, collapse, expand, applied, focus: () => input.focus() };
+  }
+  // One shared listener: a mousedown outside an editing widget's boundary
+  // collapses it (discarding the edit). Iterates the explicit registry — no
+  // DOM query on the (hot) every-mousedown path, and leak-free vs. one
+  // listener per (re-rendered) editor.
+  document.addEventListener('mousedown', e => {
+    acEditing.forEach(root => {
+      if (!root.isConnected) { acEditing.delete(root); return; }
+      const b = root.__acBoundary || root;
+      if (!b.contains(e.target)) root.__acCollapse();
+    });
   });
+  // (Re)build the global access-code widget. Server-level set/clear restarts
+  // the server so the running gate picks up the change. Called from
+  // loadSettings (seed) and applyI18n (relabel on language switch).
+  function renderGlobalAccessCode() {
+    const wrap = document.getElementById('access_code_control');
+    if (!wrap) return;
+    // Don't tear down a widget mid-edit (e.g. language switched while typing);
+    // labels catch up on the next rebuild.
+    if (wrap.querySelector('.ac-editor.editing')) return;
+    wrap.innerHTML = accessCodeEditorHTML();
+    const ctl = wireAccessCode(wrap.querySelector('.ac-editor'), {
+      len: globalCodeLen,
+      onApply: async (code, btn) => {
+        try {
+          await invoke('set_access_code', { workspaceId: null, code });
+          globalCodeLen = code.trim().length;
+          ctl.applied(globalCodeLen, btn);
+        } catch (e) { toast(String(e), 'err'); }
+      },
+    });
+  }
   [
     'default_search', 'default_viewed', 'default_edit', 'default_live', 'default_shared',
     'default_chat', 'chat_provider',
@@ -1722,6 +1796,20 @@
       t.classList.remove('show');
       setTimeout(() => t.remove(), 250);
     }, ttl);
+  }
+  // Transient success on an Apply button: briefly tint it green instead of a
+  // floating toast, so the confirmation stays anchored to the control the user
+  // acted on. Owns the flash duration; `after` (optional) runs when the flash
+  // ends — call sites use it to collapse the editor, so the timing lives here
+  // rather than being duplicated per caller.
+  function flashApplyOk(btn, after) {
+    if (!btn) return;
+    btn.classList.add('ok');
+    clearTimeout(btn._okTimer);
+    btn._okTimer = setTimeout(() => {
+      btn.classList.remove('ok');
+      if (after) after();
+    }, 750);
   }
   // Per-row inline hint: short text next to the input that fades after a few
   // seconds. Full detail (e.g. error body) goes into title for hover.
@@ -1865,7 +1953,7 @@
 
       card.innerHTML = `
         <div class="ws-row-top">
-          <span class="ws-path" title="${ws.path}">${shortPath}</span>
+          <span class="ws-path" title="${esc(ws.path)}">${esc(shortPath)}</span>
           <button class="ws-icon-btn open-btn" title="${T('ws.open.tip')}">
             <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
               <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/>
@@ -1873,16 +1961,16 @@
               <line x1="10" y1="14" x2="21" y2="3"/>
             </svg>
           </button>
-          <button class="ws-icon-btn lock-btn" title="${ws.access_code_hash ? T('ws.lock.on') : T('ws.lock.tip')}" style="${ws.access_code_hash ? 'color:var(--accent)' : ''}">
+          <button class="ws-icon-btn lock-btn" title="${ws.access_code_len > 0 ? T('ws.lock.on') : T('ws.lock.tip')}" style="${ws.access_code_len > 0 ? 'color:var(--accent)' : ''}">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
               <rect x="3" y="11" width="18" height="11" rx="2"/>
               <path d="M7 11V7a5 5 0 0 1 10 0v4"/>
             </svg>
           </button>
+          <div class="ws-lock-editor" style="display:none">${accessCodeEditorHTML(true)}</div>
           <button class="ws-icon-btn remove-btn" title="${T('ws.remove')}">
             <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-              <line x1="18" y1="6" x2="6" y2="18"/>
-              <line x1="6" y1="6" x2="18" y2="18"/>
+              <line x1="5" y1="12" x2="19" y2="12"/>
             </svg>
           </button>
         </div>
@@ -1900,14 +1988,43 @@
         refreshWorkspaces();
       });
 
-      // Per-workspace access code (overrides the server code; empty clears)
-      card.querySelector('.lock-btn').addEventListener('click', async () => {
-        const code = prompt(T(ws.access_code_hash ? 'ws.lock.prompt.change' : 'ws.lock.prompt'));
-        if (code === null) return;
-        try {
-          await invoke('set_access_code', { workspaceId: ws.id, code });
-          refreshWorkspaces();
-        } catch (e) { toast(T('ws.update.fail') + ': ' + e, 'err'); }
+      // Per-workspace access code (overrides the server code; empty clears).
+      // The lock icon morphs *in place* into the editor: clicking it hides the
+      // lock and shows the shared .ac-editor (input + ✓) in the same toolbar
+      // slot. On submit / Esc / click-away the editor collapses — first the
+      // input blurs and its placeholder reverts to the • dots, then (after a
+      // short beat) it disappears and the lock icon returns. Updates are applied
+      // live on the registry (no server restart, no list refresh).
+      const lockEditor = card.querySelector('.ws-lock-editor');
+      const lockBtn = card.querySelector('.lock-btn');
+      let wsLen = ws.access_code_len | 0;
+      function setLockState(set) {
+        lockBtn.style.color = set ? 'var(--accent)' : '';
+        lockBtn.title = set ? T('ws.lock.on') : T('ws.lock.tip');
+      }
+      const lockCtl = wireAccessCode(lockEditor.querySelector('.ac-editor'), {
+        len: wsLen,
+        // boundary defaults to the tight .ac-editor (input + ✓) — clicking
+        // anywhere else collapses.
+        onCollapse: () => {
+          // collapse() already reverted the placeholder to the • dots; keep the
+          // (now unfocused) editor up for a beat so that's visible, then morph
+          // back to the lock icon.
+          setTimeout(() => { lockEditor.style.display = 'none'; lockBtn.style.display = ''; }, 220);
+        },
+        onApply: async (code, btn) => {
+          try {
+            await invoke('set_access_code', { workspaceId: ws.id, code });
+            wsLen = code.trim().length;
+            setLockState(wsLen > 0);
+            lockCtl.applied(wsLen, btn);
+          } catch (e) { toast(T('ws.update.fail') + ': ' + e, 'err'); }
+        },
+      });
+      lockBtn.addEventListener('click', () => {
+        lockBtn.style.display = 'none';
+        lockEditor.style.display = 'flex';
+        lockCtl.focus();
       });
 
       // Toggle flags
@@ -2130,6 +2247,9 @@
     // Refresh language dropdown labels (the "auto" text changes with locale)
     populateLanguageSelects();
     renderBindHostSelects();
+    // The global access-code widget is built dynamically (T()-labeled), so
+    // rebuild it to relabel placeholder/tooltips/Apply on a language switch.
+    renderGlobalAccessCode();
     // Re-render shortcuts and help tip with translated descriptions
     if (document.getElementById('shortcuts-list')?.children.length) {
       renderShortcuts();
@@ -2242,12 +2362,13 @@
   // Initial render with default (en), then update once Rust reports system locale.
   applyI18n();
   (async () => {
+    let s;
     try {
       const info = await invoke('get_system_info');
       document.getElementById('ver-label').textContent = `v${info.app_version}`;
       systemLocale = info.locale;
       // Respect saved language setting; fallback to system locale.
-      const s = await invoke('get_settings');
+      s = await invoke('get_settings');
       const langPref = s.language ?? 'auto';
       if (langPref === 'auto') {
         setLocale(systemLocale);
@@ -2255,14 +2376,20 @@
         setLocale(langPref);
       }
     } catch (_) {}
-    // Load settings AFTER locale is resolved so all UI renders in correct language.
-    await loadSettings();
+    // Load settings AFTER locale is resolved so all UI renders in correct
+    // language. Reuses the settings fetched above; re-fetches if that failed.
+    s = await loadSettings(s);
     refreshWorkspaces();
     refreshServerStatus();
     setupBindHostListeners();
+    // Auto-check for updates on startup if enabled.
+    if (s.auto_update !== false) doUpdateCheck();
   })();
   window.addEventListener('focus', () => {
-    refreshWorkspaces();
+    // Don't rebuild the list while a code editor is actively being edited —
+    // that would discard an in-progress code. Skip only while one is open;
+    // it'll refresh on the next focus once editing ends.
+    if (!acAnyEditing()) refreshWorkspaces();
     // Wi-Fi switch / VPN toggled while the settings window was idle — re-pull
     // the bind list and the server-status payload so warnings don't go stale.
     const currentHost = document.getElementById('host')?.value;
@@ -2388,7 +2515,7 @@
   // Copy button (CLI + any static tips-copy buttons)
   function attachCopyHandler(btn) {
     btn.addEventListener('click', () => {
-      const cmd = btn.getAttribute('data-cmd') || cliOutput.textContent;
+      const cmd = cliOutput.textContent;
       const origHtml = btn.innerHTML;
       navigator.clipboard.writeText(cmd).then(() => {
         btn.innerHTML = '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>';
@@ -2424,6 +2551,9 @@
 
   let currentWebStyles = {};
 
+  // Undo-arrow icon shared by the web-styles and shortcuts row-reset buttons.
+  const UNDO_SVG = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M9 14 4 9l5-5"/><path d="M4 9h10.5a5.5 5.5 0 0 1 0 11H11"/></svg>';
+
   function isStyleAtDefault(d) {
     if (d.type === 'duocolor') {
       return !(`${d.key}.light` in currentWebStyles) && !(`${d.key}.dark` in currentWebStyles);
@@ -2445,13 +2575,12 @@
   function renderWebStyles() {
     const list = document.getElementById('webstyles-list');
     list.innerHTML = '';
-    const undoSvg = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M9 14 4 9l5-5"/><path d="M4 9h10.5a5.5 5.5 0 0 1 0 11H11"/></svg>';
     function appendResetBtn(row, d) {
       const btn = document.createElement('button');
       btn.type = 'button';
       btn.className = 'btn-tiny row-reset ' + (isStyleAtDefault(d) ? 'is-default' : '');
       btn.title = T('webstyles.reset.row');
-      btn.innerHTML = undoSvg;
+      btn.innerHTML = UNDO_SVG;
       btn.addEventListener('click', () => {
         if (isStyleAtDefault(d)) return;
         resetStyleRow(d);
@@ -2520,23 +2649,13 @@
         row.innerHTML = `<span class="st-name">${label}</span>
           <input type="range" min="${d.min}" max="${d.max}" step="${d.step}" value="${num}" data-key="${d.key}" data-unit="${d.unit}" style="width:100px;accent-color:var(--accent)">
           <span class="st-val" style="font-size:11px;color:var(--text-2);width:56px;text-align:right;font-family:monospace;flex-shrink:0">${num.toFixed(2)}${d.unit}</span>`;
-      } else {
-        row.innerHTML = `<span class="st-name">${label}</span>
-          <input type="text" value="${val}" data-key="${d.key}">`;
       }
       row.querySelectorAll('input, select[data-key]').forEach(inp => {
         inp.addEventListener(inp.tagName === 'SELECT' ? 'change' : 'input', () => {
           const k = inp.dataset.key;
           let v = inp.value;
           const def = STYLE_DEFS.find(s => s.key === k);
-          // Sync color ↔ text peers
-          if (inp.type === 'color') {
-            const peer = row.querySelector('input[data-peer="color"]');
-            if (peer) peer.value = v;
-          } else if (inp.dataset.peer === 'color') {
-            const peer = row.querySelector('input[type="color"]');
-            if (peer && /^#[0-9a-fA-F]{6}$/.test(v)) peer.value = v;
-          } else if (inp.type === 'range') {
+          if (inp.type === 'range') {
             const unit = inp.dataset.unit || '';
             const valSpan = row.querySelector('.st-val');
             if (valSpan) valSpan.textContent = parseFloat(v).toFixed(2) + unit;
@@ -2673,7 +2792,6 @@
   function renderShortcuts() {
     const list = document.getElementById('shortcuts-list');
     list.innerHTML = '';
-    const undoSvg = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M9 14 4 9l5-5"/><path d="M4 9h10.5a5.5 5.5 0 0 1 0 11H11"/></svg>';
     for (const names of SHORTCUT_ROWS) {
       const primary = names[0];
       const row = document.createElement('div');
@@ -2686,7 +2804,7 @@
         <span class="sc-name">${T(SHORTCUT_DESC_KEYS[primary] || primary)}</span>
         <div class="sc-actions">
           ${keysHtml}
-          <button type="button" class="btn-tiny row-reset ${atDefault ? 'is-default' : ''}" title="${T('shortcuts.reset.row')}">${undoSvg}</button>
+          <button type="button" class="btn-tiny row-reset ${atDefault ? 'is-default' : ''}" title="${T('shortcuts.reset.row')}">${UNDO_SVG}</button>
         </div>
       `;
       row.querySelectorAll('.sc-key').forEach(keyEl => {
@@ -2817,14 +2935,6 @@
     e.preventDefault();
     window.__TAURI__.process.relaunch();
   });
-
-  // Auto-check on startup if enabled
-  (async () => {
-    try {
-      const s = await invoke('get_settings');
-      if (s.auto_update !== false) doUpdateCheck();
-    } catch (_) {}
-  })();
 
   })().catch(err => console.error('[markon] init failed:', err));
 </script>

@@ -7,8 +7,8 @@
 //! the system has at least one cached block — that is the Anthropic recipe
 //! for caching the (system + tools) prefix together.
 
-use super::{scrub_credentials, ChatRequest, Provider, ProviderError, ProviderEvent, SystemBlock};
-use crate::chat::config::{ChatRuntimeConfig, ProviderKind};
+use super::{ChatRequest, Provider, ProviderError, ProviderEvent, SystemBlock};
+use crate::chat::config::ChatRuntimeConfig;
 use crate::chat::message::{ContentBlock, Usage};
 use crate::chat::tools::ToolSchema;
 use async_trait::async_trait;
@@ -27,7 +27,7 @@ impl AnthropicProvider {
     pub(crate) fn new(cfg: ChatRuntimeConfig) -> Self {
         Self {
             cfg,
-            client: reqwest::Client::new(),
+            client: super::http_client(),
         }
     }
 
@@ -42,17 +42,13 @@ impl AnthropicProvider {
 
 #[async_trait]
 impl Provider for AnthropicProvider {
-    fn kind(&self) -> ProviderKind {
-        ProviderKind::Anthropic
-    }
-
     async fn stream(
         &self,
         request: ChatRequest,
     ) -> Result<BoxStream<'static, Result<ProviderEvent, ProviderError>>, ProviderError> {
         let url = format!("{}/v1/messages", self.base_url().trim_end_matches('/'));
         let body = build_body(&request);
-        let resp = self
+        let req = self
             .client
             .post(&url)
             .header("x-api-key", &self.cfg.api_key)
@@ -60,30 +56,8 @@ impl Provider for AnthropicProvider {
             .header("anthropic-beta", "prompt-caching-2024-07-31")
             .header("content-type", "application/json")
             .header("accept", "text/event-stream")
-            .json(&body)
-            .send()
-            .await
-            .map_err(|e| {
-                ProviderError::Network(scrub_credentials(&e.to_string(), &self.cfg.api_key))
-            })?;
-
-        let status = resp.status();
-        if !status.is_success() {
-            let code = status.as_u16();
-            let text = resp
-                .text()
-                .await
-                .unwrap_or_else(|e| format!("<failed to read error body: {e}>"));
-            return Err(ProviderError::Api {
-                status: code,
-                message: scrub_credentials(&text, &self.cfg.api_key),
-            });
-        }
-
-        let api_key = self.cfg.api_key.clone();
-        let byte_stream = resp.bytes_stream().map(move |res| {
-            res.map_err(|e| ProviderError::Network(scrub_credentials(&e.to_string(), &api_key)))
-        });
+            .json(&body);
+        let byte_stream = super::send_sse(req, &self.cfg.api_key).await?;
         Ok(parse_anthropic_stream(byte_stream).boxed())
     }
 }
@@ -247,11 +221,8 @@ enum BlockState {
     ToolUse {
         id: String,
         name: String,
-        /// While streaming this is the raw partial-json buffer. After the
-        /// block stops we replace it with the parsed JSON's stringified form
-        /// so `assemble_content` can rebuild the final ContentBlock.
+        /// Raw partial-json input buffer accumulated while streaming.
         buffer: String,
-        finalized: bool,
     },
 }
 
@@ -280,25 +251,11 @@ impl ParserState {
             if let Some(block) = self.blocks.get(idx) {
                 match block {
                     BlockState::Text(text) => out.push(ContentBlock::Text { text: text.clone() }),
-                    BlockState::ToolUse {
-                        id,
-                        name,
-                        buffer,
-                        finalized,
-                    } => {
-                        let input = if *finalized {
-                            serde_json::from_str::<Value>(buffer)
-                                .unwrap_or_else(|_| Value::Object(serde_json::Map::new()))
-                        } else if buffer.trim().is_empty() {
-                            Value::Object(serde_json::Map::new())
-                        } else {
-                            serde_json::from_str::<Value>(buffer)
-                                .unwrap_or_else(|_| Value::Object(serde_json::Map::new()))
-                        };
+                    BlockState::ToolUse { id, name, buffer } => {
                         out.push(ContentBlock::ToolUse {
                             id: id.clone(),
                             name: name.clone(),
-                            input,
+                            input: super::parse_tool_input(buffer),
                         });
                     }
                 }
@@ -329,27 +286,13 @@ fn handle_sse_chunk(
     state: &mut ParserState,
     queue: &mut VecDeque<Result<ProviderEvent, ProviderError>>,
 ) {
-    let mut event_name: Option<String> = None;
-    let mut data_lines: Vec<&str> = Vec::new();
-    for line in chunk.lines() {
-        let line = line.trim_end_matches('\r');
-        if line.is_empty() || line.starts_with(':') {
-            continue;
-        }
-        if let Some(rest) = line.strip_prefix("event:") {
-            event_name = Some(rest.trim().to_string());
-        } else if let Some(rest) = line.strip_prefix("data:") {
-            // SSE: leading single space after the colon is part of the field
-            // separator and should be stripped.
-            let trimmed = rest.strip_prefix(' ').unwrap_or(rest);
-            data_lines.push(trimmed);
-        }
-    }
-    let data = data_lines.join("\n");
+    let (event_name, data) = super::parse_sse_fields(chunk);
     let Some(name) = event_name else {
         return;
     };
-    if data.is_empty() && name != "ping" {
+    // Empty data carries nothing to parse; `ping` needs no exception since
+    // its handler is a no-op anyway.
+    if data.is_empty() {
         return;
     }
     handle_event(&name, &data, state, queue);
@@ -382,7 +325,6 @@ fn handle_event(
                                 id: id.clone(),
                                 name: name.clone(),
                                 buffer: String::new(),
-                                finalized: false,
                             },
                         );
                         queue.push_back(Ok(ProviderEvent::ToolUseStart { id, name }));
@@ -422,26 +364,12 @@ fn handle_event(
         },
         "content_block_stop" => match serde_json::from_str::<ContentBlockStopPayload>(data) {
             Ok(p) => {
-                let mut emit: Option<(String, String, Value)> = None;
-                if let Some(BlockState::ToolUse {
-                    id,
-                    name,
-                    buffer,
-                    finalized,
-                }) = state.blocks.get_mut(&p.index)
-                {
-                    let input: Value = if buffer.trim().is_empty() {
-                        Value::Object(serde_json::Map::new())
-                    } else {
-                        serde_json::from_str::<Value>(buffer)
-                            .unwrap_or_else(|_| Value::Object(serde_json::Map::new()))
-                    };
-                    *buffer = input.to_string();
-                    *finalized = true;
-                    emit = Some((id.clone(), name.clone(), input));
-                }
-                if let Some((id, name, input)) = emit {
-                    queue.push_back(Ok(ProviderEvent::ToolUseEnd { id, name, input }));
+                if let Some(BlockState::ToolUse { id, name, buffer }) = state.blocks.get(&p.index) {
+                    queue.push_back(Ok(ProviderEvent::ToolUseEnd {
+                        id: id.clone(),
+                        name: name.clone(),
+                        input: super::parse_tool_input(buffer),
+                    }));
                 }
             }
             Err(e) => {
@@ -484,7 +412,10 @@ fn handle_event(
                     .unwrap_or(500);
                 queue.push_back(Err(ProviderError::Api {
                     status,
-                    message: p.error.message,
+                    // Mask credential shapes (sk-ant-… etc.) before this reaches
+                    // the browser via the SSE error event — the HTTP error path
+                    // already scrubs (mod.rs), this streaming path must too.
+                    message: super::scrub_credentials(&p.error.message, ""),
                 }));
                 state.finished = true;
             }

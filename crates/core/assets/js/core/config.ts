@@ -62,16 +62,12 @@ export const CONFIG = {
         INITIAL_RECONNECT_DELAY: 1000,      // Initial reconnect delay (1s)
         MAX_RECONNECT_DELAY: 30000,         // Max reconnect delay (30s)
         STABLE_CONNECTION_THRESHOLD: 5000,  // Stable connection threshold (5s)
-        STATE_LOAD_TIMEOUT: 500,            // State load timeout
-        STATE_CHECK_INTERVAL: 50,           // State check interval
     },
 
     // Animation and interaction
     ANIMATION: {
         RESIZE_DEBOUNCE: 150,           // Window resize debounce time
-        SCROLL_UPDATE_DEBOUNCE: 100,    // Scroll update debounce time
         PANEL_TRANSITION: 200,          // Panel transition animation time
-        OUTSIDE_CLICK_DELAY: 100,       // Outside click detection delay
     },
 
     // Undo/Redo Configuration
@@ -139,29 +135,11 @@ export const CONFIG = {
     SELECTORS: {
         MARKDOWN_BODY: '.markdown-body',
         HEADINGS: 'h1, h2, h3, h4, h5, h6',
-        HEADINGS_NO_H1: 'h2, h3, h4, h5, h6',
         TOC_CONTAINER: '#toc-container',
         TOC_ICON: '#toc-icon',
-        TOC_MENU: '.toc',
-        TOC_ITEM: '.toc-item',
 
         // Annotation Related
         HIGHLIGHT_CLASSES: '.highlight-orange, .highlight-green, .highlight-yellow, .strikethrough',
-        HAS_NOTE: '.has-note',
-        NOTE_CARD: '.note-card-margin',
-        NOTE_POPUP: '.note-popup',
-
-        // UI Element
-        SELECTION_POPOVER: '.selection-popover',
-        NOTE_INPUT_MODAL: '.note-input-modal',
-        CONFIRM_DIALOG: '.confirm-dialog',
-        SHORTCUTS_HELP_PANEL: '.shortcuts-help-panel',
-        EDITOR_MODAL: '.editor-modal',
-
-        // Viewed Related
-        VIEWED_CHECKBOX: '.viewed-checkbox',
-        SECTION_COLLAPSED: '.section-collapsed',
-        SECTION_CONTENT_HIDDEN: '.section-content-hidden',
     },
 
     // Elements to skip (during XPath computation).
@@ -215,9 +193,6 @@ export const CONFIG = {
 
     // Annotation types
     ANNOTATION_TYPES: {
-        HIGHLIGHT_ORANGE: 'highlight-orange',
-        HIGHLIGHT_GREEN: 'highlight-green',
-        HIGHLIGHT_YELLOW: 'highlight-yellow',
         STRIKETHROUGH: 'strikethrough',
         HAS_NOTE: 'has-note',
     },

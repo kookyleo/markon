@@ -400,9 +400,13 @@ fn render_output(svg: &str, out: &Output) -> Result<Vec<u8>> {
     }
 }
 
+/// Parse a composed SVG string into a usvg tree (shared by all raster outputs).
+fn parse_svg(svg: &str) -> Result<usvg::Tree> {
+    usvg::Tree::from_str(svg, &usvg::Options::default()).context("parse composed svg")
+}
+
 fn rasterize(svg: &str, size: u32) -> Result<Vec<u8>> {
-    let opts = usvg::Options::default();
-    let tree = usvg::Tree::from_str(svg, &opts).context("parse composed svg")?;
+    let tree = parse_svg(svg)?;
     rasterize_tree(&tree, size)
 }
 
@@ -415,8 +419,7 @@ fn rasterize_tree(tree: &usvg::Tree, size: u32) -> Result<Vec<u8>> {
 }
 
 fn pack_ico(svg: &str, sizes: &[u32]) -> Result<Vec<u8>> {
-    let opts = usvg::Options::default();
-    let tree = usvg::Tree::from_str(svg, &opts).context("parse composed svg")?;
+    let tree = parse_svg(svg)?;
     let mut dir = ico::IconDir::new(ico::ResourceType::Icon);
     for &size in sizes {
         let png = rasterize_tree(&tree, size)?;
@@ -439,8 +442,7 @@ fn pack_ico(svg: &str, sizes: &[u32]) -> Result<Vec<u8>> {
 }
 
 fn pack_icns(svg: &str, sizes: &[u32]) -> Result<Vec<u8>> {
-    let opts = usvg::Options::default();
-    let tree = usvg::Tree::from_str(svg, &opts).context("parse composed svg")?;
+    let tree = parse_svg(svg)?;
     let mut family = icns::IconFamily::new();
     for &size in sizes {
         let png = rasterize_tree(&tree, size)?;

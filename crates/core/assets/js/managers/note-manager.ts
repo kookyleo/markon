@@ -3,15 +3,13 @@
  * Handles note rendering, layout, and responsive handling
  */
 
-import { CONFIG } from '../core/config';
+import { CONFIG, i18n } from '../core/config';
 import { PlatformUtils, Logger, debounce } from '../core/utils';
 import { LayoutEngine } from '../services/layout';
 import { Text } from '../services/text';
 import type { AnnotationManager, Annotation } from './annotation-manager';
 
-const _t: (key: string, ...args: unknown[]) => string =
-    (typeof window !== 'undefined' && window.__MARKON_I18N__ && window.__MARKON_I18N__.t) ||
-    ((k: string) => k);
+const _t = (key: string, ...args: unknown[]): string => i18n.t(key, ...args);
 
 const SVG_NS = 'http://www.w3.org/2000/svg';
 
@@ -35,8 +33,7 @@ const ICON_DELETE =
 
 /**
  * Internal in-memory record kept per rendered note card. Exposed via
- * `getNoteCardsData()` so peers (e.g. popover-manager) can locate the
- * card element associated with a highlight.
+ * `getNoteCardsData()` (currently only consumed by unit tests).
  */
 export interface NoteCard {
     /** The floating `.note-card-margin` element appended to `<body>`. */
@@ -45,8 +42,6 @@ export interface NoteCard {
     highlightId: string;
     /** The in-document highlight element this card anchors to. */
     highlightElement: Element;
-    /** Mirrored from the annotation's `text` field. */
-    text: string;
     /** Mirrored from the annotation's `note` field (always non-empty here). */
     note: string;
 }
@@ -102,7 +97,6 @@ export class NoteManager {
                 element: noteCard,
                 highlightId: anno.id,
                 highlightElement,
-                text: anno.text,
                 note: anno.note,
             });
         });
@@ -215,20 +209,28 @@ export class NoteManager {
         return Array.from(outermostMap.values());
     }
 
+    /** Copy/edit/delete action-button block shared by the margin cards and
+     *  the narrow-screen popup. */
+    #noteActionsHtml(annotationId: string): string {
+        const editLabel = _t('web.note.edit');
+        const deleteLabel = _t('web.note.delete');
+        const copyLabel = _t('web.export.copyitem');
+        return `
+            <div class="note-actions">
+                <button class="note-copy" data-annotation-id="${annotationId}" title="${copyLabel}" aria-label="${copyLabel}">${ICON_COPY}</button>
+                <button class="note-edit" data-annotation-id="${annotationId}" title="${editLabel}" aria-label="${editLabel}">${ICON_EDIT}</button>
+                <button class="note-delete" data-annotation-id="${annotationId}" title="${deleteLabel}" aria-label="${deleteLabel}">${ICON_DELETE}</button>
+            </div>
+        `;
+    }
+
     #createNoteCard(annotation: Annotation): HTMLDivElement {
         const noteCard = document.createElement('div');
         noteCard.className = 'note-card-margin';
         noteCard.dataset.annotationId = annotation.id;
 
-        const editLabel = _t('web.note.edit');
-        const deleteLabel = _t('web.note.delete');
-        const copyLabel = _t('web.export.copyitem');
         noteCard.innerHTML = `
-            <div class="note-actions">
-                <button class="note-copy" data-annotation-id="${annotation.id}" title="${copyLabel}" aria-label="${copyLabel}">${ICON_COPY}</button>
-                <button class="note-edit" data-annotation-id="${annotation.id}" title="${editLabel}" aria-label="${editLabel}">${ICON_EDIT}</button>
-                <button class="note-delete" data-annotation-id="${annotation.id}" title="${deleteLabel}" aria-label="${deleteLabel}">${ICON_DELETE}</button>
-            </div>
+            ${this.#noteActionsHtml(annotation.id)}
             <div class="note-content">${Text.escape(annotation.note ?? '')}</div>
             ${this.#noteAuthorLine(annotation)}
         `;
@@ -466,15 +468,8 @@ export class NoteManager {
         const popup = document.createElement('div');
         popup.className = 'note-popup';
         popup.dataset.annotationId = annotationId;
-        const popupEditLabel = _t('web.note.edit');
-        const popupDeleteLabel = _t('web.note.delete');
-        const popupCopyLabel = _t('web.export.copyitem');
         popup.innerHTML = `
-            <div class="note-actions">
-                <button class="note-copy" data-annotation-id="${annotationId}" title="${popupCopyLabel}" aria-label="${popupCopyLabel}">${ICON_COPY}</button>
-                <button class="note-edit" data-annotation-id="${annotationId}" title="${popupEditLabel}" aria-label="${popupEditLabel}">${ICON_EDIT}</button>
-                <button class="note-delete" data-annotation-id="${annotationId}" title="${popupDeleteLabel}" aria-label="${popupDeleteLabel}">${ICON_DELETE}</button>
-            </div>
+            ${this.#noteActionsHtml(annotationId)}
             <div class="note-content">${Text.escape(noteData.note)}</div>
         `;
 

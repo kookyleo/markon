@@ -10,16 +10,6 @@ const _t: (k: string, ...args: unknown[]) => string =
     (window.__MARKON_I18N__ && window.__MARKON_I18N__.t) || ((k: string) => k);
 
 /**
- * Modal type enum.
- */
-export const ModalType = {
-    NOTE_INPUT: 'note_input',
-    CONFIRM: 'confirm',
-    CUSTOM: 'custom',
-} as const;
-export type ModalType = (typeof ModalType)[keyof typeof ModalType];
-
-/**
  * Shared options accepted by every modal.
  */
 export interface BaseModalOptions {
@@ -70,10 +60,9 @@ export abstract class BaseModal {
 
         this.#element = this.create();
         // Assistive-tech semantics: anything we surface as a modal needs
-        // role+aria-modal so screen readers announce it as a dialog and the
-        // focus trap (see #setupEventListeners → tab-key cycling) is
-        // discoverable. Subclasses that already set these attributes win
-        // because `setAttribute` here would clobber a more specific value.
+        // role+aria-modal so screen readers announce it as a dialog.
+        // Subclasses that already set these attributes win because
+        // `setAttribute` here would clobber a more specific value.
         if (!this.#element.hasAttribute('role')) {
             this.#element.setAttribute('role', 'dialog');
         }
@@ -255,7 +244,7 @@ export class NoteInputModal extends BaseModal {
         modal.className = 'note-input-modal';
 
         modal.innerHTML = `
-            <textarea class="note-textarea" placeholder="${_t('web.modal.note.placeholder')}">${this.#initialValue}</textarea>
+            <textarea class="note-textarea" placeholder="${_t('web.modal.note.placeholder')}"></textarea>
             <div class="note-input-actions">
                 <button class="note-cancel">${_t('web.modal.cancel')}</button>
                 <button class="note-save" disabled>${_t('web.modal.save')}</button>
@@ -263,6 +252,10 @@ export class NoteInputModal extends BaseModal {
         `;
 
         const textarea = modal.querySelector('.note-textarea') as HTMLTextAreaElement;
+        // Assign the (possibly peer-supplied, in shared mode) note text via
+        // .value, never string-interpolated into innerHTML — a note containing
+        // </textarea>… would otherwise break out and inject markup.
+        textarea.value = this.#initialValue;
         const cancelBtn = modal.querySelector('.note-cancel') as HTMLButtonElement;
         const saveBtn = modal.querySelector('.note-save') as HTMLButtonElement;
 
@@ -318,13 +311,6 @@ export class NoteInputModal extends BaseModal {
         this.#onCancel();
         this.close();
     }
-
-    /**
-     * Override close to prevent direct closure (use cancel() instead)
-     */
-    close(): void {
-        super.close();
-    }
 }
 
 /**
@@ -366,12 +352,14 @@ export class ConfirmModal extends BaseModal {
         modal.className = 'confirm-dialog';
 
         modal.innerHTML = `
-            <p class="confirm-message">${this.#message}</p>
+            <p class="confirm-message"></p>
             <div class="confirm-actions">
                 <button class="confirm-cancel">${this.#cancelText}</button>
                 <button class="confirm-ok">${this.#confirmText}</button>
             </div>
         `;
+        // Set the message as text, not interpolated HTML.
+        (modal.querySelector('.confirm-message') as HTMLElement).textContent = this.#message;
 
         const cancelBtn = modal.querySelector('.confirm-cancel') as HTMLButtonElement;
         const okBtn = modal.querySelector('.confirm-ok') as HTMLButtonElement;
@@ -407,15 +395,12 @@ export interface AnchoredOptions {
  * Modal manager (static class).
  */
 export class ModalManager {
-    static #current: BaseModal | null = null;
-
     /**
      * Show a note-input modal.
      */
     static showNoteInput(options: NoteInputModalOptions & AnchoredOptions = {}): NoteInputModal {
         const modal = new NoteInputModal(options);
         modal.show(options.anchorElement ?? null);
-        ModalManager.#current = modal;
         return modal;
     }
 
@@ -425,25 +410,7 @@ export class ModalManager {
     static showConfirm(options: ConfirmModalOptions & AnchoredOptions = {}): ConfirmModal {
         const modal = new ConfirmModal(options);
         modal.show(options.anchorElement ?? null);
-        ModalManager.#current = modal;
         return modal;
-    }
-
-    /**
-     * Close the currently-open modal, if any.
-     */
-    static closeCurrent(): void {
-        if (ModalManager.#current) {
-            ModalManager.#current.close();
-            ModalManager.#current = null;
-        }
-    }
-
-    /**
-     * Get the currently-open modal, if any.
-     */
-    static getCurrent(): BaseModal | null {
-        return ModalManager.#current;
     }
 }
 

@@ -4,7 +4,7 @@ use markon_core::net::{available_bind_hosts, BindHostKind};
 use markon_core::server::{self, ServerConfig, WorkspaceInit};
 use markon_core::settings::AppSettings;
 use markon_core::workspace::{ServerLock, WorkspaceFlags, WorkspaceRegistry};
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use std::io::IsTerminal;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
@@ -255,57 +255,48 @@ fn display_workspace_path(path: &Path) -> String {
     path.to_string_lossy().to_string()
 }
 
-fn format_workspace_flags(flags: WorkspaceFlags, search_ready: bool, colors: CliColors) -> String {
-    let search_label = if flags.enable_search && search_ready {
-        "Search (ready)"
+/// One row per workspace flag: (enabled, card label, tag label). Single source
+/// of truth for flag order and naming across the card and table renderings.
+fn workspace_flag_entries(
+    flags: WorkspaceFlags,
+    search_ready: bool,
+) -> [(bool, &'static str, &'static str); 6] {
+    let (search_card, search_tag) = if flags.enable_search && search_ready {
+        ("Search (ready)", "Search ready")
     } else {
-        "Search"
+        ("Search", "Search")
     };
     [
-        (flags.enable_search, search_label),
-        (flags.enable_viewed, "Viewed tracking"),
-        (flags.enable_edit, "Edit"),
-        (flags.enable_live, "Live"),
-        (flags.enable_chat, "Chat"),
-        (flags.shared_annotation, "Shared notes"),
+        (flags.enable_search, search_card, search_tag),
+        (flags.enable_viewed, "Viewed tracking", "Viewed"),
+        (flags.enable_edit, "Edit", "Edit"),
+        (flags.enable_live, "Live", "Live"),
+        (flags.enable_chat, "Chat", "Chat"),
+        (flags.shared_annotation, "Shared notes", "Shared notes"),
     ]
-    .into_iter()
-    .map(|(enabled, label)| {
-        let plain = format!("[{}] {label}", if enabled { "x" } else { " " });
-        if enabled {
-            colors.enabled_flag(&plain)
-        } else {
-            colors.disabled_flag(&plain)
-        }
-    })
-    .collect::<Vec<_>>()
-    .join("  ")
+}
+
+fn format_workspace_flags(flags: WorkspaceFlags, search_ready: bool, colors: CliColors) -> String {
+    workspace_flag_entries(flags, search_ready)
+        .into_iter()
+        .map(|(enabled, card_label, _)| {
+            let plain = format!("[{}] {card_label}", if enabled { "x" } else { " " });
+            if enabled {
+                colors.enabled_flag(&plain)
+            } else {
+                colors.disabled_flag(&plain)
+            }
+        })
+        .collect::<Vec<_>>()
+        .join("  ")
 }
 
 fn format_workspace_feature_tags(flags: WorkspaceFlags, search_ready: bool) -> String {
-    let mut features = Vec::new();
-    if flags.enable_search {
-        features.push(if search_ready {
-            "Search ready".to_string()
-        } else {
-            "Search".to_string()
-        });
-    }
-    if flags.enable_viewed {
-        features.push("Viewed".to_string());
-    }
-    if flags.enable_edit {
-        features.push("Edit".to_string());
-    }
-    if flags.enable_live {
-        features.push("Live".to_string());
-    }
-    if flags.enable_chat {
-        features.push("Chat".to_string());
-    }
-    if flags.shared_annotation {
-        features.push("Shared notes".to_string());
-    }
+    let features: Vec<&str> = workspace_flag_entries(flags, search_ready)
+        .into_iter()
+        .filter(|(enabled, _, _)| *enabled)
+        .map(|(_, _, tag_label)| tag_label)
+        .collect();
     if features.is_empty() {
         "-".to_string()
     } else {
@@ -354,13 +345,9 @@ fn build_workspace_access_summary(
     let public_url = entry
         .filter(|base| *base != "missing")
         .map(|base| server::build_workspace_url(base, &workspace_path));
-    let qr_url = entry.map(|base| {
-        if base == "missing" {
-            featured_url.clone()
-        } else {
-            server::build_workspace_url(base, &workspace_path)
-        }
-    });
+    // QR target: the public URL when a real --entry prefix was given,
+    // otherwise (bare --entry / "missing") fall back to the featured URL.
+    let qr_url = entry.map(|_| public_url.clone().unwrap_or_else(|| featured_url.clone()));
 
     WorkspaceAccessSummary {
         workspace_path: display_workspace_path(workspace_root),
@@ -373,17 +360,19 @@ fn build_workspace_access_summary(
 }
 
 fn build_browser_target_url(
-    featured_base: &str,
+    featured_workspace_url: &str,
     workspace_id: &str,
     initial_path: Option<&str>,
     open_browser: Option<&str>,
 ) -> Option<String> {
-    let workspace_path = server::workspace_url_path(workspace_id, initial_path);
     open_browser.map(|base| {
         if base == "local" {
-            server::build_workspace_url(featured_base, &workspace_path)
+            featured_workspace_url.to_string()
         } else {
-            server::build_workspace_url(base, &workspace_path)
+            server::build_workspace_url(
+                base,
+                &server::workspace_url_path(workspace_id, initial_path),
+            )
         }
     })
 }
@@ -433,6 +422,22 @@ fn print_workspace_access_summary(summary: &WorkspaceAccessSummary) {
     }
 }
 
+/// Fetch the running server's workspace list (GET /api/workspaces).
+async fn fetch_workspaces(
+    client: &reqwest::Client,
+    port: u16,
+    token: &str,
+) -> Result<Vec<WorkspaceListEntry>, Box<dyn std::error::Error>> {
+    Ok(client
+        .get(format!("http://127.0.0.1:{port}/api/workspaces"))
+        .header("X-Markon-Token", token)
+        .send()
+        .await?
+        .error_for_status()?
+        .json()
+        .await?)
+}
+
 async fn list_workspaces(
     bind_host: &str,
     advertised_host: &str,
@@ -447,14 +452,7 @@ async fn list_workspaces(
     // with "Cannot drop a runtime in a context where blocking is not
     // allowed". Same applies to every other CLI -> server HTTP call below.
     let client = reqwest::Client::new();
-    let workspaces: Vec<WorkspaceListEntry> = client
-        .get(format!("http://127.0.0.1:{port}/api/workspaces"))
-        .header("X-Markon-Token", token)
-        .send()
-        .await?
-        .error_for_status()?
-        .json()
-        .await?;
+    let workspaces = fetch_workspaces(&client, port, token).await?;
 
     if workspaces.is_empty() {
         println!("No active workspaces.");
@@ -573,23 +571,13 @@ async fn detach_workspace(
     target: &str,
 ) -> Result<(), Box<dyn std::error::Error>> {
     let client = reqwest::Client::new();
-    let workspaces: serde_json::Value = client
-        .get(format!("http://127.0.0.1:{port}/api/workspaces"))
-        .header("X-Markon-Token", token)
-        .send()
-        .await?
-        .error_for_status()?
-        .json()
-        .await?;
+    let workspaces = fetch_workspaces(&client, port, token).await?;
 
-    let arr = workspaces
-        .as_array()
-        .ok_or("Invalid response from server")?;
     let id = if let Ok(idx) = target.parse::<usize>() {
-        if idx == 0 || idx > arr.len() {
-            return Err(format!("Index {idx} out of range (1-{})", arr.len()).into());
+        if idx == 0 || idx > workspaces.len() {
+            return Err(format!("Index {idx} out of range (1-{})", workspaces.len()).into());
         }
-        arr[idx - 1]["id"].as_str().ok_or("Workspace has no id")?
+        workspaces[idx - 1].id.as_str()
     } else {
         target
     };
@@ -627,20 +615,10 @@ async fn add_or_update_workspace(
     let client = reqwest::Client::new();
 
     // Check if this path is already a registered workspace.
-    let workspaces: serde_json::Value = client
-        .get(format!("http://127.0.0.1:{port}/api/workspaces"))
-        .header("X-Markon-Token", token)
-        .send()
-        .await?
-        .error_for_status()?
-        .json()
-        .await?;
+    let workspaces = fetch_workspaces(&client, port, token).await?;
 
-    if let Some(existing) = workspaces
-        .as_array()
-        .and_then(|arr| arr.iter().find(|w| w["path"].as_str() == Some(ws_path)))
-    {
-        let id = existing["id"].as_str().ok_or("no id in workspace")?;
+    if let Some(existing) = workspaces.iter().find(|w| w.path == ws_path) {
+        let id = &existing.id;
         client
             .put(format!("http://127.0.0.1:{port}/api/workspace/{id}"))
             .header("X-Markon-Token", token)
@@ -648,21 +626,25 @@ async fn add_or_update_workspace(
             .send()
             .await?
             .error_for_status()?;
-        return Ok(id.to_string());
+        return Ok(id.clone());
+    }
+
+    // Mirrors the server's AddWorkspaceRequest (`{ path, #[serde(flatten)]
+    // flags }`) so a new WorkspaceFlags field is carried automatically.
+    #[derive(Serialize)]
+    struct AddWorkspaceBody<'a> {
+        path: &'a str,
+        #[serde(flatten)]
+        flags: WorkspaceFlags,
     }
 
     let resp: serde_json::Value = client
         .post(format!("http://127.0.0.1:{port}/api/workspace"))
         .header("X-Markon-Token", token)
-        .json(&serde_json::json!({
-            "path": ws_path,
-            "enable_search": flags.enable_search,
-            "enable_viewed": flags.enable_viewed,
-            "enable_edit": flags.enable_edit,
-            "enable_live": flags.enable_live,
-            "enable_chat": flags.enable_chat,
-            "shared_annotation": flags.shared_annotation,
-        }))
+        .json(&AddWorkspaceBody {
+            path: ws_path,
+            flags,
+        })
         .send()
         .await?
         .error_for_status()?
@@ -693,44 +675,18 @@ async fn main() {
     // Handle subcommands.
     if let Some(cmd) = cli.command {
         // Feedback commands run without a server.
-        match &cmd {
-            Commands::Bug { title, body } => {
-                if let Err(e) = feedback::submit(
-                    feedback::FeedbackKind::Bug,
-                    title.clone(),
-                    body.clone(),
-                    "auto",
-                ) {
-                    eprintln!("Error: {e}");
-                    std::process::exit(1);
-                }
-                return;
+        let feedback_cmd = match &cmd {
+            Commands::Bug { title, body } => Some((feedback::FeedbackKind::Bug, title, body)),
+            Commands::Idea { title, body } => Some((feedback::FeedbackKind::Idea, title, body)),
+            Commands::Ask { title, body } => Some((feedback::FeedbackKind::Ask, title, body)),
+            _ => None,
+        };
+        if let Some((kind, title, body)) = feedback_cmd {
+            if let Err(e) = feedback::submit(kind, title.clone(), body.clone(), "auto") {
+                eprintln!("Error: {e}");
+                std::process::exit(1);
             }
-            Commands::Idea { title, body } => {
-                if let Err(e) = feedback::submit(
-                    feedback::FeedbackKind::Idea,
-                    title.clone(),
-                    body.clone(),
-                    "auto",
-                ) {
-                    eprintln!("Error: {e}");
-                    std::process::exit(1);
-                }
-                return;
-            }
-            Commands::Ask { title, body } => {
-                if let Err(e) = feedback::submit(
-                    feedback::FeedbackKind::Ask,
-                    title.clone(),
-                    body.clone(),
-                    "auto",
-                ) {
-                    eprintln!("Error: {e}");
-                    std::process::exit(1);
-                }
-                return;
-            }
-            _ => {}
+            return;
         }
 
         // Workspace-management commands talk to the running server.
@@ -869,10 +825,8 @@ async fn main() {
                         cli.entry.as_deref(),
                     );
                     print_workspace_access_summary(&summary);
-                    let featured_base =
-                        server::featured_base_url(&bind_host, &advertised_host, lock.port);
                     if let Some(browser_url) = build_browser_target_url(
-                        &featured_base,
+                        &summary.featured_url,
                         &workspace_id,
                         initial_path.as_deref(),
                         open_browser_target.as_deref(),

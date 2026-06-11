@@ -49,10 +49,14 @@ pub(crate) fn resolve_lang(language: &str) -> &'static str {
 /// Get parsed i18n data for a given language setting value.
 pub fn get_lang_data(language: &str) -> serde_json::Value {
     let key = resolve_lang(language);
+    // resolve_lang only returns keys present in LANGS or DEFAULT_LANG_KEY
+    // (hardcoded "en" in build.rs, backed by i18n/en.json5), so the fallbacks
+    // are unreachable; prefer the default language should that ever change.
     let entry = LANGS
         .iter()
         .find(|l| l.key == key)
-        .unwrap_or(&LANGS[LANGS.len() - 1]);
+        .or_else(|| LANGS.iter().find(|l| l.key == DEFAULT_LANG_KEY))
+        .unwrap_or(&LANGS[0]);
     parse_lang(entry)
 }
 

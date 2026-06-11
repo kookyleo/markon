@@ -9,9 +9,11 @@
 //!   - results formatted as `path:line: <matched line>` so the model can cite
 //!   - cap total bytes by [`MAX_TOOL_OUTPUT_BYTES`] and append truncation note.
 
-use super::{default_walker, Tool, ToolContext, ToolError, MAX_TOOL_OUTPUT_BYTES};
+use super::{
+    default_walker, path_to_forward_slash, Tool, ToolContext, ToolError, MAX_TOOL_OUTPUT_BYTES,
+};
 use async_trait::async_trait;
-use globset::{Glob, GlobSet, GlobSetBuilder};
+use globset::Glob;
 use grep_regex::RegexMatcherBuilder;
 use grep_searcher::{SearcherBuilder, Sink, SinkMatch};
 use serde::Deserialize;
@@ -83,16 +85,12 @@ impl Tool for GrepTool {
             .build(&args.pattern)
             .map_err(|e| ToolError::InvalidArgument(format!("invalid regex: {e}")))?;
 
-        let glob_set: Option<GlobSet> = match args.glob.as_deref() {
-            Some(g) if !g.is_empty() => {
-                let glob = Glob::new(g)
-                    .map_err(|e| ToolError::InvalidArgument(format!("invalid glob '{g}': {e}")))?;
-                let set = GlobSetBuilder::new()
-                    .add(glob)
-                    .build()
-                    .map_err(|e| ToolError::InvalidArgument(e.to_string()))?;
-                Some(set)
-            }
+        let glob_matcher = match args.glob.as_deref() {
+            Some(g) if !g.is_empty() => Some(
+                Glob::new(g)
+                    .map_err(|e| ToolError::InvalidArgument(format!("invalid glob '{g}': {e}")))?
+                    .compile_matcher(),
+            ),
             _ => None,
         };
 
@@ -102,8 +100,6 @@ impl Tool for GrepTool {
             .multi_line(false)
             .build();
 
-        // Pre-format header now (we don't know match count yet); we'll
-        // prepend it when we finalize the body.
         let mut hits: Vec<String> = Vec::new();
         let mut byte_budget_used: usize = 0;
         let mut budget_full = false;
@@ -125,12 +121,12 @@ impl Tool for GrepTool {
                 Ok(r) => r.to_path_buf(),
                 Err(_) => continue,
             };
-            if let Some(set) = &glob_set {
-                if !set.is_match(&rel) {
+            if let Some(matcher) = &glob_matcher {
+                if !matcher.is_match(&rel) {
                     continue;
                 }
             }
-            let rel_str = rel_to_forward(&rel);
+            let rel_str = path_to_forward_slash(&rel);
 
             let remaining = max_matches.saturating_sub(hits.len());
             if remaining == 0 {
@@ -180,8 +176,6 @@ impl Tool for GrepTool {
         Ok(out)
     }
 }
-
-use super::path_to_forward_slash as rel_to_forward;
 
 /// A `Sink` that stashes formatted `rel:line:text` strings into a shared
 /// vector. Stops searching the current file once we've collected enough or

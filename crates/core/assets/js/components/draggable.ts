@@ -1,20 +1,9 @@
 /**
  * DraggableManager - Unified drag-and-drop manager
- * Eliminates code duplication between makePopoverDraggable and makeDraggable.
  */
 
 import { Logger } from '../core/utils';
 import { Position } from '../services/position';
-
-/**
- * Callback fired when dragging starts. Receives the originating event.
- */
-export type DragStartCallback = (e: MouseEvent | TouchEvent) => void;
-
-/**
- * Callback fired during a drag, with delta from the drag origin.
- */
-export type DragMoveCallback = (dx: number, dy: number) => void;
 
 /**
  * Callback fired when a drag ends, with the element's final left/top.
@@ -29,10 +18,6 @@ export interface DraggableOptions {
     storageKey?: string | null;
     /** CSS selector for an inner drag handle (defaults to the whole element). */
     handle?: string | null;
-    /** Called when the drag starts. */
-    onDragStart?: DragStartCallback | null;
-    /** Called repeatedly during drag with delta from the drag origin. */
-    onDragmove?: DragMoveCallback | null;
     /** Called when the drag ends with final left/top. */
     onDragEnd?: DragEndCallback | null;
     /** When true, persists offset relative to `data-original-left/top` to `storageKey`. */
@@ -48,13 +33,12 @@ interface InternalHandlers {
     touchend?: (e: TouchEvent) => void;
 }
 
-type Required<T> = { [K in keyof T]-?: T[K] };
-
 /**
  * Drag-and-drop manager class.
  */
 export class DraggableManager {
     #element: HTMLElement;
+    #handle: HTMLElement | null = null;
     #options: Required<DraggableOptions>;
     #isDragging = false;
     #startX = 0;
@@ -72,8 +56,6 @@ export class DraggableManager {
         this.#options = {
             storageKey: null,
             handle: null,
-            onDragStart: null,
-            onDragmove: null,
             onDragEnd: null,
             saveOffset: false,
             ...options,
@@ -86,11 +68,11 @@ export class DraggableManager {
      * Initialize the drag behavior.
      */
     #init(): void {
-        const handle: HTMLElement | null = this.#options.handle
+        this.#handle = this.#options.handle
             ? (this.#element.querySelector(this.#options.handle) as HTMLElement | null)
             : this.#element;
 
-        if (!handle) {
+        if (!this.#handle) {
             Logger.warn('Draggable', 'Handle element not found');
             return;
         }
@@ -107,8 +89,8 @@ export class DraggableManager {
         this.#handlers.touchmove = (e: TouchEvent) => this.#onDragmove(e);
         this.#handlers.touchend = () => this.#onDragEnd();
 
-        handle.addEventListener('mousedown', this.#handlers.mousedown);
-        handle.addEventListener('touchstart', this.#handlers.touchstart, { passive: false });
+        this.#handle.addEventListener('mousedown', this.#handlers.mousedown);
+        this.#handle.addEventListener('touchstart', this.#handlers.touchstart, { passive: false });
     }
 
     /**
@@ -123,7 +105,7 @@ export class DraggableManager {
 
         this.#isDragging = true;
 
-        const point = this.#extractPoint(e, 'start');
+        const point = this.#extractPoint(e);
         this.#startX = point.pageX;
         this.#startY = point.pageY;
 
@@ -141,11 +123,6 @@ export class DraggableManager {
         if (this.#handlers.touchend) document.addEventListener('touchend', this.#handlers.touchend);
 
         e.preventDefault();
-
-        // Fire callback
-        if (this.#options.onDragStart) {
-            this.#options.onDragStart(e);
-        }
     }
 
     /**
@@ -154,7 +131,7 @@ export class DraggableManager {
     #onDragmove(e: MouseEvent | TouchEvent): void {
         if (!this.#isDragging) return;
 
-        const point = this.#extractPoint(e, 'move');
+        const point = this.#extractPoint(e);
         const dx = point.pageX - this.#startX;
         const dy = point.pageY - this.#startY;
 
@@ -171,11 +148,6 @@ export class DraggableManager {
 
         this.#element.style.left = `${newLeft}px`;
         this.#element.style.top = `${newTop}px`;
-
-        // Fire callback
-        if (this.#options.onDragmove) {
-            this.#options.onDragmove(dx, dy);
-        }
     }
 
     /**
@@ -230,14 +202,12 @@ export class DraggableManager {
     /**
      * Extract page coordinates from a mouse or touch event.
      */
-    #extractPoint(e: MouseEvent | TouchEvent, phase: 'start' | 'move'): { pageX: number; pageY: number } {
+    #extractPoint(e: MouseEvent | TouchEvent): { pageX: number; pageY: number } {
         if (e.type === 'touchstart' || e.type === 'touchmove') {
             const touch = (e as TouchEvent).touches[0];
             return { pageX: touch.pageX, pageY: touch.pageY };
         }
         const mouse = e as MouseEvent;
-        // phase is unused at runtime but keeps semantic parity with original code paths
-        void phase;
         return { pageX: mouse.pageX, pageY: mouse.pageY };
     }
 
@@ -245,13 +215,9 @@ export class DraggableManager {
      * Tear down the drag behavior.
      */
     destroy(): void {
-        const handle: HTMLElement | null = this.#options.handle
-            ? (this.#element.querySelector(this.#options.handle) as HTMLElement | null)
-            : this.#element;
-
-        if (handle) {
-            if (this.#handlers.mousedown) handle.removeEventListener('mousedown', this.#handlers.mousedown);
-            if (this.#handlers.touchstart) handle.removeEventListener('touchstart', this.#handlers.touchstart);
+        if (this.#handle) {
+            if (this.#handlers.mousedown) this.#handle.removeEventListener('mousedown', this.#handlers.mousedown);
+            if (this.#handlers.touchstart) this.#handle.removeEventListener('touchstart', this.#handlers.touchstart);
         }
 
         // Detach global listeners if a drag is still active.
@@ -265,11 +231,4 @@ export class DraggableManager {
         this.#element.style.cursor = '';
         Logger.log('Draggable', 'Destroyed');
     }
-}
-
-/**
- * Convenience helper that makes an element draggable.
- */
-export function makeDraggable(element: HTMLElement, options: DraggableOptions = {}): DraggableManager {
-    return new DraggableManager(element, options);
 }

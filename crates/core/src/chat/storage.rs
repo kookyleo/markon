@@ -197,37 +197,6 @@ impl ChatStorage {
         Ok(())
     }
 
-    #[allow(dead_code)]
-    pub(crate) async fn list_threads(
-        &self,
-        workspace_id: &str,
-    ) -> Result<Vec<Thread>, StorageError> {
-        let workspace_id = workspace_id.to_string();
-        self.with_conn(move |conn| {
-            let mut stmt = conn.prepare(
-                "SELECT id, workspace_id, title, created_at, updated_at
-                   FROM chat_threads
-                  WHERE workspace_id = ?1
-                  ORDER BY updated_at DESC",
-            )?;
-            let rows = stmt.query_map(params![workspace_id], |row| {
-                Ok(Thread {
-                    id: row.get(0)?,
-                    workspace_id: row.get(1)?,
-                    title: row.get(2)?,
-                    created_at: row.get(3)?,
-                    updated_at: row.get(4)?,
-                })
-            })?;
-            let mut out = Vec::new();
-            for r in rows {
-                out.push(r?);
-            }
-            Ok(out)
-        })
-        .await
-    }
-
     pub(crate) async fn create_thread(
         &self,
         workspace_id: &str,
@@ -273,28 +242,6 @@ impl ChatStorage {
                 }),
                 None => Err(StorageError::NotFound),
             }
-        })
-        .await
-    }
-
-    #[allow(dead_code)]
-    pub(crate) async fn rename_thread(
-        &self,
-        thread_id: &str,
-        title: &str,
-    ) -> Result<(), StorageError> {
-        let thread_id = thread_id.to_string();
-        let title = title.to_string();
-        self.with_conn(move |conn| {
-            let now = now_ms();
-            let n = conn.execute(
-                "UPDATE chat_threads SET title = ?1, updated_at = ?2 WHERE id = ?3",
-                params![title, now, thread_id],
-            )?;
-            if n == 0 {
-                return Err(StorageError::NotFound);
-            }
-            Ok(())
         })
         .await
     }
@@ -474,6 +421,18 @@ mod tests {
         (ChatStorage::new(Arc::new(Mutex::new(conn))), tmp)
     }
 
+    /// The `role` column stores `role_to_str` while the wire format uses
+    /// `Role`'s serde repr (`rename_all = "lowercase"`). Pin them together so
+    /// a new `Role` variant can't silently drift the two apart.
+    #[test]
+    fn role_strings_match_serde_repr() {
+        for role in [Role::User, Role::Assistant] {
+            let stored = role_to_str(role);
+            assert_eq!(serde_json::to_value(role).unwrap(), stored);
+            assert_eq!(role_from_str(stored).unwrap(), role);
+        }
+    }
+
     #[tokio::test]
     async fn create_list_and_delete_cascades() {
         let (store, _tmp) = fresh_storage();
@@ -484,7 +443,7 @@ mod tests {
         let t2 = store.create_thread("ws1", "second").await.unwrap();
         let _other = store.create_thread("ws2", "other-ws").await.unwrap();
 
-        let listed = store.list_threads("ws1").await.unwrap();
+        let listed = store.list_thread_summaries("ws1").await.unwrap();
         assert_eq!(listed.len(), 2);
         // updated_at DESC — most recent first.
         assert_eq!(listed[0].id, t2.id);

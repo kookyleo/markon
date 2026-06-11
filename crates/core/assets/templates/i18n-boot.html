@@ -1,0 +1,13 @@
+{# Shared i18n runtime bootstrap — exposes window.__MARKON_I18N__ = { lang, t }.
+   Included by layout.html, directory.html and access-gate.html (chat.html
+   keeps its popout-specific copy). `en` always exists in the bundle, so the
+   `all.en` fallbacks below are always defined. #}
+{% if i18n_json %}<script>
+    window.__MARKON_I18N__ = (function() {
+        var all = {{ i18n_json | safe }};
+        var lang = "{{ i18n_lang | default(value='en') }}";
+        var dict = all[lang] || all.en;
+        return { lang: lang, t: function(k) { return dict[k] || all.en[k] || k; } };
+    })();
+    </script>
+{% endif %}

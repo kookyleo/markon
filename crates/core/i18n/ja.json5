@@ -13,7 +13,7 @@
     "nav.about":      "このアプリについて",
 
     // ── General — Server ─────────────────────────────────────
-    "sec.server":     "サーバー",
+    "sec.server":     "サーバーとアクセス",
     "pref.port":       "ポート",
     "port.auto":       "自動",
     "port.spec":       "手動",
@@ -49,15 +49,13 @@
     "access.submit":        "ロック解除",
     "access.err.wrong":     "コードが違います。もう一度お試しください。",
     "access.err.cooldown":  "試行回数が多すぎます。{n} 秒後に再試行してください。",
-    "pref.access_code":       "アクセスコード",
+    "pref.access_code":       "グローバルアクセスコード",
     "access.code.ph":         "コードを設定…",
-    "access.code.set":        "設定済 · 変更/クリア",
+    "access.code.new":        "新しいコードを設定…",
+    "access.code.cleared":    "コードをクリアしました",
     "access.code.apply":      "適用",
-    "access.code.saved":      "アクセスコードを更新しました",
     "ws.lock.tip":            "ワークスペースのアクセスコードを設定",
     "ws.lock.on":             "ワークスペースのアクセスコード設定済",
-    "ws.lock.prompt":         "このワークスペースのアクセスコードを入力(空でクリア):",
-    "ws.lock.prompt.change":  "このワークスペースのアクセスコードを変更(空でクリア):",
 
     // ── General — Behavior ───────────────────────────────────
     "sec.behavior":   "その他",
@@ -105,7 +103,6 @@
 
     // ── General — AI チャット ────────────────────────────────
     "settings.chat.title":              "AI チャット",
-    "settings.chat.default":            "新規ワークスペースで AI チャットをデフォルト有効化",
     "settings.chat.provider":           "API タイプ",
     "settings.chat.model":              "モデル",
     "settings.chat.anthropic_model.placeholder": "claude-sonnet-4-6",
@@ -120,7 +117,6 @@
     "settings.chat.models.failed":      "モデル一覧の取得に失敗しました",
 
     // ── General — Database ───────────────────────────────────
-    "sec.database":   "データベース",
     "pref.dbpath":"注釈と既読状態の永続化ストレージ (SQLite)",
     "pref.dbpath.browse": "参照…",
     "pref.dbpath.clear":  "リセット",
@@ -266,8 +262,6 @@
     "web.chat.title":       "AI チャット",
     "web.chat.send":        "送信",
     "web.chat.stop":        "停止",
-    "web.chat.new_thread":  "新しいチャット",
-    "web.chat.input_placeholder": "質問を入力…（@ でファイル参照）",
     "web.chat.edit.bar":              "編集の確認待ち",
     "web.chat.edit.apply":            "適用",
     "web.chat.edit.reject":           "却下",
@@ -370,7 +364,6 @@
     "web.kbd.live.off":     "オフ ⇄ 直前のアクティブモードを切替",
     "web.kbd.chat":         "AI チャットを既定形態で開く",
     "web.kbd.chat.alt":     "AI チャットを別形態で開く",
-    "web.live.mode":        "モード",
     "web.live.off":         "オフ",
     "web.live.broadcast":   "送信",
     "web.live.follow":      "受信",
@@ -378,7 +371,5 @@
     "web.collab.you":       "あなた",
     "web.collab.nickname":  "ニックネーム(任意)",
     "web.collab.live":      "Live",
-    "web.author.anon":      "匿名",
-    "web.live.color.prompt": "カラーを選択",
-    "web.live.color.desc":   "送信カラーを選択"
+    "web.author.anon":      "匿名"
 }

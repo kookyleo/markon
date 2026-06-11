@@ -155,11 +155,6 @@ export class FloatingLayer {
         return REGISTRY.values();
     }
 
-    /** Re-apply displayed position on every active layer (e.g. on resize). */
-    static refreshAll(): void {
-        for (const inst of REGISTRY.values()) inst._applyDisplayed();
-    }
-
     name: string;
     private _opts: FloatingLayerOpts;
     private _passive: boolean;
@@ -202,6 +197,10 @@ export class FloatingLayer {
     private _morphAnim: Animation | null = null;
     private _classObserver: MutationObserver | null = null;
     private _resizeRaf: number | null = null;
+    // Named refs for the document/window listeners installed by _bindEvents,
+    // so destroy() can detach them.
+    private _docClickHandler: ((e: MouseEvent) => void) | null = null;
+    private _resizeHandler: (() => void) | null = null;
 
     constructor(opts: FloatingLayerOpts) {
         if (!opts || !opts.name) throw new Error('FloatingLayer: name required');
@@ -243,6 +242,18 @@ export class FloatingLayer {
         if (this._morphAnim) {
             this._morphAnim.cancel();
             this._morphAnim = null;
+        }
+        if (this._docClickHandler) {
+            document.removeEventListener('click', this._docClickHandler);
+            this._docClickHandler = null;
+        }
+        if (this._resizeHandler) {
+            window.removeEventListener('resize', this._resizeHandler);
+            this._resizeHandler = null;
+        }
+        if (this._resizeRaf !== null) {
+            cancelAnimationFrame(this._resizeRaf);
+            this._resizeRaf = null;
         }
     }
 
@@ -545,11 +556,6 @@ export class FloatingLayer {
         return this._simulateExpanded !== null ? this._simulateExpanded : this.isExpanded;
     }
 
-    /** Re-derive displayed position. Useful when an obstacle moves. */
-    refresh(): void {
-        if (!this._passive) this._applyDisplayed();
-    }
-
     // ── Obstacle interface (what other layers see) ───────────────────────
 
     getObstacleRect(): DOMRect | BoxRect | null {
@@ -604,12 +610,13 @@ export class FloatingLayer {
             // outside our container. We deliberately don't use body-level
             // stopPropagation — other handlers (e.g. Chat's thread-menu
             // outside-close) need to see panel-internal clicks too.
-            document.addEventListener('click', (e: MouseEvent) => {
+            this._docClickHandler = (e: MouseEvent) => {
                 if (!this.isExpanded) return;
                 const target = e.target;
                 if (target instanceof Node && this._opts.container.contains(target)) return;
                 this.collapse();
-            });
+            };
+            document.addEventListener('click', this._docClickHandler);
         }
 
         if (this._draggable) {
@@ -636,7 +643,7 @@ export class FloatingLayer {
 
         // Re-clamp + re-derive on viewport resize so persisted positions
         // never drift off-screen after a window resize.
-        window.addEventListener('resize', () => {
+        this._resizeHandler = () => {
             if (this._passive) return;
             if (this._resizeRaf !== null) return;
             this._resizeRaf = requestAnimationFrame(() => {
@@ -644,7 +651,8 @@ export class FloatingLayer {
                 if (this._home) this._home = this._clampToViewport(this._home);
                 this._applyDisplayed();
             });
-        });
+        };
+        window.addEventListener('resize', this._resizeHandler);
     }
 
     private _resolveExpandedDragHandle(): HTMLElement | null {

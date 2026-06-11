@@ -9,11 +9,12 @@
 #   - Version already bumped via scripts/bump-version.sh and committed
 #
 # Runs:
-#   1. All quality gates (same as bump-version.sh)
-#   2. cargo publish --dry-run for both crates
-#   3. cargo publish -p markon-core (lib, must go first)
-#   4. Wait for crates.io index propagation
-#   5. cargo publish -p markon (bin, depends on markon-core from registry)
+#   1. Frontend build (npm ci && npm run build)
+#   2. All quality gates (scripts/quality-gate.sh, same as bump-version.sh)
+#   3. cargo publish --dry-run -p markon-core
+#   4. cargo publish -p markon-core (lib, must go first)
+#   5. Wait for crates.io index propagation
+#   6. cargo publish -p markon (bin, depends on markon-core from registry)
 #
 # Note: markon-gui is marked publish = false and is distributed via GitHub Release.
 
@@ -29,46 +30,35 @@ if [ -n "$(git status --porcelain)" ]; then
   fail "Working tree not clean — commit or stash changes first"
 fi
 
-# Check that current commit's Cargo.toml matches a likely release state
+# Read the workspace version for the step banner
 VER=$(grep -m1 '^version = "' Cargo.toml | sed -E 's/version = "(.*)"/\1/')
 step "Publishing markon-core@$VER and markon@$VER to crates.io"
-
-# --- Quality gates (same as bump-version) ---
-step "1/8  cargo fmt --check"
-cargo fmt --check || fail "Formatting issues"
 
 # Build the frontend bundle BEFORE any cargo compile. markon-core's build.rs
 # and rust_embed require assets/dist/ (gitignored), so clippy/test/package all
 # fail without it. This is also what `include` in crates/core/Cargo.toml ships
 # into the published tarball.
-step "2/8  npm ci && npm run build"
+step "npm ci && npm run build"
 npm ci || fail "npm ci failed"
 npm run build || fail "frontend build failed"
 
-step "3/8  cargo clippy --all-targets -- -D warnings"
-cargo clippy --all-targets --quiet -- -D warnings || fail "Clippy warnings"
+# --- Quality gates (shared with bump-version.sh and .githooks/pre-push) ---
+scripts/quality-gate.sh || fail "Quality gates failed"
 
-step "4/8  cargo test"
-cargo test --quiet || fail "Rust tests failed"
-
-step "5/8  JS lint + tests"
-npx eslint --max-warnings 0 'crates/core/assets/js/**/*.js' || fail "ESLint warnings"
-npm test --silent || fail "JS tests failed"
-
-# --- Dry runs ---
-step "6/8  cargo publish --dry-run -p markon-core"
+# --- Dry run ---
+step "cargo publish --dry-run -p markon-core"
 cargo publish --dry-run -p markon-core || fail "markon-core dry-run failed"
 
 # --- Publish core ---
-step "7/8  cargo publish -p markon-core"
+step "cargo publish -p markon-core"
 cargo publish -p markon-core || fail "markon-core publish failed"
 
 # Wait for crates.io index to propagate
-step "    Waiting 30s for crates.io index to update…"
+step "Waiting 30s for crates.io index to update…"
 sleep 30
 
 # --- Publish cli ---
-step "8/8  cargo publish -p markon"
+step "cargo publish -p markon"
 cargo publish -p markon || fail "markon publish failed"
 
 printf '\n\033[1;32m✓ Published markon-core@%s and markon@%s\033[0m\n' "$VER" "$VER"

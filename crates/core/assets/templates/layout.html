@@ -1,22 +1,7 @@
 <!DOCTYPE html>
 <html lang="en" dir="auto" data-theme="{{ theme }}" data-editor-theme="{{ editor_theme | default(value='follow') }}" data-print-collapsed-content="{{ print_collapsed_content | default(value=false) }}">
 <head>
-    <script>
-    // Resolve Markon's theme to a concrete light/dark value before stylesheets
-    // apply. All theme CSS targets html[data-theme="light|dark"] so the choice
-    // is under app control (not tied to prefers-color-scheme).
-    (function(){
-        var root = document.documentElement;
-        var apply = function(t){ root.setAttribute('data-theme', t); };
-        if (root.getAttribute('data-theme') === 'auto') {
-            var mql = window.matchMedia('(prefers-color-scheme: dark)');
-            apply(mql.matches ? 'dark' : 'light');
-            mql.addEventListener && mql.addEventListener('change', function(e){
-                apply(e.matches ? 'dark' : 'light');
-            });
-        }
-    })();
-    </script>
+    {% include "theme-boot.html" %}
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta name="file-path" content="{{ file_path }}">
@@ -25,7 +10,7 @@
     <meta name="enable-viewed" content="{{ enable_viewed }}">
     <meta name="enable-search" content="{{ enable_search }}">
     <meta name="enable-edit" content="{{ enable_edit }}">
-    {% if management_token %}<meta name="mgmt-token" content="{{ management_token }}">{% endif %}
+    {% if save_token %}<meta name="mgmt-token" content="{{ save_token }}">{% endif %}
     <meta name="enable-live" content="{{ enable_live }}">
     <meta name="enable-chat" content="{{ enable_chat }}">
     <meta name="default-chat-mode" content="{{ default_chat_mode }}">
@@ -450,7 +435,7 @@
         .search-modal {
             display: none;
             position: fixed;
-            z-index: 10000;
+            z-index: var(--markon-z-chrome);
             left: 0;
             top: 0;
             width: 100%;
@@ -680,16 +665,8 @@
         }
     </style>
     {% if styles_css %}<style>{{ styles_css | safe }}</style>{% endif %}
-    {% if i18n_json %}<script>
-    window.__MARKON_I18N__ = (function() {
-        var all = {{ i18n_json | safe }};
-        var lang = "{{ i18n_lang | default(value='en') }}";
-        var dict = all[lang] || all.en;
-        return { lang: lang, t: function(k) { return dict[k] || all.en[k] || k; } };
-    })();
-    window.__MARKON_SHORTCUTS__ = {{ shortcuts_json | safe }};
-    </script>
-{% endif %}
+    {% include "i18n-boot.html" %}
+    {% if shortcuts_json %}<script>window.__MARKON_SHORTCUTS__ = {{ shortcuts_json | safe }};</script>{% endif %}
 </head>
 <body>
     {% if toc and toc | length > 0 %}

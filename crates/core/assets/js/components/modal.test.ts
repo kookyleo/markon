@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { BaseModal, ConfirmModal, ModalManager, NoteInputModal, showConfirmDialog } from './modal';
+import { BaseModal, ConfirmModal, NoteInputModal, showConfirmDialog } from './modal';
 
 class TestModal extends BaseModal {
     public createCalls = 0;
@@ -112,16 +112,13 @@ describe('ConfirmModal', () => {
     });
 });
 
-describe('ModalManager + showConfirmDialog', () => {
+describe('showConfirmDialog', () => {
     afterEach(() => {
         document.body.innerHTML = '';
     });
 
-    it('showConfirmDialog returns a ConfirmModal and tracks current', () => {
+    it('showConfirmDialog returns a ConfirmModal', () => {
         const m = showConfirmDialog('hi', () => {});
         expect(m).toBeInstanceOf(ConfirmModal);
-        expect(ModalManager.getCurrent()).toBe(m);
-        ModalManager.closeCurrent();
-        expect(ModalManager.getCurrent()).toBeNull();
     });
 });

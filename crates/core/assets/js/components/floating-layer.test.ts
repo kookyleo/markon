@@ -454,21 +454,3 @@ describe('FloatingLayer / expand+collapse state', () => {
         expect(peer.isExpanded).toBe(false);
     });
 });
-
-// ── Static refreshAll ─────────────────────────────────────────────────────
-
-describe('FloatingLayer / static refreshAll', () => {
-    it('calls _applyDisplayed on every registered layer', () => {
-        installAnimateStub();
-        const a = freshLayer('rfa-1');
-        const b = freshLayer('rfa-2');
-        a.init();
-        b.init();
-
-        const aSpy = vi.spyOn(a, '_applyDisplayed');
-        const bSpy = vi.spyOn(b, '_applyDisplayed');
-        FloatingLayer.refreshAll();
-        expect(aSpy).toHaveBeenCalled();
-        expect(bSpy).toHaveBeenCalled();
-    });
-});

@@ -75,11 +75,6 @@ All paths are workspace-relative with forward slashes. Tools refuse to read abov
 - If a referenced file doesn't exist, report that and offer to grep for similar names.
 "#;
 
-#[allow(dead_code)]
-pub(crate) fn default_persona() -> &'static str {
-    DEFAULT_PERSONA
-}
-
 pub(crate) fn build_system_blocks(inputs: &PromptInputs) -> Vec<SystemBlock> {
     let persona = DEFAULT_PERSONA.to_string();
 

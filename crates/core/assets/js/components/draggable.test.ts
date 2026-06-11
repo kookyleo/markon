@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { DraggableManager, makeDraggable } from './draggable';
+import { DraggableManager } from './draggable';
 
 function makeMouseEvent(type: string, pageX: number, pageY: number, target?: Element): MouseEvent {
     const ev = new MouseEvent(type, { bubbles: true, cancelable: true });
@@ -31,44 +31,40 @@ describe('DraggableManager', () => {
         localStorage.clear();
     });
 
-    it('fires onDragStart / onDragmove / onDragEnd with correct deltas', () => {
-        const onDragStart = vi.fn();
-        const onDragmove = vi.fn();
+    it('moves the element with the drag and fires onDragEnd with final position', () => {
         const onDragEnd = vi.fn();
 
-        new DraggableManager(element, { onDragStart, onDragmove, onDragEnd });
+        new DraggableManager(element, { onDragEnd });
 
         // mousedown to start
         element.dispatchEvent(makeMouseEvent('mousedown', 50, 60));
-        expect(onDragStart).toHaveBeenCalledTimes(1);
 
         // mousemove on document is what the manager actually listens to
         document.dispatchEvent(makeMouseEvent('mousemove', 70, 90));
-        expect(onDragmove).toHaveBeenCalledWith(20, 30);
+        // initialLeft (100) + dx 20 == 120; initialTop (100) + dy 30 == 130
+        expect(element.style.left).toBe('120px');
+        expect(element.style.top).toBe('130px');
 
         // mouseup ends
         document.dispatchEvent(makeMouseEvent('mouseup', 70, 90));
         expect(onDragEnd).toHaveBeenCalledTimes(1);
         const [finalLeft, finalTop] = onDragEnd.mock.calls[0];
-        // initialLeft (100) + dx 20 == 120; initialTop (100) + dy 30 == 130
         expect(finalLeft).toBe(120);
         expect(finalTop).toBe(130);
     });
 
     it('ignores drag start on BUTTON / INPUT targets (drag threshold)', () => {
-        const onDragStart = vi.fn();
-        const onDragmove = vi.fn();
-        new DraggableManager(element, { onDragStart, onDragmove });
+        new DraggableManager(element, {});
 
         const btn = document.createElement('button');
         element.appendChild(btn);
         // mousedown on button → handler returns early, no drag begins
         element.dispatchEvent(makeMouseEvent('mousedown', 50, 50, btn));
-        expect(onDragStart).not.toHaveBeenCalled();
 
-        // Even moves afterwards must NOT fire onDragmove (manager not in dragging state).
+        // Even moves afterwards must NOT move the element (manager not in dragging state).
         document.dispatchEvent(makeMouseEvent('mousemove', 80, 80));
-        expect(onDragmove).not.toHaveBeenCalled();
+        expect(element.style.left).toBe('100px');
+        expect(element.style.top).toBe('100px');
     });
 
     it('persists offset to localStorage when saveOffset + storageKey are set', () => {
@@ -89,17 +85,13 @@ describe('DraggableManager', () => {
         expect(parsed.dy).toBe(85);
     });
 
-    it('makeDraggable returns a DraggableManager instance', () => {
-        const m = makeDraggable(element);
-        expect(m).toBeInstanceOf(DraggableManager);
-    });
-
     it('destroy removes event listeners so further mousedown does nothing', () => {
-        const onDragStart = vi.fn();
-        const m = new DraggableManager(element, { onDragStart });
+        const m = new DraggableManager(element, {});
         m.destroy();
 
         element.dispatchEvent(makeMouseEvent('mousedown', 10, 10));
-        expect(onDragStart).not.toHaveBeenCalled();
+        document.dispatchEvent(makeMouseEvent('mousemove', 40, 40));
+        expect(element.style.left).toBe('100px');
+        expect(element.style.top).toBe('100px');
     });
 });

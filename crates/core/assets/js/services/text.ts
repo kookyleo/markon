@@ -23,5 +23,10 @@ export const Text = {
         const div = document.createElement('div');
         div.textContent = text;
         return div.innerHTML;
+    },
+
+    // Escape regex metacharacters so the string matches literally
+    escapeRegex(text: string): string {
+        return text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
     }
 };

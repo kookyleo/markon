@@ -1098,11 +1098,9 @@ body.markon-chat-popout-mode .markon-chat-header-left-actions {
     left: 6px;
 }
 
-/* The header's title centering math assumes a 40px-wide X face on the left;
-   without it, no padding is needed. */
-body.markon-chat-popout-mode .markon-chat-header {
-    /* keeps title visually centered against the full window width */
-}
+/* No popout header override is needed: the title centering math assumes a
+   40px-wide X face on the left, and with the face hidden the title stays
+   visually centered against the full window width. */
 
 /* ─── edit_file pending-confirmation flow ─────────────────────────────────
    Two surfaces work together:
@@ -1122,14 +1120,14 @@ body.markon-chat-popout-mode .markon-chat-header {
     overflow: hidden;
     font-size: 13px;
 }
-.markon-chat-edit-pending[data-status="applied"]  { border-left-color: #16a34a; background: rgba(22,163,74,0.08); }
-.markon-chat-edit-pending[data-status="rejected"] { border-left-color: #6b7280; background: rgba(107,114,128,0.08); opacity: 0.7; }
+.markon-chat-edit-pending[data-status="applied"]  { border-left-color: var(--markon-chat-applied); background: color-mix(in srgb, var(--markon-chat-applied) 8%, transparent); }
+.markon-chat-edit-pending[data-status="rejected"] { border-left-color: var(--markon-chat-neutral); background: color-mix(in srgb, var(--markon-chat-neutral) 8%, transparent); opacity: 0.7; }
 .markon-chat-edit-pending[data-status="drifted"]  { border-left-color: var(--markon-warning); background: color-mix(in srgb, var(--markon-warning) 14%, transparent); }
-.markon-chat-edit-pending[data-status="reverted"] { border-left-color: #6b7280; background: rgba(107,114,128,0.05); opacity: 0.6; }
+.markon-chat-edit-pending[data-status="reverted"] { border-left-color: var(--markon-chat-neutral); background: color-mix(in srgb, var(--markon-chat-neutral) 5%, transparent); opacity: 0.6; }
 .markon-chat-edit-pending[data-status="reverted"] .markon-chat-edit-pending-old,
 .markon-chat-edit-pending[data-status="reverted"] .markon-chat-edit-pending-new {
     text-decoration: line-through;
-    text-decoration-color: rgba(107,114,128,0.5);
+    text-decoration-color: color-mix(in srgb, var(--markon-chat-neutral) 50%, transparent);
 }
 
 .markon-chat-edit-pending-head {
@@ -1149,10 +1147,10 @@ body.markon-chat-popout-mode .markon-chat-header {
     letter-spacing: 0.04em;
     color: var(--markon-warning);
 }
-.markon-chat-edit-pending[data-status="applied"]  .markon-chat-edit-pending-status { color: #166534; }
-.markon-chat-edit-pending[data-status="rejected"] .markon-chat-edit-pending-status { color: #4b5563; }
+.markon-chat-edit-pending[data-status="applied"]  .markon-chat-edit-pending-status { color: var(--markon-chat-applied-fg); }
+.markon-chat-edit-pending[data-status="rejected"] .markon-chat-edit-pending-status { color: var(--markon-chat-neutral-fg); }
 .markon-chat-edit-pending[data-status="drifted"]  .markon-chat-edit-pending-status { color: var(--markon-warning); }
-.markon-chat-edit-pending[data-status="reverted"] .markon-chat-edit-pending-status { color: #4b5563; }
+.markon-chat-edit-pending[data-status="reverted"] .markon-chat-edit-pending-status { color: var(--markon-chat-neutral-fg); }
 
 .markon-chat-edit-pending-head-right {
     display: inline-flex;
@@ -1184,17 +1182,15 @@ body.markon-chat-popout-mode .markon-chat-header {
     padding: 4px 10px;
 }
 .markon-chat-edit-pending-old {
-    background: rgba(220, 38, 38, 0.10);
-    color: #991b1b;
+    background: var(--markon-chat-diff-del-bg);
+    color: var(--markon-chat-diff-del-fg);
     text-decoration: line-through;
-    text-decoration-color: rgba(153, 27, 27, 0.45);
+    text-decoration-color: var(--markon-chat-diff-del-strike);
 }
 .markon-chat-edit-pending-new {
-    background: rgba(22, 163, 74, 0.10);
-    color: #166534;
+    background: var(--markon-chat-diff-add-bg);
+    color: var(--markon-chat-diff-add-fg);
 }
-html[data-theme="dark"] .markon-chat-edit-pending-old { color: #fca5a5; }
-html[data-theme="dark"] .markon-chat-edit-pending-new { color: #86efac; }
 
 /* Bottom bar — appears in place of `.markon-chat-input-group` whenever the
    pending-edit queue is non-empty. Matches the input group's height so the
@@ -1243,8 +1239,8 @@ html[data-theme="dark"] .markon-chat-edit-bar {
 .markon-chat-edit-bar-reject:hover { background: rgba(0, 0, 0, 0.04); }
 html[data-theme="dark"] .markon-chat-edit-bar-reject:hover { background: rgba(255, 255, 255, 0.06); }
 .markon-chat-edit-bar-apply {
-    background: #16a34a;
+    background: var(--markon-chat-applied);
     color: var(--markon-fg-on-emphasis);
-    border-color: #15803d;
+    border-color: var(--markon-chat-applied-strong);
 }
-.markon-chat-edit-bar-apply:hover { background: #15803d; }
+.markon-chat-edit-bar-apply:hover { background: var(--markon-chat-applied-strong); }

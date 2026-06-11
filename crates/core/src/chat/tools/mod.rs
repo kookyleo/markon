@@ -1,5 +1,6 @@
-//! Read-only tools the LLM can invoke. All tools are scoped to the workspace
-//! root — paths above the root are rejected before they ever hit the disk.
+//! Tools the LLM can invoke — read-only by default, plus the approval-gated
+//! `edit_file`. All tools are scoped to the workspace root — paths above the
+//! root are rejected before they ever hit the disk.
 
 pub(crate) mod edit_file;
 pub(crate) mod glob_search;
@@ -9,7 +10,6 @@ pub(crate) mod read_file;
 
 use crate::chat::edits::PendingEditStore;
 use async_trait::async_trait;
-use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::path::{Component, Path, PathBuf};
 use std::sync::Arc;
@@ -102,7 +102,6 @@ impl ToolContext {
 }
 
 #[derive(Debug, thiserror::Error)]
-#[allow(dead_code)]
 pub(crate) enum ToolError {
     #[error("not found: {0}")]
     NotFound(String),
@@ -129,7 +128,7 @@ impl ToolError {
 }
 
 /// JSON-Schema-shaped tool definition exposed to the LLM.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone)]
 pub(crate) struct ToolSchema {
     pub name: String,
     pub description: String,
@@ -209,16 +208,9 @@ impl ToolRegistry {
     }
 }
 
-impl Default for ToolRegistry {
-    fn default() -> Self {
-        Self::with_default_tools()
-    }
-}
-
 /// Hard cap a single `read_file` / `grep` result body sent back to the model.
 pub(crate) const MAX_TOOL_OUTPUT_BYTES: usize = 64 * 1024;
-/// Skip files at or above this size in `read_file` and during `list_dir`
-/// content-snippet generation. Configurable per tool via input.
+/// Refuse files above this size in `read_file` / `edit_file`.
 pub(crate) const MAX_FILE_BYTES: u64 = 1024 * 1024; // 1 MiB
 
 /// Detect binary by scanning the first N bytes for NUL.
@@ -240,12 +232,7 @@ pub(crate) fn path_to_forward_slash(rel: &Path) -> String {
 /// hidden-file conventions — the same defaults ripgrep uses.
 pub(crate) fn default_walker(root: &Path) -> ignore::WalkBuilder {
     let mut b = ignore::WalkBuilder::new(root);
-    b.standard_filters(true)
-        .hidden(true)
-        .parents(true)
-        .git_ignore(true)
-        .git_global(true)
-        .git_exclude(true);
+    b.standard_filters(true);
     b
 }
 

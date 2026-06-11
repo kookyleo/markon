@@ -4,28 +4,6 @@ use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex, OnceLock};
 
-/// Restrict settings.json to the owning user (Unix only). Permission
-/// errors are logged at debug — failing to chmod on a temp filesystem
-/// (e.g. unit tests on tmpfs) is not worth interrupting the save.
-#[cfg(unix)]
-fn restrict_user_only(path: &Path) {
-    use std::os::unix::fs::PermissionsExt;
-    match std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o600)) {
-        Ok(()) => tracing::debug!(path = %path.display(), "settings.json chmod 0600 applied"),
-        Err(e) => tracing::debug!(
-            path = %path.display(),
-            "settings.json chmod 0600 failed: {e} — proceeding"
-        ),
-    }
-}
-
-/// Windows defaults to per-user ACLs on files created under the user
-/// profile, which is where we live (`~/.markon/`). We don't attempt
-/// further hardening here; the default is already "owner only" on a
-/// standard install.
-#[cfg(not(unix))]
-fn restrict_user_only(_path: &Path) {}
-
 /// Emit a one-shot warning when a provider api_key is being persisted
 /// in plaintext. Anything more elaborate (OS keychain, encryption) is
 /// future work — for now we make sure the operator at least knows the
@@ -246,12 +224,6 @@ impl AppSettings {
         home.join(".markon").join("settings.json")
     }
 
-    #[allow(dead_code)]
-    pub(crate) fn settings_path() -> PathBuf {
-        let home = dirs::home_dir().expect("HOME directory required");
-        Self::settings_path_at(&home)
-    }
-
     /// Load from `home/.markon/settings.json`. Generates and persists a salt
     /// on first run. Used by tests to inject a controlled home directory.
     pub(crate) fn load_at(home: &Path) -> Self {
@@ -309,7 +281,6 @@ impl AppSettings {
         // Create it 0600 up front (no world-readable window) on Unix; Windows
         // files under the user profile inherit restrictive per-user ACLs.
         crate::workspace::write_file_user_private(&p, c.as_bytes()).map_err(|e| e.to_string())?;
-        restrict_user_only(&p);
         if self.has_sensitive_provider_secret() {
             warn_sensitive_secret_persisted_once(&p);
         }
@@ -463,12 +434,23 @@ impl AppSettings {
                 other => other,
             }
         }
+        // The result is injected into a `<style>` block via `| safe`, so a key
+        // or value containing CSS/HTML metacharacters could break out of the
+        // declaration (`;` `}`) or the style element (`<` `>`). Legitimate
+        // design-token values (colours, fonts, numbers) never contain these;
+        // drop any entry that does so it falls back to the default token.
+        fn css_safe(s: &str) -> bool {
+            !s.contains(['<', '>', '{', '}', ';'])
+        }
         if self.web_styles.is_empty() {
             return None;
         }
         let mut root: Vec<String> = Vec::new();
         let mut dark: Vec<String> = Vec::new();
         for (k, v) in &self.web_styles {
+            if !css_safe(k) || !css_safe(v) {
+                continue;
+            }
             if let Some(base) = k.strip_suffix(".light") {
                 root.push(format!("--markon-{}: {v};", canonical(base)));
             } else if let Some(base) = k.strip_suffix(".dark") {

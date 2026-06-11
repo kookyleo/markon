@@ -8,7 +8,7 @@ use crate::chat::message::{ContentBlock, Message, Usage};
 use crate::chat::tools::ToolSchema;
 use async_trait::async_trait;
 use bytes::{Bytes, BytesMut};
-use futures::stream::{BoxStream, Stream};
+use futures::stream::{BoxStream, Stream, StreamExt};
 use std::collections::VecDeque;
 use std::pin::Pin;
 use std::sync::Arc;
@@ -58,24 +58,17 @@ pub(crate) enum ProviderEvent {
 }
 
 #[derive(Debug, thiserror::Error)]
-#[allow(dead_code)]
 pub(crate) enum ProviderError {
     #[error("network error: {0}")]
     Network(String),
-    #[error("auth error: {0}")]
-    Auth(String),
     #[error("api error ({status}): {message}")]
     Api { status: u16, message: String },
     #[error("decode error: {0}")]
     Decode(String),
-    #[error("provider misconfigured: {0}")]
-    Config(&'static str),
 }
 
 #[async_trait]
 pub(crate) trait Provider: Send + Sync {
-    #[allow(dead_code)]
-    fn kind(&self) -> ProviderKind;
     async fn stream(
         &self,
         request: ChatRequest,
@@ -91,6 +84,46 @@ pub(crate) fn build(cfg: ChatRuntimeConfig) -> Arc<dyn Provider> {
 }
 
 pub(super) type EventQueue = VecDeque<Result<ProviderEvent, ProviderError>>;
+
+/// Process-wide HTTP client shared by all providers. `build()` runs once per
+/// chat message, so a per-instance `reqwest::Client::new()` would discard the
+/// connection pool (and its keep-alive TCP/TLS sessions) on every turn.
+pub(super) fn http_client() -> reqwest::Client {
+    use std::sync::OnceLock;
+    static CLIENT: OnceLock<reqwest::Client> = OnceLock::new();
+    CLIENT.get_or_init(reqwest::Client::new).clone()
+}
+
+/// Send a streaming request and hand back the response byte stream. Shared by
+/// both providers, which only differ in URL, headers and body: scrubs
+/// credentials from transport errors, turns a non-2xx response into
+/// [`ProviderError::Api`] with a scrubbed body, and scrubs every downstream
+/// chunk error as well.
+pub(super) async fn send_sse(
+    req: reqwest::RequestBuilder,
+    api_key: &str,
+) -> Result<impl Stream<Item = Result<Bytes, ProviderError>> + Send + 'static, ProviderError> {
+    let resp = req
+        .send()
+        .await
+        .map_err(|e| ProviderError::Network(scrub_credentials(&e.to_string(), api_key)))?;
+    let status = resp.status();
+    if !status.is_success() {
+        let code = status.as_u16();
+        let text = resp
+            .text()
+            .await
+            .unwrap_or_else(|e| format!("<failed to read error body: {e}>"));
+        return Err(ProviderError::Api {
+            status: code,
+            message: scrub_credentials(&text, api_key),
+        });
+    }
+    let api_key = api_key.to_string();
+    Ok(resp.bytes_stream().map(move |res| {
+        res.map_err(|e| ProviderError::Network(scrub_credentials(&e.to_string(), &api_key)))
+    }))
+}
 
 /// Strip credentials from a provider-error message before it crosses the
 /// network boundary back to the browser. Two layers of defense:
@@ -231,6 +264,35 @@ where
             }
         }
     }
+}
+
+/// Split one SSE event chunk into its `event:` name (if any) and the joined
+/// `data:` payload. Handles `\r` line endings, skips blank/comment lines, and
+/// strips the optional single space after the field colon (per the SSE spec
+/// it is part of the field separator). Anthropic uses the event name; OpenAI
+/// ignores it.
+pub(super) fn parse_sse_fields(chunk: &str) -> (Option<String>, String) {
+    let mut event_name: Option<String> = None;
+    let mut data_lines: Vec<&str> = Vec::new();
+    for line in chunk.lines() {
+        let line = line.trim_end_matches('\r');
+        if line.is_empty() || line.starts_with(':') {
+            continue;
+        }
+        if let Some(rest) = line.strip_prefix("event:") {
+            event_name = Some(rest.trim().to_string());
+        } else if let Some(rest) = line.strip_prefix("data:") {
+            data_lines.push(rest.strip_prefix(' ').unwrap_or(rest));
+        }
+    }
+    (event_name, data_lines.join("\n"))
+}
+
+/// Parse a streamed tool-input buffer into JSON, falling back to an empty
+/// object when the buffer is blank (blank is not valid JSON, so the
+/// parse-failure fallback covers it) or malformed.
+pub(super) fn parse_tool_input(raw: &str) -> serde_json::Value {
+    serde_json::from_str(raw).unwrap_or_else(|_| serde_json::Value::Object(serde_json::Map::new()))
 }
 
 /// Find the offset of the first SSE event terminator (`\n\n` or `\r\n\r\n`)

@@ -56,12 +56,6 @@ describe('Ids', () => {
         expect(Ids.uuid()).not.toBe(Ids.uuid());
     });
 
-    it('generate aliases uuid', () => {
-        const id = Ids.generate();
-        expect(typeof id).toBe('string');
-        expect(id.length).toBeGreaterThan(0);
-    });
-
     it('short returns a short string and is usually distinct across calls', () => {
         const a = Ids.short();
         const b = Ids.short();

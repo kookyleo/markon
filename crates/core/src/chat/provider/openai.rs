@@ -7,8 +7,8 @@
 //! prompt caching, so [`SystemBlock::cache`] is ignored — all system blocks
 //! are concatenated into a single `system` message.
 
-use super::{scrub_credentials, ChatRequest, Provider, ProviderError, ProviderEvent};
-use crate::chat::config::{ChatRuntimeConfig, ProviderKind};
+use super::{ChatRequest, Provider, ProviderError, ProviderEvent};
+use crate::chat::config::ChatRuntimeConfig;
 use crate::chat::message::{ContentBlock, Message, Role, Usage};
 use async_trait::async_trait;
 use bytes::Bytes;
@@ -26,7 +26,7 @@ impl OpenAiProvider {
     pub(crate) fn new(cfg: ChatRuntimeConfig) -> Self {
         Self {
             cfg,
-            client: reqwest::Client::new(),
+            client: super::http_client(),
         }
     }
 
@@ -41,10 +41,6 @@ impl OpenAiProvider {
 
 #[async_trait]
 impl Provider for OpenAiProvider {
-    fn kind(&self) -> ProviderKind {
-        ProviderKind::OpenAI
-    }
-
     async fn stream(
         &self,
         request: ChatRequest,
@@ -54,34 +50,14 @@ impl Provider for OpenAiProvider {
             self.base_url().trim_end_matches('/')
         );
         let body = build_body(&request);
-        let resp = self
+        let req = self
             .client
             .post(&url)
             .bearer_auth(&self.cfg.api_key)
             .header("content-type", "application/json")
             .header("accept", "text/event-stream")
-            .json(&body)
-            .send()
-            .await
-            .map_err(|e| {
-                ProviderError::Network(scrub_credentials(&e.to_string(), &self.cfg.api_key))
-            })?;
-        let status = resp.status();
-        if !status.is_success() {
-            let code = status.as_u16();
-            let text = resp
-                .text()
-                .await
-                .unwrap_or_else(|e| format!("<failed to read error body: {e}>"));
-            return Err(ProviderError::Api {
-                status: code,
-                message: scrub_credentials(&text, &self.cfg.api_key),
-            });
-        }
-        let api_key = self.cfg.api_key.clone();
-        let byte_stream = resp.bytes_stream().map(move |res| {
-            res.map_err(|e| ProviderError::Network(scrub_credentials(&e.to_string(), &api_key)))
-        });
+            .json(&body);
+        let byte_stream = super::send_sse(req, &self.cfg.api_key).await?;
         Ok(parse_openai_stream(byte_stream).boxed())
     }
 }
@@ -286,7 +262,6 @@ struct ToolBuf {
     name: String,
     args: String,
     started: bool,
-    finalized: bool,
 }
 
 struct OpenAiState {
@@ -316,16 +291,10 @@ impl OpenAiState {
             });
         }
         for tool in self.tools.values() {
-            let input = if tool.args.trim().is_empty() {
-                Value::Object(serde_json::Map::new())
-            } else {
-                serde_json::from_str::<Value>(&tool.args)
-                    .unwrap_or_else(|_| Value::Object(serde_json::Map::new()))
-            };
             out.push(ContentBlock::ToolUse {
                 id: tool.id.clone(),
                 name: tool.name.clone(),
-                input,
+                input: super::parse_tool_input(&tool.args),
             });
         }
         out
@@ -345,19 +314,8 @@ fn handle_chunk(
     state: &mut OpenAiState,
     queue: &mut VecDeque<Result<ProviderEvent, ProviderError>>,
 ) {
-    let mut data_lines: Vec<&str> = Vec::new();
-    for line in chunk.lines() {
-        let line = line.trim_end_matches('\r');
-        if line.is_empty() || line.starts_with(':') {
-            continue;
-        }
-        if let Some(rest) = line.strip_prefix("data:") {
-            let trimmed = rest.strip_prefix(' ').unwrap_or(rest);
-            data_lines.push(trimmed);
-        }
-        // OpenAI doesn't use `event:` lines; ignore other fields.
-    }
-    let data = data_lines.join("\n");
+    // OpenAI doesn't use `event:` lines; ignore the event name.
+    let (_, data) = super::parse_sse_fields(chunk);
     if data.is_empty() {
         return;
     }
@@ -396,7 +354,6 @@ fn apply_envelope(
                     name: String::new(),
                     args: String::new(),
                     started: false,
-                    finalized: false,
                 });
                 if let Some(id) = tc.id {
                     if !id.is_empty() {
@@ -432,22 +389,16 @@ fn finalize(state: &mut OpenAiState, queue: &mut VecDeque<Result<ProviderEvent, 
     if state.finished {
         return;
     }
-    // Emit ToolUseEnd for any tool that was started but not yet finalized.
-    for tool in state.tools.values_mut() {
-        if !tool.started || tool.finalized {
+    // Emit ToolUseEnd for every started tool; the `state.finished` guard
+    // above ensures this body runs at most once per stream.
+    for tool in state.tools.values() {
+        if !tool.started {
             continue;
         }
-        let input = if tool.args.trim().is_empty() {
-            Value::Object(serde_json::Map::new())
-        } else {
-            serde_json::from_str::<Value>(&tool.args)
-                .unwrap_or_else(|_| Value::Object(serde_json::Map::new()))
-        };
-        tool.finalized = true;
         queue.push_back(Ok(ProviderEvent::ToolUseEnd {
             id: tool.id.clone(),
             name: tool.name.clone(),
-            input,
+            input: super::parse_tool_input(&tool.args),
         }));
     }
     let stop_reason = state

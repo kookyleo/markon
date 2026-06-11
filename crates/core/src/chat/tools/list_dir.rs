@@ -66,7 +66,7 @@ impl Tool for ListDirTool {
         // applies gitignore semantics (it consults parent .gitignore files via
         // `parents(true)`).
         let walker = default_walker(&abs).max_depth(Some(1)).build();
-        let mut dirs: Vec<(String, ())> = Vec::new();
+        let mut dirs: Vec<String> = Vec::new();
         let mut files: Vec<(String, u64)> = Vec::new();
 
         for entry in walker {
@@ -86,15 +86,16 @@ impl Tool for ListDirTool {
             let ft = entry.file_type();
             let is_dir = ft.map(|t| t.is_dir()).unwrap_or(false);
             if is_dir {
-                dirs.push((name, ()));
+                dirs.push(name);
             } else {
                 let len = std::fs::metadata(path).map(|m| m.len()).unwrap_or(0);
                 files.push((name, len));
             }
         }
 
-        dirs.sort_by(|a, b| a.0.cmp(&b.0));
-        files.sort_by(|a, b| a.0.cmp(&b.0));
+        // File names are unique within a directory, so tuple sort == sort by name.
+        dirs.sort();
+        files.sort();
 
         let rel_header = if rel_arg.is_empty() {
             ".".to_string()
@@ -111,7 +112,7 @@ impl Tool for ListDirTool {
         let total = dirs.len() + files.len();
         let mut emitted: usize = 0;
         let mut all_lines: Vec<String> = Vec::with_capacity(total);
-        for (name, _) in &dirs {
+        for name in &dirs {
             all_lines.push(format!("{name}/"));
         }
         for (name, size) in &files {

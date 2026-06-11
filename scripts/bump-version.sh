@@ -7,12 +7,16 @@
 #   Pre-flight checks:
 #     - Arm tracked git hooks (core.hooksPath = .githooks) if not already
 #     - Cargo.toml / Cargo.lock have no pending edits (no half-finished bump)
-#   Quality gates (all must pass with zero warnings):
+#   Frontend build:
+#     - npm run build (assets/dist/, required by markon-core's build.rs)
+#   Quality gates (scripts/quality-gate.sh, all must pass with zero warnings):
 #     - cargo fmt --check
 #     - cargo clippy --all-targets -- -D warnings
 #     - cargo test
-#     - npx eslint 'crates/core/assets/js/**/*.js'
+#     - npx tsc --noEmit
 #     - npm test
+#   Publishability gate:
+#     - cargo publish --dry-run -p markon-core
 #   Version edit:
 #     - Cargo.toml: workspace.package.version (primary source of truth)
 #     - Cargo.toml: workspace.dependencies.markon-core.version (MAJOR.MINOR range)
@@ -49,9 +53,9 @@ cd "$(dirname "$0")/.."
 step() { printf '\n\033[1;34m==>\033[0m %s\n' "$1"; }
 fail() { printf '\033[1;31m✗ %s\033[0m\n' "$1" >&2; exit 1; }
 
-step "0/7  Pre-flight checks"
+step "Pre-flight checks"
 # Ensure the tracked git hooks (.githooks/pre-push → full fmt/clippy/test +
-# tsc/eslint/vitest gate) are active for this clone. core.hooksPath is local
+# tsc/vitest gate) are active for this clone. core.hooksPath is local
 # config, not carried by a
 # checkout, so wire it up here idempotently — a bump is a natural moment to
 # make sure the push gate is armed.
@@ -66,26 +70,14 @@ if ! git diff --cached --quiet -- Cargo.toml Cargo.lock; then
   fail "Cargo.toml or Cargo.lock is staged — unstage or commit first"
 fi
 
-step "1/9  cargo fmt --check"
-cargo fmt --check || fail "Formatting issues — run 'cargo fmt' first"
-
 # Build the frontend bundle so every gate below sees the same assets/dist/ a
 # release would embed. It is gitignored, so a fresh or stale checkout would
 # otherwise compile against an absent/old bundle.
-step "2/9  npm run build"
+step "npm run build"
 npm run build || fail "Frontend build failed"
 
-step "3/9  cargo clippy --all-targets -- -D warnings"
-cargo clippy --all-targets --quiet -- -D warnings || fail "Clippy warnings must be resolved"
-
-step "4/9  cargo test"
-cargo test --quiet || fail "Rust tests failed"
-
-step "5/9  JS lint"
-npx eslint --max-warnings 0 'crates/core/assets/js/**/*.js' || fail "ESLint warnings must be resolved"
-
-step "6/9  JS tests"
-npm test --silent || fail "JS tests failed"
+# Quality gates shared with publish-crates.sh and .githooks/pre-push.
+scripts/quality-gate.sh || fail "Quality gates failed"
 
 # Publishability gate. Packages markon-core into the exact tarball crates.io
 # would receive and compiles it — the ONLY local check that catches packaging
@@ -93,10 +85,10 @@ npm test --silent || fail "JS tests failed"
 # gitignored and not in `include`. Plain `cargo test` always passes (the
 # bundle exists on disk); only the packaged tarball reveals the gap.
 # --allow-dirty: the included, gitignored assets/dist/ always reads as dirty.
-step "7/9  cargo publish --dry-run -p markon-core"
+step "cargo publish --dry-run -p markon-core"
 cargo publish --dry-run -p markon-core --allow-dirty || fail "markon-core would not publish to crates.io"
 
-step "8/9  Bumping version to $NEW"
+step "Bumping version to $NEW"
 sed -i.bak -E "s/^version = \"[0-9]+\.[0-9]+\.[0-9]+\"/version = \"$NEW\"/" Cargo.toml
 sed -i.bak -E "s/(markon-core = \{ path = \"crates\/core\", version = )\"[0-9]+(\.[0-9]+)?\"/\1\"$MINOR\"/" Cargo.toml
 rm -f Cargo.toml.bak
@@ -111,7 +103,7 @@ if [ "$changed" != "$expected" ]; then
   fail "Refusing to commit — expected only Cargo.toml + Cargo.lock"
 fi
 
-step "9/9  Commit and push"
+step "Commit and push"
 git add Cargo.toml Cargo.lock
 git commit -m "chore: bump to $NEW"
 

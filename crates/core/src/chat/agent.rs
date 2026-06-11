@@ -108,7 +108,7 @@ impl Agent {
             })
             .await;
 
-        let mut messages = request.history.clone();
+        let mut messages = request.history;
         messages.push(request.user_message);
         let tool_schemas = self.tools.schemas();
         let tool_ctx = match ToolContext::new(&request.workspace_root) {
@@ -346,22 +346,6 @@ impl Agent {
     }
 }
 
-/// Helper: convert a slice of [`ContentBlock`] into a single string for
-/// places that need a flat representation (titles, summaries).
-#[allow(dead_code)]
-pub(crate) fn flatten_text(blocks: &[ContentBlock]) -> String {
-    let mut out = String::new();
-    for b in blocks {
-        if let ContentBlock::Text { text } = b {
-            if !out.is_empty() {
-                out.push('\n');
-            }
-            out.push_str(text);
-        }
-    }
-    out
-}
-
 /// Generate a thread title from the first user message — first sentence,
 /// trimmed to 64 chars. Plain heuristic; the user can rename.
 pub(crate) fn auto_title(text: &str) -> String {
@@ -392,23 +376,5 @@ mod tests {
         assert_eq!(auto_title("Hello there. Second sentence."), "Hello there");
         assert_eq!(auto_title("中文标题。多余的内容"), "中文标题");
         assert_eq!(auto_title(""), "New chat");
-    }
-
-    #[test]
-    fn flatten_text_concatenates_text_blocks() {
-        let blocks = vec![
-            ContentBlock::Text {
-                text: "first".into(),
-            },
-            ContentBlock::ToolUse {
-                id: "x".into(),
-                name: "grep".into(),
-                input: serde_json::json!({}),
-            },
-            ContentBlock::Text {
-                text: "second".into(),
-            },
-        ];
-        assert_eq!(flatten_text(&blocks), "first\nsecond");
     }
 }

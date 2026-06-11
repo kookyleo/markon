@@ -169,14 +169,60 @@ pub fn hash_id(path: &Path, salt: &str) -> String {
 /// Hash an access code for storage and comparison. Salted with the per-install
 /// salt (so the stored value isn't a bare SHA-256 of a often-weak code, and so
 /// it can't be precomputed without reading the 0600 settings file) and
-/// domain-separated from workspace-id hashing. Returns the full digest as hex.
+/// domain-separated from workspace-id hashing.
+///
+/// The result is truncated to **as many leading hex chars as the code has
+/// characters**, so the stored length equals the code length — the panel uses
+/// that to render the right number of `•` in the "code is set" token without
+/// being able to recover the code. Verification stays consistent because both
+/// store and check route through this function: the candidate is truncated by
+/// *its own* length, so the correct code (same length) still matches, and a
+/// wrong-length guess can't. Trade-off: very short codes are checked against
+/// only a few hex chars — rely on a reasonable code length (the per-IP unlock
+/// cooldown also throttles guessing).
 pub fn hash_access_code(salt: &str, code: &str) -> String {
+    let hex = access_code_digest(salt, code);
+    let n = code.chars().count().min(hex.len());
+    hex[..n].to_string()
+}
+
+/// Full (untruncated) salted digest of an access code, as 64 hex chars.
+fn access_code_digest(salt: &str, code: &str) -> String {
     use sha2::{Digest, Sha256};
     let mut h = Sha256::new();
     h.update(salt.as_bytes());
     h.update(b"\0mk-access\0");
     h.update(code.as_bytes());
     h.finalize().iter().map(|b| format!("{b:02x}")).collect()
+}
+
+/// Verify a submitted access code against a stored hash. Owns both schemes:
+/// the current length-truncated form (see [`hash_access_code`]) and, when the
+/// stored value is a full 64-char digest, the legacy untruncated form written
+/// before truncation existed — so codes set by older builds keep unlocking
+/// after an upgrade instead of silently never matching.
+pub fn access_code_matches(salt: &str, code: &str, stored: &str) -> bool {
+    if stored.is_empty() {
+        return false;
+    }
+    let full = access_code_digest(salt, code);
+    let n = code.chars().count().min(full.len());
+    if ct_eq(&full.as_bytes()[..n], stored.as_bytes()) {
+        return true;
+    }
+    stored.len() == full.len() && ct_eq(full.as_bytes(), stored.as_bytes())
+}
+
+/// Constant-time byte comparison (length leak is fine — lengths aren't secret).
+pub(crate) fn ct_eq(a: &[u8], b: &[u8]) -> bool {
+    if a.len() != b.len() {
+        return false;
+    }
+    let mut diff = 0u8;
+    for (x, y) in a.iter().zip(b) {
+        diff |= x ^ y;
+    }
+    diff == 0
 }
 
 /// Cryptographically-random 32-hex-char token. Used as the management API
@@ -402,6 +448,33 @@ fn refresh_allowed_assets(entry: &WorkspaceEntry, file_name: &str) {
     *entry.allowed_assets.write().unwrap() = new_set;
 }
 
+/// Shared scaffold for the notify-based watchers below: spawn a thread that
+/// owns the channel and watcher, forward Ok events, and run `on_event` for
+/// each one. The thread exits (dropping the watcher) when the watch cannot
+/// be established or the channel closes.
+fn spawn_watch_thread(
+    root: PathBuf,
+    mode: RecursiveMode,
+    mut on_event: impl FnMut(notify::Event) + Send + 'static,
+) {
+    std::thread::spawn(move || {
+        let (tx, rx) = std::sync::mpsc::channel();
+        let Ok(mut watcher) = notify::recommended_watcher(move |res| {
+            if let Ok(e) = res {
+                let _ = tx.send(e);
+            }
+        }) else {
+            return;
+        };
+        if watcher.watch(&root, mode).is_err() {
+            return;
+        }
+        while let Ok(event) = rx.recv() {
+            on_event(event);
+        }
+    });
+}
+
 /// Watch the parent directory of a single-file workspace and:
 ///   * filter events down to `{file_name} ∪ allowed_assets`
 ///   * on changes to `file_name`, re-derive the asset allowlist so that newly
@@ -416,20 +489,11 @@ fn spawn_single_file_watcher(
     file_name: String,
     live_tx: Arc<ArcSwapOption<broadcast::Sender<String>>>,
 ) {
-    std::thread::spawn(move || {
-        let (tx, rx) = std::sync::mpsc::channel();
-        let Ok(mut watcher) = notify::recommended_watcher(move |res| {
-            if let Ok(e) = res {
-                let _ = tx.send(e);
-            }
-        }) else {
-            return;
-        };
-        if watcher.watch(&root, RecursiveMode::NonRecursive).is_err() {
-            return;
-        }
-        let target = root.join(&file_name);
-        while let Ok(event) = rx.recv() {
+    let target = root.join(&file_name);
+    spawn_watch_thread(
+        root.clone(),
+        RecursiveMode::NonRecursive,
+        move |event: notify::Event| {
             for path in event.paths {
                 let Ok(rel) = path.strip_prefix(&root) else {
                     continue;
@@ -467,8 +531,8 @@ fn spawn_single_file_watcher(
                     }
                 }
             }
-        }
-    });
+        },
+    );
 }
 
 fn spawn_search_indexer(root: PathBuf, entry: Arc<WorkspaceEntry>) {
@@ -482,17 +546,10 @@ fn spawn_search_indexer(root: PathBuf, entry: Arc<WorkspaceEntry>) {
 }
 
 fn start_file_watcher(index: Arc<SearchIndex>, root: PathBuf) {
-    std::thread::spawn(move || {
-        let (tx, rx) = std::sync::mpsc::channel();
-        let Ok(mut watcher) = notify::recommended_watcher(move |res| {
-            if let Ok(e) = res {
-                let _ = tx.send(e);
-            }
-        }) else {
-            return;
-        };
-        let _ = watcher.watch(&root, RecursiveMode::Recursive);
-        while let Ok(event) = rx.recv() {
+    spawn_watch_thread(
+        root,
+        RecursiveMode::Recursive,
+        move |event: notify::Event| {
             for path in event.paths {
                 match event.kind {
                     EventKind::Create(_) | EventKind::Modify(_) => {
@@ -504,8 +561,8 @@ fn start_file_watcher(index: Arc<SearchIndex>, root: PathBuf) {
                     _ => {}
                 }
             }
-        }
-    });
+        },
+    );
 }
 
 #[derive(serde::Serialize, serde::Deserialize)]
@@ -581,6 +638,33 @@ mod tests {
     fn hash_id_depends_on_salt() {
         let p = std::path::Path::new("/tmp/test");
         assert_ne!(hash_id(p, "a"), hash_id(p, "b"));
+    }
+
+    #[test]
+    fn access_code_hash_len_equals_code_len() {
+        assert_eq!(hash_access_code("s", "test123").len(), 7);
+        assert_eq!(hash_access_code("s", "").len(), 0);
+    }
+
+    #[test]
+    fn access_code_matches_current_scheme() {
+        let stored = hash_access_code("s", "test123");
+        assert!(access_code_matches("s", "test123", &stored));
+        assert!(!access_code_matches("s", "test124", &stored));
+        // Wrong length can't match a truncated hash.
+        assert!(!access_code_matches("s", "test1234", &stored));
+        // Empty stored hash gates nothing.
+        assert!(!access_code_matches("s", "anything", ""));
+    }
+
+    #[test]
+    fn access_code_matches_legacy_full_hash() {
+        // Pre-truncation builds stored the full 64-char digest; those codes
+        // must keep unlocking after an upgrade.
+        let legacy = access_code_digest("s", "test123");
+        assert_eq!(legacy.len(), 64);
+        assert!(access_code_matches("s", "test123", &legacy));
+        assert!(!access_code_matches("s", "wrong", &legacy));
     }
 
     #[test]

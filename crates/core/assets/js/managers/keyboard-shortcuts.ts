@@ -15,19 +15,13 @@ const _t = (key: string, ...args: unknown[]): string => i18n.t(key, ...args);
 export type ShortcutHandler = (e: KeyboardEvent) => void;
 
 /**
- * Keyboard shortcuts manager — owns the active {@link ShortcutDef} table and
- * routes matching keyboard events to registered handlers.
+ * Keyboard shortcuts manager — matches keyboard events against the
+ * {@link ShortcutDef} table in CONFIG.SHORTCUTS (user overrides already
+ * applied at config-module load) and routes them to registered handlers.
  */
 export class KeyboardShortcutsManager {
-    #shortcuts: Record<ShortcutName, ShortcutDef>;
     #handlers = new Map<ShortcutName, ShortcutHandler>();
     #enabled = true;
-
-    constructor() {
-        // Shallow clone keeps the manager's table mutable while leaving
-        // CONFIG.SHORTCUTS frozen.
-        this.#shortcuts = { ...CONFIG.SHORTCUTS } as Record<ShortcutName, ShortcutDef>;
-    }
 
     /**
      * Register a handler for a named shortcut.
@@ -49,7 +43,7 @@ export class KeyboardShortcutsManager {
      * Check whether the event matches the named shortcut.
      */
     matches(event: KeyboardEvent, shortcutName: ShortcutName): boolean {
-        const shortcut = this.#shortcuts[shortcutName];
+        const shortcut = CONFIG.SHORTCUTS[shortcutName];
         if (!shortcut) return false;
 
         const isMac = PlatformUtils.isMac();
@@ -137,7 +131,7 @@ export class KeyboardShortcutsManager {
         const isMac = PlatformUtils.isMac();
         const modKey = isMac ? '⌘' : 'Ctrl';
 
-        const formatShortcut = (shortcut: ShortcutDef): string => {
+        const formatShortcut = (shortcut: ShortcutDef): string[] => {
             const keys: string[] = [];
             if (shortcut.ctrl) keys.push(modKey);
             if (shortcut.shift) keys.push('Shift');
@@ -148,16 +142,12 @@ export class KeyboardShortcutsManager {
                 keyDisplay = 'Space';
             } else if (shortcut.key === 'Escape') {
                 keyDisplay = 'ESC';
-            } else if (shortcut.key === '\\') {
-                keyDisplay = '\\';
-            } else if (shortcut.key === '?') {
-                keyDisplay = '?';
             } else if (shortcut.key.length === 1 && shortcut.key.match(/[a-z]/i)) {
                 keyDisplay = shortcut.key.toLowerCase();
             }
 
             keys.push(keyDisplay);
-            return keys.join(' + ');
+            return keys;
         };
 
         const categories: Record<string, ShortcutName[]> = {
@@ -214,11 +204,10 @@ export class KeyboardShortcutsManager {
             html += '<div class="shortcuts-list">';
 
             for (const name of shortcutNames) {
-                const shortcut = this.#shortcuts[name];
+                const shortcut = CONFIG.SHORTCUTS[name];
                 if (shortcut) {
                     html += '<div class="shortcut-item">';
                     html += `<div class="shortcut-key"><kbd>${formatShortcut(shortcut)
-                        .split(' + ')
                         .join('</kbd><kbd>')}</kbd></div>`;
                     html += `<div class="shortcut-desc">${shortcut.desc}</div>`;
                     html += '</div>';

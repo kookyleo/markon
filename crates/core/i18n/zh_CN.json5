@@ -13,7 +13,7 @@
     "nav.about":      "关于",
 
     // ── 全局设置 — 监听 ───────────────────────────────────────
-    "sec.server":     "监听",
+    "sec.server":     "监听与访问",
     "pref.port":       "端口",
     "port.auto":       "自动",
     "port.spec":       "指定",
@@ -49,15 +49,13 @@
     "access.submit":        "解锁",
     "access.err.wrong":     "访问码错误,请重试。",
     "access.err.cooldown":  "尝试过多,请在 {n} 秒后重试。",
-    "pref.access_code":       "访问码",
+    "pref.access_code":       "全局默认认证码",
     "access.code.ph":         "设置访问码…",
-    "access.code.set":        "已设置 · 改/清空",
+    "access.code.new":        "设置新访问码…",
+    "access.code.cleared":    "已清除访问码",
     "access.code.apply":      "应用",
-    "access.code.saved":      "访问码已更新",
     "ws.lock.tip":            "设置此工作区访问码",
     "ws.lock.on":             "已设此工作区访问码",
-    "ws.lock.prompt":         "输入此工作区访问码(留空清除):",
-    "ws.lock.prompt.change":  "修改此工作区访问码(留空清除):",
 
     // ── 全局设置 — 行为 ──────────────────────────────────────
     "sec.behavior":   "更多",
@@ -105,7 +103,6 @@
 
     // ── 全局设置 — AI 对话 ──────────────────────────────────
     "settings.chat.title":              "AI 对话",
-    "settings.chat.default":            "为新工作区默认启用 AI 对话",
     "settings.chat.provider":           "API 类型",
     "settings.chat.model":              "模型",
     "settings.chat.anthropic_model.placeholder": "claude-sonnet-4-6",
@@ -120,7 +117,6 @@
     "settings.chat.models.failed":      "拉取模型列表失败",
 
     // ── 全局设置 — 数据库 ────────────────────────────────────
-    "sec.database":   "数据库",
     "pref.dbpath":"批注与已读状态的持久化存储 (SQLite)",
     "pref.dbpath.browse": "选择…",
     "pref.dbpath.clear":  "恢复默认",
@@ -265,8 +261,6 @@
     "web.chat.title":       "AI 对话",
     "web.chat.send":        "发送",
     "web.chat.stop":        "停止",
-    "web.chat.new_thread":  "新对话",
-    "web.chat.input_placeholder": "问点什么…（按 @ 引用文件）",
     "web.chat.edit.bar":              "待确认的编辑",
     "web.chat.edit.apply":            "应用",
     "web.chat.edit.reject":           "放弃",
@@ -369,7 +363,6 @@
     "web.kbd.live.off":     "关闭 ⇄ 上一次激活模式切换",
     "web.kbd.chat":         "按默认形式打开 AI 对话",
     "web.kbd.chat.alt":     "按相反形式打开 AI 对话",
-    "web.live.mode":        "模式",
     "web.live.off":         "关闭",
     "web.live.broadcast":   "主控",
     "web.live.follow":      "被控",
@@ -377,7 +370,5 @@
     "web.collab.you":       "你",
     "web.collab.nickname":  "昵称(可选)",
     "web.collab.live":      "Live",
-    "web.author.anon":      "匿名",
-    "web.live.color.prompt": "选择你的代表色",
-    "web.live.color.desc":   "选择你的广播色"
+    "web.author.anon":      "匿名"
 }

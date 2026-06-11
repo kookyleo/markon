@@ -14,6 +14,7 @@ export class TOCNavigator {
     #active = false;
     #focusedIndex = -1;
     #links: HTMLAnchorElement[] = [];
+    #levels: number[] = [];
     #keydownHandler: ((e: KeyboardEvent) => void) | null = null;
     #collapsedItems: Set<number> = new Set(); // tracks collapsed items by index
 
@@ -33,6 +34,15 @@ export class TOCNavigator {
             Logger.warn('TOCNavigator', 'No TOC links found');
             return;
         }
+
+        // Cache heading levels once per activation — the TOC structure is
+        // static while the navigator is active.
+        this.#levels = this.#links.map((link) => {
+            const li = link.closest('li');
+            if (!li) return 0;
+            const levelClass = Array.from(li.classList).find((c) => c.startsWith('toc-level-'));
+            return levelClass ? parseInt(levelClass.split('-')[2]) : 0;
+        });
 
         // Restore the previous focus, fall back to the active link, then to the first item.
         if (this.#focusedIndex < 0 || this.#focusedIndex >= this.#links.length) {
@@ -313,55 +323,20 @@ export class TOCNavigator {
             return 0;
         }
 
-        const link = this.#links[index];
-        const li = link.closest('li');
-        if (!li) return 0;
-        const levelClass = Array.from(li.classList).find((c) => c.startsWith('toc-level-'));
-        return levelClass ? parseInt(levelClass.split('-')[2]) : 0;
+        return this.#levels[index];
     }
 
     /**
      * Whether the item is currently visible (not hidden under a collapsed ancestor).
      */
     #isVisible(index: number): boolean {
-        const currentLevel = this.#getLevel(index);
-
-        for (let i = index - 1; i >= 0; i--) {
-            const level = this.#getLevel(i);
-
-            if (level < currentLevel) {
-                if (this.#collapsedItems.has(i)) {
-                    const children = this.#getAllDescendants(i);
-                    if (children.includes(index)) {
-                        return false;
-                    }
-                }
+        for (let i = this.#getParentIndex(index); i !== -1; i = this.#getParentIndex(i)) {
+            if (this.#collapsedItems.has(i)) {
+                return false;
             }
         }
 
         return true;
-    }
-
-    /**
-     * Return every descendant index of `index`.
-     */
-    #getAllDescendants(index: number): number[] {
-        if (index < 0 || index >= this.#links.length) {
-            return [];
-        }
-
-        const currentLevel = this.#getLevel(index);
-        const descendants: number[] = [];
-
-        for (let i = index + 1; i < this.#links.length; i++) {
-            const level = this.#getLevel(i);
-            if (level <= currentLevel) {
-                break;
-            }
-            descendants.push(i);
-        }
-
-        return descendants;
     }
 
     /**

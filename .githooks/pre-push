@@ -1,14 +1,10 @@
 #!/usr/bin/env bash
 # Pre-push quality gate: run the full local suite before a push hits the remote,
-# so CI red is caught here instead of after a round-trip. Mirrors the gates in
-# scripts/bump-version.sh (minus the release-only version bump / bundle build /
-# publishability check) and the CI jobs.
+# so CI red is caught here instead of after a round-trip. Delegates to
+# scripts/quality-gate.sh — the same gates scripts/bump-version.sh and
+# scripts/publish-crates.sh enforce (minus their release-only bundle build /
+# publishability check).
 #
-# Checks, cheapest-first so the common failures surface fastest:
-#   Rust  (skipped if cargo absent):  fmt --check · clippy -D warnings · test
-#   JS/TS (skipped if npx absent):    tsc --noEmit · eslint · vitest
-#
-# Each toolchain is guarded so minimal/CI images without it aren't blocked.
 # Enable once per clone:  git config core.hooksPath .githooks
 #   (scripts/bump-version.sh arms this idempotently at release time.)
 # Bypass for a single push (e.g. a WIP branch):  git push --no-verify
@@ -17,33 +13,8 @@ set -euo pipefail
 repo_root="$(git rev-parse --show-toplevel)"
 cd "$repo_root"
 
-# Print a red failure banner (with the --no-verify hint) and abort the push.
-fail() {
-  printf '\033[1;31m✗ pre-push: %s\033[0m\n' "$1" >&2
+if ! scripts/quality-gate.sh; then
+  printf '\033[1;31m✗ pre-push: quality gate failed\033[0m\n' >&2
   printf '  (Bypass once with: git push --no-verify)\n' >&2
   exit 1
-}
-
-# ── Rust gate ────────────────────────────────────────────────────────────
-if command -v cargo >/dev/null 2>&1; then
-  if ! cargo fmt --check >/dev/null 2>&1; then
-    cargo fmt --check 2>&1 | sed 's/^/  /' >&2 || true
-    fail "Rust formatting issues — run 'cargo fmt', commit, then push again"
-  fi
-  cargo clippy --all-targets --quiet -- -D warnings >/dev/null 2>&1 \
-    || fail "clippy warnings — run 'cargo clippy --all-targets -- -D warnings'"
-  cargo test --quiet >/dev/null 2>&1 \
-    || fail "cargo test failed — run 'cargo test'"
-fi
-
-# ── Frontend gate ────────────────────────────────────────────────────────
-if command -v npx >/dev/null 2>&1; then
-  npx tsc --noEmit >/dev/null 2>&1 \
-    || fail "TypeScript typecheck failed — run 'npm run typecheck'"
-  if ! npx eslint --max-warnings 0 'crates/core/assets/js/**/*.js' >/dev/null 2>&1; then
-    npx eslint --max-warnings 0 'crates/core/assets/js/**/*.js' 2>&1 | sed 's/^/  /' >&2 || true
-    fail "ESLint issues — run \"npx eslint 'crates/core/assets/js/**/*.js'\""
-  fi
-  npx vitest run >/dev/null 2>&1 \
-    || fail "frontend tests failed — run 'npm test'"
 fi

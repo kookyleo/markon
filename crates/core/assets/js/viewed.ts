@@ -13,6 +13,33 @@
 
 const _t = (window.__MARKON_I18N__ && window.__MARKON_I18N__.t) || ((k: string): string => k);
 
+/**
+ * All section headings (h2-h6) inside the rendered markdown body. The
+ * selector literal lives here (not in core/config.ts) by design, because
+ * this IIFE bundle is import-free.
+ */
+const SECTION_HEADINGS_SELECTOR =
+    '.markdown-body h2, .markdown-body h3, .markdown-body h4, .markdown-body h5, .markdown-body h6';
+
+/** Section headings sorted by level — h6 first when `deepestFirst`, else h2 first. */
+function sectionHeadingsByLevel(deepestFirst: boolean): HTMLElement[] {
+    const headings = Array.from(document.querySelectorAll<HTMLElement>(SECTION_HEADINGS_SELECTOR));
+    headings.sort((a, b) => {
+        const levelA = parseInt(a.tagName.substring(1));
+        const levelB = parseInt(b.tagName.substring(1));
+        return deepestFirst ? levelB - levelA : levelA - levelB;
+    });
+    return headings;
+}
+
+/**
+ * LocalStorage key for per-file viewed state. Mirrors
+ * CONFIG.STORAGE_KEYS.VIEWED (core/config.ts), the canonical definition used
+ * by storage-manager.ts on the same entries — kept as a local copy because
+ * importing config.ts would pull its window side effects into this bundle.
+ */
+const viewedStorageKey = (filePath: string): string => `markon-viewed-${filePath}`;
+
 /** Map of `headingId → viewed?`. */
 type ViewedState = Record<string, boolean>;
 
@@ -46,8 +73,6 @@ export class SectionViewedManager {
     wsManager: OpIdAwareWs | null;
     filePath: string;
     viewedState: ViewedState;
-    /** Section IDs that are temporarily expanded despite being viewed. */
-    tempExpandedState: Record<string, boolean>;
     stateLoaded: boolean;
     enableViewed: boolean;
     allViewedCheckbox: HTMLInputElement | null;
@@ -67,7 +92,6 @@ export class SectionViewedManager {
         const filePathMeta = document.querySelector('meta[name="file-path"]');
         this.filePath = filePathMeta ? filePathMeta.getAttribute('content') ?? window.location.pathname : window.location.pathname;
         this.viewedState = {};
-        this.tempExpandedState = {};
         this.stateLoaded = false;
         this.allViewedCheckbox = null;
         this.updatingAllViewedCheckbox = false;
@@ -154,9 +178,7 @@ export class SectionViewedManager {
 
     injectCheckboxes(): void {
         // Only add checkboxes to h2-h6, not h1 (usually the document title).
-        const headings = document.querySelectorAll<HTMLElement>(
-            '.markdown-body h2, .markdown-body h3, .markdown-body h4, .markdown-body h5, .markdown-body h6',
-        );
+        const headings = document.querySelectorAll<HTMLElement>(SECTION_HEADINGS_SELECTOR);
 
         headings.forEach((heading, index) => {
             if (!heading.id) {
@@ -326,39 +348,11 @@ export class SectionViewedManager {
             this.revealContent(content);
         });
 
-        delete this.tempExpandedState[headingId];
-        heading.classList.remove('section-temp-expanded');
         this.syncToggleBtn(heading, false);
     }
 
     toggleTempExpand(headingId: string): void {
-        const heading = document.getElementById(headingId);
-        if (!heading) return;
-
-        const content = this.getSectionContent(heading);
-        const toggleBtn = heading.querySelector<HTMLElement>('.section-expand-toggle');
-        const isCollapsed = heading.classList.contains('section-collapsed');
-
-        if (isCollapsed) {
-            heading.classList.remove('section-collapsed');
-            this.removeCollapsedPlaceholder(heading);
-            this.revealContent(content);
-            if (toggleBtn) {
-                toggleBtn.textContent = _t('web.viewed.collapse');
-            }
-            this.tempExpandedState[headingId] = false;
-        } else {
-            heading.classList.add('section-collapsed');
-            content.forEach((el) => {
-                el.classList.add('section-content-hidden');
-                el.classList.remove('section-content-temp-visible');
-            });
-            if (toggleBtn) {
-                toggleBtn.textContent = _t('web.viewed.expand');
-            }
-            this.tempExpandedState[headingId] = true;
-            this.ensureCollapsedPlaceholder(heading, headingId);
-        }
+        this.toggleCollapse(headingId);
     }
 
     revealContent(content: HTMLElement[]): void {
@@ -706,22 +700,14 @@ export class SectionViewedManager {
         const heading = document.getElementById(headingId);
         if (!heading) return;
 
-        const content = this.getSectionContent(heading);
-        const isCollapsed = heading.classList.contains('section-collapsed');
-
-        if (isCollapsed) {
+        if (heading.classList.contains('section-collapsed')) {
+            const content = this.getSectionContent(heading);
             heading.classList.remove('section-collapsed');
             this.removeCollapsedPlaceholder(heading);
             this.revealContent(content);
             this.syncToggleBtn(heading, false);
         } else {
-            heading.classList.add('section-collapsed');
-            content.forEach((el) => {
-                el.classList.add('section-content-hidden');
-                el.classList.remove('section-content-temp-visible');
-            });
-            this.ensureCollapsedPlaceholder(heading, headingId);
-            this.syncToggleBtn(heading, true);
+            this.collapseSection(headingId);
         }
     }
 
@@ -731,11 +717,9 @@ export class SectionViewedManager {
         if (isViewed) {
             this.collapseSection(headingId);
 
-            // Drop temp-expand state when marking as viewed.
-            delete this.tempExpandedState[headingId];
+            // Drop any in-flight reveal styling when marking as viewed.
             const heading = document.getElementById(headingId);
             if (heading) {
-                heading.classList.remove('section-temp-expanded');
                 const content = this.getSectionContent(heading);
                 content.forEach((el) => {
                     el.classList.remove('section-content-temp-visible');
@@ -752,12 +736,17 @@ export class SectionViewedManager {
         this.updateAllViewedCheckbox();
     }
 
+    /** Heading IDs of all per-section viewed checkboxes currently in the DOM. */
+    private headingIds(): string[] {
+        return Array.from(document.querySelectorAll<HTMLInputElement>('.viewed-checkbox'))
+            .map((cb) => cb.dataset.headingId)
+            .filter((id): id is string => Boolean(id));
+    }
+
     updateAllViewedCheckbox(): void {
         if (!this.allViewedCheckbox) return;
 
-        const allHeadingIds = Array.from(document.querySelectorAll<HTMLInputElement>('.viewed-checkbox'))
-            .filter((cb) => cb.dataset.headingId)
-            .map((cb) => cb.dataset.headingId as string);
+        const allHeadingIds = this.headingIds();
 
         const allViewed = allHeadingIds.length > 0 && allHeadingIds.every((id) => this.viewedState[id]);
 
@@ -793,8 +782,7 @@ export class SectionViewedManager {
             });
         }
         // Local mode: LocalStorage.
-        const key = `markon-viewed-${this.filePath}`;
-        const saved = localStorage.getItem(key);
+        const saved = localStorage.getItem(viewedStorageKey(this.filePath));
         this.viewedState = saved ? (JSON.parse(saved) as ViewedState) : {};
         this.stateLoaded = true;
     }
@@ -824,16 +812,11 @@ export class SectionViewedManager {
             console.warn('[ViewedManager] Cannot save state - shared mode but no WebSocket connection');
             return;
         }
-        const key = `markon-viewed-${this.filePath}`;
-        localStorage.setItem(key, JSON.stringify(this.viewedState));
+        localStorage.setItem(viewedStorageKey(this.filePath), JSON.stringify(this.viewedState));
     }
 
     applyViewedState(): void {
-        const allHeadingIds = Array.from(document.querySelectorAll<HTMLInputElement>('.viewed-checkbox'))
-            .map((cb) => cb.dataset.headingId)
-            .filter((id): id is string => Boolean(id));
-
-        allHeadingIds.forEach((headingId) => {
+        this.headingIds().forEach((headingId) => {
             if (this.viewedState[headingId]) {
                 this.collapseSection(headingId);
             } else {
@@ -956,11 +939,7 @@ export class SectionViewedManager {
     }
 
     markAllViewed(): void {
-        const allHeadingIds = Array.from(document.querySelectorAll<HTMLInputElement>('.viewed-checkbox'))
-            .filter((cb) => cb.dataset.headingId)
-            .map((cb) => cb.dataset.headingId as string);
-
-        allHeadingIds.forEach((headingId) => {
+        this.headingIds().forEach((headingId) => {
             this.viewedState[headingId] = true;
             this.collapseSection(headingId);
         });
@@ -980,31 +959,16 @@ export class SectionViewedManager {
         this.viewedState = {};
 
         this.updateCheckboxes();
+        // applyViewedState() ends with updateAllViewedCheckbox(), which
+        // unchecks the All-Viewed box against the freshly emptied state.
         this.applyViewedState();
         this.updateTocHighlights();
         this.saveState();
-
-        if (this.allViewedCheckbox) {
-            this.updatingAllViewedCheckbox = true;
-            this.allViewedCheckbox.checked = false;
-            this.updatingAllViewedCheckbox = false;
-        }
     }
 
     collapseAll(): void {
         // Process h6 → h2 to handle nested sections correctly.
-        const allHeadings = document.querySelectorAll<HTMLElement>(
-            '.markdown-body h2, .markdown-body h3, .markdown-body h4, .markdown-body h5, .markdown-body h6',
-        );
-        const headingsArray = Array.from(allHeadings);
-
-        headingsArray.sort((a, b) => {
-            const levelA = parseInt(a.tagName.substring(1));
-            const levelB = parseInt(b.tagName.substring(1));
-            return levelB - levelA;
-        });
-
-        headingsArray.forEach((heading) => {
+        sectionHeadingsByLevel(true).forEach((heading) => {
             if (heading.id) {
                 this.collapseSection(heading.id);
             }
@@ -1013,23 +977,10 @@ export class SectionViewedManager {
 
     expandAll(): void {
         // Process h2 → h6 to handle nested sections correctly.
-        const allHeadings = document.querySelectorAll<HTMLElement>(
-            '.markdown-body h2, .markdown-body h3, .markdown-body h4, .markdown-body h5, .markdown-body h6',
-        );
-        const headingsArray = Array.from(allHeadings);
-
-        headingsArray.sort((a, b) => {
-            const levelA = parseInt(a.tagName.substring(1));
-            const levelB = parseInt(b.tagName.substring(1));
-            return levelA - levelB;
-        });
-
-        headingsArray.forEach((heading) => {
+        sectionHeadingsByLevel(false).forEach((heading) => {
             if (heading.id) {
                 heading.classList.remove('section-collapsed');
-                heading.classList.remove('section-temp-expanded');
                 this.removeCollapsedPlaceholder(heading);
-                delete this.tempExpandedState[heading.id];
                 this.syncToggleBtn(heading, false);
             }
         });

@@ -126,7 +126,6 @@ describe('CollaborationManager', () => {
         const mgr = new CollaborationManager({ enableLive: false });
         expect(mgr.userColor).toBe('#27AE60');
         expect(mgr.mode).toBe(LiveMode.FOLLOW);
-        expect(mgr._hasChosenColor).toBe(true);
     });
 
     it('setMode: persists to localStorage and ignores invalid / no-op transitions', () => {
@@ -234,7 +233,6 @@ describe('CollaborationManager', () => {
         dot.click();
         expect(mgr.userColor).toBe('#F39C12');
         expect(localStorage.getItem('markon-user-color')).toBe('#F39C12');
-        expect(mgr._hasChosenColor).toBe(true);
         // active class follows the picked dot.
         expect(dot.classList.contains('active')).toBe(true);
     });

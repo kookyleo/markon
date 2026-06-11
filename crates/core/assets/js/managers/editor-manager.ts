@@ -3,19 +3,20 @@
  * Provides minimalist in-browser editing functionality with line numbers
  */
 
-import { CONFIG } from '../core/config';
+import { CONFIG, i18n } from '../core/config';
 import { Logger } from '../core/utils';
 import { Meta } from '../services/dom';
 import { Text } from '../services/text';
 import { downloadTextFile, toMarkdownFilename } from '../core/download';
 import { copyText, flashText } from '../core/clipboard';
 
-const _t: (key: string, ...args: unknown[]) => string =
-    (typeof window !== 'undefined' && window.__MARKON_I18N__ && window.__MARKON_I18N__.t) ||
-    ((k: string) => k);
+const _t = (key: string, ...args: unknown[]): string => i18n.t(key, ...args);
 
 const SPLIT_KEY = 'markon.editor.split';
 const LAYOUT_KEY = 'markon.editor.layout'; // 'split' | 'full'
+/** Textarea line height in px — keep in sync with css/editor.css
+ *  `.editor-line-number` (height: 22.4px = 14px font * 1.6 line-height). */
+const LINE_HEIGHT = 22.4;
 
 /** Layout mode for the split-pane editor. */
 export type EditorLayout = 'split' | 'full';
@@ -92,6 +93,8 @@ export class EditorManager {
     #exportFileName = 'annotations.md';
     /** Back-to-wizard callback in export mode. */
     #onBack: (() => void) | null = null;
+    /** Aborts the document/window listeners installed while the modal is open. */
+    #listenerAbort: AbortController | null = null;
 
     constructor(filePath: string) {
         this.#filePath = filePath;
@@ -171,6 +174,14 @@ export class EditorManager {
                 this.#scrollSyncCleanup();
                 this.#scrollSyncCleanup = null;
             }
+            // Remove the document/window listeners (divider drag, resize
+            // handlers) installed by the editor UI.
+            this.#listenerAbort?.abort();
+            this.#listenerAbort = null;
+            // Closing mid-drag aborts the mouseup listener that would have
+            // restored these — reset them here so the page stays usable.
+            document.body.style.cursor = '';
+            document.body.style.userSelect = '';
 
             if (this.#previewDebounceId !== null) {
                 clearTimeout(this.#previewDebounceId);
@@ -380,6 +391,9 @@ export class EditorManager {
         // Restore saved split position
         this.#restoreSplit();
 
+        // Scopes all document/window listeners below to the modal's lifetime
+        this.#listenerAbort = new AbortController();
+
         // Setup draggable divider
         this.#setupDivider();
 
@@ -555,12 +569,20 @@ export class EditorManager {
     #updateLineNumbers(): void {
         if (!this.#textarea || !this.#lineNumbers) return;
 
+        // Numbering is sequential, so existing nodes never change — append
+        // the missing tail or trim the surplus instead of rebuilding all
+        // lines on every line-count change.
         const lines = this.#textarea.value.split('\n').length;
-        const lineNumbersHtml = Array.from({ length: lines }, (_, i) => i + 1)
-            .map(num => `<div class="editor-line-number">${num}</div>`)
-            .join('');
-
-        this.#lineNumbers.innerHTML = lineNumbersHtml;
+        const container = this.#lineNumbers;
+        while (container.childElementCount > lines) {
+            container.lastElementChild!.remove();
+        }
+        for (let num = container.childElementCount + 1; num <= lines; num++) {
+            const div = document.createElement('div');
+            div.className = 'editor-line-number';
+            div.textContent = String(num);
+            container.appendChild(div);
+        }
     }
 
     /**
@@ -585,14 +607,7 @@ export class EditorManager {
             // Scroll to the selection
             const beforeText = content.substring(0, result);
             const lineNumber = beforeText.split('\n').length;
-            const lineHeight = 22.4;
-            const scrollTop = (lineNumber - 3) * lineHeight;
-
-            this.#textarea.scrollTop = Math.max(0, scrollTop);
-
-            if (this.#lineNumbers) {
-                this.#lineNumbers.scrollTop = this.#textarea.scrollTop;
-            }
+            this.#scrollToLine(lineNumber);
 
             Logger.log('EditorManager', `Selected text at index ${result}, line ${lineNumber}`);
         } else {
@@ -636,12 +651,20 @@ export class EditorManager {
         this.#textarea.focus();
         this.#textarea.setSelectionRange(pos, endPos);
 
-        const lineHeight = 22.4;
-        this.#textarea.scrollTop = Math.max(0, (targetLine - 3) * lineHeight);
+        this.#scrollToLine(targetLine);
+        Logger.log('EditorManager', `Jumped to line ${targetLine}`);
+    }
+
+    /**
+     * Scroll the textarea so `lineNumber` sits near the top (2 lines of
+     * context above), keeping the line-number gutter in sync.
+     */
+    #scrollToLine(lineNumber: number): void {
+        if (!this.#textarea) return;
+        this.#textarea.scrollTop = Math.max(0, (lineNumber - 3) * LINE_HEIGHT);
         if (this.#lineNumbers) {
             this.#lineNumbers.scrollTop = this.#textarea.scrollTop;
         }
-        Logger.log('EditorManager', `Jumped to line ${targetLine}`);
     }
 
     /**
@@ -659,7 +682,7 @@ export class EditorManager {
             // Build a flexible regex pattern
             // Allow Markdown syntax between words: `, **, __, *, _, [, ], (, ), etc.
             const pattern = words
-                .map(word => this.#escapeRegex(word))
+                .map(word => Text.escapeRegex(word))
                 .join('[\\s`*_\\[\\]()]*');
 
             const regex = new RegExp(pattern, 'i');
@@ -771,10 +794,6 @@ export class EditorManager {
         return Math.min(originalText.length, searchWindow.length);
     }
 
-    #escapeRegex(str: string): string {
-        return str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-    }
-
     /**
      * Schedule a preview pane update with debounce
      */
@@ -870,14 +889,15 @@ export class EditorManager {
             e.preventDefault();
         });
 
-        document.addEventListener('mousemove', (e: MouseEvent) => onMove(e.clientX));
+        const signal = this.#listenerAbort?.signal;
+        document.addEventListener('mousemove', (e: MouseEvent) => onMove(e.clientX), { signal });
         document.addEventListener('mouseup', () => {
             if (dragging) {
                 dragging = false;
                 document.body.style.cursor = '';
                 document.body.style.userSelect = '';
             }
-        });
+        }, { signal });
 
         // Touch support
         divider.addEventListener('touchstart', (e: TouchEvent) => {
@@ -886,8 +906,8 @@ export class EditorManager {
         }, { passive: false });
         document.addEventListener('touchmove', (e: TouchEvent) => {
             if (dragging && e.touches.length > 0) onMove(e.touches[0].clientX);
-        }, { passive: true });
-        document.addEventListener('touchend', () => { dragging = false; });
+        }, { passive: true, signal });
+        document.addEventListener('touchend', () => { dragging = false; }, { signal });
     }
 
     /**
@@ -917,7 +937,7 @@ export class EditorManager {
                 sourcePane.style.display = 'none';
                 previewPane.style.display = 'flex';
             }
-        });
+        }, { signal: this.#listenerAbort?.signal });
 
         tabs.forEach(tab => {
             tab.addEventListener('click', () => {
@@ -1009,7 +1029,7 @@ export class EditorManager {
             this.#applyLayout(this.#layout);
             // Re-attach/remove scroll sync when crossing the breakpoint
             this.#setupScrollSync();
-        });
+        }, { signal: this.#listenerAbort?.signal });
     }
 
     /**

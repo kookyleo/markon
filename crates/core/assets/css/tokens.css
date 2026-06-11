@@ -58,8 +58,9 @@
     /* ── Base palette (light) — Primer-style role/modifier names ──────────
        Roles: bg- (surfaces) / fg- (ink) / border- / accent (brand).
        Modifiers: default / muted / subtle / emphasis / elevated / overlay /
-       on-emphasis. See .internal/color-system design notes. Legacy aliases for
-       the old flat names are defined at the end of this block. */
+       on-emphasis. See .internal/color-system design notes. Legacy flat names
+       saved in Page Styles are mapped to these canonical tokens by
+       `canonical()` in settings.rs. */
     --markon-accent:        #0969da; /* brand: links, buttons, TOC selected, accents */
     --markon-fg-default:    #1f2328; /* body text */
     --markon-fg-muted:      #656d76; /* secondary text, toolbar, separators */
@@ -83,6 +84,28 @@
     --markon-warning:       #bf8700; /* attention/pending fg */
     --markon-warning-hover: #9a6700;
     --markon-scrim:         rgba(0, 0, 0, 0.5); /* dim backdrop behind a modal */
+
+    /* ── Chat edit-flow (chat.css pending-edit card / bar) ───
+       --markon-{mono,chat-bg,chat-text-muted} used to be undefined and
+       resolved through their var() fallbacks in chat.css; they are pinned
+       here with the same values so Page Styles can target them. (The
+       --markon-chat-border var() sites keep per-use alpha fallbacks inline,
+       and --markon-chat-text falls back to `inherit`, which a custom
+       property cannot express.) Status colors are theme-agnostic except
+       the diff inks, which brighten in the dark block below. */
+    --markon-mono: monospace;
+    --markon-chat-bg: rgba(0, 0, 0, 0.02);
+    --markon-chat-text-muted: #6b7280;
+    --markon-chat-applied:        #16a34a; /* applied accent / Apply button */
+    --markon-chat-applied-strong: #15803d; /* Apply button border + hover */
+    --markon-chat-applied-fg:     #166534; /* APPLIED status pill ink */
+    --markon-chat-neutral:        #6b7280; /* rejected / reverted accent */
+    --markon-chat-neutral-fg:     #4b5563; /* rejected / reverted pill ink */
+    --markon-chat-diff-del-bg:     rgba(220, 38, 38, 0.10);
+    --markon-chat-diff-del-fg:     #991b1b;
+    --markon-chat-diff-del-strike: rgba(153, 27, 27, 0.45);
+    --markon-chat-diff-add-bg:     rgba(22, 163, 74, 0.10);
+    --markon-chat-diff-add-fg:     #166534;
 
     /* ── Annotation highlights (theme-agnostic) ──────────────
        Translucent washes painted over body text; the same alpha reads on
@@ -203,8 +226,7 @@
 }
 
 html[data-theme="dark"] {
-    /* Only the canonical role names need dark values; the :root legacy aliases
-       indirect through these and follow the theme automatically. */
+    /* Only the canonical role names need dark values. */
     --markon-accent:         #58a6ff;
     --markon-fg-default:     #f0f6fc;
     --markon-fg-muted:       #8b949e;
@@ -235,6 +257,10 @@ html[data-theme="dark"] {
     --markon-success-hover: #56d364;
     --markon-warning:       #d29922;
     --markon-warning-hover: #e3b341;
+
+    /* Chat diff inks — the only chat edit-flow tokens with dark variants. */
+    --markon-chat-diff-del-fg: #fca5a5;
+    --markon-chat-diff-add-fg: #86efac;
 
     /* Search hit + selection — softer amber alphas read better on dark. */
     --markon-search-hit:        rgba(255, 193, 7, 0.25);

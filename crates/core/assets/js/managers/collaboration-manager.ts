@@ -13,16 +13,16 @@
  * live in that component, not here.
  */
 
-import { CONFIG } from '../core/config';
+import { CONFIG, i18n } from '../core/config';
 import { Identity } from '../core/identity';
 import { Ids, Logger } from '../core/utils';
 import { Meta } from '../services/dom';
 import { Position } from '../services/position';
 import { XPath } from '../services/xpath';
-// floating-layer is migrating in parallel (worker G); import without
-// extension so the bundler picks .ts when available, .js until then.
 import { FloatingLayer } from '../components/floating-layer';
 import type { WebSocketManager } from './websocket-manager';
+
+const _t = (key: string, ...args: unknown[]): string => i18n.t(key, ...args);
 
 // ── Mode constants ─────────────────────────────────────────────────────────
 
@@ -109,7 +109,6 @@ export class CollaborationManager {
     layer: FloatingLayer | null;
 
     // Internal flags retained as `_field` to mirror the original .js.
-    _hasChosenColor: boolean;
     _lastActiveMode?: LiveModeValue;
     _applyingRemote?: boolean;
     _lastFocusXPath?: string;
@@ -124,7 +123,6 @@ export class CollaborationManager {
         // Single identity colour source (auto-assigns + persists on first use);
         // shared with annotation authorship.
         this.userColor = Identity.color();
-        this._hasChosenColor = true;
         this.mode = this._loadSavedMode();
         this.activeLeader = null;
         this.leaderTimer = null;
@@ -440,12 +438,11 @@ export class CollaborationManager {
     }
 
     _createUI(): void {
-        const t = (window.__MARKON_I18N__ && window.__MARKON_I18N__.t) || ((k: string) => k);
         const modeLabel = (m: LiveModeValue): string =>
             ({
-                [LiveMode.OFF]:       t('web.live.off'),
-                [LiveMode.BROADCAST]: t('web.live.broadcast'),
-                [LiveMode.FOLLOW]:    t('web.live.follow'),
+                [LiveMode.OFF]:       _t('web.live.off'),
+                [LiveMode.BROADCAST]: _t('web.live.broadcast'),
+                [LiveMode.FOLLOW]:    _t('web.live.follow'),
             } as Record<LiveModeValue, string>)[m];
         const colorDots = CONFIG.COLLABORATION.COLORS
             .map((c, i) =>
@@ -459,14 +456,14 @@ export class CollaborationManager {
             .join('');
         const liveSection = this.liveEnabled
             ? `
-                    <div class="panel-section-label">${t('web.collab.live')}</div>
+                    <div class="panel-section-label">${_t('web.collab.live')}</div>
                     <div class="panel-row panel-row-mode">
                         <div class="mode-group">${modeButtons}</div>
                     </div>`
             : '';
         const html = `
             <div id="markon-live-container" class="markon-live-container">
-                <div class="markon-live-face" title="${t('web.collab.title')}">
+                <div class="markon-live-face" title="${_t('web.collab.title')}">
                     <svg class="icon-collab" viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
                         <circle cx="6" cy="9.2" r="1.9"/>
                         <path d="M2.6 16.6v-.3a3.4 3.4 0 0 1 5-3"/>
@@ -484,11 +481,11 @@ export class CollaborationManager {
                     <div class="leader-info"></div>
                 </div>
                 <div class="markon-live-body">
-                    <div class="panel-header">${t('web.collab.title')}</div>
-                    <div class="panel-section-label">${t('web.collab.you')}</div>
+                    <div class="panel-header">${_t('web.collab.title')}</div>
+                    <div class="panel-section-label">${_t('web.collab.you')}</div>
                     <div class="panel-row-color">
                         <div class="color-picker">${colorDots}</div>
-                        <input type="text" class="identity-name" maxlength="24" placeholder="${t('web.collab.nickname')}">
+                        <input type="text" class="identity-name" maxlength="24" placeholder="${_t('web.collab.nickname')}">
                     </div>${liveSection}
                 </div>
             </div>
@@ -544,7 +541,6 @@ export class CollaborationManager {
                 const c = dot.dataset.color;
                 if (!c) return;
                 this.userColor = c;
-                this._hasChosenColor = true;
                 Identity.setColor(c); // single identity source (shared w/ annotations)
                 this._updateUIState();
             });
@@ -624,11 +620,5 @@ export class CollaborationManager {
             sessionStorage.setItem(CONFIG.STORAGE_KEYS.CLIENT_ID, id);
         }
         return id;
-    }
-
-    _loadSavedColor(): string {
-        const saved = localStorage.getItem(CONFIG.STORAGE_KEYS.LIVE_COLOR);
-        const colors = CONFIG.COLLABORATION.COLORS as ReadonlyArray<string>;
-        return saved && colors.includes(saved) ? saved : colors[0];
     }
 }

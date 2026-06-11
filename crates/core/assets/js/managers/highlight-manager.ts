@@ -6,7 +6,6 @@ import { Logger } from '../core/utils.js';
 
 interface Match {
     node: Text;
-    word: string;
     start: number;
     end: number;
     text: string;
@@ -60,7 +59,6 @@ export class HighlightManager {
                 while ((foundIndex = lowerText.indexOf(lowerWord, startIndex)) !== -1) {
                     matches.push({
                         node,
-                        word,
                         start: foundIndex,
                         end: foundIndex + word.length,
                         text: text.substring(foundIndex, foundIndex + word.length),
@@ -132,14 +130,6 @@ export class HighlightManager {
 
     #applyHighlights(matches: Match[]): HTMLSpanElement[] {
         const highlightedElements: HTMLSpanElement[] = [];
-
-        // Sort matches by node and position (reverse order for safe replacement)
-        matches.sort((a, b) => {
-            if (a.node !== b.node) {
-                return 0;
-            }
-            return b.start - a.start;
-        });
 
         // Group matches by node
         const nodeMatches = new Map<Text, Match[]>();

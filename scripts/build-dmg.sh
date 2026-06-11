@@ -36,7 +36,10 @@ case "$ARG" in
 esac
 
 cd "$GUI_DIR"
-VERSION=$(python3 -c "import json; print(json.load(open('tauri.conf.json'))['version'])")
+# tauri.conf.json has no version key — Tauri 2 falls back to the Cargo package
+# version (crates/gui inherits the workspace version), so the root Cargo.toml
+# is the source of truth.
+VERSION=$(grep -m1 '^version = "' "$REPO_ROOT/Cargo.toml" | sed -E 's/version = "(.*)"/\1/')
 mkdir -p "$DMG_OUT"
 
 for TARGET in "${TARGETS[@]}"; do

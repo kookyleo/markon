@@ -85,53 +85,7 @@ export class PopoverManager {
         const hasSelection = selectedText.trim().length > 0;
         this.#updateContent(highlightedElement, hasSelection);
 
-        // Render hidden first to measure final dimensions before placing.
-        this.#element.style.visibility = 'hidden';
-        this.#element.style.display = 'block';
-
-        const popoverHeight = this.#element.offsetHeight;
-        const popoverWidth = this.#element.offsetWidth;
-
-        const rect = range.getBoundingClientRect();
-        const scrollX = window.pageXOffset || document.documentElement.scrollLeft;
-        const scrollY = window.pageYOffset || document.documentElement.scrollTop;
-
-        const offset = CONFIG.DIMENSIONS.POPOVER_OFFSET;
-
-        let left = rect.left + scrollX + rect.width / 2 - popoverWidth / 2;
-        let top = rect.bottom + scrollY + offset;
-
-        const spaceBelow = window.innerHeight - rect.bottom;
-        const spaceAbove = rect.top;
-
-        if (spaceBelow < popoverHeight + offset + 20) {
-            // Not enough room below; flip above if there's more headroom there.
-            if (spaceAbove > spaceBelow || spaceAbove > popoverHeight + offset + 20) {
-                top = rect.top + scrollY - popoverHeight - offset;
-            }
-        }
-
-        ({ left, top } = Position.constrainToViewport(left, top, popoverWidth, popoverHeight));
-
-        const originalLeft = left;
-        const originalTop = top;
-
-        const savedOffset = this.#getSavedOffset();
-        if (savedOffset) {
-            left += savedOffset.dx;
-            top += savedOffset.dy;
-            ({ left, top } = Position.constrainToViewport(left, top, popoverWidth, popoverHeight));
-        }
-
-        // Pre-offset coords feed DraggableManager's delta math.
-        this.#element.dataset.originalLeft = String(originalLeft);
-        this.#element.dataset.originalTop = String(originalTop);
-
-        this.#element.style.left = `${left}px`;
-        this.#element.style.top = `${top}px`;
-        this.#element.style.visibility = 'visible';
-
-        this.#initDraggable();
+        this.#placeAt(range.getBoundingClientRect());
     }
 
     hide(): void {
@@ -232,14 +186,6 @@ export class PopoverManager {
                     this.hide();
                     return;
                 }
-                Logger.log(
-                    'PopoverManager',
-                    `Trimmed start element: ${startElement.tagName}.${startElement.className}`,
-                );
-                Logger.log(
-                    'PopoverManager',
-                    `Checking shouldSkipElement: ${this.#shouldSkipElement(startElement)}`,
-                );
                 if (this.#shouldSkipElement(startElement)) {
                     Logger.log('PopoverManager', 'Trimmed selection starts in UI element, hiding');
                     this.hide();
@@ -272,34 +218,37 @@ export class PopoverManager {
         this.#currentHighlightedElement = highlightedElement;
         this.#updateContent(highlightedElement, false);
 
-        // Render hidden first to measure final dimensions.
+        this.#placeAt(highlightedElement.getBoundingClientRect());
+    }
+
+    /**
+     * Place the popover relative to an anchor rect: measure (while hidden),
+     * centre horizontally, flip above when below lacks headroom, constrain to
+     * the viewport, apply the saved drag offset, then arm dragging.
+     */
+    #placeAt(rect: DOMRect): void {
+        // Render hidden first to measure final dimensions before placing.
         this.#element.style.visibility = 'hidden';
         this.#element.style.display = 'block';
 
-        const rect = highlightedElement.getBoundingClientRect();
-        const popoverWidth = this.#element.offsetWidth;
         const popoverHeight = this.#element.offsetHeight;
+        const popoverWidth = this.#element.offsetWidth;
 
         const scrollX = window.pageXOffset || document.documentElement.scrollLeft;
         const scrollY = window.pageYOffset || document.documentElement.scrollTop;
+
         const offset = CONFIG.DIMENSIONS.POPOVER_OFFSET;
 
-        // Centre horizontally (in absolute document coordinates).
         let left = rect.left + scrollX + rect.width / 2 - popoverWidth / 2;
-
-        // Default placement is below the anchor (absolute coordinates).
         let top = rect.bottom + scrollY + offset;
-        let positionBelow = true;
 
-        // Check whether there's enough headroom below.
         const spaceBelow = window.innerHeight - rect.bottom;
         const spaceAbove = rect.top;
 
         if (spaceBelow < popoverHeight + offset + 20) {
-            // Not enough room below; flip above when there's more space there.
+            // Not enough room below; flip above if there's more headroom there.
             if (spaceAbove > spaceBelow || spaceAbove > popoverHeight + offset + 20) {
                 top = rect.top + scrollY - popoverHeight - offset;
-                positionBelow = false;
             }
         }
 
@@ -315,7 +264,7 @@ export class PopoverManager {
             ({ left, top } = Position.constrainToViewport(left, top, popoverWidth, popoverHeight));
         }
 
-        // Store the pre-offset coordinates so DraggableManager can compute deltas.
+        // Pre-offset coords feed DraggableManager's delta math.
         this.#element.dataset.originalLeft = String(originalLeft);
         this.#element.dataset.originalTop = String(originalTop);
 
@@ -323,13 +272,7 @@ export class PopoverManager {
         this.#element.style.top = `${top}px`;
         this.#element.style.visibility = 'visible';
 
-        // Initialize the drag behavior.
         this.#initDraggable();
-
-        Logger.log(
-            'PopoverManager',
-            `Popover positioned at (${left}, ${top}), ${positionBelow ? 'below' : 'above'} highlight`,
-        );
     }
 
     #createElement(): void {

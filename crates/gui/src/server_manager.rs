@@ -6,7 +6,6 @@ pub struct ServerManager {
     abort_tx: Option<tokio::sync::oneshot::Sender<()>>,
     thread: Option<std::thread::JoinHandle<()>>,
     port: u16,
-    running: bool,
     last_error: Option<String>,
     /// Shared with the server's AppState; allows Tauri commands to add/remove workspaces.
     pub registry: Arc<WorkspaceRegistry>,
@@ -18,7 +17,6 @@ impl Default for ServerManager {
             abort_tx: None,
             thread: None,
             port: 0,
-            running: false,
             last_error: None,
             registry: Arc::new(WorkspaceRegistry::new("markon:0".into())),
         }
@@ -71,7 +69,6 @@ impl ServerManager {
                 let msg = format!("Failed to bind {bind_addr}: {e}");
                 tracing::error!("{msg}");
                 self.last_error = Some(msg.clone());
-                self.running = false;
                 self.port = 0;
                 return Err(msg);
             }
@@ -99,7 +96,6 @@ impl ServerManager {
         self.abort_tx = Some(tx);
         self.thread = Some(thread);
         self.port = actual_port;
-        self.running = true;
         Ok(())
     }
 
@@ -110,11 +106,10 @@ impl ServerManager {
         if let Some(thread) = self.thread.take() {
             let _ = thread.join();
         }
-        self.running = false;
     }
 
     pub fn is_running(&self) -> bool {
-        self.running
+        self.thread.is_some()
     }
 
     pub fn port(&self) -> u16 {

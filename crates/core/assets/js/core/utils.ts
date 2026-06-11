@@ -61,10 +61,6 @@ export const Ids = {
     short(): string {
         return Math.random().toString(36).slice(2, 11);
     },
-    /** Alias kept for callers that prefer the verb form. */
-    generate(): string {
-        return this.uuid();
-    },
 } as const;
 
 // Log

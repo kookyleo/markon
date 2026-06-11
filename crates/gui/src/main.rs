@@ -15,11 +15,7 @@ use std::sync::{
     atomic::{AtomicBool, AtomicU64, Ordering},
     Arc, Mutex,
 };
-use tauri::{
-    menu::{Menu, MenuItem, PredefinedMenuItem},
-    tray::TrayIconBuilder,
-    Emitter, Manager,
-};
+use tauri::{tray::TrayIconBuilder, Emitter, Manager};
 
 // Point the Win32 HWND at the multi-size icon embedded in the .exe resource
 // so the titlebar slot picks the exact native raster from our .ico (16 /
@@ -103,7 +99,7 @@ pub struct AppState {
     /// one so an "Open With" doesn't *also* adopt the front Finder folder. Stored
     /// as a timestamp rather than a sticky bool so a mark left behind by an Opened
     /// with no trailing Reopen can't later swallow an unrelated toolbar click.
-    pub last_file_open_ms: Arc<AtomicU64>,
+    pub last_file_open_ms: AtomicU64,
     /// Live tray_resident flag — written by menu handler, read by window close handler.
     pub tray_resident: Arc<AtomicBool>,
 }
@@ -348,14 +344,7 @@ fn main() {
             show_settings_window(app);
         }))
         .setup(move |app| {
-            use markon_core::settings::PortMode;
-
-            let port = if settings.port_mode == PortMode::Auto {
-                0
-            } else {
-                settings.port
-            };
-            let config = settings.to_server_config(port);
+            let config = settings.to_server_config(commands::effective_port(&settings));
 
             let tray_resident_init = settings.tray_resident;
             let language_init = settings.language.clone();
@@ -371,7 +360,7 @@ fn main() {
             let state = AppState {
                 settings: settings_arc,
                 server: Mutex::new(ServerManager::new()),
-                last_file_open_ms: Arc::new(AtomicU64::new(0)),
+                last_file_open_ms: AtomicU64::new(0),
                 tray_resident: Arc::new(AtomicBool::new(tray_resident_init)),
             };
             let mut server = state.server.lock().unwrap();
@@ -423,22 +412,7 @@ fn main() {
             #[cfg(not(target_os = "macos"))]
             let icon = tauri::include_image!("icons/tray-colored.png");
 
-            let i18n_data = markon_core::i18n::get_lang_data(&language_init);
-            let label_settings = i18n_data["tray.show"]
-                .as_str()
-                .unwrap_or("Settings…")
-                .to_string();
-            let label_quit = i18n_data["tray.quit"]
-                .as_str()
-                .unwrap_or("Quit Markon")
-                .to_string();
-
-            let item_settings =
-                MenuItem::with_id(app, "settings", label_settings, true, None::<&str>)?;
-            let sep = PredefinedMenuItem::separator(app)?;
-            let item_quit = MenuItem::with_id(app, "quit", label_quit, true, None::<&str>)?;
-
-            let menu = Menu::with_items(app, &[&item_settings, &sep, &item_quit])?;
+            let menu = commands::build_tray_menu(app, &language_init)?;
 
             TrayIconBuilder::with_id("main")
                 .icon(icon)
@@ -515,30 +489,17 @@ fn main() {
                 let args: Vec<String> = std::env::args().skip(1).collect();
                 if let Some(path_str) = args.first() {
                     handle_open_path(&app.app_handle().clone(), Path::new(path_str));
-                } else if let Some(w) = app.get_webview_window("settings") {
-                    let _ = w.show();
-                    let _ = w.set_focus();
+                } else {
+                    show_settings_window(app.app_handle());
                 }
             }
             // Drain any RunEvent::Opened paths that arrived before AppState
-            // was managed (see `pending_opens` for the cold-launch race).
+            // was managed (see `pending_opens` for the cold-launch race),
+            // then any Markdown files passed via argv.
             #[cfg(target_os = "macos")]
-            let drained_pending: bool = {
-                let pending: Vec<PathBuf> = std::mem::take(&mut *pending_opens().lock().unwrap());
-                let had = !pending.is_empty();
-                if had {
-                    app.state::<AppState>().mark_file_opened();
-                    let handle = app.app_handle().clone();
-                    for p in &pending {
-                        handle_open_path(&handle, p);
-                    }
-                }
-                had
-            };
-
-            #[cfg(target_os = "macos")]
-            let opened_launch_arg: bool = {
-                let paths = markdown_file_launch_args(std::env::args().skip(1));
+            let opened_any: bool = {
+                let mut paths: Vec<PathBuf> = std::mem::take(&mut *pending_opens().lock().unwrap());
+                paths.extend(markdown_file_launch_args(std::env::args().skip(1)));
                 let had = !paths.is_empty();
                 if had {
                     app.state::<AppState>().mark_file_opened();
@@ -551,16 +512,13 @@ fn main() {
             };
 
             #[cfg(target_os = "macos")]
-            if !tray_resident_init && !drained_pending && !opened_launch_arg {
+            if !tray_resident_init && !opened_any {
                 // Tray is hidden, so Settings must show for the app to be
                 // reachable on launch. With tray_resident=true the tray
                 // icon stays visible and Reopen/Opened cover navigation.
                 // If an Open With path was handled, the user explicitly asked
                 // for a file — don't pop the Settings window over it.
-                if let Some(w) = app.get_webview_window("settings") {
-                    let _ = w.show();
-                    let _ = w.set_focus();
-                }
+                show_settings_window(app.app_handle());
             }
 
             Ok(())
@@ -574,7 +532,6 @@ fn main() {
             commands::update_workspace,
             commands::remove_workspace,
             commands::get_workspaces,
-            commands::open_browser,
             commands::open_url,
             commands::get_bind_hosts,
             commands::get_server_status,

@@ -4,7 +4,7 @@
  * message dispatching to per-message-type handlers.
  */
 
-import { CONFIG, type WsMessageType } from '../core/config';
+import { CONFIG } from '../core/config';
 import { Logger } from '../core/utils';
 
 /** Connection state machine. */
@@ -179,6 +179,11 @@ export class WebSocketManager {
         this.#clearTimers();
 
         if (this.#ws) {
+            // Detach handlers first: the async close event must not reach
+            // #handleClose, which would schedule an unwanted reconnect.
+            this.#ws.onclose = null;
+            this.#ws.onerror = null;
+            this.#ws.onmessage = null;
             this.#ws.close();
             this.#ws = null;
         }
@@ -400,7 +405,3 @@ export class WebSocketManager {
         }
     }
 }
-
-// Re-export the message-type alias to give downstream callers a single
-// import surface (e.g. chat-manager will want `WsMessageType` for routing).
-export type { WsMessageType };

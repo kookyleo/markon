@@ -11,8 +11,6 @@
 use super::{looks_binary, Tool, ToolContext, ToolError, MAX_FILE_BYTES, MAX_TOOL_OUTPUT_BYTES};
 use async_trait::async_trait;
 use serde::Deserialize;
-use std::fs::File;
-use std::io::Read;
 
 const DEFAULT_LIMIT: usize = 200;
 const MAX_LIMIT: usize = 2000;
@@ -74,41 +72,25 @@ impl Tool for ReadFileTool {
             return Err(ToolError::TooLarge);
         }
 
-        // Sniff the first 8 KiB for binary content before slurping.
-        let mut sniff = [0u8; 8192];
-        let n = {
-            let mut f = File::open(&abs).map_err(|e| ToolError::Io(e.to_string()))?;
-            f.read(&mut sniff)
-                .map_err(|e| ToolError::Io(e.to_string()))?
-        };
-        if looks_binary(&sniff[..n]) {
+        let bytes = std::fs::read(&abs).map_err(|e| ToolError::Io(e.to_string()))?;
+        if looks_binary(&bytes) {
             return Err(ToolError::Binary);
         }
-
-        let bytes = std::fs::read(&abs).map_err(|e| ToolError::Io(e.to_string()))?;
         let content = String::from_utf8(bytes).map_err(|_| ToolError::Binary)?;
 
-        // Split on '\n'; keep empty trailing element only if the file truly ended
-        // with content after the final newline (rare). `split('\n')` gives us
-        // [..., "last", ""] when the file ends with '\n'; drop that trailing
-        // empty so total_lines reflects the visible line count.
+        // Split on '\n'; `split('\n')` gives us [..., "last", ""] when the
+        // file ends with '\n' — drop that trailing empty so total_lines
+        // reflects the visible line count. Always >= 1, even for empty files.
         let mut all: Vec<&str> = content.split('\n').collect();
-        if matches!(all.last(), Some(&"")) && content.ends_with('\n') {
+        if content.ends_with('\n') {
             all.pop();
         }
         let total_lines = all.len();
 
-        if offset >= total_lines && total_lines > 0 {
+        if offset >= total_lines {
             return Err(ToolError::InvalidArgument(format!(
                 "offset {offset} exceeds line count {total_lines}"
             )));
-        }
-        // Empty file: produce an empty body with a header.
-        if total_lines == 0 {
-            return Ok(format!(
-                "{}:0-0 (of 0)\n",
-                rel_path_string(&abs, &ctx.workspace_root)
-            ));
         }
 
         let end = (offset + limit).min(total_lines);

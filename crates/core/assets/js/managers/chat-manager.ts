@@ -322,12 +322,14 @@ export function extractMentionContext(
  */
 export function parseCitation(text: string): Citation | null {
     const EXTS = /\.(md|markdown|mdx|rs|py|js|mjs|cjs|ts|tsx|jsx|vue|svelte|go|java|kt|kts|c|cc|cpp|cxx|h|hpp|hh|m|mm|swift|rb|php|cs|scala|toml|yaml|yml|json|jsonc|html|htm|css|scss|sass|less|txt|sh|bash|zsh|fish|sql|xml|ini|conf|cfg|env|lua|r|dart)$/i;
+    const hasKnownExt = (path: string): boolean => {
+        const dotIdx = path.lastIndexOf('.');
+        return dotIdx >= 0 && EXTS.test(path.slice(dotIdx));
+    };
     let m = text.match(/^([^\s:#]+):(\d+)(?:-(\d+))?$/);
     if (m) {
         const path = m[1] ?? '';
-        const dotIdx = path.lastIndexOf('.');
-        const ext = dotIdx >= 0 ? path.slice(dotIdx) : '';
-        if (!EXTS.test(ext)) return null;
+        if (!hasKnownExt(path)) return null;
         return {
             path,
             line: Number(m[2]),
@@ -338,9 +340,7 @@ export function parseCitation(text: string): Citation | null {
     m = text.match(/^([^\s:#]+)#([A-Za-z0-9_\-:.]+)$/);
     if (m) {
         const path = m[1] ?? '';
-        const dotIdx = path.lastIndexOf('.');
-        const ext = dotIdx >= 0 ? path.slice(dotIdx) : '';
-        if (!EXTS.test(ext)) return null;
+        if (!hasKnownExt(path)) return null;
         return { path, line: null, lineEnd: null, anchor: m[2] ?? null };
     }
     return null;
@@ -521,7 +521,8 @@ export class ChatManager {
     #mentionRows: MentionRow[] = [];
     #mentionActiveIdx = 0;
     #mentionAnchorPos = -1;
-    #mentionDebounceId: ReturnType<typeof setTimeout> | null = null;
+    /** Trailing-edge debounce so fast typing coalesces into one fetch. */
+    #queryMentions = debounce((prefix: string) => { void this.#fetchMentionRows(prefix); }, 120);
     #mentionAbortCtrl: AbortController | null = null;
     #mentionOutsideHandler: ((e: MouseEvent) => void) | null = null;
 
@@ -581,10 +582,7 @@ export class ChatManager {
             clearInterval(this.#popoutWatcherId);
             this.#popoutWatcherId = null;
         }
-        if (this.#mentionDebounceId) {
-            clearTimeout(this.#mentionDebounceId);
-            this.#mentionDebounceId = null;
-        }
+        this.#queryMentions.cancel();
         if (this.#mentionAbortCtrl) {
             this.#mentionAbortCtrl.abort();
             this.#mentionAbortCtrl = null;
@@ -625,9 +623,15 @@ export class ChatManager {
             this.#sizeStyleEl.dataset.markon = 'chat-size-override';
             document.head.appendChild(this.#sizeStyleEl);
         }
-        const saved = this.#readSavedSize();
-        this.#sizeStyleEl.textContent = saved
-            ? `.markon-chat-container.expanded { width: ${saved.w}px; height: ${saved.h}px; }`
+        this.#writeSizeStyle(this.#readSavedSize());
+    }
+
+    /** Write (or clear, on null) the expanded-panel size override rule.
+     *  Single writer for `#sizeStyleEl` so the selector lives in one place. */
+    #writeSizeStyle(size: { w: number; h: number } | null): void {
+        if (!this.#sizeStyleEl) return;
+        this.#sizeStyleEl.textContent = size
+            ? `.markon-chat-container.expanded { width: ${size.w}px; height: ${size.h}px; }`
             : '';
     }
 
@@ -663,10 +667,7 @@ export class ChatManager {
                     JSON.stringify({ w, h }),
                 );
             } catch { /* quota / disabled — silently skip */ }
-            if (this.#sizeStyleEl) {
-                this.#sizeStyleEl.textContent =
-                    `.markon-chat-container.expanded { width: ${w}px; height: ${h}px; }`;
-            }
+            this.#writeSizeStyle({ w, h });
         }, 200);
         this.#resizeObserver = new ResizeObserver(() => {
             const c = this.#container;
@@ -855,8 +856,10 @@ export class ChatManager {
 
         // Inbound messages from opener: selection chips and draft pre-fills
         // (the latter only sent on initial handoff when the user popped out
-        // mid-compose). Ignore foreign origins for sanity.
-        window.addEventListener('message', (e: MessageEvent) => {
+        // mid-compose). Ignore foreign origins for sanity. Held in the same
+        // named ref #wirePopoutMessages uses (init/initPopout are mutually
+        // exclusive) so destroy() can detach it.
+        this.#popoutInboundHandler = (e: MessageEvent): void => {
             if (e.origin !== location.origin) return;
             const d = e.data as
                 | { type?: string; text?: string; currentDoc?: string | null }
@@ -872,7 +875,8 @@ export class ChatManager {
                     this.#autoGrowTextarea();
                 }
             }
-        });
+        };
+        window.addEventListener('message', this.#popoutInboundHandler);
 
         // Tell the opener we're ready to receive the handoff. Posting before
         // the load event would race against the opener's listener wiring
@@ -1305,7 +1309,9 @@ export class ChatManager {
 
     #toggleThreadMenu(): void {
         if (!this.#threadDropdownMenu) return;
-        this.#renderThreadMenu();
+        // Re-render only when about to expand — stale innerHTML is invisible
+        // while hidden, and every data-change path re-renders on its own.
+        if (this.#threadDropdownMenu.hidden) this.#renderThreadMenu();
         this.#threadDropdownMenu.hidden = !this.#threadDropdownMenu.hidden;
     }
 
@@ -1844,10 +1850,7 @@ export class ChatManager {
         this.#hideMentionPopup();
         // Selection consumed by this turn — drop the chip. The actual text was
         // already snapshotted into #pendingSelection and is read by #stream.
-        if (this.#quoteChip && !this.#quoteChip.hidden) {
-            if (this.#quoteChip) this.#quoteChip.hidden = true;
-            if (this.#quoteText) this.#quoteText.textContent = '';
-        }
+        this.#clearQuoteChipUI();
         this.#pendingAssistant = assistantMsg;
 
         await this.#stream(text, assistantMsg, turnMentions);
@@ -2094,6 +2097,12 @@ export class ChatManager {
 
     #hideQuoteChip(): void {
         this.#pendingSelection = null;
+        this.#clearQuoteChipUI();
+    }
+
+    /** Hide the chip and clear its text without touching #pendingSelection —
+     *  #submit needs the stored selection to survive until #stream reads it. */
+    #clearQuoteChipUI(): void {
         if (this.#quoteChip) this.#quoteChip.hidden = true;
         if (this.#quoteText) this.#quoteText.textContent = '';
     }
@@ -2117,31 +2126,29 @@ export class ChatManager {
         this.#hideMentionPopup();
     }
 
-    #queryMentions(prefix: string): void {
-        if (this.#mentionDebounceId) clearTimeout(this.#mentionDebounceId);
-        this.#mentionDebounceId = setTimeout(async () => {
-            this.#mentionDebounceId = null;
-            // Cancel any in-flight previous request.
-            if (this.#mentionAbortCtrl) this.#mentionAbortCtrl.abort();
-            this.#mentionAbortCtrl = new AbortController();
-            try {
-                const url = `/api/chat/${encodeURIComponent(this.#workspaceId)}/files`
-                    + `?q=${encodeURIComponent(prefix)}&limit=8`;
-                const res = await fetch(url, { signal: this.#mentionAbortCtrl.signal });
-                if (!res.ok) {
-                    // Be quiet on backend hiccups so a 503 doesn't crash chat.
-                    this.#hideMentionPopup();
-                    return;
-                }
-                const rows = (await res.json()) as MentionRow[];
-                this.#renderMentionPopup(Array.isArray(rows) ? rows : []);
-            } catch (err) {
-                const e = err as { name?: string };
-                if (e?.name === 'AbortError') return;
-                Logger.warn('Chat', 'mention query failed', err);
+    /** Debounced body of {@link #queryMentions}: fetch matching rows and
+     *  render the popup. */
+    async #fetchMentionRows(prefix: string): Promise<void> {
+        // Cancel any in-flight previous request.
+        if (this.#mentionAbortCtrl) this.#mentionAbortCtrl.abort();
+        this.#mentionAbortCtrl = new AbortController();
+        try {
+            const url = `/api/chat/${encodeURIComponent(this.#workspaceId)}/files`
+                + `?q=${encodeURIComponent(prefix)}&limit=8`;
+            const res = await fetch(url, { signal: this.#mentionAbortCtrl.signal });
+            if (!res.ok) {
+                // Be quiet on backend hiccups so a 503 doesn't crash chat.
                 this.#hideMentionPopup();
+                return;
             }
-        }, 120);
+            const rows = (await res.json()) as MentionRow[];
+            this.#renderMentionPopup(Array.isArray(rows) ? rows : []);
+        } catch (err) {
+            const e = err as { name?: string };
+            if (e?.name === 'AbortError') return;
+            Logger.warn('Chat', 'mention query failed', err);
+            this.#hideMentionPopup();
+        }
     }
 
     #ensureMentionPopup(): HTMLElement {
@@ -2259,7 +2266,7 @@ export class ChatManager {
         this.#mentionActiveIdx = 0;
         this.#mentionAnchorPos = -1;
         if (this.#mentionAbortCtrl) { this.#mentionAbortCtrl.abort(); this.#mentionAbortCtrl = null; }
-        if (this.#mentionDebounceId) { clearTimeout(this.#mentionDebounceId); this.#mentionDebounceId = null; }
+        this.#queryMentions.cancel();
     }
 
     /** Drop entries from `#mentions` whose `@<path>` no longer appears in

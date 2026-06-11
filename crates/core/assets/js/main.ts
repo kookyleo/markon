@@ -6,7 +6,7 @@
  * loaded via `<script type="module">` from layout.html.
  */
 
-import { CONFIG } from './core/config';
+import { CONFIG, i18n } from './core/config';
 import { Logger } from './core/utils';
 import { copyText, flashBeside, flashCopied } from './core/clipboard';
 import { Meta } from './services/dom';
@@ -30,9 +30,10 @@ import { AnnotationNavigator } from './navigators/annotation-navigator';
 import { ModalManager, showConfirmDialog } from './components/modal';
 import { FloatingLayer } from './components/floating-layer';
 
-const _t: (key: string, ...args: unknown[]) => string =
-    (typeof window !== 'undefined' && window.__MARKON_I18N__ && window.__MARKON_I18N__.t) ||
-    ((k: string) => k);
+/** CONFIG.SELECTORS.HEADINGS scoped to the rendered markdown body. */
+const MARKDOWN_BODY_HEADINGS = CONFIG.SELECTORS.HEADINGS.split(', ')
+    .map((tag) => `.markdown-body ${tag}`)
+    .join(', ');
 
 // ── Public types ───────────────────────────────────────────────────────────
 
@@ -361,13 +362,11 @@ export class MarkonApp {
                 return;
             }
 
-            let heading: HTMLElement | null = target.closest<HTMLElement>('h1, h2, h3, h4, h5, h6');
+            let heading: HTMLElement | null = target.closest<HTMLElement>(CONFIG.SELECTORS.HEADINGS);
 
             if (!heading) {
                 const allHeadings = Array.from(
-                    document.querySelectorAll<HTMLElement>(
-                        '.markdown-body h1, .markdown-body h2, .markdown-body h3, .markdown-body h4, .markdown-body h5, .markdown-body h6',
-                    ),
+                    document.querySelectorAll<HTMLElement>(MARKDOWN_BODY_HEADINGS),
                 );
                 const clickY = e.clientY + window.scrollY;
 
@@ -382,12 +381,19 @@ export class MarkonApp {
             }
 
             if (heading) {
-                document.querySelectorAll('.heading-focused').forEach((el) => {
-                    el.classList.remove('heading-focused');
-                });
+                this.#clearHeadingFocus();
                 heading.classList.add('heading-focused');
             }
         });
+    }
+
+    /** Remove `.heading-focused` from every element. Returns the cleared count. @private */
+    #clearHeadingFocus(): number {
+        const focused = document.querySelectorAll('.heading-focused');
+        focused.forEach((el) => {
+            el.classList.remove('heading-focused');
+        });
+        return focused.length;
     }
 
     /** Register keyboard shortcuts. @private */
@@ -502,44 +508,20 @@ export class MarkonApp {
             if (highlightedElement instanceof HTMLElement) {
                 const annotationId = highlightedElement.dataset.annotationId;
                 if (annotationId) {
-                    await annotationManager.delete(annotationId);
-                    annotationManager.removeFromDOM(annotationId);
-                    noteManager.render();
-
-                    undoManager.push({
-                        type: 'delete_annotation',
-                        annotation: { id: annotationId } as Annotation,
-                    });
+                    await this.#applyDelete(annotationId, { pushUndo: true });
                 }
             }
-        } else if (action.startsWith('highlight-')) {
+        } else if (action.startsWith('highlight-') || action === 'strikethrough') {
             if (!selection) return;
+            const tagName =
+                action === 'strikethrough' ? CONFIG.HTML_TAGS.STRIKETHROUGH : CONFIG.HTML_TAGS.HIGHLIGHT;
             const annotation = annotationManager.createAnnotation(
                 selection,
                 action as Annotation['type'],
-                CONFIG.HTML_TAGS.HIGHLIGHT as Annotation['tagName'],
+                tagName as Annotation['tagName'],
             );
-            await annotationManager.add(annotation);
-            annotationManager.applyToDOM([annotation]);
-
-            undoManager.push({
-                type: 'add_annotation',
-                annotation,
-            });
-        } else if (action === 'strikethrough') {
-            if (!selection) return;
-            const annotation = annotationManager.createAnnotation(
-                selection,
-                CONFIG.ANNOTATION_TYPES.STRIKETHROUGH as Annotation['type'],
-                CONFIG.HTML_TAGS.STRIKETHROUGH as Annotation['tagName'],
-            );
-            await annotationManager.add(annotation);
-            annotationManager.applyToDOM([annotation]);
-
-            undoManager.push({
-                type: 'add_annotation',
-                annotation,
-            });
+            // No note re-render here — highlights/strikethroughs carry no note.
+            await this.#applyAdd(annotation, { pushUndo: true });
         } else if (action === 'add-note') {
             if (!selection) return;
             // Don't clear the selection — modal stays open until user confirms.
@@ -569,6 +551,44 @@ export class MarkonApp {
 
         // Clear selection (except for add-note / edit, which return early).
         window.getSelection()?.removeAllRanges();
+    }
+
+    /**
+     * Add an annotation and apply it to the DOM. Optionally records the
+     * addition on the undo stack and/or re-renders the margin notes.
+     * @private
+     */
+    async #applyAdd(
+        annotation: Annotation,
+        options: { pushUndo?: boolean; render?: boolean } = {},
+    ): Promise<void> {
+        if (!this.#annotationManager || !this.#noteManager) return;
+        await this.#annotationManager.add(annotation);
+        this.#annotationManager.applyToDOM([annotation]);
+        if (options.pushUndo) {
+            this.#undoManager?.push({ type: 'add_annotation', annotation });
+        }
+        if (options.render) {
+            this.#noteManager.render();
+        }
+    }
+
+    /**
+     * Delete an annotation, detach it from the DOM and re-render the margin
+     * notes. Optionally records the deletion on the undo stack.
+     * @private
+     */
+    async #applyDelete(annotationId: string, options: { pushUndo?: boolean } = {}): Promise<void> {
+        if (!this.#annotationManager || !this.#noteManager) return;
+        await this.#annotationManager.delete(annotationId);
+        this.#annotationManager.removeFromDOM(annotationId);
+        this.#noteManager.render();
+        if (options.pushUndo) {
+            this.#undoManager?.push({
+                type: 'delete_annotation',
+                annotation: { id: annotationId } as Annotation,
+            });
+        }
     }
 
     /**
@@ -631,20 +651,12 @@ export class MarkonApp {
                             CONFIG.HTML_TAGS.HIGHLIGHT as Annotation['tagName'],
                             noteText,
                         );
-                        await annotationManager.add(newAnnotation);
-                        annotationManager.applyToDOM([newAnnotation]);
-
-                        undoManager.push({
-                            type: 'add_annotation',
-                            annotation: newAnnotation,
-                        });
+                        await this.#applyAdd(newAnnotation, { pushUndo: true });
                     }
 
                     noteManager.render();
                 } else if (annotation) {
-                    await annotationManager.delete(annotation.id);
-                    annotationManager.removeFromDOM(annotation.id);
-                    noteManager.render();
+                    await this.#applyDelete(annotation.id);
                 }
 
                 cleanupOverlays();
@@ -664,11 +676,23 @@ export class MarkonApp {
         const annotationManager = this.#annotationManager;
         const noteManager = this.#noteManager;
 
+        // Trust boundary for shared-annotation mode: ids from peers flow into
+        // querySelector strings and innerHTML attributes downstream. Validate
+        // the shape once here (locally minted ids are `anno-<uuid>`) so a
+        // crafted id can't break out of a selector or attribute. Reject the
+        // whole annotation rather than trying to escape at every sink.
+        const validId = (id: unknown): id is string =>
+            typeof id === 'string' && /^anno-[A-Za-z0-9-]{1,64}$/.test(id);
+
         ws.on('all_annotations', (message) => {
             if (!annotationManager || !noteManager) return;
             annotationManager.clearDOM();
             const annotations = (message.annotations ?? []) as Annotation[];
             annotations.forEach((anno) => {
+                if (!validId(anno?.id)) {
+                    Logger.warn('WebSocket', `Dropped annotation with invalid id: ${String(anno?.id)}`);
+                    return;
+                }
                 void annotationManager.add(anno, true); // skipSave=true: from remote
             });
             annotationManager.applyToDOM();
@@ -683,6 +707,10 @@ export class MarkonApp {
                 return;
             }
             const incoming = message.annotation as Annotation;
+            if (!validId(incoming?.id)) {
+                Logger.warn('WebSocket', `Dropped new_annotation with invalid id: ${String(incoming?.id)}`);
+                return;
+            }
             // Belt-and-braces: a stray dupe (legacy peer, replay) still gets filtered.
             const existingAnnotation = annotationManager.getById(incoming.id);
             if (existingAnnotation) {
@@ -699,6 +727,10 @@ export class MarkonApp {
             if (!annotationManager || !noteManager) return;
             if (ws.isOwnEcho(message.op_id)) {
                 Logger.log('WebSocket', `Skipped own delete_annotation echo (op_id ${message.op_id})`);
+                return;
+            }
+            if (!validId(message.id)) {
+                Logger.warn('WebSocket', `Dropped delete_annotation with invalid id: ${String(message.id)}`);
                 return;
             }
             void annotationManager.delete(message.id, true);
@@ -771,16 +803,8 @@ export class MarkonApp {
                     'Delete this note?',
                     async () => {
                         if (!this.#annotationManager || !this.#noteManager || !this.#undoManager) return;
-                        await this.#annotationManager.delete(annotationId);
-                        this.#annotationManager.removeFromDOM(annotationId);
-                        this.#noteManager.render();
-
+                        await this.#applyDelete(annotationId, { pushUndo: true });
                         document.querySelector('.note-popup')?.remove();
-
-                        this.#undoManager.push({
-                            type: 'delete_annotation',
-                            annotation: { id: annotationId } as Annotation,
-                        });
                     },
                     deleteBtn,
                     'Delete',
@@ -933,14 +957,8 @@ export class MarkonApp {
             }
 
             // Click outside .markdown-body cancels the focused heading.
-            if (!target.closest('.markdown-body')) {
-                const focusedHeadings = document.querySelectorAll('.heading-focused');
-                if (focusedHeadings.length > 0) {
-                    focusedHeadings.forEach((el) => {
-                        el.classList.remove('heading-focused');
-                    });
-                    Logger.log('MarkonApp', 'Cleared heading focus (clicked outside markdown-body)');
-                }
+            if (!target.closest('.markdown-body') && this.#clearHeadingFocus() > 0) {
+                Logger.log('MarkonApp', 'Cleared heading focus (clicked outside markdown-body)');
             }
         };
 
@@ -1059,39 +1077,32 @@ export class MarkonApp {
     /** Handle Undo. @private */
     async #handleUndo(): Promise<void> {
         const operation: UndoOperation | null = this.#undoManager?.undo() ?? null;
-        if (!operation || !this.#annotationManager || !this.#noteManager) return;
-        const annotation = operation.annotation as Annotation;
-
-        switch (operation.type) {
-            case 'add_annotation':
-                await this.#annotationManager.delete(annotation.id);
-                this.#annotationManager.removeFromDOM(annotation.id);
-                this.#noteManager.render();
-                break;
-            case 'delete_annotation':
-                await this.#annotationManager.add(annotation);
-                this.#annotationManager.applyToDOM([annotation]);
-                this.#noteManager.render();
-                break;
-        }
+        if (operation) await this.#replayOperation(operation, true);
     }
 
     /** Handle Redo. @private */
     async #handleRedo(): Promise<void> {
         const operation: UndoOperation | null = this.#undoManager?.redo() ?? null;
-        if (!operation || !this.#annotationManager || !this.#noteManager) return;
+        if (operation) await this.#replayOperation(operation, false);
+    }
+
+    /**
+     * Replay an undo-stack operation. Redo replays it as recorded; undo
+     * applies the inverse (an add is undone by a delete and vice versa).
+     * Never pushes — UndoManager moves operations between its stacks itself.
+     * @private
+     */
+    async #replayOperation(operation: UndoOperation, invert: boolean): Promise<void> {
         const annotation = operation.annotation as Annotation;
 
         switch (operation.type) {
             case 'add_annotation':
-                await this.#annotationManager.add(annotation);
-                this.#annotationManager.applyToDOM([annotation]);
-                this.#noteManager.render();
+                if (invert) await this.#applyDelete(annotation.id);
+                else await this.#applyAdd(annotation, { render: true });
                 break;
             case 'delete_annotation':
-                await this.#annotationManager.delete(annotation.id);
-                this.#annotationManager.removeFromDOM(annotation.id);
-                this.#noteManager.render();
+                if (invert) await this.#applyAdd(annotation, { render: true });
+                else await this.#applyDelete(annotation.id);
                 break;
         }
     }
@@ -1149,9 +1160,7 @@ export class MarkonApp {
         }
 
         if (targetHeading) {
-            document.querySelectorAll('.heading-focused').forEach((el) => {
-                el.classList.remove('heading-focused');
-            });
+            this.#clearHeadingFocus();
             targetHeading.classList.add('heading-focused');
             Position.smartScrollToHeading(targetHeading);
             // Sync TOC selected state
@@ -1271,7 +1280,6 @@ export class MarkonApp {
     exportAnnotations(anchor?: HTMLElement | null): void {
         const annotationManager = this.#annotationManager;
         if (!annotationManager) return;
-        const t = window.__MARKON_I18N__?.t ?? ((k: string): string => k);
         if (!this.#exportManager) {
             this.#exportManager = new ExportManager({
                 annotationManager,
@@ -1282,7 +1290,7 @@ export class MarkonApp {
         const opened = this.#exportManager.open();
         if (!opened && anchor) {
             const original = anchor.textContent ?? '';
-            anchor.textContent = t('web.export.empty');
+            anchor.textContent = i18n.t('web.export.empty');
             anchor.classList.add('is-flashing');
             setTimeout(() => {
                 anchor.textContent = original;
@@ -1305,7 +1313,7 @@ export class MarkonApp {
         const ok = await copyText(markdown);
         if (button) {
             if (ok) flashCopied(button);
-            else flashBeside(button, _t('web.export.failed'));
+            else flashBeside(button, i18n.t('web.export.failed'));
         }
     }
 
@@ -1437,8 +1445,9 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     });
 
+    // filePath is intentionally omitted — the constructor falls back to the
+    // same meta tag (and then location.pathname) itself.
     const app = new MarkonApp({
-        filePath: Meta.get(CONFIG.META_TAGS.FILE_PATH) ?? undefined,
         isSharedMode,
         enableSearch: Meta.flag(CONFIG.META_TAGS.ENABLE_SEARCH),
         enableEdit: Meta.flag(CONFIG.META_TAGS.ENABLE_EDIT),
@@ -1475,7 +1484,10 @@ document.addEventListener('DOMContentLoaded', () => {
             sock.onmessage = () => window.location.reload();
             sock.onclose = () => {
                 if (stopped) return;
-                const delay = Math.min(30000, 1000 * 2 ** attempt++);
+                const delay = Math.min(
+                    CONFIG.WEBSOCKET.MAX_RECONNECT_DELAY,
+                    CONFIG.WEBSOCKET.INITIAL_RECONNECT_DELAY * 2 ** attempt++,
+                );
                 reconnectTimer = setTimeout(connectConfigWs, delay);
             };
         };

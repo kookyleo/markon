@@ -30,8 +30,6 @@ pub struct SearchIndex {
     index: Index,
     reader: IndexReader,
     writer: Arc<Mutex<IndexWriter>>,
-    #[allow(dead_code)]
-    schema: Schema,
     field_path: Field,
     field_file_name: Field,
     field_title: Field,
@@ -61,7 +59,7 @@ impl SearchIndex {
         let schema = schema_builder.build();
 
         // Create index in RAM
-        let index = Index::create_in_ram(schema.clone());
+        let index = Index::create_in_ram(schema);
 
         // Register jieba tokenizer
         index.tokenizers().register("jieba", JiebaTokenizer {});
@@ -74,7 +72,6 @@ impl SearchIndex {
             index,
             reader,
             writer: Arc::new(Mutex::new(writer)),
-            schema,
             field_path,
             field_file_name,
             field_title,
@@ -141,16 +138,20 @@ impl SearchIndex {
         Ok(())
     }
 
+    /// Path relative to `start_dir`, as stored in the `path` field and
+    /// used as the delete term for updates and removals.
+    fn rel_path(&self, path: &Path) -> String {
+        path.strip_prefix(&self.start_dir)
+            .unwrap_or(path)
+            .to_string_lossy()
+            .to_string()
+    }
+
     /// Build a TantivyDocument for `path` with `content`. Pure CPU
     /// work — does not touch the writer. Safe to call from rayon
     /// workers in parallel.
     fn build_document(&self, path: &Path, content: &str) -> TantivyDocument {
-        // Calculate relative path from start_dir
-        let relative_path = path
-            .strip_prefix(&self.start_dir)
-            .unwrap_or(path)
-            .to_string_lossy()
-            .to_string();
+        let relative_path = self.rel_path(path);
 
         let file_name = path
             .file_stem()
@@ -229,30 +230,8 @@ impl SearchIndex {
         }
 
         let content = fs::read_to_string(path)?;
-        // Calculate relative path from start_dir
-        let relative_path = path
-            .strip_prefix(&self.start_dir)
-            .unwrap_or(path)
-            .to_string_lossy()
-            .to_string();
-
-        let file_name = path
-            .file_stem()
-            .and_then(|s| s.to_str())
-            .unwrap_or("")
-            .to_string();
-
-        let title = content
-            .lines()
-            .find(|line| line.starts_with('#'))
-            .map(|line| line.trim_start_matches('#').trim().to_string())
-            .unwrap_or_else(|| file_name.clone());
-
-        let mut doc = TantivyDocument::default();
-        doc.add_text(self.field_path, &relative_path);
-        doc.add_text(self.field_file_name, &file_name);
-        doc.add_text(self.field_title, &title);
-        doc.add_text(self.field_content, &content);
+        let doc = self.build_document(path, &content);
+        let relative_path = self.rel_path(path);
 
         // Delete and re-add in same transaction
         {
@@ -271,12 +250,7 @@ impl SearchIndex {
     }
 
     pub fn delete_file(&self, path: &Path) -> tantivy::Result<()> {
-        // Calculate relative path from start_dir
-        let relative_path = path
-            .strip_prefix(&self.start_dir)
-            .unwrap_or(path)
-            .to_string_lossy()
-            .to_string();
+        let relative_path = self.rel_path(path);
 
         {
             let mut writer = self.writer()?;

@@ -1,18 +1,7 @@
 <!DOCTYPE html>
 <html lang="en" dir="auto" data-theme="{{ theme }}">
 <head>
-    <script>
-    (function(){
-        var root = document.documentElement;
-        if (root.getAttribute('data-theme') === 'auto') {
-            var mql = window.matchMedia('(prefers-color-scheme: dark)');
-            root.setAttribute('data-theme', mql.matches ? 'dark' : 'light');
-            mql.addEventListener && mql.addEventListener('change', function(e){
-                root.setAttribute('data-theme', e.matches ? 'dark' : 'light');
-            });
-        }
-    })();
-    </script>
+    {% include "theme-boot.html" %}
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Directory Listing - markon</title>
@@ -144,7 +133,7 @@
         .search-modal {
             display: none;
             position: fixed;
-            z-index: 10000;
+            z-index: var(--markon-z-chrome);
             left: 0;
             top: 0;
             width: 100%;
@@ -299,15 +288,7 @@
     </style>
     {% if styles_css %}<style>{{ styles_css | safe }}</style>{% endif %}
     {% if shortcuts_json %}<script>window.__MARKON_SHORTCUTS__ = {{ shortcuts_json | safe }};</script>{% endif %}
-    {% if i18n_json %}<script>
-    window.__MARKON_I18N__ = (function() {
-        var all = {{ i18n_json | safe }};
-        var lang = "{{ i18n_lang | default(value='en') }}";
-        var dict = all[lang] || all.en;
-        return { lang: lang, t: function(k) { return dict[k] || all.en[k] || k; } };
-    })();
-    </script>
-{% endif %}
+    {% include "i18n-boot.html" %}
 </head>
 <body>
     <h1 id="dir-heading">Directory Listing</h1>

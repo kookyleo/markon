@@ -13,8 +13,10 @@
       background: var(--markon-bg-default);
       color: var(--markon-fg-default);
       display: flex;
-      align-items: center;
+      align-items: flex-start;
       justify-content: center;
+      box-sizing: border-box;
+      padding: 16vh 16px 24px;
     }
     .gate {
       width: 320px;
@@ -66,13 +68,8 @@
     <button type="submit" data-i18n="access.submit"{% if error == "cooldown" %} disabled{% endif %}></button>
     <div class="err" id="err"></div>
   </form>
+  {% include "i18n-boot.html" %}
   <script>
-    window.__MARKON_I18N__ = (function () {
-      var all = {{ i18n_json | safe }};
-      var lang = "{{ i18n_lang | default(value='en') }}";
-      var dict = all[lang] || all.en || {};
-      return { t: function (k) { return dict[k] || (all.en && all.en[k]) || k; } };
-    })();
     (function () {
       var I = window.__MARKON_I18N__;
       document.querySelectorAll('[data-i18n]').forEach(function (el) { el.textContent = I.t(el.getAttribute('data-i18n')); });

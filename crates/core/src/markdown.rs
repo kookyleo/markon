@@ -1,6 +1,7 @@
 use lazy_static::lazy_static;
 use pulldown_cmark::{html, CodeBlockKind, CowStr, Event, Options, Parser, Tag, TagEnd};
 use regex::Regex;
+use std::borrow::Cow;
 // Use the syntect that `two-face` was built against (re-exported), so the
 // `SyntaxSet` produced by `two_face::syntax::extra_newlines()` matches the
 // syntect types we reference here. Cargo unifies both to a single 5.3.0, but
@@ -84,6 +85,17 @@ lazy_static! {
     ).expect("Failed to compile CSS_URL_REGEX");
 }
 
+/// Parser options shared by rendering and asset extraction, so the two
+/// paths can't drift apart. `render()` adds heading attributes on top.
+fn base_options() -> Options {
+    let mut options = Options::empty();
+    options.insert(Options::ENABLE_TABLES);
+    options.insert(Options::ENABLE_FOOTNOTES);
+    options.insert(Options::ENABLE_STRIKETHROUGH);
+    options.insert(Options::ENABLE_TASKLISTS);
+    options
+}
+
 /// Returns a set of relative asset paths referenced from a markdown source.
 ///
 /// Used by single-file workspaces to allowlist co-located images and stylesheets
@@ -96,12 +108,7 @@ pub(crate) fn extract_referenced_assets(markdown: &str) -> std::collections::Has
     let mut out: HashSet<String> = HashSet::new();
 
     // Markdown image syntax (`![](url)`) via pulldown for accurate semantics.
-    let mut options = Options::empty();
-    options.insert(Options::ENABLE_TABLES);
-    options.insert(Options::ENABLE_FOOTNOTES);
-    options.insert(Options::ENABLE_STRIKETHROUGH);
-    options.insert(Options::ENABLE_TASKLISTS);
-    let parser = Parser::new_ext(markdown, options);
+    let parser = Parser::new_ext(markdown, base_options());
     for event in parser {
         match event {
             Event::Start(Tag::Image { dest_url, .. }) => {
@@ -164,6 +171,10 @@ fn sanitize_asset_ref(raw: &str) -> Option<String> {
     Some(stripped.to_string())
 }
 
+/// GitHub octicon-alert icon, shared by the WARNING alert title and the
+/// fence-warning banner so the two copies can't drift apart.
+const OCTICON_ALERT_SVG: &str = r#"<svg class="octicon octicon-alert mr-2" viewBox="0 0 16 16" version="1.1" width="16" height="16" aria-hidden="true"><path d="M6.457 1.047c.659-1.234 2.427-1.234 3.086 0l6.082 11.378A1.75 1.75 0 0 1 14.082 15H1.918a1.75 1.75 0 0 1-1.543-2.575Zm1.763.707a.25.25 0 0 0-.44 0L1.698 13.132a.25.25 0 0 0 .22.368h12.164a.25.25 0 0 0 .22-.368Zm.53 3.996v2.5a.75.75 0 0 1-1.5 0v-2.5a.75.75 0 0 1 1.5 0ZM9 11a1 1 0 1 1-2 0 1 1 0 0 1 2 0Z"></path></svg>"#;
+
 #[derive(Debug, Clone, serde::Serialize)]
 pub(crate) struct TocItem {
     pub level: u8,
@@ -204,11 +215,7 @@ impl MarkdownRenderer {
     }
 
     pub(crate) fn render(&self, markdown: &str) -> (String, bool, Vec<TocItem>) {
-        let mut options = Options::empty();
-        options.insert(Options::ENABLE_TABLES);
-        options.insert(Options::ENABLE_FOOTNOTES);
-        options.insert(Options::ENABLE_STRIKETHROUGH);
-        options.insert(Options::ENABLE_TASKLISTS);
+        let mut options = base_options();
         options.insert(Options::ENABLE_HEADING_ATTRIBUTES);
 
         let ss: &SyntaxSet = &SYNTAX_SET;
@@ -261,9 +268,13 @@ impl MarkdownRenderer {
                     }
                 }
                 Event::Text(text) if !in_code_block => {
-                    // Replace emoji shortcodes
-                    let processed_text = self.replace_emoji_shortcodes(&text);
-                    new_events.push(Event::Text(CowStr::from(processed_text)));
+                    // Replace emoji shortcodes; reuse the original event
+                    // (no allocation) when no shortcode matched.
+                    let processed = self.replace_emoji_shortcodes(&text);
+                    match processed {
+                        Cow::Owned(s) => new_events.push(Event::Text(CowStr::from(s))),
+                        Cow::Borrowed(_) => new_events.push(Event::Text(text)),
+                    }
                 }
                 e => {
                     if !in_code_block {
@@ -277,7 +288,7 @@ impl MarkdownRenderer {
         html::push_html(&mut html_output, new_events.into_iter());
 
         // Process GitHub Alerts
-        let html_output = self.process_github_alerts(&html_output);
+        let html_output = self.process_github_alerts(html_output);
 
         // Add heading IDs and extract table of contents
         let (html_output, toc) = self.add_heading_ids_and_extract_toc(&html_output);
@@ -294,30 +305,34 @@ impl MarkdownRenderer {
         (html_output, has_mermaid, toc)
     }
 
-    fn process_github_alerts(&self, html: &str) -> String {
-        ALERT_REGEX
-            .replace_all(html, |caps: &regex::Captures| {
-                if let (Some(alert_type), Some(first_line), Some(remaining)) =
-                    (caps.get(1), caps.get(2), caps.get(3))
-                {
-                    let alert_type = alert_type.as_str();
-                    let first_line = first_line.as_str();
-                    let remaining = remaining.as_str();
+    /// Expand GitHub alert blockquotes. Returns the input unchanged (no
+    /// reallocation) when the document contains no alert markers.
+    fn process_github_alerts(&self, html: String) -> String {
+        let replaced = ALERT_REGEX.replace_all(&html, |caps: &regex::Captures| {
+            if let (Some(alert_type), Some(first_line), Some(remaining)) =
+                (caps.get(1), caps.get(2), caps.get(3))
+            {
+                let alert_type = alert_type.as_str();
+                let first_line = first_line.as_str();
+                let remaining = remaining.as_str();
 
-                    // Combine content
-                    let content = if remaining.trim().is_empty() {
-                        first_line.to_string()
-                    } else {
-                        format!("{first_line}{remaining}")
-                    };
-
-                    // Generate corresponding alert HTML
-                    self.generate_alert_html(alert_type, &content)
+                // Combine content
+                let content = if remaining.trim().is_empty() {
+                    first_line.to_string()
                 } else {
-                    caps[0].to_string()
-                }
-            })
-            .to_string()
+                    format!("{first_line}{remaining}")
+                };
+
+                // Generate corresponding alert HTML
+                self.generate_alert_html(alert_type, &content)
+            } else {
+                caps[0].to_string()
+            }
+        });
+        match replaced {
+            Cow::Borrowed(_) => html,
+            Cow::Owned(s) => s,
+        }
     }
 
     fn generate_alert_html(&self, alert_type: &str, content: &str) -> String {
@@ -334,10 +349,7 @@ impl MarkdownRenderer {
                 r#"<svg class="octicon octicon-report mr-2" viewBox="0 0 16 16" version="1.1" width="16" height="16" aria-hidden="true"><path d="M0 1.75C0 .784.784 0 1.75 0h12.5C15.216 0 16 .784 16 1.75v9.5A1.75 1.75 0 0 1 14.25 13H8.06l-2.573 2.573A1.458 1.458 0 0 1 3 14.543V13H1.75A1.75 1.75 0 0 1 0 11.25Zm1.75-.25a.25.25 0 0 0-.25.25v9.5c0 .138.112.25.25.25h2a.75.75 0 0 1 .75.75v2.19l2.72-2.72a.749.749 0 0 1 .53-.22h6.5a.25.25 0 0 0 .25-.25v-9.5a.25.25 0 0 0-.25-.25Zm7 2.25v2.5a.75.75 0 0 1-1.5 0v-2.5a.75.75 0 0 1 1.5 0ZM9 9a1 1 0 1 1-2 0 1 1 0 0 1 2 0Z"></path></svg>"#,
                 "Important",
             ),
-            "WARNING" => (
-                r#"<svg class="octicon octicon-alert mr-2" viewBox="0 0 16 16" version="1.1" width="16" height="16" aria-hidden="true"><path d="M6.457 1.047c.659-1.234 2.427-1.234 3.086 0l6.082 11.378A1.75 1.75 0 0 1 14.082 15H1.918a1.75 1.75 0 0 1-1.543-2.575Zm1.763.707a.25.25 0 0 0-.44 0L1.698 13.132a.25.25 0 0 0 .22.368h12.164a.25.25 0 0 0 .22-.368Zm.53 3.996v2.5a.75.75 0 0 1-1.5 0v-2.5a.75.75 0 0 1 1.5 0ZM9 11a1 1 0 1 1-2 0 1 1 0 0 1 2 0Z"></path></svg>"#,
-                "Warning",
-            ),
+            "WARNING" => (OCTICON_ALERT_SVG, "Warning"),
             "CAUTION" => (
                 r#"<svg class="octicon octicon-stop mr-2" viewBox="0 0 16 16" version="1.1" width="16" height="16" aria-hidden="true"><path d="M4.47.22A.749.749 0 0 1 5 0h6c.199 0 .389.079.53.22l4.25 4.25c.141.14.22.331.22.53v6a.749.749 0 0 1-.22.53l-4.25 4.25A.749.749 0 0 1 11 16H5a.749.749 0 0 1-.53-.22L.22 11.53A.749.749 0 0 1 0 11V5c0-.199.079-.389.22-.53Zm.84 1.28L1.5 5.31v5.38l3.81 3.81h5.38l3.81-3.81V5.31L10.69 1.5ZM8 4a.75.75 0 0 1 .75.75v3.5a.75.75 0 0 1-1.5 0v-3.5A.75.75 0 0 1 8 4Zm0 8a1 1 0 1 1 0-2 1 1 0 0 1 0 2Z"></path></svg>"#,
                 "Caution",
@@ -357,20 +369,20 @@ impl MarkdownRenderer {
         )
     }
 
-    fn replace_emoji_shortcodes(&self, text: &str) -> String {
-        EMOJI_REGEX
-            .replace_all(text, |caps: &regex::Captures| {
-                let shortcode = &caps[1];
+    /// Replace `:shortcode:` emoji. Returns `Cow::Borrowed` (no allocation)
+    /// when the text contains no shortcode.
+    fn replace_emoji_shortcodes<'h>(&self, text: &'h str) -> Cow<'h, str> {
+        EMOJI_REGEX.replace_all(text, |caps: &regex::Captures| {
+            let shortcode = &caps[1];
 
-                // Look up emoji using emojis crate
-                if let Some(emoji) = emojis::get_by_shortcode(shortcode) {
-                    emoji.as_str().to_string()
-                } else {
-                    // If not found, keep original text
-                    caps[0].to_string()
-                }
-            })
-            .to_string()
+            // Look up emoji using emojis crate
+            if let Some(emoji) = emojis::get_by_shortcode(shortcode) {
+                emoji.as_str().to_string()
+            } else {
+                // If not found, keep original text
+                caps[0].to_string()
+            }
+        })
     }
 
     fn add_heading_ids_and_extract_toc(&self, html: &str) -> (String, Vec<TocItem>) {
@@ -531,10 +543,11 @@ impl MarkdownRenderer {
             html.push_str(&format!(
                 r#"<div class="markdown-alert markdown-alert-warning">
 <p class="markdown-alert-title">
-<svg class="octicon octicon-alert mr-2" viewBox="0 0 16 16" version="1.1" width="16" height="16" aria-hidden="true"><path d="M6.457 1.047c.659-1.234 2.427-1.234 3.086 0l6.082 11.378A1.75 1.75 0 0 1 14.082 15H1.918a1.75 1.75 0 0 1-1.543-2.575Zm1.763.707a.25.25 0 0 0-.44 0L1.698 13.132a.25.25 0 0 0 .22.368h12.164a.25.25 0 0 0 .22-.368Zm.53 3.996v2.5a.75.75 0 0 1-1.5 0v-2.5a.75.75 0 0 1 1.5 0ZM9 11a1 1 0 1 1-2 0 1 1 0 0 1 2 0Z"></path></svg>Markdown Warning
+{icon}Markdown Warning
 </p>
 <p>Line {line}: code fence closed prematurely — the code block starting at line {outer} uses {count} backticks, but an inner fence with the same count closes it early. Use {fix} backticks for the outer fence to fix this. <a href="javascript:void(0)" onclick="openEditorAtLine({line})" style="text-decoration:underline;cursor:pointer">Edit line {line}</a></p>
 </div>"#,
+                icon = OCTICON_ALERT_SVG,
                 line = w.line,
                 outer = w.outer_start,
                 count = w.backtick_count,

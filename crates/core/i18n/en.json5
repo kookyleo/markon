@@ -13,7 +13,7 @@
     "nav.about":      "About",
 
     // ── General — Server ─────────────────────────────────────
-    "sec.server":     "Server",
+    "sec.server":     "Server and access",
     "pref.port":       "Port",
     "port.auto":       "Auto",
     "port.spec":       "Manual",
@@ -49,15 +49,13 @@
     "access.submit":        "Unlock",
     "access.err.wrong":     "Wrong code, try again.",
     "access.err.cooldown":  "Too many attempts. Try again in {n}s.",
-    "pref.access_code":       "Access code",
+    "pref.access_code":       "Global access code",
     "access.code.ph":         "Set a code…",
-    "access.code.set":        "Set · change or clear",
+    "access.code.new":        "Set a new code…",
+    "access.code.cleared":    "Code cleared",
     "access.code.apply":      "Apply",
-    "access.code.saved":      "Access code updated",
     "ws.lock.tip":            "Set workspace access code",
     "ws.lock.on":             "Workspace access code set",
-    "ws.lock.prompt":         "Enter an access code for this workspace (empty to clear):",
-    "ws.lock.prompt.change":  "Change this workspace's access code (empty to clear):",
 
     // ── General — Behavior ───────────────────────────────────
     "sec.behavior":   "More",
@@ -105,7 +103,6 @@
 
     // ── General — AI Chat ────────────────────────────────────
     "settings.chat.title":              "AI Chat",
-    "settings.chat.default":            "Enable AI Chat by default for new workspaces",
     "settings.chat.provider":           "API type",
     "settings.chat.model":              "Model",
     "settings.chat.anthropic_model.placeholder": "claude-sonnet-4-6",
@@ -120,7 +117,6 @@
     "settings.chat.models.failed":      "Failed to fetch model list",
 
     // ── General — Database ───────────────────────────────────
-    "sec.database":   "Database",
     "pref.dbpath":"Persistent storage for annotations and viewed state (SQLite)",
     "pref.dbpath.browse": "Browse…",
     "pref.dbpath.clear":  "Reset",
@@ -266,8 +262,6 @@
     "web.chat.title":       "AI Chat",
     "web.chat.send":        "Send",
     "web.chat.stop":        "Stop",
-    "web.chat.new_thread":  "New chat",
-    "web.chat.input_placeholder": "Ask anything… (@ to reference files)",
     "web.chat.edit.bar":              "Pending edit confirmation",
     "web.chat.edit.apply":            "Apply",
     "web.chat.edit.reject":           "Reject",
@@ -370,7 +364,6 @@
     "web.kbd.live.off":     "Toggle Off ⇄ last active mode",
     "web.kbd.chat":         "Open AI Chat in default surface",
     "web.kbd.chat.alt":     "Open AI Chat in alternate surface",
-    "web.live.mode":        "Mode",
     "web.live.off":         "Off",
     "web.live.broadcast":   "Broadcast",
     "web.live.follow":      "Follow",
@@ -378,7 +371,5 @@
     "web.collab.you":       "You",
     "web.collab.nickname":  "Nickname (optional)",
     "web.collab.live":      "Live",
-    "web.author.anon":      "Anonymous",
-    "web.live.color.prompt": "Pick your color",
-    "web.live.color.desc":   "Pick your broadcast color"
+    "web.author.anon":      "Anonymous"
 }

@@ -9,7 +9,7 @@
 
 use super::{default_walker, Tool, ToolContext, ToolError, MAX_TOOL_OUTPUT_BYTES};
 use async_trait::async_trait;
-use globset::{Glob, GlobSetBuilder};
+use globset::Glob;
 use serde::Deserialize;
 
 const DEFAULT_LIMIT: usize = 200;
@@ -55,13 +55,11 @@ impl Tool for GlobTool {
         }
         let limit = args.limit.unwrap_or(DEFAULT_LIMIT).clamp(1, MAX_LIMIT);
 
-        let glob = Glob::new(&args.pattern).map_err(|e| {
-            ToolError::InvalidArgument(format!("invalid glob '{}': {e}", args.pattern))
-        })?;
-        let set = GlobSetBuilder::new()
-            .add(glob)
-            .build()
-            .map_err(|e| ToolError::InvalidArgument(e.to_string()))?;
+        let matcher = Glob::new(&args.pattern)
+            .map_err(|e| {
+                ToolError::InvalidArgument(format!("invalid glob '{}': {e}", args.pattern))
+            })?
+            .compile_matcher();
 
         let walker = default_walker(&ctx.workspace_root).build();
         let mut matches: Vec<String> = Vec::new();
@@ -90,7 +88,7 @@ impl Tool for GlobTool {
                 Ok(r) => r,
                 Err(_) => continue,
             };
-            if !set.is_match(rel) {
+            if !matcher.is_match(rel) {
                 continue;
             }
             // Forward-slash normalize for stable cross-OS citations.

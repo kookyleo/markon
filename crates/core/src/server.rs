@@ -26,7 +26,7 @@ use crate::i18n;
 use crate::markdown::MarkdownRenderer;
 use crate::search::{SearchQuery, SearchResult};
 use crate::workspace::{
-    expand_and_canonicalize, generate_token, ServerLock, WorkspaceConfig, WorkspaceEntry,
+    ct_eq, expand_and_canonicalize, generate_token, ServerLock, WorkspaceConfig, WorkspaceEntry,
     WorkspaceFlags, WorkspaceRegistry,
 };
 
@@ -113,12 +113,15 @@ pub(crate) struct AccessAttempts {
 pub(crate) struct AppState {
     pub theme: Arc<String>,
     pub tera: Arc<Tera>,
-    #[allow(dead_code)]
-    pub shared_annotation: bool,
     pub db: Option<Arc<Mutex<Connection>>>,
     pub tx: Option<broadcast::Sender<String>>,
     pub workspace_registry: Arc<WorkspaceRegistry>,
     pub management_token: Arc<String>,
+    /// Save-scoped token embedded in the edit UI (served to every viewer of an
+    /// edit-enabled page). Authorizes ONLY `/api/save`, never the privileged
+    /// management routes (add workspace / shutdown), so a leaked page token
+    /// can't be escalated to full management control.
+    pub save_token: Arc<String>,
     /// Pre-built i18n JSON string for injection into templates.
     pub i18n_json: Arc<String>,
     /// Resolved UI language ("zh" or "en").
@@ -163,6 +166,15 @@ fn detect_lang(override_lang: &Option<String>) -> String {
         Some(lang) => i18n::resolve_lang(lang).to_string(),
         None => i18n::resolve_lang("auto").to_string(),
     }
+}
+
+/// Escape a JSON string for safe inlining inside an HTML `<script>` element:
+/// the `<`/`>`/`&` → `\uXXXX` form keeps the value valid JSON/JS while making
+/// it impossible to form a `</script>` (or comment) sequence that breaks out.
+fn js_json_safe(json: String) -> String {
+    json.replace('<', "\\u003c")
+        .replace('>', "\\u003e")
+        .replace('&', "\\u0026")
 }
 
 pub fn workspace_url_path(workspace_id: &str, initial_path: Option<&str>) -> String {
@@ -288,11 +300,6 @@ pub fn featured_base_url(bind_host: &str, advertised_host: &str, port: u16) -> S
     reachable_urls(bind_host, advertised_host, port).featured
 }
 
-/// Back-compat shim: the featured base URL with no advertised-host preference.
-pub fn browser_base_url(bind_host: &str, port: u16) -> String {
-    featured_base_url(bind_host, "", port)
-}
-
 pub fn build_workspace_url(base: &str, workspace_path: &str) -> String {
     let suffix = if workspace_path.starts_with('/') {
         workspace_path.to_string()
@@ -314,18 +321,23 @@ fn canonical_workspace_root(ws: &WorkspaceEntry) -> PathBuf {
     canonicalize_route_path(&ws.root).unwrap_or_else(|_| ws.root.clone())
 }
 
-fn workspace_relative_path(path: &FsPath, ws: &WorkspaceEntry) -> Option<PathBuf> {
-    path.strip_prefix(canonical_workspace_root(ws))
-        .ok()
-        .map(PathBuf::from)
+fn workspace_relative_path(path: &FsPath, root: &FsPath) -> Option<PathBuf> {
+    path.strip_prefix(root).ok().map(PathBuf::from)
 }
 
-fn is_inside_workspace(path: &FsPath, ws: &WorkspaceEntry) -> bool {
-    path.starts_with(canonical_workspace_root(ws))
+fn is_inside_workspace(path: &FsPath, root: &FsPath) -> bool {
+    path.starts_with(root)
 }
 
 fn path_to_route(path: &FsPath) -> String {
     path.to_string_lossy().replace('\\', "/")
+}
+
+/// The file-type rule deciding what the server renders as markdown (vs raw-
+/// serves, lists, or allows editing).
+fn is_markdown_path(path: &FsPath) -> bool {
+    path.extension()
+        .is_some_and(|e| e.to_string_lossy().to_lowercase() == "md")
 }
 
 pub fn print_compact_qr(data: &str) -> Result<(), Box<dyn std::error::Error>> {
@@ -519,23 +531,31 @@ pub async fn start(config: ServerConfig) -> Result<(), String> {
     }
 
     let token = Arc::new(management_token.unwrap_or_else(generate_token));
+    // Distinct from the management token: this one is embedded in served edit
+    // pages, so it must not unlock the privileged management routes.
+    let save_token = Arc::new(generate_token());
 
     let (shutdown_tx, mut shutdown_rx) = mpsc::channel::<()>(1);
 
     let state = AppState {
         theme: Arc::new(theme),
         tera: Arc::new(tera),
-        shared_annotation,
         db,
         tx,
         workspace_registry: registry,
         management_token: token.clone(),
-        i18n_json: Arc::new(i18n::load_i18n()),
+        save_token: save_token.clone(),
+        // These JSON blobs are emitted into a <script> via `| safe`. Escape '<'
+        // to < (same standard as markdown_content_json) so a stray '<' in a
+        // translation/keybinding can't form `</script>` and break out.
+        i18n_json: Arc::new(js_json_safe(i18n::load_i18n())),
         i18n_lang: Arc::new(detect_lang(&language)),
         // Default to "null" (valid JS literal) so `= {{ shortcuts_json | safe }};`
         // renders as `= null;` when no overrides; an empty string would produce
         // `= ;`, a syntax error that silently breaks i18n and shortcut runtime.
-        shortcuts_json: Arc::new(shortcuts_json.unwrap_or_else(|| "null".to_string())),
+        shortcuts_json: Arc::new(js_json_safe(
+            shortcuts_json.unwrap_or_else(|| "null".to_string()),
+        )),
         styles_css: Arc::new(styles_css.unwrap_or_default()),
         default_chat_mode: Arc::new(default_chat_mode),
         editor_theme: Arc::new(editor_theme),
@@ -548,7 +568,7 @@ pub async fn start(config: ServerConfig) -> Result<(), String> {
         dev_reload_tx: Arc::new(broadcast::channel::<()>(16).0),
     };
 
-    // Management API: requires loopback source IP + valid token header.
+    // Management API: requires loopback source IP + the master token header.
     let mgmt = Router::new()
         .route("/api/workspace", post(add_workspace_handler))
         .route(
@@ -556,11 +576,20 @@ pub async fn start(config: ServerConfig) -> Result<(), String> {
             delete(remove_workspace_handler).put(update_workspace_handler),
         )
         .route("/api/workspaces", get(list_workspaces_handler))
-        .route("/api/save", post(save_file_handler))
         .route("/api/shutdown", post(shutdown_handler))
         .layer(axum::middleware::from_fn_with_state(
             state.clone(),
             require_local_and_token,
+        ));
+
+    // Save API: loopback + the save-scoped token (or the master token). Kept
+    // separate from `mgmt` so the token embedded in edit pages can't reach the
+    // privileged routes above.
+    let save = Router::new()
+        .route("/api/save", post(save_file_handler))
+        .layer(axum::middleware::from_fn_with_state(
+            state.clone(),
+            require_local_and_save_token,
         ));
 
     let mut app = Router::new()
@@ -585,7 +614,8 @@ pub async fn start(config: ServerConfig) -> Result<(), String> {
         .route("/{workspace_id}/{*path}", get(handle_workspace_path))
         // Everything else → 404
         .fallback(|| async { StatusCode::NOT_FOUND })
-        .merge(mgmt);
+        .merge(mgmt)
+        .merge(save);
 
     if needs_ws {
         app = app.route("/_/ws", get(ws_handler));
@@ -864,8 +894,9 @@ fn access_sig(secret: &str, payload_hex: &str) -> String {
 }
 
 /// Build the `Set-Cookie` value carrying the unlocked scopes until `exp`.
-fn make_access_cookie(secret: &str, scopes: &[String], exp: u64) -> String {
-    let payload = format!("{exp}|{}", scopes.join(","));
+fn make_access_cookie(secret: &str, scopes: &[(String, String)], exp: u64) -> String {
+    let pairs: Vec<String> = scopes.iter().map(|(s, h)| format!("{s}:{h}")).collect();
+    let payload = format!("{exp}|{}", pairs.join(","));
     let payload_hex = access_hex(payload.as_bytes());
     let sig = access_sig(secret, &payload_hex);
     format!(
@@ -874,7 +905,7 @@ fn make_access_cookie(secret: &str, scopes: &[String], exp: u64) -> String {
 }
 
 /// Verify the request's cookie and return the still-valid unlocked scopes.
-fn access_cookie_scopes(secret: &str, cookie_header: Option<&str>) -> Vec<String> {
+fn access_cookie_scopes(secret: &str, cookie_header: Option<&str>) -> Vec<(String, String)> {
     let Some(header) = cookie_header else {
         return Vec::new();
     };
@@ -890,7 +921,7 @@ fn access_cookie_scopes(secret: &str, cookie_header: Option<&str>) -> Vec<String
         return Vec::new();
     };
     if payload_hex.len() % 2 != 0
-        || !constant_time_eq(access_sig(secret, payload_hex).as_bytes(), sig.as_bytes())
+        || !ct_eq(access_sig(secret, payload_hex).as_bytes(), sig.as_bytes())
     {
         return Vec::new();
     }
@@ -910,8 +941,8 @@ fn access_cookie_scopes(secret: &str, cookie_header: Option<&str>) -> Vec<String
     match exp_str.parse::<u64>() {
         Ok(exp) if access_now_unix() < exp => scope_csv
             .split(',')
-            .filter(|s| !s.is_empty())
-            .map(|s| s.to_string())
+            .filter_map(|s| s.split_once(':'))
+            .map(|(s, h)| (s.to_string(), h.to_string()))
             .collect(),
         _ => Vec::new(),
     }
@@ -1026,10 +1057,22 @@ async fn require_access_code(
     next: axum::middleware::Next,
 ) -> Response {
     let path = req.uri().path().to_string();
-    let Some(ws_id) = access_gated_workspace(&path) else {
+    // `/search` carries its workspace id in the `?ws=` query param rather than
+    // the path, so it has to be resolved here for the gate to cover it like the
+    // path-based routes (ids are 8 hex chars — never percent-encoded).
+    let ws_id = access_gated_workspace(&path).or_else(|| {
+        if path != "/search" {
+            return None;
+        }
+        req.uri()
+            .query()
+            .and_then(|q| q.split('&').find_map(|kv| kv.strip_prefix("ws=")))
+            .map(str::to_string)
+    });
+    let Some(ws_id) = ws_id else {
         return next.run(req).await;
     };
-    let Some((_hash, needed)) = access_scope_for(&state, &ws_id) else {
+    let Some((current_hash, needed)) = access_scope_for(&state, &ws_id) else {
         return next.run(req).await;
     };
     let cookie = req
@@ -1038,7 +1081,7 @@ async fn require_access_code(
         .and_then(|v| v.to_str().ok());
     if access_cookie_scopes(&state.access_secret, cookie)
         .iter()
-        .any(|s| s == &needed)
+        .any(|(s, h)| s == &needed && h == &current_hash)
     {
         return next.run(req).await;
     }
@@ -1077,8 +1120,7 @@ async fn unlock_handler(
     let Some((effective, scope)) = access_scope_for(&state, &form.workspace_id) else {
         return Redirect::to(&redirect).into_response();
     };
-    let candidate = crate::workspace::hash_access_code(&state.access_secret, &form.code);
-    if constant_time_eq(candidate.as_bytes(), effective.as_bytes()) {
+    if crate::workspace::access_code_matches(&state.access_secret, &form.code, &effective) {
         access_record_success(&state, ip);
         tracing::info!(%ip, ws = %form.workspace_id, "access unlocked");
         // Merge with any scopes the device already unlocked, so unlocking one
@@ -1087,8 +1129,10 @@ async fn unlock_handler(
             .get(axum::http::header::COOKIE)
             .and_then(|v| v.to_str().ok());
         let mut scopes = access_cookie_scopes(&state.access_secret, cookie_hdr);
-        if !scopes.iter().any(|s| s == &scope) {
-            scopes.push(scope);
+        if let Some(entry) = scopes.iter_mut().find(|(s, _)| s == &scope) {
+            entry.1 = effective;
+        } else {
+            scopes.push((scope, effective));
         }
         let cookie = make_access_cookie(
             &state.access_secret,
@@ -1167,20 +1211,6 @@ async fn require_same_origin(
     next.run(req).await
 }
 
-/// Constant-time comparison for the management token, so a timing side channel
-/// can't recover it byte by byte. Length is not secret (the token is a
-/// fixed-width hex string), so an early length check is fine.
-fn constant_time_eq(a: &[u8], b: &[u8]) -> bool {
-    if a.len() != b.len() {
-        return false;
-    }
-    let mut diff = 0u8;
-    for (x, y) in a.iter().zip(b) {
-        diff |= x ^ y;
-    }
-    diff == 0
-}
-
 /// Middleware: management API only accepts loopback source + valid token header.
 async fn require_local_and_token(
     State(state): State<AppState>,
@@ -1195,7 +1225,34 @@ async fn require_local_and_token(
         .headers()
         .get("X-Markon-Token")
         .and_then(|v| v.to_str().ok())
-        .map(|t| constant_time_eq(t.as_bytes(), state.management_token.as_bytes()))
+        .map(|t| ct_eq(t.as_bytes(), state.management_token.as_bytes()))
+        .unwrap_or(false);
+    if !ok {
+        return StatusCode::UNAUTHORIZED.into_response();
+    }
+    next.run(req).await
+}
+
+/// Like [`require_local_and_token`] but accepts the save-scoped token in
+/// addition to the master token — used only for `/api/save`. The master token
+/// is still honored so CLI/tooling callers keep working.
+async fn require_local_and_save_token(
+    State(state): State<AppState>,
+    axum::extract::ConnectInfo(addr): axum::extract::ConnectInfo<std::net::SocketAddr>,
+    req: axum::extract::Request,
+    next: axum::middleware::Next,
+) -> Response {
+    if !addr.ip().is_loopback() {
+        return StatusCode::FORBIDDEN.into_response();
+    }
+    let ok = req
+        .headers()
+        .get("X-Markon-Token")
+        .and_then(|v| v.to_str().ok())
+        .map(|t| {
+            ct_eq(t.as_bytes(), state.save_token.as_bytes())
+                || ct_eq(t.as_bytes(), state.management_token.as_bytes())
+        })
         .unwrap_or(false);
     if !ok {
         return StatusCode::UNAUTHORIZED.into_response();
@@ -1536,22 +1593,10 @@ async fn handle_chat_popout(
     if !ws.flags().enable_chat {
         return StatusCode::NOT_FOUND.into_response();
     }
-    let mut context = tera::Context::new();
+    let mut context = base_context(&state);
     context.insert("workspace_id", &workspace_id);
-    context.insert("theme", state.theme.as_str());
     context.insert("title", &"Markon Chat".to_string());
-    context.insert("i18n_json", state.i18n_json.as_str());
-    context.insert("i18n_lang", state.i18n_lang.as_str());
-    context.insert("styles_css", state.styles_css.as_str());
-    context.insert("default_chat_mode", state.default_chat_mode.as_str());
-    match state.tera.render("chat.html", &context) {
-        Ok(html) => Html(html).into_response(),
-        Err(e) => (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            format!("Template error: {e}"),
-        )
-            .into_response(),
-    }
+    render_template(&state, "chat.html", &context)
 }
 
 async fn handle_workspace_root(
@@ -1566,7 +1611,8 @@ async fn handle_workspace_root(
     if let Some(only) = &ws.single_file {
         return Redirect::to(&format!("/{workspace_id}/{only}")).into_response();
     }
-    render_directory_listing(&workspace_id, &ws, None, &state)
+    let root = canonical_workspace_root(&ws);
+    render_directory_listing(&workspace_id, &ws, &root, None, &state)
 }
 
 async fn handle_workspace_path(
@@ -1594,16 +1640,20 @@ async fn handle_workspace_path(
         }
     };
 
-    if !is_inside_workspace(&canonical, &ws) {
+    let root = canonical_workspace_root(&ws);
+    if !is_inside_workspace(&canonical, &root) {
         return (StatusCode::FORBIDDEN, "Access denied").into_response();
     }
 
     if canonical.is_file() {
-        if canonical
-            .extension()
-            .is_some_and(|e| e.to_string_lossy().to_lowercase() == "md")
-        {
-            render_markdown_file(&canonical.to_string_lossy(), &workspace_id, &ws, &state)
+        if is_markdown_path(&canonical) {
+            render_markdown_file(
+                &canonical.to_string_lossy(),
+                &workspace_id,
+                &ws,
+                &root,
+                &state,
+            )
         } else {
             serve_file(&canonical)
         }
@@ -1614,7 +1664,7 @@ async fn handle_workspace_path(
             // expose a sibling listing.
             return (StatusCode::NOT_FOUND, "Path not found").into_response();
         }
-        render_directory_listing(&workspace_id, &ws, Some(&decoded), &state)
+        render_directory_listing(&workspace_id, &ws, &root, Some(&decoded), &state)
     } else {
         (StatusCode::NOT_FOUND, "Path not found").into_response()
     }
@@ -1710,10 +1760,38 @@ async fn search_handler(
     Json(results)
 }
 
+/// Context pre-seeded with the page-independent keys shared by every template
+/// (extra keys are ignored by templates that don't reference them).
+fn base_context(state: &AppState) -> tera::Context {
+    let mut context = tera::Context::new();
+    context.insert("theme", state.theme.as_str());
+    context.insert("i18n_json", state.i18n_json.as_str());
+    context.insert("i18n_lang", state.i18n_lang.as_str());
+    context.insert("shortcuts_json", state.shortcuts_json.as_str());
+    context.insert("styles_css", state.styles_css.as_str());
+    context.insert("default_chat_mode", state.default_chat_mode.as_str());
+    context.insert("editor_theme", state.editor_theme.as_str());
+    context.insert("print_collapsed_content", &state.print_collapsed_content);
+    context
+}
+
+/// Render a template, mapping failure to a 500 with the error text.
+fn render_template(state: &AppState, name: &str, context: &tera::Context) -> Response {
+    match state.tera.render(name, context) {
+        Ok(html) => Html(html).into_response(),
+        Err(e) => (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            format!("Template error: {e}"),
+        )
+            .into_response(),
+    }
+}
+
 fn render_markdown_file(
     file_path: &str,
     workspace_id: &str,
     ws: &WorkspaceEntry,
+    root: &FsPath,
     state: &AppState,
 ) -> Response {
     match fs::read_to_string(file_path) {
@@ -1726,11 +1804,10 @@ fn render_markdown_file(
                 .map(|n| n.to_string_lossy().to_string())
                 .unwrap_or_else(|| file_path.to_string());
 
-            let mut context = tera::Context::new();
+            let mut context = base_context(state);
             context.insert("title", &format!("markon - {title}"));
             context.insert("file_path", file_path);
             context.insert("workspace_id", workspace_id);
-            context.insert("theme", state.theme.as_str());
             context.insert("version", env!("CARGO_PKG_VERSION"));
             context.insert("content", &html_content);
             // Back link: parent dir of this file within the workspace.
@@ -1739,7 +1816,7 @@ fn render_markdown_file(
             // "Back to file list" link would be a no-op trap.
             let back_link = std::path::Path::new(file_path)
                 .parent()
-                .and_then(|p| workspace_relative_path(p, ws))
+                .and_then(|p| workspace_relative_path(p, root))
                 .map(|rel| {
                     let rel_str = path_to_route(&rel);
                     if rel_str.is_empty() {
@@ -1763,36 +1840,18 @@ fn render_markdown_file(
 
             if flags.enable_edit {
                 // JSON-encode and HTML-escape so </script> in content can't break the page.
-                let json = serde_json::to_string(&markdown_input)
-                    .unwrap_or_default()
-                    .replace('<', "\\u003c")
-                    .replace('>', "\\u003e")
-                    .replace('&', "\\u0026");
+                let json = js_json_safe(serde_json::to_string(&markdown_input).unwrap_or_default());
                 context.insert("markdown_content_json", &json);
-                context.insert("management_token", state.management_token.as_str());
+                // Embed the save-scoped token, NOT the master management token —
+                // this HTML is served to every viewer of the page.
+                context.insert("save_token", state.save_token.as_str());
             }
 
-            context.insert("i18n_json", state.i18n_json.as_str());
-            context.insert("i18n_lang", state.i18n_lang.as_str());
-            context.insert("shortcuts_json", state.shortcuts_json.as_str());
-            context.insert("styles_css", state.styles_css.as_str());
-            context.insert("default_chat_mode", state.default_chat_mode.as_str());
-            context.insert("editor_theme", state.editor_theme.as_str());
-            context.insert("print_collapsed_content", &state.print_collapsed_content);
-
-            match state.tera.render("layout.html", &context) {
-                Ok(html) => Html(html).into_response(),
-                Err(e) => (
-                    StatusCode::INTERNAL_SERVER_ERROR,
-                    format!("Template error: {e}"),
-                )
-                    .into_response(),
-            }
+            render_template(state, "layout.html", &context)
         }
         Err(e) => {
-            let mut context = tera::Context::new();
+            let mut context = base_context(state);
             context.insert("title", "Error");
-            context.insert("theme", state.theme.as_str());
             context.insert("version", env!("CARGO_PKG_VERSION"));
             context.insert(
                 "content",
@@ -1803,22 +1862,8 @@ fn render_markdown_file(
             );
             context.insert("show_back_link", &false);
             context.insert("has_mermaid", &false);
-            context.insert("i18n_json", state.i18n_json.as_str());
-            context.insert("i18n_lang", state.i18n_lang.as_str());
-            context.insert("shortcuts_json", state.shortcuts_json.as_str());
-            context.insert("styles_css", state.styles_css.as_str());
-            context.insert("default_chat_mode", state.default_chat_mode.as_str());
-            context.insert("editor_theme", state.editor_theme.as_str());
-            context.insert("print_collapsed_content", &state.print_collapsed_content);
 
-            match state.tera.render("layout.html", &context) {
-                Ok(html) => Html(html).into_response(),
-                Err(e) => (
-                    StatusCode::INTERNAL_SERVER_ERROR,
-                    format!("Template error: {e}"),
-                )
-                    .into_response(),
-            }
+            render_template(state, "layout.html", &context)
         }
     }
 }
@@ -1826,6 +1871,7 @@ fn render_markdown_file(
 fn render_directory_listing(
     workspace_id: &str,
     ws: &WorkspaceEntry,
+    root: &FsPath,
     dir_param: Option<&str>,
     state: &AppState,
 ) -> Response {
@@ -1846,12 +1892,11 @@ fn render_directory_listing(
             return (StatusCode::BAD_REQUEST, format!("Invalid directory: {e}")).into_response()
         }
     };
-    let root = canonical_workspace_root(ws);
     // Defense in depth: the caller's gate trims the leading slash before its
     // boundary check, but this function re-derives `current_dir` from the raw
     // (possibly absolute) `dir_param`. Re-verify the canonical dir is inside the
     // workspace so an absolute path like `/etc` can't list outside the root.
-    if !current_dir.starts_with(&root) {
+    if !current_dir.starts_with(root) {
         return StatusCode::NOT_FOUND.into_response();
     }
 
@@ -1877,7 +1922,7 @@ fn render_directory_listing(
                     Err(_) => return None,
                 };
                 let is_dir = file_type.is_dir();
-                let rel = path.strip_prefix(&root).unwrap_or(&path).to_path_buf();
+                let rel = path.strip_prefix(root).unwrap_or(&path).to_path_buf();
                 let rel_url = path_to_route(&rel);
                 if is_dir {
                     Some(Entry {
@@ -1885,19 +1930,14 @@ fn render_directory_listing(
                         is_dir: true,
                         link: format!("/{workspace_id}/{rel_url}/"),
                     })
+                } else if is_markdown_path(&path) {
+                    Some(Entry {
+                        name,
+                        is_dir: false,
+                        link: format!("/{workspace_id}/{rel_url}"),
+                    })
                 } else {
-                    let is_md = path
-                        .extension()
-                        .is_some_and(|e| e.to_string_lossy().to_lowercase() == "md");
-                    if is_md {
-                        Some(Entry {
-                            name,
-                            is_dir: false,
-                            link: format!("/{workspace_id}/{rel_url}"),
-                        })
-                    } else {
-                        None
-                    }
+                    None
                 }
             })
             .collect(),
@@ -1920,7 +1960,7 @@ fn render_directory_listing(
     let parent_link: Option<String> = if show_parent {
         current_dir.parent().map(|parent| {
             let rel = parent
-                .strip_prefix(&root)
+                .strip_prefix(root)
                 .map(path_to_route)
                 .unwrap_or_default();
             if rel.is_empty() {
@@ -1933,8 +1973,7 @@ fn render_directory_listing(
         None
     };
 
-    let mut context = tera::Context::new();
-    context.insert("theme", state.theme.as_str());
+    let mut context = base_context(state);
     context.insert("workspace_id", workspace_id);
     context.insert("current_dir", &current_dir.display().to_string());
     context.insert("entries", &entries);
@@ -1944,19 +1983,8 @@ fn render_directory_listing(
         "enable_search",
         &ws.enable_search.load(std::sync::atomic::Ordering::Relaxed),
     );
-    context.insert("i18n_json", state.i18n_json.as_str());
-    context.insert("i18n_lang", state.i18n_lang.as_str());
-    context.insert("shortcuts_json", state.shortcuts_json.as_str());
-    context.insert("styles_css", state.styles_css.as_str());
 
-    match state.tera.render("directory.html", &context) {
-        Ok(html) => Html(html).into_response(),
-        Err(e) => (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            format!("Template error: {e}"),
-        )
-            .into_response(),
-    }
+    render_template(state, "directory.html", &context)
 }
 
 async fn serve_favicon() -> impl IntoResponse {
@@ -1985,10 +2013,12 @@ where
     F: FnOnce(&str) -> Option<rust_embed::EmbeddedFile>,
 {
     match getter(filename) {
+        // `file.data` is Cow::Borrowed in release builds; serving the Cow
+        // directly avoids copying the embedded asset on every request.
         Some(file) => (
             StatusCode::OK,
             [(header::CONTENT_TYPE, content_type)],
-            file.data.into_owned(),
+            file.data,
         )
             .into_response(),
         None => (StatusCode::NOT_FOUND, "File not found").into_response(),
@@ -2078,7 +2108,8 @@ async fn save_file_handler(
         }
     };
 
-    if !is_inside_workspace(&canonical, &ws) {
+    let root = canonical_workspace_root(&ws);
+    if !is_inside_workspace(&canonical, &root) {
         return Json(SaveFileResponse {
             success: false,
             message: "Access denied".into(),
@@ -2089,9 +2120,8 @@ async fn save_file_handler(
     // the pinned file (and its allowed assets) are rejected even when the
     // path resolves inside `ws.root`. No-op for normal directory workspaces.
     if ws.is_ephemeral() {
-        let rel = canonical
-            .strip_prefix(canonical_workspace_root(&ws))
-            .map(path_to_route)
+        let rel = workspace_relative_path(&canonical, &root)
+            .map(|r| path_to_route(&r))
             .unwrap_or_default();
         if !ws.allows(&rel) {
             return Json(SaveFileResponse {
@@ -2108,10 +2138,7 @@ async fn save_file_handler(
         })
         .into_response();
     }
-    if canonical
-        .extension()
-        .is_none_or(|e| e.to_string_lossy().to_lowercase() != "md")
-    {
+    if !is_markdown_path(&canonical) {
         return Json(SaveFileResponse {
             success: false,
             message: "Only .md files can be edited".into(),
@@ -2184,11 +2211,11 @@ mod tests {
         AppState {
             theme: Arc::new("light".into()),
             tera: Arc::new(test_tera()),
-            shared_annotation: false,
             db: None,
             tx: None,
             workspace_registry: registry,
             management_token: Arc::new("test-token".into()),
+            save_token: Arc::new("save-token".into()),
             i18n_json: Arc::new(i18n::load_i18n()),
             i18n_lang: Arc::new("en".into()),
             shortcuts_json: Arc::new("null".into()),
@@ -2402,11 +2429,11 @@ mod tests {
         let state = AppState {
             theme: Arc::new("dark".into()),
             tera: Arc::new(Tera::default()),
-            shared_annotation: true,
             db: None,
             tx: None,
             workspace_registry: registry,
             management_token: Arc::new("token".into()),
+            save_token: Arc::new("save-token".into()),
             i18n_json: Arc::new("{}".into()),
             i18n_lang: Arc::new("zh".into()),
             shortcuts_json: Arc::new("{}".into()),
@@ -2520,16 +2547,14 @@ mod tests {
     #[test]
     fn access_cookie_round_trips_and_rejects_tamper() {
         let secret = "test-secret";
-        let raw = make_access_cookie(secret, &["s".to_string()], access_now_unix() + 100);
+        let scopes = vec![("s".to_string(), "h1".to_string())];
+        let raw = make_access_cookie(secret, &scopes, access_now_unix() + 100);
         let kv = raw.split(';').next().unwrap(); // markon_access=PAYLOAD.SIG
-        assert_eq!(
-            access_cookie_scopes(secret, Some(kv)),
-            vec!["s".to_string()]
-        );
+        assert_eq!(access_cookie_scopes(secret, Some(kv)), scopes);
         // Wrong secret, tampered value, and an expired cookie are all rejected.
         assert!(access_cookie_scopes("other-secret", Some(kv)).is_empty());
         assert!(access_cookie_scopes(secret, Some(&format!("{kv}00"))).is_empty());
-        let expired = make_access_cookie(secret, &["s".to_string()], 1);
+        let expired = make_access_cookie(secret, &scopes, 1);
         assert!(access_cookie_scopes(secret, Some(expired.split(';').next().unwrap())).is_empty());
     }
 
@@ -2582,8 +2607,6 @@ mod tests {
         let r = reachable_urls("127.0.0.1", "", 6419);
         assert_eq!(r.all.len(), 1);
         assert_eq!(r.featured, "http://127.0.0.1:6419");
-        // Back-compat shim resolves the same featured URL.
-        assert_eq!(browser_base_url("127.0.0.1", 6419), "http://127.0.0.1:6419");
     }
 
     #[cfg(target_os = "windows")]
