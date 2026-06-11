@@ -733,16 +733,13 @@ export class FloatingLayer {
             document.removeEventListener('mouseup', onUp);
             this._isDragging = false;
             if (!moved) return;
-            // Drag-release snap: dock the sphere to the nearest viewport
-            // corner slot deterministically, then persist + re-solve. This is
-            // the valuable slice of the docking model — a released sphere
-            // settles flush in a corner instead of at an arbitrary pixel.
-            const snapped = this._snapToNearestSlot(this._intentionalHome as Point);
-            this._home = snapped;
-            this._intentionalHome = { ...snapped };
-            this._applyDisplayed();
-            this._notifyOthers();
+            // Free placement: keep the sphere/panel exactly where the user
+            // dropped it (already clamped on-screen each frame during onMove).
+            // No snap-to-corner — an earlier "dock to nearest corner" picked
+            // the corner by which viewport half the centre was in, so any drag
+            // that didn't cross the midline sprang back (right/down felt stuck).
             this._persistHome();
+            this._notifyOthers();
             // A real drag just ended. The browser synthesises a `click` on
             // mouseup; swallow it once at capture phase on window so NO handler
             // mistakes the drag for a click — not this layer's own toggle, and
@@ -829,32 +826,6 @@ export class FloatingLayer {
             if (rect2.top  < MARGIN) cy += (MARGIN - rect2.top);
         }
         return { x: cx, y: cy };
-    }
-
-    /** Drag-release snap: dock the sphere to the nearest viewport corner
-     *  slot, deterministically. The sphere center picks the nearest of the
-     *  four corners; the slot is that corner inset by the layer's configured
-     *  margin (derived from `initialOffset`, default 20px), so the docked
-     *  position is stable and identical for the same drop point regardless of
-     *  registry order. The final position is clamped so it stays on-screen. */
-    private _snapToNearestSlot(pos: Point): Point {
-        const vw = window.innerWidth, vh = window.innerHeight;
-        const cx = pos.x + SPHERE_SIZE / 2;
-        const cy = pos.y + SPHERE_SIZE / 2;
-        const left = cx < vw / 2;
-        const top  = cy < vh / 2;
-
-        // Margin from the docked edges: reuse the initial offset so a dropped
-        // sphere settles at the same inset the layer was born with.
-        const off = this._opts.initialOffset || {};
-        const marginX = (typeof off.left === 'number' ? off.left
-            : typeof off.right === 'number' ? off.right : 20);
-        const marginY = (typeof off.top === 'number' ? off.top
-            : typeof off.bottom === 'number' ? off.bottom : 20);
-
-        const x = left ? marginX : vw - marginX - SPHERE_SIZE;
-        const y = top  ? marginY : vh - marginY - SPHERE_SIZE;
-        return this._clampToViewport({ x, y });
     }
 
     /** This layer's effective rect for the given sphere TL position. */
