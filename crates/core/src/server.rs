@@ -895,8 +895,20 @@ fn access_sig(secret: &str, payload_hex: &str) -> String {
 
 /// Build the `Set-Cookie` value carrying the unlocked scopes until `exp`.
 fn make_access_cookie(secret: &str, scopes: &[(String, String)], exp: u64) -> String {
-    let pairs: Vec<String> = scopes.iter().map(|(s, h)| format!("{s}:{h}")).collect();
-    let payload = format!("{exp}|{}", pairs.join(","));
+    // payload grammar (before hex): "<exp>|<scope>=<hash>|<scope>=<hash>…"
+    //   '|' separates fields (the exp, then each unlocked scope)
+    //   '=' separates a scope from its hash
+    //   ':' appears ONLY inside a scope ("w:<id>"), never as a separator
+    // Each delimiter has exactly one role, so decoding is an unambiguous split
+    // (no rsplit, no "the hash happens to be colon-free" reasoning). Hex-encoding
+    // the whole payload keeps these bytes out of the cookie's own ';'/'='/',' syntax.
+    let mut payload = exp.to_string();
+    for (scope, hash) in scopes {
+        payload.push('|');
+        payload.push_str(scope);
+        payload.push('=');
+        payload.push_str(hash);
+    }
     let payload_hex = access_hex(payload.as_bytes());
     let sig = access_sig(secret, &payload_hex);
     format!(
@@ -935,22 +947,20 @@ fn access_cookie_scopes(secret: &str, cookie_header: Option<&str>) -> Vec<(Strin
     let Ok(payload) = String::from_utf8(payload_bytes) else {
         return Vec::new();
     };
-    let Some((exp_str, scope_csv)) = payload.split_once('|') else {
+    // See make_access_cookie for the grammar. First field is the exp; each
+    // remaining "<scope>=<hash>" field splits on its single '='. A scope's
+    // internal ':' never interferes because '=' is the only kv delimiter.
+    let mut fields = payload.split('|');
+    let Some(exp) = fields.next().and_then(|s| s.parse::<u64>().ok()) else {
         return Vec::new();
     };
-    match exp_str.parse::<u64>() {
-        // rsplit, not split: a scope is `s` or `w:{id}`, so a pair encodes as
-        // `w:{id}:{hash}` (two colons). The hash is colon-free hex, so the LAST
-        // colon is the scope|hash delimiter. Using split_once here mis-parsed
-        // `w:{id}` scopes into ("w", "{id}:{hash}"), so a workspace unlock cookie
-        // never matched its `w:{id}` gate — only the colon-free `s` scope worked.
-        Ok(exp) if access_now_unix() < exp => scope_csv
-            .split(',')
-            .filter_map(|s| s.rsplit_once(':'))
-            .map(|(s, h)| (s.to_string(), h.to_string()))
-            .collect(),
-        _ => Vec::new(),
+    if access_now_unix() >= exp {
+        return Vec::new();
     }
+    fields
+        .filter_map(|kv| kv.split_once('='))
+        .map(|(s, h)| (s.to_string(), h.to_string()))
+        .collect()
 }
 
 /// The workspace id a request targets, for access-gating. `None` means the
