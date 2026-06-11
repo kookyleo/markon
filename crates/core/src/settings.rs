@@ -525,6 +525,46 @@ mod tests {
         assert_eq!(s1.salt, s2.salt, "salt must be stable across load() calls");
     }
 
+    /// Repro: a per-workspace access_code_hash must survive the real
+    /// settings.json save→load round-trip (the `#[serde(flatten)]` flags sit
+    /// next to it) AND flow into the server config used to reseed the registry
+    /// after a restart. If it doesn't, a restarted workspace loses its code and
+    /// the gate falls back to the global code.
+    #[test]
+    fn workspace_access_code_hash_survives_settings_round_trip() {
+        let home = TempHome::new("ws-access");
+        let mut s = AppSettings::load_at(home.path());
+        s.access_code_hash = "aeadd".into(); // global
+        s.workspaces = vec![WorkspaceSettings {
+            path: "/tmp/ws".into(),
+            flags: WorkspaceFlags {
+                enable_search: true,
+                ..Default::default()
+            },
+            access_code_hash: "6d243".into(),
+        }];
+        // save_at (NOT save()) — write into the TempHome, never the real ~/.markon.
+        s.save_at(home.path()).unwrap();
+
+        let back = AppSettings::load_at(home.path());
+        assert_eq!(back.workspaces.len(), 1);
+        assert_eq!(
+            back.workspaces[0].access_code_hash, "6d243",
+            "per-workspace access code dropped on load"
+        );
+        assert!(back.workspaces[0].flags.enable_search);
+        assert_eq!(
+            back.access_code_hash, "aeadd",
+            "global code dropped on load"
+        );
+
+        let cfg = back.to_server_config(8080);
+        assert_eq!(
+            cfg.initial_workspaces[0].access_code_hash, "6d243",
+            "access code must reach the server config that reseeds the registry"
+        );
+    }
+
     #[test]
     fn load_missing_file_returns_default() {
         let home = TempHome::new("missing");
