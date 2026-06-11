@@ -561,14 +561,20 @@ export class FloatingLayer {
     getObstacleRect(): DOMRect | BoxRect | null {
         if (this._opts.getObstacleRect) return this._opts.getObstacleRect();
 
-        // Operating-into-expanded: report the layer's *eventual* panel
-        // rect, not its current bbox. Without this, a peer that yields to
-        // this layer at the start of the morph (when we're still sphere-
-        // sized) would have to keep yielding as we grow — which reads as
-        // peer chasing the morph. Reporting the panel rect upfront lets
-        // peers settle once and stay put.
-        const operatingExpanded = (this.isExpanded || this._morphAnim) && this._opts.panelSize;
-        if (operatingExpanded && this._home) {
+        if ((this.isExpanded || this._morphAnim) && this._opts.panelSize && this._home) {
+            // Settled-expanded with a real layout: trust the live bounding
+            // rect. panelSize is only the *initial* size, so a panel the user
+            // resized (or one clamped by max-height on a short viewport) would
+            // otherwise advertise a phantom obstacle that no longer matches
+            // what's drawn — a dead zone peers can't be dragged into. The live
+            // rect always matches the visible panel.
+            const live = this._opts.container.getBoundingClientRect();
+            if (this.isExpanded && !this._morphAnim && live.width > 0 && live.height > 0) {
+                return live;
+            }
+            // Mid-morph (or before first layout): report the layer's *eventual*
+            // panel rect rather than its current sphere-sized bbox, so a peer
+            // yields once upfront instead of chasing the growth.
             const r = this._withSimulatedExpanded(true, () => this._effectiveRectAt(this._home as Point));
             return {
                 left: r.left, top: r.top, right: r.right, bottom: r.bottom,

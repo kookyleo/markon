@@ -42,9 +42,18 @@
 .markon-live-container.broadcasting {
     animation: markon-collab-breathe 3s ease-in-out infinite;
 }
+/* A soft glow that gently breathes — "broadcasting" reads as the sphere being
+   quietly *lit*, not a second hard ring. The first shadow layer is a 2px gap
+   ring: box-shadow can't render a truly transparent gap (a transparent layer
+   doesn't occlude the glow behind it, and the overflow:hidden container rules
+   out a pseudo-element ring), so we fake it with the page canvas colour
+   (--markon-bg-default) — the sphere floats over the canvas, so this reads as
+   the background showing through. Being opaque + painted in front, it also
+   clips the glow's inner edge so the glow sits detached a couple px off the
+   ball. Only the glow's opacity pulses. */
 @keyframes markon-collab-breathe {
-    0%, 100% { box-shadow: 0 0 0 3px color-mix(in srgb, var(--markon-live-user) 72%, transparent); }
-    50%      { box-shadow: 0 0 0 3px color-mix(in srgb, var(--markon-live-user) 18%, transparent); }
+    0%, 100% { box-shadow: 0 0 0 2px var(--markon-bg-default), 0 0 8px 2px color-mix(in srgb, var(--markon-live-user) 62%, transparent); }
+    50%      { box-shadow: 0 0 0 2px var(--markon-bg-default), 0 0 8px 2px color-mix(in srgb, var(--markon-live-user) 18%, transparent); }
 }
 
 /* Expanded (panel) state — sphere becomes the panel rectangle in-place.
