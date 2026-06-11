@@ -209,7 +209,7 @@
 
     // ── About ────────────────────────────────────────────────
     "about.slogan":   "Turn your markdown on.",
-    "about.desc":     "A lightweight Markdown renderer with GitHub-style layout, full-text search, annotations and multi-device sync.",
+    "about.desc":     "A lightweight, local-first Markdown workspace — render, search, annotate, chat, and share across your devices.",
     "about.icon.credit": "Some icons by brajaomar_j — Flaticon",
     "about.star":     "Star on GitHub",
 

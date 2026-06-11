@@ -209,7 +209,7 @@
 
     // ── About ────────────────────────────────────────────────
     "about.slogan":   "Turn your markdown on.",
-    "about.desc":     "軽量な Markdown レンダラー。GitHub スタイルのレイアウト、全文検索、注釈、マルチデバイス同期に対応。",
+    "about.desc":     "軽量・ローカルファーストの Markdown ワークスペース——表示・検索・注釈・チャット・デバイス間で共有。",
     "about.icon.credit": "Some icons by brajaomar_j — Flaticon",
     "about.star":     "GitHub でスターする",
 
