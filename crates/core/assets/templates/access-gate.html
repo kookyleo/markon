@@ -30,17 +30,42 @@
     }
     .gate h1 { font-size: 16px; margin: 0 0 4px; }
     .gate p { font-size: 13px; color: var(--markon-fg-muted); margin: 0 0 16px; line-height: 1.5; }
-    .gate input[type=password] {
+    .gate .field { position: relative; }
+    /* Matches both type=password and the type=text the peek toggle swaps to. */
+    .gate .field input {
       width: 100%;
       box-sizing: border-box;
-      padding: 8px 10px;
+      padding: 8px 38px 8px 10px;
       font-size: 14px;
       border: 1px solid var(--markon-border-default);
       border-radius: var(--markon-radius-sm);
       background: var(--markon-bg-default);
       color: var(--markon-fg-default);
     }
-    .gate button {
+    /* Press-and-hold eye: reveal the code while held, re-mask on release. */
+    .gate .peek {
+      position: absolute;
+      right: 4px;
+      top: 50%;
+      transform: translateY(-50%);
+      width: 30px;
+      height: 30px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 0;
+      margin: 0;
+      border: none;
+      background: transparent;
+      color: var(--markon-fg-muted);
+      cursor: pointer;
+      -webkit-user-select: none;
+      user-select: none;
+    }
+    .gate .peek:hover { color: var(--markon-fg-default); }
+    .gate .peek:disabled { opacity: 0.5; cursor: not-allowed; }
+    .gate .peek svg { width: 18px; height: 18px; }
+    .gate button[type=submit] {
       width: 100%;
       margin-top: 12px;
       padding: 9px;
@@ -52,7 +77,7 @@
       color: var(--markon-fg-on-emphasis);
       cursor: pointer;
     }
-    .gate button:disabled { opacity: 0.5; cursor: not-allowed; }
+    .gate button[type=submit]:disabled { opacity: 0.5; cursor: not-allowed; }
     .gate .err { margin-top: 10px; font-size: 12px; color: var(--markon-danger); min-height: 1em; }
   </style>
 </head>
@@ -61,8 +86,13 @@
         data-error="{{ error | default(value='') }}" data-cooldown="{{ cooldown | default(value=0) }}">
     <h1 data-i18n="access.title"></h1>
     <p data-i18n="access.prompt"></p>
-    <input type="password" name="code" autocomplete="current-password" autofocus
-           data-i18n-ph="access.placeholder"{% if error == "cooldown" %} disabled{% endif %}>
+    <div class="field">
+      <input type="password" name="code" autocomplete="current-password" autofocus
+             data-i18n-ph="access.placeholder"{% if error == "cooldown" %} disabled{% endif %}>
+      <button type="button" class="peek" tabindex="-1"{% if error == "cooldown" %} disabled{% endif %}>
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7z"/><circle cx="12" cy="12" r="3"/></svg>
+      </button>
+    </div>
     <input type="hidden" name="workspace_id" value="{{ workspace_id }}">
     <input type="hidden" name="redirect" value="{{ redirect }}">
     <button type="submit" data-i18n="access.submit"{% if error == "cooldown" %} disabled{% endif %}></button>
@@ -78,6 +108,19 @@
       var e = f.getAttribute('data-error');
       if (e === 'wrong') err.textContent = I.t('access.err.wrong');
       else if (e === 'cooldown') err.textContent = I.t('access.err.cooldown').replace('{n}', f.getAttribute('data-cooldown'));
+      // Press-and-hold the eye to reveal the code; release re-masks it.
+      var input = f.querySelector('input[name=code]'), peek = f.querySelector('.peek');
+      if (peek && input) {
+        peek.setAttribute('aria-label', I.t('access.peek'));
+        peek.setAttribute('title', I.t('access.peek'));
+        var reveal = function (ev) { if (ev) ev.preventDefault(); input.type = 'text'; };
+        var mask = function () { input.type = 'password'; };
+        peek.addEventListener('mousedown', reveal);
+        peek.addEventListener('touchstart', reveal, { passive: false });
+        peek.addEventListener('mouseleave', mask);
+        ['mouseup', 'touchend', 'touchcancel'].forEach(function (t) { peek.addEventListener(t, mask); });
+        window.addEventListener('mouseup', mask);
+      }
     })();
   </script>
 </body>

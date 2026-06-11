@@ -47,6 +47,7 @@
     "access.prompt":        "This space is protected. Enter the access code to continue.",
     "access.placeholder":   "Access code",
     "access.submit":        "Unlock",
+    "access.peek":          "Hold to show the code",
     "access.err.wrong":     "Wrong code, try again.",
     "access.err.cooldown":  "Too many attempts. Try again in {n}s.",
     "pref.access_code":       "Global access code",

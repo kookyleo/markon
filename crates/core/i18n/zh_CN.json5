@@ -47,6 +47,7 @@
     "access.prompt":        "此空间受保护,请输入访问码以继续。",
     "access.placeholder":   "访问码",
     "access.submit":        "解锁",
+    "access.peek":          "按住显示访问码",
     "access.err.wrong":     "访问码错误,请重试。",
     "access.err.cooldown":  "尝试过多,请在 {n} 秒后重试。",
     "pref.access_code":       "全局默认认证码",

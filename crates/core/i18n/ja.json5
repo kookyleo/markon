@@ -47,6 +47,7 @@
     "access.prompt":        "このスペースは保護されています。続けるにはアクセスコードを入力してください。",
     "access.placeholder":   "アクセスコード",
     "access.submit":        "ロック解除",
+    "access.peek":          "長押しでコードを表示",
     "access.err.wrong":     "コードが違います。もう一度お試しください。",
     "access.err.cooldown":  "試行回数が多すぎます。{n} 秒後に再試行してください。",
     "pref.access_code":       "グローバルアクセスコード",
