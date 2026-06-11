@@ -19,17 +19,6 @@
 // anchor, so persisted positions visually "stick" to the chosen viewport
 // corner across resizes.
 
-import {
-    computePosition,
-    offset,
-    flip,
-    shift,
-    size,
-    type Middleware,
-    type Placement,
-    type VirtualElement,
-} from '@floating-ui/dom';
-
 const REGISTRY: Map<string, FloatingLayer> = new Map();
 
 const SPHERE_SIZE = 40;
@@ -62,17 +51,6 @@ const SPHERE_BORDER_RADIUS = '20px';
 
 /** Viewport corner anchor. */
 export type Anchor = 'TL' | 'TR' | 'BL' | 'BR';
-
-/** Panel anchor → Floating UI placement. The sphere sits at the named corner
- *  of the panel; the panel grows away from it. With a 0-size virtual
- *  reference at the sphere point, these placements line the panel up so the
- *  sphere corner stays put and the body reveals in the growth direction. */
-const PANEL_PLACEMENT: Record<Anchor, Placement> = {
-    TL: 'bottom-start', // sphere at panel TL → grow down-right
-    TR: 'bottom-end',   // sphere at panel TR → grow down-left
-    BL: 'top-start',    // sphere at panel BL → grow up-right
-    BR: 'top-end',      // sphere at panel BR → grow up-left
-};
 
 /** Obstacle shape for collision math. */
 export type ObstacleShape = 'circle' | 'rect';
@@ -427,10 +405,6 @@ export class FloatingLayer {
                 this._morphAnim.cancel();
                 this._morphAnim = null;
             }
-            // Panel is now laid out at its natural size; refine its viewport
-            // fit + size cap with Floating UI now that there's a real element
-            // to measure.
-            this._refinePanelFit();
         };
     }
 
@@ -703,8 +677,6 @@ export class FloatingLayer {
                 // whole layout stays deterministic and consistent after the
                 // viewport changed (not each layer recomputing on its own).
                 this._notifyOthers();
-                // An expanded panel re-fits to the new viewport via Floating UI.
-                if (this.isExpanded && !this._morphAnim) this._refinePanelFit();
             });
         };
         window.addEventListener('resize', this._resizeHandler);
@@ -895,121 +867,6 @@ export class FloatingLayer {
         const left = (a === 'TL' || a === 'BL') ? x : x + SPHERE_SIZE - W;
         const top  = (a === 'TL' || a === 'TR') ? y : y + SPHERE_SIZE - H;
         return rectFromBox(left, top, W, H);
-    }
-
-    // ── Floating UI panel viewport-fit ───────────────────────────────────
-
-    /** Refine the *expanded* panel's position and size with Floating UI's
-     *  `computePosition`, replacing the hand-rolled margin-pull for the panel
-     *  case. The reference is a virtual element pinned at the sphere's TL
-     *  point; `flip` + `shift({padding})` keep the panel inside the viewport
-     *  and `size({apply})` caps it to the available space. A small custom
-     *  middleware (`_avoidSiblingsMiddleware`) nudges the panel off sibling
-     *  layers (e.g. the ToC) — Floating UI does NOT do sibling avoidance, so
-     *  that stays our logic.
-     *
-     *  This runs after the synchronous solve has already placed a valid,
-     *  on-screen panel, so it is a *refinement*: `computePosition` is async
-     *  and depends on the live DOM, which the synchronous expand-glide cannot
-     *  use. If it cannot run (e.g. no layout engine in a test environment) the
-     *  synchronous clamp result stands. */
-    private _refinePanelFit(): void {
-        if (this._passive || !this.isExpanded || this._morphAnim) return;
-        if (!this._opts.panelSize || typeof computePosition !== 'function') return;
-        const c = this._opts.container;
-
-        // Sphere TL in screen-space = current displayed position.
-        const rect = c.getBoundingClientRect();
-        const a = this._panelAnchor;
-        // The sphere corner of the panel for the active panel anchor.
-        const sphereX = (a === 'TL' || a === 'BL') ? rect.left : rect.right - SPHERE_SIZE;
-        const sphereY = (a === 'TL' || a === 'TR') ? rect.top  : rect.bottom - SPHERE_SIZE;
-
-        const point: VirtualElement = {
-            getBoundingClientRect: () => ({
-                x: sphereX, y: sphereY,
-                top: sphereY, left: sphereX,
-                right: sphereX, bottom: sphereY,
-                width: 0, height: 0,
-                toJSON: () => ({}),
-            } as DOMRect),
-        };
-
-        const placement = PANEL_PLACEMENT[a];
-        const PADDING = 8;
-        computePosition(point, c, {
-            strategy: 'fixed',
-            placement,
-            middleware: [
-                offset(0),
-                flip({ padding: PADDING }),
-                shift({ padding: PADDING }),
-                size({
-                    padding: PADDING,
-                    apply: ({ availableWidth, availableHeight, elements }) => {
-                        // Cap the panel to the space left after shift/flip so it
-                        // never overflows the viewport on a short/narrow window.
-                        Object.assign(elements.floating.style, {
-                            maxWidth: `${Math.max(0, Math.floor(availableWidth))}px`,
-                            maxHeight: `${Math.max(0, Math.floor(availableHeight))}px`,
-                        });
-                    },
-                }),
-                this._avoidSiblingsMiddleware(PADDING),
-            ],
-        }).then(({ x, y }) => {
-            // Guard against a collapse / re-morph that happened while the
-            // async compute was in flight.
-            if (!this.isExpanded || this._morphAnim) return;
-            Object.assign(c.style, {
-                position: 'fixed',
-                top: `${Math.round(y)}px`,
-                left: `${Math.round(x)}px`,
-                right: '',
-                bottom: '',
-            });
-        }).catch(() => { /* layout engine unavailable — keep sync clamp */ });
-    }
-
-    /** Custom Floating UI middleware: shift the panel off any sibling layer's
-     *  obstacle rect (higher-or-equal priority — i.e. the passive ToC and any
-     *  operated peer). Floating UI only knows about the viewport, never about
-     *  siblings, so this avoidance is ours. Returns the minimal axis-aligned
-     *  nudge that clears the nearest overlapping sibling. */
-    private _avoidSiblingsMiddleware(padding: number): Middleware {
-        const self = this;
-        return {
-            name: 'avoidSiblings',
-            fn({ x, y, rects }) {
-                const myPriority = self._priority();
-                const panel = {
-                    left: x, top: y,
-                    right: x + rects.floating.width,
-                    bottom: y + rects.floating.height,
-                };
-                let nx = x, ny = y;
-                for (const layer of REGISTRY.values()) {
-                    if (layer === self) continue;
-                    if (layer._priority() > myPriority) continue;
-                    const r = layer.getObstacleRect();
-                    if (!r) continue;
-                    const ix = Math.min(panel.right + padding, r.right) - Math.max(panel.left - padding, r.left);
-                    const iy = Math.min(panel.bottom + padding, r.bottom) - Math.max(panel.top - padding, r.top);
-                    if (ix <= 0 || iy <= 0) continue;
-                    // Push along the shallower overlap axis.
-                    if (ix < iy) {
-                        const myCx = (panel.left + panel.right) / 2;
-                        const otCx = (r.left + r.right) / 2;
-                        nx += (myCx < otCx ? -ix : ix);
-                    } else {
-                        const myCy = (panel.top + panel.bottom) / 2;
-                        const otCy = (r.top + r.bottom) / 2;
-                        ny += (myCy < otCy ? -iy : iy);
-                    }
-                }
-                return { x: nx, y: ny };
-            },
-        };
     }
 
     // ── Collision avoidance ──────────────────────────────────────────────
