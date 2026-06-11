@@ -433,7 +433,19 @@ impl WorkspaceRegistry {
         true
     }
     pub(crate) fn list(&self) -> Vec<Arc<WorkspaceEntry>> {
-        self.inner.read().unwrap().values().cloned().collect()
+        let mut v: Vec<_> = self.inner.read().unwrap().values().cloned().collect();
+        // HashMap iteration order is non-deterministic, which leaked into the
+        // workspace list (GUI + `GET /api/workspaces`) and `settings.json`
+        // (re-written in a different order each save). Sort by serving root,
+        // then pinned file name, so the order is stable and path-alphabetical —
+        // single-file entries group under their parent dir. (root, single_file)
+        // is the workspace identity, so this key is unique and total.
+        v.sort_by(|a, b| {
+            a.root
+                .cmp(&b.root)
+                .then_with(|| a.single_file.cmp(&b.single_file))
+        });
+        v
     }
     pub fn info_list(&self) -> Vec<WorkspaceInfo> {
         self.list()
@@ -701,6 +713,53 @@ mod tests {
         assert_eq!(legacy.len(), 64);
         assert!(access_code_matches("s", "test123", &legacy));
         assert!(!access_code_matches("s", "wrong", &legacy));
+    }
+
+    /// Regression for #32: the workspace list must be deterministically ordered
+    /// (by path), not in HashMap iteration order. Scrambled inserts → stable,
+    /// path-sorted output, with single-file entries grouped under their dir.
+    #[test]
+    fn workspace_list_is_deterministically_ordered_by_path() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let base = tmp.path();
+        std::fs::create_dir_all(base.join("alpha")).unwrap();
+        std::fs::create_dir_all(base.join("charlie")).unwrap();
+        std::fs::write(base.join("alpha").join("a.md"), "# a").unwrap();
+        std::fs::write(base.join("alpha").join("z.md"), "# z").unwrap();
+
+        let reg = WorkspaceRegistry::new("salt".into());
+        let mk = |path: PathBuf, single: Option<&str>| WorkspaceConfig {
+            path,
+            flags: WorkspaceFlags::default(),
+            single_file: single.map(str::to_string),
+            access_code_hash: String::new(),
+        };
+        // Insert in a scrambled order.
+        reg.add(mk(base.join("charlie"), None));
+        reg.add(mk(base.join("alpha"), Some("z.md")));
+        reg.add(mk(base.join("alpha"), None));
+        reg.add(mk(base.join("alpha"), Some("a.md")));
+
+        let order: Vec<(PathBuf, Option<String>)> = reg
+            .list()
+            .iter()
+            .map(|e| (e.root.clone(), e.single_file.clone()))
+            .collect();
+        assert_eq!(
+            order,
+            vec![
+                (base.join("alpha"), None),
+                (base.join("alpha"), Some("a.md".into())),
+                (base.join("alpha"), Some("z.md".into())),
+                (base.join("charlie"), None),
+            ],
+            "list() must be sorted by (root, single_file)"
+        );
+
+        // Stable across repeated calls.
+        let a: Vec<String> = reg.list().iter().map(|e| e.id.clone()).collect();
+        let b: Vec<String> = reg.list().iter().map(|e| e.id.clone()).collect();
+        assert_eq!(a, b);
     }
 
     #[test]
