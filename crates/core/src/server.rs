@@ -939,9 +939,14 @@ fn access_cookie_scopes(secret: &str, cookie_header: Option<&str>) -> Vec<(Strin
         return Vec::new();
     };
     match exp_str.parse::<u64>() {
+        // rsplit, not split: a scope is `s` or `w:{id}`, so a pair encodes as
+        // `w:{id}:{hash}` (two colons). The hash is colon-free hex, so the LAST
+        // colon is the scope|hash delimiter. Using split_once here mis-parsed
+        // `w:{id}` scopes into ("w", "{id}:{hash}"), so a workspace unlock cookie
+        // never matched its `w:{id}` gate — only the colon-free `s` scope worked.
         Ok(exp) if access_now_unix() < exp => scope_csv
             .split(',')
-            .filter_map(|s| s.split_once(':'))
+            .filter_map(|s| s.rsplit_once(':'))
             .map(|(s, h)| (s.to_string(), h.to_string()))
             .collect(),
         _ => Vec::new(),
@@ -2291,6 +2296,29 @@ mod tests {
         let (h2, scope2) = access_scope_for(&state2, &id2).expect("gated after reseed");
         assert_eq!(scope2, format!("w:{id2}"));
         assert_eq!(h2, ws_hash, "after restart: workspace code must STILL win");
+    }
+
+    /// Repro for "the correct workspace code shows no content": the unlock
+    /// cookie must round-trip a `w:{id}` scope. The scope itself contains a
+    /// colon, so a pair encodes as `w:{id}:{hash}`; decoding must split on the
+    /// LAST colon. With the old `split_once`, a workspace cookie decoded to
+    /// scope "w" and never matched its `w:{id}` gate — only the colon-free `s`
+    /// (global) scope worked, so entering the right workspace code looped back
+    /// to the gate while the global code got in.
+    #[test]
+    fn access_cookie_round_trips_workspace_scope() {
+        let secret = "test-salt";
+        let scopes = vec![
+            ("w:1a2b3c4d".to_string(), "4f965".to_string()),
+            ("s".to_string(), "abcde".to_string()),
+        ];
+        let cookie = make_access_cookie(secret, &scopes, access_now_unix() + 1000);
+        let back = access_cookie_scopes(secret, Some(&cookie));
+        assert!(
+            back.contains(&("w:1a2b3c4d".to_string(), "4f965".to_string())),
+            "workspace scope must survive the cookie round-trip: {back:?}"
+        );
+        assert!(back.contains(&("s".to_string(), "abcde".to_string())));
     }
 
     async fn response_text(response: Response) -> String {
