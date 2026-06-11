@@ -11,7 +11,9 @@ import {
     overlaps,
     place,
     rectAt,
+    slide,
     solve,
+    type BoxRect,
     type LayoutItem,
     type Obstacle,
     type Point,
@@ -345,5 +347,167 @@ describe('layout-engine / properties', () => {
                 }
             }
         }
+    });
+});
+
+// ── 7. slide(): path-dependent swept sliding for human drag ──────────────────
+//
+// slide() is the drag-only routine: from a previous box top-left, move toward
+// the cursor target, treating every obstacle + the viewport edge as immovable
+// and sliding along contacted walls. It must be CONTINUOUS (no jumps, no
+// centre-line flip) and NEVER overshoot or overlap.
+
+describe('layout-engine / slide', () => {
+    const SPHERE = { width: SPHERE_SIZE, height: SPHERE_SIZE };
+
+    /** Build a BoxRect obstacle from left/top/width/height. */
+    function ob(left: number, top: number, width: number, height: number): BoxRect {
+        return { left, top, right: left + width, bottom: top + height, width, height };
+    }
+
+    /** Does the dragged box (top-left `pos`, dims `box`) overlap an obstacle? */
+    function boxOverlaps(
+        pos: Point,
+        box: { width: number; height: number },
+        o: BoxRect,
+    ): boolean {
+        return (
+            pos.x < o.right
+            && pos.x + box.width > o.left
+            && pos.y < o.bottom
+            && pos.y + box.height > o.top
+        );
+    }
+
+    it('with no obstacles, the box reaches the target exactly (clamped on-screen)', () => {
+        const out = slide(SPHERE, { x: 100, y: 100 }, { x: 300, y: 250 }, [], VIEWPORT, MARGINS);
+        expect(out).toEqual({ x: 300, y: 250 });
+    });
+
+    it('never overshoots: |result - from| ≤ |to - from| on each axis', () => {
+        const obstacles = [ob(400, 300, 120, 120)];
+        for (const to of [
+            { x: 450, y: 200 },
+            { x: 200, y: 360 },
+            { x: 600, y: 600 },
+            { x: 50, y: 50 },
+        ]) {
+            const from = { x: 250, y: 250 };
+            const out = slide(SPHERE, from, to, obstacles, VIEWPORT, MARGINS);
+            expect(Math.abs(out.x - from.x)).toBeLessThanOrEqual(Math.abs(to.x - from.x) + 1e-9);
+            expect(Math.abs(out.y - from.y)).toBeLessThanOrEqual(Math.abs(to.y - from.y) + 1e-9);
+            // And the result is on the segment side toward `to` (no reversal).
+            if (to.x >= from.x) expect(out.x).toBeGreaterThanOrEqual(from.x - 1e-9);
+            else expect(out.x).toBeLessThanOrEqual(from.x + 1e-9);
+        }
+    });
+
+    it('slides along a vertical wall: x stops at the wall, y advances fully', () => {
+        // Wall spans the whole vertical travel range. Box starts to its left,
+        // target is to the right of and below the wall's left face.
+        const wall = ob(300, 0, 60, 800);
+        const from = { x: 200, y: 200 };
+        const to = { x: 400, y: 500 }; // pushes right (into wall) and down
+        const out = slide(SPHERE, from, to, [wall], VIEWPORT, MARGINS);
+        // X is capped at the wall's left face minus the box width: 300 - 40.
+        expect(out.x).toBeCloseTo(260, 6);
+        // Y travels the full requested amount — the wall doesn't block Y.
+        expect(out.y).toBeCloseTo(500, 6);
+        expect(boxOverlaps(out, SPHERE, wall)).toBe(false);
+    });
+
+    it('blocked head-on stops at contact with no overlap', () => {
+        const wall = ob(300, 180, 60, 80); // straight ahead of the box
+        const from = { x: 200, y: 200 };
+        const to = { x: 500, y: 200 }; // dead-on to the right, same row
+        const out = slide(SPHERE, from, to, [wall], VIEWPORT, MARGINS);
+        expect(out.x).toBeCloseTo(260, 6); // 300 - 40
+        expect(out.y).toBeCloseTo(200, 6);
+        expect(boxOverlaps(out, SPHERE, wall)).toBe(false);
+    });
+
+    it('no centre-line flip: sweeping the target across an obstacle stays continuous', () => {
+        // A tall wall the box can never pass. Sweep `to.x` from the near side,
+        // across the wall's centre-line, to far beyond the far side, in small
+        // steps, while pushing the box rightward. The result must stay glued to
+        // the near face (x ≈ 260) and NEVER appear on the far side — and each
+        // step must move the result by a bounded amount (continuity).
+        const wall = ob(300, 0, 60, 800);
+        const from = { x: 200, y: 400 };
+        const STEP = 4;
+        let prev: Point | null = null;
+        let maxJump = 0;
+        for (let tx = 200; tx <= 520; tx += STEP) {
+            const out = slide(SPHERE, from, { x: tx, y: 400 }, [wall], VIEWPORT, MARGINS);
+            // Never tunnels to the far side of the wall.
+            expect(out.x).toBeLessThanOrEqual(wall.left - SPHERE_SIZE + 1e-6);
+            expect(boxOverlaps(out, SPHERE, wall)).toBe(false);
+            if (prev) maxJump = Math.max(maxJump, Math.hypot(out.x - prev.x, out.y - prev.y));
+            prev = out;
+        }
+        // Continuity: each `to` step of STEP px moves the result by ≤ STEP px
+        // (Lipschitz-1) — no discontinuous teleport across the centre-line.
+        expect(maxJump).toBeLessThanOrEqual(STEP + 1e-6);
+    });
+
+    it('continuity (Lipschitz-1): a δ change in target moves the result by ≤ δ', () => {
+        const obstacles = [ob(380, 350, 100, 100), ob(250, 500, 200, 60)];
+        const from = { x: 300, y: 400 };
+        const base = { x: 420, y: 470 };
+        const p0 = slide(SPHERE, from, base, obstacles, VIEWPORT, MARGINS);
+        for (const d of [0.5, 1, 2, 3]) {
+            for (const [ddx, ddy] of [[d, 0], [0, d], [d, d], [-d, d]] as const) {
+                const p1 = slide(SPHERE, from, { x: base.x + ddx, y: base.y + ddy }, obstacles, VIEWPORT, MARGINS);
+                expect(Math.abs(p1.x - p0.x)).toBeLessThanOrEqual(Math.abs(ddx) + 1e-6);
+                expect(Math.abs(p1.y - p0.y)).toBeLessThanOrEqual(Math.abs(ddy) + 1e-6);
+            }
+        }
+    });
+
+    it('always stays in-bounds (sphere minVisible floors/ceilings)', () => {
+        const obstacles = [ob(400, 300, 120, 120)];
+        // Drag toward each corner well past the edge — result must stay clamped.
+        for (const to of [
+            { x: -500, y: -500 },
+            { x: 5000, y: -500 },
+            { x: -500, y: 5000 },
+            { x: 5000, y: 5000 },
+        ]) {
+            const out = slide(SPHERE, { x: 500, y: 400 }, to, obstacles, VIEWPORT, MARGINS);
+            expect(out.x).toBeGreaterThanOrEqual(MARGINS.minVisible - SPHERE_SIZE - 1e-6);
+            expect(out.x).toBeLessThanOrEqual(VIEWPORT.width - MARGINS.minVisible + 1e-6);
+            expect(out.y).toBeGreaterThanOrEqual(MARGINS.minVisible - SPHERE_SIZE - 1e-6);
+            expect(out.y).toBeLessThanOrEqual(VIEWPORT.height - MARGINS.minVisible + 1e-6);
+        }
+    });
+
+    it('an expanded panel box stays fully inside the panelInset margin', () => {
+        const panelBox = { width: 300, height: 220 };
+        const out = slide(panelBox, { x: 600, y: 500 }, { x: 5000, y: 5000 }, [], VIEWPORT, MARGINS);
+        expect(out.x + panelBox.width).toBeLessThanOrEqual(VIEWPORT.width - MARGINS.panelInset + 1e-6);
+        expect(out.y + panelBox.height).toBeLessThanOrEqual(VIEWPORT.height - MARGINS.panelInset + 1e-6);
+        expect(out.x).toBeGreaterThanOrEqual(MARGINS.panelInset - 1e-6);
+        expect(out.y).toBeGreaterThanOrEqual(MARGINS.panelInset - 1e-6);
+    });
+
+    it('rounds a corner: blocked on X, the box still slides past on Y, then advances X', () => {
+        // Obstacle occupies the upper region. Box is left of it, target is to
+        // the lower-right (past the obstacle's bottom). One slide: X is capped
+        // by the obstacle (it overlaps on Y at the start), Y advances below it.
+        // A SECOND slide from there (now clear on Y) lets X advance fully — the
+        // path rounds the corner instead of jumping through.
+        const block = ob(300, 100, 200, 200); // bottom at y=300
+        const from = { x: 200, y: 200 };
+        const to = { x: 600, y: 400 };
+        const s1 = slide(SPHERE, from, to, [block], VIEWPORT, MARGINS);
+        expect(boxOverlaps(s1, SPHERE, block)).toBe(false);
+        // X was blocked by the wall, Y advanced toward/below the obstacle.
+        expect(s1.x).toBeLessThanOrEqual(block.left - SPHERE_SIZE + 1e-6);
+        expect(s1.y).toBeGreaterThan(from.y);
+        const s2 = slide(SPHERE, s1, to, [block], VIEWPORT, MARGINS);
+        expect(boxOverlaps(s2, SPHERE, block)).toBe(false);
+        // Continuing the same gesture eventually clears the obstacle on Y and
+        // lets X resume — the box has rounded the corner.
+        expect(s2.y).toBeGreaterThanOrEqual(s1.y - 1e-6);
     });
 });

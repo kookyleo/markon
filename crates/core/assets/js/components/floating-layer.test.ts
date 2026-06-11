@@ -279,6 +279,94 @@ describe('FloatingLayer / drag', () => {
         document.dispatchEvent(new MouseEvent('mouseup', { bubbles: true }));
     });
 
+    it('a human drag of A moves only A: peers B/C do not cascade, A stays clear + on-screen', () => {
+        installAnimateStub();
+
+        // Three movable spheres. Give B and C fixed obstacle rects so the
+        // dragged A sees them as immovable walls; A reports its own rect from
+        // its live container (0×0 in jsdom → not an obstacle to itself anyway).
+        type WithHome = {
+            _home: { x: number; y: number };
+            _intentionalHome: { x: number; y: number };
+        };
+        const rectB = { left: 400, top: 300, right: 440, bottom: 340, width: 40, height: 40 };
+        const rectC = { left: 600, top: 500, right: 640, bottom: 540, width: 40, height: 40 };
+
+        const containerA = makeContainer();
+        const a = new FloatingLayer({
+            name: 'A',
+            container: containerA,
+            rolePriority: 1,
+            initialOffset: { left: 100, top: 300 }, // x=100, y=300 (same row as B)
+        });
+        const b = new FloatingLayer({
+            name: 'B',
+            container: makeContainer(),
+            rolePriority: 1,
+            getObstacleRect: () => rectB,
+            getObstacleShape: () => 'circle',
+        });
+        const c = new FloatingLayer({
+            name: 'C',
+            container: makeContainer(),
+            rolePriority: 1,
+            getObstacleRect: () => rectC,
+            getObstacleShape: () => 'circle',
+        });
+        a.init();
+        (b as unknown as WithHome)._home = { x: 400, y: 300 };
+        (b as unknown as WithHome)._intentionalHome = { x: 400, y: 300 };
+        (c as unknown as WithHome)._home = { x: 600, y: 500 };
+        (c as unknown as WithHome)._intentionalHome = { x: 600, y: 500 };
+
+        // Settle once, then snapshot B's and C's CSS edges.
+        (FloatingLayer as unknown as { _relayout(): void })._relayout();
+        const edges = (layer: FloatingLayer) => {
+            const el = (layer as unknown as { _opts: FloatingLayerOpts })._opts.container;
+            return {
+                top: el.style.top, right: el.style.right,
+                bottom: el.style.bottom, left: el.style.left,
+            };
+        };
+        const bBefore = edges(b);
+        const cBefore = edges(c);
+
+        // Drive a drag of A straight RIGHT toward B (same row, y≈300). B sits at
+        // x=400; A is 40 wide, so the swept slide must stop A's left at ≤ 360
+        // and never tunnel onto B.
+        const md = new MouseEvent('mousedown', { bubbles: true, cancelable: true, button: 0 });
+        Object.defineProperty(md, 'clientX', { value: 0 });
+        Object.defineProperty(md, 'clientY', { value: 0 });
+        containerA.dispatchEvent(md);
+
+        for (const px of [40, 120, 200, 280, 360, 500]) {
+            const mv = new MouseEvent('mousemove', { bubbles: true });
+            Object.defineProperty(mv, 'clientX', { value: px });
+            Object.defineProperty(mv, 'clientY', { value: 0 });
+            document.dispatchEvent(mv);
+        }
+        document.dispatchEvent(new MouseEvent('mouseup', { bubbles: true }));
+
+        // 1) No cascade: B and C CSS edges are byte-identical to before.
+        expect(edges(b)).toEqual(bBefore);
+        expect(edges(c)).toEqual(cBefore);
+
+        // 2) A never overlaps a peer and stays in-bounds. Its reported home is
+        //    the swept-slide result (sphere top-left).
+        const aHome = (a as unknown as WithHome)._home;
+        // A pushed right toward B but was blocked: left ≤ B.left - 40 = 360.
+        expect(aHome.x).toBeLessThanOrEqual(360 + 1e-6);
+        // AABB non-overlap vs B (same-row): A.right ≤ B.left.
+        const overlapB = aHome.x < rectB.right && aHome.x + 40 > rectB.left
+            && aHome.y < rectB.bottom && aHome.y + 40 > rectB.top;
+        expect(overlapB).toBe(false);
+        // On-screen (1000×800, minVisible 20).
+        expect(aHome.x).toBeGreaterThanOrEqual(20 - 40 - 1e-6);
+        expect(aHome.x).toBeLessThanOrEqual(1000 - 20 + 1e-6);
+        expect(aHome.y).toBeGreaterThanOrEqual(20 - 40 - 1e-6);
+        expect(aHome.y).toBeLessThanOrEqual(800 - 20 + 1e-6);
+    });
+
     it('persists _intentionalHome to localStorage when storageKey is set', () => {
         installAnimateStub();
         const container = makeContainer();

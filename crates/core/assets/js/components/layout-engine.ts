@@ -575,3 +575,132 @@ export function solve(scene: Scene): Placement[] {
     }
     return placements;
 }
+
+// ── Human-drag swept sliding ─────────────────────────────────────────────────
+
+/** Lower/upper bounds for the dragged box's top-left on one axis so it stays on
+ *  screen. Mirrors the floors/ceilings {@link clamp} applies, but expressed as a
+ *  plain `[lo, hi]` interval on the box top-left so {@link slide} can resolve one
+ *  axis at a time. `size` is the box extent on that axis, `viewportExtent` the
+ *  viewport size on that axis. A sphere (40×40) keeps `minVisible` px on screen
+ *  on each side; a larger box (an expanded panel) is held fully inside the
+ *  `panelInset` margin. */
+function axisBounds(
+    size: number,
+    viewportExtent: number,
+    minVisible: number,
+    panelInset: number,
+): { lo: number; hi: number } {
+    if (size > SPHERE_SIZE) {
+        // Panel-sized box: keep the whole box inside the inset margin. On a
+        // viewport too small to hold the box the lower floor wins (box pokes
+        // off the far edge), matching clamp()'s top/left re-floor.
+        const lo = panelInset;
+        const hi = Math.max(lo, viewportExtent - panelInset - size);
+        return { lo, hi };
+    }
+    // Sphere-sized box: at least `minVisible` px stay visible on each side.
+    return { lo: minVisible - size, hi: viewportExtent - minVisible };
+}
+
+/**
+ * Path-dependent swept-AABB slide for a HUMAN DRAG. Moves the dragged box from
+ * `from` toward `to`, treating every obstacle AND the viewport edge as
+ * IMMOVABLE, and sliding along any contacted wall. Continuous by construction:
+ * the result is reached by advancing each axis only as far as the geometry
+ * allows, so a tiny change in `to` produces a tiny change in the result and the
+ * box never teleports across an obstacle's centre-line (the failure mode of the
+ * shortest-axis push-out used by {@link place}).
+ *
+ * Coordinate model: `from`/`to`/result are the dragged box's TOP-LEFT, and the
+ * box occupies `[x, x+box.width] × [y, y+box.height]`. Obstacles are AABBs in
+ * the same screen space; the dragged box is also treated as an AABB (NO circle
+ * math — circle/shortest-axis resolution is exactly what jumps).
+ *
+ * Algorithm — axis-separated swept collision-with-slide:
+ *   1. Resolve X first: advance x from `from.x` toward `to.x` as far as allowed
+ *      without the box's x-extent overlapping any obstacle that ALSO overlaps
+ *      the box on Y (at the *current* y = from.y), and within the on-screen
+ *      x-bounds. The earliest blocking obstacle edge caps the motion.
+ *   2. Resolve Y second, at the now-resolved x: advance y from `from.y` toward
+ *      `to.y` the same way, against obstacles overlapping the box on X at the
+ *      resolved x, within the on-screen y-bounds.
+ * Resolving X before Y (rather than simultaneously) is what lets the box slide
+ * along a wall and round a corner: blocked on one axis, it still travels freely
+ * on the other.
+ *
+ * Pure: reads no window/DOM/clock/RNG; deterministic for identical inputs.
+ *
+ * Guarantees (asserted by the engine tests):
+ *   • result never overlaps any obstacle;
+ *   • result stays within the on-screen bounds;
+ *   • `|result - from| ≤ |to - from|` on each axis — never overshoots;
+ *   • Lipschitz-1 per axis: moving `to` by δ moves the result by ≤ δ;
+ *   • no centre-line flip: sweeping `to` across an obstacle keeps the result on
+ *     the near side / sliding, never on the far side.
+ */
+export function slide(
+    box: { width: number; height: number },
+    from: Point,
+    to: Point,
+    obstacles: ReadonlyArray<BoxRect>,
+    viewport: { width: number; height: number },
+    margins: { minVisible: number; panelInset: number },
+): Point {
+    const { width: w, height: h } = box;
+    const xb = axisBounds(w, viewport.width, margins.minVisible, margins.panelInset);
+    const yb = axisBounds(h, viewport.height, margins.minVisible, margins.panelInset);
+
+    // Two AABBs overlap on an axis iff their projections overlap. We test the
+    // dragged box at a candidate top-left (x, y) against each obstacle.
+    const overlapY = (y: number, ob: BoxRect): boolean => y < ob.bottom && y + h > ob.top;
+    const overlapX = (x: number, ob: BoxRect): boolean => x < ob.right && x + w > ob.left;
+
+    // ── Axis X (resolved at the starting y) ───────────────────────────────
+    let x = from.x;
+    // Clamp the desired x into the on-screen bounds first; the obstacle sweep
+    // then caps it further. Math.max/min order tolerates lo > hi (tiny window).
+    let wantX = Math.min(Math.max(to.x, xb.lo), xb.hi);
+    if (wantX > x) {
+        // Moving right: the nearest blocking obstacle's left edge caps x at
+        // (ob.left - w). Only obstacles we already overlap on Y can block us.
+        let cap = wantX;
+        for (const ob of obstacles) {
+            if (!overlapY(from.y, ob)) continue;
+            if (ob.left - w >= x && ob.left - w < cap) cap = ob.left - w;
+        }
+        x = cap;
+    } else if (wantX < x) {
+        // Moving left: the nearest blocking obstacle's right edge caps x at
+        // ob.right.
+        let cap = wantX;
+        for (const ob of obstacles) {
+            if (!overlapY(from.y, ob)) continue;
+            if (ob.right <= x && ob.right > cap) cap = ob.right;
+        }
+        x = cap;
+    }
+
+    // ── Axis Y (resolved at the now-fixed x) ──────────────────────────────
+    let y = from.y;
+    let wantY = Math.min(Math.max(to.y, yb.lo), yb.hi);
+    if (wantY > y) {
+        // Moving down: nearest blocking obstacle's top edge caps y at (ob.top - h).
+        let cap = wantY;
+        for (const ob of obstacles) {
+            if (!overlapX(x, ob)) continue;
+            if (ob.top - h >= y && ob.top - h < cap) cap = ob.top - h;
+        }
+        y = cap;
+    } else if (wantY < y) {
+        // Moving up: nearest blocking obstacle's bottom edge caps y at ob.bottom.
+        let cap = wantY;
+        for (const ob of obstacles) {
+            if (!overlapX(x, ob)) continue;
+            if (ob.bottom <= y && ob.bottom > cap) cap = ob.bottom;
+        }
+        y = cap;
+    }
+
+    return { x, y };
+}

@@ -28,6 +28,7 @@ import {
     clamp as clampEngine,
     place,
     rectAt,
+    slide,
     solve,
     type Anchor,
     type BoxRect,
@@ -670,6 +671,13 @@ export class FloatingLayer {
         e.preventDefault();
         const startPointer: Point = { x: e.clientX, y: e.clientY };
         const startHome: Point = { ...(this._home as Point) };
+        // A HUMAN DRAG must move ONLY this widget — never cascade peers — and
+        // track the cursor continuously with no jumps. We achieve that with
+        // path-dependent swept sliding (engine.slide): each frame we move the
+        // dragged box FROM its previous position TOWARD the cursor, treating
+        // every peer + the viewport edge as IMMOVABLE and sliding along walls.
+        // `cur` is the running SPHERE top-left, seeded at the drag-start home.
+        let cur: Point = { ...startHome };
         let moved = false;
 
         const onMove = (me: MouseEvent): void => {
@@ -678,19 +686,44 @@ export class FloatingLayer {
             if (!moved && Math.hypot(dx, dy) < DRAG_THRESHOLD_PX) return;
             moved = true;
             this._isDragging = true;
-            // Drag is the only thing besides initial load that's allowed
-            // to update _intentionalHome. Track raw pointer delta
-            // (viewport-clamped) into both the working _home and the
-            // user-intent _intentionalHome so a collapse after the drag
-            // settles at exactly where the user dropped the layer.
-            const next = this._clampSelf(this.isExpanded, {
+
+            // The dragged item's occupancy box + the offset from its sphere
+            // top-left to the box top-left (non-zero only when an expanded
+            // panel grows from a non-TL corner). slide() works in box-top-left
+            // space; we convert the result back to a sphere position.
+            const item = this._toLayoutItem(this.isExpanded);
+            const box = item.box;
+            const boxRect = rectAt(item, cur);
+            const offX = boxRect.left - cur.x;
+            const offY = boxRect.top - cur.y;
+
+            // Target = raw pointer delta from the drag-start home, clamped to
+            // the viewport BOUNDARY ONLY (no peer avoidance). slide() then caps
+            // it against peers/edges. Expressed in box-top-left space.
+            const targetSphere = this._clampSelf(this.isExpanded, {
                 x: startHome.x + dx,
                 y: startHome.y + dy,
             });
-            this._home = next;
-            this._intentionalHome = { ...next };
-            this._applyDisplayed();
-            FloatingLayer._relayout();
+            const target: Point = { x: targetSphere.x + offX, y: targetSphere.y + offY };
+            const fromBox: Point = { x: cur.x + offX, y: cur.y + offY };
+
+            // Peers are the CURRENT displayed rects of ALL other layers
+            // (passive + movable alike — priority is irrelevant during a drag).
+            const peerRects = this._collectAllPeerRects();
+            const slid = slide(box, fromBox, target, peerRects, FloatingLayer._sceneFrame().viewport, {
+                minVisible: MIN_VISIBLE,
+                panelInset: PANEL_INSET,
+            });
+
+            // Back to sphere top-left and commit. Drag is the only thing
+            // besides initial load that updates _intentionalHome, so a collapse
+            // after the drag settles exactly where the user dropped the layer.
+            cur = { x: slid.x - offX, y: slid.y - offY };
+            this._home = cur;
+            this._intentionalHome = { ...cur };
+            // Write the displayed position DIRECTLY — do NOT route through
+            // _placeSelf/peer-avoidance, and do NOT _relayout (no cascade).
+            this._writeDisplayed(cur);
         };
         const onUp = (): void => {
             document.removeEventListener('mousemove', onMove);
@@ -698,12 +731,13 @@ export class FloatingLayer {
             this._isDragging = false;
             if (!moved) return;
             // Free placement: keep the sphere/panel exactly where the user
-            // dropped it (already clamped on-screen each frame during onMove).
-            // No snap-to-corner — an earlier "dock to nearest corner" picked
-            // the corner by which viewport half the centre was in, so any drag
-            // that didn't cross the midline sprang back (right/down felt stuck).
+            // dropped it. The swept slide guarantees `cur` is already
+            // non-overlapping and on-screen, so there is NO cascade on drop —
+            // peers stay put. No snap-to-corner either: an earlier "dock to
+            // nearest corner" picked the corner by which viewport half the
+            // centre was in, so any drag that didn't cross the midline sprang
+            // back (right/down felt stuck).
             this._persistHome();
-            FloatingLayer._relayout();
             // A real drag just ended. The browser synthesises a `click` on
             // mouseup; swallow it once at capture phase on window so NO handler
             // mistakes the drag for a click — not this layer's own toggle, and
@@ -847,6 +881,22 @@ export class FloatingLayer {
             });
         }
         return obstacles;
+    }
+
+    /** Current displayed AABB rects of ALL other registered layers (passive +
+     *  movable alike). Used ONLY by the human-drag swept slide, where priority
+     *  is irrelevant: a manual drag must avoid every other widget equally and
+     *  never push any of them. The dragged box is treated as an AABB against
+     *  these AABBs, so the slide is jump-free by construction. */
+    private _collectAllPeerRects(): BoxRect[] {
+        const rects: BoxRect[] = [];
+        for (const layer of REGISTRY.values()) {
+            if (layer === this) continue;
+            const rect = layer.getObstacleRect();
+            if (!rect) continue;
+            rects.push(toBoxRect(rect));
+        }
+        return rects;
     }
 
     // ── CSS application ──────────────────────────────────────────────────
