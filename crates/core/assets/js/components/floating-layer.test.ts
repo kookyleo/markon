@@ -454,3 +454,144 @@ describe('FloatingLayer / expand+collapse state', () => {
         expect(peer.isExpanded).toBe(false);
     });
 });
+
+// ── Deterministic single-pass solver (the erratic-behavior fix) ─────────────
+
+describe('FloatingLayer / deterministic solve', () => {
+    type SolveInternal = {
+        _home: { x: number; y: number };
+        _avoidObstacles(p: { x: number; y: number }): { x: number; y: number };
+        _priority(): number;
+    };
+    type Solver = {
+        _solveLayout(): Map<string, { x: number; y: number }>;
+    };
+
+    /** Build an idle movable sphere whose working home is at `home`. */
+    function idleAt(name: string, home: { x: number; y: number }): FloatingLayer {
+        const layer = freshLayer(name, { gap: 10 });
+        const internal = layer as unknown as SolveInternal & {
+            _intentionalHome: { x: number; y: number };
+        };
+        internal._home = { ...home };
+        internal._intentionalHome = { ...home };
+        return layer;
+    }
+
+    /** A fixed passive obstacle (treated as a rect). */
+    function passiveRect(name: string, r: { left: number; top: number; right: number; bottom: number }): FloatingLayer {
+        return new FloatingLayer({
+            name,
+            container: makeContainer(),
+            passive: true,
+            getObstacleRect: () => ({ ...r, width: r.right - r.left, height: r.bottom - r.top }),
+            getObstacleShape: () => 'rect',
+        });
+    }
+
+    it('same geometry, opposite registration orders → identical solved positions', () => {
+        // Order 1: a then b.
+        idleAt('a', { x: 200, y: 200 });
+        idleAt('b', { x: 210, y: 205 }); // overlapping a
+        const solved1 = (FloatingLayer as unknown as Solver)._solveLayout();
+        const a1 = solved1.get('a')!;
+        const b1 = solved1.get('b')!;
+        for (const inst of Array.from(FloatingLayer.all())) inst.destroy();
+
+        // Order 2: b then a — same geometry, reversed insertion.
+        idleAt('b', { x: 210, y: 205 });
+        idleAt('a', { x: 200, y: 200 });
+        const solved2 = (FloatingLayer as unknown as Solver)._solveLayout();
+        const a2 = solved2.get('a')!;
+        const b2 = solved2.get('b')!;
+
+        expect(a2).toEqual(a1);
+        expect(b2).toEqual(b1);
+    });
+
+    it('two idle peers → symmetric, stable placement (name-earlier keeps home)', () => {
+        const a = idleAt('a', { x: 300, y: 300 });
+        const b = idleAt('b', { x: 305, y: 302 }); // overlaps a
+        const solved = (FloatingLayer as unknown as Solver)._solveLayout();
+        const pa = solved.get('a')!;
+        const pb = solved.get('b')!;
+
+        // a (name-earlier, placed first) keeps its home; b yields.
+        expect(pa).toEqual({ x: 300, y: 300 });
+        expect(pa).not.toEqual(pb);
+
+        // No residual overlap: centers ≥ sumRadii + gap apart.
+        const dist = Math.hypot((pa.x + 20) - (pb.x + 20), (pa.y + 20) - (pb.y + 20));
+        expect(dist).toBeGreaterThanOrEqual(50 - 1e-6);
+
+        // Idempotent: solving again yields the same map (no ping-pong).
+        const ia = a as unknown as SolveInternal;
+        const ib = b as unknown as SolveInternal;
+        ia._home = pa; ib._home = pb;
+        const solved2 = (FloatingLayer as unknown as Solver)._solveLayout();
+        expect(solved2.get('a')).toEqual(pa);
+        expect(solved2.get('b')).toEqual(pb);
+    });
+
+    it('a sphere squeezed between two obstacles converges with no residual overlap', () => {
+        // Two passive rects with a narrow gap; an idle sphere starts inside.
+        passiveRect('wallL', { left: 100, top: 100, right: 300, bottom: 500 });
+        passiveRect('wallR', { left: 340, top: 100, right: 540, bottom: 500 });
+        const s = idleAt('squeezed', { x: 300, y: 280 }); // wedged near the gap
+        const internal = s as unknown as SolveInternal;
+        const out = internal._avoidObstacles(internal._home);
+
+        // The resolved position must not overlap either wall (with gap).
+        const cx = out.x + 20, cy = out.y + 20, r = 20, gap = 10;
+        const clears = (rect: { left: number; top: number; right: number; bottom: number }): boolean => {
+            const closestX = Math.max(rect.left, Math.min(cx, rect.right));
+            const closestY = Math.max(rect.top, Math.min(cy, rect.bottom));
+            return Math.hypot(cx - closestX, cy - closestY) >= (r + gap) - 1e-6;
+        };
+        expect(clears({ left: 100, top: 100, right: 300, bottom: 500 })).toBe(true);
+        expect(clears({ left: 340, top: 100, right: 540, bottom: 500 })).toBe(true);
+    });
+
+    it('expanded panel clamped at a viewport edge does NOT rebound into an obstacle', () => {
+        // A passive obstacle in the bottom-right; an expanded panel near the
+        // edge gets clamped — the clamp must not shove it back into the rect.
+        passiveRect('block', { left: 700, top: 600, right: 760, bottom: 660 });
+        const panel = freshLayer('panel', {
+            panelSize: { width: 300, height: 250 },
+            panelAnchor: 'TL',
+            gap: 10,
+        });
+        const opts = (panel as unknown as { _opts: FloatingLayerOpts })._opts;
+        opts.container.classList.add('expanded'); // priority 1
+        const internal = panel as unknown as SolveInternal;
+        internal._home = { x: 760, y: 600 }; // panel would overflow bottom-right
+
+        const out = internal._avoidObstacles({ x: 760, y: 600 });
+        // Panel rect at the solved position (TL anchor: sphere TL = panel TL).
+        const pr = { left: out.x, top: out.y, right: out.x + 300, bottom: out.y + 250 };
+        // On-screen (viewport 1000×800).
+        expect(pr.left).toBeGreaterThanOrEqual(-1);
+        expect(pr.top).toBeGreaterThanOrEqual(-1);
+        expect(pr.right).toBeLessThanOrEqual(1001);
+        expect(pr.bottom).toBeLessThanOrEqual(801);
+        // Must NOT overlap the passive block after clamping.
+        const sep =
+            pr.right + 10 <= 700 || 760 + 10 <= pr.left ||
+            pr.bottom + 10 <= 600 || 660 + 10 <= pr.top;
+        expect(sep).toBe(true);
+    });
+
+    it('never positions a sphere or panel off-screen, even in a tight scene', () => {
+        // Fill the viewport center with a big passive obstacle and crowd the
+        // corners; the solved sphere must still land on-screen.
+        passiveRect('huge', { left: 0, top: 0, right: 950, bottom: 760 });
+        const s = idleAt('crowded', { x: 500, y: 400 });
+        const internal = s as unknown as SolveInternal;
+        const out = internal._avoidObstacles(internal._home);
+        // Sphere TL must keep ≥ MIN_VISIBLE on screen: x in [-20, 980], etc.
+        expect(out.x).toBeGreaterThanOrEqual(-20);
+        expect(out.x).toBeLessThanOrEqual(980);
+        expect(out.y).toBeGreaterThanOrEqual(-20);
+        expect(out.y).toBeLessThanOrEqual(780);
+    });
+});
