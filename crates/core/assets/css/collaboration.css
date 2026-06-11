@@ -42,18 +42,13 @@
 .markon-live-container.broadcasting {
     animation: markon-collab-breathe 3s ease-in-out infinite;
 }
-/* A soft glow that gently breathes — "broadcasting" reads as the sphere being
-   quietly *lit*, not a second hard ring. The first shadow layer is a 2px gap
-   ring: box-shadow can't render a truly transparent gap (a transparent layer
-   doesn't occlude the glow behind it, and the overflow:hidden container rules
-   out a pseudo-element ring), so we fake it with the page canvas colour
-   (--markon-bg-default) — the sphere floats over the canvas, so this reads as
-   the background showing through. Being opaque + painted in front, it also
-   clips the glow's inner edge so the glow sits detached a couple px off the
-   ball. Only the glow's opacity pulses. */
+/* A soft glow hugging the sphere that gently breathes — "broadcasting" reads as
+   the ball being quietly *lit*, not as a second hard ring. Blur (not a hard
+   spread ring) + a moderate peak opacity keep it present but calm; only the
+   opacity pulses. No gap ring — the glow sits directly on the sphere. */
 @keyframes markon-collab-breathe {
-    0%, 100% { box-shadow: 0 0 0 2px var(--markon-bg-default), 0 0 8px 2px color-mix(in srgb, var(--markon-live-user) 62%, transparent); }
-    50%      { box-shadow: 0 0 0 2px var(--markon-bg-default), 0 0 8px 2px color-mix(in srgb, var(--markon-live-user) 18%, transparent); }
+    0%, 100% { box-shadow: 0 0 8px 2px color-mix(in srgb, var(--markon-live-user) 62%, transparent); }
+    50%      { box-shadow: 0 0 8px 2px color-mix(in srgb, var(--markon-live-user) 18%, transparent); }
 }
 
 /* Expanded (panel) state — sphere becomes the panel rectangle in-place.
@@ -127,11 +122,12 @@
 }
 
 /* OFF mode: the container's 2.5px border is the ring of the prohibited sign
-   and the SVG draws only the slash on top. The slash takes the SAME
-   border-strong colour as the ring, so ring + slash read as one quiet grey 🚫
-   — no darker mark fighting the chrome. */
+   and the SVG draws only the slash on top. The slash mirrors the ring's exact
+   colour expression — the author colour when one is assigned, the neutral
+   border fallback otherwise — so ring + slash always read as one consistent 🚫
+   instead of an author-coloured ring fighting a grey slash. */
 .markon-live-container.live-off .icon-off {
-    color: var(--markon-border-emphasis);
+    color: var(--markon-live-user, var(--markon-border-emphasis));
 }
 
 /* When expanded, face becomes a 40×40 button pinned to the panel's
