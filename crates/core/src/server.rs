@@ -2245,6 +2245,54 @@ mod tests {
         })
     }
 
+    /// Repro for the reported "only the global code lets me into a workspace
+    /// that has its own code": the workspace code must override the global both
+    /// live AND after a restart reseed (same id, code preserved).
+    #[test]
+    fn workspace_code_overrides_global_and_survives_reseed() {
+        let tmp = tempfile::tempdir().unwrap();
+        let root = dunce::canonicalize(tmp.path()).unwrap();
+        let salt = "test-salt";
+        let ws_hash = crate::workspace::hash_access_code(salt, "wsCode");
+        let global_hash = crate::workspace::hash_access_code(salt, "global");
+
+        let reg = Arc::new(WorkspaceRegistry::new(salt.into()));
+        let id = reg.add(WorkspaceConfig {
+            path: root.clone(),
+            flags: WorkspaceFlags::default(),
+            single_file: None,
+            access_code_hash: String::new(),
+        });
+        assert!(reg.set_access_code(&id, &ws_hash));
+
+        let mut state = test_state(reg.clone());
+        state.access_code_hash = Arc::new(global_hash.clone());
+        let (h, scope) = access_scope_for(&state, &id).expect("workspace is gated");
+        assert_eq!(scope, format!("w:{id}"), "must use the workspace scope");
+        assert_eq!(h, ws_hash, "live: workspace code must win over global");
+
+        // Simulate a server restart: fresh registry reseeded from the persisted
+        // (path, access_code_hash) must yield the SAME id and keep the code.
+        let reg2 = Arc::new(WorkspaceRegistry::new(salt.into()));
+        let id2 = reg2.add(WorkspaceConfig {
+            path: root,
+            flags: WorkspaceFlags::default(),
+            single_file: None,
+            access_code_hash: ws_hash.clone(),
+        });
+        assert_eq!(id, id2, "workspace id must be stable across reseed");
+        assert_eq!(
+            reg2.get(&id2).unwrap().access_code_hash(),
+            ws_hash,
+            "code must survive the reseed"
+        );
+        let mut state2 = test_state(reg2);
+        state2.access_code_hash = Arc::new(global_hash);
+        let (h2, scope2) = access_scope_for(&state2, &id2).expect("gated after reseed");
+        assert_eq!(scope2, format!("w:{id2}"));
+        assert_eq!(h2, ws_hash, "after restart: workspace code must STILL win");
+    }
+
     async fn response_text(response: Response) -> String {
         let bytes = to_bytes(response.into_body(), usize::MAX)
             .await
