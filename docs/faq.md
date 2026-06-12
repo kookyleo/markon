@@ -118,6 +118,10 @@ markon shutdown
 
 不支持。Markon 设计为「所有连接客户端平等」，适合小团队 wiki 或读书会场景，不适合需要权限控制的正式文档系统。
 
+### 想给工作区加把锁、分享时让对方先验证怎么办？
+
+用[访问码门禁](/features/access)。你可以在 GUI 里设全局口令，也可以为单个工作区单独设口令；之后访问者在浏览器门禁页输入正确口令才能进入。注意这只是应用层的简单防护，真要对外暴露请配合 TLS / 反向代理。
+
 ### 能和 Obsidian / VS Code 共享标注数据吗？
 
 不能。Markon 的标注格式是自己的（基于 XPath 定位），无法与其他工具互通。
@@ -161,7 +165,7 @@ wget --recursive --no-parent --convert-links http://127.0.0.1:6419/
 
 ### 为什么叫 Markon？
 
-**Mark-on** —「Turn your markdown **on**」。像 Markdown 的「开关」，启动它让文档活起来。
+**Mark-on** —「Mark it **on**」。读作 mark-it-on，连起来就是 markon，像给 Markdown 按下「开关」，启动它让文档活起来。
 
 ### 和 GitHub 渲染有何不同？
 

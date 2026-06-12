@@ -158,7 +158,7 @@
     // ── Tips — Quick start ───────────────────────────────────
     "tips.search.placeholder": "Search tips…",
     "tips.quickstart": "Quick start",
-    "tips.quickstart.1": "1. Click the + button in Workspaces to add a folder with Markdown files",
+    "tips.quickstart.1": "1. Click the + button in Workspaces to add a folder with Markdown files (or a single .md file)",
     "tips.quickstart.2": "2. Click the ↗ icon to view rendered output in your browser",
     "tips.quickstart.3": "3. Press {key} in the browser page to see all keyboard shortcuts and available features",
 
@@ -189,11 +189,11 @@
     // ── Tips — Key features ──────────────────────────────────
     "tips.features":   "More",
     "tips.feat.search.title": "Full-text search",
-    "tips.feat.search.desc":  "CJK-aware tokenization. Press / in the browser to search file contents in real time",
+    "tips.feat.search.desc":  "CJK-aware tokenization, case-insensitive. Press / in the browser to search file contents in real time",
     "tips.feat.viewed.title": "Viewed tracking",
     "tips.feat.viewed.desc":  "Inspired by GitHub PR reviews — mark reading progress at block level, auto-saved",
     "tips.feat.edit.title":   "Live editing",
-    "tips.feat.edit.desc":    "Press e to edit Markdown source directly in the browser with syntax highlighting + live preview",
+    "tips.feat.edit.desc":    "Press e to edit Markdown source directly in the browser with syntax highlighting + live preview; save with ⌘/Ctrl+S",
     "tips.feat.annot.title":  "Annotations & Highlights",
     "tips.feat.annot.desc":   "Select text to highlight, strikethrough, or add notes",
     "tips.feat.shared.title": "Shared notes & viewed state",
@@ -204,6 +204,8 @@
     "tips.feat.live.desc":    "Sync reading position across devices or teammates; press l in the browser to swap leader/follower, Shift+l to disable",
     "tips.feat.chat.title":   "AI assistant",
     "tips.feat.chat.desc":    "Embedded AI assistant grounded in the current document; press c to open (Shift+c toggles in-page / popout window)",
+    "tips.feat.access.title": "Access codes",
+    "tips.feat.access.desc":  "Protect a workspace with an access code: set a global code in Server and access, or a per-workspace code via that workspace's lock icon. Viewers enter it at a browser gate (the gate input has a press-and-hold eye to reveal it)",
     "tips.feat.customize.title": "Customize",
     "tips.feat.customize.desc":  "Tweak theme colors (light/dark), UI font/size and panel opacity in Page styles; rebind every key in Shortcuts",
 

@@ -31,6 +31,7 @@ markon [FILE] [OPTIONS]
 | `--enable-live` | 启用实时协作（主控/被控同步） | false |
 | `--enable-chat` | 启用 AI 对话（需先在配置文件填 API Key） | false |
 | `--shared-annotation` | 启用共享标注（SQLite 同步） | false |
+| `--print-collapsed-content` | 打印时包含折叠章节的内容（默认隐藏折叠内容） | false |
 | `--salt <STRING>` | 自定义 workspace ID salt | — |
 
 ## 工作区管理
@@ -66,6 +67,16 @@ markon detach abc12345   # 通过 ID 移除
 
 ```bash
 markon shutdown
+```
+
+### 反馈与提问
+
+除了 `ls` / `detach` / `shutdown`，CLI 还提供几个反馈类子命令，方便你直接从终端联系作者：
+
+```bash
+markon bug      # 报告一个 Bug
+markon idea     # 提一个功能建议
+markon ask      # 提问或寻求帮助
 ```
 
 ## 驻留模式

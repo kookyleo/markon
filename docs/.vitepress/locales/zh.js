@@ -37,6 +37,7 @@ export const zh = {
             { text: '导出便条', link: '/features/export' },
             { text: '实时协作 (Live)', link: '/features/live' },
             { text: '章节打印', link: '/features/print' },
+            { text: '访问码', link: '/features/access' },
           ],
         },
       ],

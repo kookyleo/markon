@@ -121,6 +121,10 @@ cargo install markon
 cargo install --path crates/cli
 ```
 
+### From GitHub Releases
+
+Download a precompiled binary from [Releases](https://github.com/kookyleo/markon/releases).
+
 ### Run directly without installing
 
 ```bash
@@ -131,7 +135,20 @@ cargo run -- [OPTIONS] [FILE]
 
 **Quick Start**: `markon [FILE]` - Render a Markdown file or browse current directory.
 
-Markon CLI runs in **background daemon** mode by default. The first launch starts the server and releases the terminal; subsequent runs append new workspaces to the existing server.
+Markon CLI runs in **background daemon** mode by default. The first launch starts the server, moves it to the background, and releases the terminal; subsequent runs automatically append new workspaces to the already-running server and open them.
+
+### Workspace Management
+
+```bash
+# List active workspaces
+markon ls
+
+# Detach a workspace (accepts index or ID)
+markon detach 1
+
+# Shut down the background server
+markon shutdown
+```
 
 ### Command Line Options
 
@@ -149,7 +166,7 @@ Options:
                                    - --host 0.0.0.0: all interfaces
                                    - --host <IP>: specific IP address
   -t, --theme <THEME>              Theme: light, dark, auto [default: auto]
-      --qr [<BASE_URL>]            Generate QR code (optional: custom URL)
+      --entry [<BASE_URL>]         External access prefix; generates a QR code (alias: --qr)
   -b, --open-browser [<BASE_URL>]  Auto-open browser (optional: custom URL)
       --shared-annotation          Enable shared annotation via SQLite + WebSocket
       --enable-viewed              Enable section viewed checkboxes (GitHub PR-style)
@@ -157,6 +174,8 @@ Options:
       --enable-edit                Enable Markdown file editing with syntax highlighting
       --enable-live                Enable Live collaboration (leader/follower reading sync)
       --enable-chat                Enable AI chat (read-only assistant grounded in the workspace)
+      --print-collapsed-content    Include collapsed (viewed) sections when printing
+      --salt <SALT>                Salt for hashing access codes / identity
   -h, --help                       Print help
   -V, --version                    Print version
 ```
@@ -295,6 +314,43 @@ mkdir static         # URL: /static/* (not /_/*)
 
 **When using reverse proxy**: Make sure to configure your proxy to forward the `/_/` path. See [REVERSE_PROXY.md](REVERSE_PROXY.md) ([中文版](REVERSE_PROXY.zh.md)) for detailed configuration examples for Nginx, Caddy, Apache, and Traefik.
 
+### Shared Annotation Mode
+
+When `--shared-annotation` is enabled:
+
+**Database location**:
+- Linux/macOS: `~/.markon/annotation.sqlite`
+- Windows: `%USERPROFILE%\.markon\annotation.sqlite`
+- Custom: set the `MARKON_SQLITE_PATH` environment variable
+
+**Sync mechanism**:
+- Annotations and viewed state sync in real time over WebSocket
+- Auto-reconnect with exponential backoff
+- Broadcast to all connected clients
+
+**Multi-device usage**:
+1. Start on the server: `markon --shared-annotation --host 0.0.0.0 README.md`
+2. Open on any device: `http://server-ip:6419`
+3. All annotations sync across devices in real time
+
+### Access Codes
+
+Markon can gate viewer access with access codes, configured entirely from the GUI (not a CLI flag):
+
+- **Server-level (global) code**: set in **General** settings. It gates every workspace that does not define its own code.
+- **Per-workspace code**: set via the lock icon on each workspace card. A workspace's own code **overrides** the global one — the global code only applies to workspaces without their own.
+- Viewers unlock at a browser gate before they can read.
+
+This is **app-layer access control**, not transport security. Codes travel over whatever connection you expose, so put Markon behind HTTPS / a reverse proxy for any real exposure. See [REVERSE_PROXY.md](REVERSE_PROXY.md).
+
+### Single-File Workspaces
+
+Opening a single `.md` file — via Finder's **Open With** or `markon path/to/file.md` — creates a **single-file workspace**:
+
+- It appears in the GUI workspace list with a file icon and is configurable like any other workspace (themes, feature toggles, access code, etc.).
+- It is **transient**: single-file workspaces are not persisted across server restarts.
+- Its full-text search is **scoped to that one file**.
+
 ## Supported Markdown Features
 
 - **Headings** (H1-H6)
@@ -386,6 +442,82 @@ Supported types:
 - **Diagram Rendering**: [Mermaid.js](https://mermaid.js.org/)
 - **Styling**: [GitHub Markdown CSS](https://github.com/sindresorhus/github-markdown-css)
 - **Architecture**: ES6 modules, OOP design, Strategy pattern
+
+## FAQ
+
+<details>
+<summary><strong>How do I access from another device?</strong></summary>
+
+On the server, bind all interfaces with `--host 0.0.0.0`:
+
+```bash
+markon --host 0.0.0.0 README.md
+```
+
+Then open `http://{IP}:6419` from any device. Use `--entry` to generate a QR code for mobile access.
+</details>
+
+<details>
+<summary><strong>Where are annotations stored?</strong></summary>
+
+**Local mode** (default): browser LocalStorage (per-browser)
+
+**Shared mode** (`--shared-annotation`): SQLite database
+- Linux/macOS: `~/.markon/annotation.sqlite`
+- Windows: `%USERPROFILE%\.markon\annotation.sqlite`
+- Custom: `MARKON_SQLITE_PATH=/path/to/db markon --shared-annotation`
+</details>
+
+<details>
+<summary><strong>How do I run behind an Nginx/Apache reverse proxy?</strong></summary>
+
+Nginx example:
+
+```nginx
+location / {
+    proxy_pass http://127.0.0.1:6419;
+    proxy_http_version 1.1;
+    proxy_set_header Upgrade $http_upgrade;
+    proxy_set_header Connection "upgrade";
+    proxy_set_header Host $host;
+    proxy_set_header X-Real-IP $remote_addr;
+}
+```
+
+Then use:
+```bash
+markon -b http://yourdomain.com --entry http://yourdomain.com
+```
+
+See the [reverse proxy guide](REVERSE_PROXY.md) for detailed configuration.
+</details>
+
+<details>
+<summary><strong>Can I render multiple files at once?</strong></summary>
+
+A single file-render workspace shows one file at a time, but you can open multiple workspaces at once, and directory-browse mode lets you switch between files quickly:
+
+```bash
+markon  # browse all .md files in the current directory
+```
+</details>
+
+<details>
+<summary><strong>How do I change the port?</strong></summary>
+
+```bash
+markon -p 8080 README.md
+```
+</details>
+
+<details>
+<summary><strong>Which themes are supported?</strong></summary>
+
+Three theme modes:
+- `--theme light`: force light theme
+- `--theme dark`: force dark theme
+- `--theme auto` (default): follow the system setting
+</details>
 
 ## Development
 

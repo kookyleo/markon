@@ -158,7 +158,7 @@
     // ── 小贴士 — 快速上手 ────────────────────────────────────
     "tips.search.placeholder": "搜索帮助内容…",
     "tips.quickstart": "快速上手",
-    "tips.quickstart.1": "1. 在「工作区」tab 点击左下角的 (+) 按钮，选择你的工作目录",
+    "tips.quickstart.1": "1. 在「工作区」tab 点击左下角的 (+) 按钮，选择你的工作目录（也可选择单个 .md 文件）",
     "tips.quickstart.2": "2. 点击 ↗ 图标在浏览器中查看渲染结果",
     "tips.quickstart.3": "3. 在浏览器页面中按下 {key} 查看完整快捷键列表，了解更多功能",
 
@@ -188,11 +188,11 @@
     // ── 小贴士 — 其它功能 ────────────────────────────────────
     "tips.features":   "更多",
     "tips.feat.search.title": "全文搜索",
-    "tips.feat.search.desc":  "支持中日英分词。浏览器中按 / 打开搜索框，实时匹配文件内容",
+    "tips.feat.search.desc":  "支持中日英分词，不区分大小写。浏览器中按 / 打开搜索框，实时匹配文件内容",
     "tips.feat.viewed.title": "已读追踪",
     "tips.feat.viewed.desc":  "受 Gh PR Reviewed 标记启发, 按段落级别标记阅读进度，自动记录",
     "tips.feat.edit.title":   "在线编辑",
-    "tips.feat.edit.desc":    "按下 e 键，在浏览器中直接编辑 Markdown 源文件，语法高亮 + 实时预览，修改即保存",
+    "tips.feat.edit.desc":    "按下 e 键，在浏览器中直接编辑 Markdown 源文件，语法高亮 + 实时预览，按 ⌘/Ctrl+S 保存",
     "tips.feat.shared.title": "共享标记、便条和已读状态",
     "tips.feat.shared.desc":  "适用于个人多设备阅读或团队协作场景",
     "tips.feat.annot.title":  "标注与高亮",
@@ -203,6 +203,8 @@
     "tips.feat.live.desc":    "多设备/团队间同步阅读位置；浏览器中按 l 在主控/被控间切换，Shift+l 关闭",
     "tips.feat.chat.title":   "AI 对话",
     "tips.feat.chat.desc":    "嵌入式 AI 助手，回答基于当前文档；浏览器中按 c 打开（Shift+c 切换内嵌/弹出窗口）",
+    "tips.feat.access.title": "访问码",
+    "tips.feat.access.desc":  "为工作区设置访问码加以保护：在「监听与访问」中设置全局访问码，或点击工作区的锁图标为该工作区单独设置。访客需在浏览器门禁处输入访问码（门禁输入框带按住显示的眼睛图标）",
     "tips.feat.customize.title": "个性化",
     "tips.feat.customize.desc":  "在「页面样式」面板调主题色（亮/暗）、字体字号、面板透明度；「快捷键」面板可重绑所有键位",
 

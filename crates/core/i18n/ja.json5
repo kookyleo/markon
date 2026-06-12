@@ -158,7 +158,7 @@
     // ── Tips — Quick start ───────────────────────────────────
     "tips.search.placeholder": "ヒントを検索…",
     "tips.quickstart": "クイックスタート",
-    "tips.quickstart.1": "1.「ワークスペース」タブで + ボタンをクリックし、Markdown ファイルのあるフォルダを選択",
+    "tips.quickstart.1": "1.「ワークスペース」タブで + ボタンをクリックし、Markdown ファイルのあるフォルダ（または単一の .md ファイル）を選択",
     "tips.quickstart.2": "2. ↗ アイコンをクリックしてブラウザでレンダリング結果を確認",
     "tips.quickstart.3": "3. ブラウザページで {key} を押すと、すべてのショートカットキーと利用可能な機能を確認できます",
 
@@ -189,11 +189,11 @@
     // ── Tips — Key features ──────────────────────────────────
     "tips.features":   "その他",
     "tips.feat.search.title": "全文検索",
-    "tips.feat.search.desc":  "CJK 対応の分かち書き。ブラウザで / を押すとファイル内容をリアルタイム検索",
+    "tips.feat.search.desc":  "CJK 対応の分かち書き、大文字小文字を区別しません。ブラウザで / を押すとファイル内容をリアルタイム検索",
     "tips.feat.viewed.title": "既読トラッキング",
     "tips.feat.viewed.desc":  "GitHub PR レビューに着想を得た、ブロック単位の閲読進捗マーク。自動保存",
     "tips.feat.edit.title":   "オンライン編集",
-    "tips.feat.edit.desc":    "e キーで Markdown ソースを直接編集。シンタックスハイライト + ライブプレビュー",
+    "tips.feat.edit.desc":    "e キーで Markdown ソースを直接編集。シンタックスハイライト + ライブプレビュー、⌘/Ctrl+S で保存",
     "tips.feat.annot.title":  "注釈とハイライト",
     "tips.feat.annot.desc":   "テキストを選択してハイライト、取り消し線、またはノートを追加",
     "tips.feat.shared.title": "共有ノートと既読状態",
@@ -204,6 +204,8 @@
     "tips.feat.live.desc":    "複数デバイスやチーム間で閲覧位置を同期；ブラウザで l を押すと主導/追従を切替、Shift+l でオフ",
     "tips.feat.chat.title":   "AI アシスタント",
     "tips.feat.chat.desc":    "現在の文書に基づく組み込み AI アシスタント；ブラウザで c を押すと起動 (Shift+c で組込/ポップアウト切替)",
+    "tips.feat.access.title": "アクセスコード",
+    "tips.feat.access.desc":  "ワークスペースをアクセスコードで保護：「サーバーとアクセス」でグローバルコードを設定するか、ワークスペースのロックアイコンから個別に設定。閲覧者はブラウザのゲートでコードを入力します（ゲートの入力欄には長押しで表示する目のアイコンがあります）",
     "tips.feat.customize.title": "カスタマイズ",
     "tips.feat.customize.desc":  "「ページスタイル」でテーマカラー（ライト/ダーク）、UI フォント・サイズ、パネル透明度を調整；「ショートカット」で全キーを再バインド可能",
 
