@@ -19,7 +19,7 @@
 | Linux AppImage (amd64) | `Markon_x.x.x_amd64.AppImage` |
 | Linux AppImage (arm64) | `Markon_x.x.x_arm64.AppImage` |
 
-### 2. 使用 Markdown
+### 2. 使用 Markon
 
 分述两种场景。
 
