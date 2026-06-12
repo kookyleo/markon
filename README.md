@@ -1,6 +1,6 @@
 # Markon
 
-Turn your markdown on.
+Mark it on.
 High-performance Markdown review workbench. Open source, free, and fully local.
 
 ![Markon Banner](banner.png)

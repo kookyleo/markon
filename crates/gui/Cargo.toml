@@ -6,7 +6,7 @@ authors.workspace = true
 license.workspace = true
 repository.workspace = true
 homepage.workspace = true
-description = "markon desktop - Turn your markdown on."
+description = "markon desktop - Mark it on."
 publish = false
 
 [[bin]]

@@ -3,7 +3,7 @@ layout: home
 
 hero:
   name: Markon
-  text: Turn your markdown on.
+  text: Mark it on.
   tagline: 轻量级的 Markdown 阅览与审校工作台。开源、免费，完全本地。
   image:
     light: /logo-light.svg

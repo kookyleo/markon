@@ -39,7 +39,7 @@ fn select_host() -> Result<String, Box<dyn std::error::Error>> {
     Ok(hosts[sel].0.clone())
 }
 
-/// markon - Turn your markdown on.
+/// markon - Mark it on.
 #[derive(Parser, Debug)]
 #[command(author, version, about, long_about = None)]
 struct Cli {

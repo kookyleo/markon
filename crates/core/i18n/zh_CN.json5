@@ -207,7 +207,7 @@
     "tips.feat.customize.desc":  "在「页面样式」面板调主题色（亮/暗）、字体字号、面板透明度；「快捷键」面板可重绑所有键位",
 
     // ── 关于页 ───────────────────────────────────────────────
-    "about.slogan":   "Turn your markdown on.",
+    "about.slogan":   "Mark it on.",
     "about.desc":     "轻量、本地优先的 Markdown 工作台——渲染、搜索、批注、AI 对话、跨设备共享。",
     "about.icon.credit": "Some icons by brajaomar_j — Flaticon",
     "about.star":     "Star 支持项目",

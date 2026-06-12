@@ -208,7 +208,7 @@
     "tips.feat.customize.desc":  "「ページスタイル」でテーマカラー（ライト/ダーク）、UI フォント・サイズ、パネル透明度を調整；「ショートカット」で全キーを再バインド可能",
 
     // ── About ────────────────────────────────────────────────
-    "about.slogan":   "Turn your markdown on.",
+    "about.slogan":   "Mark it on.",
     "about.desc":     "軽量・ローカルファーストの Markdown ワークスペース——表示・検索・注釈・チャット・デバイス間で共有。",
     "about.icon.credit": "Some icons by brajaomar_j — Flaticon",
     "about.star":     "GitHub でスターする",
