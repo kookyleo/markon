@@ -25,15 +25,13 @@ import { EditorManager } from './managers/editor-manager';
 import { ExportManager } from './managers/export-manager';
 import { CollaborationManager } from './managers/collaboration-manager';
 import { ChatManager } from './managers/chat-manager';
+import { VisualZoomManager } from './managers/visual-zoom-manager';
 import { TOCNavigator } from './navigators/toc-navigator';
 import { AnnotationNavigator } from './navigators/annotation-navigator';
 import { ModalManager, showConfirmDialog } from './components/modal';
 import { FloatingLayer } from './components/floating-layer';
 
-/** CONFIG.SELECTORS.HEADINGS scoped to the rendered markdown body. */
-const MARKDOWN_BODY_HEADINGS = CONFIG.SELECTORS.HEADINGS.split(', ')
-    .map((tag) => `.markdown-body ${tag}`)
-    .join(', ');
+const INTERACTIVE_MARKDOWN_BODY_SELECTOR = '[data-markon-interactive-body]';
 
 // ── Public types ───────────────────────────────────────────────────────────
 
@@ -53,6 +51,7 @@ export interface ManagerSnapshot {
     annotationManager: AnnotationManager | null;
     noteManager: NoteManager | null;
     popoverManager: PopoverManager | null;
+    visualZoomManager: VisualZoomManager | null;
     undoManager: UndoManager | null;
     shortcutsManager: KeyboardShortcutsManager | null;
     searchManager: SearchManager | null;
@@ -70,6 +69,7 @@ export class MarkonApp {
     #annotationManager: AnnotationManager | null = null;
     #noteManager: NoteManager | null = null;
     #popoverManager: PopoverManager | null = null;
+    #visualZoomManager: VisualZoomManager | null = null;
     #undoManager: UndoManager | null = null;
     #shortcutsManager: KeyboardShortcutsManager | null = null;
     #searchManager: SearchManager | null = null;
@@ -104,7 +104,7 @@ export class MarkonApp {
         this.#enableEdit = config.enableEdit || false;
         this.#enableLive = config.enableLive || false;
         this.enableLive = this.#enableLive;
-        this.#markdownBody = document.querySelector<HTMLElement>(CONFIG.SELECTORS.MARKDOWN_BODY);
+        this.#markdownBody = document.querySelector<HTMLElement>(INTERACTIVE_MARKDOWN_BODY_SELECTOR);
 
         if (!this.#markdownBody) {
             Logger.warn('MarkonApp', 'Markdown body not found, will initialize minimal features');
@@ -256,6 +256,10 @@ export class MarkonApp {
             enableChat: Meta.flag(CONFIG.META_TAGS.ENABLE_CHAT),
         });
 
+        this.#visualZoomManager = new VisualZoomManager(this.#markdownBody);
+        this.#visualZoomManager.init();
+        window.visualZoomManager = this.#visualZoomManager;
+
         this.#undoManager = new UndoManager();
 
         this.#tocNavigator = new TOCNavigator();
@@ -346,8 +350,7 @@ export class MarkonApp {
         document.addEventListener('click', (e) => {
             const target = e.target as Element | null;
             if (!target) return;
-            const markdownBody = target.closest('.markdown-body');
-            if (!markdownBody) return;
+            if (!this.#markdownBody?.contains(target)) return;
 
             if (
                 target.tagName === 'A' ||
@@ -366,7 +369,7 @@ export class MarkonApp {
 
             if (!heading) {
                 const allHeadings = Array.from(
-                    document.querySelectorAll<HTMLElement>(MARKDOWN_BODY_HEADINGS),
+                    this.#markdownBody.querySelectorAll<HTMLElement>(CONFIG.SELECTORS.HEADINGS),
                 );
                 const clickY = e.clientY + window.scrollY;
 
@@ -403,6 +406,10 @@ export class MarkonApp {
 
         shortcuts.register('HELP', () => {
             shortcuts.showHelp();
+        });
+
+        shortcuts.register('THEME_PANEL', () => {
+            window.MarkonTheme?.togglePanel();
         });
 
         if (this.#searchManager) {
@@ -959,7 +966,7 @@ export class MarkonApp {
             }
 
             // Click outside .markdown-body cancels the focused heading.
-            if (!target.closest('.markdown-body') && this.#clearHeadingFocus() > 0) {
+            if (!this.#markdownBody?.contains(target) && this.#clearHeadingFocus() > 0) {
                 Logger.log('MarkonApp', 'Cleared heading focus (clicked outside markdown-body)');
             }
         };
@@ -1361,6 +1368,14 @@ export class MarkonApp {
         void this.#editorManager.open({ line });
     }
 
+    /** Re-apply loaded annotations after a page replaces rendered markdown content. */
+    refreshAnnotations(): void {
+        if (!this.#annotationManager || !this.#noteManager) return;
+        this.#annotationManager.clearDOM();
+        this.#annotationManager.applyToDOM();
+        this.#noteManager.render();
+    }
+
     /** Manager snapshot — used for window globals + debug. */
     getManagers(): ManagerSnapshot {
         return {
@@ -1369,6 +1384,7 @@ export class MarkonApp {
             annotationManager: this.#annotationManager,
             noteManager: this.#noteManager,
             popoverManager: this.#popoverManager,
+            visualZoomManager: this.#visualZoomManager,
             undoManager: this.#undoManager,
             shortcutsManager: this.#shortcutsManager,
             searchManager: this.#searchManager,
@@ -1409,7 +1425,7 @@ if (__DEV__) {
 }
 
 document.addEventListener('DOMContentLoaded', () => {
-    // Chat-only page: served by `/{ws}/_/chat` (template `chat.html`), opened
+    // Chat-only page: served by `/_/{ws}/chat` (template `chat.html`), opened
     // by ChatManager.#openPopout() into its own browser-level window. The
     // server-rendered HTML carries `<meta name="chat-only" content="1">`,
     // which is our signal to skip MarkonApp entirely (no markdown body, no
@@ -1468,6 +1484,14 @@ document.addEventListener('DOMContentLoaded', () => {
         window.annotationNavigator = managers.annotationNavigator ?? undefined;
         window.shortcutsManager = managers.shortcutsManager ?? undefined;
         Logger.log('MarkonApp', 'Application started successfully');
+        // Deep-link into edit mode (e.g. from the diff file menu's "Edit file").
+        try {
+            if (new URLSearchParams(window.location.search).get('edit') === '1') {
+                app.openEditorAtLine(1);
+            }
+        } catch (_) {
+            /* ignore malformed URLs */
+        }
     });
 
     // Connect to per-workspace WebSocket — reload page when config flags change.

@@ -15,6 +15,8 @@ use std::path::{Component, Path, PathBuf};
 use std::sync::Arc;
 use tokio::sync::mpsc;
 
+pub(crate) use crate::fswalk::{default_walker, path_to_forward_slash};
+
 /// Per-request tool scope — currently just the workspace root. Anything
 /// extra (cwd, environment) lives here so individual tools stay pure.
 ///
@@ -217,23 +219,6 @@ pub(crate) const MAX_FILE_BYTES: u64 = 1024 * 1024; // 1 MiB
 pub(crate) fn looks_binary(bytes: &[u8]) -> bool {
     let scan = bytes.len().min(8192);
     bytes[..scan].contains(&0)
-}
-
-/// Render a path with forward slashes regardless of platform — used for
-/// stable cross-OS citations and tool output.
-pub(crate) fn path_to_forward_slash(rel: &Path) -> String {
-    rel.components()
-        .map(|c| c.as_os_str().to_string_lossy().into_owned())
-        .collect::<Vec<_>>()
-        .join("/")
-}
-
-/// Default ignore-rule walker that respects `.gitignore`, `.ignore`, and
-/// hidden-file conventions — the same defaults ripgrep uses.
-pub(crate) fn default_walker(root: &Path) -> ignore::WalkBuilder {
-    let mut b = ignore::WalkBuilder::new(root);
-    b.standard_filters(true);
-    b
 }
 
 #[cfg(test)]

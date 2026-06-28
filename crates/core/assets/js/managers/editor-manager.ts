@@ -65,7 +65,7 @@ export interface EditorSaveResponse {
 /** Response shape from POST /api/preview. */
 export interface EditorPreviewResponse {
     html: string;
-    has_mermaid?: boolean;
+    has_math?: boolean;
 }
 
 export class EditorManager {
@@ -81,6 +81,7 @@ export class EditorManager {
     #baselineContent = '';
     #previewPane: HTMLElement | null = null;
     #previewDebounceId: ReturnType<typeof setTimeout> | null = null;
+    #mathRendererPromise: Promise<void> | null = null;
     /** narrow-screen tab state */
     #activeTab: EditorTab = 'edit';
     #layout: EditorLayout = 'split';
@@ -824,31 +825,58 @@ export class EditorManager {
             const result = (await response.json()) as EditorPreviewResponse;
             this.#previewPane.innerHTML = result.html;
 
-            // Re-run Mermaid if diagrams present
-            if (result.has_mermaid) {
-                this.#renderMermaid();
+            if (result.has_math) {
+                this.#renderMath();
             }
         } catch (err) {
             Logger.warn('EditorManager', 'Preview update failed:', err);
         }
     }
 
-    /**
-     * Render mermaid diagrams in the preview pane
-     */
-    #renderMermaid(): void {
+    #renderMath(): void {
         if (!this.#previewPane) return;
-        const m = window.mermaid;
-        if (!m) return;
-        try {
-            // run() is the modern API; older bundled mermaid versions only
-            // expose init() — if run() throws (or is missing), fall through.
-            void m.run!({ nodes: this.#previewPane.querySelectorAll('.language-mermaid') });
-        } catch {
-            try {
-                m.init!(undefined, this.#previewPane.querySelectorAll('.language-mermaid'));
-            } catch { /* ignore */ }
+        if (window.markonRenderMath) {
+            window.markonRenderMath(this.#previewPane);
+            return;
         }
+        void this.#loadMathRenderer().then(() => {
+            if (this.#previewPane) {
+                window.markonRenderMath?.(this.#previewPane);
+            }
+        });
+    }
+
+    #loadMathRenderer(): Promise<void> {
+        if (window.markonRenderMath) return Promise.resolve();
+        if (this.#mathRendererPromise) return this.#mathRendererPromise;
+
+        this.#ensureStylesheet('/_/js/katex/katex.min.css');
+        this.#mathRendererPromise = this.#loadScript('/_/js/katex/katex.min.js')
+            .then(() => this.#loadScript('/_/js/math-render.js'))
+            .catch((err) => {
+                this.#mathRendererPromise = null;
+                Logger.warn('EditorManager', 'Math renderer failed to load:', err);
+            });
+        return this.#mathRendererPromise;
+    }
+
+    #ensureStylesheet(href: string): void {
+        if (document.querySelector(`link[rel="stylesheet"][href="${href}"]`)) return;
+        const link = document.createElement('link');
+        link.rel = 'stylesheet';
+        link.href = href;
+        document.head.appendChild(link);
+    }
+
+    #loadScript(src: string): Promise<void> {
+        if (document.querySelector(`script[src="${src}"]`)) return Promise.resolve();
+        return new Promise((resolve, reject) => {
+            const script = document.createElement('script');
+            script.src = src;
+            script.onload = () => resolve();
+            script.onerror = () => reject(new Error(`Failed to load ${src}`));
+            document.head.appendChild(script);
+        });
     }
 
     /**

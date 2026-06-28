@@ -822,6 +822,7 @@ mod tests {
             flags,
             single_file: None,
             access_code_hash: String::new(),
+            collaborator_access_code_hash: String::new(),
         });
 
         let db_tmp = tempfile::NamedTempFile::new().expect("sqlite tmpfile");
@@ -846,8 +847,10 @@ mod tests {
             default_chat_mode: Arc::new("in_page".into()),
             editor_theme: Arc::new("follow".into()),
             access_code_hash: Arc::new(String::new()),
+            collaborator_access_code_hash: Arc::new(String::new()),
             access_secret: Arc::new("test-salt".into()),
             access_attempts: Arc::new(std::sync::Mutex::new(std::collections::HashMap::new())),
+            markdown_diff_cache: Arc::new(Mutex::new(crate::server::MarkdownDiffCache::default())),
             print_collapsed_content: false,
             shutdown_tx,
             #[cfg(debug_assertions)]

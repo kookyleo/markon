@@ -1,19 +1,266 @@
-{# Pre-paint theme bootstrap, shared by layout.html and directory.html.
-   (chat.html keeps its popout-specific copy; access-gate.html intentionally
-   has no theme-boot script.) #}
+{# Pre-paint runtime theme bootstrap, shared by the web entry points.
+   Server-side `theme` is only the default. The browser owns the runtime
+   preference so users can switch light/dark/auto without restarting markon. #}
 <script>
-    // Resolve Markon's theme to a concrete light/dark value before stylesheets
-    // apply. All theme CSS targets html[data-theme="light|dark"] so the choice
-    // is under app control (not tied to prefers-color-scheme).
     (function(){
+        var STORAGE_KEY = 'markon.web.theme';
         var root = document.documentElement;
-        var apply = function(t){ root.setAttribute('data-theme', t); };
-        if (root.getAttribute('data-theme') === 'auto') {
-            var mql = window.matchMedia('(prefers-color-scheme: dark)');
-            apply(mql.matches ? 'dark' : 'light');
-            mql.addEventListener && mql.addEventListener('change', function(e){
-                apply(e.matches ? 'dark' : 'light');
+        var mql = window.matchMedia ? window.matchMedia('(prefers-color-scheme: dark)') : null;
+        var modes = { auto: true, light: true, dark: true };
+        var listenersReady = false;
+        var panelBackdrop = null;
+        var panel = null;
+        var backdropClickHandler = null;
+        var panelKeyHandler = null;
+
+        function validMode(value) {
+            return modes[value] ? value : null;
+        }
+
+        function serverDefault() {
+            return validMode(root.getAttribute('data-theme-default'))
+                || validMode(root.getAttribute('data-theme'))
+                || 'auto';
+        }
+
+        function storedMode() {
+            try {
+                return validMode(window.localStorage && window.localStorage.getItem(STORAGE_KEY));
+            } catch (_) {
+                return null;
+            }
+        }
+
+        function currentMode() {
+            return storedMode() || serverDefault();
+        }
+
+        function resolve(mode) {
+            if (mode === 'light' || mode === 'dark') return mode;
+            return mql && mql.matches ? 'dark' : 'light';
+        }
+
+        function applyStylesheetMedia(resolved) {
+            var theme = resolved || root.getAttribute('data-theme') || resolve(currentMode());
+            var light = document.getElementById('markon-github-markdown-light');
+            var dark = document.getElementById('markon-github-markdown-dark');
+            if (light) light.media = theme === 'dark' ? 'not all' : 'all';
+            if (dark) dark.media = theme === 'dark' ? 'all' : 'not all';
+        }
+
+        function themeLabel(mode) {
+            var t = window.__MARKON_I18N__ && window.__MARKON_I18N__.t;
+            var fallback = mode === 'light' ? 'Theme: Light' : mode === 'dark' ? 'Theme: Dark' : 'Theme: Auto';
+            return t ? t('web.theme.link.' + mode) : fallback;
+        }
+
+        function optionLabel(mode) {
+            var t = window.__MARKON_I18N__ && window.__MARKON_I18N__.t;
+            var fallback = mode === 'light' ? 'Light' : mode === 'dark' ? 'Dark' : 'Auto';
+            return t ? t('web.theme.option.' + mode) : fallback;
+        }
+
+        function syncThemeEntry(mode) {
+            var link = document.getElementById('theme-link-text');
+            if (!link) return;
+            link.textContent = themeLabel(mode);
+            link.title = themeLabel(mode);
+        }
+
+        function syncPanel(mode) {
+            if (!panel) return;
+            var buttons = panel.querySelectorAll('[data-markon-theme-mode]');
+            for (var i = 0; i < buttons.length; i++) {
+                var active = buttons[i].getAttribute('data-markon-theme-mode') === mode;
+                buttons[i].classList.toggle('is-active', active);
+                buttons[i].setAttribute('aria-pressed', active ? 'true' : 'false');
+            }
+        }
+
+        function apply(mode, persist) {
+            mode = validMode(mode) || serverDefault();
+            if (persist) {
+                try { window.localStorage && window.localStorage.setItem(STORAGE_KEY, mode); } catch (_) {}
+            }
+            var resolved = resolve(mode);
+            root.setAttribute('data-theme-mode', mode);
+            root.setAttribute('data-theme', resolved);
+            root.style.colorScheme = resolved;
+            applyStylesheetMedia(resolved);
+            syncThemeEntry(mode);
+            syncPanel(mode);
+        }
+
+        function cleanupPanelListeners() {
+            if (panelBackdrop && backdropClickHandler) {
+                panelBackdrop.removeEventListener('pointerdown', backdropClickHandler, true);
+                backdropClickHandler = null;
+            }
+            if (panelKeyHandler) {
+                document.removeEventListener('keydown', panelKeyHandler, true);
+                panelKeyHandler = null;
+            }
+        }
+
+        function closePanel() {
+            cleanupPanelListeners();
+            if (panelBackdrop) {
+                panelBackdrop.remove();
+                panelBackdrop = null;
+                panel = null;
+                return;
+            }
+            if (panel) {
+                panel.remove();
+                panel = null;
+            }
+        }
+
+        function openPanel() {
+            closePanel();
+            var t = window.__MARKON_I18N__ && window.__MARKON_I18N__.t;
+            var title = t ? t('web.theme.title') : 'Theme';
+            panelBackdrop = document.createElement('div');
+            panelBackdrop.className = 'markon-theme-backdrop';
+            panel = document.createElement('div');
+            panel.className = 'markon-theme-panel';
+            panel.setAttribute('role', 'dialog');
+            panel.setAttribute('aria-modal', 'true');
+            panel.setAttribute('aria-label', title);
+            panel.innerHTML =
+                '<div class="markon-theme-panel-title">' + title + '</div>' +
+                '<div class="markon-theme-panel-options">' +
+                    '<button type="button" data-markon-theme-mode="auto">' + optionLabel('auto') + '</button>' +
+                    '<button type="button" data-markon-theme-mode="light">' + optionLabel('light') + '</button>' +
+                    '<button type="button" data-markon-theme-mode="dark">' + optionLabel('dark') + '</button>' +
+                '</div>';
+            panelBackdrop.appendChild(panel);
+            document.body.appendChild(panelBackdrop);
+            syncPanel(currentMode());
+            panel.querySelectorAll('[data-markon-theme-mode]').forEach(function(button) {
+                button.addEventListener('click', function() {
+                    apply(button.getAttribute('data-markon-theme-mode'), true);
+                    closePanel();
+                });
+            });
+            backdropClickHandler = function(event) {
+                if (event.target !== panelBackdrop) return;
+                closePanel();
+            };
+            panelKeyHandler = function(event) {
+                if (event.key === 'Escape') {
+                    event.preventDefault();
+                    closePanel();
+                }
+            };
+            setTimeout(function() {
+                panelBackdrop && panelBackdrop.addEventListener('pointerdown', backdropClickHandler, true);
+                document.addEventListener('keydown', panelKeyHandler, true);
+                var active = panel && (panel.querySelector('button.is-active') || panel.querySelector('button'));
+                if (active && active.focus) active.focus({ preventScroll: true });
+            }, 0);
+        }
+
+        function togglePanel() {
+            if (panel) closePanel();
+            else openPanel();
+        }
+
+        function setupFooterEntry() {
+            var link = document.getElementById('theme-link-text');
+            if (!link || link.dataset.markonThemeBound === '1') return;
+            link.dataset.markonThemeBound = '1';
+            link.addEventListener('click', function(event) {
+                event.preventDefault();
+                togglePanel();
             });
         }
+
+        function ensureListeners() {
+            if (listenersReady) return;
+            listenersReady = true;
+            if (mql && mql.addEventListener) {
+                mql.addEventListener('change', function() {
+                    if (currentMode() === 'auto') apply('auto', false);
+                });
+            }
+            document.addEventListener('DOMContentLoaded', function() {
+                setupFooterEntry();
+                apply(currentMode(), false);
+            });
+        }
+
+        window.MarkonTheme = {
+            storageKey: STORAGE_KEY,
+            getMode: currentMode,
+            getResolved: function(){ return root.getAttribute('data-theme') || resolve(currentMode()); },
+            setMode: function(mode){ apply(mode, true); },
+            openPanel: openPanel,
+            togglePanel: togglePanel,
+            closePanel: closePanel,
+            apply: function(){ apply(currentMode(), false); },
+            applyStylesheetMedia: function(){ applyStylesheetMedia(); }
+        };
+
+        apply(currentMode(), false);
+        ensureListeners();
     })();
-    </script>
+</script>
+<style>
+    .markon-theme-backdrop {
+        position: fixed;
+        inset: 0;
+        z-index: var(--markon-z-chrome);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        box-sizing: border-box;
+        padding: 24px;
+        background: transparent;
+    }
+    .markon-theme-panel {
+        position: relative;
+        z-index: var(--markon-z-chrome-toolbar);
+        width: min(340px, 100%);
+        box-sizing: border-box;
+        padding: 16px;
+        border: 1px solid var(--markon-border-emphasis);
+        border-radius: var(--markon-radius-lg);
+        background: var(--markon-bg-overlay);
+        color: var(--markon-fg-default);
+        box-shadow: var(--markon-shadow-modal);
+        font: 14px/1.35 var(--markon-ui-font);
+    }
+    .markon-theme-panel-title {
+        margin: 0 0 12px;
+        color: var(--markon-fg-default);
+        font-weight: 600;
+    }
+    .markon-theme-panel-options {
+        display: grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: 8px;
+    }
+    .markon-theme-panel button {
+        min-height: 40px;
+        border: 0;
+        border-radius: var(--markon-radius-sm);
+        background: transparent;
+        color: var(--markon-fg-muted);
+        font: inherit;
+        padding: 8px 10px;
+        cursor: pointer;
+    }
+    .markon-theme-panel button:hover {
+        background: var(--markon-bg-hover);
+        color: var(--markon-fg-default);
+    }
+    .markon-theme-panel button.is-active {
+        background: var(--markon-accent);
+        color: var(--markon-fg-on-emphasis);
+    }
+    @media print {
+        .markon-theme-backdrop,
+        .markon-theme-panel { display: none !important; }
+    }
+</style>

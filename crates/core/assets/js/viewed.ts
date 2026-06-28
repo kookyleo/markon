@@ -13,6 +13,13 @@
 
 const _t = (window.__MARKON_I18N__ && window.__MARKON_I18N__.t) || ((k: string): string => k);
 
+const runtimeTheme = (): 'light' | 'dark' => {
+    const resolved = window.MarkonTheme?.getResolved?.() || document.documentElement.getAttribute('data-theme');
+    return resolved === 'dark' ? 'dark' : 'light';
+};
+
+const runtimeMarkdownCss = (): string => `/_/css/github-markdown-${runtimeTheme()}.css`;
+
 /**
  * All section headings (h2-h6) inside the rendered markdown body. The
  * selector literal lives here (not in core/config.ts) by design, because
@@ -430,8 +437,7 @@ export class SectionViewedManager {
         iframe.style.pointerEvents = 'none';
         document.body.appendChild(iframe);
 
-        const prefersDark = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
-        const themeCss = prefersDark ? '/_/css/github-markdown-dark.css' : '/_/css/github-markdown-light.css';
+        const themeCss = runtimeMarkdownCss();
 
         const doc = iframe.contentDocument;
         if (!doc) {
@@ -458,9 +464,9 @@ export class SectionViewedManager {
   }
   /* Ensure first element never forces a break */
   .markdown-body > :first-child { page-break-before: auto !important; margin-top: 0 !important; }
-  /* Mermaid sizing overrides */
-  .mermaid { overflow: visible !important; border: none !important; padding: 0 !important; margin: 12pt 0 !important; page-break-inside: avoid !important; }
-  .mermaid svg { display: block; width: 100% !important; height: auto !important; max-width: 100% !important; }
+  /* Diagram sizing overrides */
+  .markon-diagram { overflow: visible !important; border: none !important; padding: 0 !important; margin: 12pt 0 !important; page-break-inside: avoid !important; }
+  .markon-diagram svg { display: block; width: 100% !important; height: auto !important; max-width: 100% !important; }
   @media print { body { background: transparent !important; } }
 </style>
 </head><body><div class="markdown-body" id="root"></div></body></html>`);
@@ -479,9 +485,9 @@ export class SectionViewedManager {
         await new Promise<number>(requestAnimationFrame);
         await new Promise<number>(requestAnimationFrame);
 
-        // Normalize Mermaid/SVG sizing in iframe.
+        // Normalize SVG sizing in iframe.
         const normalizeIframeSVGs = (): void => {
-            const svgs = Array.from(doc.querySelectorAll<SVGElement>('.mermaid svg, svg'));
+            const svgs = Array.from(doc.querySelectorAll<SVGElement>('.markon-diagram svg, svg'));
             svgs.forEach((svg) => {
                 try {
                     svg.removeAttribute('width');
@@ -674,7 +680,7 @@ export class SectionViewedManager {
     }
 
     async fetchPrintStyles(): Promise<string> {
-        const cssFiles = ['/_/css/github-markdown-light.css', '/_/css/github-print.css'];
+        const cssFiles = [runtimeMarkdownCss(), '/_/css/github-print.css'];
 
         const cssContents = await Promise.all(
             cssFiles.map(async (file) => {
@@ -744,16 +750,15 @@ export class SectionViewedManager {
     }
 
     updateAllViewedCheckbox(): void {
-        if (!this.allViewedCheckbox) return;
-
         const allHeadingIds = this.headingIds();
-
         const allViewed = allHeadingIds.length > 0 && allHeadingIds.every((id) => this.viewedState[id]);
 
-        // Recursion guard.
-        this.updatingAllViewedCheckbox = true;
-        this.allViewedCheckbox.checked = allViewed;
-        this.updatingAllViewedCheckbox = false;
+        if (this.allViewedCheckbox) {
+            // Recursion guard.
+            this.updatingAllViewedCheckbox = true;
+            this.allViewedCheckbox.checked = allViewed;
+            this.updatingAllViewedCheckbox = false;
+        }
     }
 
     async loadState(): Promise<void> {

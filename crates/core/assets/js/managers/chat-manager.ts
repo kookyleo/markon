@@ -904,10 +904,10 @@ export class ChatManager {
             this.#popoutWindow.focus();
             return;
         }
-        // Standalone chat URL — served by `/{ws}/_/chat` (template chat.html),
+        // Standalone chat URL — served by `/_/{ws}/chat` (template chat.html),
         // not the markdown page with a query flag. The popout window therefore
         // doesn't pay the cost of rendering markdown, TOC, annotations, etc.
-        const url = `/${encodeURIComponent(this.#workspaceId)}/_/chat`;
+        const url = `/_/${encodeURIComponent(this.#workspaceId)}/chat`;
         // No address bar / toolbars: the chat's own header IS the chrome.
         // resizable=yes so the user can grow the window if they want.
         const features = 'popup=yes,width=440,height=640,menubar=no,toolbar=no,location=no,status=no,resizable=yes';

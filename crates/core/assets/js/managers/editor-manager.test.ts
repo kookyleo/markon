@@ -192,14 +192,8 @@ describe('EditorManager', () => {
         expect(mgr.isOpen()).toBe(true);
     });
 
-    it('renderMermaid (via preview path) calls window.mermaid.run when available', async () => {
+    it('preview path uses server-rendered diagram HTML without client Mermaid', async () => {
         seedOriginalMarkdown('```mermaid\ngraph TD; A-->B\n```');
-
-        const runMock = vi.fn(() => Promise.resolve());
-        const initMock = vi.fn();
-        // initialize is required by the ambient type but unused here.
-        const initializeMock = vi.fn();
-        window.mermaid = { run: runMock, init: initMock, initialize: initializeMock };
 
         const fetchMock = vi.fn(async (url: string) => {
             if (url === '/api/preview') {
@@ -208,8 +202,7 @@ describe('EditorManager', () => {
                     status: 200,
                     text: async () => '',
                     json: async () => ({
-                        html: '<div class="language-mermaid">graph TD</div>',
-                        has_mermaid: true,
+                        html: '<div class="markon-diagram" data-diagram-engine="mermaid"><svg></svg></div>',
                     }),
                 };
             }
@@ -231,7 +224,6 @@ describe('EditorManager', () => {
         await Promise.resolve();
         await Promise.resolve();
 
-        expect(runMock).toHaveBeenCalled();
-        delete window.mermaid;
+        expect(document.querySelector('.markon-diagram svg')).toBeTruthy();
     });
 });

@@ -60,7 +60,7 @@ All paths are workspace-relative with forward slashes. Tools refuse to read abov
     - `path/to/file.md#heading-id` — Markdown heading anchor
   Citations should appear inline next to the claim they support, in backticks. Do not invent line numbers; only cite ranges you actually read.
 - Code blocks: use fenced blocks with language tags. Quote sparingly — long verbatim copies aren't useful when the user can click the citation.
-- Mermaid is supported in fenced ```mermaid blocks if a diagram clarifies the answer.
+- Mermaid, PlantUML, D2, DOT/Graphviz, Vega-Lite/Vega/chart, ECharts, and Chart.js/chart.js diagrams are supported in fenced code blocks if a diagram clarifies the answer.
 
 # What to refuse
 
