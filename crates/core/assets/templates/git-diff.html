@@ -8,6 +8,7 @@
     <meta name="access-role" content="{{ access_role | default(value='initiator') }}">
     <meta name="shared-annotation" content="{{ shared_annotation }}">
     <meta name="is-worktree-diff" content="{{ is_worktree_diff }}">
+    <meta name="diff-editable" content="{{ diff_editable }}">
     <meta name="enable-viewed" content="false">
     <meta name="enable-search" content="false">
     <meta name="enable-edit" content="false">
@@ -56,7 +57,6 @@
         }
         .git-diff-range-label,
         .git-file-meta,
-        .git-nav-counts,
         .workspace-diff-empty {
             color: var(--markon-fg-muted);
             font-size: 12px;
@@ -251,7 +251,7 @@
         .git-nav-entry {
             width: 100%;
             display: grid;
-            grid-template-columns: minmax(0, 1fr) auto;
+            grid-template-columns: minmax(0, 1fr);
             align-items: center;
             gap: 8px;
             min-height: 28px;
@@ -294,9 +294,100 @@
             color: var(--markon-fg-muted);
             font-weight: 650;
         }
-        .git-nav-counts {
-            flex: 0 0 auto;
-            white-space: nowrap;
+        /* Inline "new file/folder" affordances (only when diff-editable). */
+        .git-nav-entry.is-dir {
+            position: relative;
+        }
+        .git-nav-add {
+            position: absolute;
+            right: 4px;
+            top: 50%;
+            transform: translateY(-50%);
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            width: 20px;
+            height: 20px;
+            padding: 0;
+            border: 0;
+            border-radius: var(--markon-radius-sm);
+            background: var(--markon-bg-default);
+            color: var(--markon-fg-muted);
+            cursor: pointer;
+            opacity: 0;
+            transition: opacity 0.12s ease;
+        }
+        .git-nav-entry.is-dir:hover > .git-nav-add,
+        .git-nav-add:focus-visible {
+            opacity: 1;
+        }
+        .git-nav-add:hover {
+            color: var(--markon-accent);
+            background: color-mix(in srgb, var(--markon-accent) 14%, var(--markon-bg-default));
+        }
+        .git-nav-root-add-row {
+            margin: 0 0 8px;
+            padding: 0;
+        }
+        .git-nav-add-root {
+            display: inline-flex;
+            align-items: center;
+            gap: 5px;
+            padding: 3px 10px;
+            border: 1px solid var(--markon-border-default);
+            border-radius: var(--markon-radius-sm);
+            background: var(--markon-bg-default);
+            color: var(--markon-fg-muted);
+            font-size: 12px;
+            cursor: pointer;
+        }
+        .git-nav-add-root:hover {
+            color: var(--markon-accent);
+            border-color: color-mix(in srgb, var(--markon-accent) 50%, var(--markon-border-default));
+        }
+        .git-nav-add-root svg { display: block; }
+        .git-nav-add-menu {
+            position: fixed;
+            z-index: 50;
+            min-width: 132px;
+            padding: 5px;
+            border: 1px solid var(--markon-border-default);
+            border-radius: var(--markon-radius-sm);
+            background: var(--markon-bg-default);
+            box-shadow: 0 8px 24px color-mix(in srgb, var(--markon-fg-default) 22%, transparent);
+        }
+        .git-nav-add-item {
+            display: block;
+            width: 100%;
+            text-align: left;
+            padding: 6px 10px;
+            border: 0;
+            border-radius: var(--markon-radius-sm);
+            background: transparent;
+            color: var(--markon-fg-default);
+            font-size: 13px;
+            cursor: pointer;
+        }
+        .git-nav-add-item:hover {
+            background: color-mix(in srgb, var(--markon-fg-default) 10%, transparent);
+        }
+        .git-nav-input-row {
+            margin: 2px 0;
+        }
+        .git-nav-input {
+            width: calc(100% - 16px);
+            min-width: 0;
+            min-height: 26px;
+            border: 1px solid color-mix(in srgb, var(--markon-accent) 50%, var(--markon-border-default));
+            border-radius: var(--markon-radius-sm);
+            padding: 3px 8px;
+            background: var(--markon-bg-default);
+            color: var(--markon-fg-default);
+            font-size: 13px;
+        }
+        .git-nav-input:focus {
+            outline: none;
+            border-color: var(--markon-accent);
         }
         .git-source-diff-pane {
             grid-column: 2 / 4;
@@ -967,7 +1058,9 @@
                         </div>
                     </div>
                     {% if diff.nav_entries | length > 0 %}
-                    <ul class="git-files" data-diff-file-list>
+                    <ul class="git-files" data-diff-file-list
+                        data-create-file-url="{{ create_file_url }}"
+                        data-create-folder-url="{{ create_folder_url }}">
                         {% for entry in diff.nav_entries %}
                         <li data-diff-nav-entry
                             data-diff-kind="{{ entry.kind }}"
@@ -982,7 +1075,6 @@
                                     <span class="git-nav-icon" aria-hidden="true">-</span>
                                     <span class="git-nav-name">{{ entry.name }}</span>
                                 </span>
-                                <span class="git-nav-counts">+{{ entry.additions }} -{{ entry.deletions }}</span>
                             </button>
                             {% else %}
                             <div class="git-nav-entry is-dir"
@@ -1030,5 +1122,6 @@
     <script type="module" src="/_/js/markdown-diff.js"></script>
     <script type="module" src="/_/js/diff-annotations.js"></script>
     <script type="module" src="/_/js/diff-shortcuts.js"></script>
+    <script type="module" src="/_/js/diff-file-create.js"></script>
 </body>
 </html>

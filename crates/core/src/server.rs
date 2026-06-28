@@ -736,6 +736,15 @@ pub async fn start(config: ServerConfig) -> Result<(), String> {
                 .route_layer(axum::middleware::from_fn(require_same_origin)),
         )
         .route(
+            "/_/{workspace_id}/files/folder",
+            post(handle_workspace_create_folder)
+                .route_layer(axum::middleware::from_fn_with_state(
+                    state.clone(),
+                    require_initiator_role,
+                ))
+                .route_layer(axum::middleware::from_fn(require_same_origin)),
+        )
+        .route(
             "/_/{workspace_id}/files/delete",
             post(handle_workspace_delete_file)
                 .route_layer(axum::middleware::from_fn_with_state(
@@ -805,6 +814,15 @@ pub async fn start(config: ServerConfig) -> Result<(), String> {
         .route(
             "/{workspace_id}/_/files/create",
             post(handle_workspace_create_file)
+                .route_layer(axum::middleware::from_fn_with_state(
+                    state.clone(),
+                    require_initiator_role,
+                ))
+                .route_layer(axum::middleware::from_fn(require_same_origin)),
+        )
+        .route(
+            "/{workspace_id}/_/files/folder",
+            post(handle_workspace_create_folder)
                 .route_layer(axum::middleware::from_fn_with_state(
                     state.clone(),
                     require_initiator_role,
@@ -2566,6 +2584,71 @@ async fn handle_workspace_create_file(
     .into_response()
 }
 
+/// Create an empty folder inside the workspace. Reuses {@link CreateFileRequest}
+/// (the `content` field is ignored). Same edit gate + traversal-safety as
+/// file creation; `create_dir_all` so intermediate folders are made too.
+async fn handle_workspace_create_folder(
+    State(state): State<AppState>,
+    AxumPath(workspace_id): AxumPath<String>,
+    Json(payload): Json<CreateFileRequest>,
+) -> impl IntoResponse {
+    let Some(ws) = state.workspace_registry.get(&workspace_id) else {
+        return StatusCode::NOT_FOUND.into_response();
+    };
+    if !ws.enable_edit.load(std::sync::atomic::Ordering::Relaxed) {
+        return Json(CreateFileResponse {
+            success: false,
+            message: "Edit feature is not enabled".to_string(),
+            url: None,
+        })
+        .into_response();
+    }
+    let Some(rel) = sanitize_new_file_path(&payload.path) else {
+        return Json(CreateFileResponse {
+            success: false,
+            message: "Invalid folder path".to_string(),
+            url: None,
+        })
+        .into_response();
+    };
+    let root = canonical_workspace_root(&ws);
+    let full_path = root.join(&rel);
+    if fs::symlink_metadata(&full_path).is_ok() {
+        return Json(CreateFileResponse {
+            success: false,
+            message: "Folder already exists".to_string(),
+            url: None,
+        })
+        .into_response();
+    }
+    if let Err(e) = fs::create_dir_all(&full_path) {
+        return Json(CreateFileResponse {
+            success: false,
+            message: format!("Failed to create folder: {e}"),
+            url: None,
+        })
+        .into_response();
+    }
+    // Defense in depth: confirm the created folder resolved inside the workspace.
+    match canonicalize_route_path(&full_path) {
+        Ok(p) if is_inside_workspace(&p, &root) => {}
+        _ => {
+            return Json(CreateFileResponse {
+                success: false,
+                message: "Access denied".to_string(),
+                url: None,
+            })
+            .into_response()
+        }
+    }
+    Json(CreateFileResponse {
+        success: true,
+        message: "Folder created".to_string(),
+        url: None,
+    })
+    .into_response()
+}
+
 #[derive(Deserialize)]
 struct DeleteFileRequest {
     path: String,
@@ -4102,7 +4185,15 @@ fn render_git_diff_page(
             GitCompareOptionStatusMode::Fast,
         ),
     );
-    context.insert("is_worktree_diff", &(diff.range == "HEAD..worktree"));
+    let is_worktree_diff = diff.range == "HEAD..worktree";
+    context.insert("is_worktree_diff", &is_worktree_diff);
+    // The sidebar tree can create files/folders only when the comparison targets
+    // the (writable) worktree AND the workspace permits editing.
+    let diff_editable =
+        is_worktree_diff && ws.enable_edit.load(std::sync::atomic::Ordering::Relaxed);
+    context.insert("diff_editable", &diff_editable);
+    context.insert("create_file_url", &format!("/_/{workspace_id}/files/create"));
+    context.insert("create_folder_url", &format!("/_/{workspace_id}/files/folder"));
     // Both views (rendered + raw source) now consume one unified Markdown block
     // payload, so a single data URL drives the whole page.
     let markdown_diff_data_url = markdown_diff_data_url(workspace_id, &base_value, &compare_value);
@@ -6909,6 +7000,66 @@ mod tests {
         assert_eq!(body["success"], false);
         assert_eq!(body["message"], "Invalid file path");
         assert!(!dir.path().join("../outside.md").exists());
+    }
+
+    #[tokio::test]
+    async fn workspace_create_folder_creates_inside_workspace_and_rejects_traversal() {
+        let dir = tempfile::tempdir().unwrap();
+        let registry = Arc::new(WorkspaceRegistry::new("create-folder-test".into()));
+        let id = add_test_workspace(
+            &registry,
+            dir.path().to_path_buf(),
+            WorkspaceFlags {
+                enable_edit: true,
+                ..WorkspaceFlags::default()
+            },
+        );
+        let state = test_state(registry);
+
+        // Nested folder is created (with intermediate dirs).
+        let request = CreateFileRequest {
+            path: "docs/sub/new-folder".into(),
+            content: None,
+        };
+        let response = handle_workspace_create_folder(
+            State(state.clone()),
+            AxumPath(id.clone()),
+            Json(request),
+        )
+        .await
+        .into_response();
+        assert_eq!(response.status(), StatusCode::OK);
+        let body: serde_json::Value = serde_json::from_str(&response_text(response).await).unwrap();
+        assert_eq!(body["success"], true);
+        assert!(dir.path().join("docs/sub/new-folder").is_dir());
+
+        // Creating it again reports the existing folder.
+        let request = CreateFileRequest {
+            path: "docs/sub/new-folder".into(),
+            content: None,
+        };
+        let response = handle_workspace_create_folder(
+            State(state.clone()),
+            AxumPath(id.clone()),
+            Json(request),
+        )
+        .await
+        .into_response();
+        let body: serde_json::Value = serde_json::from_str(&response_text(response).await).unwrap();
+        assert_eq!(body["success"], false);
+        assert_eq!(body["message"], "Folder already exists");
+
+        // Traversal is rejected.
+        let request = CreateFileRequest {
+            path: "../escape".into(),
+            content: None,
+        };
+        let response = handle_workspace_create_folder(State(state), AxumPath(id), Json(request))
+            .await
+            .into_response();
+        let body: serde_json::Value = serde_json::from_str(&response_text(response).await).unwrap();
+        assert_eq!(body["success"], false);
+        assert!(!dir.path().join("../escape").exists());
     }
 
     #[tokio::test]

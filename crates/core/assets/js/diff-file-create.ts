@@ -1,0 +1,223 @@
+/**
+ * Inline "new file / new folder" affordances for the compare/diff sidebar tree.
+ *
+ * Active only when `diff-editable` is set (the comparison targets the writable
+ * worktree AND the workspace permits editing). Each folder row (and a root
+ * affordance) gets a hover/▸right-click "+" that offers New file / New folder;
+ * choosing one drops an inline name input. New files open in the editor; new
+ * folders are inserted into the tree so they're visible and can host children
+ * (they won't otherwise appear — the diff tree only lists *changed* files).
+ *
+ * Classic (IIFE) bundle, loaded as a non-module <script> on git-diff.html.
+ */
+
+import { Meta } from './services/dom';
+
+type Kind = 'file' | 'folder';
+interface CreateUrls { file: string; folder: string; }
+
+const PLUS_SVG =
+    '<svg viewBox="0 0 16 16" width="13" height="13" aria-hidden="true"><path fill="currentColor" d="M8 2.75a.75.75 0 0 1 .75.75v3.75h3.75a.75.75 0 0 1 0 1.5H8.75v3.75a.75.75 0 0 1-1.5 0V8.75H3.5a.75.75 0 0 1 0-1.5h3.75V3.5A.75.75 0 0 1 8 2.75Z"/></svg>';
+
+const workspaceId = (): string =>
+    document.querySelector('meta[name="workspace-id"]')?.getAttribute('content') || '';
+
+const fileRoute = (path: string): string =>
+    `/${workspaceId()}/${path.split('/').map(encodeURIComponent).join('/')}`;
+
+function closeMenus(): void {
+    document.querySelectorAll('.git-nav-add-menu').forEach((m) => m.remove());
+}
+
+async function create(kind: Kind, path: string, urls: CreateUrls): Promise<{ ok: boolean; url?: string }> {
+    const url = kind === 'file' ? urls.file : urls.folder;
+    try {
+        const resp = await fetch(url, {
+            method: 'POST',
+            credentials: 'same-origin',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(kind === 'file' ? { path, content: '' } : { path }),
+        });
+        const text = await resp.text();
+        let data: { success?: boolean; message?: string; url?: string } = {};
+        try { data = text ? JSON.parse(text) : {}; } catch { /* ignore */ }
+        if (!resp.ok || data.success === false) {
+            window.alert(data.message || text || resp.statusText);
+            return { ok: false };
+        }
+        return { ok: true, url: data.url || undefined };
+    } catch (err) {
+        window.alert(err instanceof Error ? err.message : String(err));
+        return { ok: false };
+    }
+}
+
+/** Build a dir `<li>` matching the server-rendered tree, with its own "+". */
+function buildFolderRow(path: string, depth: number, urls: CreateUrls): HTMLLIElement {
+    const li = document.createElement('li');
+    li.setAttribute('data-diff-nav-entry', '');
+    li.setAttribute('data-diff-kind', 'dir');
+    li.setAttribute('data-diff-path', path);
+    const row = document.createElement('div');
+    row.className = 'git-nav-entry is-dir';
+    row.style.setProperty('--depth', String(depth));
+    const name = path.split('/').pop() || path;
+    row.innerHTML =
+        '<span class="git-nav-main"><span class="git-nav-icon" aria-hidden="true">/</span>' +
+        `<span class="git-nav-name"></span></span>`;
+    row.querySelector('.git-nav-name')!.textContent = name;
+    li.appendChild(row);
+    mountFolderAffordance(row, path, urls);
+    return li;
+}
+
+/** The 1-based nesting depth a folder row uses for its `--depth` indent. */
+function rowDepth(row: HTMLElement): number {
+    const v = parseInt(row.style.getPropertyValue('--depth') || '0', 10);
+    return Number.isFinite(v) ? v : 0;
+}
+
+/** Drop an inline name input under `anchorLi`, indented one level past `depth`. */
+function startInlineCreate(
+    parentPath: string,
+    kind: Kind,
+    depth: number,
+    anchorLi: HTMLElement,
+    list: HTMLElement,
+    urls: CreateUrls,
+): void {
+    list.querySelectorAll('.git-nav-input-row').forEach((r) => r.remove());
+    const li = document.createElement('li');
+    li.className = 'git-nav-input-row';
+    const input = document.createElement('input');
+    input.className = 'git-nav-input';
+    input.type = 'text';
+    input.placeholder = kind === 'file' ? 'name.md' : 'folder name';
+    input.style.marginLeft = `${(depth + 1) * 14 + 18}px`;
+    li.appendChild(input);
+    anchorLi.after(li);
+    input.focus();
+
+    let done = false;
+    const cancel = (): void => { if (!done) { done = true; li.remove(); } };
+    const submit = async (): Promise<void> => {
+        if (done) return;
+        const name = input.value.trim().replace(/^\/+|\/+$/g, '');
+        if (!name) { cancel(); return; }
+        done = true;
+        input.disabled = true;
+        const path = parentPath ? `${parentPath}/${name}` : name;
+        const res = await create(kind, path, urls);
+        li.remove();
+        if (!res.ok) return;
+        if (kind === 'file') {
+            // Open the freshly-created (empty) file straight into the editor.
+            window.open((res.url || fileRoute(path)) + '?edit=1', '_blank', 'noopener');
+        } else {
+            // Surface the new folder in the tree so it can host children.
+            anchorLi.after(buildFolderRow(path, depth + 1, urls));
+        }
+    };
+    input.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') { e.preventDefault(); void submit(); }
+        else if (e.key === 'Escape') { e.preventDefault(); cancel(); }
+    });
+    input.addEventListener('blur', () => { window.setTimeout(() => { if (!input.value.trim()) cancel(); }, 120); });
+}
+
+function openCreateMenu(
+    anchorBtn: HTMLElement,
+    parentPath: string,
+    depth: number,
+    anchorLi: HTMLElement,
+    list: HTMLElement,
+    urls: CreateUrls,
+): void {
+    closeMenus();
+    const menu = document.createElement('div');
+    menu.className = 'git-nav-add-menu';
+    const item = (label: string, kind: Kind): HTMLButtonElement => {
+        const b = document.createElement('button');
+        b.type = 'button';
+        b.className = 'git-nav-add-item';
+        b.textContent = label;
+        b.addEventListener('click', () => {
+            closeMenus();
+            startInlineCreate(parentPath, kind, depth, anchorLi, list, urls);
+        });
+        return b;
+    };
+    menu.append(item('New file', 'file'), item('New folder', 'folder'));
+    document.body.appendChild(menu);
+    const r = anchorBtn.getBoundingClientRect();
+    menu.style.left = `${Math.min(r.left, window.innerWidth - menu.offsetWidth - 8)}px`;
+    menu.style.top = `${r.bottom + 4}px`;
+
+    const onDoc = (e: MouseEvent): void => {
+        if (!menu.contains(e.target as Node)) { closeMenus(); document.removeEventListener('mousedown', onDoc, true); }
+    };
+    document.addEventListener('mousedown', onDoc, true);
+}
+
+function mountFolderAffordance(row: HTMLElement, folderPath: string, urls: CreateUrls): void {
+    if (row.querySelector(':scope > .git-nav-add')) return;
+    const li = row.closest<HTMLElement>('[data-diff-nav-entry]');
+    if (!li) return;
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'git-nav-add';
+    btn.title = 'New file or folder here';
+    btn.setAttribute('aria-label', 'New file or folder here');
+    btn.innerHTML = PLUS_SVG;
+    btn.addEventListener('click', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        openCreateMenu(btn, folderPath, rowDepth(row), li, li.parentElement as HTMLElement, urls);
+    });
+    row.appendChild(btn);
+    // Right-click anywhere on the folder row opens the same menu.
+    row.addEventListener('contextmenu', (e) => {
+        e.preventDefault();
+        openCreateMenu(btn, folderPath, rowDepth(row), li, li.parentElement as HTMLElement, urls);
+    });
+}
+
+const init = (): void => {
+    if (!Meta.flag('diff-editable')) return;
+    const list = document.querySelector<HTMLElement>('[data-diff-file-list]');
+    if (!list) return;
+    const urls: CreateUrls = {
+        file: list.getAttribute('data-create-file-url') || '',
+        folder: list.getAttribute('data-create-folder-url') || '',
+    };
+    if (!urls.file || !urls.folder) return;
+
+    // Root-level affordance: a "+ New" button above the tree.
+    const rootBtn = document.createElement('button');
+    rootBtn.type = 'button';
+    rootBtn.className = 'git-nav-add-root';
+    rootBtn.innerHTML = `${PLUS_SVG}<span>New</span>`;
+    rootBtn.title = 'New file or folder at the workspace root';
+    const rootLi = document.createElement('li');
+    rootLi.className = 'git-nav-root-add-row';
+    rootLi.appendChild(rootBtn);
+    list.prepend(rootLi);
+    rootBtn.addEventListener('click', (e) => {
+        e.preventDefault();
+        openCreateMenu(rootBtn, '', -1, rootLi, list, urls);
+    });
+
+    // Per-folder affordances.
+    list.querySelectorAll<HTMLElement>('.git-nav-entry.is-dir').forEach((row) => {
+        const li = row.closest<HTMLElement>('[data-diff-nav-entry]');
+        mountFolderAffordance(row, li?.getAttribute('data-diff-path') || '', urls);
+    });
+};
+
+if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', init, { once: true });
+} else {
+    init();
+}
+
+export {};

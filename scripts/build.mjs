@@ -84,6 +84,14 @@ async function build() {
     target: ['es2022'],
     // main.ts owns the dev reload EventSource.
   };
+  const diffFileCreateOpts = {
+    ...shared,
+    entryPoints: [resolve(srcDir, 'diff-file-create.ts')],
+    outfile: resolve(outDir, 'diff-file-create.js'),
+    format: 'esm',
+    target: ['es2022'],
+    // main.ts owns the dev reload EventSource.
+  };
   const diffShortcutsOpts = {
     ...shared,
     entryPoints: [resolve(srcDir, 'diff-shortcuts.ts')],
@@ -169,6 +177,7 @@ async function build() {
     const ctxWorkspaceDiff = await esbuild.context(workspaceDiffOpts);
     const ctxMarkdownDiff = await esbuild.context(markdownDiffOpts);
     const ctxDiffAnnotations = await esbuild.context(diffAnnotationsOpts);
+    const ctxDiffFileCreate = await esbuild.context(diffFileCreateOpts);
     const ctxDiffShortcuts = await esbuild.context(diffShortcutsOpts);
     const ctxDiffControls = await esbuild.context(diffControlsOpts);
     const ctxDirectory = await esbuild.context(directoryOpts);
@@ -181,6 +190,7 @@ async function build() {
     await ctxWorkspaceDiff.watch();
     await ctxMarkdownDiff.watch();
     await ctxDiffAnnotations.watch();
+    await ctxDiffFileCreate.watch();
     await ctxDiffShortcuts.watch();
     await ctxDiffControls.watch();
     await ctxDirectory.watch();
@@ -196,6 +206,7 @@ async function build() {
       esbuild.build(workspaceDiffOpts),
       esbuild.build(markdownDiffOpts),
       esbuild.build(diffAnnotationsOpts),
+      esbuild.build(diffFileCreateOpts),
       esbuild.build(diffShortcutsOpts),
       esbuild.build(diffControlsOpts),
       esbuild.build(directoryOpts),
