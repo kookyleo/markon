@@ -46,6 +46,17 @@ export interface NoteCard {
     note: string;
 }
 
+/** NoteManager construction options. */
+export interface NoteManagerOptions {
+    /** Render margin note cards in the right gutter with the physics layout +
+     *  connector (the normal single-document view). When `false`, notes are
+     *  popup-only: `render()` still tracks note data so a click opens the note
+     *  popup, but no gutter cards are appended or laid out. Used by the rendered
+     *  compare diff, whose multi-column layout reserves no gutter and whose inner
+     *  scroll container breaks body-absolute card positioning. Defaults to `true`. */
+    marginCards?: boolean;
+}
+
 export class NoteManager {
     #annotationManager: AnnotationManager;
     #markdownBody: HTMLElement;
@@ -55,11 +66,19 @@ export class NoteManager {
     #connectorSvg: SVGSVGElement | null = null;
     #connectorPath: SVGPathElement | null = null;
     #resizeObserver: ResizeObserver | null = null;
+    #marginCards: boolean;
 
-    constructor(annotationManager: AnnotationManager, markdownBody: HTMLElement) {
+    constructor(annotationManager: AnnotationManager, markdownBody: HTMLElement, options: NoteManagerOptions = {}) {
         this.#annotationManager = annotationManager;
         this.#markdownBody = markdownBody;
         this.#layoutEngine = new LayoutEngine();
+        this.#marginCards = options.marginCards ?? true;
+    }
+
+    /** Rebind the body notes are tracked against (the diff rebuilds it on view
+     *  switch / virtualization). */
+    setMarkdownBody(body: HTMLElement): void {
+        this.#markdownBody = body;
     }
 
     render(): void {
@@ -91,7 +110,9 @@ export class NoteManager {
             }
 
             const noteCard = this.#createNoteCard(anno);
-            document.body.appendChild(noteCard);
+            // Popup-only mode (diff): keep the card element for the data record so
+            // showNotePopup can look notes up, but never mount it in the gutter.
+            if (this.#marginCards) document.body.appendChild(noteCard);
 
             this.#noteCardsData.push({
                 element: noteCard,
@@ -100,6 +121,13 @@ export class NoteManager {
                 note: anno.note,
             });
         });
+
+        // Popup-only mode renders nothing in the gutter — no layout, connector,
+        // or active-card restoration (a click opens showNotePopup instead).
+        if (!this.#marginCards) {
+            Logger.log('NoteManager', `Tracked ${this.#noteCardsData.length} notes (popup-only)`);
+            return;
+        }
 
         // Lay out the notes.
         this.#layout();
@@ -141,7 +169,7 @@ export class NoteManager {
         }, CONFIG.ANIMATION.RESIZE_DEBOUNCE);
         window.addEventListener('resize', onResize);
 
-        // Re-layout on async content changes (mermaid render, font load, images,
+        // Re-layout on async content changes (font load, images,
         // collapse/expand, etc.) — without this, notes anchor to the page's
         // initial pre-async layout and visibly drift away from their source.
         if (typeof ResizeObserver !== 'undefined') {

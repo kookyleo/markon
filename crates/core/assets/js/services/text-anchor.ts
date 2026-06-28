@@ -3,7 +3,7 @@
  * W3C Web Annotation TextQuoteSelector + TextPositionSelector.
  *
  * Anchors to the visible **text content** — not the DOM structure or the source
- * markup — so an annotation survives re-renders (mermaid, images, collapse /
+ * markup — so an annotation survives re-renders (diagrams, images, collapse /
  * expand) and moderate source edits (the quote is re-found). This replaces the
  * old XPath + offset anchoring, which broke whenever the rendered DOM changed.
  *
@@ -32,12 +32,27 @@ interface Segment {
     start: number;
 }
 
+/** Optional predicate: return `true` for a text node that must NOT take part in
+ *  anchoring (it is filtered out of the collected stream). The predicate is
+ *  responsible for walking up to whatever ancestor decides rejection. */
+export type RejectFn = (node: Node) => boolean;
+
 /** Concatenate the root's text nodes into one string + a segment index that
- *  maps global char offsets back to (textNode, localOffset). */
-function collect(root: Node): { text: string; segments: Segment[] } {
+ *  maps global char offsets back to (textNode, localOffset).
+ *
+ *  When `reject` is supplied, text nodes it returns `true` for are skipped, so
+ *  the collected stream only covers the relevant subset (e.g. the new side of a
+ *  rendered diff). With no `reject` the walk is byte-for-byte the default. */
+function collect(root: Node, reject?: RejectFn): { text: string; segments: Segment[] } {
     const segments: Segment[] = [];
     let text = '';
-    const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+    const walker = document.createTreeWalker(
+        root,
+        NodeFilter.SHOW_TEXT,
+        reject
+            ? { acceptNode: (n) => (reject(n) ? NodeFilter.FILTER_REJECT : NodeFilter.FILTER_ACCEPT) }
+            : null,
+    );
     let n: Node | null = walker.nextNode();
     while (n) {
         const node = n as Text;
@@ -105,10 +120,20 @@ function commonPrefixLen(a: string, b: string): number {
     return i;
 }
 
+/** Options for `anchor`'s occurrence scoring. */
+export interface AnchorOptions {
+    /** Zero out the `position` tiebreak term. The absolute char offset of a
+     *  quote shifts between renderings of the same content (e.g. the full
+     *  document vs. just the new side of a diff), so when re-finding across
+     *  views the position hint is noise — context alone disambiguates. Default
+     *  (`false`) keeps the position term, i.e. unchanged behavior. */
+    ignorePosition?: boolean;
+}
+
 export const TextAnchoring = {
     /** Capture a content anchor for `range` within `root`. */
-    describe(root: Node, range: Range): TextAnchor {
-        const { text, segments } = collect(root);
+    describe(root: Node, range: Range, reject?: RejectFn): TextAnchor {
+        const { text, segments } = collect(root, reject);
         const start = offsetOf(root, segments, text.length, range.startContainer, range.startOffset);
         const end = offsetOf(root, segments, text.length, range.endContainer, range.endOffset);
         return {
@@ -122,15 +147,16 @@ export const TextAnchoring = {
     /** Re-find the anchor in the (possibly changed) `root`. Returns a live Range,
      *  or null when the quoted text is gone (orphaned annotation). Among multiple
      *  occurrences the best context + position match wins. */
-    anchor(root: Node, a: TextAnchor): Range | null {
+    anchor(root: Node, a: TextAnchor, reject?: RejectFn, opts?: AnchorOptions): Range | null {
         if (!a.exact) return null;
-        const { text, segments } = collect(root);
+        const { text, segments } = collect(root, reject);
         const occurrences: number[] = [];
         for (let i = text.indexOf(a.exact); i !== -1; i = text.indexOf(a.exact, i + 1)) {
             occurrences.push(i);
         }
         if (occurrences.length === 0) return null;
 
+        const positionWeight = opts?.ignorePosition ? 0 : 1;
         let best = occurrences[0] ?? 0;
         let bestScore = -Infinity;
         for (const c of occurrences) {
@@ -139,7 +165,7 @@ export const TextAnchoring = {
             const score =
                 commonSuffixLen(pre, a.prefix) +
                 commonPrefixLen(suf, a.suffix) -
-                Math.abs(c - a.position) / 10000;
+                (positionWeight * Math.abs(c - a.position)) / 10000;
             if (score > bestScore) {
                 bestScore = score;
                 best = c;

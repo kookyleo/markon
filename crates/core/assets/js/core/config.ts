@@ -17,6 +17,11 @@ export interface ShortcutDef {
     ctrl: boolean;
     shift: boolean;
     desc: string;
+    /** Grouping category for the help panel — the suffix of a `web.kbd.cat.*`
+     *  i18n key (e.g. 'global', 'nav', 'diff'). The panel only lists shortcuts
+     *  that are actually registered, grouped by this category; `'global'` marks
+     *  the ones available on every page (Help, Theme). */
+    cat: string;
 }
 
 /**
@@ -77,44 +82,52 @@ export const CONFIG = {
 
     // Keyboard shortcuts configuration
     SHORTCUTS: {
+        // Global — available on every page (document view, compare/diff, …).
+        HELP: { key: '?', ctrl: false, shift: false, desc: _t('web.kbd.help'), cat: 'global' },
+        THEME_PANEL: { key: 't', ctrl: false, shift: false, desc: _t('web.kbd.theme'), cat: 'global' },
+
         // Core functionality
-        UNDO: { key: 'z', ctrl: true, shift: false, desc: _t('web.kbd.undo') },
-        REDO: { key: 'z', ctrl: true, shift: true, desc: _t('web.kbd.redo') },
-        REDO_ALT: { key: 'y', ctrl: true, shift: false, desc: _t('web.kbd.redo.alt') },
-        ESCAPE: { key: 'Escape', ctrl: false, shift: false, desc: _t('web.kbd.escape') },
-        TOGGLE_TOC: { key: '\\', ctrl: true, shift: false, desc: _t('web.kbd.toc') },
-        HELP: { key: '?', ctrl: false, shift: false, desc: _t('web.kbd.help') },
-        SEARCH: { key: '/', ctrl: false, shift: false, desc: _t('web.kbd.search') },
+        UNDO: { key: 'z', ctrl: true, shift: false, desc: _t('web.kbd.undo'), cat: 'core' },
+        REDO: { key: 'z', ctrl: true, shift: true, desc: _t('web.kbd.redo'), cat: 'core' },
+        REDO_ALT: { key: 'y', ctrl: true, shift: false, desc: _t('web.kbd.redo.alt'), cat: 'core' },
+        ESCAPE: { key: 'Escape', ctrl: false, shift: false, desc: _t('web.kbd.escape'), cat: 'core' },
+        TOGGLE_TOC: { key: '\\', ctrl: true, shift: false, desc: _t('web.kbd.toc'), cat: 'core' },
+        SEARCH: { key: '/', ctrl: false, shift: false, desc: _t('web.kbd.search'), cat: 'search' },
 
         // Navigation
-        PREV_HEADING: { key: 'k', ctrl: false, shift: false, desc: _t('web.kbd.prevheading') },
-        NEXT_HEADING: { key: 'j', ctrl: false, shift: false, desc: _t('web.kbd.nextheading') },
-        PREV_ANNOTATION: { key: 'k', ctrl: true, shift: false, desc: _t('web.kbd.prevanno') },
-        NEXT_ANNOTATION: { key: 'j', ctrl: true, shift: false, desc: _t('web.kbd.nextanno') },
-        SCROLL_HALF_PAGE_DOWN: { key: ' ', ctrl: false, shift: false, desc: _t('web.kbd.scroll') },
+        PREV_HEADING: { key: 'k', ctrl: false, shift: false, desc: _t('web.kbd.prevheading'), cat: 'nav' },
+        NEXT_HEADING: { key: 'j', ctrl: false, shift: false, desc: _t('web.kbd.nextheading'), cat: 'nav' },
+        PREV_ANNOTATION: { key: 'k', ctrl: true, shift: false, desc: _t('web.kbd.prevanno'), cat: 'nav' },
+        NEXT_ANNOTATION: { key: 'j', ctrl: true, shift: false, desc: _t('web.kbd.nextanno'), cat: 'nav' },
+        SCROLL_HALF_PAGE_DOWN: { key: ' ', ctrl: false, shift: false, desc: _t('web.kbd.scroll'), cat: 'nav' },
 
         // Section control
-        TOGGLE_SECTION_COLLAPSE: { key: 'o', ctrl: false, shift: false, desc: _t('web.kbd.collapse') },
+        TOGGLE_SECTION_COLLAPSE: { key: 'o', ctrl: false, shift: false, desc: _t('web.kbd.collapse'), cat: 'viewed' },
 
         // Viewed functionality (requires enabling)
-        TOGGLE_VIEWED: { key: 'v', ctrl: false, shift: false, desc: _t('web.kbd.viewed') },
+        TOGGLE_VIEWED: { key: 'v', ctrl: false, shift: false, desc: _t('web.kbd.viewed'), cat: 'viewed' },
 
         // Edit functionality (requires enabling)
-        EDIT: { key: 'e', ctrl: false, shift: false, desc: _t('web.kbd.edit') },
+        EDIT: { key: 'e', ctrl: false, shift: false, desc: _t('web.kbd.edit'), cat: 'edit' },
 
         // Live mode (requires enable_live):
         //   L        — toggle Broadcast ⇄ Follow (even if currently Off, this
         //              enters the cycle directly, never lands on Off).
         //   Shift+L  — toggle Off ⇄ last active mode.
-        TOGGLE_LIVE_ACTIVE: { key: 'l', ctrl: false, shift: false, desc: _t('web.kbd.live.active') },
-        TOGGLE_LIVE_OFF:    { key: 'l', ctrl: false, shift: true,  desc: _t('web.kbd.live.off') },
+        TOGGLE_LIVE_ACTIVE: { key: 'l', ctrl: false, shift: false, desc: _t('web.kbd.live.active'), cat: 'live' },
+        TOGGLE_LIVE_OFF:    { key: 'l', ctrl: false, shift: true,  desc: _t('web.kbd.live.off'), cat: 'live' },
 
         // Chat (requires enable_chat):
         //   C        — open chat in the user's default surface (in-page panel
         //              or popout window, per Settings → Default chat surface).
         //   Shift+C  — open in the alternate surface for that single press.
-        TOGGLE_CHAT:     { key: 'c', ctrl: false, shift: false, desc: _t('web.kbd.chat') },
-        TOGGLE_CHAT_ALT: { key: 'c', ctrl: false, shift: true,  desc: _t('web.kbd.chat.alt') },
+        TOGGLE_CHAT:     { key: 'c', ctrl: false, shift: false, desc: _t('web.kbd.chat'), cat: 'chat' },
+        TOGGLE_CHAT_ALT: { key: 'c', ctrl: false, shift: true,  desc: _t('web.kbd.chat.alt'), cat: 'chat' },
+
+        // Compare / diff view (rendered ⇄ raw). Registered only on the diff page.
+        DIFF_TOGGLE_VIEW: { key: 'v', ctrl: false, shift: false, desc: _t('web.kbd.diff.view'), cat: 'diff' },
+        DIFF_NEXT_FILE:   { key: 'j', ctrl: false, shift: false, desc: _t('web.kbd.diff.nextfile'), cat: 'diff' },
+        DIFF_PREV_FILE:   { key: 'k', ctrl: false, shift: false, desc: _t('web.kbd.diff.prevfile'), cat: 'diff' },
     } satisfies Record<string, ShortcutDef>,
 
     // Storage keys

@@ -12,7 +12,7 @@
 
 import { Ids, Logger } from '../core/utils';
 import { Identity, type Author } from '../core/identity';
-import { TextAnchoring, type TextAnchor } from '../services/text-anchor';
+import { TextAnchoring, type TextAnchor, type RejectFn } from '../services/text-anchor';
 
 /**
  * Annotation type union, matching the values produced by `main.js`:
@@ -111,10 +111,29 @@ export class AnnotationManager {
     #storage: AnnotationStorage;
     #markdownBody: HTMLElement;
     #onChange: AnnotationChangeCallback | null = null;
+    /** Optional text-node predicate scoping anchoring to a subset of the root
+     *  (the new side of a rendered diff). When set it is threaded through every
+     *  describe/anchor and into the wrap walker; absent → whole-root behavior. */
+    #reject?: RejectFn;
 
-    constructor(storage: AnnotationStorage, markdownBody: HTMLElement) {
+    /**
+     * @param storage      annotation persistence strategy
+     * @param markdownBody the live root (rendered body) anchoring runs against;
+     *                     rebind after a DOM rebuild via {@link setRoot}
+     * @param reject       optional scoping predicate (e.g. `NEW_SIDE_REJECT`).
+     *                     When supplied, re-anchoring also down-weights the
+     *                     position tiebreak so quotes re-find across views.
+     */
+    constructor(storage: AnnotationStorage, markdownBody: HTMLElement, reject?: RejectFn) {
         this.#storage = storage;
         this.#markdownBody = markdownBody;
+        this.#reject = reject;
+    }
+
+    /** Rebind the root after a DOM rebuild (the diff view rebuilds the whole
+     *  tree on every view switch, leaving the previous body detached). */
+    setRoot(newRoot: HTMLElement): void {
+        this.#markdownBody = newRoot;
     }
 
     async load(): Promise<void> {
@@ -377,7 +396,7 @@ export class AnnotationManager {
         tagName: AnnotationTagName,
         note: string | null = null,
     ): Annotation {
-        const anchor = TextAnchoring.describe(this.#markdownBody, range);
+        const anchor = TextAnchoring.describe(this.#markdownBody, range, this.#reject);
 
         return {
             id: `anno-${Ids.uuid()}`,
@@ -406,7 +425,15 @@ export class AnnotationManager {
         // and validates it: anchor() only returns a range whose text equals the
         // stored quote, so a null result means the quoted text is gone
         // (orphaned) — no separate drift check needed.
-        const range = TextAnchoring.anchor(this.#markdownBody, anno.anchor);
+        // In scoped (diff new-side) mode the absolute char offset of a quote
+        // differs from the full-document position captured elsewhere, so ignore
+        // the position tiebreak — context alone disambiguates across views.
+        const range = TextAnchoring.anchor(
+            this.#markdownBody,
+            anno.anchor,
+            this.#reject,
+            this.#reject ? { ignorePosition: true } : undefined,
+        );
         if (!range) {
             Logger.warn('AnnotationManager', `Anchor text not found (orphaned): ${anno.id}`);
             return;
@@ -449,8 +476,20 @@ export class AnnotationManager {
         // Collect (textNode, start, end) tuples for every text node that
         // intersects the range. Doing the collection before any mutation
         // means splitText-induced new siblings don't sneak into the walker.
+        // The walker honours the same `reject` predicate as anchoring: a Range
+        // can geometrically span an interleaved old/deleted text node (which the
+        // anchor stream skipped), and wrapping it would pull deleted text into
+        // the highlight and corrupt the tree on unwrap. Skipping it here keeps
+        // the wrap confined to the new side.
+        const reject = this.#reject;
         const targets: Array<{ node: Text; start: number; end: number }> = [];
-        const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+        const walker = document.createTreeWalker(
+            root,
+            NodeFilter.SHOW_TEXT,
+            reject
+                ? { acceptNode: (n) => (reject(n) ? NodeFilter.FILTER_REJECT : NodeFilter.FILTER_ACCEPT) }
+                : null,
+        );
         let cursor: Node | null = walker.nextNode();
         while (cursor) {
             const text = cursor as Text;

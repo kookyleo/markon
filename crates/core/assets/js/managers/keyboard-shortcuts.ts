@@ -3,11 +3,9 @@
  * Unified management of keyboard shortcuts.
  */
 
-import { CONFIG, i18n, type ShortcutDef, type ShortcutName } from '../core/config';
+import { CONFIG, type ShortcutName } from '../core/config';
 import { PlatformUtils, Logger } from '../core/utils';
-import { Meta } from '../services/dom';
-
-const _t = (key: string, ...args: unknown[]): string => i18n.t(key, ...args);
+import { openShortcutsHelp } from '../components/shortcuts-help';
 
 /**
  * Handler function invoked when a shortcut matches.
@@ -115,136 +113,13 @@ export class KeyboardShortcutsManager {
     }
 
     /**
-     * Show the keyboard-shortcuts help panel.
+     * Show the keyboard-shortcuts help panel. Delegates to the reusable
+     * {@link openShortcutsHelp} component, passing the LIVE set of registered
+     * shortcut names — so the panel lists exactly what this page/state offers,
+     * not a static catalogue.
      */
     showHelp(): void {
-        // Toggle: remove an existing panel when one is already open.
-        const existing = document.querySelector('.shortcuts-help-panel');
-        if (existing) {
-            existing.remove();
-            return;
-        }
-
-        const panel = document.createElement('div');
-        panel.className = 'shortcuts-help-panel';
-
-        const isMac = PlatformUtils.isMac();
-        const modKey = isMac ? '⌘' : 'Ctrl';
-
-        const formatShortcut = (shortcut: ShortcutDef): string[] => {
-            const keys: string[] = [];
-            if (shortcut.ctrl) keys.push(modKey);
-            if (shortcut.shift) keys.push('Shift');
-
-            // Pretty-print special keys.
-            let keyDisplay = shortcut.key;
-            if (shortcut.key === ' ') {
-                keyDisplay = 'Space';
-            } else if (shortcut.key === 'Escape') {
-                keyDisplay = 'ESC';
-            } else if (shortcut.key.length === 1 && shortcut.key.match(/[a-z]/i)) {
-                keyDisplay = shortcut.key.toLowerCase();
-            }
-
-            keys.push(keyDisplay);
-            return keys;
-        };
-
-        const categories: Record<string, ShortcutName[]> = {
-            [_t('web.kbd.cat.core')]: ['UNDO', 'REDO', 'REDO_ALT', 'ESCAPE', 'TOGGLE_TOC', 'HELP'],
-            [_t('web.kbd.cat.nav')]: ['SCROLL_HALF_PAGE_DOWN', 'PREV_HEADING', 'NEXT_HEADING', 'PREV_ANNOTATION', 'NEXT_ANNOTATION'],
-            [_t('web.kbd.cat.search')]: ['SEARCH'],
-            [_t('web.kbd.cat.edit')]: ['EDIT'],
-            [_t('web.kbd.cat.viewed')]: ['TOGGLE_VIEWED', 'TOGGLE_SECTION_COLLAPSE'],
-            [_t('web.kbd.cat.live')]: ['TOGGLE_LIVE_ACTIVE', 'TOGGLE_LIVE_OFF'],
-            [_t('web.kbd.cat.chat')]: ['TOGGLE_CHAT', 'TOGGLE_CHAT_ALT'],
-        };
-
-        let html = '<div class="shortcuts-help-overlay"></div>';
-        html += '<div class="shortcuts-help-modal">';
-        html += '<div class="shortcuts-help-header">';
-        html += `<h2>${_t('web.kbd.title')}</h2>`;
-        html += '</div>';
-        html += '<div class="shortcuts-help-content">';
-
-        for (const [category, shortcutNames] of Object.entries(categories)) {
-            if (shortcutNames.includes('SEARCH' as ShortcutName) && !Meta.flag(CONFIG.META_TAGS.ENABLE_SEARCH)) {
-                continue;
-            }
-            if (shortcutNames.includes('EDIT' as ShortcutName) && !Meta.flag(CONFIG.META_TAGS.ENABLE_EDIT)) {
-                continue;
-            }
-            if (shortcutNames.includes('TOGGLE_VIEWED' as ShortcutName) && !Meta.flag(CONFIG.META_TAGS.ENABLE_VIEWED)) {
-                continue;
-            }
-            if (
-                (shortcutNames.includes('TOGGLE_LIVE_ACTIVE' as ShortcutName) ||
-                    shortcutNames.includes('TOGGLE_LIVE_OFF' as ShortcutName)) &&
-                !Meta.flag(CONFIG.META_TAGS.ENABLE_LIVE)
-            ) {
-                continue;
-            }
-            if (
-                (shortcutNames.includes('TOGGLE_CHAT' as ShortcutName) ||
-                    shortcutNames.includes('TOGGLE_CHAT_ALT' as ShortcutName)) &&
-                !Meta.flag(CONFIG.META_TAGS.ENABLE_CHAT)
-            ) {
-                continue;
-            }
-
-            // FormatCategoryHeading
-            let categoryHtml = category;
-            const parenMatch = category.match(/^([^(]+)(\(.+\))$/);
-            if (parenMatch) {
-                categoryHtml = `${parenMatch[1]}<span style="text-transform: none;">${parenMatch[2]}</span>`;
-            }
-
-            html += '<div class="shortcuts-category">';
-            html += `<h3>${categoryHtml}</h3>`;
-            html += '<div class="shortcuts-list">';
-
-            for (const name of shortcutNames) {
-                const shortcut = CONFIG.SHORTCUTS[name];
-                if (shortcut) {
-                    html += '<div class="shortcut-item">';
-                    html += `<div class="shortcut-key"><kbd>${formatShortcut(shortcut)
-                        .join('</kbd><kbd>')}</kbd></div>`;
-                    html += `<div class="shortcut-desc">${shortcut.desc}</div>`;
-                    html += '</div>';
-                }
-            }
-
-            html += '</div></div>';
-        }
-
-        html += '</div>';
-        html += `<div class="shortcuts-help-footer">${_t('web.kbd.footer')}</div>`;
-        html += '</div>';
-
-        panel.innerHTML = html;
-        document.body.appendChild(panel);
-
-        // Trigger the show animation.
-        setTimeout(() => panel.classList.add('visible'), 10);
-
-        // Click on the overlay closes the panel.
-        const overlay = panel.querySelector('.shortcuts-help-overlay');
-        overlay?.addEventListener('click', () => {
-            panel.classList.remove('visible');
-            setTimeout(() => panel.remove(), CONFIG.ANIMATION.PANEL_TRANSITION);
-        });
-
-        // ESC or ? closes the panel.
-        const escHandler = (e: KeyboardEvent): void => {
-            if (e.key === 'Escape' || e.key === '?') {
-                e.preventDefault();
-                panel.classList.remove('visible');
-                setTimeout(() => panel.remove(), CONFIG.ANIMATION.PANEL_TRANSITION);
-                document.removeEventListener('keydown', escHandler);
-            }
-        };
-        document.addEventListener('keydown', escHandler);
-
+        openShortcutsHelp(this.#handlers.keys());
         Logger.log('KeyboardShortcuts', 'Help panel shown');
     }
 

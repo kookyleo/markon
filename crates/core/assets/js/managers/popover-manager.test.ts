@@ -185,6 +185,70 @@ describe('PopoverManager', () => {
         expect(top).toBeCloseTo(originalTop + 40, 0);
     });
 
+    it('enableNote defaults to true (Note button present) and false drops it', () => {
+        const { body, textNode } = setupBody();
+        const withNote = new PopoverManager(body);
+        withNote.show(rangeOver(textNode, 11));
+        expect(
+            document.querySelector('.selection-popover [data-action="add-note"]'),
+        ).not.toBeNull();
+        withNote.hide();
+
+        document.body.innerHTML = '';
+        const { body: body2, textNode: tn2 } = setupBody();
+        const noNote = new PopoverManager(body2, { enableNote: false });
+        noNote.show(rangeOver(tn2, 11));
+        expect(
+            document.querySelector('.selection-popover [data-action="add-note"]'),
+        ).toBeNull();
+        // Highlights still render — only the note affordance is gone.
+        expect(
+            document.querySelector('.selection-popover [data-action="highlight-orange"]'),
+        ).not.toBeNull();
+    });
+
+    it('reject predicate suppresses the toolbar for a selection that starts in rejected chrome', () => {
+        const { body } = setupBody();
+        // Two paragraphs: one "new side" (annotatable), one marked old-side.
+        const oldP = document.createElement('p');
+        oldP.className = 'md-diff-change-card-old';
+        oldP.appendChild(document.createTextNode('deleted old text here'));
+        body.appendChild(oldP);
+        const oldText = oldP.firstChild as Text;
+
+        const reject = (n: Node): boolean =>
+            !!(n.nodeType === 3 ? n.parentElement : (n as Element))?.closest(
+                '.md-diff-change-card-old',
+            );
+        const m = new PopoverManager(body, { reject });
+        const showSpy = vi.spyOn(m, 'show');
+
+        const range = rangeOver(oldText, 12);
+        const selection = {
+            toString: () => 'deleted old',
+            getRangeAt: () => range,
+            removeAllRanges: () => {},
+        } as unknown as Selection;
+        vi.spyOn(window, 'getSelection').mockReturnValue(selection);
+
+        const ev = new MouseEvent('mouseup', { bubbles: true });
+        Object.defineProperty(ev, 'target', { value: oldP, configurable: true });
+        m.handleSelection(ev);
+        expect(showSpy).not.toHaveBeenCalled();
+        expect(m.isVisible()).toBe(false);
+    });
+
+    it('handleHighlightClick ignores a detached (re-rendered-away) element', () => {
+        const { body } = setupBody();
+        const m = new PopoverManager(body);
+        m.hide();
+        const span = document.createElement('span');
+        span.className = 'highlight-yellow';
+        span.textContent = 'gone'; // never attached to the document
+        m.handleHighlightClick(span);
+        expect(m.isVisible()).toBe(false);
+    });
+
     it('handleSelection() ignores clicks on TOC / live-container floating widgets', () => {
         const { body } = setupBody();
         const m = new PopoverManager(body);

@@ -30,7 +30,9 @@ export class AnnotationNavigator {
      * Gather every annotation (highlights + notes) in document order.
      */
     #getAllAnnotations(): NavAnnotation[] {
-        const markdownBody = document.querySelector(CONFIG.SELECTORS.MARKDOWN_BODY) as HTMLElement | null;
+        const markdownBody =
+            (document.querySelector('[data-markon-interactive-body]') as HTMLElement | null) ??
+            (document.querySelector(CONFIG.SELECTORS.MARKDOWN_BODY) as HTMLElement | null);
         if (!markdownBody) return [];
 
         const annotations: NavAnnotation[] = [];

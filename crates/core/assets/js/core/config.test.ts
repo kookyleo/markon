@@ -28,6 +28,7 @@ describe('CONFIG.SHORTCUTS', () => {
         expect(CONFIG.SHORTCUTS.ESCAPE).toMatchObject({ key: 'Escape', ctrl: false, shift: false });
         expect(CONFIG.SHORTCUTS.SEARCH).toMatchObject({ key: '/', ctrl: false, shift: false });
         expect(CONFIG.SHORTCUTS.HELP).toMatchObject({ key: '?', ctrl: false, shift: false });
+        expect(CONFIG.SHORTCUTS.THEME_PANEL).toMatchObject({ key: 't', ctrl: false, shift: false });
     });
 
     it('includes the expected navigation shortcuts', () => {
@@ -51,6 +52,9 @@ describe('CONFIG.SHORTCUTS', () => {
     it('matches the documented snapshot of names', () => {
         expect(Object.keys(CONFIG.SHORTCUTS).sort()).toMatchInlineSnapshot(`
           [
+            "DIFF_NEXT_FILE",
+            "DIFF_PREV_FILE",
+            "DIFF_TOGGLE_VIEW",
             "EDIT",
             "ESCAPE",
             "HELP",
@@ -62,6 +66,7 @@ describe('CONFIG.SHORTCUTS', () => {
             "REDO_ALT",
             "SCROLL_HALF_PAGE_DOWN",
             "SEARCH",
+            "THEME_PANEL",
             "TOGGLE_CHAT",
             "TOGGLE_CHAT_ALT",
             "TOGGLE_LIVE_ACTIVE",

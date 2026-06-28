@@ -148,6 +148,75 @@
     color: var(--markon-code-variable);
 }
 
+.markdown-body .math-block {
+    display: block;
+    overflow-x: auto;
+    margin: 16px 0;
+    padding: 12px 16px;
+    border: 1px solid var(--markon-border-default);
+    border-radius: var(--markon-radius-sm);
+    background: var(--markon-bg-muted);
+    color: var(--markon-fg-default);
+    text-align: center;
+}
+
+.markdown-body .math-inline {
+    color: var(--markon-fg-default);
+}
+
+.markdown-body .math-error {
+    border-color: var(--markon-danger);
+    color: var(--markon-danger);
+    text-align: left;
+}
+
+.markdown-body .markon-diagram {
+    margin: 16px 0;
+    overflow-x: auto;
+}
+
+.markdown-body .markon-diagram-canvas {
+    display: inline-block;
+    max-width: 100%;
+    padding: 12px;
+    border: 1px solid var(--markon-border-default);
+    border-radius: var(--markon-radius-sm);
+    background: var(--markon-bg-default);
+}
+
+.markdown-body .markon-diagram svg {
+    display: block;
+    max-width: 100%;
+    height: auto;
+}
+
+.markdown-body .markon-source-fallback {
+    margin: 16px 0;
+    border: 1px solid var(--markon-border-default);
+    border-radius: var(--markon-radius-sm);
+    background: var(--markon-bg-default);
+}
+
+.markdown-body .markon-source-fallback-label {
+    padding: 8px 12px;
+    border-bottom: 1px solid var(--markon-border-default);
+    color: var(--markon-fg-muted);
+    font-size: 13px;
+}
+
+.markdown-body .markon-source-fallback-label code {
+    color: var(--markon-fg-default);
+}
+
+.markdown-body .markon-source-fallback-message {
+    color: var(--markon-danger);
+}
+
+.markdown-body .markon-source-fallback pre {
+    margin: 0;
+    border-radius: 0 0 var(--markon-radius-sm) var(--markon-radius-sm);
+}
+
 .strikethrough {
     text-decoration: line-through;
 }
@@ -524,10 +593,20 @@ html[data-theme="dark"] .markdown-body h6.heading-focused {
     word-wrap: break-word;
 }
 
-/* The mobile popup shows its actions persistently (no hover on touch), so it
-   still reserves room for them. */
+/* The popup shows its actions persistently (no hover to reveal them). They sit
+   as a bare row of icons tucked into the top-right corner — no chip backdrop,
+   no separate layer — with the note text flowing full-width beneath. */
+.note-popup .note-actions {
+    position: static;
+    align-self: flex-end;
+    margin: -8px -12px 4px 0;
+    padding: 0;
+    background: none;
+    border: 0;
+    box-shadow: none;
+}
 .note-popup .note-content {
-    padding-right: 52px;
+    padding-right: 0;
 }
 
 /* ============================================================
@@ -618,6 +697,8 @@ html[data-theme="dark"] .markdown-body h6.heading-focused {
 
 .note-popup {
     position: fixed;
+    display: flex;
+    flex-direction: column;
     max-width: 300px;
     background: var(--markon-bg-muted);
     border: 1px solid var(--markon-accent);

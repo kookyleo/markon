@@ -65,6 +65,30 @@ describe('NoteManager', () => {
         expect(cards[0].getAttribute('data-annotation-id')).toBe('anno-1');
     });
 
+    it('marginCards:false tracks note data but mounts no gutter cards (diff popup mode)', () => {
+        const root = setupBody(`
+            <p><span class="has-note" data-annotation-id="anno-1">alpha</span></p>
+            <p><span class="has-note" data-annotation-id="anno-2">beta</span></p>
+        `);
+        const annos: Annotation[] = [
+            makeAnno({ id: 'anno-1', text: 'alpha', note: 'first' }),
+            makeAnno({ id: 'anno-2', text: 'beta', note: 'second' }),
+        ];
+        const mgr = new NoteManager(fakeAnnotationManager(annos), root, { marginCards: false });
+        mgr.render();
+
+        // No gutter cards mounted...
+        expect(document.querySelectorAll('.note-card-margin').length).toBe(0);
+        // ...but note data is tracked so showNotePopup can resolve a click.
+        expect(mgr.getNoteCardsData()).toHaveLength(2);
+
+        const noteEl = root.querySelector<HTMLElement>('[data-annotation-id="anno-1"]')!;
+        mgr.showNotePopup(noteEl, 'anno-1');
+        const popup = document.querySelector('.note-popup');
+        expect(popup).not.toBeNull();
+        expect(popup?.querySelector('.note-content')?.textContent).toBe('first');
+    });
+
     it('deduplicates same-id has-note elements that appear nested + non-nested', () => {
         // When a single annotation gets re-applied and ends up wrapped both
         // inside another .has-note (nested) and as a standalone span, the

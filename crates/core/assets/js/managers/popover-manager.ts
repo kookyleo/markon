@@ -45,6 +45,15 @@ export interface PopoverManagerOptions {
     enableEdit?: boolean;
     /** Whether the inline `Chat` button should be rendered when text is selected. */
     enableChat?: boolean;
+    /** Whether the `Note` button is offered. Defaults to `true` (the normal
+     *  document view). The rendered diff keeps it on; a future read-only surface
+     *  can pass `false` to drop note creation entirely. */
+    enableNote?: boolean;
+    /** Optional predicate marking a text/element node as non-annotatable chrome
+     *  (e.g. `NEW_SIDE_REJECT` on the diff: old/deleted text). When a selection
+     *  begins inside a rejected node the toolbar is suppressed — the old side is
+     *  not a live file, so it must never be annotated. */
+    reject?: (node: Node) => boolean;
 }
 
 interface SavedOffset {
@@ -69,12 +78,22 @@ export class PopoverManager {
     #draggable: DraggableManager | null = null;
     #enableEdit: boolean;
     #enableChat: boolean;
+    #enableNote: boolean;
+    #reject?: (node: Node) => boolean;
 
     constructor(markdownBody: HTMLElement, options: PopoverManagerOptions = {}) {
         this.#markdownBody = markdownBody;
         this.#enableEdit = options.enableEdit ?? false;
         this.#enableChat = options.enableChat ?? false;
+        this.#enableNote = options.enableNote ?? true;
+        this.#reject = options.reject;
         this.#createElement();
+    }
+
+    /** Rebind the body the toolbar is scoped to (the diff rebuilds it on view
+     *  switch). Existing selection state is left untouched. */
+    setMarkdownBody(body: HTMLElement): void {
+        this.#markdownBody = body;
     }
 
     show(range: Range, highlightedElement: Element | null = null): void {
@@ -164,6 +183,14 @@ export class PopoverManager {
             return;
         }
 
+        // Old/deleted (non-annotatable) side of the diff — hide and bail. The
+        // start node is the disambiguator: a quote that begins in deleted text
+        // must never become an annotation.
+        if (this.#isRejected(range.startContainer)) {
+            this.hide();
+            return;
+        }
+
         // Detect a selection that spans multiple block-level elements.
         if (this.#spansMultipleBlocks(range)) {
             Logger.log('PopoverManager', 'Selection spans multiple blocks, trimming to first block');
@@ -191,6 +218,11 @@ export class PopoverManager {
                     this.hide();
                     return;
                 }
+                if (this.#isRejected(trimmed.startContainer)) {
+                    Logger.log('PopoverManager', 'Trimmed selection starts in non-annotatable side, hiding');
+                    this.hide();
+                    return;
+                }
 
                 selection.removeAllRanges();
                 selection.addRange(trimmed);
@@ -208,7 +240,18 @@ export class PopoverManager {
         this.show(range, isHighlighted);
     }
 
+    /** True when `node` is non-annotatable chrome per the injected predicate. */
+    #isRejected(node: Node | null): boolean {
+        return !!node && !!this.#reject?.(node);
+    }
+
     handleHighlightClick(highlightedElement: Element): void {
+        // A diff re-render can leave a click handler holding a detached element;
+        // never place the toolbar against something no longer in the document.
+        if (!highlightedElement.isConnected) {
+            Logger.log('PopoverManager', 'handleHighlightClick: ignored detached element');
+            return;
+        }
         // If the popover is already visible, handleSelection just placed it — don't overwrite.
         if (this.isVisible()) {
             Logger.log('PopoverManager', 'handleHighlightClick: ignored because popover is already visible');
@@ -319,6 +362,14 @@ export class PopoverManager {
                 ? `<span class="popover-separator">|</span><button data-action="chat">${_t('web.chat.discuss')}</button>`
                 : '';
 
+        // Note button (gated so a read-only surface can drop note creation).
+        const noteButton = this.#enableNote
+            ? `<button data-action="add-note">${_t('web.annot.note')}</button>`
+            : '';
+        const noteWithSep = this.#enableNote
+            ? `<span class="popover-separator">|</span>${noteButton}`
+            : '';
+
         // Drag handle on the left edge — the only region that initiates a drag.
         const dragHandle = '<span class="popover-drag-handle" aria-hidden="true"></span>';
 
@@ -333,8 +384,7 @@ export class PopoverManager {
                     ${dragHandle}
                     ${author}
                     <button data-action="unhighlight">${_t('web.annot.unhighlight')}</button>
-                    <span class="popover-separator">|</span>
-                    <button data-action="add-note">${_t('web.annot.note')}</button>
+                    ${noteWithSep}
                     ${editButton}
                     ${chatButton}
                 `;
@@ -351,8 +401,7 @@ export class PopoverManager {
                 <button data-action="highlight-green">${_t('web.annot.green')}</button>
                 <button data-action="highlight-yellow">${_t('web.annot.yellow')}</button>
                 <button data-action="strikethrough">${_t('web.annot.strike')}</button>
-                <span class="popover-separator">|</span>
-                <button data-action="add-note">${_t('web.annot.note')}</button>
+                ${noteWithSep}
                 ${editButton}
                 ${chatButton}
             `;
@@ -393,6 +442,7 @@ export class PopoverManager {
             element.closest('.note-card-margin') ||
             element.closest('.note-popup') ||
             element.closest('.confirm-dialog') ||
+            element.closest('.md-diff-ui') ||
             element.closest('.viewed-checkbox') ||
             element.closest('.viewed-checkbox-label') ||
             element.closest('.viewed-text') ||

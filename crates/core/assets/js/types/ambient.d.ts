@@ -10,6 +10,7 @@ import type { TOCNavigator } from '../navigators/toc-navigator';
 import type { AnnotationNavigator } from '../navigators/annotation-navigator';
 import type { KeyboardShortcutsManager } from '../managers/keyboard-shortcuts';
 import type { SearchManager } from '../managers/search-manager';
+import type { VisualZoomManager } from '../managers/visual-zoom-manager';
 import type { SectionViewedManager } from '../viewed';
 
 export {};
@@ -33,6 +34,28 @@ declare global {
     annotationNavigator?: AnnotationNavigator;
     shortcutsManager?: KeyboardShortcutsManager;
     searchManager?: SearchManager;
+    visualZoomManager?: VisualZoomManager;
+    markonSourceDiff?: {
+      load: () => void;
+      scrollToPath: (path: string) => void;
+      selectPath: (path?: string | null) => void;
+      topAnchor: () => { path: string; line: number | null } | null;
+      anchorTo: (anchor: { path: string; line: number | null } | null) => void;
+    };
+    markonMarkdownDiff?: {
+      load: () => void;
+      selectPath: (path?: string | null) => void;
+      scrollToPath: (path: string) => void;
+      topAnchor: () => { path: string; line: number | null } | null;
+      anchorTo: (anchor: { path: string; line: number | null } | null) => void;
+    };
+    /** Rendered-diff annotation coordinator (diff-annotations.ts). Present only
+     *  on the compare page when annotations are active (worktree diff). The
+     *  rendered view calls these as file bodies (re)render. */
+    markonDiffAnnotations?: {
+      onBodyRendered: (body: HTMLElement) => void;
+      onContentRendered: () => void;
+    };
     isSharedAnnotationMode?: boolean;
     openEditorAtLine?: (line: number) => void;
     clearPageAnnotations?: (event?: Event) => void;
@@ -43,14 +66,20 @@ declare global {
 
     __MARKON_I18N__?: { t: (key: string, ...args: unknown[]) => string };
     __MARKON_SHORTCUTS__?: Record<string, Partial<Record<string, unknown>>>;
+    MarkonTheme?: {
+      storageKey: string;
+      getMode: () => 'auto' | 'light' | 'dark';
+      getResolved: () => 'light' | 'dark';
+      setMode: (mode: 'auto' | 'light' | 'dark') => void;
+      openPanel: (anchor?: Element | null) => void;
+      togglePanel: (anchor?: Element | null) => void;
+      closePanel: () => void;
+      apply: () => void;
+      applyStylesheetMedia: () => void;
+    };
 
     __markonTocSetSelected?: (id: string) => void;
 
-    mermaid?: {
-      run?: (opts: { nodes: NodeListOf<Element> }) => Promise<void> | void;
-      init?: (config: undefined, nodes: NodeListOf<Element>) => void;
-      initialize: (config: Record<string, unknown>) => void;
-    };
     marked?: { parse: (src: string) => string };
   }
 }
