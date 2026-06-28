@@ -8,6 +8,7 @@ export default defineConfig({
   test: {
     include: ['crates/core/assets/js/**/*.{test,spec}.{ts,js}'],
     environment: 'jsdom',
+    setupFiles: ['crates/core/assets/js/test/setup.ts'],
   },
   // `__DEV__` is a build-time global injected by esbuild's `define` (see
   // scripts/build.mjs). Tests run through vitest which doesn't know about it,

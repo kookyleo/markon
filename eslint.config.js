@@ -10,7 +10,6 @@ export default [
                 localStorage: 'readonly',
                 history: 'readonly',
                 WebSocket: 'readonly',
-                mermaid: 'readonly',
             }
         },
         rules: {

@@ -181,7 +181,8 @@ graph TD; A-->B;
     }
     $preview = Invoke-Json "POST" "$Base/api/preview" $Token $previewBody
     Assert-True ($preview.html -match "Preview") "Preview API did not render markdown"
-    Assert-True ($preview.has_mermaid -eq $true) "Preview API did not detect Mermaid"
+    Assert-True ($preview.html -match "markon-diagram") "Preview API did not render Mermaid server-side"
+    Assert-True ($preview.html -match "<svg") "Preview API Mermaid output did not include SVG"
 
     $css = Invoke-WebRequest -Uri "$Base/_/css/tokens.css" -UseBasicParsing -TimeoutSec 15
     Assert-True ($css.StatusCode -eq 200) "Static CSS endpoint failed"

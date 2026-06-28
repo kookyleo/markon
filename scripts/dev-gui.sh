@@ -44,6 +44,39 @@ sync_dev_bundle_icon() {
   [[ -f "$plist" ]] && touch "$plist"
 }
 
+# graphviz-anywhere ships libgraphviz_api.dylib with an `@rpath/...` install name
+# but emits its `-rpath` link-arg only for its OWN artifacts, not for a downstream
+# binary like markon-gui. So the bare dev binary has no LC_RPATH and dyld aborts
+# at launch ("Library not loaded: @rpath/libgraphviz_api.dylib"). The release .app
+# gets this rpath from macos-bundle-graphviz.sh; here we bake it in at link time.
+# (DYLD_* env vars can't substitute: macOS strips them for the signed arm64 binary,
+# and an unsigned arm64 binary won't run.)
+graphviz_lib_dir() {  # $1 = profile dir (debug|release)
+  local d
+  d=$(find "target/$1/build" \
+        -path '*graphviz-anywhere-*/out/*/lib/libgraphviz_api.dylib' -type f 2>/dev/null \
+      | sort | tail -1)
+  [[ -n "$d" ]] && (cd "$(dirname "$d")" && pwd)
+}
+
+# Build markon-gui with the graphviz rpath baked in. $1 = profile dir; rest = cargo flags.
+build_gui_with_rpath() {
+  local profile="$1"; shift
+  local rpath
+  rpath=$(graphviz_lib_dir "$profile")
+  if [[ -z "$rpath" ]]; then
+    # First build: the dylib doesn't exist yet — produce it, then relink with rpath.
+    cargo build -p markon-gui "$@"
+    rpath=$(graphviz_lib_dir "$profile")
+  fi
+  if [[ -n "$rpath" ]]; then
+    RUSTFLAGS="${RUSTFLAGS:+$RUSTFLAGS }-C link-arg=-Wl,-rpath,$rpath" \
+      cargo build -p markon-gui "$@"
+  else
+    cargo build -p markon-gui "$@"
+  fi
+}
+
 # ── 1. Kill any running Markon instance ──────────────────────────────────────
 echo "▶ Killing running Markon instances…"
 pkill -x "markon-gui" 2>/dev/null || true
@@ -90,10 +123,10 @@ fi
 # ── 3. Build ─────────────────────────────────────────────────────────────────
 echo "▶ Building markon-gui ($MODE)…"
 if [[ "$MODE" == "release" ]]; then
-  cargo build -p markon-gui --release
+  build_gui_with_rpath release --release
   BIN="target/release/markon-gui"
 else
-  cargo build -p markon-gui
+  build_gui_with_rpath debug
   BIN="target/debug/markon-gui"
 fi
 

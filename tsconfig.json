@@ -22,7 +22,6 @@
     "crates/core/assets/js/**/*.js"
   ],
   "exclude": [
-    "crates/core/assets/js/mermaid.min.js",
     "crates/core/assets/dist/**",
     "node_modules"
   ]

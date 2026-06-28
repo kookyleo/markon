@@ -3,7 +3,10 @@ use dialoguer::Select;
 use markon_core::net::{available_bind_hosts, BindHostKind};
 use markon_core::server::{self, ServerConfig, WorkspaceInit};
 use markon_core::settings::AppSettings;
-use markon_core::workspace::{ServerLock, WorkspaceFlags, WorkspaceRegistry};
+use markon_core::workspace::{
+    access_code_matches, expand_and_canonicalize, hash_access_code, ServerLock, WorkspaceFlags,
+    WorkspaceRegistry,
+};
 use serde::{Deserialize, Serialize};
 use std::io::IsTerminal;
 use std::path::{Path, PathBuf};
@@ -11,13 +14,25 @@ use std::sync::{Arc, Mutex};
 
 mod feedback;
 
+const DAEMON_ACCESS_CODE_HASH_ENV: &str = "MARKON_DAEMON_ACCESS_CODE_HASH";
+const DAEMON_COLLABORATOR_ACCESS_CODE_HASH_ENV: &str =
+    "MARKON_DAEMON_COLLABORATOR_ACCESS_CODE_HASH";
+
 fn get_available_hosts() -> Vec<(String, String)> {
     available_bind_hosts()
         .into_iter()
         .map(|host| {
             let label = match host.kind {
-                BindHostKind::Localhost => "Localhost (local only)".to_string(),
-                BindHostKind::AllInterfaces => "All interfaces (LAN accessible)".to_string(),
+                BindHostKind::Localhost if host.address == "127.0.0.1" => {
+                    "Localhost (local only)".to_string()
+                }
+                BindHostKind::Localhost => format!("Localhost ({}, local only)", host.address),
+                BindHostKind::AllInterfaces if host.address == "0.0.0.0" => {
+                    "All interfaces (LAN accessible)".to_string()
+                }
+                BindHostKind::AllInterfaces => {
+                    format!("All interfaces ({}, LAN accessible)", host.address)
+                }
                 BindHostKind::Interface => host
                     .interface
                     .map(|name| format!("{} ({name})", host.address))
@@ -58,13 +73,6 @@ struct Cli {
     #[arg(long, value_name = "IP", action = clap::ArgAction::Set, num_args = 0..=1, default_missing_value = "select")]
     host: Option<String>,
 
-    /// Theme selection (light, dark, auto).
-    #[arg(
-        short = 't', long, default_value = "auto",
-        value_parser = clap::builder::PossibleValuesParser::new(["light", "dark", "auto"])
-    )]
-    theme: String,
-
     /// Public entry URL prefix (proxy/domain). Used for QR code and "accessible at" logs.
     #[arg(long, alias = "qr", value_name = "URL_PREFIX", action = clap::ArgAction::Set, num_args = 0..=1, default_missing_value = "missing")]
     entry: Option<String>,
@@ -73,33 +81,17 @@ struct Cli {
     #[arg(short = 'b', long, value_name = "BASE_URL", action = clap::ArgAction::Set, num_args = 0..=1, default_missing_value = "local")]
     open_browser: Option<String>,
 
-    /// Enable shared annotations (new server only).
-    #[arg(long, action = clap::ArgAction::SetTrue)]
-    shared_annotation: bool,
-
     /// Salt for workspace ID generation.
     #[arg(long)]
     salt: Option<String>,
 
-    /// Enable full-text search for the workspace.
-    #[arg(long, action = clap::ArgAction::SetTrue)]
-    enable_search: bool,
+    /// Set or clear the workspace initiator access code. Empty string clears.
+    #[arg(long, value_name = "CODE")]
+    access_code: Option<String>,
 
-    /// Enable section viewed checkboxes for the workspace.
-    #[arg(long, action = clap::ArgAction::SetTrue)]
-    enable_viewed: bool,
-
-    /// Enable live collaboration (view sync).
-    #[arg(long, action = clap::ArgAction::SetTrue)]
-    enable_live: bool,
-
-    /// Enable Markdown file editing for the workspace.
-    #[arg(long, action = clap::ArgAction::SetTrue)]
-    enable_edit: bool,
-
-    /// Enable AI chat (read-only assistant) for the workspace.
-    #[arg(long, action = clap::ArgAction::SetTrue)]
-    enable_chat: bool,
+    /// Set or clear the workspace collaborator access code. Empty string clears.
+    #[arg(long, value_name = "CODE")]
+    collaborator_access_code: Option<String>,
 
     /// Include the body of collapsed sections when printing. Default: hide
     /// collapsed bodies and mark them with a placeholder.
@@ -182,6 +174,10 @@ struct WorkspaceListEntry {
     flags: WorkspaceFlags,
     #[serde(default)]
     search_ready: bool,
+    #[serde(default)]
+    access_code_hash: String,
+    #[serde(default)]
+    collaborator_access_code_hash: String,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -302,6 +298,147 @@ fn format_workspace_feature_tags(flags: WorkspaceFlags, search_ready: bool) -> S
     } else {
         features.join(" | ")
     }
+}
+
+fn default_workspace_flags(settings: &AppSettings) -> WorkspaceFlags {
+    WorkspaceFlags {
+        enable_search: settings.default_search,
+        enable_viewed: settings.default_viewed,
+        enable_edit: settings.default_edit,
+        enable_live: settings.default_live,
+        enable_chat: settings.default_chat,
+        shared_annotation: settings.default_shared_annotation,
+    }
+}
+
+fn workspace_path_matches(saved_path: &str, root: &Path) -> bool {
+    let saved = expand_and_canonicalize(saved_path).unwrap_or_else(|_| PathBuf::from(saved_path));
+    saved == root
+}
+
+fn effective_access_hash(local_hash: &str, global_hash: &str) -> String {
+    if local_hash.is_empty() {
+        global_hash.to_string()
+    } else {
+        local_hash.to_string()
+    }
+}
+
+fn access_code_conflict_error() -> Box<dyn std::error::Error> {
+    "initiator and collaborator access codes must be different".into()
+}
+
+fn code_matches_hash(salt: &str, code: &str, hash: &str) -> bool {
+    !code.trim().is_empty() && !hash.is_empty() && access_code_matches(salt, code.trim(), hash)
+}
+
+fn resolve_workspace_access_hashes(
+    settings: &AppSettings,
+    saved_access_hash: &str,
+    saved_collaborator_hash: &str,
+    access_code: Option<&str>,
+    collaborator_access_code: Option<&str>,
+    salt: &str,
+) -> Result<(String, String), Box<dyn std::error::Error>> {
+    if let (Some(a), Some(c)) = (access_code, collaborator_access_code) {
+        let a = a.trim();
+        let c = c.trim();
+        if !a.is_empty() && a == c {
+            return Err(access_code_conflict_error());
+        }
+    }
+
+    let access_hash = access_code
+        .map(|code| {
+            let code = code.trim();
+            if code.is_empty() {
+                String::new()
+            } else {
+                hash_access_code(salt, code)
+            }
+        })
+        .unwrap_or_else(|| saved_access_hash.to_string());
+    let collaborator_hash = collaborator_access_code
+        .map(|code| {
+            let code = code.trim();
+            if code.is_empty() {
+                String::new()
+            } else {
+                hash_access_code(salt, code)
+            }
+        })
+        .unwrap_or_else(|| saved_collaborator_hash.to_string());
+
+    if !access_hash.is_empty() && access_hash == collaborator_hash {
+        return Err(access_code_conflict_error());
+    }
+
+    let effective_access = effective_access_hash(&access_hash, &settings.access_code_hash);
+    let effective_collaborator =
+        effective_access_hash(&collaborator_hash, &settings.collaborator_access_code_hash);
+
+    if access_code.is_some_and(|code| code_matches_hash(salt, code, &effective_collaborator)) {
+        return Err(access_code_conflict_error());
+    }
+    if collaborator_access_code.is_some_and(|code| code_matches_hash(salt, code, &effective_access))
+    {
+        return Err(access_code_conflict_error());
+    }
+
+    Ok((access_hash, collaborator_hash))
+}
+
+fn resolve_workspace_access_hashes_from_env_or_cli(
+    settings: &AppSettings,
+    saved_access_hash: &str,
+    saved_collaborator_hash: &str,
+    access_code: Option<&str>,
+    collaborator_access_code: Option<&str>,
+    salt: &str,
+) -> Result<(String, String), Box<dyn std::error::Error>> {
+    let daemon_access_hash = std::env::var(DAEMON_ACCESS_CODE_HASH_ENV).ok();
+    let daemon_collaborator_hash = std::env::var(DAEMON_COLLABORATOR_ACCESS_CODE_HASH_ENV).ok();
+    if daemon_access_hash.is_some() || daemon_collaborator_hash.is_some() {
+        let access_hash = daemon_access_hash.unwrap_or_else(|| saved_access_hash.to_string());
+        let collaborator_hash =
+            daemon_collaborator_hash.unwrap_or_else(|| saved_collaborator_hash.to_string());
+        if !access_hash.is_empty() && access_hash == collaborator_hash {
+            return Err(access_code_conflict_error());
+        }
+        return Ok((access_hash, collaborator_hash));
+    }
+
+    resolve_workspace_access_hashes(
+        settings,
+        saved_access_hash,
+        saved_collaborator_hash,
+        access_code,
+        collaborator_access_code,
+        salt,
+    )
+}
+
+fn daemon_args_without_access_codes<I>(args: I) -> Vec<String>
+where
+    I: IntoIterator<Item = String>,
+{
+    let mut out = Vec::new();
+    let mut skip_next = false;
+    for arg in args {
+        if skip_next {
+            skip_next = false;
+            continue;
+        }
+        if arg == "--access-code" || arg == "--collaborator-access-code" {
+            skip_next = true;
+            continue;
+        }
+        if arg.starts_with("--access-code=") || arg.starts_with("--collaborator-access-code=") {
+            continue;
+        }
+        out.push(arg);
+    }
+    out
 }
 
 fn pad_right(text: &str, width: usize) -> String {
@@ -611,31 +748,57 @@ async fn add_or_update_workspace(
     token: &str,
     ws_path: &str,
     flags: WorkspaceFlags,
+    access_code_hash: Option<&str>,
+    collaborator_access_code_hash: Option<&str>,
 ) -> Result<String, Box<dyn std::error::Error>> {
     let client = reqwest::Client::new();
+
+    // Mirrors the server's AddWorkspaceRequest so a new WorkspaceFlags field is
+    // carried automatically. Access code hashes are already salted on the CLI
+    // side and are optional: omitted means "inherit global/no change".
+    #[derive(Serialize)]
+    struct AddWorkspaceBody<'a> {
+        path: &'a str,
+        #[serde(flatten)]
+        flags: WorkspaceFlags,
+        #[serde(default, skip_serializing_if = "str::is_empty")]
+        access_code_hash: &'a str,
+        #[serde(default, skip_serializing_if = "str::is_empty")]
+        collaborator_access_code_hash: &'a str,
+    }
+
+    #[derive(Serialize)]
+    struct WorkspaceAccessBody<'a> {
+        #[serde(skip_serializing_if = "Option::is_none")]
+        access_code_hash: Option<&'a str>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        collaborator_access_code_hash: Option<&'a str>,
+    }
 
     // Check if this path is already a registered workspace.
     let workspaces = fetch_workspaces(&client, port, token).await?;
 
     if let Some(existing) = workspaces.iter().find(|w| w.path == ws_path) {
         let id = &existing.id;
-        client
-            .put(format!("http://127.0.0.1:{port}/api/workspace/{id}"))
-            .header("X-Markon-Token", token)
-            .json(&flags)
-            .send()
-            .await?
-            .error_for_status()?;
+        if access_code_hash.is_some() || collaborator_access_code_hash.is_some() {
+            let next_access = access_code_hash.unwrap_or(&existing.access_code_hash);
+            let next_collaborator =
+                collaborator_access_code_hash.unwrap_or(&existing.collaborator_access_code_hash);
+            if !next_access.is_empty() && next_access == next_collaborator {
+                return Err(access_code_conflict_error());
+            }
+            client
+                .put(format!("http://127.0.0.1:{port}/api/workspace/{id}/access"))
+                .header("X-Markon-Token", token)
+                .json(&WorkspaceAccessBody {
+                    access_code_hash,
+                    collaborator_access_code_hash,
+                })
+                .send()
+                .await?
+                .error_for_status()?;
+        }
         return Ok(id.clone());
-    }
-
-    // Mirrors the server's AddWorkspaceRequest (`{ path, #[serde(flatten)]
-    // flags }`) so a new WorkspaceFlags field is carried automatically.
-    #[derive(Serialize)]
-    struct AddWorkspaceBody<'a> {
-        path: &'a str,
-        #[serde(flatten)]
-        flags: WorkspaceFlags,
     }
 
     let resp: serde_json::Value = client
@@ -644,6 +807,8 @@ async fn add_or_update_workspace(
         .json(&AddWorkspaceBody {
             path: ws_path,
             flags,
+            access_code_hash: access_code_hash.unwrap_or_default(),
+            collaborator_access_code_hash: collaborator_access_code_hash.unwrap_or_default(),
         })
         .send()
         .await?
@@ -732,8 +897,6 @@ async fn main() {
         return;
     }
 
-    let theme = cli.theme.clone();
-
     let (ws_root, initial_path) = if let Some(ref file_str) = cli.file {
         let path = Path::new(file_str);
         let canonical = match dunce::canonicalize(path) {
@@ -757,21 +920,6 @@ async fn main() {
         )
     };
 
-    let flags = WorkspaceFlags {
-        enable_search: cli.enable_search,
-        enable_viewed: cli.enable_viewed,
-        enable_edit: cli.enable_edit,
-        enable_live: cli.enable_live,
-        enable_chat: cli.enable_chat,
-        shared_annotation: cli.shared_annotation,
-    };
-    let ws_init = WorkspaceInit {
-        path: ws_root.clone(),
-        flags,
-        initial_path: initial_path.clone(),
-        access_code_hash: String::new(),
-    };
-
     // Workspace IDs are SHA-256(salt + path). For URLs to survive restarts the
     // salt must be stable. AppSettings::load() persists a random salt to
     // settings.json on first run; fall back to it (also matches the GUI path)
@@ -779,6 +927,20 @@ async fn main() {
     // (CLI / GUI) opens it. The port-derived fallback only kicks in when no
     // settings file exists yet.
     let settings = AppSettings::load();
+    let saved_workspace = settings
+        .workspaces
+        .iter()
+        .find(|w| workspace_path_matches(&w.path, &ws_root));
+    let flags = saved_workspace
+        .map(|w| w.flags)
+        .unwrap_or_else(|| default_workspace_flags(&settings));
+    let ws_init = WorkspaceInit {
+        path: ws_root.clone(),
+        flags,
+        initial_path: initial_path.clone(),
+        access_code_hash: String::new(),
+        collaborator_access_code_hash: String::new(),
+    };
     let effective_salt = cli.salt.clone().unwrap_or_else(|| {
         if settings.salt.is_empty() {
             format!("markon:{}", cli.port)
@@ -786,6 +948,30 @@ async fn main() {
             settings.salt.clone()
         }
     });
+    let (workspace_access_code_hash, workspace_collaborator_access_code_hash) =
+        match resolve_workspace_access_hashes_from_env_or_cli(
+            &settings,
+            saved_workspace
+                .map(|w| w.access_code_hash.as_str())
+                .unwrap_or_default(),
+            saved_workspace
+                .map(|w| w.collaborator_access_code_hash.as_str())
+                .unwrap_or_default(),
+            cli.access_code.as_deref(),
+            cli.collaborator_access_code.as_deref(),
+            &effective_salt,
+        ) {
+            Ok(hashes) => hashes,
+            Err(e) => {
+                eprintln!("Error: {e}");
+                return;
+            }
+        };
+    let ws_init = WorkspaceInit {
+        access_code_hash: workspace_access_code_hash.clone(),
+        collaborator_access_code_hash: workspace_collaborator_access_code_hash.clone(),
+        ..ws_init
+    };
     let open_browser_target = cli.open_browser.clone().or_else(|| {
         if cli.file.is_some() {
             Some("local".to_string())
@@ -802,8 +988,19 @@ async fn main() {
 
     if let Some(lock) = ServerLock::read() {
         if lock.is_alive() {
-            match add_or_update_workspace(lock.port, &lock.token, &ws_root.to_string_lossy(), flags)
-                .await
+            match add_or_update_workspace(
+                lock.port,
+                &lock.token,
+                &ws_root.to_string_lossy(),
+                flags,
+                cli.access_code
+                    .as_ref()
+                    .map(|_| workspace_access_code_hash.as_str()),
+                cli.collaborator_access_code
+                    .as_ref()
+                    .map(|_| workspace_collaborator_access_code_hash.as_str()),
+            )
+            .await
             {
                 Ok(workspace_id) => {
                     // Prefer the running daemon's actual bind host (recorded in
@@ -844,18 +1041,28 @@ async fn main() {
 
     #[cfg(unix)]
     if !cli.daemon_internal {
-        let mut args: Vec<String> = std::env::args().skip(1).collect();
+        let mut args = daemon_args_without_access_codes(std::env::args().skip(1));
         args.push("--daemon-internal".to_string());
 
         use std::process::Stdio;
         let id = markon_core::workspace::hash_id(&ws_root, &effective_salt);
         let current_exe = std::env::current_exe().expect("Failed to get current executable");
-        let res = std::process::Command::new(current_exe)
+        let mut command = std::process::Command::new(current_exe);
+        command
             .args(&args)
             .stdin(Stdio::null())
             .stdout(Stdio::null())
-            .stderr(Stdio::null())
-            .spawn();
+            .stderr(Stdio::null());
+        if cli.access_code.is_some() {
+            command.env(DAEMON_ACCESS_CODE_HASH_ENV, &workspace_access_code_hash);
+        }
+        if cli.collaborator_access_code.is_some() {
+            command.env(
+                DAEMON_COLLABORATOR_ACCESS_CODE_HASH_ENV,
+                &workspace_collaborator_access_code_hash,
+            );
+        }
+        let res = command.spawn();
 
         match res {
             Ok(_) => {
@@ -879,23 +1086,40 @@ async fn main() {
         }
     }
 
-    // Restore previously persisted workspaces so a daemon cold-start doesn't
-    // immediately drop them when the persist hook fires. registry.add is
-    // idempotent on (salt, path), so adding `ws_init` last for the same path
-    // preserves the historical behavior of letting CLI flags override saved
-    // ones for the explicitly-named workspace.
+    // Restore persisted workspaces so a daemon cold-start doesn't immediately
+    // drop them when the persist hook fires. The explicitly-opened workspace
+    // keeps its persisted feature flags; only explicit CLI access-code args
+    // update its access hashes.
+    let mut loaded_explicit_workspace = false;
     let mut initial_workspaces: Vec<WorkspaceInit> = settings
         .workspaces
         .iter()
         .filter(|w| !w.path.is_empty())
-        .map(|w| WorkspaceInit {
-            path: PathBuf::from(&w.path),
-            flags: w.flags,
-            initial_path: None,
-            access_code_hash: w.access_code_hash.clone(),
+        .map(|w| {
+            let explicit = workspace_path_matches(&w.path, &ws_root);
+            if explicit {
+                loaded_explicit_workspace = true;
+            }
+            WorkspaceInit {
+                path: PathBuf::from(&w.path),
+                flags: w.flags,
+                initial_path: if explicit { initial_path.clone() } else { None },
+                access_code_hash: if explicit {
+                    workspace_access_code_hash.clone()
+                } else {
+                    w.access_code_hash.clone()
+                },
+                collaborator_access_code_hash: if explicit {
+                    workspace_collaborator_access_code_hash.clone()
+                } else {
+                    w.collaborator_access_code_hash.clone()
+                },
+            }
         })
         .collect();
-    initial_workspaces.push(ws_init);
+    if !loaded_explicit_workspace {
+        initial_workspaces.push(ws_init);
+    }
 
     let language = settings.effective_web_language();
     let shortcuts_json = settings.render_shortcuts_json();
@@ -903,6 +1127,8 @@ async fn main() {
     let default_chat_mode = settings.default_chat_mode.clone();
     let editor_theme = settings.web_editor_theme.clone();
     let access_code_hash = settings.access_code_hash.clone();
+    let collaborator_access_code_hash = settings.collaborator_access_code_hash.clone();
+    let db_path = settings.db_path.clone();
     // CLI flag forces inclusion; otherwise inherit the persisted preference so
     // GUI-set values still apply when launching from the command line.
     let print_collapsed_content = cli.print_collapsed_content || settings.print_collapsed_content;
@@ -930,10 +1156,11 @@ async fn main() {
         },
         advertised_host,
         port: cli.port,
-        theme,
+        theme: "auto".to_string(),
         qr: cli.entry,
         open_browser: open_browser_target,
-        shared_annotation: cli.shared_annotation,
+        shared_annotation: initial_workspaces.iter().any(|w| w.flags.shared_annotation),
+        db_path,
         salt: Some(effective_salt),
         initial_workspaces,
         bound_listener: None,
@@ -945,6 +1172,7 @@ async fn main() {
         default_chat_mode,
         editor_theme,
         access_code_hash,
+        collaborator_access_code_hash,
         print_collapsed_content,
     })
     .await
@@ -1098,6 +1326,24 @@ mod tests {
     }
 
     #[test]
+    fn workspace_summary_for_specific_ipv6_bind_brackets_url_host() {
+        let flags = WorkspaceFlags::default();
+        let summary = build_workspace_access_summary(
+            Path::new("/tmp/docs"),
+            flags,
+            "fd00::20",
+            "",
+            6419,
+            "abc123",
+            None,
+            None,
+        );
+        assert_eq!(summary.local_urls.len(), 1);
+        assert_eq!(summary.local_urls[0].url, "http://[fd00::20]:6419/abc123/");
+        assert_eq!(summary.featured_url, "http://[fd00::20]:6419/abc123/");
+    }
+
+    #[test]
     fn resolve_workspace_list_base_prefers_entry_then_featured() {
         // --entry / public prefix takes precedence and marks use_entry_url.
         assert_eq!(
@@ -1170,5 +1416,72 @@ mod tests {
             format_workspace_feature_tags(flags, true),
             "Search ready | Viewed | Live"
         );
+    }
+
+    #[test]
+    fn workspace_access_hashes_preserve_saved_values_when_cli_omits_codes() {
+        let settings = AppSettings {
+            access_code_hash: hash_access_code("salt", "global-owner"),
+            collaborator_access_code_hash: hash_access_code("salt", "global-guest"),
+            ..AppSettings::default()
+        };
+        let saved_owner = hash_access_code("salt", "owner");
+        let saved_guest = hash_access_code("salt", "guest");
+
+        let (owner, guest) = resolve_workspace_access_hashes(
+            &settings,
+            &saved_owner,
+            &saved_guest,
+            None,
+            None,
+            "salt",
+        )
+        .unwrap();
+
+        assert_eq!(owner, saved_owner);
+        assert_eq!(guest, saved_guest);
+    }
+
+    #[test]
+    fn workspace_access_hashes_reject_equal_cli_codes() {
+        let settings = AppSettings::default();
+        let err =
+            resolve_workspace_access_hashes(&settings, "", "", Some("same"), Some("same"), "salt")
+                .unwrap_err()
+                .to_string();
+
+        assert!(err.contains("must be different"));
+    }
+
+    #[test]
+    fn workspace_access_hashes_reject_effective_global_conflict() {
+        let settings = AppSettings {
+            collaborator_access_code_hash: hash_access_code("salt", "guest"),
+            ..AppSettings::default()
+        };
+
+        let err = resolve_workspace_access_hashes(&settings, "", "", Some("guest"), None, "salt")
+            .unwrap_err()
+            .to_string();
+
+        assert!(err.contains("must be different"));
+    }
+
+    #[test]
+    fn daemon_args_strip_plaintext_access_codes() {
+        let args = daemon_args_without_access_codes(
+            [
+                "--access-code",
+                "owner secret",
+                "--collaborator-access-code=guest secret",
+                "--host",
+                "0.0.0.0",
+                "README.md",
+            ]
+            .into_iter()
+            .map(String::from),
+        );
+
+        assert_eq!(args, ["--host", "0.0.0.0", "README.md"]);
     }
 }

@@ -58,6 +58,8 @@ for TARGET in "${TARGETS[@]}"; do
     exit 1
   fi
 
+  "$REPO_ROOT/scripts/macos-bundle-graphviz.sh" "$APP" "$TARGET"
+
   DMG_NAME="Markon_${VERSION}_${ARCH}.dmg"
   DMG_PATH="$DMG_OUT/$DMG_NAME"
 

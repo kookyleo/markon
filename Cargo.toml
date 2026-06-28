@@ -13,16 +13,22 @@ codegen-units = 1
 opt-level = "s"
 
 [workspace.dependencies]
-markon-core = { path = "crates/core", version = "0.14" }
+markon-core = { path = "crates/core", version = "0.15" }
 dunce = "1.0"
 local-ip-address = "0.6"
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt"] }
 
 [workspace.package]
-version = "0.14.4"
+version = "0.15.3"
 edition = "2021"
 authors = ["kookyleo"]
 license = "Apache-2.0"
 repository = "https://github.com/kookyleo/markon"
 homepage = "https://github.com/kookyleo/markon"
+
+[patch.crates-io]
+graphviz-anywhere = { path = "../GoAskAway/supramark/crates/graphviz-anywhere/packages/rust" }
+
+[patch."https://github.com/kookyleo/dagre-rs.git"]
+dagre = { path = "../GoAskAway/supramark/crates/dagre" }
