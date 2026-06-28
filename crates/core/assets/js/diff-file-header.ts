@@ -193,14 +193,36 @@ const workspaceId = (): string =>
 const headerDisplay = (path: string, oldPath?: string | null): string =>
     oldPath && oldPath !== path ? `${oldPath} -> ${path}` : path;
 
-const fileUrl = (path: string, edit: boolean): string => {
+const fileUrl = (path: string, edit: boolean, line?: number | null): string => {
     const encoded = path.split('/').map(encodeURIComponent).join('/');
-    return `/${workspaceId()}/${encoded}${edit ? '?edit=1' : ''}`;
+    if (!edit) return `/${workspaceId()}/${encoded}`;
+    // `?edit=1` opens the normal file view's editor (main.ts), optionally jumping
+    // to a 1-based line so editing a file from the diff lands where the reviewer
+    // was looking instead of at the top.
+    const lineQuery = line && line > 0 ? `&line=${line}` : '';
+    return `/${workspaceId()}/${encoded}?edit=1${lineQuery}`;
 };
 
-const openFile = (path: string, edit: boolean): void => {
+const openFile = (path: string, edit: boolean, line?: number | null): void => {
     if (!workspaceId()) return;
-    window.open(fileUrl(path, edit), '_blank', 'noopener');
+    window.open(fileUrl(path, edit, line), '_blank', 'noopener');
+};
+
+/** The 1-based source line currently at the top of this file's section in the
+ *  diff viewport, so "Edit file" can open the editor at the same spot. Returns
+ *  undefined when the file is collapsed / no line can be resolved (→ top). */
+const currentEditLine = (menu: HTMLElement): number | undefined => {
+    const section = menu.closest<HTMLElement>('.md-diff-file-section');
+    if (!section) return undefined;
+    // Find the actual scroll container (rendered panel, or the raw view's
+    // own scroller) by walking up to the nearest overflow-scrolling ancestor.
+    let scrollEl: HTMLElement | null = section.parentElement;
+    while (scrollEl && scrollEl.scrollHeight <= scrollEl.clientHeight + 1) {
+        scrollEl = scrollEl.parentElement;
+    }
+    if (!scrollEl) return undefined;
+    const line = lineAtTop(scrollEl, section);
+    return line != null ? Math.max(1, Math.round(line)) : undefined;
 };
 
 const copyPath = async (path: string, button: HTMLElement): Promise<void> => {
@@ -310,7 +332,7 @@ const buildMenu = (opts: DiffFileHeaderOpts): HTMLElement => {
 
     const items: Array<{ label: string; action: () => void; danger?: boolean }> = [
         { label: 'View file', action: () => openFile(opts.path, false) },
-        { label: 'Edit file', action: () => openFile(opts.path, true) },
+        { label: 'Edit file', action: () => openFile(opts.path, true, currentEditLine(menu)) },
         { label: 'Delete file', action: () => void deleteFile(opts.path, opts.onDeleted), danger: true },
     ];
     for (const item of items) {

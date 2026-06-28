@@ -1484,10 +1484,14 @@ document.addEventListener('DOMContentLoaded', () => {
         window.annotationNavigator = managers.annotationNavigator ?? undefined;
         window.shortcutsManager = managers.shortcutsManager ?? undefined;
         Logger.log('MarkonApp', 'Application started successfully');
-        // Deep-link into edit mode (e.g. from the diff file menu's "Edit file").
+        // Deep-link into edit mode (e.g. from the diff file menu's "Edit file"),
+        // optionally jumping to a 1-based line so editing from the diff lands
+        // where the reviewer was looking.
         try {
-            if (new URLSearchParams(window.location.search).get('edit') === '1') {
-                app.openEditorAtLine(1);
+            const params = new URLSearchParams(window.location.search);
+            if (params.get('edit') === '1') {
+                const line = parseInt(params.get('line') || '', 10);
+                app.openEditorAtLine(Number.isFinite(line) && line > 0 ? line : 1);
             }
         } catch (_) {
             /* ignore malformed URLs */
