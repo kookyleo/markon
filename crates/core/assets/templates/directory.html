@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="en" dir="auto" data-theme="{{ theme }}">
+<html lang="en" dir="auto" data-theme="{{ theme }}" data-theme-default="{{ theme }}">
 <head>
     {% include "theme-boot.html" %}
     <meta charset="UTF-8">
@@ -7,21 +7,22 @@
     <title>Directory Listing - markon</title>
     <meta name="enable-search" content="{{ enable_search }}">
     <meta name="workspace-id" content="{{ workspace_id }}">
-    {% if theme == "auto" %}
-    <link rel="stylesheet" href="/_/css/github-markdown-light.css" media="(prefers-color-scheme: light)">
-    <link rel="stylesheet" href="/_/css/github-markdown-dark.css" media="(prefers-color-scheme: dark)">
-    {% else %}
-    <link rel="stylesheet" href="/_/css/github-markdown-{{ theme }}.css">
-    {% endif %}
+    <link id="markon-github-markdown-light" rel="stylesheet" href="/_/css/github-markdown-light.css" media="not all">
+    <link id="markon-github-markdown-dark" rel="stylesheet" href="/_/css/github-markdown-dark.css" media="not all">
+    <script>window.MarkonTheme && window.MarkonTheme.applyStylesheetMedia();</script>
     <link rel="stylesheet" href="/_/css/tokens.css">
     <link rel="stylesheet" href="/_/css/editor.css">
     <style>
         body {
             font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
-            max-width: 800px;
-            margin: 40px auto;
-            padding: 0 20px;
-            line-height: 1.6;
+            margin: 0;
+            padding: 0;
+            min-height: 100vh;
+            line-height: 1.5;
+        }
+
+        * {
+            box-sizing: border-box;
         }
 
         /* Colours resolve from tokens.css via html[data-theme]; the head
@@ -48,6 +49,13 @@
 
         h1 {
             padding-bottom: 10px;
+        }
+
+        .directory-page {
+            width: 100%;
+            max-width: 980px;
+            margin: 40px auto;
+            padding: 0 20px;
         }
 
         ul {
@@ -98,6 +106,942 @@
         .dir-path {
             font-size: 0.9em;
             margin-bottom: 20px;
+        }
+        .dir-actions {
+            display: flex;
+            gap: 8px;
+            flex-wrap: wrap;
+            margin: 0 0 18px;
+        }
+        .dir-action {
+            display: inline-flex;
+            align-items: center;
+            border: 1px solid var(--markon-border-default);
+            border-radius: var(--markon-radius-sm);
+            padding: 6px 10px;
+            background: var(--markon-bg-muted);
+            color: var(--markon-fg-default) !important;
+            font-size: 13px;
+            text-decoration: none;
+        }
+        .dir-action:hover {
+            text-decoration: none;
+            background: var(--markon-bg-elevated);
+        }
+        .workspace-muted,
+        .workspace-meta {
+            color: var(--markon-fg-muted);
+            font-size: 13px;
+        }
+        .workspace-meta {
+            display: flex;
+            align-items: center;
+            flex-wrap: wrap;
+            gap: 6px;
+            margin-top: 8px;
+        }
+        .workspace-mono {
+            font-family: 'SF Mono', Monaco, 'Cascadia Code', 'Roboto Mono', Consolas, monospace;
+            font-size: 12px;
+            color: var(--markon-fg-muted);
+        }
+        .workspace-status-pill {
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+            border: 0;
+            border-radius: 0;
+            padding: 0;
+            line-height: 1.4;
+            background: transparent;
+            color: var(--markon-fg-muted);
+        }
+        .workspace-status-pill.is-ok {
+            color: var(--markon-success);
+        }
+        .workspace-status-pill.is-warn {
+            color: var(--markon-warning);
+        }
+        .workspace-feature-list {
+            display: flex;
+            flex-direction: column;
+            align-items: flex-start;
+            gap: 8px;
+            margin-top: 10px;
+        }
+        .workspace-feature-switch {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            border: 0;
+            border-radius: 0;
+            padding: 0;
+            background: transparent;
+            color: var(--markon-fg-muted);
+            font-size: 12px;
+            line-height: 1.35;
+            cursor: pointer;
+            user-select: none;
+        }
+        .workspace-feature-switch input {
+            position: absolute;
+            opacity: 0;
+            pointer-events: none;
+        }
+        .workspace-feature-switch.is-on {
+            color: var(--markon-fg-default);
+        }
+        .workspace-feature-switch.is-disabled,
+        .workspace-feature-switch.is-pending {
+            cursor: default;
+        }
+        .workspace-feature-switch.is-disabled {
+            opacity: 0.55;
+        }
+        .workspace-feature-toggle {
+            position: relative;
+            width: 26px;
+            height: 14px;
+            border-radius: 999px;
+            background: var(--markon-border-default);
+            flex: 0 0 auto;
+            transition: background-color 120ms ease;
+        }
+        .workspace-feature-toggle::after {
+            content: "";
+            position: absolute;
+            top: 2px;
+            left: 2px;
+            width: 10px;
+            height: 10px;
+            border-radius: 999px;
+            background: var(--markon-bg-default);
+            box-shadow: 0 0 0 1px var(--markon-border-default);
+            transition: transform 120ms ease;
+        }
+        .workspace-feature-switch.is-on .workspace-feature-toggle {
+            background: var(--markon-accent);
+        }
+        .workspace-feature-switch.is-on .workspace-feature-toggle::after {
+            transform: translateX(12px);
+        }
+        .file-filter-switch {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            padding: 0;
+            border: 0;
+            border-radius: 0;
+            background: transparent;
+        }
+        .file-filter-switch button {
+            min-height: 0;
+            border: 0;
+            border-radius: 0;
+            background: transparent;
+            color: var(--markon-fg-muted);
+            font: 12px/1.2 var(--markon-ui-font);
+            padding: 0;
+            cursor: pointer;
+            white-space: nowrap;
+        }
+        .file-filter-switch button:hover {
+            color: var(--markon-fg-default);
+            text-decoration: underline;
+        }
+        .file-filter-switch button.is-active {
+            background: transparent;
+            color: var(--markon-accent);
+            font-weight: 650;
+        }
+        .dir-filter-toolbar {
+            display: flex;
+            align-items: center;
+            justify-content: flex-end;
+            margin: 0 0 12px;
+        }
+        .dir-list[data-file-filter="markdown"] li[data-filter-visible-markdown="false"] {
+            display: none;
+        }
+        .workspace-shell {
+            min-height: 100vh;
+            display: block;
+            overflow: visible;
+            background: var(--markon-bg-default);
+            color: var(--markon-fg-default);
+        }
+        .workspace-kicker,
+        .workspace-pane-kicker {
+            color: var(--markon-fg-muted);
+            font-size: 12px;
+            line-height: 1.2;
+        }
+        .workspace-title {
+            margin: 3px 0 0;
+            padding: 0;
+            border: 0;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+            font-size: 20px;
+            line-height: 1.25;
+        }
+        .workspace-sidebar,
+        .workspace-main,
+        .workspace-detail {
+            min-width: 0;
+            min-height: 0;
+            overflow: hidden;
+        }
+        .workspace-sidebar {
+            display: flex;
+            flex-direction: column;
+            border-right: 1px solid var(--markon-border-default);
+            background: var(--markon-bg-muted);
+        }
+        .workspace-pane-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 10px;
+            min-height: 48px;
+            padding: 12px 14px;
+            border-bottom: 1px solid var(--markon-border-default);
+        }
+        .workspace-pane-title {
+            margin: 0;
+            font-size: 13px;
+            line-height: 1.3;
+            color: var(--markon-fg-default);
+        }
+        .workspace-file-list {
+            flex: 1;
+            min-height: 0;
+            overflow: auto;
+            padding: 8px;
+        }
+        .workspace-file-list .dir-list {
+            margin: 0;
+        }
+        .workspace-file-list .dir-list li {
+            display: flex;
+            align-items: center;
+            min-width: 0;
+            padding: 6px 7px;
+            border-bottom: 0;
+            border-radius: var(--markon-radius-sm);
+        }
+        .workspace-file-list .dir-list li:hover {
+            background: var(--markon-bg-elevated);
+        }
+        .workspace-file-list .dir-list a {
+            min-width: 0;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+            color: var(--markon-fg-default) !important;
+        }
+        .workspace-footlinks {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px 10px;
+            padding: 10px 14px;
+            border-top: 1px solid var(--markon-border-default);
+            color: var(--markon-fg-muted);
+            font-size: 12px;
+        }
+        .workspace-footlinks a,
+        .workspace-footlinks a:visited {
+            color: var(--markon-fg-muted) !important;
+        }
+        .workspace-main {
+            display: flex;
+            flex-direction: column;
+            min-height: 100vh;
+            margin-right: 380px;
+            overflow: visible;
+            padding: 28px 30px 34px;
+            background: var(--markon-bg-default);
+        }
+        .workspace-meta-panel {
+            padding-bottom: 22px;
+            border-bottom: 1px solid var(--markon-border-default);
+        }
+        .workspace-files-panel {
+            padding-top: 22px;
+        }
+        .workspace-repo-toolbar {
+            display: grid;
+            grid-template-columns: minmax(0, 1fr) auto;
+            align-items: center;
+            gap: 12px;
+            padding: 0 0 18px;
+        }
+        .workspace-repo-toolbar-left,
+        .workspace-repo-toolbar-right {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            min-width: 0;
+        }
+        .workspace-repo-toolbar-right {
+            justify-content: flex-end;
+        }
+        .workspace-ref-menu,
+        .workspace-dropdown {
+            position: relative;
+            display: inline-flex;
+        }
+        .workspace-tool-button,
+        .workspace-ref-link,
+        .workspace-green-button {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            min-height: 34px;
+            max-width: 100%;
+            border: 1px solid var(--markon-border-default);
+            border-radius: var(--markon-radius-sm);
+            padding: 6px 10px;
+            background: var(--markon-bg-muted);
+            color: var(--markon-fg-default) !important;
+            font: 600 13px/1.2 var(--markon-ui-font);
+            text-decoration: none;
+            white-space: nowrap;
+            cursor: pointer;
+        }
+        .workspace-ref-link {
+            border-color: transparent;
+            background: transparent;
+            color: var(--markon-fg-muted) !important;
+            font-weight: 600;
+        }
+        .workspace-tool-button:hover,
+        .workspace-ref-link:hover {
+            background: var(--markon-bg-elevated);
+            text-decoration: none;
+        }
+        .workspace-tool-button[disabled] {
+            color: var(--markon-fg-muted) !important;
+            cursor: default;
+        }
+        .workspace-tool-button[disabled]:hover {
+            background: var(--markon-bg-muted);
+        }
+        .workspace-green-button {
+            border-color: color-mix(in srgb, var(--markon-success) 68%, var(--markon-border-default));
+            background: var(--markon-success);
+            color: var(--markon-bg-default) !important;
+        }
+        .workspace-green-button:hover {
+            filter: brightness(1.04);
+            text-decoration: none;
+        }
+        .workspace-tool-button svg,
+        .workspace-ref-link svg,
+        .workspace-green-button svg {
+            width: 16px;
+            height: 16px;
+            flex: 0 0 auto;
+        }
+        .workspace-tool-label {
+            min-width: 0;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+        .workspace-keycap {
+            margin-left: auto;
+            min-width: 22px;
+            border: 1px solid var(--markon-border-default);
+            border-radius: var(--markon-radius-sm);
+            padding: 1px 5px;
+            color: var(--markon-fg-muted);
+            font: 11px/1.2 var(--markon-ui-font);
+            text-align: center;
+        }
+        .workspace-dropdown-menu {
+            position: absolute;
+            z-index: var(--markon-z-modal-inline);
+            top: calc(100% + 6px);
+            right: 0;
+            display: none;
+            min-width: 250px;
+            max-width: min(420px, calc(100vw - 32px));
+            padding: 8px;
+            border: 1px solid var(--markon-border-default);
+            border-radius: var(--markon-radius-lg);
+            background: var(--markon-bg-overlay);
+            box-shadow: var(--markon-shadow-pop);
+        }
+        .workspace-ref-menu .workspace-dropdown-menu {
+            left: 0;
+            right: auto;
+        }
+        .workspace-dropdown.is-open .workspace-dropdown-menu,
+        .workspace-ref-menu.is-open .workspace-dropdown-menu {
+            display: block;
+        }
+        .workspace-menu-title {
+            padding: 5px 7px 8px;
+            color: var(--markon-fg-muted);
+            font-size: 12px;
+            font-weight: 650;
+        }
+        .workspace-menu-item {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 10px;
+            width: 100%;
+            min-height: 32px;
+            border: 0;
+            border-radius: var(--markon-radius-sm);
+            padding: 6px 7px;
+            background: transparent;
+            color: var(--markon-fg-default);
+            font: 13px/1.25 var(--markon-ui-font);
+            text-align: left;
+            cursor: pointer;
+        }
+        .workspace-menu-item:hover {
+            background: var(--markon-bg-muted);
+        }
+        .workspace-menu-item[disabled] {
+            color: var(--markon-fg-muted);
+            cursor: default;
+        }
+        .workspace-menu-item[disabled]:hover {
+            background: transparent;
+        }
+        .refs-current {
+            color: var(--markon-success);
+            font-size: 12px;
+            font-weight: 650;
+        }
+        .workspace-modal {
+            position: fixed;
+            inset: 0;
+            z-index: var(--markon-z-modal);
+            display: none;
+            place-items: start center;
+            padding: 12vh 18px 24px;
+            background: color-mix(in srgb, var(--markon-bg-default) 58%, transparent);
+        }
+        .workspace-modal.is-open {
+            display: grid;
+        }
+        .workspace-modal-panel {
+            width: min(680px, 100%);
+            max-height: 72vh;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+            border: 1px solid var(--markon-border-default);
+            border-radius: var(--markon-radius-lg);
+            background: var(--markon-bg-overlay);
+            box-shadow: var(--markon-shadow-pop);
+        }
+        .workspace-modal-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 12px;
+            padding: 12px 14px;
+            border-bottom: 1px solid var(--markon-border-default);
+        }
+        .workspace-modal-title {
+            margin: 0;
+            font-size: 14px;
+            font-weight: 650;
+        }
+        .workspace-modal-close {
+            border: 0;
+            background: transparent;
+            color: var(--markon-fg-muted);
+            cursor: pointer;
+            font-size: 18px;
+        }
+        .workspace-modal-body {
+            padding: 12px;
+            overflow: auto;
+        }
+        .workspace-modal-input,
+        .workspace-add-file-textarea {
+            width: 100%;
+            border: 1px solid var(--markon-border-default);
+            border-radius: var(--markon-radius-sm);
+            background: var(--markon-bg-default);
+            color: var(--markon-fg-default);
+            font: 13px/1.4 var(--markon-ui-font);
+        }
+        .workspace-modal-input {
+            height: 38px;
+            padding: 7px 9px;
+        }
+        .workspace-add-file-textarea {
+            min-height: 130px;
+            resize: vertical;
+            margin-top: 10px;
+            padding: 9px;
+            font-family: 'SF Mono', Monaco, 'Cascadia Code', 'Roboto Mono', Consolas, monospace;
+        }
+        .workspace-file-results {
+            margin: 10px 0 0;
+            padding: 0;
+            list-style: none;
+        }
+        .workspace-file-results li {
+            border-bottom: 0;
+        }
+        .workspace-file-results a {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 10px;
+            padding: 7px 8px;
+            border-radius: var(--markon-radius-sm);
+            color: var(--markon-fg-default) !important;
+        }
+        .workspace-file-results a:hover {
+            background: var(--markon-bg-muted);
+            text-decoration: none;
+        }
+        .workspace-file-result-path {
+            min-width: 0;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+        .workspace-file-result-badge {
+            color: var(--markon-fg-muted);
+            font-size: 11px;
+        }
+        .workspace-modal-actions {
+            display: flex;
+            align-items: center;
+            justify-content: flex-end;
+            gap: 8px;
+            margin-top: 12px;
+        }
+        .workspace-modal-status {
+            flex: 1;
+            min-width: 0;
+            color: var(--markon-fg-muted);
+            font-size: 12px;
+        }
+        .workspace-file-toolbar {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 12px;
+            padding: 0 0 10px;
+            border-bottom: 1px solid var(--markon-border-default);
+            background: transparent;
+        }
+        .workspace-file-toolbar-main {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            min-width: 0;
+        }
+        .workspace-commit-header {
+            display: grid;
+            grid-template-columns: minmax(0, 1fr) max-content;
+            align-items: center;
+            gap: 14px;
+            min-width: 0;
+            padding: 12px 0;
+            border-bottom: 1px solid var(--markon-border-default);
+        }
+        .workspace-commit-main,
+        .workspace-commit-meta {
+            display: flex;
+            align-items: center;
+            min-width: 0;
+            gap: 8px;
+        }
+        .workspace-commit-avatar {
+            width: 22px;
+            height: 22px;
+            flex: 0 0 auto;
+            border-radius: 999px;
+            background: var(--markon-bg-muted);
+            border: 1px solid var(--markon-border-default);
+        }
+        .workspace-commit-author {
+            flex: 0 0 auto;
+            color: var(--markon-fg-default);
+            font-weight: 650;
+        }
+        .workspace-commit-subject,
+        .workspace-entry-commit {
+            min-width: 0;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+            color: var(--markon-fg-muted);
+        }
+        .workspace-commit-ok {
+            flex: 0 0 auto;
+            color: var(--markon-success);
+        }
+        .workspace-commit-meta,
+        .workspace-entry-time {
+            color: var(--markon-fg-muted);
+            font-size: 12px;
+            white-space: nowrap;
+        }
+        .workspace-commits-link,
+        .workspace-commits-link:visited {
+            color: var(--markon-fg-default) !important;
+            font-weight: 650;
+        }
+        .workspace-repo-file-list {
+            margin: 0;
+        }
+        .workspace-repo-file-list li {
+            display: grid;
+            grid-template-columns: minmax(220px, 0.9fr) minmax(220px, 1.35fr) max-content;
+            align-items: center;
+            column-gap: 18px;
+            min-width: 0;
+            padding: 10px 0;
+            border-bottom: 0;
+        }
+        .workspace-entry-name {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            min-width: 0;
+        }
+        .workspace-repo-file-list li:hover {
+            background: transparent;
+        }
+        .workspace-entry-name a {
+            min-width: 0;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+            color: var(--markon-fg-default) !important;
+            font-weight: 600;
+        }
+        .workspace-detail {
+            position: fixed;
+            top: 0;
+            right: 0;
+            bottom: 0;
+            display: flex;
+            flex-direction: column;
+            gap: 0;
+            width: 380px;
+            height: auto;
+            padding: 28px 26px 34px;
+            overflow: hidden;
+            border-left: 1px solid var(--markon-border-default);
+            background: var(--markon-bg-default);
+        }
+        .workspace-side-section {
+            padding: 0 0 22px;
+            border-bottom: 1px solid var(--markon-border-default);
+        }
+        .workspace-side-section + .workspace-side-section {
+            padding-top: 22px;
+        }
+        .workspace-side-section:last-child {
+            border-bottom: 0;
+            padding-bottom: 0;
+        }
+        .workspace-section-body {
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+            margin-top: 12px;
+        }
+        .workspace-action-links {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 0 10px;
+            margin-top: 12px;
+            color: var(--markon-fg-muted);
+            font-size: 13px;
+        }
+        .workspace-action-links a,
+        .workspace-action-links a:visited {
+            color: var(--markon-accent) !important;
+        }
+        .workspace-action-disabled {
+            color: var(--markon-fg-muted);
+        }
+        .workspace-section-main {
+            min-width: 0;
+        }
+        .workspace-section-title,
+        .workspace-change-title {
+            margin: 0;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+            color: var(--markon-fg-default);
+            font-size: 14px;
+            font-weight: 650;
+            line-height: 1.3;
+        }
+        .workspace-section-desc,
+        .workspace-change-meta,
+        .workspace-diff-meta,
+        .workspace-empty {
+            color: var(--markon-fg-muted);
+            font-size: 12px;
+        }
+        .workspace-meta-list {
+            display: flex;
+            flex-direction: column;
+            gap: 7px;
+            margin: 0;
+            padding: 0;
+        }
+        .workspace-meta-row {
+            display: flex;
+            align-items: baseline;
+            min-width: 0;
+            gap: 8px;
+        }
+        .workspace-meta-row dt {
+            margin: 0;
+            flex: 0 0 auto;
+            color: var(--markon-fg-muted);
+            font-size: 12px;
+        }
+        .workspace-meta-row dd {
+            min-width: 0;
+            margin: 0;
+            color: var(--markon-fg-default);
+            font-size: 12px;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+        .workspace-copy-row {
+            align-items: center;
+        }
+        .workspace-copy-button {
+            border: 0;
+            padding: 0;
+            background: transparent;
+            color: var(--markon-accent);
+            font: inherit;
+            font-size: 12px;
+            cursor: pointer;
+        }
+        .workspace-copy-button:hover {
+            text-decoration: underline;
+        }
+        .workspace-change-primary {
+            min-width: 0;
+            padding: 0;
+            background: transparent;
+        }
+        .workspace-change-title {
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+        .workspace-change-counts {
+            display: flex;
+            align-items: center;
+            flex-wrap: wrap;
+            gap: 6px;
+        }
+        .workspace-diff-virtual-spacer {
+            position: relative;
+            width: 100%;
+        }
+        .workspace-diff-row {
+            position: absolute;
+            left: 0;
+            top: 0;
+            width: 100%;
+            contain: layout paint;
+        }
+        .workspace-diff-row-file {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 10px;
+            min-height: 44px;
+            padding: 9px 11px;
+            border-top: 1px solid var(--markon-border-default);
+            border-bottom: 1px solid var(--markon-border-default);
+            background: var(--markon-bg-muted);
+        }
+        .workspace-diff-row-file-title {
+            min-width: 0;
+            overflow-wrap: anywhere;
+            font-size: 13px;
+            font-weight: 650;
+        }
+        .workspace-diff-row-file-meta,
+        .workspace-diff-counts {
+            color: var(--markon-fg-muted);
+            font-size: 12px;
+        }
+        .workspace-diff-counts {
+            flex: 0 0 auto;
+        }
+        .workspace-diff-empty {
+            padding: 16px;
+            border: 1px solid var(--markon-border-default);
+            border-radius: var(--markon-radius-lg);
+            background: var(--markon-bg-muted);
+            color: var(--markon-fg-muted);
+            font-size: 13px;
+        }
+        .workspace-diff-empty.is-error {
+            border-color: color-mix(in srgb, var(--markon-danger) 36%, var(--markon-border-default));
+            color: var(--markon-danger);
+        }
+        .workspace-diff-file {
+            border: 1px solid var(--markon-border-default);
+            border-radius: var(--markon-radius-lg);
+            overflow: hidden;
+            background: var(--markon-bg-default);
+        }
+        .workspace-diff-file + .workspace-diff-file {
+            margin-top: 12px;
+        }
+        .workspace-diff-file-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 10px;
+            padding: 9px 11px;
+            border-bottom: 1px solid var(--markon-border-default);
+            background: var(--markon-bg-muted);
+        }
+        .workspace-diff-file-title {
+            min-width: 0;
+            overflow-wrap: anywhere;
+            font-size: 13px;
+            font-weight: 650;
+        }
+        .workspace-diff-counts {
+            flex: 0 0 auto;
+            color: var(--markon-fg-muted);
+            font-size: 12px;
+        }
+        .git-diff {
+            margin: 0;
+            overflow: auto;
+            background: var(--markon-bg-default);
+            color: var(--markon-fg-default);
+            font-family: 'SF Mono', Monaco, 'Cascadia Code', 'Roboto Mono', Consolas, monospace;
+            font-size: 12px;
+            line-height: 1.5;
+        }
+        .workspace-diff-row-line {
+            display: grid;
+            grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+            margin: 0;
+            overflow: visible;
+            background: var(--markon-bg-default);
+            color: var(--markon-fg-default);
+            font-family: 'SF Mono', Monaco, 'Cascadia Code', 'Roboto Mono', Consolas, monospace;
+            font-size: 12px;
+            line-height: 1.45;
+        }
+        .git-diff-line {
+            min-height: 22px;
+        }
+        .workspace-diff-split-cell {
+            min-width: 0;
+            display: grid;
+            grid-template-columns: 48px minmax(0, 1fr);
+        }
+        .workspace-diff-split-cell + .workspace-diff-split-cell {
+            border-left: 1px solid var(--markon-border-default);
+        }
+        .workspace-diff-line-no {
+            padding: 2px 7px;
+            border-right: 1px solid var(--markon-border-default);
+            color: var(--markon-fg-muted);
+            text-align: right;
+            user-select: none;
+        }
+        .workspace-diff-code {
+            min-width: 0;
+            padding: 2px 9px;
+            color: inherit;
+            font: inherit;
+            white-space: pre-wrap;
+            overflow-wrap: anywhere;
+        }
+        .git-diff-meta {
+            color: var(--markon-fg-muted);
+            background: var(--markon-bg-muted);
+        }
+        .git-diff-empty-side {
+            background: color-mix(in srgb, var(--markon-bg-muted) 74%, transparent);
+        }
+        .git-diff-add {
+            background: color-mix(in srgb, var(--markon-success) 16%, transparent);
+        }
+        .git-diff-del {
+            background: color-mix(in srgb, var(--markon-danger) 14%, transparent);
+        }
+        .git-diff-word-add,
+        .git-diff-word-del {
+            border-radius: var(--markon-radius-sm);
+            padding: 0 1px;
+        }
+        .git-diff-word-add {
+            background: color-mix(in srgb, var(--markon-success) 30%, transparent);
+        }
+        .git-diff-word-del {
+            background: color-mix(in srgb, var(--markon-danger) 28%, transparent);
+        }
+        @media (max-width: 720px) {
+            .workspace-shell {
+                display: block;
+                height: auto;
+                min-height: 100vh;
+                overflow: visible;
+            }
+            .workspace-main {
+                min-height: 0;
+                margin-right: 0;
+                padding: 12px;
+            }
+            .workspace-detail {
+                position: static;
+                width: auto;
+                height: auto;
+                overflow: visible;
+                border-left: 0;
+                border-top: 1px solid var(--markon-border-default);
+                padding: 12px;
+            }
+            .workspace-file-toolbar {
+                align-items: flex-start;
+                flex-direction: column;
+            }
+            .file-filter-switch {
+                width: 100%;
+            }
+            .file-filter-switch button {
+                flex: 1;
+            }
+            .workspace-commit-header,
+            .workspace-repo-file-list li {
+                grid-template-columns: minmax(0, 1fr);
+                gap: 4px;
+            }
+            .workspace-commit-meta {
+                flex-wrap: wrap;
+            }
+            .workspace-entry-commit,
+            .workspace-entry-time {
+                white-space: normal;
+            }
         }
 
         .footer {
@@ -291,29 +1235,300 @@
     {% include "i18n-boot.html" %}
 </head>
 <body>
-    <h1 id="dir-heading">Directory Listing</h1>
-    <div class="dir-path"><span id="dir-current-label">Current directory:</span> {{ current_dir }}</div>
-    <ul>
-        {% if show_parent %}
-        <li><span class="dir-icon dir-icon-folder" aria-hidden="true"></span><a href="{{ parent_link }}"><strong>..</strong></a></li>
+    {% if is_workspace_root %}
+    <main class="workspace-shell"
+          data-workspace-workbench
+          data-workspace-id="{{ workspace_id }}"
+          data-checkout-url="{{ checkout_url }}">
+        <section class="workspace-main">
+            <header class="workspace-meta-panel" aria-labelledby="dir-heading">
+                <div class="workspace-kicker" data-i18n="web.ws.heading">Workspace</div>
+                <h1 id="dir-heading" class="workspace-title" data-i18n-key="web.ws.heading" data-title-key="web.ws.title">Workspace</h1>
+                <dl class="workspace-meta-list">
+                    <div class="workspace-meta-row">
+                        <dt data-i18n="web.ws.meta.path">Path</dt>
+                        <dd title="{{ current_dir }}">{{ current_dir }}</dd>
+                    </div>
+                    <div class="workspace-meta-row workspace-copy-row">
+                        <dt data-i18n="web.ws.meta.id">Workspace ID</dt>
+                        <dd class="workspace-mono">{{ workspace_id }}</dd>
+                        <button class="workspace-copy-button" type="button" data-copy-text="{{ workspace_id }}" data-i18n="web.ws.meta.copy_id">Copy ID</button>
+                    </div>
+                    <div class="workspace-meta-row">
+                        <dt data-i18n="web.ws.meta.branch">Branch</dt>
+                        <dd>{% if git.available %}{% if git.branch %}{{ git.branch }}{% else %}<span data-i18n="web.ws.git.detached">Detached HEAD</span>{% endif %}{% else %}<span data-i18n="web.ws.git.none">Not a git repository</span>{% endif %}</dd>
+                    </div>
+                    <div class="workspace-meta-row">
+                        <dt data-i18n="web.ws.meta.head">HEAD</dt>
+                        <dd class="workspace-mono">{% if git.commit_short %}{{ git.commit_short }}{% else %}<span data-i18n="web.ws.git.no_head">No commit</span>{% endif %}</dd>
+                    </div>
+                </dl>
+            </header>
+
+            <section class="workspace-files-panel" aria-labelledby="dir-heading">
+                <div class="workspace-repo-toolbar">
+                    <div class="workspace-repo-toolbar-left">
+                        <div class="workspace-ref-menu" data-workspace-dropdown>
+                            <button class="workspace-tool-button" type="button" {% if not git.available %}disabled{% endif %}>
+                                <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 3a2 2 0 1 1-2-2 2 2 0 0 1 2 2Zm0 10a2 2 0 1 1-2-2 2 2 0 0 1 2 2Zm8-10a2 2 0 1 1-2-2 2 2 0 0 1 2 2Z"/><path d="M3 5v6m2-8h2.5A3.5 3.5 0 0 1 11 6.5V11"/></svg>
+                                <span class="workspace-tool-label">{% if git.available %}{% if git.branch %}{{ git.branch }}{% else %}<span data-i18n="web.ws.git.detached">Detached HEAD</span>{% endif %}{% else %}<span data-i18n="web.ws.git.none">Not a git repository</span>{% endif %}</span>
+                                <span aria-hidden="true">⌄</span>
+                            </button>
+                            {% if git.available %}
+                            <div class="workspace-dropdown-menu">
+                                <div class="workspace-menu-title" data-i18n="web.ws.git.switch_branch">Switch branch</div>
+                                {% for branch in git_branches %}
+                                <button class="workspace-menu-item" type="button" data-checkout-branch="{{ branch.name }}" {% if branch.current or not can_initiate %}disabled{% endif %}>
+                                    <span>{{ branch.name }}</span>
+                                    {% if branch.current %}<span class="refs-current" data-i18n="web.ws.git.current_branch">Current branch</span>{% endif %}
+                                </button>
+                                {% endfor %}
+                                {% if not can_initiate %}
+                                <div class="workspace-menu-title" data-i18n="web.ws.git.initiator_only">Initiator access required</div>
+                                {% endif %}
+                            </div>
+                            {% endif %}
+                        </div>
+                        <a class="workspace-ref-link" href="{{ branches_url }}">
+                            <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 3a2 2 0 1 1-2-2 2 2 0 0 1 2 2Zm0 10a2 2 0 1 1-2-2 2 2 0 0 1 2 2Zm8-10a2 2 0 1 1-2-2 2 2 0 0 1 2 2Z"/><path d="M3 5v6m2-8h2.5A3.5 3.5 0 0 1 11 6.5V11"/></svg>
+                            <span>{{ git_branch_count }} {% if git_branch_count == 1 %}<span data-i18n="web.ws.git.branch">Branch</span>{% else %}<span data-i18n="web.ws.git.branches">Branches</span>{% endif %}</span>
+                        </a>
+                        <a class="workspace-ref-link" href="{{ tags_url }}">
+                            <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2 2h5l7 7-5 5-7-7V2Z"/><path d="M5 5h.01"/></svg>
+                            <span>{{ git_tag_count }} {% if git_tag_count == 1 %}<span data-i18n="web.ws.git.tag">Tag</span>{% else %}<span data-i18n="web.ws.git.tags">Tags</span>{% endif %}</span>
+                        </a>
+                    </div>
+                    <div class="workspace-repo-toolbar-right">
+                        <button class="workspace-tool-button" type="button" data-go-to-file>
+                            <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="7" cy="7" r="4.5"/><path d="m10.5 10.5 3 3"/></svg>
+                            <span data-i18n="web.ws.go_to_file">Go to file</span>
+                            <span class="workspace-keycap">T</span>
+                        </button>
+                        {% if can_add_file %}
+                        <div class="workspace-dropdown" data-workspace-dropdown>
+                            <button class="workspace-tool-button" type="button">
+                                <span data-i18n="web.ws.add_file">Add file</span>
+                                <span aria-hidden="true">⌄</span>
+                            </button>
+                            <div class="workspace-dropdown-menu">
+                                <button class="workspace-menu-item" type="button" data-open-add-file>
+                                    <span data-i18n="web.ws.new_markdown_file">New Markdown file</span>
+                                </button>
+                            </div>
+                        </div>
+                        {% endif %}
+                        <div class="workspace-dropdown" data-workspace-dropdown>
+                            <button class="workspace-green-button" type="button">
+                                <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m5.5 3-4 5 4 5M10.5 3l4 5-4 5"/></svg>
+                                <span data-i18n="web.ws.code">Code</span>
+                                <span aria-hidden="true">⌄</span>
+                            </button>
+                            <div class="workspace-dropdown-menu">
+                                <button class="workspace-menu-item" type="button" data-copy-current-url><span data-i18n="web.ws.copy_url">Copy workspace URL</span></button>
+                                <button class="workspace-menu-item" type="button" data-copy-text="{{ current_dir }}"><span data-i18n="web.ws.copy_path">Copy workspace path</span></button>
+                                {% if work_diff_url %}<a class="workspace-menu-item" href="{{ work_diff_url }}" data-i18n="web.ws.git.working_diff">Working diff</a>{% endif %}
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="workspace-file-toolbar">
+                    <div class="workspace-file-toolbar-main">
+                        <div class="workspace-pane-kicker" data-i18n="web.ws.files">Files</div>
+                        <div class="file-filter-switch" role="group" data-file-filter-switch>
+                            <button type="button" data-file-filter-value="all" data-i18n="web.dir.filter.all">All files</button>
+                            <button class="is-active" type="button" data-file-filter-value="markdown" aria-pressed="true" data-i18n="web.dir.filter.markdown">Markdown only</button>
+                        </div>
+                    </div>
+                </div>
+                {% if git.available and latest_commit %}
+                <div class="workspace-commit-header">
+                    <div class="workspace-commit-main">
+                        <span class="workspace-commit-avatar" aria-hidden="true"></span>
+                        <span class="workspace-commit-author">{{ latest_commit.author }}</span>
+                        <span class="workspace-commit-subject" title="{{ latest_commit.subject }}">{{ latest_commit.subject }}</span>
+                        <span class="workspace-commit-ok" aria-hidden="true">✓</span>
+                    </div>
+                    <div class="workspace-commit-meta">
+                        <span class="workspace-mono">{{ latest_commit.short_hash }}</span>
+                        <span aria-hidden="true">·</span>
+                        <span>{{ latest_commit.relative_time }}</span>
+                        <a class="workspace-commits-link" href="{{ history_url }}">{{ git_commit_count }} Commits</a>
+                    </div>
+                </div>
+                {% endif %}
+                <ul class="dir-list workspace-repo-file-list" data-file-filter="markdown">
+                    {% for entry in entries %}
+                    <li data-entry-kind="{% if entry.is_dir %}dir{% else %}file{% endif %}"
+                        data-entry-markdown="{{ entry.is_markdown }}"
+                        data-entry-hidden="{{ entry.is_hidden }}"
+                        data-filter-visible-markdown="{{ entry.show_in_markdown }}">
+                        <div class="workspace-entry-name">
+                            {% if entry.is_dir %}
+                            <span class="dir-icon dir-icon-folder" aria-hidden="true"></span><a href="{{ entry.link }}"><strong>{{ entry.name }}/</strong></a>
+                            {% else %}
+                            <span class="dir-icon dir-icon-file" aria-hidden="true"></span><a href="{{ entry.link }}">{{ entry.name }}</a>
+                            {% endif %}
+                        </div>
+                        <div class="workspace-entry-commit" title="{% if entry.last_commit_subject %}{{ entry.last_commit_subject }}{% endif %}">{% if entry.last_commit_subject %}{{ entry.last_commit_subject }}{% endif %}</div>
+                        <div class="workspace-entry-time">{% if entry.last_commit_time %}{{ entry.last_commit_time }}{% endif %}</div>
+                    </li>
+                    {% endfor %}
+                </ul>
+            </section>
+        </section>
+
+        <aside class="workspace-detail">
+            <section class="workspace-side-section">
+                <div class="workspace-section-main">
+                    <div class="workspace-pane-kicker" data-i18n="web.ws.heading">Workspace</div>
+                    <h2 class="workspace-section-title" data-i18n="web.ws.settings">Workspace Settings</h2>
+                </div>
+                <div class="workspace-section-body">
+                    <div class="workspace-feature-list"
+                         data-workspace-feature-form
+                         data-update-url="{{ settings_features_url }}"
+                         data-can-edit="{{ can_initiate }}">
+                        {% for feature in feature_statuses %}
+                        <label class="workspace-feature-switch {% if feature.enabled %}is-on{% endif %}{% if not can_initiate %} is-disabled{% endif %}">
+                            <input type="checkbox"
+                                   data-feature-key="{{ feature.key }}"
+                                   {% if feature.enabled %}checked{% endif %}
+                                   {% if not can_initiate %}disabled{% endif %}>
+                            <span class="workspace-feature-toggle" aria-hidden="true"></span>
+                            <span data-i18n="{{ feature.label_key }}">{{ feature.label }}</span>
+                        </label>
+                        {% endfor %}
+                    </div>
+                </div>
+            </section>
+
+            <section class="workspace-side-section">
+                <div class="workspace-section-main">
+                    <div class="workspace-pane-kicker" data-i18n="web.ws.git">Git</div>
+                    <h2 class="workspace-section-title" data-i18n="web.ws.changes">Workspace changes</h2>
+                    <div class="workspace-section-desc">
+                        {% if git.available %}
+                        <span class="workspace-status-pill {% if git.dirty %}is-warn{% else %}is-ok{% endif %}" data-i18n="{% if git.dirty %}web.ws.git.dirty{% else %}web.ws.git.clean{% endif %}">{% if git.dirty %}Dirty{% else %}Clean{% endif %}</span>
+                        {% else %}
+                        <span data-i18n="web.ws.git.none">Not a git repository</span>
+                        {% endif %}
+                    </div>
+                </div>
+                <div class="workspace-section-body">
+                    {% if git.available %}
+                    {% if latest_commit %}
+                    <article class="workspace-change-primary">
+                        <div class="workspace-pane-kicker" data-i18n="web.ws.git.head_vs_parent">HEAD vs previous commit</div>
+                        <div class="workspace-change-title">{{ latest_commit.subject }}</div>
+                        <div class="workspace-change-meta"><span class="workspace-mono">{{ latest_commit.short_hash }}</span> · {{ latest_commit.author }} · {{ latest_commit.date }}</div>
+                    </article>
+                    {% else %}
+                    <div class="workspace-empty" data-i18n="web.ws.git.no_commits">No commits in this workspace yet.</div>
+                    {% endif %}
+                    <div class="workspace-change-counts">
+                        <span class="workspace-status-pill">{{ git_changed_count }} <span data-i18n="web.ws.git.changed_files">changed files</span></span>
+                        {% if git.added > 0 %}<span class="workspace-status-pill">+{{ git.added }} <span data-i18n="web.ws.git.added">Added</span></span>{% endif %}
+                        {% if git.modified > 0 %}<span class="workspace-status-pill">{{ git.modified }} <span data-i18n="web.ws.git.modified">Modified</span></span>{% endif %}
+                    </div>
+                    {% else %}
+                    <div class="workspace-empty" data-i18n="web.ws.git.non_repo">Open a Git repository to use history and diff.</div>
+                    {% endif %}
+                </div>
+                <div class="workspace-action-links">
+                    {% if latest_commit_diff_url %}
+                    <a href="{{ latest_commit_diff_url }}" data-i18n="web.ws.git.latest_commit_diff">Latest commit diff</a>
+                    {% else %}
+                    <span class="workspace-action-disabled" data-i18n="web.ws.git.latest_commit_diff">Latest commit diff</span>
+                    {% endif %}
+                    {% if work_diff_url %}
+                    <a href="{{ work_diff_url }}" data-i18n="web.ws.git.working_diff">Working diff</a>
+                    {% else %}
+                    <span class="workspace-action-disabled" data-i18n="web.ws.git.working_diff">Working diff</span>
+                    {% endif %}
+                    {% if git.available %}
+                    <a href="{{ history_url }}" data-i18n="web.ws.git.history">Git history</a>
+                    {% endif %}
+                </div>
+            </section>
+        </aside>
+
+        <div class="workspace-modal" data-go-to-file-modal data-files-data-url="{{ files_data_url }}" aria-hidden="true">
+            <div class="workspace-modal-panel" role="dialog" aria-modal="true" aria-labelledby="go-to-file-title">
+                <div class="workspace-modal-header">
+                    <h2 id="go-to-file-title" class="workspace-modal-title" data-i18n="web.ws.go_to_file">Go to file</h2>
+                    <button class="workspace-modal-close" type="button" data-close-workspace-modal aria-label="Close">×</button>
+                </div>
+                <div class="workspace-modal-body">
+                    <input class="workspace-modal-input" type="search" data-go-to-file-input placeholder="Type a file path">
+                    <ul class="workspace-file-results" data-go-to-file-results></ul>
+                    <div class="workspace-empty" data-go-to-file-empty data-i18n="web.ws.go_to_file.empty">No files found.</div>
+                </div>
+            </div>
+        </div>
+
+        {% if can_add_file %}
+        <div class="workspace-modal" data-add-file-modal data-create-file-url="{{ create_file_url }}" aria-hidden="true">
+            <div class="workspace-modal-panel" role="dialog" aria-modal="true" aria-labelledby="add-file-title">
+                <div class="workspace-modal-header">
+                    <h2 id="add-file-title" class="workspace-modal-title" data-i18n="web.ws.new_markdown_file">New Markdown file</h2>
+                    <button class="workspace-modal-close" type="button" data-close-workspace-modal aria-label="Close">×</button>
+                </div>
+                <form class="workspace-modal-body" data-add-file-form>
+                    <input class="workspace-modal-input" type="text" data-add-file-path placeholder="docs/new-note.md" autocomplete="off" spellcheck="false">
+                    <textarea class="workspace-add-file-textarea" data-add-file-content spellcheck="true"># Untitled
+</textarea>
+                    <div class="workspace-modal-actions">
+                        <div class="workspace-modal-status" data-add-file-status></div>
+                        <button class="workspace-tool-button" type="button" data-close-workspace-modal data-i18n="web.ws.cancel">Cancel</button>
+                        <button class="workspace-green-button" type="submit" data-i18n="web.ws.create_file">Create file</button>
+                    </div>
+                </form>
+            </div>
+        </div>
         {% endif %}
-        {% for entry in entries %}
-        <li>
-            {% if entry.is_dir %}
-            <span class="dir-icon dir-icon-folder" aria-hidden="true"></span><a href="{{ entry.link }}"><strong>{{ entry.name }}/</strong></a>
-            {% else %}
-            <span class="dir-icon dir-icon-file" aria-hidden="true"></span><a href="{{ entry.link }}">{{ entry.name }}</a>
+    </main>
+    {% else %}
+    <div class="directory-page">
+        <h1 id="dir-heading" data-i18n-key="web.dir.heading" data-title-key="web.title.dir">Directory Listing</h1>
+        <div class="dir-path"><span id="dir-current-label">Current directory:</span> {{ current_dir }}</div>
+        {% if git.available %}
+        <div class="dir-actions">
+            <a class="dir-action" href="{{ history_url }}" data-i18n="web.ws.git.history">Git history</a>
+            {% if work_diff_url %}<a class="dir-action" href="{{ work_diff_url }}" data-i18n="web.ws.git.working_diff">Working diff</a>{% endif %}
+        </div>
+        {% endif %}
+        <div class="dir-filter-toolbar">
+            <div class="file-filter-switch" role="group" data-file-filter-switch>
+                <button type="button" data-file-filter-value="all" data-i18n="web.dir.filter.all">All files</button>
+                <button class="is-active" type="button" data-file-filter-value="markdown" aria-pressed="true" data-i18n="web.dir.filter.markdown">Markdown only</button>
+            </div>
+        </div>
+        <ul class="dir-list" data-file-filter="markdown">
+            {% if show_parent %}
+            <li><span class="dir-icon dir-icon-folder" aria-hidden="true"></span><a href="{{ parent_link }}"><strong>..</strong></a></li>
             {% endif %}
-        </li>
-        {% endfor %}
-    </ul>
-    <footer class="container footer">
-        <a id="dir-footer" href="https://kookyleo.github.io/markon/">Powered by markon</a>
-        <span class="footer-separator"> | </span>
-        <a id="dir-feedback-link" href="https://github.com/kookyleo/markon/issues/new?title=%5BFeedback%5D%20&body=One-line%20summary%3A%0A%0A%23%23%20Environment%0A-%20markon%20version%3A%0A-%20OS%3A%0A-%20Browser%3A%0A%0A%23%23%20Steps%20to%20reproduce%0A1.%0A%0A%23%23%20Expected%0A%0A%23%23%20Actual%0A" target="_blank" rel="noopener noreferrer">Feedback</a>
-        <span class="footer-separator"> | </span>
-        <a id="dir-kbd-link" href="#" onclick="window.shortcutsManager.showHelp(); return false;">Keyboard Shortcuts (?)</a>
-    </footer>
+            {% for entry in entries %}
+            <li data-entry-kind="{% if entry.is_dir %}dir{% else %}file{% endif %}"
+                data-entry-markdown="{{ entry.is_markdown }}"
+                data-entry-hidden="{{ entry.is_hidden }}"
+                data-filter-visible-markdown="{{ entry.show_in_markdown }}">
+                {% if entry.is_dir %}
+                <span class="dir-icon dir-icon-folder" aria-hidden="true"></span><a href="{{ entry.link }}"><strong>{{ entry.name }}/</strong></a>
+                {% else %}
+                <span class="dir-icon dir-icon-file" aria-hidden="true"></span><a href="{{ entry.link }}">{{ entry.name }}</a>
+                {% endif %}
+            </li>
+            {% endfor %}
+        </ul>
+        <footer class="container footer">
+            <a id="dir-footer" href="https://kookyleo.github.io/markon/">Powered by markon</a>
+            <span class="footer-separator"> | </span>
+            <a id="dir-feedback-link" href="https://github.com/kookyleo/markon/issues/new?title=%5BFeedback%5D%20&body=One-line%20summary%3A%0A%0A%23%23%20Environment%0A-%20markon%20version%3A%0A-%20OS%3A%0A-%20Browser%3A%0A%0A%23%23%20Steps%20to%20reproduce%0A1.%0A%0A%23%23%20Expected%0A%0A%23%23%20Actual%0A" target="_blank" rel="noopener noreferrer">Feedback</a>
+            <span class="footer-separator"> | </span>
+            <a id="dir-kbd-link" href="#" onclick="window.shortcutsManager.showHelp(); return false;">Keyboard Shortcuts (?)</a>
+        </footer>
+    </div>
+    {% endif %}
 
     {% if enable_search %}
     <div id="search-modal" class="search-modal">
@@ -329,22 +1544,9 @@
         </div>
     </div>
     {% endif %}
-    <script>
-    (function(){
-      var t = window.__MARKON_I18N__ && window.__MARKON_I18N__.t || function(k){return k;};
-      var m = {
-        'dir-heading': 'web.dir.heading',
-        'dir-current-label': 'web.dir.current',
-        'dir-footer': 'web.footer',
-        'dir-feedback-link': 'web.footer.feedback',
-        'dir-kbd-link': 'web.kbd.link'
-      };
-      for(var id in m){ var el=document.getElementById(id); if(el) el.textContent=t(m[id]); }
-      var si=document.getElementById('search-input'); if(si) si.placeholder=t('web.search.placeholder');
-      var se=document.getElementById('search-esc-text'); if(se) se.textContent=t('web.search.esc');
-      document.title = t('web.title.dir');
-    })();
-    </script>
+    <!-- Directory/workspace page controls (classic IIFE, runs during parse). -->
+    <script src="/_/js/directory.js"></script>
+    <script type="module" src="/_/js/workspace-diff.js"></script>
     <script type="module" src="/_/js/main.js"></script>
 </body>
 </html>

@@ -1,11 +1,12 @@
 <!DOCTYPE html>
-<html lang="en" dir="auto" data-theme="{{ theme }}" data-editor-theme="{{ editor_theme | default(value='follow') }}" data-print-collapsed-content="{{ print_collapsed_content | default(value=false) }}">
+<html lang="en" dir="auto" data-theme="{{ theme }}" data-theme-default="{{ theme }}" data-editor-theme="{{ editor_theme | default(value='follow') }}" data-print-collapsed-content="{{ print_collapsed_content | default(value=false) }}">
 <head>
     {% include "theme-boot.html" %}
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta name="file-path" content="{{ file_path }}">
     <meta name="workspace-id" content="{{ workspace_id }}">
+    <meta name="access-role" content="{{ access_role | default(value='initiator') }}">
     <meta name="shared-annotation" content="{{ shared_annotation }}">
     <meta name="enable-viewed" content="{{ enable_viewed }}">
     <meta name="enable-search" content="{{ enable_search }}">
@@ -17,12 +18,9 @@
     <title>{{ title }}</title>
     <link rel="icon" type="image/svg+xml" href="/_/favicon.svg">
     <link rel="alternate icon" href="/_/favicon.ico">
-    {% if theme == "auto" %}
-    <link rel="stylesheet" href="/_/css/github-markdown-light.css" media="(prefers-color-scheme: light)">
-    <link rel="stylesheet" href="/_/css/github-markdown-dark.css" media="(prefers-color-scheme: dark)">
-    {% else %}
-    <link rel="stylesheet" href="/_/css/github-markdown-{{ theme }}.css">
-    {% endif %}
+    <link id="markon-github-markdown-light" rel="stylesheet" href="/_/css/github-markdown-light.css" media="not all">
+    <link id="markon-github-markdown-dark" rel="stylesheet" href="/_/css/github-markdown-dark.css" media="not all">
+    <script>window.MarkonTheme && window.MarkonTheme.applyStylesheetMedia();</script>
     <link rel="stylesheet" href="/_/css/github-print.css" media="print">
     <link rel="stylesheet" href="/_/css/tokens.css">
     <link rel="stylesheet" href="/_/css/editor.css">
@@ -411,6 +409,185 @@
             color: var(--markon-accent) !important;
         }
 
+        .markon-visual-zoom-shell,
+        .markon-diagram.markon-visual-zoom-host {
+            position: relative;
+        }
+
+        .markon-visual-zoom-shell {
+            display: inline-block;
+            max-width: 100%;
+            vertical-align: middle;
+        }
+
+        .markon-visual-zoom-shell > img,
+        .markon-visual-zoom-shell > svg,
+        .markon-visual-zoom-shell > a > img,
+        .markon-visual-zoom-shell > a > svg {
+            display: block;
+            max-width: 100%;
+        }
+
+        .markon-visual-zoom-trigger {
+            position: absolute;
+            top: 8px;
+            right: 8px;
+            z-index: var(--markon-z-content-overlay);
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            width: 28px;
+            height: 28px;
+            padding: 0;
+            border: 1px solid var(--markon-border-default);
+            border-radius: var(--markon-radius-sm);
+            background: var(--markon-bg-overlay);
+            color: var(--markon-fg-muted);
+            box-shadow: var(--markon-shadow-pop);
+            cursor: zoom-in;
+            opacity: 0.72;
+            transition:
+                background-color var(--markon-transition-fast),
+                border-color var(--markon-transition-fast),
+                color var(--markon-transition-fast),
+                opacity var(--markon-transition-fast);
+        }
+
+        .markon-visual-zoom-trigger svg {
+            width: 16px;
+            height: 16px;
+            fill: none;
+            stroke: currentColor;
+            stroke-linecap: round;
+            stroke-linejoin: round;
+            stroke-width: 2;
+        }
+
+        .markon-visual-zoom-host:hover > .markon-visual-zoom-trigger,
+        .markon-visual-zoom-trigger:hover,
+        .markon-visual-zoom-trigger:focus-visible {
+            opacity: 1;
+        }
+
+        .markon-visual-zoom-trigger:hover,
+        .markon-visual-zoom-trigger:focus-visible {
+            border-color: color-mix(in srgb, var(--markon-accent) 60%, var(--markon-border-default));
+            background: color-mix(in srgb, var(--markon-accent) 12%, var(--markon-bg-overlay));
+            color: var(--markon-accent);
+            outline: 2px solid color-mix(in srgb, var(--markon-accent) 45%, transparent);
+            outline-offset: 2px;
+        }
+
+        body.markon-visual-zoom-open {
+            overflow: hidden;
+        }
+
+        .markon-visual-zoom-overlay {
+            position: fixed;
+            inset: 0;
+            z-index: var(--markon-z-chrome);
+            display: grid;
+            grid-template-rows: auto 1fr;
+            background: color-mix(in srgb, var(--markon-bg-default) 78%, transparent);
+            color: var(--markon-fg-default);
+            touch-action: none;
+        }
+
+        .markon-visual-zoom-toolbar {
+            z-index: var(--markon-z-chrome-toolbar);
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            min-width: 0;
+            box-sizing: border-box;
+            padding: 12px 14px;
+            border-bottom: 1px solid var(--markon-border-default);
+            background: var(--markon-bg-overlay);
+            box-shadow: var(--markon-shadow-pop);
+            font: 14px/1.2 var(--markon-ui-font);
+        }
+
+        .markon-visual-zoom-title {
+            flex: 1 1 auto;
+            min-width: 0;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+            color: var(--markon-fg-default);
+            font-weight: 600;
+        }
+
+        .markon-visual-zoom-scale {
+            min-width: 48px;
+            color: var(--markon-fg-muted);
+            font-variant-numeric: tabular-nums;
+            text-align: center;
+        }
+
+        .markon-visual-zoom-toolbar button {
+            min-width: 36px;
+            min-height: 34px;
+            border: 1px solid var(--markon-border-default);
+            border-radius: var(--markon-radius-sm);
+            background: var(--markon-bg-default);
+            color: var(--markon-fg-default);
+            font: inherit;
+            cursor: pointer;
+        }
+
+        .markon-visual-zoom-toolbar button:hover {
+            background: var(--markon-bg-hover);
+        }
+
+        .markon-visual-zoom-stage {
+            position: relative;
+            overflow: hidden;
+            cursor: grab;
+            touch-action: none;
+            user-select: none;
+        }
+
+        .markon-visual-zoom-stage:active {
+            cursor: grabbing;
+        }
+
+        .markon-visual-zoom-frame {
+            position: absolute;
+            left: 50%;
+            top: 50%;
+            transform-origin: center center;
+            will-change: transform;
+        }
+
+        .markon-visual-zoom-content {
+            transform-origin: center center;
+            will-change: transform;
+        }
+
+        .markon-visual-zoom-content img,
+        .markon-visual-zoom-content svg,
+        .markon-visual-zoom-content .markon-diagram-canvas {
+            display: block;
+            max-width: none;
+            max-height: none;
+        }
+
+        .markon-visual-zoom-content .markon-diagram-canvas {
+            background: var(--markon-bg-overlay);
+            border: 1px solid var(--markon-border-default);
+            border-radius: var(--markon-radius-lg);
+            padding: 16px;
+        }
+
+        @media (max-width: 700px) {
+            .markon-visual-zoom-toolbar {
+                flex-wrap: wrap;
+            }
+            .markon-visual-zoom-title {
+                flex-basis: 100%;
+            }
+        }
+
         /* Viewed toolbar */
         .viewed-toolbar {
             border-color: var(--markon-border-default);
@@ -629,21 +806,10 @@
 
         @keyframes highlight-pulse {
             0%, 100% {
-                background-color: rgba(255, 193, 7, 0.6);
+                background-color: var(--markon-search-hit-active);
             }
             50% {
-                background-color: rgba(255, 235, 59, 0.8);
-            }
-        }
-
-        @media (prefers-color-scheme: dark) {
-            @keyframes highlight-pulse {
-                0%, 100% {
-                    background-color: rgba(255, 193, 7, 0.4);
-                }
-                50% {
-                    background-color: rgba(255, 193, 7, 0.6);
-                }
+                background-color: color-mix(in srgb, var(--markon-search-hit-active) 75%, var(--markon-search-hit) 25%);
             }
         }
 
@@ -691,7 +857,7 @@
         </nav>
     </div>
     {% endif %}
-    <article class="markdown-body">
+    <article class="markdown-body" data-markon-interactive-body>
         {% if show_back_link %}
         <div class="back-link">
             <a href="{{ back_link }}"><span id="back-link-text">← Back to file list</span></a>
@@ -708,6 +874,8 @@
         <a href="https://github.com/kookyleo/markon/issues/new?title=%5BFeedback%5D%20&body=One-line%20summary%3A%0A%0A%23%23%20Environment%0A-%20markon%20version%3A%0A-%20OS%3A%0A-%20Browser%3A%0A%0A%23%23%20Steps%20to%20reproduce%0A1.%0A%0A%23%23%20Expected%0A%0A%23%23%20Actual%0A" id="feedback-link-text" target="_blank" rel="noopener noreferrer">Feedback</a>
         <span class="footer-separator"> | </span>
         <a href="#" id="kbd-link-text" onclick="window.shortcutsManager.showHelp(); return false;">Keyboard Shortcuts (?)</a>
+        <span class="footer-separator"> | </span>
+        <a href="#" id="theme-link-text">Theme: Auto</a>
         <span class="footer-separator"> | </span>
         <a href="https://github.com/kookyleo/markon/releases" id="footer-version" target="_blank" rel="noopener noreferrer" title="markon version">v{{ version }}</a>
     </footer>
@@ -726,15 +894,10 @@
     </div>
     {% endif %}
 
-    {% if has_mermaid %}
-    <script src="/_/js/mermaid.min.js"></script>
-    <script>
-        // securityLevel: 'strict' disables raw HTML / click handlers / iframes
-        // in Mermaid sources — defends against a malicious markdown file
-        // smuggling script via a mermaid block that the server already
-        // HTML-escapes at the fence boundary.
-        mermaid.initialize({ startOnLoad: true, theme: 'default', securityLevel: 'strict' });
-    </script>
+    {% if has_math %}
+    <link rel="stylesheet" href="/_/js/katex/katex.min.css">
+    <script src="/_/js/katex/katex.min.js"></script>
+    <script src="/_/js/math-render.js"></script>
     {% endif %}
 
     {% if enable_edit and markdown_content_json %}
@@ -744,254 +907,8 @@
 
     <script type="module" src="/_/js/main.js"></script>
     <script src="/_/js/viewed.js"></script>
-    <script>
-        // TOC dual-state tracking:
-        // 1. "active"   = scroll position (which heading is at viewport top) — blue bg
-        // 2. "selected" = user-clicked section — left border accent
-        (function() {
-            const toc = document.querySelector('.toc');
-            if (!toc) return;
-
-            const tocLinks = Array.from(toc.querySelectorAll('.toc-item a'));
-            if (tocLinks.length === 0) return;
-
-            const headings = Array.from(document.querySelectorAll('h1[id], h2[id], h3[id], h4[id], h5[id], h6[id]'));
-            if (headings.length === 0) return;
-
-            const tocContainer = document.getElementById('toc-container');
-            const tocLinkByHref = new Map();
-            tocLinks.forEach(function(link) {
-                const href = link.getAttribute('href');
-                if (!href) return;
-                tocLinkByHref.set(href, link);
-                try {
-                    tocLinkByHref.set(decodeURIComponent(href), link);
-                } catch (_) {}
-            });
-
-            function tocLinkForId(id) {
-                if (!id) return null;
-                return tocLinkByHref.get('#' + id) || tocLinkByHref.get('#' + encodeURIComponent(id)) || null;
-            }
-
-            // ── Cached section ranges (rebuilt on resize/DOM, not on scroll) ──
-            // ── Section position cache ─────────────────────────────
-            // Built once, rebuilt on resize / DOM changes. Scroll handler does pure arithmetic.
-            var sectionCache = [];
-            var rebuildTimer = null;
-            var rebuildFrame = null;
-            var activeLink = null;
-
-            function rebuildCache() {
-                var sy = window.scrollY;
-                var docBottom = document.documentElement.scrollHeight;
-                var visible = [];
-                for (var i = 0; i < headings.length; i++) {
-                    var h = headings[i];
-                    if (h.offsetHeight === 0) continue;
-                    var link = tocLinkForId(h.id);
-                    var li = link && link.closest('.toc-item');
-                    if (!link || !li) continue;
-                    visible.push({ id: h.id, li: li, link: link, top: h.getBoundingClientRect().top + sy });
-                }
-                sectionCache = visible.map(function(s, i) {
-                    return {
-                        id: s.id,
-                        li: s.li,
-                        link: s.link,
-                        top: s.top,
-                        bottom: i + 1 < visible.length ? visible[i + 1].top : docBottom,
-                    };
-                });
-            }
-
-            function scheduleRebuild(delay) {
-                if (rebuildTimer) clearTimeout(rebuildTimer);
-                rebuildTimer = setTimeout(function() {
-                    rebuildTimer = null;
-                    if (rebuildFrame) cancelAnimationFrame(rebuildFrame);
-                    rebuildFrame = requestAnimationFrame(function() {
-                        rebuildFrame = null;
-                        rebuildCache();
-                        updateViewport();
-                    });
-                }, delay);
-            }
-
-            rebuildCache();
-            window.addEventListener('resize', function() { scheduleRebuild(100); });
-            // Rebuild when sections collapse/expand (class changes on .heading-section)
-            new MutationObserver(function() { scheduleRebuild(50); })
-                .observe(document.querySelector('.markdown-body') || document.body, { attributes: true, subtree: true, attributeFilter: ['class'] });
-
-            // ── State 1: Viewport highlight (sliding overlay) ──────
-            // Create a single overlay element that slides to cover viewport items
-            var tocList = toc.querySelector('.toc-list');
-            var vpHighlight = document.createElement('div');
-            vpHighlight.className = 'toc-viewport-highlight';
-            vpHighlight.style.top = '0px';
-            vpHighlight.style.height = '0px';
-            if (tocList) tocList.appendChild(vpHighlight);
-
-            function updateViewport() {
-                var vpTop = window.scrollY;
-                var vpBottom = vpTop + window.innerHeight;
-                var firstVp = null, lastVp = null;
-                var lo = 0, hi = sectionCache.length - 1, start = 0;
-                while (lo <= hi) {
-                    var mid = (lo + hi) >> 1;
-                    if (sectionCache[mid].top <= vpTop) {
-                        start = mid;
-                        lo = mid + 1;
-                    } else {
-                        hi = mid - 1;
-                    }
-                }
-                start = Math.max(0, start - 1);
-                for (var i = start; i < sectionCache.length; i++) {
-                    var s = sectionCache[i];
-                    if (s.top > vpBottom) break;
-                    var overlap = Math.min(s.bottom, vpBottom) - Math.max(s.top, vpTop);
-                    if (overlap > 30) {
-                        if (!firstVp) firstVp = s.li;
-                        lastVp = s.li;
-                    }
-                }
-                // Position the highlight overlay
-                if (firstVp && tocList) {
-                    var listRect = tocList.getBoundingClientRect();
-                    var firstRect = firstVp.getBoundingClientRect();
-                    var lastRect = (lastVp || firstVp).getBoundingClientRect();
-                    var top = firstRect.top - listRect.top + tocList.scrollTop;
-                    var height = lastRect.bottom - firstRect.top;
-                    vpHighlight.style.top = top + 'px';
-                    vpHighlight.style.height = height + 'px';
-                } else {
-                    vpHighlight.style.height = '0px';
-                }
-                // Keep viewport range visible in TOC panel
-                if (firstVp) {
-                    var tocRect = toc.getBoundingClientRect();
-                    var lineH = firstVp.offsetHeight || 24;
-                    var lastR = (lastVp || firstVp).getBoundingClientRect();
-                    if (lastR.bottom > tocRect.bottom - lineH * 4) {
-                        toc.scrollTop += (lastR.bottom - tocRect.bottom + lineH * 4);
-                    }
-                    var firstR = firstVp.getBoundingClientRect();
-                    if (firstR.top < tocRect.top + lineH * 3) {
-                        toc.scrollTop -= (tocRect.top + lineH * 3 - firstR.top);
-                    }
-                }
-            }
-
-            // ── Unified settle: update TOC only when main content stops moving ──
-            var pendingActiveId = null;
-            var settleTimer = null;
-            var isScrolling = false;
-
-            function onSettle() {
-                isScrolling = false;
-                updateViewport();
-                if (pendingActiveId) {
-                    if (activeLink) activeLink.classList.remove('active');
-                    activeLink = tocLinkForId(pendingActiveId);
-                    if (activeLink) activeLink.classList.add('active');
-                    pendingActiveId = null;
-                }
-            }
-
-            function resetSettleTimer() {
-                isScrolling = true;
-                if (settleTimer) clearTimeout(settleTimer);
-                settleTimer = setTimeout(onSettle, 20);
-            }
-
-            window.addEventListener('scroll', resetSettleTimer, { passive: true });
-            if ('onscrollend' in window) window.addEventListener('scrollend', onSettle);
-
-            // Initial render
-            updateViewport();
-
-            // ── State 2: .active scheduling ──────────────────────────
-            function scheduleActive(id) {
-                // Clear old .active immediately
-                if (activeLink) activeLink.classList.remove('active');
-                activeLink = null;
-                pendingActiveId = id;
-                resetSettleTimer();
-            }
-
-            function focusHeading(heading) {
-                document.querySelectorAll('.heading-focused').forEach(function(el) {
-                    el.classList.remove('heading-focused');
-                });
-                heading.classList.add('heading-focused');
-            }
-
-            // ── TOC click: schedule selected + smooth scroll ────────
-            tocLinks.forEach(link => {
-                link.addEventListener('click', (e) => {
-                    const href = link.getAttribute('href');
-                    if (href && href.startsWith('#')) {
-                        e.preventDefault();
-                        e.stopImmediatePropagation();
-                        const rawTargetId = href.substring(1);
-                        let targetId = rawTargetId;
-                        try {
-                            targetId = decodeURIComponent(rawTargetId);
-                        } catch (_) {}
-                        const targetElement = document.getElementById(targetId) || document.getElementById(rawTargetId);
-                        if (targetElement) {
-                            scheduleActive(targetId);
-                            focusHeading(targetElement);
-                            const targetTop = targetElement.getBoundingClientRect().top + window.scrollY - 20;
-                            window.scrollTo({ top: targetTop, behavior: 'smooth' });
-                            history.pushState(null, '', href);
-                            if (tocContainer && window.innerWidth <= 1400) {
-                                tocContainer.classList.remove('active');
-                            }
-                        }
-                    }
-                });
-            });
-
-            // ── Sync selected from content area clicks ──────────────
-            document.addEventListener('click', (e) => {
-                if (e.target.closest('.toc')) return;
-                // Find section heading from click target
-                const section = e.target.closest('.heading-section');
-                if (section) {
-                    const heading = section.querySelector(':scope > h1[id], :scope > h2[id], :scope > h3[id], :scope > h4[id], :scope > h5[id], :scope > h6[id]');
-                    if (heading && heading.id) { scheduleActive(heading.id); return; }
-                }
-                const heading = e.target.closest('h1[id], h2[id], h3[id], h4[id], h5[id], h6[id]');
-                if (heading && heading.id) { scheduleActive(heading.id); return; }
-                const link = e.target.closest('a[href^="#"]');
-                if (link) {
-                    const id = link.getAttribute('href').substring(1);
-                    if (id) scheduleActive(id);
-                }
-            }, true);
-
-            // Expose for j/k and main.js
-            window.__markonTocSetSelected = scheduleActive;
-        })();
-    </script>
-    <script>
-    (function(){
-      var t = window.__MARKON_I18N__ && window.__MARKON_I18N__.t || function(k){return k;};
-      var m = {
-        'toc-title': 'web.toc.title',
-        'back-link-text': 'web.back',
-        'footer-text': 'web.footer',
-        'clear-annot-text': 'web.annot.clear',
-        'feedback-link-text': 'web.footer.feedback',
-        'kbd-link-text': 'web.kbd.link'
-      };
-      for(var id in m){ var el=document.getElementById(id); if(el) el.textContent=t(m[id]); }
-      var si=document.getElementById('search-input'); if(si) si.placeholder=t('web.search.placeholder');
-      var se=document.getElementById('search-esc-text'); if(se) se.textContent=t('web.search.esc');
-    })();
-    </script>
+    <!-- Document-view page chrome: TOC tracking + layout i18n (classic IIFE,
+         runs during parse, sets __markonTocSetSelected before main.js). -->
+    <script src="/_/js/layout-page.js"></script>
 </body>
 </html>
