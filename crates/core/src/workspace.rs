@@ -1,4 +1,5 @@
 use crate::chat::edits::PendingEditStore;
+use crate::fswalk::path_to_forward_slash;
 use crate::markdown::extract_referenced_assets;
 use crate::search::SearchIndex;
 use arc_swap::ArcSwapOption;
@@ -13,6 +14,11 @@ use std::{
     },
 };
 use tokio::sync::broadcast;
+
+const LIVE_RELOAD_EXTENSIONS: &[&str] = &[
+    "md", "markdown", "png", "jpg", "jpeg", "gif", "webp", "avif", "svg", "css", "js",
+];
+const LIVE_RELOAD_IGNORED_DIRS: &[&str] = &[".git", "node_modules", "target"];
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct WorkspaceFlags {
@@ -41,6 +47,9 @@ pub struct WorkspaceConfig {
     pub single_file: Option<String>,
     /// Per-workspace access-code hash (empty = inherit the server code).
     pub access_code_hash: String,
+    /// Per-workspace collaborator access-code hash (empty = inherit the
+    /// server-level collaborator code).
+    pub collaborator_access_code_hash: String,
 }
 
 pub(crate) struct WorkspaceEntry {
@@ -68,6 +77,9 @@ pub(crate) struct WorkspaceEntry {
     /// Per-workspace access-code hash (empty = inherit server code). RwLock so
     /// the GUI can update it live without re-registering the workspace.
     pub access_code_hash: RwLock<String>,
+    /// Per-workspace collaborator access-code hash (empty = inherit the
+    /// server-level collaborator code).
+    pub collaborator_access_code_hash: RwLock<String>,
 }
 
 impl WorkspaceEntry {
@@ -92,6 +104,10 @@ impl WorkspaceEntry {
 
     pub(crate) fn access_code_hash(&self) -> String {
         self.access_code_hash.read().unwrap().clone()
+    }
+
+    pub(crate) fn collaborator_access_code_hash(&self) -> String {
+        self.collaborator_access_code_hash.read().unwrap().clone()
     }
 
     /// True when `rel` is the workspace's pinned file or one of the assets it
@@ -133,6 +149,9 @@ pub struct WorkspaceInfo {
     /// Per-workspace access-code hash (empty = inherit the server code).
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub access_code_hash: String,
+    /// Per-workspace collaborator access-code hash (empty = inherit the server code).
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub collaborator_access_code_hash: String,
 }
 
 /// Invoked whenever the registry mutates (add / update_flags / remove).
@@ -321,6 +340,7 @@ impl WorkspaceRegistry {
         // existing entry instead of spawning a second indexer thread.
         if self.inner.read().unwrap().contains_key(&id) {
             self.update_flags(&id, config.flags);
+            self.notify_persist();
             return id;
         }
         let (config_tx, _) = broadcast::channel(4);
@@ -340,6 +360,7 @@ impl WorkspaceRegistry {
             allowed_assets: RwLock::new(HashSet::new()),
             pending_edits: Arc::new(PendingEditStore::new()),
             access_code_hash: RwLock::new(config.access_code_hash),
+            collaborator_access_code_hash: RwLock::new(config.collaborator_access_code_hash),
         });
         self.inner
             .write()
@@ -359,12 +380,13 @@ impl WorkspaceRegistry {
                         name.clone(),
                     );
                 }
-                spawn_single_file_watcher(config.path, entry, name, self.live_tx.clone());
+                spawn_single_file_watcher(config.path, entry.clone(), name, self.live_tx.clone());
             }
             None => {
                 if config.flags.enable_search {
-                    spawn_search_indexer(config.path, entry);
+                    spawn_search_indexer(config.path.clone(), entry.clone());
                 }
+                spawn_directory_watcher(config.path, entry.clone(), self.live_tx.clone());
             }
         }
         self.notify_persist();
@@ -432,6 +454,19 @@ impl WorkspaceRegistry {
         self.notify_persist();
         true
     }
+
+    /// Set (or clear) a workspace's collaborator access-code hash and persist.
+    /// Returns false if the id isn't registered.
+    pub fn set_collaborator_access_code(&self, id: &str, hash: &str) -> bool {
+        let guard = self.inner.read().unwrap();
+        let Some(entry) = guard.get(id) else {
+            return false;
+        };
+        *entry.collaborator_access_code_hash.write().unwrap() = hash.to_string();
+        drop(guard);
+        self.notify_persist();
+        true
+    }
     pub(crate) fn list(&self) -> Vec<Arc<WorkspaceEntry>> {
         let mut v: Vec<_> = self.inner.read().unwrap().values().cloned().collect();
         // HashMap iteration order is non-deterministic, which leaked into the
@@ -458,6 +493,7 @@ impl WorkspaceRegistry {
                 ephemeral: e.is_ephemeral(),
                 single_file: e.single_file.clone(),
                 access_code_hash: e.access_code_hash(),
+                collaborator_access_code_hash: e.collaborator_access_code_hash(),
             })
             .collect()
     }
@@ -556,6 +592,54 @@ fn spawn_single_file_watcher(
                 }
                 if should_broadcast {
                     if let Some(tx) = live_tx.load_full() {
+                        let file_payload = serde_json::json!({
+                            "type": "file_changed",
+                            "workspace_id": entry.id,
+                            "path": rel_str,
+                        })
+                        .to_string();
+                        let _ = tx.send(file_payload);
+                    }
+                }
+            }
+        },
+    );
+}
+
+fn spawn_search_indexer(root: PathBuf, entry: Arc<WorkspaceEntry>) {
+    std::thread::spawn(move || {
+        if let Ok(idx) = SearchIndex::new(&root) {
+            entry.search_index.store(Some(Arc::new(idx)));
+        }
+    });
+}
+
+fn spawn_directory_watcher(
+    root: PathBuf,
+    entry: Arc<WorkspaceEntry>,
+    live_tx: Arc<ArcSwapOption<broadcast::Sender<String>>>,
+) {
+    spawn_watch_thread(
+        root.clone(),
+        RecursiveMode::Recursive,
+        move |event: notify::Event| {
+            let event_kind = event.kind;
+            for path in event.paths {
+                match &event_kind {
+                    EventKind::Create(_) | EventKind::Modify(_) => {
+                        if let Some(idx) = entry.search_index.load_full() {
+                            let _ = idx.update_file(&path);
+                        }
+                    }
+                    EventKind::Remove(_) => {
+                        if let Some(idx) = entry.search_index.load_full() {
+                            let _ = idx.delete_file(&path);
+                        }
+                    }
+                    _ => continue,
+                }
+                if let Some(tx) = live_tx.load_full() {
+                    if let Some(rel_str) = directory_live_reload_path(&root, &path) {
                         let payload = serde_json::json!({
                             "type": "file_changed",
                             "workspace_id": entry.id,
@@ -570,14 +654,23 @@ fn spawn_single_file_watcher(
     );
 }
 
-fn spawn_search_indexer(root: PathBuf, entry: Arc<WorkspaceEntry>) {
-    std::thread::spawn(move || {
-        if let Ok(idx) = SearchIndex::new(&root) {
-            let idx = Arc::new(idx);
-            entry.search_index.store(Some(idx.clone()));
-            start_file_watcher(idx, root);
-        }
-    });
+fn directory_live_reload_path(root: &Path, path: &Path) -> Option<String> {
+    let rel = path.strip_prefix(root).ok()?;
+    if rel.as_os_str().is_empty()
+        || rel.components().any(|component| {
+            let name = component.as_os_str().to_string_lossy();
+            LIVE_RELOAD_IGNORED_DIRS
+                .iter()
+                .any(|ignored| name.eq_ignore_ascii_case(ignored))
+        })
+    {
+        return None;
+    }
+    let ext = rel.extension()?.to_string_lossy().to_ascii_lowercase();
+    if !LIVE_RELOAD_EXTENSIONS.contains(&ext.as_str()) {
+        return None;
+    }
+    Some(path_to_forward_slash(rel))
 }
 
 /// Build a search index scoped to a single-file workspace's pinned file and
@@ -591,26 +684,6 @@ fn spawn_single_file_search_indexer(root: PathBuf, entry: Arc<WorkspaceEntry>, f
             entry.search_index.store(Some(Arc::new(idx)));
         }
     });
-}
-
-fn start_file_watcher(index: Arc<SearchIndex>, root: PathBuf) {
-    spawn_watch_thread(
-        root,
-        RecursiveMode::Recursive,
-        move |event: notify::Event| {
-            for path in event.paths {
-                match event.kind {
-                    EventKind::Create(_) | EventKind::Modify(_) => {
-                        let _ = index.update_file(&path);
-                    }
-                    EventKind::Remove(_) => {
-                        let _ = index.delete_file(&path);
-                    }
-                    _ => {}
-                }
-            }
-        },
-    );
 }
 
 #[derive(serde::Serialize, serde::Deserialize)]
@@ -665,11 +738,17 @@ impl ServerLock {
         let _ = std::fs::remove_file(Self::path());
     }
     pub fn is_alive(&self) -> bool {
-        std::net::TcpStream::connect_timeout(
-            &std::net::SocketAddr::from(([127, 0, 0, 1], self.port)),
-            std::time::Duration::from_millis(500),
-        )
-        .is_ok()
+        let connect_host = if crate::net::host_is_wildcard_v6(&self.host) {
+            "::1"
+        } else if crate::net::host_is_wildcard_v4(&self.host) {
+            "127.0.0.1"
+        } else {
+            self.host.as_str()
+        };
+        let Ok(addr) = crate::net::bind_socket_addr(connect_host, self.port) else {
+            return false;
+        };
+        std::net::TcpStream::connect_timeout(&addr, std::time::Duration::from_millis(500)).is_ok()
     }
 }
 
@@ -686,6 +765,24 @@ mod tests {
     fn hash_id_depends_on_salt() {
         let p = std::path::Path::new("/tmp/test");
         assert_ne!(hash_id(p, "a"), hash_id(p, "b"));
+    }
+
+    #[test]
+    fn registry_directory_id_matches_hash_contract() {
+        let temp_dir = tempfile::TempDir::new().unwrap();
+        let root = temp_dir.path().to_path_buf();
+        let salt = "contract-salt";
+        let registry = WorkspaceRegistry::new(salt.into());
+
+        let id = registry.add(WorkspaceConfig {
+            path: root.clone(),
+            flags: WorkspaceFlags::default(),
+            single_file: None,
+            access_code_hash: String::new(),
+            collaborator_access_code_hash: String::new(),
+        });
+
+        assert_eq!(id, hash_id(&root, salt));
     }
 
     #[test]
@@ -715,6 +812,32 @@ mod tests {
         assert!(!access_code_matches("s", "wrong", &legacy));
     }
 
+    #[test]
+    fn directory_live_reload_filter_tracks_docs_and_assets_only() {
+        let root = Path::new("/repo");
+
+        assert_eq!(
+            directory_live_reload_path(root, &root.join("docs").join("a.md")).as_deref(),
+            Some("docs/a.md")
+        );
+        assert_eq!(
+            directory_live_reload_path(root, &root.join("assets").join("app.js")).as_deref(),
+            Some("assets/app.js")
+        );
+        assert_eq!(
+            directory_live_reload_path(root, &root.join("img").join("hero.PNG")).as_deref(),
+            Some("img/hero.PNG")
+        );
+
+        assert!(directory_live_reload_path(root, &root.join(".git").join("HEAD")).is_none());
+        assert!(
+            directory_live_reload_path(root, &root.join("node_modules").join("x.md")).is_none()
+        );
+        assert!(directory_live_reload_path(root, &root.join("target").join("x.css")).is_none());
+        assert!(directory_live_reload_path(root, &root.join("README")).is_none());
+        assert!(directory_live_reload_path(root, &root.join("notes.txt")).is_none());
+    }
+
     /// Regression for #32: the workspace list must be deterministically ordered
     /// (by path), not in HashMap iteration order. Scrambled inserts → stable,
     /// path-sorted output, with single-file entries grouped under their dir.
@@ -733,6 +856,7 @@ mod tests {
             flags: WorkspaceFlags::default(),
             single_file: single.map(str::to_string),
             access_code_hash: String::new(),
+            collaborator_access_code_hash: String::new(),
         };
         // Insert in a scrambled order.
         reg.add(mk(base.join("charlie"), None));
@@ -826,6 +950,7 @@ mod tests {
             },
             single_file: Some("pinned.md".into()),
             access_code_hash: String::new(),
+            collaborator_access_code_hash: String::new(),
         });
 
         let entry = registry.get(&id).unwrap();
@@ -859,6 +984,7 @@ mod tests {
             flags: WorkspaceFlags::default(),
             single_file: Some("note.md".into()),
             access_code_hash: String::new(),
+            collaborator_access_code_hash: String::new(),
         });
         let entry = registry.get(&id).unwrap();
         assert!(entry.search_index.load().is_none());

@@ -1,0 +1,104 @@
+{
+  "schema": 1,
+  "name": "Markon E2E Workspace",
+  "entry": "README.md",
+  "language": "en",
+  "pages": {
+    "markdownKitchenSink": "docs/markdown-kitchen-sink.md",
+    "mathAndExtensions": "docs/math-and-extensions.md",
+    "diagramGallery": "docs/diagrams.md",
+    "longDocument": "docs/long-document.md",
+    "htmlAndAssets": "docs/html-and-assets.md",
+    "searchTargets": "docs/search-targets.md",
+    "editSaveTarget": "docs/edit-save-target.md",
+    "gitDiffTarget": "docs/git-diff-target.md"
+  },
+  "assets": [
+    "assets/sample-architecture.svg",
+    "assets/workspace.css",
+    "data/sample-metrics.csv"
+  ],
+  "search": {
+    "tokens": [
+      "MARKON_E2E_UNIQUE_SEARCH_TOKEN_ALPHA",
+      "MARKON_E2E_UNIQUE_SEARCH_TOKEN_BRAVO",
+      "MARKON_E2E_DIAGRAM_SEARCH_TOKEN"
+    ]
+  },
+  "editSave": {
+    "file": "docs/edit-save-target.md",
+    "replace": {
+      "from": "E2E_EDIT_VALUE=alpha",
+      "to": "E2E_EDIT_VALUE=bravo"
+    }
+  },
+  "gitDiff": {
+    "file": "docs/git-diff-target.md",
+    "baselineCommand": "git init && git add . && git commit -m baseline",
+    "replace": [
+      {
+        "from": "Release readiness: 72%",
+        "to": "Release readiness: 91%"
+      },
+      {
+        "from": "Current phase: Draft",
+        "to": "Current phase: Review"
+      },
+      {
+        "from": "A[Draft] --> B[Review]",
+        "to": "A[Draft] --> B[Review] --> C[Launch]"
+      }
+    ]
+  },
+  "assertions": {
+    "renderedText": [
+      "GitHub alert rendering target",
+      "Setext Heading Target",
+      "Reference link target",
+      "Autolink target",
+      "Hard break target",
+      "KaTeX display math target",
+      "Mermaid flowchart target",
+      "PlantUML sequence target",
+      "D2 diagram target",
+      "Graphviz DOT target",
+      "Graphviz alias target",
+      "Vega-Lite chart target",
+      "Vega alias line chart target",
+      "Chart alias scatter target",
+      "ECharts chart target",
+      "ECharts pie chart target",
+      "Chart.js doughnut chart target",
+      "Chart.js alias line chart target",
+      "Raw HTML panel target",
+      "Definition list target"
+    ],
+    "selectors": [
+      ".markdown-alert",
+      ".heading-section",
+      ".math-inline",
+      ".math-block",
+      ".markon-diagram",
+      "[data-diagram-engine=\"mermaid\"]",
+      "[data-diagram-engine=\"plantuml\"]",
+      "[data-diagram-engine=\"d2\"]",
+      "[data-diagram-engine=\"dot\"]",
+      "[data-diagram-engine=\"graphviz\"]",
+      "[data-diagram-engine=\"vega-lite\"]",
+      "[data-diagram-engine=\"vega\"]",
+      "[data-diagram-engine=\"chart\"]",
+      "[data-diagram-engine=\"echarts\"]",
+      "[data-diagram-engine=\"chartjs\"]",
+      "[data-diagram-engine=\"chart.js\"]",
+      ".markon-source-fallback",
+      "[data-fallback-name=\"plotly\"]",
+      "[data-fallback-name=\"map\"]",
+      "table",
+      "img",
+      "br",
+      "hr",
+      "del",
+      "dl"
+    ]
+  }
+}

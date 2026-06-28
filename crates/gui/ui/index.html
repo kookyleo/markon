@@ -419,36 +419,11 @@
     .ws-icon-btn.open-btn { color: var(--accent); }
     .ws-icon-btn.open-btn:hover { background: rgba(0,122,255,0.1); }
     .ws-icon-btn.remove-btn:hover { background: rgba(255,59,48,0.1); color: var(--danger); }
-    /* Row 2: feature flags */
-    .ws-flags {
-      display: flex;
-      gap: 1px;
-      margin-top: 6px;
-      flex-wrap: wrap;
-    }
-    .ws-flag {
-      display: flex;
-      align-items: center;
-      gap: 4px;
-      padding: 3px 7px;
-      border-radius: 4px;
-      font-size: 11.5px;
-      color: var(--text-3);
-      cursor: default;
-      transition: color 0.1s;
-    }
-    .ws-flag:hover { color: var(--text-2); }
-    .ws-flag input[type="checkbox"] {
-      width: 12px; height: 12px;
-      accent-color: var(--accent);
-      cursor: pointer;
-      flex-shrink: 0;
-    }
-    .ws-flag.checked { color: var(--text); }
     /* Per-workspace access-code editor: lives *in* the toolbar, in the lock
        icon's slot. Clicking the lock hides it and reveals this (input + ✓) in
        place; collapsing reverses back to the lock. Holds the shared .ac-editor.*/
-    .ws-lock-editor {
+    .ws-lock-editor,
+    .ws-collab-lock-editor {
       display: flex;
       align-items: center;
     }
@@ -890,7 +865,9 @@
             <div class="pref-control">
               <select id="host" style="width:240px">
                 <option value="127.0.0.1" data-i18n="bind.local"></option>
+                <option value="::1">::1</option>
                 <option value="0.0.0.0" data-i18n="bind.lan"></option>
+                <option value="::">::</option>
               </select>
             </div>
           </div>
@@ -909,6 +886,10 @@
           <div class="pref-row">
             <span class="pref-label" data-i18n="pref.access_code"></span>
             <div class="pref-control" id="access_code_control"></div>
+          </div>
+          <div class="pref-row">
+            <span class="pref-label" data-i18n="pref.collaborator_access_code"></span>
+            <div class="pref-control" id="collaborator_access_code_control"></div>
           </div>
         </div>
       </div>
@@ -930,16 +911,6 @@
             <span class="pref-label"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" style="vertical-align:-2px;margin-right:3px;opacity:.6"><circle cx="12" cy="12" r="10"/><path d="M2 12h20M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg><span data-i18n="pref.lang"></span></span>
             <div class="pref-control">
               <select id="language" style="width:150px"></select>
-            </div>
-          </div>
-          <div class="pref-row">
-            <span class="pref-label" data-i18n="pref.web.theme"></span>
-            <div class="pref-control">
-              <select id="web_theme" style="width:150px">
-                <option value="auto" data-i18n="web.auto"></option>
-                <option value="light" data-i18n="theme.light"></option>
-                <option value="dark"  data-i18n="theme.dark"></option>
-              </select>
             </div>
           </div>
           <div class="pref-row">
@@ -1215,7 +1186,7 @@
               </div>
               <div class="cli-field cli-field-full">
                 <span data-i18n="cli.lbl.server"></span>
-                <select id="cli-host"><option value="">127.0.0.1</option><option value="0.0.0.0">0.0.0.0</option></select>
+                <select id="cli-host"><option value="">127.0.0.1</option><option value="::1">::1</option><option value="0.0.0.0">0.0.0.0</option><option value="::">::</option></select>
                 <span style="color:var(--text-3)">:</span>
                 <input type="number" id="cli-port" value="6419">
               </div>
@@ -1224,18 +1195,15 @@
                 <input type="text" id="cli-qr" data-i18n-placeholder="cli.entry.tip">
               </div>
               <div class="cli-field cli-field-full">
-                <span data-i18n="cli.lbl.theme"></span>
-                <select id="cli-theme"><option value="">auto</option><option value="light">light</option><option value="dark">dark</option></select>
+                <span data-i18n="cli.lbl.access"></span>
+                <input type="text" id="cli-access" data-i18n-placeholder="cli.access.tip">
+              </div>
+              <div class="cli-field cli-field-full">
+                <span data-i18n="cli.lbl.collab_access"></span>
+                <input type="text" id="cli-collab-access" data-i18n-placeholder="cli.collab_access.tip">
               </div>
             </div>
             <div class="cli-pills">
-              <span class="cli-pills-label" data-i18n="cli.lbl.features"></span>
-              <label class="cli-pill"><input type="checkbox" id="cli-search"><span data-i18n="cli.search"></span></label>
-              <label class="cli-pill"><input type="checkbox" id="cli-viewed"><span data-i18n="cli.viewed"></span></label>
-              <label class="cli-pill"><input type="checkbox" id="cli-edit"><span data-i18n="cli.edit"></span></label>
-              <label class="cli-pill"><input type="checkbox" id="cli-live"><span data-i18n="cli.live"></span></label>
-              <label class="cli-pill"><input type="checkbox" id="cli-chat"><span data-i18n="cli.chat"></span></label>
-              <label class="cli-pill"><input type="checkbox" id="cli-shared"><span data-i18n="cli.shared"></span></label>
               <label class="cli-pill"><input type="checkbox" id="cli-open"><span data-i18n="cli.open"></span></label>
             </div>
           </div>
@@ -1371,6 +1339,7 @@
   // from the stored hash's length (which equals the code length), used to draw
   // the right number of • in the widget's "code is set" token.
   let globalCodeLen = 0;
+  let globalCollaboratorCodeLen = 0;
 
   // ── Tab navigation ──────────────────────────────────────────────────────
   function activateTab(name) {
@@ -1461,9 +1430,9 @@
     updateAdvertisedVisibility(s.host);
     document.getElementById('theme').value = s.theme;
     document.getElementById('language').value = s.language || 'auto';
-    document.getElementById('web_theme').value = s.web_theme || 'auto';
     document.getElementById('web_editor_theme').value = s.web_editor_theme || 'follow';
     globalCodeLen = (s.access_code_hash || '').length;
+    globalCollaboratorCodeLen = (s.collaborator_access_code_hash || '').length;
     renderGlobalAccessCode();
     document.getElementById('web_language').value = s.web_language || 'auto';
     updateDbPathDisplay(s.db_path ?? '');
@@ -1519,7 +1488,6 @@
       advertised_host: document.getElementById('advertised-host').value,
       theme:     document.getElementById('theme').value,
       language:  document.getElementById('language').value,
-      web_theme: document.getElementById('web_theme').value,
       web_editor_theme: document.getElementById('web_editor_theme').value,
       web_language: document.getElementById('web_language').value,
       db_path:   currentDbPath || null,
@@ -1608,7 +1576,7 @@
     liveApply.language(e.target.value, systemLocale);
     saveSettings();
   });
-  ['web_theme', 'web_editor_theme', 'web_language'].forEach(id =>
+  ['web_editor_theme', 'web_language'].forEach(id =>
     document.getElementById(id).addEventListener('change', saveSettings)
   );
   document.querySelectorAll('input[name="port_mode"]').forEach(radio => {
@@ -1723,11 +1691,13 @@
   // loadSettings (seed) and applyI18n (relabel on language switch).
   function renderGlobalAccessCode() {
     const wrap = document.getElementById('access_code_control');
-    if (!wrap) return;
+    const collaboratorWrap = document.getElementById('collaborator_access_code_control');
+    if (!wrap || !collaboratorWrap) return;
     // Don't tear down a widget mid-edit (e.g. language switched while typing);
     // labels catch up on the next rebuild.
-    if (wrap.querySelector('.ac-editor.editing')) return;
+    if (wrap.querySelector('.ac-editor.editing') || collaboratorWrap.querySelector('.ac-editor.editing')) return;
     wrap.innerHTML = accessCodeEditorHTML();
+    collaboratorWrap.innerHTML = accessCodeEditorHTML();
     const ctl = wireAccessCode(wrap.querySelector('.ac-editor'), {
       len: globalCodeLen,
       onApply: async (code, btn) => {
@@ -1735,6 +1705,16 @@
           await invoke('set_access_code', { workspaceId: null, code });
           globalCodeLen = code.trim().length;
           ctl.applied(globalCodeLen, btn);
+        } catch (e) { toast(String(e), 'err'); }
+      },
+    });
+    const collaboratorCtl = wireAccessCode(collaboratorWrap.querySelector('.ac-editor'), {
+      len: globalCollaboratorCodeLen,
+      onApply: async (code, btn) => {
+        try {
+          await invoke('set_collaborator_access_code', { workspaceId: null, code });
+          globalCollaboratorCodeLen = code.trim().length;
+          collaboratorCtl.applied(globalCollaboratorCodeLen, btn);
         } catch (e) { toast(String(e), 'err'); }
       },
     });
@@ -1946,22 +1926,6 @@
       card.className = 'ws-card';
       card.dataset.id = ws.id;
 
-      const flagDefs = [
-        { key: 'search',     label: T('ws.flag.search'), tip: ws.enable_search && ws.search_ready ? T('ws.flag.search.ready') : T('ws.flag.search.tip'), checked: ws.enable_search },
-        { key: 'viewed',     label: T('ws.flag.viewed'), tip: T('ws.flag.viewed.tip'), checked: ws.enable_viewed },
-        { key: 'edit',       label: T('ws.flag.edit'),   tip: T('ws.flag.edit.tip'),   checked: ws.enable_edit },
-        { key: 'live',       label: T('ws.flag.live'),   tip: T('ws.flag.live.tip'),   checked: ws.enable_live },
-        { key: 'chat',       label: T('ws.flag.chat'),   tip: T('ws.flag.chat.tip'),   checked: ws.enable_chat },
-        { key: 'annotation', label: T('ws.flag.shared'), tip: T('ws.flag.shared.tip'), checked: ws.shared_annotation },
-      ];
-
-      const flagsHtml = flagDefs.map(f =>
-        `<label class="ws-flag ${f.checked ? 'checked' : ''}" title="${f.tip}">
-          <input type="checkbox" data-flag="${f.key}" ${f.checked ? 'checked' : ''}>
-          ${f.label}
-        </label>`
-      ).join('');
-
       // Single-file workspaces show the FILE (parent dir + pinned name); normal
       // workspaces show the folder. Shorten the home dir to ~.
       const fullPath = ws.single_file ? `${ws.path}/${ws.single_file}` : ws.path;
@@ -1992,13 +1956,20 @@
             </svg>
           </button>
           <div class="ws-lock-editor" style="display:none">${accessCodeEditorHTML(true)}</div>
+          <button class="ws-icon-btn collab-lock-btn" title="${ws.collaborator_access_code_len > 0 ? T('ws.collab_lock.on') : T('ws.collab_lock.tip')}" style="${ws.collaborator_access_code_len > 0 ? 'color:var(--accent)' : ''}">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M16 21v-2a4 4 0 0 0-4-4H7a4 4 0 0 0-4 4v2"/>
+              <circle cx="9.5" cy="7" r="4"/>
+              <path d="M17 11l2 2 4-4"/>
+            </svg>
+          </button>
+          <div class="ws-collab-lock-editor" style="display:none">${accessCodeEditorHTML(true)}</div>
           <button class="ws-icon-btn remove-btn" title="${T('ws.remove')}">
             <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
               <line x1="5" y1="12" x2="19" y2="12"/>
             </svg>
           </button>
         </div>
-        <div class="ws-flags">${flagsHtml}</div>
       `;
 
       // Open in browser
@@ -2019,61 +1990,41 @@
       // input blurs and its placeholder reverts to the • dots, then (after a
       // short beat) it disappears and the lock icon returns. Updates are applied
       // live on the registry (no server restart, no list refresh).
-      const lockEditor = card.querySelector('.ws-lock-editor');
-      const lockBtn = card.querySelector('.lock-btn');
-      let wsLen = ws.access_code_len | 0;
-      function setLockState(set) {
-        lockBtn.style.color = set ? 'var(--accent)' : '';
-        lockBtn.title = set ? T('ws.lock.on') : T('ws.lock.tip');
-      }
-      const lockCtl = wireAccessCode(lockEditor.querySelector('.ac-editor'), {
-        len: wsLen,
-        // boundary defaults to the tight .ac-editor (input + ✓) — clicking
-        // anywhere else collapses.
-        onCollapse: () => {
-          // collapse() already reverted the placeholder to the • dots; keep the
-          // (now unfocused) editor up for a beat so that's visible, then morph
-          // back to the lock icon.
-          setTimeout(() => { lockEditor.style.display = 'none'; lockBtn.style.display = ''; }, 220);
-        },
-        onApply: async (code, btn) => {
-          try {
-            await invoke('set_access_code', { workspaceId: ws.id, code });
-            wsLen = code.trim().length;
-            setLockState(wsLen > 0);
-            lockCtl.applied(wsLen, btn);
-          } catch (e) { toast(T('ws.update.fail') + ': ' + e, 'err'); }
-        },
-      });
-      lockBtn.addEventListener('click', () => {
-        lockBtn.style.display = 'none';
-        lockEditor.style.display = 'flex';
-        lockCtl.focus();
-      });
-
-      // Toggle flags
-      card.querySelectorAll('.ws-flag input').forEach(cb => {
-        cb.addEventListener('change', async () => {
-          const checks = card.querySelectorAll('.ws-flag input');
-          try {
-            await invoke('update_workspace', {
-              id: ws.id,
-              enableSearch:     checks[0].checked,
-              enableViewed:     checks[1].checked,
-              enableEdit:       checks[2].checked,
-              enableLive:       checks[3].checked,
-              enableChat:       checks[4].checked,
-              sharedAnnotation: checks[5].checked,
-            });
-            // Update label style immediately
-            checks.forEach(c => {
-              c.closest('.ws-flag').classList.toggle('checked', c.checked);
-            });
-            // Re-render to update search_ready indicator
-            refreshWorkspaces();
-          } catch (e) { toast(T('ws.update.fail') + ': ' + e, 'err'); }
+      function wireWorkspaceAccess(buttonSelector, editorSelector, initialLen, onKey, offKey, command) {
+        const editor = card.querySelector(editorSelector);
+        const btn = card.querySelector(buttonSelector);
+        let len = initialLen | 0;
+        function setState(set) {
+          btn.style.color = set ? 'var(--accent)' : '';
+          btn.title = set ? T(onKey) : T(offKey);
+        }
+        const ctl = wireAccessCode(editor.querySelector('.ac-editor'), {
+          len,
+          // boundary defaults to the tight .ac-editor (input + ✓) — clicking
+          // anywhere else collapses.
+          onCollapse: () => {
+            // collapse() already reverted the placeholder to the • dots; keep the
+            // (now unfocused) editor up for a beat so that's visible, then morph
+            // back to the icon.
+            setTimeout(() => { editor.style.display = 'none'; btn.style.display = ''; }, 220);
+          },
+          onApply: async (code, applyBtn) => {
+            try {
+              await invoke(command, { workspaceId: ws.id, code });
+              len = code.trim().length;
+              setState(len > 0);
+              ctl.applied(len, applyBtn);
+            } catch (e) { toast(T('ws.update.fail') + ': ' + e, 'err'); }
+          },
         });
-      });
+        btn.addEventListener('click', () => {
+          btn.style.display = 'none';
+          editor.style.display = 'flex';
+          ctl.focus();
+        });
+      }
+      wireWorkspaceAccess('.lock-btn', '.ws-lock-editor', ws.access_code_len, 'ws.lock.on', 'ws.lock.tip', 'set_access_code');
+      wireWorkspaceAccess('.collab-lock-btn', '.ws-collab-lock-editor', ws.collaborator_access_code_len, 'ws.collab_lock.on', 'ws.collab_lock.tip', 'set_collaborator_access_code');
 
       list.appendChild(card);
     });
@@ -2090,15 +2041,7 @@
     }
     if (!path) return; // user cancelled
     try {
-      await invoke('add_workspace', {
-        path,
-        enableSearch:     document.getElementById('default_search').checked,
-        enableViewed:     document.getElementById('default_viewed').checked,
-        enableEdit:       document.getElementById('default_edit').checked,
-        enableLive:       document.getElementById('default_live').checked,
-        enableChat:       document.getElementById('default_chat').checked,
-        sharedAnnotation: document.getElementById('default_shared').checked,
-      });
+      await invoke('add_workspace', { path });
       refreshWorkspaces();
     } catch (e) {
       toast(T('ws.add.fail') + ': ' + e, 'err');
@@ -2124,7 +2067,9 @@
   let systemLocale = 'en'; // will be updated from Rust
   let bindHosts = [
     { address: '127.0.0.1', kind: 'localhost' },
+    { address: '::1', kind: 'localhost' },
     { address: '0.0.0.0', kind: 'all_interfaces' },
+    { address: '::', kind: 'all_interfaces' },
   ];
 
   function T(key) {
@@ -2144,9 +2089,9 @@
   function bindHostLabel(host) {
     switch (host?.kind) {
       case 'localhost':
-        return T('bind.local');
+        return host.address === '127.0.0.1' ? T('bind.local') : `${T('bind.local')} (${host.address})`;
       case 'all_interfaces':
-        return T('bind.lan');
+        return host.address === '0.0.0.0' ? T('bind.lan') : `${T('bind.lan')} (${host.address})`;
       default:
         return host?.interface ? `${host.address} (${host.interface})` : (host?.address || '');
     }
@@ -2227,8 +2172,8 @@
     updateBindWarning(currentHost, isHostInList(currentHost, bindHosts));
   }
 
-  // The shared-address picker only matters when bound to a wildcard (0.0.0.0),
-  // where there are multiple reachable LAN IPs to choose between.
+  // The shared-address picker only matters when bound to a wildcard, where
+  // there are multiple reachable LAN IPs to choose between.
   function updateAdvertisedVisibility(host) {
     const row = document.getElementById('advertised-row');
     if (!row) return;
@@ -2493,29 +2438,30 @@
   });
 
   // ── CLI command builder ──────────────────────────────────────────────
-  const cliIds = ['cli-path','cli-port','cli-host','cli-theme','cli-qr','cli-search','cli-viewed','cli-edit','cli-live','cli-chat','cli-shared','cli-open'];
+  const cliIds = ['cli-path','cli-port','cli-host','cli-qr','cli-access','cli-collab-access','cli-open'];
   const cliOutput = document.getElementById('cli-output');
   const cliAliasOutput = document.getElementById('cli-alias-output');
+
+  function shellArg(value) {
+    if (/^[A-Za-z0-9_./:@%+=,-]+$/.test(value)) return value;
+    return `'${value.replace(/'/g, `'\\''`)}'`;
+  }
 
   function buildCliCmd() {
     const path  = document.getElementById('cli-path').value.trim() || '.';
     const port  = document.getElementById('cli-port').value;
     const host  = document.getElementById('cli-host').value;
-    const theme = document.getElementById('cli-theme').value;
     const qr    = document.getElementById('cli-qr').value.trim();
+    const access = document.getElementById('cli-access').value.trim();
+    const collaboratorAccess = document.getElementById('cli-collab-access').value.trim();
     let parts = ['markon'];
     if (port && port !== '6419') parts.push(`-p ${port}`);
     if (host) parts.push(`--host ${host}`);
-    if (theme) parts.push(`-t ${theme}`);
-    if (qr) parts.push(`--entry ${qr}`);
-    if (document.getElementById('cli-search').checked) parts.push('--enable-search');
-    if (document.getElementById('cli-viewed').checked) parts.push('--enable-viewed');
-    if (document.getElementById('cli-edit').checked)   parts.push('--enable-edit');
-    if (document.getElementById('cli-live').checked)   parts.push('--enable-live');
-    if (document.getElementById('cli-chat').checked)   parts.push('--enable-chat');
-    if (document.getElementById('cli-shared').checked) parts.push('--shared-annotation');
+    if (qr) parts.push(`--entry ${shellArg(qr)}`);
+    if (access) parts.push(`--access-code ${shellArg(access)}`);
+    if (collaboratorAccess) parts.push(`--collaborator-access-code ${shellArg(collaboratorAccess)}`);
     if (document.getElementById('cli-open').checked)   parts.push('-b');
-    parts.push(path);
+    parts.push(shellArg(path));
     const cmd = parts.join(' ');
     cliOutput.textContent = cmd;
     // Shell alias: detect rc file at runtime from $SHELL (works for bash/zsh)

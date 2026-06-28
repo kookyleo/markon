@@ -1,6 +1,6 @@
 use crate::server::{ServerConfig, WorkspaceInit};
-use crate::workspace::{generate_token, PersistHook, WorkspaceFlags, WorkspaceRegistry};
-use serde::{Deserialize, Serialize};
+use crate::workspace::{PersistHook, WorkspaceFlags, WorkspaceRegistry};
+use serde::{de::DeserializeOwned, Deserialize, Serialize};
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex, OnceLock};
 
@@ -35,6 +35,113 @@ fn default_follow() -> String {
     "follow".to_string()
 }
 
+/// A stable, per-device identifier (never random), used as the root of the
+/// workspace-id salt. Read from OS-provided machine identity so it survives
+/// reinstalls and settings resets, yet differs across machines.
+fn machine_id() -> Option<String> {
+    #[cfg(target_os = "macos")]
+    {
+        let out = std::process::Command::new("ioreg")
+            .args(["-rd1", "-c", "IOPlatformExpertDevice"])
+            .output()
+            .ok()?;
+        let text = String::from_utf8_lossy(&out.stdout);
+        for line in text.lines() {
+            if line.contains("IOPlatformUUID") {
+                if let Some(start) = line.find("= \"") {
+                    let rest = &line[start + 3..];
+                    if let Some(end) = rest.find('"') {
+                        return Some(rest[..end].to_string());
+                    }
+                }
+            }
+        }
+        None
+    }
+    #[cfg(target_os = "linux")]
+    {
+        std::fs::read_to_string("/etc/machine-id")
+            .or_else(|_| std::fs::read_to_string("/var/lib/dbus/machine-id"))
+            .ok()
+            .map(|s| s.trim().to_string())
+            .filter(|s| !s.is_empty())
+    }
+    #[cfg(target_os = "windows")]
+    {
+        let out = std::process::Command::new("reg")
+            .args([
+                "query",
+                r"HKLM\SOFTWARE\Microsoft\Cryptography",
+                "/v",
+                "MachineGuid",
+            ])
+            .output()
+            .ok()?;
+        let text = String::from_utf8_lossy(&out.stdout);
+        for line in text.lines() {
+            if let Some(idx) = line.find("REG_SZ") {
+                let value = line[idx + "REG_SZ".len()..].trim();
+                if !value.is_empty() {
+                    return Some(value.to_string());
+                }
+            }
+        }
+        None
+    }
+    #[cfg(not(any(target_os = "macos", target_os = "linux", target_os = "windows")))]
+    {
+        None
+    }
+}
+
+/// Deterministic, device-bound workspace-id salt. SHA-256 of a domain tag plus
+/// the machine id — so a workspace id is reproducible on this device but not
+/// guessable from the (public) port and path alone.
+pub(crate) fn device_salt() -> String {
+    use sha2::{Digest, Sha256};
+    let id = machine_id().unwrap_or_else(|| "markon-fallback-device".to_string());
+    let mut hasher = Sha256::new();
+    hasher.update(b"markon-workspace-salt-v1\0");
+    hasher.update(id.as_bytes());
+    let digest = hasher.finalize();
+    let mut out = String::from("device:");
+    for byte in &digest[..16] {
+        out.push_str(&format!("{byte:02x}"));
+    }
+    out
+}
+
+fn recover_field<T: DeserializeOwned>(
+    object: &serde_json::Map<String, serde_json::Value>,
+    key: &str,
+    target: &mut T,
+) {
+    let Some(value) = object.get(key) else {
+        return;
+    };
+    if let Ok(parsed) = serde_json::from_value::<T>(value.clone()) {
+        *target = parsed;
+    }
+}
+
+fn recover_bool(object: &serde_json::Map<String, serde_json::Value>, key: &str) -> bool {
+    object
+        .get(key)
+        .and_then(|value| value.as_bool())
+        .unwrap_or(false)
+}
+
+fn recover_workspace_flags(object: &serde_json::Map<String, serde_json::Value>) -> WorkspaceFlags {
+    WorkspaceFlags {
+        enable_search: recover_bool(object, "enable_search"),
+        enable_viewed: recover_bool(object, "enable_viewed"),
+        enable_edit: recover_bool(object, "enable_edit"),
+        enable_live: recover_bool(object, "enable_live"),
+        enable_chat: recover_bool(object, "enable_chat"),
+        shared_annotation: recover_bool(object, "shared_annotation"),
+    }
+}
+
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum PortMode {
@@ -52,6 +159,10 @@ pub struct WorkspaceSettings {
     /// for this workspace. Empty = inherit the server code (or no gate).
     #[serde(default)]
     pub access_code_hash: String,
+    /// Per-workspace collaborator access code. Empty = inherit the server-level
+    /// collaborator code (or no collaborator token).
+    #[serde(default)]
+    pub collaborator_access_code_hash: String,
 }
 
 /// Per-provider configuration block. Each provider keeps its own complete
@@ -129,6 +240,10 @@ pub struct AppSettings {
     /// A workspace's own `access_code_hash` overrides this for that workspace.
     #[serde(default)]
     pub access_code_hash: String,
+    /// Server-level collaborator access code. Empty = no collaborator token
+    /// unless a workspace defines its own.
+    #[serde(default)]
+    pub collaborator_access_code_hash: String,
     pub db_path: Option<String>,
     /// Per-install random salt for workspace-id hashing. Empty on first run;
     /// `load()` lazily generates one and persists it. Keeping it stable across
@@ -160,6 +275,10 @@ pub struct AppSettings {
     pub default_chat_mode: String,
     #[serde(default)]
     pub default_shared_annotation: bool,
+    /// GUI onboarding state: once the user manually removes the bundled example
+    /// workspace from the Workspaces tab, do not auto-add it again.
+    #[serde(default)]
+    pub example_workspace_hidden: bool,
     /// When false (default), `<details>`-style collapsed sections are hidden
     /// in print and replaced by a small placeholder; when true the collapsed
     /// content is forced visible so it shows up in the printed output.
@@ -194,6 +313,7 @@ impl Default for AppSettings {
             web_language: "auto".to_string(),
             web_editor_theme: "follow".to_string(),
             access_code_hash: String::new(),
+            collaborator_access_code_hash: String::new(),
             db_path: None,
             salt: String::new(),
             workspaces: vec![],
@@ -205,6 +325,7 @@ impl Default for AppSettings {
             default_chat: false,
             default_chat_mode: default_in_page(),
             default_shared_annotation: false,
+            example_workspace_hidden: false,
             print_collapsed_content: false,
             chat: ChatSettings::default(),
             web_styles: std::collections::HashMap::new(),
@@ -224,22 +345,142 @@ impl AppSettings {
         home.join(".markon").join("settings.json")
     }
 
+    pub fn example_workspace_path_at(home: &Path) -> PathBuf {
+        home.join(".markon").join("example")
+    }
+
+    pub fn example_workspace_path() -> Option<PathBuf> {
+        dirs::home_dir().map(|home| Self::example_workspace_path_at(&home))
+    }
+
     /// Load from `home/.markon/settings.json`. Generates and persists a salt
     /// on first run. Used by tests to inject a controlled home directory.
     pub(crate) fn load_at(home: &Path) -> Self {
         let p = Self::settings_path_at(home);
-        let mut s = if let Ok(c) = std::fs::read_to_string(&p) {
-            serde_json::from_str::<Self>(&c).unwrap_or_default()
-        } else {
-            Self::default()
+        let mut should_persist_missing_salt = false;
+        let mut s = match std::fs::read_to_string(&p) {
+            Ok(c) => {
+                should_persist_missing_salt = true;
+                serde_json::from_str::<Self>(&c).unwrap_or_else(|err| {
+                    tracing::warn!(
+                        path = %p.display(),
+                        error = %err,
+                        "failed to parse settings.json; recovering identity fields without overwriting the file"
+                    );
+                    should_persist_missing_salt = false;
+                    Self::recover_from_json_value(&c).unwrap_or_default()
+                })
+            }
+            Err(err) if err.kind() == std::io::ErrorKind::NotFound => {
+                should_persist_missing_salt = true;
+                Self::default()
+            }
+            Err(err) => {
+                tracing::warn!(
+                    path = %p.display(),
+                    error = %err,
+                    "failed to read settings.json; using the device-derived salt without overwriting the file"
+                );
+                should_persist_missing_salt = false;
+                Self::default()
+            }
         };
         s.normalize();
-        if s.salt.is_empty() {
-            s.salt = generate_token();
-            let _ = s.save_at(home);
+        // Root every workspace id in a per-device, deterministic salt: never random
+        // (a reset/corrupt settings.json recomputes the same ids) and not derivable
+        // from the public port/path (which a fixed or port-based salt would be).
+        // Recomputed each load and never honoured from disk, so copying settings.json
+        // to another machine cannot transplant this device's ids.
+        let device = device_salt();
+        if s.salt != device {
+            s.salt = device;
+            if should_persist_missing_salt {
+                let _ = s.save_at(home);
+            }
         }
         s
     }
+
+    fn recover_from_json_value(raw: &str) -> Option<Self> {
+        let value = serde_json::from_str::<serde_json::Value>(raw).ok()?;
+        let object = value.as_object()?;
+        let mut settings = Self::default();
+
+        recover_field(object, "port_mode", &mut settings.port_mode);
+        recover_field(object, "port", &mut settings.port);
+        recover_field(object, "host", &mut settings.host);
+        recover_field(object, "advertised_host", &mut settings.advertised_host);
+        recover_field(object, "theme", &mut settings.theme);
+        recover_field(object, "language", &mut settings.language);
+        recover_field(object, "web_theme", &mut settings.web_theme);
+        recover_field(object, "web_language", &mut settings.web_language);
+        recover_field(object, "web_editor_theme", &mut settings.web_editor_theme);
+        recover_field(object, "access_code_hash", &mut settings.access_code_hash);
+        recover_field(
+            object,
+            "collaborator_access_code_hash",
+            &mut settings.collaborator_access_code_hash,
+        );
+        recover_field(object, "db_path", &mut settings.db_path);
+        recover_field(object, "salt", &mut settings.salt);
+        recover_field(object, "tray_resident", &mut settings.tray_resident);
+        recover_field(object, "default_search", &mut settings.default_search);
+        recover_field(object, "default_viewed", &mut settings.default_viewed);
+        recover_field(object, "default_live", &mut settings.default_live);
+        recover_field(object, "default_edit", &mut settings.default_edit);
+        recover_field(object, "default_chat", &mut settings.default_chat);
+        recover_field(object, "default_chat_mode", &mut settings.default_chat_mode);
+        recover_field(
+            object,
+            "default_shared_annotation",
+            &mut settings.default_shared_annotation,
+        );
+        recover_field(
+            object,
+            "example_workspace_hidden",
+            &mut settings.example_workspace_hidden,
+        );
+        recover_field(
+            object,
+            "print_collapsed_content",
+            &mut settings.print_collapsed_content,
+        );
+        recover_field(object, "chat", &mut settings.chat);
+        recover_field(object, "web_styles", &mut settings.web_styles);
+        recover_field(object, "shortcuts", &mut settings.shortcuts);
+        recover_field(object, "auto_update", &mut settings.auto_update);
+        recover_field(object, "update_channel", &mut settings.update_channel);
+        recover_field(object, "window_width", &mut settings.window_width);
+        recover_field(object, "window_height", &mut settings.window_height);
+
+        if let Some(workspaces) = object.get("workspaces").and_then(|v| v.as_array()) {
+            settings.workspaces = workspaces
+                .iter()
+                .filter_map(Self::recover_workspace)
+                .collect();
+        }
+
+        Some(settings)
+    }
+
+    fn recover_workspace(value: &serde_json::Value) -> Option<WorkspaceSettings> {
+        let object = value.as_object()?;
+        let mut workspace = WorkspaceSettings::default();
+        recover_field(object, "path", &mut workspace.path);
+        if workspace.path.is_empty() {
+            return None;
+        }
+        recover_field(object, "access_code_hash", &mut workspace.access_code_hash);
+        recover_field(
+            object,
+            "collaborator_access_code_hash",
+            &mut workspace.collaborator_access_code_hash,
+        );
+        workspace.flags = serde_json::from_value::<WorkspaceFlags>(value.clone())
+            .unwrap_or_else(|_| recover_workspace_flags(object));
+        Some(workspace)
+    }
+
 
     pub fn load() -> Self {
         let home = dirs::home_dir().expect("HOME directory required");
@@ -309,20 +550,22 @@ impl AppSettings {
                 flags: w.flags,
                 initial_path: None,
                 access_code_hash: w.access_code_hash.clone(),
+                collaborator_access_code_hash: w.collaborator_access_code_hash.clone(),
             })
             .collect();
         ServerConfig {
             host: self.host.clone(),
             advertised_host: self.advertised_host.clone(),
             port,
-            theme: if self.web_theme == "auto" {
-                self.theme.clone()
-            } else {
-                self.web_theme.clone()
-            },
+            // Web pages resolve theme at runtime and persist page-local
+            // overrides in the browser. The persisted `web_theme` field is
+            // kept only for old settings.json compatibility and is no longer
+            // allowed to make light/dark a server-level concern.
+            theme: "auto".to_string(),
             qr: None,
             open_browser: None,
             shared_annotation: initial_workspaces.iter().any(|w| w.flags.shared_annotation),
+            db_path: self.db_path.clone(),
             salt: Some(self.salt.clone()),
             initial_workspaces,
             bound_listener: None,
@@ -338,6 +581,7 @@ impl AppSettings {
             default_chat_mode: self.default_chat_mode.clone(),
             editor_theme: self.web_editor_theme.clone(),
             access_code_hash: self.access_code_hash.clone(),
+            collaborator_access_code_hash: self.collaborator_access_code_hash.clone(),
             print_collapsed_content: self.print_collapsed_content,
         }
     }
@@ -384,6 +628,7 @@ impl AppSettings {
                 path: info.path,
                 flags: info.flags,
                 access_code_hash: info.access_code_hash,
+                collaborator_access_code_hash: info.collaborator_access_code_hash,
             })
             .collect();
     }
@@ -486,7 +731,7 @@ impl AppSettings {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::workspace::WorkspaceConfig;
+    use crate::workspace::{hash_id, WorkspaceConfig};
 
     /// Self-cleaning tempdir; each test gets an isolated `home` so they can
     /// run in parallel without touching the real `HOME` env var.
@@ -525,6 +770,43 @@ mod tests {
         assert_eq!(s1.salt, s2.salt, "salt must be stable across load() calls");
     }
 
+    #[test]
+    fn load_legacy_settings_with_workspaces_adopts_device_salt() {
+        let home = TempHome::new("legacy-workspace-salt");
+        let p = AppSettings::settings_path_at(home.path());
+        std::fs::create_dir_all(p.parent().unwrap()).unwrap();
+        std::fs::write(
+            &p,
+            r#"{
+                "port": 7777,
+                "workspaces": [
+                    {
+                        "path": "/tmp/docs",
+                        "enable_viewed": true
+                    }
+                ]
+            }"#,
+        )
+        .unwrap();
+
+        let loaded = AppSettings::load_at(home.path());
+
+        // A legacy file with no salt adopts the deterministic, device-bound salt —
+        // never the (guessable) port-derived value.
+        assert_eq!(loaded.salt, device_salt());
+        assert!(loaded.salt.starts_with("device:"));
+        assert_eq!(loaded.workspaces.len(), 1);
+        assert_eq!(
+            hash_id(Path::new(&loaded.workspaces[0].path), &loaded.salt),
+            hash_id(Path::new("/tmp/docs"), &device_salt())
+        );
+
+        let saved: serde_json::Value =
+            serde_json::from_str(&std::fs::read_to_string(&p).unwrap()).unwrap();
+        assert_eq!(saved["salt"].as_str(), Some(device_salt().as_str()));
+        assert_eq!(saved["workspaces"][0]["path"].as_str(), Some("/tmp/docs"));
+    }
+
     /// Repro: a per-workspace access_code_hash must survive the real
     /// settings.json save→load round-trip (the `#[serde(flatten)]` flags sit
     /// next to it) AND flow into the server config used to reseed the registry
@@ -535,6 +817,7 @@ mod tests {
         let home = TempHome::new("ws-access");
         let mut s = AppSettings::load_at(home.path());
         s.access_code_hash = "aeadd".into(); // global
+        s.collaborator_access_code_hash = "c011ab".into(); // global collaborator
         s.workspaces = vec![WorkspaceSettings {
             path: "/tmp/ws".into(),
             flags: WorkspaceFlags {
@@ -542,6 +825,7 @@ mod tests {
                 ..Default::default()
             },
             access_code_hash: "6d243".into(),
+            collaborator_access_code_hash: "c0de".into(),
         }];
         // save_at (NOT save()) — write into the TempHome, never the real ~/.markon.
         s.save_at(home.path()).unwrap();
@@ -552,16 +836,116 @@ mod tests {
             back.workspaces[0].access_code_hash, "6d243",
             "per-workspace access code dropped on load"
         );
+        assert_eq!(
+            back.workspaces[0].collaborator_access_code_hash, "c0de",
+            "per-workspace collaborator access code dropped on load"
+        );
         assert!(back.workspaces[0].flags.enable_search);
         assert_eq!(
             back.access_code_hash, "aeadd",
             "global code dropped on load"
+        );
+        assert_eq!(
+            back.collaborator_access_code_hash, "c011ab",
+            "global collaborator code dropped on load"
         );
 
         let cfg = back.to_server_config(8080);
         assert_eq!(
             cfg.initial_workspaces[0].access_code_hash, "6d243",
             "access code must reach the server config that reseeds the registry"
+        );
+        assert_eq!(
+            cfg.initial_workspaces[0].collaborator_access_code_hash, "c0de",
+            "collaborator access code must reach the server config that reseeds the registry"
+        );
+        assert_eq!(
+            cfg.collaborator_access_code_hash, "c011ab",
+            "global collaborator access code must reach the server config"
+        );
+    }
+
+    #[test]
+    fn workspace_settings_ignore_unknown_version_fields() {
+        let s: AppSettings = serde_json::from_str(
+            r#"{
+                "salt": "s",
+                "workspaces": [
+                    {
+                        "path": "/docs",
+                        "enable_viewed": true,
+                        "snapshot_scope": {"asset_cap": 1024},
+                        "git_auto_snapshot": false,
+                        "access_code_hash": "abc",
+                        "collaborator_access_code_hash": "def"
+                    }
+                ]
+            }"#,
+        )
+        .unwrap();
+
+        assert_eq!(s.workspaces.len(), 1);
+        assert_eq!(s.workspaces[0].path, "/docs");
+        assert!(s.workspaces[0].flags.enable_viewed);
+        assert_eq!(s.workspaces[0].access_code_hash, "abc");
+        assert_eq!(s.workspaces[0].collaborator_access_code_hash, "def");
+        assert!(!s.example_workspace_hidden);
+
+        let cfg = s.to_server_config(6419);
+        assert_eq!(cfg.initial_workspaces[0].path, PathBuf::from("/docs"));
+        assert!(cfg.initial_workspaces[0].flags.enable_viewed);
+        assert_eq!(cfg.initial_workspaces[0].access_code_hash, "abc");
+        assert_eq!(
+            cfg.initial_workspaces[0].collaborator_access_code_hash,
+            "def"
+        );
+    }
+
+    #[test]
+    fn load_schema_mismatch_recovers_salt_workspaces_and_ids() {
+        let home = TempHome::new("recover-schema");
+        let p = AppSettings::settings_path_at(home.path());
+        std::fs::create_dir_all(p.parent().unwrap()).unwrap();
+        std::fs::write(
+            &p,
+            r#"{
+                "port": "not-a-number",
+                "host": "127.0.0.1",
+                "salt": "stable-salt",
+                "default_chat_mode": "popout",
+                "workspaces": [
+                    {
+                        "path": "/tmp/docs",
+                        "enable_viewed": true,
+                        "enable_search": "bad-bool",
+                        "access_code_hash": "owner",
+                        "collaborator_access_code_hash": "guest"
+                    }
+                ]
+            }"#,
+        )
+        .unwrap();
+
+        let loaded = AppSettings::load_at(home.path());
+
+        // The salt is always the deterministic device salt — even a recoverable
+        // on-disk salt is not honoured (so a copied file can't transplant ids).
+        assert_eq!(loaded.salt, device_salt());
+        assert_eq!(loaded.default_chat_mode, "popout");
+        assert_eq!(loaded.workspaces.len(), 1);
+        assert_eq!(loaded.workspaces[0].path, "/tmp/docs");
+        assert!(loaded.workspaces[0].flags.enable_viewed);
+        assert_eq!(loaded.workspaces[0].access_code_hash, "owner");
+        assert_eq!(loaded.workspaces[0].collaborator_access_code_hash, "guest");
+        assert_eq!(
+            hash_id(Path::new(&loaded.workspaces[0].path), &loaded.salt),
+            hash_id(Path::new("/tmp/docs"), &device_salt())
+        );
+
+        let raw = std::fs::read_to_string(&p).unwrap();
+        assert!(
+            raw.contains(r#""port": "not-a-number""#),
+            "load_at must not overwrite a schema-mismatched settings file"
         );
     }
 
@@ -575,6 +959,26 @@ mod tests {
         assert_eq!(s.language, "auto");
         assert_eq!(s.web_theme, "auto");
         assert_eq!(s.default_chat_mode, "in_page");
+        assert!(!s.example_workspace_hidden);
+    }
+
+    #[test]
+    fn web_theme_is_ignored_by_server_config() {
+        let s = AppSettings {
+            theme: "dark".to_string(),
+            web_theme: "auto".to_string(),
+            ..AppSettings::default()
+        };
+
+        assert_eq!(s.to_server_config(6419).theme, "auto");
+
+        let explicit = AppSettings {
+            theme: "dark".to_string(),
+            web_theme: "light".to_string(),
+            ..AppSettings::default()
+        };
+
+        assert_eq!(explicit.to_server_config(6419).theme, "auto");
     }
 
     #[cfg(unix)]
@@ -598,8 +1002,43 @@ mod tests {
         std::fs::write(&p, b"{garbage").unwrap();
 
         let s = AppSettings::load_at(home.path());
+        let s2 = AppSettings::load_at(home.path());
         assert_eq!(s.port, AppSettings::default().port);
         assert_eq!(s.default_chat_mode, "in_page");
+        assert_eq!(
+            s.salt, s2.salt,
+            "corrupt settings fallback salt must not randomly change every launch"
+        );
+        assert_eq!(
+            std::fs::read_to_string(&p).unwrap(),
+            "{garbage",
+            "corrupt settings must not be overwritten during load"
+        );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn load_unreadable_file_uses_stable_recovery_salt() {
+        use std::os::unix::fs::PermissionsExt;
+
+        let home = TempHome::new("unreadable");
+        let p = AppSettings::settings_path_at(home.path());
+        std::fs::create_dir_all(p.parent().unwrap()).unwrap();
+        std::fs::write(&p, br#"{"salt":"hidden","workspaces":[]}"#).unwrap();
+        std::fs::set_permissions(&p, std::fs::Permissions::from_mode(0o000)).unwrap();
+
+        let s1 = AppSettings::load_at(home.path());
+        let s2 = AppSettings::load_at(home.path());
+
+        std::fs::set_permissions(&p, std::fs::Permissions::from_mode(0o600)).unwrap();
+        assert_eq!(
+            s1.salt, s2.salt,
+            "unreadable settings fallback salt must not randomly change every launch"
+        );
+        assert_eq!(
+            std::fs::read_to_string(&p).unwrap(),
+            r#"{"salt":"hidden","workspaces":[]}"#
+        );
     }
 
     #[test]
@@ -610,16 +1049,19 @@ mod tests {
                     path: "/a".to_string(),
                     flags: WorkspaceFlags::default(),
                     access_code_hash: String::new(),
+                    collaborator_access_code_hash: String::new(),
                 },
                 WorkspaceSettings {
                     path: "/b".to_string(),
                     flags: WorkspaceFlags::default(),
                     access_code_hash: String::new(),
+                    collaborator_access_code_hash: String::new(),
                 },
                 WorkspaceSettings {
                     path: "/a".to_string(),
                     flags: WorkspaceFlags::default(),
                     access_code_hash: String::new(),
+                    collaborator_access_code_hash: String::new(),
                 },
             ],
             language: String::new(),
@@ -664,13 +1106,15 @@ mod tests {
             path: ws_path.clone(),
             flags: WorkspaceFlags::default(),
             single_file: None,
-            access_code_hash: String::new(),
+            access_code_hash: "abc".to_string(),
+            collaborator_access_code_hash: "def".to_string(),
         });
         reg.add(WorkspaceConfig {
             path: ws_path.clone(),
             flags: WorkspaceFlags::default(),
             single_file: Some("note.md".to_string()),
             access_code_hash: String::new(),
+            collaborator_access_code_hash: String::new(),
         });
 
         let mut s = AppSettings::default();
@@ -678,6 +1122,7 @@ mod tests {
 
         assert_eq!(s.workspaces.len(), 1, "ephemeral entry must be excluded");
         assert_eq!(s.workspaces[0].path, ws_path.to_string_lossy());
+        assert_eq!(s.workspaces[0].access_code_hash, "abc");
     }
 
     /// Helper: build settings with the given `web_styles` map and nothing else.
@@ -818,10 +1263,12 @@ mod tests {
     fn to_server_config_propagates_salt_and_workspaces() {
         let s = AppSettings {
             salt: "mysalt".to_string(),
+            db_path: Some("/tmp/markon.sqlite".to_string()),
             workspaces: vec![WorkspaceSettings {
                 path: "/docs".to_string(),
                 flags: WorkspaceFlags::default(),
                 access_code_hash: String::new(),
+                collaborator_access_code_hash: String::new(),
             }],
             ..AppSettings::default()
         };
@@ -829,6 +1276,7 @@ mod tests {
         let cfg = s.to_server_config(7777);
 
         assert_eq!(cfg.salt, Some("mysalt".to_string()));
+        assert_eq!(cfg.db_path, Some("/tmp/markon.sqlite".to_string()));
         assert_eq!(cfg.port, 7777);
         assert_eq!(cfg.initial_workspaces.len(), 1);
         assert_eq!(cfg.initial_workspaces[0].path, Path::new("/docs"));

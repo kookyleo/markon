@@ -5,6 +5,7 @@ use markon_core::net::{available_bind_hosts, host_in_list, BindHostOption};
 use markon_core::server;
 use markon_core::settings::{AppSettings, PortMode};
 use markon_core::workspace::{expand_and_canonicalize, WorkspaceConfig, WorkspaceFlags};
+use std::path::PathBuf;
 use std::sync::atomic::Ordering;
 use tauri::menu::{Menu, MenuItem, PredefinedMenuItem};
 use tauri::{Emitter, State};
@@ -155,13 +156,31 @@ pub fn save_settings(
     // add/remove/update commands) and the access-code hash (set via the
     // dedicated set_access_code command, which hashes the plaintext, never
     // through the settings form) — the form round-trip must not clobber them.
-    let (existing_workspaces, existing_access_code) = {
+    let (
+        existing_workspaces,
+        existing_access_code,
+        existing_collaborator_access_code,
+        example_workspace_hidden,
+        existing_salt,
+    ) = {
         let s = state.settings.lock().unwrap();
-        (s.workspaces.clone(), s.access_code_hash.clone())
+        (
+            s.workspaces.clone(),
+            s.access_code_hash.clone(),
+            s.collaborator_access_code_hash.clone(),
+            s.example_workspace_hidden,
+            s.salt.clone(),
+        )
     };
     let mut settings = settings;
     settings.workspaces = existing_workspaces;
     settings.access_code_hash = existing_access_code;
+    settings.collaborator_access_code_hash = existing_collaborator_access_code;
+    settings.example_workspace_hidden = example_workspace_hidden;
+    // The salt determines every workspace id and is never part of the settings
+    // form, so the round-trip must preserve it — a dropped salt would reset all
+    // workspace ids on the next launch.
+    settings.salt = existing_salt;
 
     update_tray_language(&app, &settings.language);
 
@@ -199,29 +218,9 @@ fn update_tray_language(app: &tauri::AppHandle, language: &str) {
     }
 }
 
-// All three workspace commands below just drive the registry; persistence
+// Workspace commands below just drive the registry; persistence
 // to settings.json happens via the persist hook wired at server startup,
 // so CLI (HTTP API) and GUI (Tauri API) paths share a single flow.
-
-// Tauri commands take flat scalar args (no struct), so add/update repeat
-// the six bool params; this helper packs them once.
-fn flags_from_params(
-    enable_search: bool,
-    enable_viewed: bool,
-    enable_edit: bool,
-    enable_live: bool,
-    enable_chat: bool,
-    shared_annotation: bool,
-) -> WorkspaceFlags {
-    WorkspaceFlags {
-        enable_search,
-        enable_viewed,
-        enable_edit,
-        enable_live,
-        enable_chat,
-        shared_annotation,
-    }
-}
 
 fn browser_base_url_for_state(state: &State<AppState>, port: u16) -> String {
     let (bind_host, advertised_host) = {
@@ -231,33 +230,37 @@ fn browser_base_url_for_state(state: &State<AppState>, port: u16) -> String {
     server::featured_base_url(&bind_host, &advertised_host, port)
 }
 
+fn is_example_workspace_path(path: &str) -> bool {
+    let Some(example_path) = AppSettings::example_workspace_path() else {
+        return false;
+    };
+    let example_path = expand_and_canonicalize(&example_path.to_string_lossy())
+        .unwrap_or_else(|_| example_path.clone());
+    let candidate = expand_and_canonicalize(path).unwrap_or_else(|_| PathBuf::from(path));
+    candidate == example_path
+}
+
 #[tauri::command]
-#[allow(clippy::too_many_arguments)]
-pub fn add_workspace(
-    path: String,
-    enable_search: bool,
-    enable_viewed: bool,
-    enable_edit: bool,
-    enable_live: bool,
-    enable_chat: bool,
-    shared_annotation: bool,
-    state: State<AppState>,
-) -> Result<serde_json::Value, String> {
+pub fn add_workspace(path: String, state: State<AppState>) -> Result<serde_json::Value, String> {
     let canonical = expand_and_canonicalize(&path).map_err(|e| format!("Invalid path: {e}"))?;
-    let flags = flags_from_params(
-        enable_search,
-        enable_viewed,
-        enable_edit,
-        enable_live,
-        enable_chat,
-        shared_annotation,
-    );
+    let flags = {
+        let settings = state.settings.lock().unwrap();
+        WorkspaceFlags {
+            enable_search: settings.default_search,
+            enable_viewed: settings.default_viewed,
+            enable_edit: settings.default_edit,
+            enable_live: settings.default_live,
+            enable_chat: settings.default_chat,
+            shared_annotation: settings.default_shared_annotation,
+        }
+    };
     let server = state.server.lock().unwrap();
     let id = server.registry.add(WorkspaceConfig {
         path: canonical,
         flags,
         single_file: None,
         access_code_hash: String::new(),
+        collaborator_access_code_hash: String::new(),
     });
     let port = server.port();
     drop(server);
@@ -269,37 +272,22 @@ pub fn add_workspace(
 }
 
 #[tauri::command]
-#[allow(clippy::too_many_arguments)]
-pub fn update_workspace(
-    id: String,
-    enable_search: bool,
-    enable_viewed: bool,
-    enable_edit: bool,
-    enable_live: bool,
-    enable_chat: bool,
-    shared_annotation: bool,
-    state: State<AppState>,
-) -> Result<(), String> {
-    let flags = flags_from_params(
-        enable_search,
-        enable_viewed,
-        enable_edit,
-        enable_live,
-        enable_chat,
-        shared_annotation,
-    );
-    let server = state.server.lock().unwrap();
-    if !server.registry.update_flags(&id, flags) {
-        return Err(format!("Workspace {id} not found"));
-    }
-    Ok(())
-}
-
-#[tauri::command]
 pub fn remove_workspace(id: String, state: State<AppState>) -> Result<(), String> {
     let server = state.server.lock().unwrap();
+    let is_example = server
+        .registry
+        .info_list()
+        .into_iter()
+        .find(|info| info.id == id)
+        .is_some_and(|info| is_example_workspace_path(&info.path));
     if !server.registry.remove(&id) {
         return Err(format!("Workspace {id} not found"));
+    }
+    drop(server);
+    if is_example {
+        let mut settings = state.settings.lock().unwrap();
+        settings.example_workspace_hidden = true;
+        settings.save()?;
     }
     Ok(())
 }
@@ -307,12 +295,12 @@ pub fn remove_workspace(id: String, state: State<AppState>) -> Result<(), String
 /// List all active workspaces with their IDs and URLs.
 #[tauri::command]
 pub fn get_workspaces(state: State<AppState>) -> Vec<serde_json::Value> {
-    let server = state.server.lock().unwrap();
-    let port = server.port();
+    let (port, workspaces) = {
+        let server = state.server.lock().unwrap();
+        (server.port(), server.registry.info_list())
+    };
     let browser_base = browser_base_url_for_state(&state, port);
-    server
-        .registry
-        .info_list()
+    workspaces
         .into_iter()
         .map(|info| {
             let url = server::build_workspace_url(
@@ -335,6 +323,7 @@ pub fn get_workspaces(state: State<AppState>) -> Vec<serde_json::Value> {
                 // set" and renders that many • in the indicator token from this
                 // one field. Not the digest itself.
                 "access_code_len": info.access_code_hash.chars().count(),
+                "collaborator_access_code_len": info.collaborator_access_code_hash.chars().count(),
                 "search_ready": info.search_ready,
                 // Surfaced so the Settings UI can filter out Open-With
                 // single-file workspaces (see `ui/index.html: refreshWorkspaces`).
@@ -555,10 +544,27 @@ pub async fn list_chat_models(
     models::list_models(kind, &api_key, &base_url).await
 }
 
-/// Set or clear an access code. `workspace_id` None/empty → the server-level
-/// code (needs a server restart so the running AppState picks it up);
-/// otherwise the named workspace's code is updated live on the registry. An
-/// empty `code` clears. The plaintext is hashed here (salted) and never stored.
+const ACCESS_CODE_CONFLICT: &str = "initiator and collaborator access codes must be different";
+
+fn code_matches_hash(salt: &str, code: &str, hash: &str) -> bool {
+    !code.trim().is_empty()
+        && !hash.is_empty()
+        && markon_core::workspace::access_code_matches(salt, code.trim(), hash)
+}
+
+fn workspace_effective_hash(local_hash: &str, global_hash: &str) -> String {
+    if local_hash.is_empty() {
+        global_hash.to_string()
+    } else {
+        local_hash.to_string()
+    }
+}
+
+/// Set or clear an initiator access code. `workspace_id` None/empty → the
+/// server-level code (needs a server restart so the running AppState picks it
+/// up); otherwise the named workspace's code is updated live on the registry.
+/// An empty `code` clears. The plaintext is hashed here (salted) and never
+/// stored.
 #[tauri::command]
 pub fn set_access_code(
     workspace_id: Option<String>,
@@ -566,7 +572,8 @@ pub fn set_access_code(
     app: tauri::AppHandle,
     state: State<AppState>,
 ) -> Result<(), String> {
-    let salt = state.settings.lock().unwrap().salt.clone();
+    let settings_snapshot = state.settings.lock().unwrap().clone();
+    let salt = settings_snapshot.salt.clone();
     let code = code.trim();
     let hash = if code.is_empty() {
         String::new()
@@ -575,6 +582,22 @@ pub fn set_access_code(
     };
     match workspace_id {
         Some(id) if !id.is_empty() => {
+            let workspace = state
+                .server
+                .lock()
+                .unwrap()
+                .registry
+                .info_list()
+                .into_iter()
+                .find(|info| info.id == id)
+                .ok_or_else(|| "workspace not found".to_string())?;
+            let effective_collaborator = workspace_effective_hash(
+                &workspace.collaborator_access_code_hash,
+                &settings_snapshot.collaborator_access_code_hash,
+            );
+            if code_matches_hash(&salt, code, &effective_collaborator) {
+                return Err(ACCESS_CODE_CONFLICT.into());
+            }
             // Per-workspace: live update on the shared registry (persists via
             // the registry's persist hook). No restart needed.
             if state
@@ -593,7 +616,94 @@ pub fn set_access_code(
             // Server-level: persist + restart so the new AppState carries it.
             {
                 let mut s = state.settings.lock().unwrap();
+                if code_matches_hash(&salt, code, &s.collaborator_access_code_hash) {
+                    return Err(ACCESS_CODE_CONFLICT.into());
+                }
+                for ws in &s.workspaces {
+                    if !ws.access_code_hash.is_empty() {
+                        continue;
+                    }
+                    let effective_collaborator = workspace_effective_hash(
+                        &ws.collaborator_access_code_hash,
+                        &s.collaborator_access_code_hash,
+                    );
+                    if code_matches_hash(&salt, code, &effective_collaborator) {
+                        return Err(ACCESS_CODE_CONFLICT.into());
+                    }
+                }
                 s.access_code_hash = hash;
+                s.save()?;
+            }
+            restart_server_and_broadcast(&app, &state)
+        }
+    }
+}
+
+/// Set or clear a collaborator access code. See [`set_access_code`] for the
+/// same storage/restart rules. The collaborator code must never equal the
+/// effective initiator code for the same scope.
+#[tauri::command]
+pub fn set_collaborator_access_code(
+    workspace_id: Option<String>,
+    code: String,
+    app: tauri::AppHandle,
+    state: State<AppState>,
+) -> Result<(), String> {
+    let settings_snapshot = state.settings.lock().unwrap().clone();
+    let salt = settings_snapshot.salt.clone();
+    let code = code.trim();
+    let hash = if code.is_empty() {
+        String::new()
+    } else {
+        markon_core::workspace::hash_access_code(&salt, code)
+    };
+    match workspace_id {
+        Some(id) if !id.is_empty() => {
+            let workspace = state
+                .server
+                .lock()
+                .unwrap()
+                .registry
+                .info_list()
+                .into_iter()
+                .find(|info| info.id == id)
+                .ok_or_else(|| "workspace not found".to_string())?;
+            let effective_initiator = workspace_effective_hash(
+                &workspace.access_code_hash,
+                &settings_snapshot.access_code_hash,
+            );
+            if code_matches_hash(&salt, code, &effective_initiator) {
+                return Err(ACCESS_CODE_CONFLICT.into());
+            }
+            if state
+                .server
+                .lock()
+                .unwrap()
+                .registry
+                .set_collaborator_access_code(&id, &hash)
+            {
+                Ok(())
+            } else {
+                Err("workspace not found".into())
+            }
+        }
+        _ => {
+            {
+                let mut s = state.settings.lock().unwrap();
+                if code_matches_hash(&salt, code, &s.access_code_hash) {
+                    return Err(ACCESS_CODE_CONFLICT.into());
+                }
+                for ws in &s.workspaces {
+                    if !ws.collaborator_access_code_hash.is_empty() {
+                        continue;
+                    }
+                    let effective_initiator =
+                        workspace_effective_hash(&ws.access_code_hash, &s.access_code_hash);
+                    if code_matches_hash(&salt, code, &effective_initiator) {
+                        return Err(ACCESS_CODE_CONFLICT.into());
+                    }
+                }
+                s.collaborator_access_code_hash = hash;
                 s.save()?;
             }
             restart_server_and_broadcast(&app, &state)

@@ -1,0 +1,24 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="760" height="300" viewBox="0 0 760 300" role="img" aria-labelledby="title desc">
+  <title id="title">Markon sample architecture</title>
+  <desc id="desc">A simple architecture diagram for the Markon E2E workspace.</desc>
+  <rect width="760" height="300" fill="#f6f8fa"/>
+  <rect x="36" y="64" width="170" height="90" rx="8" fill="#ffffff" stroke="#57606a" stroke-width="2"/>
+  <text x="121" y="104" text-anchor="middle" font-family="Arial, sans-serif" font-size="18" fill="#24292f">Markdown</text>
+  <text x="121" y="130" text-anchor="middle" font-family="Arial, sans-serif" font-size="13" fill="#57606a">Files and assets</text>
+  <rect x="294" y="64" width="170" height="90" rx="8" fill="#ffffff" stroke="#2da44e" stroke-width="2"/>
+  <text x="379" y="104" text-anchor="middle" font-family="Arial, sans-serif" font-size="18" fill="#24292f">Markon</text>
+  <text x="379" y="130" text-anchor="middle" font-family="Arial, sans-serif" font-size="13" fill="#57606a">Render and review</text>
+  <rect x="552" y="64" width="170" height="90" rx="8" fill="#ffffff" stroke="#0969da" stroke-width="2"/>
+  <text x="637" y="104" text-anchor="middle" font-family="Arial, sans-serif" font-size="18" fill="#24292f">Browser</text>
+  <text x="637" y="130" text-anchor="middle" font-family="Arial, sans-serif" font-size="13" fill="#57606a">Workspace UI</text>
+  <path d="M206 109 H294" stroke="#57606a" stroke-width="2" marker-end="url(#arrow)"/>
+  <path d="M464 109 H552" stroke="#57606a" stroke-width="2" marker-end="url(#arrow)"/>
+  <rect x="202" y="206" width="356" height="46" rx="6" fill="#eef6ff" stroke="#0969da"/>
+  <text x="380" y="235" text-anchor="middle" font-family="Arial, sans-serif" font-size="15" fill="#0969da">Search, edit, notes, git status, and visual diff</text>
+  <defs>
+    <marker id="arrow" markerWidth="10" markerHeight="10" refX="8" refY="3" orient="auto" markerUnits="strokeWidth">
+      <path d="M0,0 L0,6 L9,3 z" fill="#57606a"/>
+    </marker>
+  </defs>
+</svg>
+

@@ -53,8 +53,8 @@ impl ServerManager {
         // Pre-bind synchronously so a bad address (e.g. NIC IP saved in a
         // previous network) fails loudly here instead of leaving the async
         // start to silently die in the spawned thread.
-        let bind_addr = format!("{}:{}", config.host, config.port);
-        let (config, actual_port) = match std::net::TcpListener::bind(&bind_addr) {
+        let bind_addr = markon_core::net::bind_socket_addr(&config.host, config.port)?;
+        let (config, actual_port) = match std::net::TcpListener::bind(bind_addr) {
             Ok(listener) => {
                 let actual_port = listener
                     .local_addr()

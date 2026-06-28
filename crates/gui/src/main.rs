@@ -6,11 +6,10 @@ mod reopen_origin;
 mod server_manager;
 // settings moved to markon_core::settings
 
-use markon_core::settings::AppSettings;
+use markon_core::settings::{AppSettings, WorkspaceSettings};
+use markon_core::workspace::{expand_and_canonicalize, WorkspaceFlags};
 use server_manager::ServerManager;
-use std::path::Path;
-#[cfg(any(target_os = "macos", target_os = "ios", test))]
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::{
     atomic::{AtomicBool, AtomicU64, Ordering},
     Arc, Mutex,
@@ -126,6 +125,121 @@ impl AppState {
         let last = self.last_file_open_ms.swap(0, Ordering::Relaxed);
         last != 0 && Self::now_ms().saturating_sub(last) < WINDOW_MS
     }
+}
+
+const EXAMPLE_WORKSPACE_RESOURCE: &str = "example";
+const EXAMPLE_WORKSPACE_MANIFEST: &str = "e2e-manifest.json";
+
+fn ensure_example_workspace(app: &tauri::App, settings: &mut AppSettings) {
+    if settings.example_workspace_hidden {
+        return;
+    }
+    let Some(dest) = AppSettings::example_workspace_path() else {
+        return;
+    };
+    let dest_for_match =
+        expand_and_canonicalize(&dest.to_string_lossy()).unwrap_or_else(|_| dest.clone());
+    let already_configured = settings
+        .workspaces
+        .iter()
+        .any(|workspace| workspace_path_matches(&workspace.path, &dest_for_match));
+    let src = example_workspace_source(app);
+    let should_sync = src
+        .as_deref()
+        .is_some_and(|src| example_workspace_manifest_changed(src, &dest));
+    if should_sync {
+        let src = src.as_ref().expect("checked by should_sync");
+        if let Err(e) = copy_example_workspace(src, &dest, true) {
+            tracing::warn!(
+                source = %src.display(),
+                dest = %dest.display(),
+                "failed to sync example workspace: {e}"
+            );
+            return;
+        }
+    } else if !dest.join(EXAMPLE_WORKSPACE_MANIFEST).is_file() {
+        tracing::warn!("bundled example workspace source not found");
+        return;
+    }
+    if !dest.join(EXAMPLE_WORKSPACE_MANIFEST).is_file() {
+        tracing::warn!(dest = %dest.display(), "example workspace manifest missing after install");
+        return;
+    }
+    if already_configured {
+        return;
+    }
+    let canonical = expand_and_canonicalize(&dest.to_string_lossy()).unwrap_or(dest);
+    settings.workspaces.push(WorkspaceSettings {
+        path: canonical.to_string_lossy().to_string(),
+        flags: WorkspaceFlags {
+            enable_search: true,
+            enable_viewed: true,
+            enable_edit: true,
+            enable_live: true,
+            enable_chat: false,
+            shared_annotation: true,
+        },
+        access_code_hash: String::new(),
+        collaborator_access_code_hash: String::new(),
+    });
+    if let Err(e) = settings.save() {
+        tracing::warn!("failed to persist example workspace onboarding state: {e}");
+    }
+}
+
+fn workspace_path_matches(path: &str, target: &Path) -> bool {
+    let candidate = expand_and_canonicalize(path).unwrap_or_else(|_| PathBuf::from(path));
+    candidate == target
+}
+
+fn example_workspace_source(app: &tauri::App) -> Option<PathBuf> {
+    if let Ok(resource_dir) = app.path().resource_dir() {
+        let bundled = resource_dir.join(EXAMPLE_WORKSPACE_RESOURCE);
+        if bundled.join(EXAMPLE_WORKSPACE_MANIFEST).is_file() {
+            return Some(bundled);
+        }
+    }
+    let source = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../example");
+    source
+        .join(EXAMPLE_WORKSPACE_MANIFEST)
+        .is_file()
+        .then_some(source)
+}
+
+fn example_workspace_manifest_changed(src: &Path, dest: &Path) -> bool {
+    let src_manifest = src.join(EXAMPLE_WORKSPACE_MANIFEST);
+    let dest_manifest = dest.join(EXAMPLE_WORKSPACE_MANIFEST);
+    if !dest_manifest.is_file() {
+        return true;
+    }
+    match (
+        std::fs::read_to_string(&src_manifest),
+        std::fs::read_to_string(&dest_manifest),
+    ) {
+        (Ok(src), Ok(dest)) => src != dest,
+        _ => true,
+    }
+}
+
+fn copy_example_workspace(
+    src: &Path,
+    dest: &Path,
+    overwrite_existing: bool,
+) -> std::io::Result<()> {
+    if !dest.exists() {
+        std::fs::create_dir_all(dest)?;
+    }
+    for entry in std::fs::read_dir(src)? {
+        let entry = entry?;
+        let source_path = entry.path();
+        let dest_path = dest.join(entry.file_name());
+        if source_path.is_dir() {
+            copy_example_workspace(&source_path, &dest_path, overwrite_existing)?;
+        } else if overwrite_existing || !dest_path.exists() {
+            std::fs::copy(&source_path, &dest_path)?;
+        }
+    }
+    Ok(())
 }
 
 /// On macOS, `RunEvent::Opened` for "Open With Markon" can fire **before** `setup()`
@@ -247,6 +361,7 @@ fn handle_open_path(app: &tauri::AppHandle, path: &Path) {
             flags,
             single_file,
             access_code_hash: String::new(),
+            collaborator_access_code_hash: String::new(),
         });
     drop(server);
 
@@ -342,6 +457,8 @@ fn main() {
             show_settings_window(app);
         }))
         .setup(move |app| {
+            let mut settings = settings;
+            ensure_example_workspace(app, &mut settings);
             let config = settings.to_server_config(commands::effective_port(&settings));
 
             let tray_resident_init = settings.tray_resident;
@@ -525,9 +642,9 @@ fn main() {
             commands::get_settings,
             commands::save_settings,
             commands::set_access_code,
+            commands::set_collaborator_access_code,
             commands::set_tray_resident,
             commands::add_workspace,
-            commands::update_workspace,
             commands::remove_workspace,
             commands::get_workspaces,
             commands::open_url,

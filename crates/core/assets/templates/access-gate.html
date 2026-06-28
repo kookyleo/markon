@@ -1,6 +1,7 @@
 <!DOCTYPE html>
-<html lang="en" data-theme="{{ theme }}">
+<html lang="en" data-theme="{{ theme }}" data-theme-default="{{ theme }}">
 <head>
+  {% include "theme-boot.html" %}
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Markon</title>
@@ -99,29 +100,6 @@
     <div class="err" id="err"></div>
   </form>
   {% include "i18n-boot.html" %}
-  <script>
-    (function () {
-      var I = window.__MARKON_I18N__;
-      document.querySelectorAll('[data-i18n]').forEach(function (el) { el.textContent = I.t(el.getAttribute('data-i18n')); });
-      document.querySelectorAll('[data-i18n-ph]').forEach(function (el) { el.placeholder = I.t(el.getAttribute('data-i18n-ph')); });
-      var f = document.querySelector('.gate'), err = document.getElementById('err');
-      var e = f.getAttribute('data-error');
-      if (e === 'wrong') err.textContent = I.t('access.err.wrong');
-      else if (e === 'cooldown') err.textContent = I.t('access.err.cooldown').replace('{n}', f.getAttribute('data-cooldown'));
-      // Press-and-hold the eye to reveal the code; release re-masks it.
-      var input = f.querySelector('input[name=code]'), peek = f.querySelector('.peek');
-      if (peek && input) {
-        peek.setAttribute('aria-label', I.t('access.peek'));
-        peek.setAttribute('title', I.t('access.peek'));
-        var reveal = function (ev) { if (ev) ev.preventDefault(); input.type = 'text'; };
-        var mask = function () { input.type = 'password'; };
-        peek.addEventListener('mousedown', reveal);
-        peek.addEventListener('touchstart', reveal, { passive: false });
-        peek.addEventListener('mouseleave', mask);
-        ['mouseup', 'touchend', 'touchcancel'].forEach(function (t) { peek.addEventListener(t, mask); });
-        window.addEventListener('mouseup', mask);
-      }
-    })();
-  </script>
+  <script src="/_/js/access-gate.js"></script>
 </body>
 </html>
