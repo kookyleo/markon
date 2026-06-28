@@ -4185,7 +4185,12 @@ fn render_git_diff_page(
             GitCompareOptionStatusMode::Fast,
         ),
     );
-    let is_worktree_diff = diff.range == "HEAD..worktree";
+    // "Worktree-targeting" = the Compare (new) side is the live worktree, for ANY
+    // base (HEAD…Worktree, a-tag…Worktree, …). That new side is the set of real,
+    // writable files on disk — what annotations bind to and what the sidebar's
+    // create-file/folder writes into. (`worktree` is only ever offered as a
+    // Compare option, never a Base.) Comparing two commits never targets it.
+    let is_worktree_diff = compare_value == "worktree";
     context.insert("is_worktree_diff", &is_worktree_diff);
     // The sidebar tree can create files/folders only when the comparison targets
     // the (writable) worktree AND the workspace permits editing.
