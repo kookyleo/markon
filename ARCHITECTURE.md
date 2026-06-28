@@ -24,7 +24,8 @@ Markon 的用户数据**独立于进程**,持久在 `~/.markon/`:
   (`workspace::hash_id`,`crates/core/src/workspace.rs`)。对外 URL 即 `/{workspace_id}/`。
 - **稳定的三要素**,缺一不可:
   1. **salt**:每装机随机一次,持久在 `settings.json`;`AppSettings::load_at`
-     (`crates/core/src/settings.rs`)**仅在 salt 为空时生成**,非空则原样沿用。
+     (`crates/core/src/settings.rs`)非空则原样沿用。旧 settings 若已有 `workspaces` 但没有
+     `salt`,必须迁移为旧算法使用的 `markon:{port}`,不得随机生成。
   2. **路径规范化**:`expand_and_canonicalize`(`workspace.rs`)幂等——对一个已规范的
      绝对路径再次规范,仍得其自身。
   3. **算法固定**:sha256 + 取前 4 字节,不得更换。
@@ -34,8 +35,8 @@ Markon 的用户数据**独立于进程**,持久在 `~/.markon/`:
   (CLI 的 `initial_workspaces`、`AppSettings::to_server_config`);`WorkspaceRegistry::add`
   对 `(salt, path)` 幂等(重复注册只更新 flags)。因此「无 FILE 冷启动」也能完整恢复所有
   workspace,且 id 不变。
-- **降级 fallback**:salt 缺失时退化为 `markon:{port}`——仅当根本没有 settings 文件时触发;
-  正常安装绝不应走到这里。
+- **降级 / 迁移 fallback**:旧 settings 已有 `workspaces` 但缺 `salt` 时退化为 `markon:{port}`
+  并写回,以保持升级前 URL;根本没有 settings 文件的全新安装才生成随机 salt。
 
 ## 2. 批注与已读数据
 
@@ -54,7 +55,8 @@ Markon 的用户数据**独立于进程**,持久在 `~/.markon/`:
 
 - **新增字段必须带 `#[serde(default = "...")]`**(示例:`web_editor_theme` 默认 `"follow"`),
   以保证旧文件反序列化不失败、且不丢未知字段。
-- 反序列化容错:读取失败回退默认(`load_at` 的 `unwrap_or_default`),但 `normalize()`
+- 反序列化容错:`load_at` 遇到 schema mismatch / 损坏 / 不可读 settings 时,必须优先恢复或稳定
+  推导 `salt` / `workspaces`,不得静默生成随机新 salt 后覆盖旧文件;`normalize()`
   **只规整新字段**(如把未知 `web_editor_theme` 收敛为 `follow`),**绝不重置 `salt` 或
   `workspaces`**。
 - **不得**对 `AppSettings` 启用 `deny_unknown_fields`——保留「旧版本读新文件时忽略未知字段」

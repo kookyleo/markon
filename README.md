@@ -14,7 +14,7 @@ Markon makes it easy to read, review, and verify Markdown documents with beautif
 - **Reading & Review** - Annotate key points, track progress with Section Viewed checkboxes (GitHub PR-style)
 - **Remote Servers** - Browse and annotate Markdown files on headless servers via browser (no GUI needed)
 - **Team Collaboration** - Shared annotations with real-time sync across devices
-- **Printing & Presenting** - Professional formatting and GitHub-style rendering with Mermaid diagrams
+- **Printing & Presenting** - Professional formatting and GitHub-style rendering with server-rendered diagrams
 
 Simply run `markon` in any directory to browse and render Markdown files with a clean, distraction-free interface.
 
@@ -25,7 +25,7 @@ Simply run `markon` in any directory to browse and render Markdown files with a 
 - ✅ **Syntax Highlighting**: Powered by Syntect with 40+ languages
 - ✅ **GitHub Alerts**: Support for NOTE, TIP, IMPORTANT, WARNING, CAUTION
 - ✅ **Emoji Support**: Unicode emoji shortcodes (e.g., `:smile:` → 😄)
-- ✅ **Mermaid Diagrams**: Flowcharts, sequence diagrams, pie charts, etc.
+- ✅ **Diagrams**: Server-rendered Mermaid, PlantUML, D2, DOT/Graphviz, Vega-Lite/Vega/chart, ECharts, and Chart.js/chart.js diagrams
 - ✅ **GFM Tables**: Full GitHub Flavored Markdown table support
 - ✅ **Task Lists**: Interactive checkbox task lists
 - ✅ **Print Optimization**: Professional print styles with multilingual font support
@@ -165,15 +165,11 @@ Options:
                                    - --host: interactive selection
                                    - --host 0.0.0.0: all interfaces
                                    - --host <IP>: specific IP address
-  -t, --theme <THEME>              Theme: light, dark, auto [default: auto]
       --entry [<BASE_URL>]         External access prefix; generates a QR code (alias: --qr)
   -b, --open-browser [<BASE_URL>]  Auto-open browser (optional: custom URL)
-      --shared-annotation          Enable shared annotation via SQLite + WebSocket
-      --enable-viewed              Enable section viewed checkboxes (GitHub PR-style)
-      --enable-search              Enable full-text search with Tantivy
-      --enable-edit                Enable Markdown file editing with syntax highlighting
-      --enable-live                Enable Live collaboration (leader/follower reading sync)
-      --enable-chat                Enable AI chat (read-only assistant grounded in the workspace)
+      --access-code <CODE>         Set or clear this workspace's initiator access code
+      --collaborator-access-code <CODE>
+                                   Set or clear this workspace's collaborator access code
       --print-collapsed-content    Include collapsed (viewed) sections when printing
       --salt <SALT>                Salt for hashing access codes / identity
   -h, --help                       Print help
@@ -189,8 +185,8 @@ markon
 # Render specific file
 markon README.md
 
-# Custom port and dark theme
-markon -p 8080 -t dark README.md
+# Custom port
+markon -p 8080 README.md
 
 # LAN access - bind to all interfaces
 markon --host 0.0.0.0 README.md
@@ -207,20 +203,11 @@ markon --host 0.0.0.0 --qr http://192.168.1.100:6419 README.md
 # Auto-open browser with custom URL (reverse proxy)
 markon -b http://docs.example.com
 
-# Enable shared annotations (multi-device sync)
-markon --shared-annotation README.md
+# Set per-workspace access codes while adding/opening a workspace
+markon --access-code owner-secret --collaborator-access-code guest-secret README.md
 
-# Enable viewed feature (track reading progress)
-markon --enable-viewed README.md
-
-# Enable full-text search
-markon --enable-search
-
-# Enable Markdown editing
-markon --enable-edit README.md
-
-# Full-featured: QR + browser + shared + viewed + search + edit + live + chat
-markon --qr -b --shared-annotation --enable-viewed --enable-search --enable-edit --enable-live --enable-chat README.md
+# Workspace features are controlled in the browser workspace settings
+markon --qr -b README.md
 ```
 
 ### Features Guide
@@ -235,17 +222,17 @@ markon --qr -b --shared-annotation --enable-viewed --enable-search --enable-edit
 **Annotations**:
 - Select text → Choose highlight/strikethrough/note from toolbar
 - Local mode: Stored in browser LocalStorage
-- Shared mode (`--shared-annotation`): SQLite database with real-time WebSocket sync
-- Custom DB path: `MARKON_SQLITE_PATH=/path/to/db markon --shared-annotation`
+- Shared mode: enable **Shared notes** from workspace settings for SQLite + WebSocket sync
+- Custom DB path: set `MARKON_SQLITE_PATH=/path/to/db` before starting Markon
 
-**Section Viewed** (`--enable-viewed`):
+**Section Viewed**:
 - Check box next to heading → Section collapses
 - Click "(click to expand)" → Temporarily view collapsed section
 - Uncheck box → Section expands permanently
 - Batch toolbar (after H1): "All Viewed" / "Unviewed" buttons
-- Storage: LocalStorage (default) or SQLite (with `--shared-annotation`)
+- Storage: LocalStorage (default) or SQLite when **Shared notes** is enabled
 
-**Full-Text Search** (`--enable-search`):
+**Full-Text Search**:
 - Press `/` to open search modal
 - Type keywords to search across all markdown files
 - Use `↑/↓` arrow keys to navigate results, `Enter` to jump
@@ -253,7 +240,7 @@ markon --qr -b --shared-annotation --enable-viewed --enable-search --enable-edit
 - Click result or press `Enter` to navigate with auto-scroll and keyword highlighting
 - Chinese text automatically tokenized with Jieba for accurate matching
 
-**Markdown Editing** (`--enable-edit`):
+**Markdown Editing**:
 - Press `e` to open editor with line numbers and syntax highlighting
 - Select text → Click "Edit" in toolbar → Auto-jump to source with text selected
 - `Ctrl/Cmd+S`: Save changes (asterisk * in title shows unsaved changes)
@@ -261,14 +248,14 @@ markon --qr -b --shared-annotation --enable-viewed --enable-search --enable-edit
 - Security: Only `.md` files within the start directory can be edited
 - Theme: Auto-follows light/dark mode with GitHub-style syntax highlighting
 
-**Live Collaboration** (`--enable-live`):
+**Live Collaboration**:
 - Three-state sphere on the page: Off / Broadcast / Follow
 - Broadcaster shares section focus, text selection, and viewed-checks; followers smooth-scroll to match
 - XPath-based anchoring works across screen sizes (4K presenter ↔ phone follower)
 - Each client picks one of 8 colors for identity; the broadcaster's color rings the sphere and triggers the focus pulse
 - Press `l` to swap leader/follower (jumps in even from off); `Shift+L` toggles between off and the previous active state
 
-**AI Chat** (`--enable-chat`):
+**AI Chat**:
 - Embedded read-only assistant that reads files in the workspace via `read_file` / `list_dir` / `glob` / `grep` — no write or execute
 - Press `c` to open in the default surface (in-page panel or popout window); `Shift+C` opens in the opposite surface for one-shot inversion
 - Threads are workspace-scoped and persisted in `~/.markon/annotation.sqlite` (override via `MARKON_SQLITE_PATH`)
@@ -276,14 +263,14 @@ markon --qr -b --shared-annotation --enable-viewed --enable-search --enable-edit
 - Provider is Anthropic or OpenAI; API key is stored locally in `~/.markon/settings.json` (plain text — see [Reverse-proxy notes](REVERSE_PROXY.md) before exposing the server)
 
 **Keyboard Shortcuts** (press `?` to see all):
-- `/`: Open search (requires `--enable-search`)
-- `e`: Edit current file (requires `--enable-edit`)
-- `l` / `Shift+L`: Toggle Live broadcast/follow / off (requires `--enable-live`)
-- `c` / `Shift+C`: Open AI chat in default / opposite surface (requires `--enable-chat`)
+- `/`: Open search (requires Search enabled for the workspace)
+- `e`: Edit current file (requires Edit enabled for the workspace)
+- `l` / `Shift+L`: Toggle Live broadcast/follow / off (requires Live enabled for the workspace)
+- `c` / `Shift+C`: Open AI chat in default / opposite surface (requires AI Chat enabled for the workspace)
 - `Ctrl/Cmd+Z` / `Ctrl/Cmd+Shift+Z`: Undo/Redo annotations
 - `j` / `k`: Next/Previous heading
 - `Ctrl/Cmd+\`: Toggle TOC
-- `v`: Toggle current section viewed (requires `--enable-viewed`)
+- `v`: Toggle current section viewed (requires Viewed tracking enabled for the workspace)
 - `ESC`: Close popups/Clear selection
 
 ## Important Notes
@@ -316,7 +303,7 @@ mkdir static         # URL: /static/* (not /_/*)
 
 ### Shared Annotation Mode
 
-When `--shared-annotation` is enabled:
+When **Shared notes** is enabled:
 
 **Database location**:
 - Linux/macOS: `~/.markon/annotation.sqlite`
@@ -329,16 +316,17 @@ When `--shared-annotation` is enabled:
 - Broadcast to all connected clients
 
 **Multi-device usage**:
-1. Start on the server: `markon --shared-annotation --host 0.0.0.0 README.md`
-2. Open on any device: `http://server-ip:6419`
-3. All annotations sync across devices in real time
+1. Start on the server: `markon --host 0.0.0.0 README.md`
+2. Enable **Shared notes** from the browser workspace settings
+3. Open on any device: `http://server-ip:6419`
+4. All annotations sync across devices in real time
 
 ### Access Codes
 
-Markon can gate viewer access with access codes, configured entirely from the GUI (not a CLI flag):
+Markon can gate viewer access with access codes, configured from the GUI or while adding a workspace from the CLI:
 
 - **Server-level (global) code**: set in **General** settings. It gates every workspace that does not define its own code.
-- **Per-workspace code**: set via the lock icon on each workspace card. A workspace's own code **overrides** the global one — the global code only applies to workspaces without their own.
+- **Per-workspace code**: set via the lock icon on each workspace card, or pass `--access-code` / `--collaborator-access-code` when adding a workspace from the CLI. A workspace's own code **overrides** the global one — the global code only applies to workspaces without their own.
 - Viewers unlock at a browser gate before they can read.
 
 This is **app-layer access control**, not transport security. Codes travel over whatever connection you expose, so put Markon behind HTTPS / a reverse proxy for any real exposure. See [REVERSE_PROXY.md](REVERSE_PROXY.md).
@@ -347,7 +335,7 @@ This is **app-layer access control**, not transport security. Codes travel over 
 
 Opening a single `.md` file — via Finder's **Open With** or `markon path/to/file.md` — creates a **single-file workspace**:
 
-- It appears in the GUI workspace list with a file icon and is configurable like any other workspace (themes, feature toggles, access code, etc.).
+- It appears in the GUI workspace list with a file icon and can use the same access-code controls as any other workspace.
 - It is **transient**: single-file workspaces are not persisted across server restarts.
 - Its full-text search is **scoped to that one file**.
 
@@ -364,12 +352,12 @@ Opening a single `.md` file — via Finder's **Open With** or `markon path/to/fi
 - **Horizontal Rules**
 - **Footnotes**
 - **Emoji** (:emoji_name:)
-- **Mermaid Diagrams**
+- **Diagrams** (Mermaid, PlantUML, D2, DOT/Graphviz, Vega-Lite/Vega/chart, ECharts, Chart.js/chart.js)
 - **GitHub Alerts** ([!NOTE], [!TIP], etc.)
 
-## Mermaid Diagram Example
+## Diagram Example
 
-Markon supports Mermaid diagram rendering using \`\`\`mermaid code blocks:
+Markon supports server-side diagram rendering with Supramark. Mermaid diagrams use \`\`\`mermaid code blocks:
 
 \`\`\`markdown
 \`\`\`mermaid
@@ -380,14 +368,14 @@ graph TD
 \`\`\`
 \`\`\`
 
-Supported diagram types:
-- Flowcharts (graph/flowchart)
-- Sequence Diagrams (sequenceDiagram)
-- Pie Charts (pie)
-- Gantt Charts (gantt)
-- Class Diagrams (classDiagram)
-- State Diagrams (stateDiagram)
-- And more...
+Supported engines include:
+- Mermaid (flowcharts, sequence diagrams, pie charts, Gantt charts, class diagrams, state diagrams, and more)
+- PlantUML
+- D2
+- DOT/Graphviz (`dot`, `graphviz`)
+- Vega-Lite (`vega-lite`, `vega`, `chart`)
+- ECharts
+- Chart.js (`chartjs`, `chart.js`)
 
 ## Emoji Support
 
@@ -430,7 +418,8 @@ Supported types:
 ## Tech Stack
 
 ### Backend
-- **Markdown Parsing**: [pulldown-cmark](https://github.com/raphlinus/pulldown-cmark)
+- **Markdown Parsing**: Supramark (`supramark-markdown`)
+- **Diagram Rendering**: Supramark (`supramark-diagram`)
 - **Syntax Highlighting**: [syntect](https://github.com/trishume/syntect)
 - **HTTP Server**: [axum](https://github.com/tokio-rs/axum) + [tokio](https://tokio.rs/)
 - **Template Engine**: [tera](https://github.com/Keats/tera)
@@ -439,7 +428,6 @@ Supported types:
 - **Full-Text Search**: [tantivy](https://github.com/quickwit-oss/tantivy) + [tantivy-jieba](https://github.com/baoyachi/tantivy-jieba)
 
 ### Frontend
-- **Diagram Rendering**: [Mermaid.js](https://mermaid.js.org/)
 - **Styling**: [GitHub Markdown CSS](https://github.com/sindresorhus/github-markdown-css)
 - **Architecture**: ES6 modules, OOP design, Strategy pattern
 
@@ -462,10 +450,10 @@ Then open `http://{IP}:6419` from any device. Use `--entry` to generate a QR cod
 
 **Local mode** (default): browser LocalStorage (per-browser)
 
-**Shared mode** (`--shared-annotation`): SQLite database
+**Shared mode**: SQLite database when **Shared notes** is enabled for the workspace
 - Linux/macOS: `~/.markon/annotation.sqlite`
 - Windows: `%USERPROFILE%\.markon\annotation.sqlite`
-- Custom: `MARKON_SQLITE_PATH=/path/to/db markon --shared-annotation`
+- Custom: set `MARKON_SQLITE_PATH=/path/to/db` before starting Markon
 </details>
 
 <details>
@@ -514,9 +502,11 @@ markon -p 8080 README.md
 <summary><strong>Which themes are supported?</strong></summary>
 
 Three theme modes:
-- `--theme light`: force light theme
-- `--theme dark`: force dark theme
-- `--theme auto` (default): follow the system setting
+- Light
+- Dark
+- Follow system / page default
+
+Use the browser page theme switcher for rendered pages and the GUI appearance settings for the desktop panel.
 </details>
 
 ## Development
@@ -588,5 +578,5 @@ should pick a distinct name.
 ## Links
 
 - GitHub Markdown CSS: https://github.com/sindresorhus/github-markdown-css
-- Mermaid documentation: https://mermaid.js.org/
+- Mermaid syntax documentation: https://mermaid.js.org/
 - go-grip: https://github.com/kookyleo/go-grip

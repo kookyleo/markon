@@ -38,7 +38,7 @@
 
 - ✅ GitHub 风格排版（字体、配色、间距）
 - ✅ 代码块语法高亮
-- ✅ Mermaid 图表（图片形式）
+- ✅ 图表 SVG（Mermaid、PlantUML、D2、DOT/Graphviz、Vega-Lite/Vega/chart、ECharts、Chart.js/chart.js）
 - ✅ 表格、列表、引用块
 - ✅ 标注（高亮色、删除线、便条）
 

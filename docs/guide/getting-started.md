@@ -74,11 +74,11 @@ markon
 # 指定端口
 markon -p 8080 README.md
 
-# 启用全文搜索（Tantivy 索引）
-markon --enable-search
+# 添加工作区时设置访问码
+markon --access-code owner-secret --collaborator-access-code guest-secret README.md
 
-# 启用所有功能
-markon --enable-search --enable-viewed --enable-edit --enable-live --enable-chat --shared-annotation README.md
+# 搜索、编辑、Live、AI 对话等功能在浏览器工作区设置页开启
+markon README.md
 ```
 
 ### 3. 局域网访问

@@ -8,13 +8,7 @@
 
 ## 启用
 
-**桌面版**：在工作区设置中勾选 **共享标记、便条和已读状态**。
-
-**CLI**：
-
-```bash
-markon --shared-annotation README.md
-```
+在浏览器工作区设置中勾选 **共享标记、便条和已读状态**。CLI 只负责打开或追加工作区；功能开关统一在浏览器中控制。
 
 启用后，同一工作区的所有浏览器会话会共享：
 
@@ -38,7 +32,7 @@ markon --shared-annotation README.md
 通过环境变量：
 
 ```bash
-MARKON_SQLITE_PATH=/path/to/db markon --shared-annotation
+MARKON_SQLITE_PATH=/path/to/db markon README.md
 ```
 
 桌面版：**全局设置 → 数据库**，点击 **选择…** 浏览。
@@ -63,8 +57,10 @@ MARKON_SQLITE_PATH=/path/to/db markon --shared-annotation
 启用 `--host 0.0.0.0` 让其他设备通过网络访问同一 Markon 实例：
 
 ```bash
-markon --host 0.0.0.0 --shared-annotation --qr
+markon --host 0.0.0.0 --qr
 ```
+
+然后在浏览器工作区设置中启用 **共享标记、便条和已读状态**。
 
 场景：
 - 手机扫 QR 码打开 → 添加标注 → 电脑浏览器实时看到

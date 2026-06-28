@@ -38,9 +38,7 @@ Markon 没有角色 / 权限体系，但内置了一道[访问码门禁](/featur
 ```bash
 markon --host 127.0.0.1 -p 6419 \
   -b https://docs.example.com \
-  --qr https://docs.example.com \
-  --enable-search \
-  --shared-annotation
+  --qr https://docs.example.com
 ```
 
 关键点：
@@ -48,6 +46,7 @@ markon --host 127.0.0.1 -p 6419 \
 - `--host 127.0.0.1` — 仅本地访问，安全
 - `-b https://docs.example.com` — 启动后浏览器打开公网 URL（不传 BASE 则只开本地地址）
 - `--qr https://docs.example.com`（`--entry` 别名）— 终端二维码与日志中的「accessible at」用公网 URL；不设这条会回落到内网 IP
+- 搜索、共享便条等工作区功能在浏览器工作区设置页启用
 
 ## Nginx
 
@@ -136,7 +135,6 @@ User=markon
 WorkingDirectory=/srv/docs
 ExecStart=/usr/local/bin/markon \
   --host 127.0.0.1 -p 6419 \
-  --enable-search --shared-annotation \
   -b https://docs.example.com \
   --qr https://docs.example.com
 Restart=on-failure

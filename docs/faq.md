@@ -50,7 +50,7 @@ sudo apt install pkg-config libssl-dev  # Debian/Ubuntu
 ### 标注保存在哪？
 
 - **默认（本地模式）**：浏览器 LocalStorage，每个浏览器独立
-- **共享模式（`--shared-annotation`）**：SQLite 数据库
+- **共享模式**：工作区启用「共享便条」后使用 SQLite 数据库
   - macOS/Linux：`~/.markon/annotation.sqlite`
   - Windows：`%USERPROFILE%\.markon\annotation.sqlite`
   - 自定义：`MARKON_SQLITE_PATH=/path/to/db`
@@ -101,12 +101,12 @@ markon shutdown
 - GitHub Flavored Markdown（表格、任务列表、删除线等）
 - GitHub Alerts（`[!NOTE]` / `[!TIP]` / `[!IMPORTANT]` / `[!WARNING]` / `[!CAUTION]`）
 - Emoji 短代码（`:smile:` → 😄）
-- Mermaid 代码块（自动渲染为图表）
+- Mermaid、PlantUML、D2、DOT/Graphviz、Vega-Lite/Vega/chart、ECharts、Chart.js/chart.js 代码块（服务端自动渲染为图表）
 - 40+ 语言的语法高亮（Syntect）
 
-### Mermaid 图表不显示？
+### 图表不显示？
 
-检查代码块是否用 ` ```mermaid ` 开头。如果还不行，看浏览器 Console 是否有 JS 错误（某些语法 Mermaid 版本不同可能报错）。
+检查代码块 fence 是否使用受支持的引擎名，例如 ` ```mermaid `、` ```plantuml `、` ```d2 `、` ```dot `、` ```graphviz `、` ```vega-lite `、` ```vega `、` ```chart `、` ```echarts `、` ```chartjs `、` ```chart.js `。如果引擎或语法不受支持，页面会显示带原因的源码 fallback。
 
 ### 深色模式下图片太亮？
 
@@ -139,9 +139,9 @@ markon shutdown
 
 - **启动**：首次索引 1000 个文件约 1-2 秒
 - **搜索**：Tantivy 引擎毫秒级响应
-- **渲染**：单文件渲染在 Rust 里极快，瓶颈通常在浏览器端的 Mermaid/MathJax
+- **渲染**：单文件渲染在 Rust 里极快，瓶颈通常在浏览器端布局、图片、MathJax 或大型图表 SVG
 
-建议大型工作区开启 `--enable-search`，用搜索代替目录浏览。
+建议大型工作区在工作区设置中开启「搜索」，用搜索代替目录浏览。
 
 ### 内存占用大吗？
 

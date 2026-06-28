@@ -4,7 +4,7 @@
   <img src="/illustrations/12-chat.svg" alt="与文档对话" />
 </div>
 
-> 需要启用：桌面版在工作区设置中勾选「AI 对话」；CLI 用 `--enable-chat`。还需在全局设置中填入 OpenAI 或 Anthropic 的 API Key。
+> 需要启用：在浏览器工作区设置中勾选「AI 对话」。还需在全局设置中填入 OpenAI 或 Anthropic 的 API Key。
 
 把整个工作区当作一份可对话的资料库，AI 直接读取你目录里的 Markdown 与代码，并在回答中标出引用位置。「只读版 Claude Code」是它最直观的类比 —— 提供 `read_file` / `list_dir` / `glob` / `grep` 四个工具，但**没有任何写入或执行能力**。
 
@@ -41,11 +41,7 @@ CLI 用户：直接编辑 `~/.markon/settings.json`：
 
 ### 2. 在工作区中开启
 
-```bash
-markon docs/ --enable-chat
-```
-
-或在桌面版的工作区列表里勾选 **AI 对话** 开关。
+打开工作区后，在浏览器工作区设置页勾选 **AI 对话**。
 
 启用后，浏览器页面右下角会出现一个紫色小球。
 
@@ -147,8 +143,8 @@ markon docs/ --enable-chat
 ## 相关命令行参数
 
 ```bash
-markon docs/ --enable-chat                 # 仅启用本工作区
-markon docs/ --enable-chat --enable-search # chat + 全文索引同时启用
+markon docs/                               # 打开工作区
+# 然后在浏览器工作区设置页启用 AI 对话 / 搜索
 ```
 
 → 完整选项见 [命令行选项](/guide/cli)

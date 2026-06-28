@@ -4,7 +4,7 @@
   <img src="/illustrations/03-viewed.svg" alt="已读追踪" />
 </div>
 
-> 需要启用：桌面版在工作区设置中勾选「已读追踪」；CLI 用 `--enable-viewed`
+> 需要启用：在浏览器工作区设置中勾选「已读追踪」。CLI 只继承新工作区的全局默认值，不再提供单独的 feature flag。
 
 受 GitHub PR Review 的「Viewed」复选框启发，Markon 按**段落级别**追踪你的阅读进度。
 
@@ -54,7 +54,7 @@ H1 标题下方有一个工具栏：
 | 模式 | 启用方式 | 存储位置 | 同步 |
 |------|---------|---------|------|
 | **本地** | 默认 | 浏览器 LocalStorage | 单设备 |
-| **共享** | `--shared-annotation` | SQLite 数据库 | 多设备实时同步 |
+| **共享** | 工作区设置中启用「共享便条」 | SQLite 数据库 | 多设备实时同步 |
 
 → 共享模式详见 [共享标注](/advanced/shared-annotations)
 
