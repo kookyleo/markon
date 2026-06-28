@@ -1,0 +1,127 @@
+<!DOCTYPE html>
+<html lang="en" dir="auto" data-theme="{{ theme }}" data-theme-default="{{ theme }}">
+<head>
+    {% include "theme-boot.html" %}
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{ title }}</title>
+    <link id="markon-github-markdown-light" rel="stylesheet" href="/_/css/github-markdown-light.css" media="not all">
+    <link id="markon-github-markdown-dark" rel="stylesheet" href="/_/css/github-markdown-dark.css" media="not all">
+    <script>window.MarkonTheme && window.MarkonTheme.applyStylesheetMedia();</script>
+    <link rel="stylesheet" href="/_/css/tokens.css">
+    <style>
+        body {
+            margin: 0;
+            min-height: 100vh;
+            background: var(--markon-bg-default);
+            color: var(--markon-fg-default);
+            font: 14px/1.5 var(--markon-ui-font);
+        }
+        a,
+        a:visited {
+            color: var(--markon-accent) !important;
+            text-decoration: none;
+        }
+        a:hover {
+            text-decoration: underline;
+        }
+        .refs-page {
+            max-width: 980px;
+            margin: 0 auto;
+            padding: 34px 24px 56px;
+        }
+        .refs-nav {
+            display: flex;
+            gap: 12px;
+            margin-bottom: 22px;
+            color: var(--markon-fg-muted);
+            font-size: 13px;
+        }
+        .refs-title {
+            margin: 0 0 16px;
+            padding-bottom: 14px;
+            border-bottom: 1px solid var(--markon-border-default);
+            font-size: 24px;
+            line-height: 1.25;
+        }
+        .refs-list {
+            display: flex;
+            flex-direction: column;
+            margin: 0;
+            padding: 0;
+            list-style: none;
+        }
+        .refs-item {
+            display: grid;
+            grid-template-columns: minmax(0, 1fr) max-content;
+            align-items: center;
+            gap: 14px;
+            padding: 12px 0;
+            border-bottom: 1px solid var(--markon-border-default);
+        }
+        .refs-name {
+            min-width: 0;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+            color: var(--markon-fg-default);
+            font-weight: 650;
+        }
+        .refs-meta {
+            color: var(--markon-fg-muted);
+            font-size: 12px;
+            white-space: nowrap;
+        }
+        .refs-current {
+            color: var(--markon-success);
+            font-weight: 650;
+        }
+        .refs-empty {
+            padding: 20px 0;
+            color: var(--markon-fg-muted);
+        }
+        .workspace-mono {
+            font-family: 'SF Mono', Monaco, 'Cascadia Code', 'Roboto Mono', Consolas, monospace;
+        }
+    </style>
+    {% if styles_css %}<style>{{ styles_css | safe }}</style>{% endif %}
+    {% include "i18n-boot.html" %}
+</head>
+<body>
+    <main class="refs-page">
+        <nav class="refs-nav">
+            <a href="{{ files_url }}" data-i18n="web.ws.files">Files</a>
+            <span aria-hidden="true">/</span>
+            <a href="{{ history_url }}" data-i18n="web.ws.git.history">Git history</a>
+        </nav>
+        <h1 class="refs-title" data-i18n="{{ page_title_key }}">{{ page_title }}</h1>
+        {% if has_items %}
+        <ul class="refs-list">
+            {% if mode == "branches" %}
+            {% for branch in branches %}
+            <li class="refs-item">
+                <div class="refs-name">{{ branch.name }}</div>
+                <div class="refs-meta">
+                    {% if branch.current %}<span class="refs-current" data-i18n="web.ws.git.current_branch">Current branch</span>{% endif %}
+                </div>
+            </li>
+            {% endfor %}
+            {% else %}
+            {% for tag in tags %}
+            <li class="refs-item">
+                <div class="refs-name">{{ tag.name }}</div>
+                <div class="refs-meta">
+                    <span class="workspace-mono">{{ tag.short_hash }}</span>
+                    {% if tag.relative_time %}<span aria-hidden="true"> · </span><span>{{ tag.relative_time }}</span>{% endif %}
+                </div>
+            </li>
+            {% endfor %}
+            {% endif %}
+        </ul>
+        {% else %}
+        <div class="refs-empty" data-i18n="{{ empty_key }}"></div>
+        {% endif %}
+    </main>
+    <script src="/_/js/git-refs.js"></script>
+</body>
+</html>

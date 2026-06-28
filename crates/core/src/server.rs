@@ -1,20 +1,23 @@
 use axum::{
     extract::{
         ws::{Message, WebSocket},
-        Path as AxumPath, State, WebSocketUpgrade,
+        Path as AxumPath, Query, State, WebSocketUpgrade,
     },
     http::{header, StatusCode},
     response::{Html, IntoResponse, Redirect, Response},
     routing::{delete, get, post},
-    Json, Router,
+    Extension, Json, Router,
 };
 use futures_util::{stream::StreamExt, SinkExt};
 use qrcode::render::unicode::Dense1x2;
 use qrcode::{EcLevel, QrCode};
+use rayon::prelude::*;
 use rusqlite::Connection;
 use serde::{Deserialize, Serialize};
+use sha2::{Digest, Sha256};
+use similar::{ChangeTag, TextDiff};
+use std::collections::{HashMap, VecDeque};
 use std::fs;
-use std::net::SocketAddr;
 use std::path::{Path as FsPath, PathBuf};
 use std::sync::{Arc, Mutex};
 use tera::Tera;
@@ -22,8 +25,12 @@ use tokio::net::TcpListener;
 use tokio::sync::{broadcast, mpsc};
 
 use crate::assets::{CssAssets, IconAssets, JsAssets, Templates};
+use crate::git;
 use crate::i18n;
-use crate::markdown::MarkdownRenderer;
+use crate::markdown::{
+    default_markdown_engine, MarkdownEngine, MarkdownHtmlRenderer, MarkdownRenderer,
+};
+use crate::markdown_ast;
 use crate::search::{SearchQuery, SearchResult};
 use crate::workspace::{
     ct_eq, expand_and_canonicalize, generate_token, ServerLock, WorkspaceConfig, WorkspaceEntry,
@@ -49,6 +56,9 @@ pub struct WorkspaceInit {
     pub initial_path: Option<String>,
     /// Per-workspace access-code hash (empty = inherit the server code).
     pub access_code_hash: String,
+    /// Per-workspace collaborator access-code hash (empty = inherit the server
+    /// collaborator code).
+    pub collaborator_access_code_hash: String,
 }
 
 /// Server configuration
@@ -63,6 +73,9 @@ pub struct ServerConfig {
     pub qr: Option<String>,
     pub open_browser: Option<String>,
     pub shared_annotation: bool,
+    /// SQLite path for annotations, viewed state, and chat.
+    /// `MARKON_SQLITE_PATH` still takes precedence when present.
+    pub db_path: Option<String>,
     /// Random salt for workspace ID generation; None = auto-generate.
     pub salt: Option<String>,
     pub initial_workspaces: Vec<WorkspaceInit>,
@@ -94,6 +107,9 @@ pub struct ServerConfig {
     /// Server-level access-code hash (salted SHA-256; empty = no gate). A
     /// workspace's own code overrides this for that workspace.
     pub access_code_hash: String,
+    /// Server-level collaborator access-code hash (empty = no collaborator
+    /// token unless a workspace defines one).
+    pub collaborator_access_code_hash: String,
     /// When true, collapsed sections are forced visible during print so their
     /// content ends up on paper. When false (default) the content stays hidden
     /// and a small placeholder marks the position of the collapsed section.
@@ -107,6 +123,25 @@ pub(crate) struct AccessAttempts {
     pub fails: u32,
     /// If set, unlock attempts are rejected until this instant.
     pub locked_until: Option<std::time::Instant>,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum AccessRole {
+    Initiator,
+    Collaborator,
+}
+
+impl AccessRole {
+    fn can_initiate(self) -> bool {
+        matches!(self, Self::Initiator)
+    }
+}
+
+#[derive(Clone, Debug)]
+struct AccessRequirement {
+    role: AccessRole,
+    hash: String,
+    scope: String,
 }
 
 #[derive(Clone)]
@@ -137,12 +172,17 @@ pub(crate) struct AppState {
     pub editor_theme: Arc<String>,
     /// Access gate: server-level access-code hash (empty = no server gate).
     pub access_code_hash: Arc<String>,
+    /// Access gate: server-level collaborator access-code hash.
+    pub collaborator_access_code_hash: Arc<String>,
     /// Secret for signing access cookies — the persistent per-install salt, so
     /// unlock cookies survive restarts (30-day persistence).
     pub access_secret: Arc<String>,
     /// Per-source-IP failed-unlock tracking for the brute-force cooldown.
     pub access_attempts:
         Arc<std::sync::Mutex<std::collections::HashMap<std::net::IpAddr, AccessAttempts>>>,
+    /// In-memory rendered Markdown diff cache. Scoped to this server state so
+    /// theme/config changes get their own cache lifecycle.
+    pub(crate) markdown_diff_cache: Arc<Mutex<MarkdownDiffCache>>,
     /// Whether collapsed sections should be printed (true) or replaced by a
     /// placeholder (false). Mirrored to the browser as a `<html>` data attr.
     pub print_collapsed_content: bool,
@@ -202,24 +242,18 @@ pub struct ReachableUrls {
     pub all: Vec<ReachableUrl>,
 }
 
-/// Bracket a bare IPv6 literal for use in a URL; everything else passes through.
-fn url_host_literal(host: &str) -> String {
-    match host.parse::<std::net::IpAddr>() {
-        Ok(std::net::IpAddr::V6(addr)) => format!("[{addr}]"),
-        _ => host.to_string(),
-    }
-}
-
 /// Pure core of reachable-URL computation, taking the currently-available bind
 /// hosts explicitly so it can be unit-tested without touching real interfaces.
 ///
 /// Rules:
-///   - `localhost` (127.0.0.1) is always reachable from the same machine.
-///   - wildcard binds (0.0.0.0 / ::) additionally expose every non-loopback
-///     interface IP; the featured one is `advertised_host` when it is still a
-///     live interface, otherwise the first interface, otherwise localhost.
+///   - loopback binds are reachable only through that loopback family.
+///   - wildcard binds expose the matching address family:
+///     `0.0.0.0` lists IPv4 loopback + IPv4 interfaces, while `::` lists
+///     IPv6 loopback + IPv6 interfaces.
+///   - the featured wildcard URL is `advertised_host` when it is still a live
+///     interface for that family, otherwise the first interface, otherwise
+///     the family loopback.
 ///   - a specific (non-loopback) bind exposes exactly that address.
-///   - a loopback bind exposes only localhost.
 fn assemble_reachable_urls(
     bind_host: &str,
     advertised_host: &str,
@@ -229,16 +263,26 @@ fn assemble_reachable_urls(
     use crate::net::BindHostKind;
 
     let trimmed = bind_host.trim();
-    let is_wildcard = matches!(trimmed, "" | "0.0.0.0" | "::" | "[::]");
-    let is_loopback = matches!(trimmed, "127.0.0.1" | "::1" | "[::1]");
+    let is_wildcard_v6 = crate::net::host_is_wildcard_v6(trimmed);
+    let is_wildcard_v4 = crate::net::host_is_wildcard_v4(trimmed);
+    let is_wildcard = is_wildcard_v4 || is_wildcard_v6;
+    let is_loopback = crate::net::host_is_loopback(trimmed);
+    let loopback_addr = if is_wildcard_v6 { "::1" } else { "127.0.0.1" };
 
     // (label, address) entries. Only a wildcard bind also serves loopback, so
     // for a specific bind we list exactly that one address (127.0.0.1 is NOT
     // reachable when the socket is bound to a single LAN IP).
     let mut entries: Vec<(String, String)> = Vec::new();
     if is_wildcard {
-        entries.push(("localhost".to_string(), "127.0.0.1".to_string()));
-        for h in hosts.iter().filter(|h| h.kind == BindHostKind::Interface) {
+        entries.push(("localhost".to_string(), loopback_addr.to_string()));
+        for h in hosts.iter().filter(|h| {
+            h.kind == BindHostKind::Interface
+                && if is_wildcard_v6 {
+                    crate::net::host_is_ipv6(&h.address)
+                } else {
+                    crate::net::host_is_ipv4(&h.address)
+                }
+        }) {
             entries.push((h.interface.clone().unwrap_or_default(), h.address.clone()));
         }
     } else {
@@ -247,7 +291,7 @@ fn assemble_reachable_urls(
         } else {
             hosts
                 .iter()
-                .find(|h| h.address == trimmed)
+                .find(|h| crate::net::host_matches(&h.address, trimmed))
                 .and_then(|h| h.interface.clone())
                 .unwrap_or_default()
         };
@@ -258,7 +302,7 @@ fn assemble_reachable_urls(
         .iter()
         .map(|(label, addr)| ReachableUrl {
             label: label.clone(),
-            url: format!("http://{}:{}", url_host_literal(addr), port),
+            url: format!("http://{}:{}", crate::net::url_host_literal(addr), port),
         })
         .collect();
 
@@ -269,17 +313,21 @@ fn assemble_reachable_urls(
             .filter(|(label, _)| label != "localhost")
             .map(|(_, addr)| addr)
             .collect();
-        if !adv.is_empty() && lan.iter().any(|a| a.as_str() == adv) {
+        if !adv.is_empty() && lan.iter().any(|a| crate::net::host_matches(a, adv)) {
             adv.to_string()
         } else if let Some(first) = lan.first() {
             (*first).clone()
         } else {
-            "127.0.0.1".to_string()
+            loopback_addr.to_string()
         }
     } else {
         trimmed.to_string()
     };
-    let featured = format!("http://{}:{}", url_host_literal(&featured_addr), port);
+    let featured = format!(
+        "http://{}:{}",
+        crate::net::url_host_literal(&featured_addr),
+        port
+    );
 
     ReachableUrls { featured, all }
 }
@@ -331,6 +379,26 @@ fn is_inside_workspace(path: &FsPath, root: &FsPath) -> bool {
 
 fn path_to_route(path: &FsPath) -> String {
     path.to_string_lossy().replace('\\', "/")
+}
+
+fn sanitize_new_file_path(path: &str) -> Option<PathBuf> {
+    let trimmed = path.trim().trim_matches('/');
+    if trimmed.is_empty() || trimmed.len() > 4096 || trimmed.contains('\0') {
+        return None;
+    }
+    let candidate = PathBuf::from(trimmed);
+    if candidate.is_absolute() {
+        return None;
+    }
+    let mut out = PathBuf::new();
+    for component in candidate.components() {
+        match component {
+            std::path::Component::Normal(part) => out.push(part),
+            std::path::Component::CurDir => {}
+            _ => return None,
+        }
+    }
+    (!out.as_os_str().is_empty()).then_some(out)
 }
 
 /// The file-type rule deciding what the server renders as markdown (vs raw-
@@ -419,7 +487,8 @@ pub async fn start(config: ServerConfig) -> Result<(), String> {
         theme,
         qr,
         open_browser,
-        shared_annotation,
+        shared_annotation: _,
+        db_path,
         salt,
         initial_workspaces,
         bound_listener,
@@ -431,6 +500,7 @@ pub async fn start(config: ServerConfig) -> Result<(), String> {
         default_chat_mode,
         editor_theme,
         access_code_hash,
+        collaborator_access_code_hash,
         print_collapsed_content,
     } = config;
 
@@ -451,55 +521,42 @@ pub async fn start(config: ServerConfig) -> Result<(), String> {
         }
     }
 
-    // A broadcast channel (for WebSocket fan-out) is needed whenever either
-    // shared_annotation or Live is active. The SQLite-backed annotation DB is
-    // only required by shared_annotation; Live is fire-and-forget broadcast.
-    //
-    // GUI mode (`registry: Some`) lets the user toggle these flags after the
-    // server has started, but axum's Router is immutable once built. To avoid
-    // a "404 on /_/ws" the moment the user enables Live or Shared notes from
-    // the tray, GUI mode wires the WebSocket route and broadcast channel up
-    // front and lazily opens the annotation DB regardless of the initial
-    // flag values.
-    let is_gui_mode = registry.is_some();
-    let has_live = initial_workspaces.iter().any(|w| w.flags.enable_live);
-    let has_chat = initial_workspaces.iter().any(|w| w.flags.enable_chat);
-    let needs_ws = is_gui_mode || shared_annotation || has_live;
-    let needs_db = is_gui_mode || shared_annotation || has_chat;
-    let db = if needs_db {
-        let db_path = std::env::var("MARKON_SQLITE_PATH").unwrap_or_else(|_| {
+    // Workspace features are runtime-configurable from the workspace page, so
+    // WebSocket fan-out and the SQLite-backed stores must exist even when the
+    // corresponding features were disabled at process start.
+    let db_path = std::env::var("MARKON_SQLITE_PATH")
+        .ok()
+        .or(db_path)
+        .unwrap_or_else(|| {
             let home = dirs::home_dir().expect("Cannot find home directory");
             home.join(".markon/annotation.sqlite")
                 .to_string_lossy()
                 .to_string()
         });
-        let parent_dir = std::path::Path::new(&db_path).parent().unwrap();
-        fs::create_dir_all(parent_dir).expect("Failed to create database directory");
-        let conn = Connection::open(&db_path).expect("Failed to open database");
-        conn.execute(
-            "CREATE TABLE IF NOT EXISTS annotations (
-                id TEXT PRIMARY KEY,
-                file_path TEXT NOT NULL,
-                data TEXT NOT NULL
-            )",
-            [],
-        )
-        .expect("Failed to create annotations table");
-        conn.execute(
-            "CREATE TABLE IF NOT EXISTS viewed_state (
-                file_path TEXT PRIMARY KEY,
-                state TEXT NOT NULL,
-                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-            )",
-            [],
-        )
-        .expect("Failed to create viewed_state table");
-        crate::chat::storage::ChatStorage::init(&conn).expect("Failed to create chat tables");
-        Some(Arc::new(Mutex::new(conn)))
-    } else {
-        None
-    };
-    let tx = needs_ws.then(|| broadcast::channel(100).0);
+    let parent_dir = std::path::Path::new(&db_path).parent().unwrap();
+    fs::create_dir_all(parent_dir).expect("Failed to create database directory");
+    let conn = Connection::open(&db_path).expect("Failed to open database");
+    conn.execute(
+        "CREATE TABLE IF NOT EXISTS annotations (
+            id TEXT PRIMARY KEY,
+            file_path TEXT NOT NULL,
+            data TEXT NOT NULL
+        )",
+        [],
+    )
+    .expect("Failed to create annotations table");
+    conn.execute(
+        "CREATE TABLE IF NOT EXISTS viewed_state (
+            file_path TEXT PRIMARY KEY,
+            state TEXT NOT NULL,
+            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )",
+        [],
+    )
+    .expect("Failed to create viewed_state table");
+    crate::chat::storage::ChatStorage::init(&conn).expect("Failed to create chat tables");
+    let db = Some(Arc::new(Mutex::new(conn)));
+    let tx = Some(broadcast::channel(100).0);
 
     // Build workspace registry and register initial workspaces.
     let effective_salt = salt.unwrap_or_else(|| format!("markon:{port}"));
@@ -523,6 +580,7 @@ pub async fn start(config: ServerConfig) -> Result<(), String> {
             flags: ws_init.flags,
             single_file: None,
             access_code_hash: ws_init.access_code_hash,
+            collaborator_access_code_hash: ws_init.collaborator_access_code_hash,
         });
         if first_workspace_url_path.is_none() {
             let url_path = workspace_url_path(&id, ws_init.initial_path.as_deref());
@@ -560,8 +618,10 @@ pub async fn start(config: ServerConfig) -> Result<(), String> {
         default_chat_mode: Arc::new(default_chat_mode),
         editor_theme: Arc::new(editor_theme),
         access_code_hash: Arc::new(access_code_hash),
+        collaborator_access_code_hash: Arc::new(collaborator_access_code_hash),
         access_secret: Arc::new(access_cookie_secret),
         access_attempts: Arc::new(std::sync::Mutex::new(std::collections::HashMap::new())),
+        markdown_diff_cache: Arc::new(Mutex::new(MarkdownDiffCache::default())),
         print_collapsed_content,
         shutdown_tx,
         #[cfg(debug_assertions)]
@@ -575,6 +635,10 @@ pub async fn start(config: ServerConfig) -> Result<(), String> {
             "/api/workspace/{id}",
             delete(remove_workspace_handler).put(update_workspace_handler),
         )
+        .route(
+            "/api/workspace/{id}/access",
+            axum::routing::put(update_workspace_access_handler),
+        )
         .route("/api/workspaces", get(list_workspaces_handler))
         .route("/api/shutdown", post(shutdown_handler))
         .layer(axum::middleware::from_fn_with_state(
@@ -582,9 +646,9 @@ pub async fn start(config: ServerConfig) -> Result<(), String> {
             require_local_and_token,
         ));
 
-    // Save API: loopback + the save-scoped token (or the master token). Kept
-    // separate from `mgmt` so the token embedded in edit pages can't reach the
-    // privileged routes above.
+    // Save API: same-origin browser page + the save-scoped token (or the
+    // master token). Kept separate from `mgmt` so the token embedded in edit
+    // pages can't reach the privileged routes above.
     let save = Router::new()
         .route("/api/save", post(save_file_handler))
         .layer(axum::middleware::from_fn_with_state(
@@ -592,7 +656,7 @@ pub async fn start(config: ServerConfig) -> Result<(), String> {
             require_local_and_save_token,
         ));
 
-    let mut app = Router::new()
+    let app = Router::new()
         // Static assets (literal prefix beats /{workspace_id}/ param)
         .route("/favicon.ico", get(serve_favicon))
         .route("/_/favicon.ico", get(serve_favicon))
@@ -609,7 +673,155 @@ pub async fn start(config: ServerConfig) -> Result<(), String> {
         // Chat popout — minimal chat-only page that ChatManager opens via
         // window.open. Registered before the catch-all `{*path}` so the
         // literal `_/chat` segment wins.
+        .route(
+            "/_/{workspace_id}/git/data/history",
+            get(handle_git_history_data),
+        )
+        .route(
+            "/_/{workspace_id}/git/data/diff/work",
+            get(handle_git_working_diff_data),
+        )
+        .route(
+            "/_/{workspace_id}/git/data/show/{commit}",
+            get(handle_git_commit_diff_data),
+        )
+        .route("/_/{workspace_id}/git/history", get(handle_git_history))
+        .route("/_/{workspace_id}/git/branches", get(handle_git_branches))
+        .route("/_/{workspace_id}/git/tags", get(handle_git_tags))
+        .route(
+            "/_/{workspace_id}/compare/options",
+            get(handle_git_compare_options_status),
+        )
+        .route(
+            "/_/{workspace_id}/git/diff/work",
+            get(handle_git_working_diff),
+        )
+        .route(
+            "/_/{workspace_id}/git/show/{commit}",
+            get(handle_git_commit_diff),
+        )
+        .route(
+            "/_/{workspace_id}/compare/{*range}",
+            get(handle_pretty_compare_diff),
+        )
+        .route(
+            "/_/{workspace_id}/git/commit",
+            post(handle_git_commit)
+                .route_layer(axum::middleware::from_fn_with_state(
+                    state.clone(),
+                    require_initiator_role,
+                ))
+                .route_layer(axum::middleware::from_fn(require_same_origin)),
+        )
+        .route(
+            "/_/{workspace_id}/git/checkout",
+            post(handle_git_checkout)
+                .route_layer(axum::middleware::from_fn_with_state(
+                    state.clone(),
+                    require_initiator_role,
+                ))
+                .route_layer(axum::middleware::from_fn(require_same_origin)),
+        )
+        .route(
+            "/_/{workspace_id}/files/data",
+            get(handle_workspace_files_data),
+        )
+        .route(
+            "/_/{workspace_id}/files/create",
+            post(handle_workspace_create_file)
+                .route_layer(axum::middleware::from_fn_with_state(
+                    state.clone(),
+                    require_initiator_role,
+                ))
+                .route_layer(axum::middleware::from_fn(require_same_origin)),
+        )
+        .route(
+            "/_/{workspace_id}/files/delete",
+            post(handle_workspace_delete_file)
+                .route_layer(axum::middleware::from_fn_with_state(
+                    state.clone(),
+                    require_initiator_role,
+                ))
+                .route_layer(axum::middleware::from_fn(require_same_origin)),
+        )
+        .route(
+            "/_/{workspace_id}/settings/features",
+            post(handle_workspace_update_features)
+                .route_layer(axum::middleware::from_fn_with_state(
+                    state.clone(),
+                    require_initiator_role,
+                ))
+                .route_layer(axum::middleware::from_fn(require_same_origin)),
+        )
+        .route("/_/{workspace_id}/chat", get(handle_chat_popout))
+        // Legacy workspace-internal routes. Keep these so links emitted by
+        // older builds keep working, but new links use /_/{workspace_id}/...
+        // and therefore no longer occupy the user's file namespace.
+        .route(
+            "/{workspace_id}/_/git/data/history",
+            get(handle_git_history_data),
+        )
+        .route(
+            "/{workspace_id}/_/git/data/diff/work",
+            get(handle_git_working_diff_data),
+        )
+        .route(
+            "/{workspace_id}/_/git/data/show/{commit}",
+            get(handle_git_commit_diff_data),
+        )
+        .route("/{workspace_id}/_/git/history", get(handle_git_history))
+        .route("/{workspace_id}/_/git/branches", get(handle_git_branches))
+        .route("/{workspace_id}/_/git/tags", get(handle_git_tags))
+        .route(
+            "/{workspace_id}/_/git/diff/work",
+            get(handle_git_working_diff),
+        )
+        .route(
+            "/{workspace_id}/_/git/show/{commit}",
+            get(handle_git_commit_diff),
+        )
+        .route(
+            "/{workspace_id}/_/git/commit",
+            post(handle_git_commit)
+                .route_layer(axum::middleware::from_fn_with_state(
+                    state.clone(),
+                    require_initiator_role,
+                ))
+                .route_layer(axum::middleware::from_fn(require_same_origin)),
+        )
+        .route(
+            "/{workspace_id}/_/git/checkout",
+            post(handle_git_checkout)
+                .route_layer(axum::middleware::from_fn_with_state(
+                    state.clone(),
+                    require_initiator_role,
+                ))
+                .route_layer(axum::middleware::from_fn(require_same_origin)),
+        )
+        .route(
+            "/{workspace_id}/_/files/data",
+            get(handle_workspace_files_data),
+        )
+        .route(
+            "/{workspace_id}/_/files/create",
+            post(handle_workspace_create_file)
+                .route_layer(axum::middleware::from_fn_with_state(
+                    state.clone(),
+                    require_initiator_role,
+                ))
+                .route_layer(axum::middleware::from_fn(require_same_origin)),
+        )
+        .route(
+            "/{workspace_id}/_/settings/features",
+            post(handle_workspace_update_features)
+                .route_layer(axum::middleware::from_fn_with_state(
+                    state.clone(),
+                    require_initiator_role,
+                ))
+                .route_layer(axum::middleware::from_fn(require_same_origin)),
+        )
         .route("/{workspace_id}/_/chat", get(handle_chat_popout))
+        .route("/_/ws", get(ws_handler))
         .route("/{workspace_id}/", get(handle_workspace_root))
         .route("/{workspace_id}/{*path}", get(handle_workspace_path))
         // Everything else → 404
@@ -617,20 +829,14 @@ pub async fn start(config: ServerConfig) -> Result<(), String> {
         .merge(mgmt)
         .merge(save);
 
-    if needs_ws {
-        app = app.route("/_/ws", get(ws_handler));
-    }
-
     // Dev-only live-reload: esbuild's watch onEnd hook POSTs the trigger,
     // server fans it out as an SSE event, the webview reloads. cfg gate keeps
     // these routes (and the heavy tokio_stream / sse plumbing) out of release
     // builds entirely.
     #[cfg(debug_assertions)]
-    {
-        app = app
-            .route("/_/dev/reload-stream", get(dev_reload_stream))
-            .route("/_/dev/reload-trigger", post(dev_reload_trigger));
-    }
+    let app = app
+        .route("/_/dev/reload-stream", get(dev_reload_stream))
+        .route("/_/dev/reload-trigger", post(dev_reload_trigger));
 
     // Chat endpoints: SSE chat stream + thread/file REST. Each handler
     // checks `enable_chat` per-workspace and 403s otherwise, so it's safe
@@ -639,9 +845,13 @@ pub async fn start(config: ServerConfig) -> Result<(), String> {
     // mutating, so guard them with a same-origin check to block cross-site /
     // CSRF / DNS-rebinding fetches.
     let app = app.merge(
-        crate::chat::routes::router().route_layer(axum::middleware::from_fn(require_same_origin)),
+        crate::chat::routes::router()
+            .route_layer(axum::middleware::from_fn_with_state(
+                state.clone(),
+                require_initiator_role,
+            ))
+            .route_layer(axum::middleware::from_fn(require_same_origin)),
     );
-
     // Access-code gate over every workspace-scoped route (no-op when unset).
     let app = app.layer(axum::middleware::from_fn_with_state(
         state.clone(),
@@ -660,9 +870,7 @@ pub async fn start(config: ServerConfig) -> Result<(), String> {
         TcpListener::from_std(std_listener)
             .map_err(|e| format!("Failed to convert listener: {e}"))?
     } else {
-        let addr = format!("{}:{}", host, port)
-            .parse::<SocketAddr>()
-            .map_err(|e| format!("Invalid host address '{}': {}", host, e))?;
+        let addr = crate::net::bind_socket_addr(&host, port)?;
         TcpListener::bind(&addr)
             .await
             .map_err(|e| format!("Failed to bind to {addr}: {e}"))?
@@ -797,6 +1005,16 @@ async fn config_ws_handler(
 /// we let those through only when the TCP peer is loopback, since that's
 /// where local CLI tooling legitimately connects without an Origin header.
 fn check_ws_origin(headers: &axum::http::HeaderMap, peer: &std::net::SocketAddr) -> bool {
+    same_origin_or_loopback_no_origin(headers, peer)
+}
+
+/// Browser mutating channels served to LAN clients must be same-origin: when
+/// `Origin` is present it has to match `Host`. Native local tooling can omit
+/// `Origin`, but only from loopback.
+fn same_origin_or_loopback_no_origin(
+    headers: &axum::http::HeaderMap,
+    peer: &std::net::SocketAddr,
+) -> bool {
     let origin = headers
         .get(axum::http::header::ORIGIN)
         .and_then(|v| v.to_str().ok());
@@ -974,6 +1192,13 @@ fn access_gated_workspace(path: &str) -> Option<String> {
     if segs.len() >= 3 && segs[0] == "_" && segs[1] == "ws" {
         return Some(segs[2].to_string());
     }
+    if segs.len() >= 2
+        && segs[0] == "_"
+        && segs[1].len() == 8
+        && segs[1].bytes().all(|b| b.is_ascii_hexdigit())
+    {
+        return Some(segs[1].to_string());
+    }
     if let Some(first) = segs.first() {
         if first.len() == 8 && first.bytes().all(|b| b.is_ascii_hexdigit()) {
             return Some(first.to_string());
@@ -1017,20 +1242,98 @@ fn access_record_success(state: &AppState, ip: std::net::IpAddr) {
     state.access_attempts.lock().unwrap().remove(&ip);
 }
 
-/// The effective access requirement for a workspace: `(code_hash, scope)`, or
-/// `None` when nothing gates it. A workspace's own code **overrides** the
-/// server code; the scope ("w:{id}" vs "s") identifies which lock the cookie
-/// must carry, so unlocking the server doesn't unlock a separately-coded
-/// workspace and vice versa.
-fn access_scope_for(state: &AppState, ws_id: &str) -> Option<(String, String)> {
-    if let Some(entry) = state.workspace_registry.get(ws_id) {
-        let wc = entry.access_code_hash();
-        if !wc.is_empty() {
-            return Some((wc, format!("w:{ws_id}")));
+/// The effective access requirements for a workspace. The legacy
+/// `access_code_hash` is the **initiator** token. Collaborator tokens are
+/// separate and intentionally use distinct cookie scopes, while initiator
+/// scopes keep their old values (`s` / `w:{id}`) so existing initiator cookies
+/// continue to work after the upgrade.
+fn access_requirements_for(state: &AppState, ws_id: &str) -> Vec<AccessRequirement> {
+    let entry = state.workspace_registry.get(ws_id);
+    let workspace_initiator = entry.as_ref().map(|e| e.access_code_hash());
+    let workspace_collaborator = entry.as_ref().map(|e| e.collaborator_access_code_hash());
+
+    let (initiator_hash, initiator_scope) =
+        if let Some(hash) = workspace_initiator.filter(|hash| !hash.is_empty()) {
+            (hash, format!("w:{ws_id}"))
+        } else if !state.access_code_hash.is_empty() {
+            (state.access_code_hash.as_str().to_string(), "s".to_string())
+        } else {
+            (String::new(), String::new())
+        };
+
+    let (collaborator_hash, collaborator_scope) =
+        if let Some(hash) = workspace_collaborator.filter(|hash| !hash.is_empty()) {
+            (hash, format!("w:{ws_id}:collaborator"))
+        } else if !state.collaborator_access_code_hash.is_empty() {
+            (
+                state.collaborator_access_code_hash.as_str().to_string(),
+                "s:collaborator".to_string(),
+            )
+        } else {
+            (String::new(), String::new())
+        };
+
+    let mut out = Vec::new();
+    if !initiator_hash.is_empty() {
+        out.push(AccessRequirement {
+            role: AccessRole::Initiator,
+            hash: initiator_hash.clone(),
+            scope: initiator_scope,
+        });
+    }
+    // The two role tokens must be different. Runtime skips an already-invalid
+    // equal-hash collaborator requirement so a stale/bad settings file cannot
+    // make one token ambiguously unlock two roles.
+    if !collaborator_hash.is_empty() && collaborator_hash != initiator_hash {
+        out.push(AccessRequirement {
+            role: AccessRole::Collaborator,
+            hash: collaborator_hash,
+            scope: collaborator_scope,
+        });
+    }
+    out
+}
+
+fn access_role_from_cookie(
+    state: &AppState,
+    ws_id: &str,
+    cookie_header: Option<&str>,
+) -> Option<AccessRole> {
+    let requirements = access_requirements_for(state, ws_id);
+    if requirements.is_empty() {
+        return Some(AccessRole::Initiator);
+    }
+    let scopes = access_cookie_scopes(&state.access_secret, cookie_header);
+    for wanted_role in [AccessRole::Initiator, AccessRole::Collaborator] {
+        for req in requirements.iter().filter(|req| req.role == wanted_role) {
+            if scopes
+                .iter()
+                .any(|(s, h)| s == &req.scope && h == &req.hash)
+            {
+                return Some(req.role);
+            }
         }
     }
-    let server = state.access_code_hash.as_str();
-    (!server.is_empty()).then(|| (server.to_string(), "s".to_string()))
+    None
+}
+
+fn access_cookie_role_for_headers(
+    state: &AppState,
+    ws_id: &str,
+    headers: &axum::http::HeaderMap,
+) -> Option<AccessRole> {
+    let cookie = headers
+        .get(axum::http::header::COOKIE)
+        .and_then(|v| v.to_str().ok());
+    access_role_from_cookie(state, ws_id, cookie)
+}
+
+fn headers_have_management_token(state: &AppState, headers: &axum::http::HeaderMap) -> bool {
+    headers
+        .get("X-Markon-Token")
+        .and_then(|v| v.to_str().ok())
+        .map(|t| ct_eq(t.as_bytes(), state.management_token.as_bytes()))
+        .unwrap_or(false)
 }
 
 /// Render the access-code gate page (HTTP 200 + form). `err` is None on first
@@ -1068,7 +1371,7 @@ fn render_access_gate(
 /// the workspace's effective code is empty.
 async fn require_access_code(
     State(state): State<AppState>,
-    req: axum::extract::Request,
+    mut req: axum::extract::Request,
     next: axum::middleware::Next,
 ) -> Response {
     let path = req.uri().path().to_string();
@@ -1087,23 +1390,43 @@ async fn require_access_code(
     let Some(ws_id) = ws_id else {
         return next.run(req).await;
     };
-    let Some((current_hash, needed)) = access_scope_for(&state, &ws_id) else {
+    let requirements = access_requirements_for(&state, &ws_id);
+    if requirements.is_empty() {
+        req.extensions_mut().insert(AccessRole::Initiator);
         return next.run(req).await;
     };
     let cookie = req
         .headers()
         .get(axum::http::header::COOKIE)
         .and_then(|v| v.to_str().ok());
-    if access_cookie_scopes(&state.access_secret, cookie)
-        .iter()
-        .any(|(s, h)| s == &needed && h == &current_hash)
-    {
+    if let Some(role) = access_role_from_cookie(&state, &ws_id, cookie) {
+        req.extensions_mut().insert(role);
         return next.run(req).await;
     }
     if req.method() == axum::http::Method::GET && !path.starts_with("/api/") {
         render_access_gate(&state, &ws_id, &path, None)
     } else {
         (StatusCode::UNAUTHORIZED, "Access code required").into_response()
+    }
+}
+
+async fn require_initiator_role(
+    State(state): State<AppState>,
+    req: axum::extract::Request,
+    next: axum::middleware::Next,
+) -> Response {
+    let role = if let Some(role) = req.extensions().get::<AccessRole>().copied() {
+        role
+    } else if let Some(ws_id) = access_gated_workspace(req.uri().path()) {
+        access_cookie_role_for_headers(&state, &ws_id, req.headers())
+            .unwrap_or(AccessRole::Collaborator)
+    } else {
+        AccessRole::Initiator
+    };
+    if role.can_initiate() {
+        next.run(req).await
+    } else {
+        StatusCode::FORBIDDEN.into_response()
     }
 }
 
@@ -1132,22 +1455,25 @@ async fn unlock_handler(
             Some(("cooldown", remaining)),
         );
     }
-    let Some((effective, scope)) = access_scope_for(&state, &form.workspace_id) else {
+    let requirements = access_requirements_for(&state, &form.workspace_id);
+    if requirements.is_empty() {
         return Redirect::to(&redirect).into_response();
     };
-    if crate::workspace::access_code_matches(&state.access_secret, &form.code, &effective) {
+    if let Some(req) = requirements.iter().find(|req| {
+        crate::workspace::access_code_matches(&state.access_secret, &form.code, &req.hash)
+    }) {
         access_record_success(&state, ip);
-        tracing::info!(%ip, ws = %form.workspace_id, "access unlocked");
+        tracing::info!(%ip, ws = %form.workspace_id, role = ?req.role, "access unlocked");
         // Merge with any scopes the device already unlocked, so unlocking one
         // workspace doesn't drop access to another.
         let cookie_hdr = headers
             .get(axum::http::header::COOKIE)
             .and_then(|v| v.to_str().ok());
         let mut scopes = access_cookie_scopes(&state.access_secret, cookie_hdr);
-        if let Some(entry) = scopes.iter_mut().find(|(s, _)| s == &scope) {
-            entry.1 = effective;
+        if let Some(entry) = scopes.iter_mut().find(|(s, _)| s == &req.scope) {
+            entry.1 = req.hash.clone();
         } else {
-            scopes.push((scope, effective));
+            scopes.push((req.scope.clone(), req.hash.clone()));
         }
         let cookie = make_access_cookie(
             &state.access_secret,
@@ -1248,16 +1574,17 @@ async fn require_local_and_token(
     next.run(req).await
 }
 
-/// Like [`require_local_and_token`] but accepts the save-scoped token in
-/// addition to the master token — used only for `/api/save`. The master token
-/// is still honored so CLI/tooling callers keep working.
+/// Save API guard: accept the save-scoped token (or the master token) from a
+/// same-origin browser page, including LAN clients. Local CLI/tooling callers
+/// may omit Origin but must come from loopback. The master token is still
+/// honored so CLI/tooling callers keep working.
 async fn require_local_and_save_token(
     State(state): State<AppState>,
     axum::extract::ConnectInfo(addr): axum::extract::ConnectInfo<std::net::SocketAddr>,
     req: axum::extract::Request,
     next: axum::middleware::Next,
 ) -> Response {
-    if !addr.ip().is_loopback() {
+    if !same_origin_or_loopback_no_origin(req.headers(), &addr) {
         return StatusCode::FORBIDDEN.into_response();
     }
     let ok = req
@@ -1419,8 +1746,9 @@ async fn handle_client_msg(
                     return DbResult::None;
                 };
                 if let Err(e) = conn.execute(
-                    "INSERT OR REPLACE INTO annotations (id, file_path, data) VALUES (?1, ?2, ?3)",
-                    [id.as_str(), file_path.as_str(), data.as_str()],
+                    "INSERT OR REPLACE INTO annotations (id, file_path, data)
+                          VALUES (?1, ?2, ?3)",
+                    rusqlite::params![id.as_str(), file_path.as_str(), data.as_str()],
                 ) {
                     tracing::error!(file_path = %file_path, "insert annotation failed: {e}");
                     return DbResult::None;
@@ -1598,6 +1926,7 @@ async fn handle_socket(socket: WebSocket, state: AppState) {
 async fn handle_chat_popout(
     State(state): State<AppState>,
     AxumPath(workspace_id): AxumPath<String>,
+    role: Option<Extension<AccessRole>>,
 ) -> impl IntoResponse {
     let Some(ws) = state.workspace_registry.get(&workspace_id) else {
         return StatusCode::NOT_FOUND.into_response();
@@ -1605,7 +1934,10 @@ async fn handle_chat_popout(
     // Hide the chat page entirely if chat is disabled for this workspace —
     // mirrors the same gate the in-page chat panel respects via the
     // `enable-chat` meta flag.
-    if !ws.flags().enable_chat {
+    let role = role
+        .map(|Extension(role)| role)
+        .unwrap_or(AccessRole::Initiator);
+    if !ws.flags().enable_chat || !role.can_initiate() {
         return StatusCode::NOT_FOUND.into_response();
     }
     let mut context = base_context(&state);
@@ -1617,6 +1949,7 @@ async fn handle_chat_popout(
 async fn handle_workspace_root(
     State(state): State<AppState>,
     AxumPath(workspace_id): AxumPath<String>,
+    role: Option<Extension<AccessRole>>,
 ) -> impl IntoResponse {
     let Some(ws) = state.workspace_registry.get(&workspace_id) else {
         return StatusCode::NOT_FOUND.into_response();
@@ -1627,12 +1960,16 @@ async fn handle_workspace_root(
         return Redirect::to(&format!("/{workspace_id}/{only}")).into_response();
     }
     let root = canonical_workspace_root(&ws);
-    render_directory_listing(&workspace_id, &ws, &root, None, &state)
+    let role = role
+        .map(|Extension(role)| role)
+        .unwrap_or(AccessRole::Initiator);
+    render_directory_listing(&workspace_id, &ws, &root, None, &state, role)
 }
 
 async fn handle_workspace_path(
     State(state): State<AppState>,
     AxumPath((workspace_id, path)): AxumPath<(String, String)>,
+    role: Option<Extension<AccessRole>>,
 ) -> impl IntoResponse {
     let Some(ws) = state.workspace_registry.get(&workspace_id) else {
         return StatusCode::NOT_FOUND.into_response();
@@ -1656,6 +1993,9 @@ async fn handle_workspace_path(
     };
 
     let root = canonical_workspace_root(&ws);
+    let role = role
+        .map(|Extension(role)| role)
+        .unwrap_or(AccessRole::Initiator);
     if !is_inside_workspace(&canonical, &root) {
         return (StatusCode::FORBIDDEN, "Access denied").into_response();
     }
@@ -1668,6 +2008,7 @@ async fn handle_workspace_path(
                 &ws,
                 &root,
                 &state,
+                role,
             )
         } else {
             serve_file(&canonical)
@@ -1679,9 +2020,640 @@ async fn handle_workspace_path(
             // expose a sibling listing.
             return (StatusCode::NOT_FOUND, "Path not found").into_response();
         }
-        render_directory_listing(&workspace_id, &ws, &root, Some(&decoded), &state)
+        render_directory_listing(&workspace_id, &ws, &root, Some(&decoded), &state, role)
     } else {
         (StatusCode::NOT_FOUND, "Path not found").into_response()
+    }
+}
+
+async fn handle_git_history(
+    State(state): State<AppState>,
+    AxumPath(workspace_id): AxumPath<String>,
+) -> impl IntoResponse {
+    let Some(ws) = state.workspace_registry.get(&workspace_id) else {
+        return StatusCode::NOT_FOUND.into_response();
+    };
+    match git::history(&ws.root, 80) {
+        Ok(commits) => render_git_history_page(&state, &workspace_id, &ws.root, &commits),
+        Err(git::GitError::NotRepository) => {
+            (StatusCode::CONFLICT, "Workspace is not a git repository").into_response()
+        }
+        Err(e) => (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            format!("Failed to list git history: {e}"),
+        )
+            .into_response(),
+    }
+}
+
+async fn handle_git_history_data(
+    State(state): State<AppState>,
+    AxumPath(workspace_id): AxumPath<String>,
+) -> impl IntoResponse {
+    let Some(ws) = state.workspace_registry.get(&workspace_id) else {
+        return StatusCode::NOT_FOUND.into_response();
+    };
+    match git::history(&ws.root, 80) {
+        Ok(commits) => Json(commits).into_response(),
+        Err(git::GitError::NotRepository) => {
+            (StatusCode::CONFLICT, "Workspace is not a git repository").into_response()
+        }
+        Err(e) => (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            format!("Failed to list git history: {e}"),
+        )
+            .into_response(),
+    }
+}
+
+async fn handle_git_branches(
+    State(state): State<AppState>,
+    AxumPath(workspace_id): AxumPath<String>,
+) -> impl IntoResponse {
+    let Some(ws) = state.workspace_registry.get(&workspace_id) else {
+        return StatusCode::NOT_FOUND.into_response();
+    };
+    match git::branches(&ws.root) {
+        Ok(branches) => render_git_branches_page(&state, &workspace_id, &branches),
+        Err(git::GitError::NotRepository) => {
+            (StatusCode::CONFLICT, "Workspace is not a git repository").into_response()
+        }
+        Err(e) => (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            format!("Failed to list git branches: {e}"),
+        )
+            .into_response(),
+    }
+}
+
+async fn handle_git_tags(
+    State(state): State<AppState>,
+    AxumPath(workspace_id): AxumPath<String>,
+) -> impl IntoResponse {
+    let Some(ws) = state.workspace_registry.get(&workspace_id) else {
+        return StatusCode::NOT_FOUND.into_response();
+    };
+    match git::tags(&ws.root, 200) {
+        Ok(tags) => render_git_tags_page(&state, &workspace_id, &tags),
+        Err(git::GitError::NotRepository) => {
+            (StatusCode::CONFLICT, "Workspace is not a git repository").into_response()
+        }
+        Err(e) => (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            format!("Failed to list git tags: {e}"),
+        )
+            .into_response(),
+    }
+}
+
+async fn handle_git_working_diff(
+    State(state): State<AppState>,
+    AxumPath(workspace_id): AxumPath<String>,
+    Query(query): Query<GitViewQuery>,
+    role: Option<Extension<AccessRole>>,
+) -> impl IntoResponse {
+    let Some(ws) = state.workspace_registry.get(&workspace_id) else {
+        return StatusCode::NOT_FOUND.into_response();
+    };
+    let role = role
+        .map(|Extension(role)| role)
+        .unwrap_or(AccessRole::Initiator);
+    let initial_view = diff_view_from_query(query.view.as_deref());
+    match git::working_diff(&ws.root) {
+        Ok(diff) => render_git_diff_page(&state, &workspace_id, &ws, role, &diff, initial_view),
+        Err(git::GitError::NotRepository) => {
+            (StatusCode::CONFLICT, "Workspace is not a git repository").into_response()
+        }
+        Err(e) => (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            format!("Failed to read git diff: {e}"),
+        )
+            .into_response(),
+    }
+}
+
+async fn handle_git_working_diff_data(
+    State(state): State<AppState>,
+    AxumPath(workspace_id): AxumPath<String>,
+    Query(query): Query<GitViewQuery>,
+) -> impl IntoResponse {
+    let Some(ws) = state.workspace_registry.get(&workspace_id) else {
+        return StatusCode::NOT_FOUND.into_response();
+    };
+    if diff_view_from_query(query.view.as_deref()) == "rendered" {
+        return match markdown_compare_diff_data(
+            &state,
+            &ws.root,
+            "HEAD",
+            "worktree",
+            query.f.as_deref(),
+        ) {
+            Ok(data) => Json(data).into_response(),
+            Err(git::GitError::NotRepository) => {
+                (StatusCode::CONFLICT, "Workspace is not a git repository").into_response()
+            }
+            Err(git::GitError::InvalidRevision) => {
+                (StatusCode::BAD_REQUEST, "Invalid git revision").into_response()
+            }
+            Err(e) => (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                format!("Failed to read markdown diff: {e}"),
+            )
+                .into_response(),
+        };
+    }
+    match git::working_diff(&ws.root) {
+        Ok(diff) => git_diff_json_response(&diff, query.f.as_deref()),
+        Err(git::GitError::NotRepository) => {
+            (StatusCode::CONFLICT, "Workspace is not a git repository").into_response()
+        }
+        Err(e) => (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            format!("Failed to read git diff: {e}"),
+        )
+            .into_response(),
+    }
+}
+
+async fn handle_git_commit_diff(
+    State(state): State<AppState>,
+    AxumPath((workspace_id, commit)): AxumPath<(String, String)>,
+    Query(query): Query<GitViewQuery>,
+    role: Option<Extension<AccessRole>>,
+) -> impl IntoResponse {
+    let Some(ws) = state.workspace_registry.get(&workspace_id) else {
+        return StatusCode::NOT_FOUND.into_response();
+    };
+    let role = role
+        .map(|Extension(role)| role)
+        .unwrap_or(AccessRole::Initiator);
+    let initial_view = diff_view_from_query(query.view.as_deref());
+    match git::commit_diff(&ws.root, &commit) {
+        Ok(diff) => render_git_diff_page(&state, &workspace_id, &ws, role, &diff, initial_view),
+        Err(git::GitError::InvalidRevision) => {
+            (StatusCode::BAD_REQUEST, "Invalid git revision").into_response()
+        }
+        Err(git::GitError::NotRepository) => {
+            (StatusCode::CONFLICT, "Workspace is not a git repository").into_response()
+        }
+        Err(e) => (StatusCode::NOT_FOUND, format!("Git diff not found: {e}")).into_response(),
+    }
+}
+
+async fn handle_git_commit_diff_data(
+    State(state): State<AppState>,
+    AxumPath((workspace_id, commit)): AxumPath<(String, String)>,
+    Query(query): Query<GitViewQuery>,
+) -> impl IntoResponse {
+    let Some(ws) = state.workspace_registry.get(&workspace_id) else {
+        return StatusCode::NOT_FOUND.into_response();
+    };
+    match git::commit_diff(&ws.root, &commit) {
+        Ok(diff) => git_diff_json_response(&diff, query.f.as_deref()),
+        Err(git::GitError::InvalidRevision) => {
+            (StatusCode::BAD_REQUEST, "Invalid git revision").into_response()
+        }
+        Err(git::GitError::NotRepository) => {
+            (StatusCode::CONFLICT, "Workspace is not a git repository").into_response()
+        }
+        Err(e) => (StatusCode::NOT_FOUND, format!("Git diff not found: {e}")).into_response(),
+    }
+}
+
+#[derive(Deserialize)]
+struct GitViewQuery {
+    view: Option<String>,
+    f: Option<String>,
+}
+
+#[derive(Deserialize)]
+struct PrettyCompareQuery {
+    view: Option<String>,
+    format: Option<String>,
+    f: Option<String>,
+}
+
+#[derive(Deserialize)]
+struct GitCompareOptionsStatusQuery {
+    base: String,
+    compare: String,
+}
+
+fn diff_view_from_query(view: Option<&str>) -> &'static str {
+    match view {
+        Some("rendered") => "rendered",
+        _ => "raw",
+    }
+}
+
+async fn handle_pretty_compare_diff(
+    State(state): State<AppState>,
+    AxumPath((workspace_id, range)): AxumPath<(String, String)>,
+    Query(query): Query<PrettyCompareQuery>,
+    role: Option<Extension<AccessRole>>,
+) -> impl IntoResponse {
+    let Some(ws) = state.workspace_registry.get(&workspace_id) else {
+        return StatusCode::NOT_FOUND.into_response();
+    };
+    let Some((base, compare)) = parse_pretty_compare_range(&range) else {
+        return (StatusCode::BAD_REQUEST, "Invalid compare range").into_response();
+    };
+    let role = role
+        .map(|Extension(role)| role)
+        .unwrap_or(AccessRole::Initiator);
+    let initial_view = diff_view_from_query(query.view.as_deref());
+    if query.format.as_deref() == Some("data") && initial_view == "rendered" {
+        return match markdown_compare_diff_data(
+            &state,
+            &ws.root,
+            &base,
+            &compare,
+            query.f.as_deref(),
+        ) {
+            Ok(data) => Json(data).into_response(),
+            Err(git::GitError::NotRepository) => {
+                (StatusCode::CONFLICT, "Workspace is not a git repository").into_response()
+            }
+            Err(git::GitError::InvalidRevision) => {
+                (StatusCode::BAD_REQUEST, "Invalid git revision").into_response()
+            }
+            Err(e) => (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                format!("Failed to read markdown diff: {e}"),
+            )
+                .into_response(),
+        };
+    }
+    match git::compare_diff(&ws.root, &base, &compare) {
+        Ok(diff) if query.format.as_deref() == Some("data") => {
+            git_diff_json_response(&diff, query.f.as_deref())
+        }
+        Ok(diff) => render_git_diff_page(&state, &workspace_id, &ws, role, &diff, initial_view),
+        Err(git::GitError::InvalidRevision) => {
+            (StatusCode::BAD_REQUEST, "Invalid git revision").into_response()
+        }
+        Err(git::GitError::NotRepository) => {
+            (StatusCode::CONFLICT, "Workspace is not a git repository").into_response()
+        }
+        Err(e) => (StatusCode::NOT_FOUND, format!("Git diff not found: {e}")).into_response(),
+    }
+}
+
+async fn handle_git_compare_options_status(
+    State(state): State<AppState>,
+    AxumPath(workspace_id): AxumPath<String>,
+    Query(query): Query<GitCompareOptionsStatusQuery>,
+) -> impl IntoResponse {
+    let Some(ws) = state.workspace_registry.get(&workspace_id) else {
+        return StatusCode::NOT_FOUND.into_response();
+    };
+    // Each side independently probes ~dozens of candidate refs for markdown
+    // changes (one git diff each), so run the two sides concurrently; each side
+    // also parallelizes its own probes internally.
+    let (base, compare) = rayon::join(
+        || {
+            git_compare_option_statuses(git_compare_options(
+                &ws.root,
+                &query.base,
+                false,
+                &query.compare,
+                GitCompareOptionRole::Base,
+                GitCompareOptionStatusMode::Checked,
+            ))
+        },
+        || {
+            git_compare_option_statuses(git_compare_options(
+                &ws.root,
+                &query.compare,
+                true,
+                &query.base,
+                GitCompareOptionRole::Compare,
+                GitCompareOptionStatusMode::Checked,
+            ))
+        },
+    );
+    Json(GitCompareOptionsStatus { base, compare }).into_response()
+}
+
+fn parse_pretty_compare_range(range: &str) -> Option<(String, String)> {
+    let (base, compare) = range.split_once("...")?;
+    if base.trim().is_empty() || compare.trim().is_empty() {
+        return None;
+    }
+    Some((base.to_string(), compare.to_string()))
+}
+
+#[derive(Deserialize)]
+struct GitCommitRequest {
+    message: String,
+}
+
+#[derive(Deserialize)]
+struct GitCheckoutRequest {
+    branch: String,
+}
+
+#[derive(Serialize)]
+struct GitCommitResponse {
+    success: bool,
+    message: String,
+    commit: Option<git::GitCommitResult>,
+}
+
+#[derive(Serialize)]
+struct GitCheckoutResponse {
+    success: bool,
+    message: String,
+    status: Option<git::GitStatus>,
+}
+
+async fn handle_git_commit(
+    State(state): State<AppState>,
+    AxumPath(workspace_id): AxumPath<String>,
+    Json(payload): Json<GitCommitRequest>,
+) -> impl IntoResponse {
+    let Some(ws) = state.workspace_registry.get(&workspace_id) else {
+        return StatusCode::NOT_FOUND.into_response();
+    };
+    match git::commit_workspace(&ws.root, &payload.message) {
+        Ok(commit) => Json(GitCommitResponse {
+            success: true,
+            message: "Committed workspace changes".to_string(),
+            commit: Some(commit),
+        })
+        .into_response(),
+        Err(git::GitError::NothingToCommit) => Json(GitCommitResponse {
+            success: false,
+            message: "Nothing to commit".to_string(),
+            commit: None,
+        })
+        .into_response(),
+        Err(git::GitError::NotRepository) => {
+            (StatusCode::CONFLICT, "Workspace is not a git repository").into_response()
+        }
+        Err(e) => (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            format!("Failed to commit workspace changes: {e}"),
+        )
+            .into_response(),
+    }
+}
+
+async fn handle_git_checkout(
+    State(state): State<AppState>,
+    AxumPath(workspace_id): AxumPath<String>,
+    Json(payload): Json<GitCheckoutRequest>,
+) -> impl IntoResponse {
+    let Some(ws) = state.workspace_registry.get(&workspace_id) else {
+        return StatusCode::NOT_FOUND.into_response();
+    };
+    match git::checkout_branch(&ws.root, &payload.branch) {
+        Ok(status) => Json(GitCheckoutResponse {
+            success: true,
+            message: "Switched branch".to_string(),
+            status: Some(status),
+        })
+        .into_response(),
+        Err(git::GitError::InvalidRevision) => Json(GitCheckoutResponse {
+            success: false,
+            message: "Invalid branch".to_string(),
+            status: None,
+        })
+        .into_response(),
+        Err(git::GitError::NotRepository) => {
+            (StatusCode::CONFLICT, "Workspace is not a git repository").into_response()
+        }
+        Err(e) => Json(GitCheckoutResponse {
+            success: false,
+            message: format!("Failed to switch branch: {e}"),
+            status: None,
+        })
+        .into_response(),
+    }
+}
+
+#[derive(Serialize)]
+struct WorkspaceFileListEntry {
+    path: String,
+    name: String,
+    is_markdown: bool,
+    url: String,
+}
+
+async fn handle_workspace_files_data(
+    State(state): State<AppState>,
+    AxumPath(workspace_id): AxumPath<String>,
+) -> impl IntoResponse {
+    let Some(ws) = state.workspace_registry.get(&workspace_id) else {
+        return StatusCode::NOT_FOUND.into_response();
+    };
+    let root = canonical_workspace_root(&ws);
+    let mut files = Vec::new();
+    let walker = crate::fswalk::default_walker(&root).build();
+    for entry in walker.filter_map(|entry| entry.ok()).take(2000) {
+        let path = entry.path();
+        if !path.is_file() {
+            continue;
+        }
+        let Some(rel) = workspace_relative_path(path, &root) else {
+            continue;
+        };
+        let route = path_to_route(&rel);
+        files.push(WorkspaceFileListEntry {
+            name: path
+                .file_name()
+                .map(|name| name.to_string_lossy().to_string())
+                .unwrap_or_else(|| route.clone()),
+            is_markdown: is_markdown_path(path),
+            url: format!("/{workspace_id}/{route}"),
+            path: route,
+        });
+    }
+    files.sort_by(|a, b| a.path.cmp(&b.path));
+    Json(files).into_response()
+}
+
+#[derive(Deserialize)]
+struct CreateFileRequest {
+    path: String,
+    content: Option<String>,
+}
+
+#[derive(Serialize)]
+struct CreateFileResponse {
+    success: bool,
+    message: String,
+    url: Option<String>,
+}
+
+async fn handle_workspace_create_file(
+    State(state): State<AppState>,
+    AxumPath(workspace_id): AxumPath<String>,
+    Json(payload): Json<CreateFileRequest>,
+) -> impl IntoResponse {
+    let Some(ws) = state.workspace_registry.get(&workspace_id) else {
+        return StatusCode::NOT_FOUND.into_response();
+    };
+    if !ws.enable_edit.load(std::sync::atomic::Ordering::Relaxed) {
+        return Json(CreateFileResponse {
+            success: false,
+            message: "Edit feature is not enabled".to_string(),
+            url: None,
+        })
+        .into_response();
+    }
+    let Some(rel) = sanitize_new_file_path(&payload.path) else {
+        return Json(CreateFileResponse {
+            success: false,
+            message: "Invalid file path".to_string(),
+            url: None,
+        })
+        .into_response();
+    };
+    let root = canonical_workspace_root(&ws);
+    let full_path = root.join(&rel);
+    if fs::symlink_metadata(&full_path).is_ok() {
+        return Json(CreateFileResponse {
+            success: false,
+            message: "File already exists".to_string(),
+            url: None,
+        })
+        .into_response();
+    }
+    if let Some(parent) = full_path.parent() {
+        if let Err(e) = fs::create_dir_all(parent) {
+            return Json(CreateFileResponse {
+                success: false,
+                message: format!("Failed to create directory: {e}"),
+                url: None,
+            })
+            .into_response();
+        }
+    }
+    if let Some(parent) = full_path.parent() {
+        match canonicalize_route_path(parent) {
+            Ok(parent) if is_inside_workspace(&parent, &root) => {}
+            _ => {
+                return Json(CreateFileResponse {
+                    success: false,
+                    message: "Access denied".to_string(),
+                    url: None,
+                })
+                .into_response()
+            }
+        }
+    }
+    let content = payload.content.unwrap_or_default();
+    let write_result = std::fs::OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .open(&full_path)
+        .and_then(|mut file| std::io::Write::write_all(&mut file, content.as_bytes()));
+    if let Err(e) = write_result {
+        return Json(CreateFileResponse {
+            success: false,
+            message: format!("Failed to create file: {e}"),
+            url: None,
+        })
+        .into_response();
+    }
+    let route = path_to_route(&rel);
+    Json(CreateFileResponse {
+        success: true,
+        message: "File created".to_string(),
+        url: Some(format!("/{workspace_id}/{route}")),
+    })
+    .into_response()
+}
+
+#[derive(Deserialize)]
+struct DeleteFileRequest {
+    path: String,
+}
+
+#[derive(Serialize)]
+struct DeleteFileResponse {
+    success: bool,
+    message: String,
+}
+
+async fn handle_workspace_delete_file(
+    State(state): State<AppState>,
+    AxumPath(workspace_id): AxumPath<String>,
+    Json(payload): Json<DeleteFileRequest>,
+) -> impl IntoResponse {
+    let fail = |message: &str| {
+        Json(DeleteFileResponse {
+            success: false,
+            message: message.to_string(),
+        })
+        .into_response()
+    };
+    let Some(ws) = state.workspace_registry.get(&workspace_id) else {
+        return StatusCode::NOT_FOUND.into_response();
+    };
+    if !ws.enable_edit.load(std::sync::atomic::Ordering::Relaxed) {
+        return fail("Edit feature is not enabled");
+    }
+    let rel = payload.path.trim().trim_start_matches('/');
+    if rel.is_empty() || rel.contains('\0') {
+        return fail("Invalid file path");
+    }
+    let root = canonical_workspace_root(&ws);
+    let canon = match canonicalize_route_path(&root.join(rel)) {
+        Ok(p) if is_inside_workspace(&p, &root) => p,
+        _ => return fail("Access denied"),
+    };
+    if !canon.is_file() {
+        return fail("Not a file");
+    }
+    // The workspace file watcher picks up the removal and updates the search
+    // index / notifies viewers, mirroring how create relies on the watcher.
+    match std::fs::remove_file(&canon) {
+        Ok(_) => Json(DeleteFileResponse {
+            success: true,
+            message: "File deleted".to_string(),
+        })
+        .into_response(),
+        Err(e) => fail(&format!("Failed to delete file: {e}")),
+    }
+}
+
+#[derive(Deserialize)]
+struct UpdateWorkspaceFeaturesRequest {
+    #[serde(flatten)]
+    flags: WorkspaceFlags,
+}
+
+#[derive(Serialize)]
+struct UpdateWorkspaceFeaturesResponse {
+    success: bool,
+    message: String,
+}
+
+async fn handle_workspace_update_features(
+    State(state): State<AppState>,
+    AxumPath(workspace_id): AxumPath<String>,
+    Json(payload): Json<UpdateWorkspaceFeaturesRequest>,
+) -> Response {
+    if state
+        .workspace_registry
+        .update_flags(&workspace_id, payload.flags)
+    {
+        Json(UpdateWorkspaceFeaturesResponse {
+            success: true,
+            message: "Workspace features updated".to_string(),
+        })
+        .into_response()
+    } else {
+        (
+            StatusCode::NOT_FOUND,
+            Json(UpdateWorkspaceFeaturesResponse {
+                success: false,
+                message: "Workspace not found".to_string(),
+            }),
+        )
+            .into_response()
     }
 }
 
@@ -1692,6 +2664,22 @@ struct AddWorkspaceRequest {
     path: String,
     #[serde(flatten)]
     flags: WorkspaceFlags,
+    #[serde(default)]
+    access_code_hash: String,
+    #[serde(default)]
+    collaborator_access_code_hash: String,
+}
+
+#[derive(Deserialize)]
+struct UpdateWorkspaceRequest {
+    #[serde(flatten)]
+    flags: WorkspaceFlags,
+}
+
+#[derive(Deserialize)]
+struct UpdateWorkspaceAccessRequest {
+    access_code_hash: Option<String>,
+    collaborator_access_code_hash: Option<String>,
 }
 
 #[derive(Serialize)]
@@ -1707,11 +2695,20 @@ async fn add_workspace_handler(
         Ok(p) => p,
         Err(e) => return (StatusCode::BAD_REQUEST, format!("Invalid path: {e}")).into_response(),
     };
+    if !req.access_code_hash.is_empty() && req.access_code_hash == req.collaborator_access_code_hash
+    {
+        return (
+            StatusCode::BAD_REQUEST,
+            "initiator and collaborator access codes must be different",
+        )
+            .into_response();
+    }
     let id = state.workspace_registry.add(WorkspaceConfig {
         path,
         flags: req.flags,
         single_file: None,
-        access_code_hash: String::new(),
+        access_code_hash: req.access_code_hash,
+        collaborator_access_code_hash: req.collaborator_access_code_hash,
     });
     Json(AddWorkspaceResponse { id }).into_response()
 }
@@ -1730,13 +2727,58 @@ async fn remove_workspace_handler(
 async fn update_workspace_handler(
     State(state): State<AppState>,
     AxumPath(id): AxumPath<String>,
-    Json(flags): Json<WorkspaceFlags>,
+    Json(req): Json<UpdateWorkspaceRequest>,
 ) -> impl IntoResponse {
-    if state.workspace_registry.update_flags(&id, flags) {
+    if state.workspace_registry.update_flags(&id, req.flags) {
         StatusCode::OK
     } else {
         StatusCode::NOT_FOUND
     }
+}
+
+async fn update_workspace_access_handler(
+    State(state): State<AppState>,
+    AxumPath(id): AxumPath<String>,
+    Json(req): Json<UpdateWorkspaceAccessRequest>,
+) -> impl IntoResponse {
+    let Some(current) = state
+        .workspace_registry
+        .info_list()
+        .into_iter()
+        .find(|info| info.id == id)
+    else {
+        return StatusCode::NOT_FOUND.into_response();
+    };
+    let next_access = req
+        .access_code_hash
+        .as_deref()
+        .unwrap_or(&current.access_code_hash);
+    let next_collaborator = req
+        .collaborator_access_code_hash
+        .as_deref()
+        .unwrap_or(&current.collaborator_access_code_hash);
+    if !next_access.is_empty() && next_access == next_collaborator {
+        return (
+            StatusCode::BAD_REQUEST,
+            "initiator and collaborator access codes must be different",
+        )
+            .into_response();
+    }
+
+    if let Some(hash) = req.access_code_hash {
+        if !state.workspace_registry.set_access_code(&id, &hash) {
+            return StatusCode::NOT_FOUND.into_response();
+        }
+    }
+    if let Some(hash) = req.collaborator_access_code_hash {
+        if !state
+            .workspace_registry
+            .set_collaborator_access_code(&id, &hash)
+        {
+            return StatusCode::NOT_FOUND.into_response();
+        }
+    }
+    StatusCode::OK.into_response()
 }
 
 async fn list_workspaces_handler(State(state): State<AppState>) -> impl IntoResponse {
@@ -1802,17 +2844,1902 @@ fn render_template(state: &AppState, name: &str, context: &tera::Context) -> Res
     }
 }
 
+#[derive(Serialize)]
+struct GitDiffTemplate<'a> {
+    range: &'a str,
+    title: &'a str,
+    subtitle: Option<&'a str>,
+    mode_label: String,
+    base_label: String,
+    compare_label: String,
+    base_value: String,
+    compare_value: String,
+    files: Vec<GitDiffFileTemplate<'a>>,
+    nav_entries: Vec<GitDiffNavEntry<'a>>,
+    total_additions: usize,
+    total_deletions: usize,
+}
+
+#[derive(Serialize)]
+struct GitDiffFileTemplate<'a> {
+    path: &'a str,
+    old_path: Option<&'a str>,
+    status: &'a str,
+    additions: usize,
+    deletions: usize,
+}
+
+#[derive(Serialize)]
+struct GitDiffNavEntry<'a> {
+    kind: &'static str,
+    name: String,
+    path: String,
+    depth: usize,
+    status: Option<&'a str>,
+    additions: usize,
+    deletions: usize,
+}
+
+#[derive(Serialize)]
+struct GitCompareOption {
+    value: String,
+    label: String,
+    selected: bool,
+    disabled: bool,
+}
+
+#[derive(Serialize)]
+struct GitCompareOptionStatus {
+    value: String,
+    disabled: bool,
+}
+
+#[derive(Serialize)]
+struct GitCompareOptionsStatus {
+    base: Vec<GitCompareOptionStatus>,
+    compare: Vec<GitCompareOptionStatus>,
+}
+
+#[derive(Serialize)]
+struct GitDiffData<'a> {
+    range: &'a str,
+    title: &'a str,
+    subtitle: Option<&'a str>,
+    files: Vec<GitDiffDataFile<'a>>,
+    rows: Vec<GitDiffDataRow<'a>>,
+    total_additions: usize,
+    total_deletions: usize,
+}
+
+#[derive(Serialize)]
+struct GitDiffDataFile<'a> {
+    path: &'a str,
+    old_path: Option<&'a str>,
+    status: &'a str,
+    additions: usize,
+    deletions: usize,
+    start_row: usize,
+    row_count: usize,
+}
+
+#[derive(Serialize)]
+#[serde(tag = "kind")]
+enum GitDiffDataRow<'a> {
+    #[serde(rename = "file")]
+    File {
+        file_index: usize,
+        path: &'a str,
+        old_path: Option<&'a str>,
+        status: &'a str,
+        additions: usize,
+        deletions: usize,
+    },
+    #[serde(rename = "line")]
+    Line {
+        file_index: usize,
+        old_line_no: Option<usize>,
+        new_line_no: Option<usize>,
+        old_class_name: &'static str,
+        new_class_name: &'static str,
+        old_segments: Vec<GitDiffDataSegment>,
+        new_segments: Vec<GitDiffDataSegment>,
+    },
+}
+
+#[derive(Serialize)]
+struct GitDiffDataSegment {
+    text: String,
+    class_name: Option<&'static str>,
+}
+
+struct GitDiffDataSide {
+    line_no: Option<usize>,
+    class_name: &'static str,
+    segments: Vec<GitDiffDataSegment>,
+}
+
+#[derive(Serialize)]
+struct MarkdownDiffData {
+    title: String,
+    subtitle: Option<String>,
+    engine: markdown_ast::MarkdownAstEngineInfo,
+    files: Vec<MarkdownDiffFile>,
+}
+
+#[derive(Clone, Serialize)]
+struct MarkdownDiffFile {
+    path: String,
+    // Canonical absolute path of the new-side file on disk, byte-identical to the
+    // annotation `file_path` key that `render_markdown_file` builds when the same
+    // file is opened normally. The listing uses `git diff --relative`, so
+    // `entry.path` is workspace-relative; joining it onto the workspace root
+    // resolves the same key even when the workspace is a subdirectory of the repo.
+    abs_path: String,
+    old_path: Option<String>,
+    status: String,
+    // Slim per-side outline: the frontend only reads `block_count` and a
+    // per-block {index, kind, label} to compute heading-section indentation.
+    // The heavy rendered HTML lives on `blocks[].old/new` (rendered once), so
+    // shipping full per-side summaries here would triple the HTML payload.
+    old: Option<MarkdownDocOutline>,
+    new: Option<MarkdownDocOutline>,
+    // Full, untruncated source text of each side. The raw (source) diff view
+    // renders exact file lines from these, sliced by each block's line span, so
+    // both views share one block-based segmentation (and stay aligned). Absent
+    // when a side does not exist (added file has no old; deleted has no new).
+    old_source: Option<String>,
+    new_source: Option<String>,
+    additions: usize,
+    deletions: usize,
+    blocks: Vec<MarkdownDiffBlock>,
+    diagnostics: Vec<MarkdownDiffDiagnostic>,
+}
+
+#[derive(Clone, Serialize)]
+struct MarkdownDocOutline {
+    block_count: usize,
+    blocks: Vec<MarkdownBlockOutline>,
+}
+
+#[derive(Clone, Serialize)]
+struct MarkdownBlockOutline {
+    index: usize,
+    kind: String,
+    label: String,
+}
+
+impl MarkdownDocOutline {
+    fn from_summary(summary: &markdown_ast::MarkdownDocumentSummary) -> Self {
+        MarkdownDocOutline {
+            block_count: summary.block_count,
+            blocks: summary
+                .blocks
+                .iter()
+                .map(|b| MarkdownBlockOutline {
+                    index: b.index,
+                    kind: b.kind.clone(),
+                    label: b.label.clone(),
+                })
+                .collect(),
+        }
+    }
+}
+
+#[derive(Clone, Serialize)]
+struct MarkdownDiffBlock {
+    kind: &'static str,
+    old: Option<markdown_ast::MarkdownBlockSummary>,
+    new: Option<markdown_ast::MarkdownBlockSummary>,
+}
+
+#[derive(Clone, Serialize)]
+struct MarkdownDiffDiagnostic {
+    side: &'static str,
+    code: String,
+    severity: String,
+    message: String,
+    start_line: Option<u32>,
+    end_line: Option<u32>,
+}
+
+const MARKDOWN_DIFF_CACHE_VERSION: &str = "markdown-diff-cache-v1";
+const MARKDOWN_DIFF_DOCUMENT_CACHE_LIMIT: usize = 256;
+const MARKDOWN_DIFF_FILE_CACHE_LIMIT: usize = 512;
+
+#[derive(Clone, Debug, Eq, Hash, PartialEq)]
+struct MarkdownDocumentCacheKey {
+    version: &'static str,
+    theme: String,
+    content_hash: String,
+}
+
+#[derive(Clone, Debug, Eq, Hash, PartialEq)]
+struct MarkdownDiffFileCacheKey {
+    version: &'static str,
+    theme: String,
+    path: String,
+    old_path: Option<String>,
+    status: String,
+    // Stable content identity per side: a git blob oid where available (no read
+    // needed — comes straight from `git diff --raw`), or a `h:<sha256>` of the
+    // worktree content. Keying on the blob oid lets a warm reload hit the cache
+    // without reading or re-rendering the old side.
+    old_id: Option<String>,
+    new_id: Option<String>,
+}
+
+#[derive(Default)]
+pub(crate) struct MarkdownDiffCache {
+    documents: HashMap<MarkdownDocumentCacheKey, Arc<markdown_ast::MarkdownDocumentSummary>>,
+    document_lru: VecDeque<MarkdownDocumentCacheKey>,
+    files: HashMap<MarkdownDiffFileCacheKey, Arc<MarkdownDiffFile>>,
+    file_lru: VecDeque<MarkdownDiffFileCacheKey>,
+    document_hits: u64,
+    document_misses: u64,
+    file_hits: u64,
+    file_misses: u64,
+}
+
+#[cfg(test)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+struct MarkdownDiffCacheStats {
+    document_entries: usize,
+    file_entries: usize,
+    document_hits: u64,
+    document_misses: u64,
+    file_hits: u64,
+    file_misses: u64,
+}
+
+impl MarkdownDiffCache {
+    fn get_document(
+        &mut self,
+        key: &MarkdownDocumentCacheKey,
+    ) -> Option<Arc<markdown_ast::MarkdownDocumentSummary>> {
+        if let Some(summary) = self.documents.get(key).cloned() {
+            self.document_hits += 1;
+            touch_lru_key(&mut self.document_lru, key);
+            Some(summary)
+        } else {
+            self.document_misses += 1;
+            None
+        }
+    }
+
+    fn insert_document(
+        &mut self,
+        key: MarkdownDocumentCacheKey,
+        summary: markdown_ast::MarkdownDocumentSummary,
+    ) -> Arc<markdown_ast::MarkdownDocumentSummary> {
+        let summary = Arc::new(summary);
+        self.documents.insert(key.clone(), summary.clone());
+        touch_lru_key(&mut self.document_lru, &key);
+        trim_lru_cache(
+            &mut self.documents,
+            &mut self.document_lru,
+            MARKDOWN_DIFF_DOCUMENT_CACHE_LIMIT,
+        );
+        summary
+    }
+
+    fn get_file(&mut self, key: &MarkdownDiffFileCacheKey) -> Option<Arc<MarkdownDiffFile>> {
+        if let Some(file) = self.files.get(key).cloned() {
+            self.file_hits += 1;
+            touch_lru_key(&mut self.file_lru, key);
+            Some(file)
+        } else {
+            self.file_misses += 1;
+            None
+        }
+    }
+
+    fn insert_file(
+        &mut self,
+        key: MarkdownDiffFileCacheKey,
+        file: MarkdownDiffFile,
+    ) -> Arc<MarkdownDiffFile> {
+        let file = Arc::new(file);
+        self.files.insert(key.clone(), file.clone());
+        touch_lru_key(&mut self.file_lru, &key);
+        trim_lru_cache(
+            &mut self.files,
+            &mut self.file_lru,
+            MARKDOWN_DIFF_FILE_CACHE_LIMIT,
+        );
+        file
+    }
+
+    #[cfg(test)]
+    fn stats(&self) -> MarkdownDiffCacheStats {
+        MarkdownDiffCacheStats {
+            document_entries: self.documents.len(),
+            file_entries: self.files.len(),
+            document_hits: self.document_hits,
+            document_misses: self.document_misses,
+            file_hits: self.file_hits,
+            file_misses: self.file_misses,
+        }
+    }
+}
+
+fn touch_lru_key<K>(lru: &mut VecDeque<K>, key: &K)
+where
+    K: Clone + Eq,
+{
+    if let Some(index) = lru.iter().position(|existing| existing == key) {
+        lru.remove(index);
+    }
+    lru.push_back(key.clone());
+}
+
+fn trim_lru_cache<K, V>(cache: &mut HashMap<K, V>, lru: &mut VecDeque<K>, limit: usize)
+where
+    K: Clone + Eq + std::hash::Hash,
+{
+    while cache.len() > limit {
+        let Some(key) = lru.pop_front() else {
+            break;
+        };
+        cache.remove(&key);
+    }
+}
+
+#[derive(Serialize)]
+struct WorkspaceFeatureStatus {
+    key: &'static str,
+    label: &'static str,
+    label_key: &'static str,
+    enabled: bool,
+}
+
+fn git_diff_template<'a>(
+    root: &FsPath,
+    diff: &'a git::GitDiff,
+    base_value: String,
+    compare_value: String,
+) -> GitDiffTemplate<'a> {
+    let files: Vec<GitDiffFileTemplate<'_>> = diff
+        .files
+        .iter()
+        .map(|file| GitDiffFileTemplate {
+            path: &file.path,
+            old_path: file.old_path.as_deref(),
+            status: &file.status,
+            additions: file.additions,
+            deletions: file.deletions,
+        })
+        .collect();
+    let total_additions = diff.files.iter().map(|file| file.additions).sum();
+    let total_deletions = diff.files.iter().map(|file| file.deletions).sum();
+    let (mode_label, base_label, compare_label) =
+        git_diff_range_labels(root, diff, &base_value, &compare_value);
+    GitDiffTemplate {
+        range: &diff.range,
+        title: &diff.title,
+        subtitle: diff.subtitle.as_deref(),
+        mode_label,
+        base_label,
+        compare_label,
+        base_value,
+        compare_value,
+        nav_entries: git_diff_nav_entries(&diff.files),
+        files,
+        total_additions,
+        total_deletions,
+    }
+}
+
+fn git_diff_range_labels(
+    root: &FsPath,
+    diff: &git::GitDiff,
+    base_value: &str,
+    compare_value: &str,
+) -> (String, String, String) {
+    if diff.range == "HEAD..worktree" {
+        return (
+            "Working tree".to_string(),
+            "HEAD".to_string(),
+            "Worktree".to_string(),
+        );
+    }
+    if let Some((base, compare)) = diff.range.split_once("..") {
+        return (
+            "Git range".to_string(),
+            base.to_string(),
+            compare.to_string(),
+        );
+    }
+    if valid_hex_display_ref(&diff.range) {
+        let base = git::parent_commit(root, &diff.range)
+            .ok()
+            .flatten()
+            .map(|parent| short_git_ref(&parent))
+            .unwrap_or_else(|| "Parent".to_string());
+        return ("Commit".to_string(), base, short_git_ref(compare_value));
+    }
+    (
+        "Git range".to_string(),
+        short_git_ref(base_value),
+        short_git_ref(compare_value),
+    )
+}
+
+fn valid_hex_display_ref(value: &str) -> bool {
+    (4..=64).contains(&value.len()) && value.bytes().all(|b| b.is_ascii_hexdigit())
+}
+
+fn short_git_ref(value: &str) -> String {
+    if value.len() > 12 && value.bytes().all(|b| b.is_ascii_hexdigit()) {
+        value[..12].to_string()
+    } else {
+        value.to_string()
+    }
+}
+
+fn git_diff_nav_entries(files: &[git::GitDiffFile]) -> Vec<GitDiffNavEntry<'_>> {
+    let mut sorted: Vec<&git::GitDiffFile> = files.iter().collect();
+    sorted.sort_by(|a, b| a.path.cmp(&b.path));
+    let mut emitted_dirs = std::collections::BTreeSet::new();
+    let mut entries = Vec::new();
+
+    for file in sorted {
+        let segments: Vec<&str> = file
+            .path
+            .split('/')
+            .filter(|part| !part.is_empty())
+            .collect();
+        for depth in 0..segments.len().saturating_sub(1) {
+            let path = segments[..=depth].join("/");
+            if emitted_dirs.insert(path.clone()) {
+                entries.push(GitDiffNavEntry {
+                    kind: "dir",
+                    name: segments[depth].to_string(),
+                    path,
+                    depth,
+                    status: None,
+                    additions: 0,
+                    deletions: 0,
+                });
+            }
+        }
+
+        entries.push(GitDiffNavEntry {
+            kind: "file",
+            name: segments
+                .last()
+                .copied()
+                .unwrap_or(file.path.as_str())
+                .to_string(),
+            path: file.path.clone(),
+            depth: segments.len().saturating_sub(1),
+            status: Some(file.status.as_str()),
+            additions: file.additions,
+            deletions: file.deletions,
+        });
+    }
+
+    entries
+}
+
+fn git_diff_json_response(diff: &git::GitDiff, file_filter: Option<&str>) -> Response {
+    let diff = markdown_only_git_diff(diff, file_filter);
+    match serde_json::to_value(git_diff_data(&diff)) {
+        Ok(value) => Json(value).into_response(),
+        Err(e) => (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            format!("Failed to serialize git diff: {e}"),
+        )
+            .into_response(),
+    }
+}
+
+fn markdown_only_git_diff(diff: &git::GitDiff, file_filter: Option<&str>) -> git::GitDiff {
+    let files: Vec<git::GitDiffFile> = diff
+        .files
+        .iter()
+        .filter(|file| is_markdown_diff_file(file))
+        .filter(|file| diff_file_matches_filter(file, file_filter))
+        .cloned()
+        .collect();
+    let patch = files.iter().map(|file| file.patch.as_str()).collect();
+    git::GitDiff {
+        range: diff.range.clone(),
+        title: diff.title.clone(),
+        subtitle: diff.subtitle.clone(),
+        patch,
+        files,
+    }
+}
+
+fn diff_file_matches_filter(file: &git::GitDiffFile, file_filter: Option<&str>) -> bool {
+    let Some(filter) = file_filter
+        .map(str::trim)
+        .filter(|filter| !filter.is_empty())
+    else {
+        return true;
+    };
+    file.path == filter || file.old_path.as_deref() == Some(filter)
+}
+
+fn git_diff_data(diff: &git::GitDiff) -> GitDiffData<'_> {
+    let mut rows = Vec::new();
+    let mut files = Vec::new();
+
+    for (file_index, file) in diff.files.iter().enumerate() {
+        let start_row = rows.len();
+        rows.push(GitDiffDataRow::File {
+            file_index,
+            path: &file.path,
+            old_path: file.old_path.as_deref(),
+            status: &file.status,
+            additions: file.additions,
+            deletions: file.deletions,
+        });
+        push_diff_data_rows(file_index, &file.patch, &mut rows);
+        let row_count = rows.len() - start_row;
+        files.push(GitDiffDataFile {
+            path: &file.path,
+            old_path: file.old_path.as_deref(),
+            status: &file.status,
+            additions: file.additions,
+            deletions: file.deletions,
+            start_row,
+            row_count,
+        });
+    }
+
+    GitDiffData {
+        range: &diff.range,
+        title: &diff.title,
+        subtitle: diff.subtitle.as_deref(),
+        files,
+        rows,
+        total_additions: diff.files.iter().map(|file| file.additions).sum(),
+        total_deletions: diff.files.iter().map(|file| file.deletions).sum(),
+    }
+}
+
+fn push_diff_data_rows<'a>(
+    file_index: usize,
+    unified_diff: &str,
+    rows: &mut Vec<GitDiffDataRow<'a>>,
+) {
+    let mut old_line_no: Option<usize> = None;
+    let mut new_line_no: Option<usize> = None;
+    let mut pending_deletes: Vec<(usize, &str)> = Vec::new();
+    let mut pending_inserts: Vec<(usize, &str)> = Vec::new();
+
+    for raw_line in unified_diff.split_inclusive('\n') {
+        let line = raw_line.trim_end_matches('\n').trim_end_matches('\r');
+        if line.starts_with("@@ ") {
+            flush_diff_data_change_block(
+                rows,
+                file_index,
+                &mut pending_deletes,
+                &mut pending_inserts,
+            );
+            if let Some((old_start, new_start)) = parse_hunk_line_numbers(line) {
+                old_line_no = Some(old_start);
+                new_line_no = Some(new_start);
+            }
+            push_diff_data_meta_line(rows, file_index, line);
+            continue;
+        }
+
+        if is_diff_delete_line(line) {
+            let current = old_line_no.unwrap_or(0);
+            pending_deletes.push((current, line));
+            if let Some(line_no) = old_line_no.as_mut() {
+                *line_no += 1;
+            }
+            continue;
+        }
+        if is_diff_insert_line(line) {
+            let current = new_line_no.unwrap_or(0);
+            pending_inserts.push((current, line));
+            if let Some(line_no) = new_line_no.as_mut() {
+                *line_no += 1;
+            }
+            continue;
+        }
+        flush_diff_data_change_block(rows, file_index, &mut pending_deletes, &mut pending_inserts);
+
+        if let Some(body) = line.strip_prefix(' ') {
+            push_diff_data_split_line(
+                rows,
+                file_index,
+                GitDiffDataSide {
+                    line_no: old_line_no,
+                    class_name: "git-diff-line",
+                    segments: diff_data_plain_segments(body),
+                },
+                GitDiffDataSide {
+                    line_no: new_line_no,
+                    class_name: "git-diff-line",
+                    segments: diff_data_plain_segments(body),
+                },
+            );
+            if let Some(line_no) = old_line_no.as_mut() {
+                *line_no += 1;
+            }
+            if let Some(line_no) = new_line_no.as_mut() {
+                *line_no += 1;
+            }
+        } else {
+            push_diff_data_meta_line(rows, file_index, line);
+        }
+    }
+    flush_diff_data_change_block(rows, file_index, &mut pending_deletes, &mut pending_inserts);
+}
+
+fn flush_diff_data_change_block<'a>(
+    rows: &mut Vec<GitDiffDataRow<'a>>,
+    file_index: usize,
+    deletes: &mut Vec<(usize, &str)>,
+    inserts: &mut Vec<(usize, &str)>,
+) {
+    if deletes.is_empty() && inserts.is_empty() {
+        return;
+    }
+    let pairs = deletes.len().max(inserts.len());
+    for index in 0..pairs {
+        let old_line = deletes.get(index).copied();
+        let new_line = inserts.get(index).copied();
+        match (old_line, new_line) {
+            (Some((old_no, old_line)), Some((new_no, new_line))) => {
+                push_diff_data_word_split_line(rows, file_index, old_no, old_line, new_no, new_line)
+            }
+            (Some((old_no, old_line)), None) => push_diff_data_split_line(
+                rows,
+                file_index,
+                GitDiffDataSide {
+                    line_no: Some(old_no),
+                    class_name: "git-diff-line git-diff-del",
+                    segments: diff_data_plain_segments(diff_line_body(old_line)),
+                },
+                GitDiffDataSide {
+                    line_no: None,
+                    class_name: "git-diff-line git-diff-empty-side",
+                    segments: vec![GitDiffDataSegment::blank()],
+                },
+            ),
+            (None, Some((new_no, new_line))) => push_diff_data_split_line(
+                rows,
+                file_index,
+                GitDiffDataSide {
+                    line_no: None,
+                    class_name: "git-diff-line git-diff-empty-side",
+                    segments: vec![GitDiffDataSegment::blank()],
+                },
+                GitDiffDataSide {
+                    line_no: Some(new_no),
+                    class_name: "git-diff-line git-diff-add",
+                    segments: diff_data_plain_segments(diff_line_body(new_line)),
+                },
+            ),
+            (None, None) => {}
+        }
+    }
+    deletes.clear();
+    inserts.clear();
+}
+
+fn push_diff_data_word_split_line<'a>(
+    rows: &mut Vec<GitDiffDataRow<'a>>,
+    file_index: usize,
+    old_line_no: usize,
+    old_line: &str,
+    new_line_no: usize,
+    new_line: &str,
+) {
+    let mut old_segments = Vec::new();
+    let mut new_segments = Vec::new();
+    let word_diff = TextDiff::from_words(diff_line_body(old_line), diff_line_body(new_line));
+    for change in word_diff.iter_all_changes() {
+        match change.tag() {
+            ChangeTag::Delete => {
+                old_segments.push(GitDiffDataSegment {
+                    text: change.value().to_string(),
+                    class_name: Some("git-diff-word-del"),
+                });
+            }
+            ChangeTag::Insert => {
+                new_segments.push(GitDiffDataSegment {
+                    text: change.value().to_string(),
+                    class_name: Some("git-diff-word-add"),
+                });
+            }
+            ChangeTag::Equal => {
+                old_segments.push(GitDiffDataSegment {
+                    text: change.value().to_string(),
+                    class_name: None,
+                });
+                new_segments.push(GitDiffDataSegment {
+                    text: change.value().to_string(),
+                    class_name: None,
+                });
+            }
+        }
+    }
+    if old_segments.is_empty() {
+        old_segments.push(GitDiffDataSegment::blank());
+    }
+    if new_segments.is_empty() {
+        new_segments.push(GitDiffDataSegment::blank());
+    }
+    push_diff_data_split_line(
+        rows,
+        file_index,
+        GitDiffDataSide {
+            line_no: Some(old_line_no),
+            class_name: "git-diff-line git-diff-del",
+            segments: old_segments,
+        },
+        GitDiffDataSide {
+            line_no: Some(new_line_no),
+            class_name: "git-diff-line git-diff-add",
+            segments: new_segments,
+        },
+    );
+}
+
+fn push_diff_data_meta_line<'a>(rows: &mut Vec<GitDiffDataRow<'a>>, file_index: usize, line: &str) {
+    push_diff_data_split_line(
+        rows,
+        file_index,
+        GitDiffDataSide {
+            line_no: None,
+            class_name: neutral_diff_line_class(line),
+            segments: diff_data_plain_segments(line),
+        },
+        GitDiffDataSide {
+            line_no: None,
+            class_name: neutral_diff_line_class(line),
+            segments: diff_data_plain_segments(line),
+        },
+    );
+}
+
+fn push_diff_data_split_line<'a>(
+    rows: &mut Vec<GitDiffDataRow<'a>>,
+    file_index: usize,
+    old: GitDiffDataSide,
+    new: GitDiffDataSide,
+) {
+    rows.push(GitDiffDataRow::Line {
+        file_index,
+        old_line_no: old.line_no,
+        new_line_no: new.line_no,
+        old_class_name: old.class_name,
+        new_class_name: new.class_name,
+        old_segments: old.segments,
+        new_segments: new.segments,
+    });
+}
+
+fn diff_line_body(line: &str) -> &str {
+    line.get(1..).unwrap_or("")
+}
+
+fn diff_data_plain_segments(text: &str) -> Vec<GitDiffDataSegment> {
+    vec![GitDiffDataSegment {
+        text: if text.is_empty() {
+            " ".to_string()
+        } else {
+            text.to_string()
+        },
+        class_name: None,
+    }]
+}
+
+impl GitDiffDataSegment {
+    fn blank() -> Self {
+        Self {
+            text: " ".to_string(),
+            class_name: None,
+        }
+    }
+}
+
+fn parse_hunk_line_numbers(line: &str) -> Option<(usize, usize)> {
+    let mut parts = line.split_whitespace();
+    if parts.next()? != "@@" {
+        return None;
+    }
+    let old = parse_hunk_start(parts.next()?, '-')?;
+    let new = parse_hunk_start(parts.next()?, '+')?;
+    Some((old, new))
+}
+
+fn parse_hunk_start(token: &str, prefix: char) -> Option<usize> {
+    token
+        .strip_prefix(prefix)?
+        .split(',')
+        .next()?
+        .parse::<usize>()
+        .ok()
+}
+
+#[cfg(test)]
+fn render_unified_diff_html(unified_diff: &str) -> String {
+    let mut out = String::new();
+    let mut pending_deletes: Vec<&str> = Vec::new();
+    let mut pending_inserts: Vec<&str> = Vec::new();
+
+    for raw_line in unified_diff.split_inclusive('\n') {
+        let line = raw_line.trim_end_matches('\n').trim_end_matches('\r');
+        if is_diff_delete_line(line) {
+            pending_deletes.push(line);
+            continue;
+        }
+        if is_diff_insert_line(line) {
+            pending_inserts.push(line);
+            continue;
+        }
+        flush_diff_change_block(&mut out, &mut pending_deletes, &mut pending_inserts);
+        render_diff_line(&mut out, line, neutral_diff_line_class(line));
+    }
+    flush_diff_change_block(&mut out, &mut pending_deletes, &mut pending_inserts);
+    out
+}
+
+fn is_diff_delete_line(line: &str) -> bool {
+    line.starts_with('-') && !line.starts_with("--- ")
+}
+
+fn is_diff_insert_line(line: &str) -> bool {
+    line.starts_with('+') && !line.starts_with("+++ ")
+}
+
+#[cfg(test)]
+fn flush_diff_change_block<'a>(
+    out: &mut String,
+    deletes: &mut Vec<&'a str>,
+    inserts: &mut Vec<&'a str>,
+) {
+    if deletes.is_empty() && inserts.is_empty() {
+        return;
+    }
+    let pairs = deletes.len().max(inserts.len());
+    for index in 0..pairs {
+        let old_line = deletes.get(index).copied();
+        let new_line = inserts.get(index).copied();
+        match (old_line, new_line) {
+            (Some(old_line), Some(new_line)) => {
+                render_word_diff_line(out, old_line, new_line, ChangeTag::Delete);
+                render_word_diff_line(out, old_line, new_line, ChangeTag::Insert);
+            }
+            (Some(old_line), None) => {
+                render_diff_line(out, old_line, "git-diff-line git-diff-del");
+            }
+            (None, Some(new_line)) => {
+                render_diff_line(out, new_line, "git-diff-line git-diff-add");
+            }
+            (None, None) => {}
+        }
+    }
+    deletes.clear();
+    inserts.clear();
+}
+
+#[cfg(test)]
+fn render_word_diff_line(out: &mut String, old_line: &str, new_line: &str, side: ChangeTag) {
+    let (line, line_class, word_class) = match side {
+        ChangeTag::Delete => (old_line, "git-diff-line git-diff-del", "git-diff-word-del"),
+        ChangeTag::Insert => (new_line, "git-diff-line git-diff-add", "git-diff-word-add"),
+        ChangeTag::Equal => (old_line, "git-diff-line", ""),
+    };
+    let body = line.get(1..).unwrap_or("");
+    out.push_str("<span class=\"");
+    out.push_str(line_class);
+    out.push_str("\">");
+    push_escaped(out, &line[..line.len().min(1)]);
+
+    let word_diff = TextDiff::from_words(
+        old_line.get(1..).unwrap_or(""),
+        new_line.get(1..).unwrap_or(""),
+    );
+    for change in word_diff.iter_all_changes() {
+        match (side, change.tag()) {
+            (ChangeTag::Delete, ChangeTag::Delete) | (ChangeTag::Insert, ChangeTag::Insert) => {
+                out.push_str("<span class=\"");
+                out.push_str(word_class);
+                out.push_str("\">");
+                push_escaped(out, change.value());
+                out.push_str("</span>");
+            }
+            (ChangeTag::Delete, ChangeTag::Equal) | (ChangeTag::Insert, ChangeTag::Equal) => {
+                push_escaped(out, change.value());
+            }
+            _ => {}
+        }
+    }
+    if body.is_empty() {
+        out.push(' ');
+    }
+    out.push_str("</span>\n");
+}
+
+fn neutral_diff_line_class(line: &str) -> &'static str {
+    if line.starts_with("@@ ")
+        || line.starts_with("--- ")
+        || line.starts_with("+++ ")
+        || line.starts_with("Binary files differ:")
+        || line.starts_with("rename from ")
+        || line.starts_with("rename to ")
+        || line.starts_with("\\ No newline")
+    {
+        "git-diff-line git-diff-meta"
+    } else {
+        "git-diff-line"
+    }
+}
+
+#[cfg(test)]
+fn render_diff_line(out: &mut String, line: &str, class_name: &str) {
+    out.push_str("<span class=\"");
+    out.push_str(class_name);
+    out.push_str("\">");
+    push_escaped(out, line);
+    if line.is_empty() {
+        out.push(' ');
+    }
+    out.push_str("</span>\n");
+}
+
+#[cfg(test)]
+fn push_escaped(out: &mut String, text: &str) {
+    html_escape::encode_text_to_string(text, out);
+}
+
+fn git_diff_ref_values(root: &FsPath, diff: &git::GitDiff) -> (String, String) {
+    if diff.range == "HEAD..worktree" {
+        return ("HEAD".to_string(), "worktree".to_string());
+    }
+    if let Some((base, compare)) = diff.range.split_once("..") {
+        return (base.to_string(), compare.to_string());
+    }
+    let base = git::parent_commit(root, &diff.range)
+        .ok()
+        .flatten()
+        .unwrap_or_else(|| "HEAD".to_string());
+    (base, diff.range.clone())
+}
+
+#[derive(Clone, Copy)]
+enum GitCompareOptionRole {
+    Base,
+    Compare,
+}
+
+#[derive(Clone, Copy)]
+enum GitCompareOptionStatusMode {
+    Fast,
+    Checked,
+}
+
+fn git_compare_option_has_markdown_changes(
+    root: &FsPath,
+    value: &str,
+    other_ref: &str,
+    role: GitCompareOptionRole,
+) -> bool {
+    let (base, compare) = match role {
+        GitCompareOptionRole::Base => (value, other_ref),
+        GitCompareOptionRole::Compare => (other_ref, value),
+    };
+    if base == compare {
+        return false;
+    }
+    // Refs here come from a trusted enumeration (HEAD / history / worktree), so
+    // skip re-validation and run just the single diff probe.
+    git::diff_has_markdown_changes_unchecked(root, base, compare).unwrap_or(true)
+}
+
+fn git_compare_option_statuses(options: Vec<GitCompareOption>) -> Vec<GitCompareOptionStatus> {
+    options
+        .into_iter()
+        .map(|option| GitCompareOptionStatus {
+            value: option.value,
+            disabled: option.disabled,
+        })
+        .collect()
+}
+
+fn git_compare_options(
+    root: &FsPath,
+    selected: &str,
+    include_worktree: bool,
+    other_ref: &str,
+    role: GitCompareOptionRole,
+    status_mode: GitCompareOptionStatusMode,
+) -> Vec<GitCompareOption> {
+    // 1) Gather unique candidates in display order (a handful of cheap git
+    //    calls). `check` marks options whose "disabled" state needs a diff probe.
+    let mut seen = std::collections::BTreeSet::new();
+    let mut candidates: Vec<(String, String, bool)> = Vec::new();
+    let mut add = |value: String, label: String, check: bool| {
+        if seen.insert(value.clone()) {
+            candidates.push((value, label, check));
+        }
+    };
+
+    add("HEAD".to_string(), "HEAD".to_string(), true);
+    for branch in git::branches(root).unwrap_or_default() {
+        let label = if branch.current {
+            format!("{} (current)", branch.name)
+        } else {
+            branch.name.clone()
+        };
+        add(branch.name, label, false);
+    }
+    for commit in git::history(root, 50).unwrap_or_default() {
+        add(
+            commit.hash,
+            format!("{} {}", commit.short_hash, commit.subject),
+            true,
+        );
+    }
+    for tag in git::tags(root, 200).unwrap_or_default() {
+        add(tag.name.clone(), format!("{} (tag)", tag.name), false);
+    }
+    if include_worktree {
+        add("worktree".to_string(), "Worktree".to_string(), true);
+    }
+
+    // 2) Resolve each option's `disabled` state in parallel. Every probe spawns
+    //    its own git subprocess(es); the bottleneck is process spawn, so this
+    //    fans the ~dozens of probes across cores instead of running serially.
+    let checked = matches!(status_mode, GitCompareOptionStatusMode::Checked);
+    let mut out: Vec<GitCompareOption> = candidates
+        .par_iter()
+        .map(|(value, label, check)| {
+            let disabled = checked
+                && *check
+                && value != selected
+                && !git_compare_option_has_markdown_changes(root, value, other_ref, role);
+            GitCompareOption {
+                selected: value == selected,
+                value: value.clone(),
+                label: label.clone(),
+                disabled,
+            }
+        })
+        .collect();
+
+    if !selected.is_empty() && !seen.contains(selected) {
+        out.insert(
+            0,
+            GitCompareOption {
+                value: selected.to_string(),
+                label: short_git_ref(selected),
+                selected: true,
+                disabled: false,
+            },
+        );
+    }
+
+    out
+}
+
+const GIT_EMPTY_TREE_HASH: &str = "4b825dc642cb6eb9a060e54bf8d69288fbee4904";
+
+fn git_commit_compare_base(root: &FsPath, commit: &str) -> String {
+    git::parent_commit(root, commit)
+        .ok()
+        .flatten()
+        .unwrap_or_else(|| GIT_EMPTY_TREE_HASH.to_string())
+}
+
+fn git_commit_markdown_diff_url(
+    root: &FsPath,
+    workspace_id: &str,
+    commit: &git::GitCommit,
+    view: &str,
+) -> Option<String> {
+    let diff = git::commit_diff(root, &commit.hash).ok()?;
+    if markdown_only_git_diff(&diff, None).files.is_empty() {
+        return None;
+    }
+    Some(pretty_compare_page_url(
+        workspace_id,
+        &git_commit_compare_base(root, &commit.hash),
+        &commit.hash,
+        view,
+    ))
+}
+
+fn git_source_diff_url(
+    workspace_id: &str,
+    root: &FsPath,
+    diff: &git::GitDiff,
+    base: &str,
+    compare: &str,
+) -> String {
+    if diff.range == "HEAD..worktree" {
+        pretty_compare_page_url(workspace_id, "HEAD", "worktree", "raw")
+    } else if diff.range.contains("..") {
+        pretty_compare_page_url(workspace_id, base, compare, "raw")
+    } else {
+        pretty_compare_page_url(
+            workspace_id,
+            &git_commit_compare_base(root, &diff.range),
+            &diff.range,
+            "raw",
+        )
+    }
+}
+
+fn markdown_work_diff_page_url(workspace_id: &str) -> String {
+    pretty_compare_page_url(workspace_id, "HEAD", "worktree", "rendered")
+}
+
+fn markdown_diff_page_url(
+    workspace_id: &str,
+    root: &FsPath,
+    diff: &git::GitDiff,
+    base: &str,
+    compare: &str,
+) -> String {
+    if diff.range == "HEAD..worktree" {
+        markdown_work_diff_page_url(workspace_id)
+    } else if diff.range.contains("..") {
+        pretty_compare_page_url(workspace_id, base, compare, "rendered")
+    } else {
+        pretty_compare_page_url(
+            workspace_id,
+            &git_commit_compare_base(root, &diff.range),
+            &diff.range,
+            "rendered",
+        )
+    }
+}
+
+fn pretty_compare_page_url(workspace_id: &str, base: &str, compare: &str, view: &str) -> String {
+    format!(
+        "/_/{workspace_id}/compare/{}...{}?view={}",
+        encode_compare_ref_for_path(base),
+        encode_compare_ref_for_path(compare),
+        view
+    )
+}
+
+fn pretty_compare_data_url(workspace_id: &str, base: &str, compare: &str, view: &str) -> String {
+    format!(
+        "{}&format=data",
+        pretty_compare_page_url(workspace_id, base, compare, view)
+    )
+}
+
+fn encode_compare_ref_for_path(value: &str) -> String {
+    urlencoding::encode(value).replace("%2F", "/")
+}
+
+fn markdown_diff_data_url(workspace_id: &str, base: &str, compare: &str) -> String {
+    pretty_compare_data_url(workspace_id, base, compare, "rendered")
+}
+
+fn render_git_diff_page(
+    state: &AppState,
+    workspace_id: &str,
+    ws: &WorkspaceEntry,
+    access_role: AccessRole,
+    diff: &git::GitDiff,
+    initial_view: &str,
+) -> Response {
+    let flags = ws.flags();
+    let (base_value, compare_value) = git_diff_ref_values(&ws.root, diff);
+    let initial_view = if initial_view == "rendered" {
+        "rendered"
+    } else {
+        "raw"
+    };
+    let display_diff = markdown_only_git_diff(diff, None);
+    // Default to the all-files continuous view (no file pre-selected). The left
+    // file list focuses a single file on demand; an empty default means "no `f`"
+    // renders every changed file in one scroll instead of just the first.
+    let default_diff_path = "";
+    let mut context = base_context(state);
+    context.insert("title", &format!("markon diff - {}", diff.range));
+    context.insert("workspace_id", workspace_id);
+    context.insert(
+        "diff",
+        &git_diff_template(
+            &ws.root,
+            &display_diff,
+            base_value.clone(),
+            compare_value.clone(),
+        ),
+    );
+    context.insert(
+        "access_role",
+        &format!("{access_role:?}").to_ascii_lowercase(),
+    );
+    context.insert("shared_annotation", &flags.shared_annotation);
+    context.insert("enable_live", &flags.enable_live);
+    context.insert("history_url", &format!("/_/{workspace_id}/git/history"));
+    context.insert("files_url", &format!("/{workspace_id}/"));
+    context.insert("work_diff_url", &markdown_work_diff_page_url(workspace_id));
+    context.insert(
+        "markdown_diff_url",
+        &markdown_diff_page_url(workspace_id, &ws.root, diff, &base_value, &compare_value),
+    );
+    context.insert(
+        "source_diff_url",
+        &git_source_diff_url(workspace_id, &ws.root, diff, &base_value, &compare_value),
+    );
+    context.insert(
+        "compare_url",
+        &pretty_compare_page_url(workspace_id, &base_value, &compare_value, initial_view),
+    );
+    context.insert("compare_path_base", &format!("/_/{workspace_id}/compare"));
+    context.insert(
+        "compare_options_status_url",
+        &format!("/_/{workspace_id}/compare/options"),
+    );
+    context.insert("initial_diff_view", initial_view);
+    context.insert("default_diff_path", &default_diff_path);
+    context.insert("is_markdown_diff", &(initial_view == "rendered"));
+    context.insert(
+        "compare_base_options",
+        &git_compare_options(
+            &ws.root,
+            &base_value,
+            false,
+            &compare_value,
+            GitCompareOptionRole::Base,
+            GitCompareOptionStatusMode::Fast,
+        ),
+    );
+    context.insert(
+        "compare_compare_options",
+        &git_compare_options(
+            &ws.root,
+            &compare_value,
+            true,
+            &base_value,
+            GitCompareOptionRole::Compare,
+            GitCompareOptionStatusMode::Fast,
+        ),
+    );
+    context.insert("is_worktree_diff", &(diff.range == "HEAD..worktree"));
+    // Both views (rendered + raw source) now consume one unified Markdown block
+    // payload, so a single data URL drives the whole page.
+    let markdown_diff_data_url = markdown_diff_data_url(workspace_id, &base_value, &compare_value);
+    context.insert("markdown_diff_data_url", &markdown_diff_data_url);
+    render_template(state, "git-diff.html", &context)
+}
+
+#[derive(Serialize)]
+struct GitHistoryCommitTemplate<'a> {
+    short_hash: &'a str,
+    author: &'a str,
+    date: &'a str,
+    subject: &'a str,
+    diff_url: Option<String>,
+}
+
+fn render_git_history_page(
+    state: &AppState,
+    workspace_id: &str,
+    root: &FsPath,
+    commits: &[git::GitCommit],
+) -> Response {
+    let commit_items: Vec<GitHistoryCommitTemplate<'_>> = commits
+        .iter()
+        .map(|commit| GitHistoryCommitTemplate {
+            short_hash: &commit.short_hash,
+            author: &commit.author,
+            date: &commit.date,
+            subject: &commit.subject,
+            diff_url: git_commit_markdown_diff_url(root, workspace_id, commit, "rendered"),
+        })
+        .collect();
+    let work_diff_url = git::diff_has_markdown_changes(root, "HEAD", "worktree")
+        .unwrap_or(false)
+        .then(|| markdown_work_diff_page_url(workspace_id));
+    let mut context = base_context(state);
+    context.insert("title", "markon git history");
+    context.insert("workspace_id", workspace_id);
+    context.insert("commits", &commit_items);
+    context.insert("files_url", &format!("/{workspace_id}/"));
+    context.insert("has_commits", &!commit_items.is_empty());
+    context.insert("work_diff_url", &work_diff_url);
+    render_template(state, "git-history.html", &context)
+}
+
+fn render_git_branches_page(
+    state: &AppState,
+    workspace_id: &str,
+    branches: &[git::GitBranch],
+) -> Response {
+    let mut context = base_context(state);
+    context.insert("title", "markon git branches");
+    context.insert("workspace_id", workspace_id);
+    context.insert("files_url", &format!("/{workspace_id}/"));
+    context.insert("history_url", &format!("/_/{workspace_id}/git/history"));
+    context.insert("page_title", "Branches");
+    context.insert("page_title_key", "web.ws.git.branches");
+    context.insert("empty_key", "web.ws.git.no_branches");
+    context.insert("mode", "branches");
+    context.insert("branches", branches);
+    context.insert("tags", &Vec::<git::GitTag>::new());
+    context.insert("has_items", &!branches.is_empty());
+    render_template(state, "git-refs.html", &context)
+}
+
+fn render_git_tags_page(state: &AppState, workspace_id: &str, tags: &[git::GitTag]) -> Response {
+    let mut context = base_context(state);
+    context.insert("title", "markon git tags");
+    context.insert("workspace_id", workspace_id);
+    context.insert("files_url", &format!("/{workspace_id}/"));
+    context.insert("history_url", &format!("/_/{workspace_id}/git/history"));
+    context.insert("page_title", "Tags");
+    context.insert("page_title_key", "web.ws.git.tags");
+    context.insert("empty_key", "web.ws.git.no_tags");
+    context.insert("mode", "tags");
+    context.insert("branches", &Vec::<git::GitBranch>::new());
+    context.insert("tags", tags);
+    context.insert("has_items", &!tags.is_empty());
+    render_template(state, "git-refs.html", &context)
+}
+
+/// One markdown file whose rendered diff must be (re)built — i.e. it missed the
+/// file cache. Carries the resolved per-side content identity so a batched blob
+/// read + parallel render can finish the job without further git subprocesses.
+struct MarkdownBuildItem<'a> {
+    entry: &'a git::MarkdownDiffEntry,
+    old_id: Option<String>,
+    new_id: Option<String>,
+    /// Worktree new-side content, already read in pass 1 (worktree has no blob).
+    new_worktree: Option<String>,
+    read_diagnostics: Vec<MarkdownDiffDiagnostic>,
+    file_key: Option<MarkdownDiffFileCacheKey>,
+}
+
+fn markdown_compare_diff_data(
+    state: &AppState,
+    root: &FsPath,
+    base: &str,
+    compare: &str,
+    file_filter: Option<&str>,
+) -> git::Result<MarkdownDiffData> {
+    let engine = markdown_ast::engine_info();
+    // Cheap enumeration: `git diff --raw` (no patch) + untracked md. Gives each
+    // changed file's status and per-side blob oids without reading content.
+    let listing = git::markdown_diff_listing(root, base, compare)?;
+    if !engine.enabled {
+        return Ok(MarkdownDiffData {
+            title: "Markdown visual diff".to_string(),
+            subtitle: engine.message.map(str::to_string),
+            engine,
+            files: Vec::new(),
+        });
+    }
+
+    let filter = file_filter.map(str::trim).filter(|f| !f.is_empty());
+    let entries: Vec<&git::MarkdownDiffEntry> = listing
+        .entries
+        .iter()
+        .filter(|e| filter.map_or(true, |f| e.path == f || e.old_path.as_deref() == Some(f)))
+        .collect();
+
+    enum Slot<'a> {
+        Cached(Arc<MarkdownDiffFile>),
+        Build(MarkdownBuildItem<'a>),
+    }
+
+    // ---- Pass 1: resolve content identity; serve file-cache hits without I/O ----
+    // The old side is identified purely by its blob oid (from `--raw`), so a warm
+    // reload hits the cache without reading or re-rendering it. The worktree new
+    // side has no oid yet, so it is read here (cheap) to derive its identity.
+    let mut slots: Vec<Slot> = Vec::with_capacity(entries.len());
+    let mut needed_blobs: Vec<String> = Vec::new();
+
+    for entry in &entries {
+        let mut read_diagnostics = Vec::new();
+        let old_id = if entry.status == "added" {
+            None
+        } else {
+            entry.old_blob.clone()
+        };
+
+        let mut new_worktree = None;
+        let new_id = if entry.status == "deleted" {
+            None
+        } else if let Some(blob) = &entry.new_blob {
+            Some(blob.clone())
+        } else {
+            match fs::read_to_string(root.join(&entry.path)) {
+                Ok(content) => {
+                    let id = format!("h:{}", markdown_content_hash(&content));
+                    new_worktree = Some(content);
+                    Some(id)
+                }
+                Err(e) => {
+                    read_diagnostics.push(markdown_diff_diagnostic(
+                        "new",
+                        "read_worktree_failed",
+                        "error",
+                        format!("Failed to read {}: {e}", entry.path),
+                    ));
+                    None
+                }
+            }
+        };
+
+        let file_key = read_diagnostics
+            .is_empty()
+            .then(|| MarkdownDiffFileCacheKey {
+                version: MARKDOWN_DIFF_CACHE_VERSION,
+                theme: state.theme.as_str().to_string(),
+                path: entry.path.clone(),
+                old_path: entry.old_path.clone(),
+                status: entry.status.clone(),
+                old_id: old_id.clone(),
+                new_id: new_id.clone(),
+            });
+
+        if let Some(key) = &file_key {
+            if let Some(cached) = state
+                .markdown_diff_cache
+                .lock()
+                .expect("markdown diff cache poisoned")
+                .get_file(key)
+            {
+                slots.push(Slot::Cached(cached));
+                continue;
+            }
+        }
+
+        // Cache miss: schedule the blobs this build will need.
+        if let Some(oid) = &old_id {
+            needed_blobs.push(oid.clone());
+        }
+        if entry.new_blob.is_some() {
+            if let Some(oid) = &new_id {
+                needed_blobs.push(oid.clone());
+            }
+        }
+        slots.push(Slot::Build(MarkdownBuildItem {
+            entry,
+            old_id,
+            new_id,
+            new_worktree,
+            read_diagnostics,
+            file_key,
+        }));
+    }
+
+    // ---- Pass 2: one batched `git cat-file` for every missing blob ----
+    needed_blobs.sort();
+    needed_blobs.dedup();
+    let blobs = git::read_blobs(root, &needed_blobs)?;
+
+    // ---- Pass 3: render the misses in parallel (render_html, not full render) ----
+    let builds: Vec<(usize, &MarkdownBuildItem)> = slots
+        .iter()
+        .enumerate()
+        .filter_map(|(i, slot)| match slot {
+            Slot::Build(item) => Some((i, item)),
+            Slot::Cached(_) => None,
+        })
+        .collect();
+    let mut built: HashMap<usize, MarkdownDiffFile> = builds
+        .into_par_iter()
+        .map(|(i, item)| (i, build_markdown_diff_file(state, item, &blobs, root)))
+        .collect();
+
+    // ---- Pass 4: assemble in original order; promote freshly built into cache ----
+    let mut files = Vec::with_capacity(slots.len());
+    for (i, slot) in slots.iter().enumerate() {
+        match slot {
+            Slot::Cached(arc) => files.push((**arc).clone()),
+            Slot::Build(item) => {
+                let file = built.remove(&i).expect("built file present");
+                if let Some(key) = item.file_key.clone() {
+                    let cached = state
+                        .markdown_diff_cache
+                        .lock()
+                        .expect("markdown diff cache poisoned")
+                        .insert_file(key, file);
+                    files.push((*cached).clone());
+                } else {
+                    files.push(file);
+                }
+            }
+        }
+    }
+
+    Ok(MarkdownDiffData {
+        title: listing.title,
+        subtitle: Some(format!(
+            "{} Markdown files changed · {}",
+            files.len(),
+            listing.range
+        )),
+        engine,
+        files,
+    })
+}
+
+/// Build a single file's rendered diff from already-resolved content sources.
+/// Pure CPU + cache lookups — safe to run in parallel across files.
+fn build_markdown_diff_file(
+    state: &AppState,
+    item: &MarkdownBuildItem,
+    blobs: &HashMap<String, Vec<u8>>,
+    root: &FsPath,
+) -> MarkdownDiffFile {
+    let entry = item.entry;
+    // Canonicalize the new-side path the same way `render_markdown_file` builds
+    // its `file_path` key, so a highlight made in the diff binds to the same
+    // annotation row as one made in the normal file view. `entry.path` is
+    // workspace-relative (the listing uses `git diff --relative`), so joining it
+    // onto the workspace root reaches the exact same on-disk file — and the same
+    // canonical key — as the normal view, including subdirectory-of-repo
+    // workspaces. Deleted files have no on-disk new side, so canonicalize falls
+    // back to the lexical join (such files are not annotatable anyway).
+    let abs_path = {
+        let joined = root.join(&entry.path);
+        canonicalize_route_path(&joined)
+            .map(|p| p.to_string_lossy().into_owned())
+            .unwrap_or_else(|_| joined.to_string_lossy().into_owned())
+    };
+    let renderer = default_markdown_engine(state.theme.as_str());
+    let mut diagnostics = item.read_diagnostics.clone();
+
+    let blob_text = |id: &str, side: &'static str, diags: &mut Vec<MarkdownDiffDiagnostic>| {
+        match blobs.get(id) {
+            Some(bytes) => Some(String::from_utf8_lossy(bytes).into_owned()),
+            None => {
+                diags.push(markdown_diff_diagnostic(
+                    side,
+                    "read_blob_failed",
+                    "error",
+                    format!("Missing blob {id}"),
+                ));
+                None
+            }
+        }
+    };
+
+    let old_content = item
+        .old_id
+        .as_deref()
+        .and_then(|id| blob_text(id, "old", &mut diagnostics));
+    let new_content = if entry.status == "deleted" {
+        None
+    } else if let Some(content) = &item.new_worktree {
+        Some(content.clone())
+    } else {
+        item.new_id
+            .as_deref()
+            .and_then(|id| blob_text(id, "new", &mut diagnostics))
+    };
+
+    let old = summarize_side_cached(state, "old", old_content.as_deref(), item.old_id.as_deref(), &renderer);
+    diagnostics.extend(markdown_side_diagnostics("old", old.as_ref()));
+    let new = summarize_side_cached(state, "new", new_content.as_deref(), item.new_id.as_deref(), &renderer);
+    diagnostics.extend(markdown_side_diagnostics("new", new.as_ref()));
+
+    let blocks = diff_markdown_blocks(
+        old.as_ref().map(|s| s.blocks.as_slice()),
+        new.as_ref().map(|s| s.blocks.as_slice()),
+    );
+
+    MarkdownDiffFile {
+        path: entry.path.clone(),
+        abs_path,
+        old_path: entry.old_path.clone(),
+        status: entry.status.clone(),
+        old: old.as_ref().map(MarkdownDocOutline::from_summary),
+        new: new.as_ref().map(MarkdownDocOutline::from_summary),
+        old_source: old_content,
+        new_source: new_content,
+        additions: entry.additions,
+        deletions: entry.deletions,
+        blocks,
+        diagnostics,
+    }
+}
+
+/// Summarize one side, keyed in the document cache by a stable content id (blob
+/// oid, or `h:<sha256>` for worktree content). Renders blocks via `render_html`
+/// only — the diff never needs the asset/diagnostic passes of full `render()`.
+fn summarize_side_cached(
+    state: &AppState,
+    side: &'static str,
+    content: Option<&str>,
+    content_id: Option<&str>,
+    renderer: &MarkdownRenderer,
+) -> Option<markdown_ast::MarkdownDocumentSummary> {
+    let content = content?;
+    let id_owned;
+    let id = match content_id {
+        Some(id) => id,
+        None => {
+            id_owned = format!("h:{}", markdown_content_hash(content));
+            id_owned.as_str()
+        }
+    };
+    let key = markdown_document_cache_key(state, id);
+    if let Some(summary) = state
+        .markdown_diff_cache
+        .lock()
+        .expect("markdown diff cache poisoned")
+        .get_document(&key)
+    {
+        return Some((*summary).clone());
+    }
+
+    let mut render_block = |fragment: &str| renderer.render_html(fragment).html;
+    let summary = match markdown_ast::summarize_document(content, &mut render_block) {
+        Ok(summary) => summary,
+        Err(e) => markdown_summary_error(side, e.message),
+    };
+    let cached = state
+        .markdown_diff_cache
+        .lock()
+        .expect("markdown diff cache poisoned")
+        .insert_document(key, summary);
+    Some((*cached).clone())
+}
+
+fn is_markdown_diff_file(file: &git::GitDiffFile) -> bool {
+    is_markdown_route_path(&file.path)
+        || file.old_path.as_deref().is_some_and(is_markdown_route_path)
+}
+
+fn is_markdown_route_path(path: &str) -> bool {
+    FsPath::new(path)
+        .extension()
+        .is_some_and(|e| e.to_string_lossy().eq_ignore_ascii_case("md"))
+}
+
+fn markdown_content_hash(content: &str) -> String {
+    let mut hasher = Sha256::new();
+    hasher.update(content.as_bytes());
+    format!("{:x}", hasher.finalize())
+}
+
+fn markdown_document_cache_key(state: &AppState, content_hash: &str) -> MarkdownDocumentCacheKey {
+    MarkdownDocumentCacheKey {
+        version: MARKDOWN_DIFF_CACHE_VERSION,
+        theme: state.theme.as_str().to_string(),
+        content_hash: content_hash.to_string(),
+    }
+}
+
+fn markdown_summary_error(
+    side: &'static str,
+    message: String,
+) -> markdown_ast::MarkdownDocumentSummary {
+    markdown_ast::MarkdownDocumentSummary {
+        block_count: 0,
+        diagnostics: vec![markdown_ast::MarkdownAstDiagnostic {
+            code: format!("{side}_parse_failed"),
+            severity: "error".to_string(),
+            message,
+            start_line: None,
+            end_line: None,
+        }],
+        blocks: Vec::new(),
+    }
+}
+
+fn markdown_side_diagnostics(
+    side: &'static str,
+    summary: Option<&markdown_ast::MarkdownDocumentSummary>,
+) -> Vec<MarkdownDiffDiagnostic> {
+    summary
+        .into_iter()
+        .flat_map(|summary| {
+            summary
+                .diagnostics
+                .iter()
+                .map(move |diagnostic| MarkdownDiffDiagnostic {
+                    side,
+                    code: diagnostic.code.clone(),
+                    severity: diagnostic.severity.clone(),
+                    message: diagnostic.message.clone(),
+                    start_line: diagnostic.start_line,
+                    end_line: diagnostic.end_line,
+                })
+        })
+        .collect()
+}
+
+fn markdown_diff_diagnostic(
+    side: &'static str,
+    code: &'static str,
+    severity: &'static str,
+    message: String,
+) -> MarkdownDiffDiagnostic {
+    MarkdownDiffDiagnostic {
+        side,
+        code: code.to_string(),
+        severity: severity.to_string(),
+        message,
+        start_line: None,
+        end_line: None,
+    }
+}
+
+#[derive(Debug, Clone)]
+enum MarkdownBlockOp {
+    Equal(
+        markdown_ast::MarkdownBlockSummary,
+        markdown_ast::MarkdownBlockSummary,
+    ),
+    Delete(markdown_ast::MarkdownBlockSummary),
+    Add(markdown_ast::MarkdownBlockSummary),
+}
+
+fn diff_markdown_blocks(
+    old: Option<&[markdown_ast::MarkdownBlockSummary]>,
+    new: Option<&[markdown_ast::MarkdownBlockSummary]>,
+) -> Vec<MarkdownDiffBlock> {
+    let old = old.unwrap_or(&[]);
+    let new = new.unwrap_or(&[]);
+    let ops = if old.len().saturating_mul(new.len()) <= 40_000 {
+        diff_markdown_blocks_lcs(old, new)
+    } else {
+        diff_markdown_blocks_by_index(old, new)
+    };
+    coalesce_markdown_block_ops(ops)
+}
+
+fn diff_markdown_blocks_lcs(
+    old: &[markdown_ast::MarkdownBlockSummary],
+    new: &[markdown_ast::MarkdownBlockSummary],
+) -> Vec<MarkdownBlockOp> {
+    let n = old.len();
+    let m = new.len();
+    let mut dp = vec![vec![0usize; m + 1]; n + 1];
+    for i in (0..n).rev() {
+        for j in (0..m).rev() {
+            dp[i][j] = if old[i].digest == new[j].digest {
+                dp[i + 1][j + 1] + 1
+            } else {
+                dp[i + 1][j].max(dp[i][j + 1])
+            };
+        }
+    }
+
+    let mut ops = Vec::new();
+    let (mut i, mut j) = (0, 0);
+    while i < n && j < m {
+        if old[i].digest == new[j].digest {
+            ops.push(MarkdownBlockOp::Equal(old[i].clone(), new[j].clone()));
+            i += 1;
+            j += 1;
+        } else if dp[i + 1][j] >= dp[i][j + 1] {
+            ops.push(MarkdownBlockOp::Delete(old[i].clone()));
+            i += 1;
+        } else {
+            ops.push(MarkdownBlockOp::Add(new[j].clone()));
+            j += 1;
+        }
+    }
+    while i < n {
+        ops.push(MarkdownBlockOp::Delete(old[i].clone()));
+        i += 1;
+    }
+    while j < m {
+        ops.push(MarkdownBlockOp::Add(new[j].clone()));
+        j += 1;
+    }
+    ops
+}
+
+fn diff_markdown_blocks_by_index(
+    old: &[markdown_ast::MarkdownBlockSummary],
+    new: &[markdown_ast::MarkdownBlockSummary],
+) -> Vec<MarkdownBlockOp> {
+    let mut ops = Vec::new();
+    let max_len = old.len().max(new.len());
+    for index in 0..max_len {
+        match (old.get(index), new.get(index)) {
+            (Some(old), Some(new)) if old.digest == new.digest => {
+                ops.push(MarkdownBlockOp::Equal(old.clone(), new.clone()));
+            }
+            (Some(old), Some(new)) => {
+                ops.push(MarkdownBlockOp::Delete(old.clone()));
+                ops.push(MarkdownBlockOp::Add(new.clone()));
+            }
+            (Some(old), None) => ops.push(MarkdownBlockOp::Delete(old.clone())),
+            (None, Some(new)) => ops.push(MarkdownBlockOp::Add(new.clone())),
+            (None, None) => {}
+        }
+    }
+    ops
+}
+
+fn coalesce_markdown_block_ops(ops: Vec<MarkdownBlockOp>) -> Vec<MarkdownDiffBlock> {
+    let mut out = Vec::new();
+    let mut index = 0;
+    while index < ops.len() {
+        match &ops[index] {
+            MarkdownBlockOp::Equal(old, new) => {
+                out.push(MarkdownDiffBlock {
+                    kind: "equal",
+                    old: Some(old.clone()),
+                    new: Some(new.clone()),
+                });
+                index += 1;
+            }
+            MarkdownBlockOp::Delete(_) => {
+                let start = index;
+                while index < ops.len() && matches!(ops[index], MarkdownBlockOp::Delete(_)) {
+                    index += 1;
+                }
+                let delete_end = index;
+                while index < ops.len() && matches!(ops[index], MarkdownBlockOp::Add(_)) {
+                    index += 1;
+                }
+                let adds = ops[delete_end..index]
+                    .iter()
+                    .filter_map(|op| match op {
+                        MarkdownBlockOp::Add(block) => Some(block.clone()),
+                        _ => None,
+                    })
+                    .collect::<Vec<_>>();
+                let deletes = ops[start..delete_end]
+                    .iter()
+                    .filter_map(|op| match op {
+                        MarkdownBlockOp::Delete(block) => Some(block.clone()),
+                        _ => None,
+                    })
+                    .collect::<Vec<_>>();
+                let pair_count = deletes.len().min(adds.len());
+                for pair_index in 0..pair_count {
+                    out.push(MarkdownDiffBlock {
+                        kind: "modified",
+                        old: Some(deletes[pair_index].clone()),
+                        new: Some(adds[pair_index].clone()),
+                    });
+                }
+                for block in deletes.into_iter().skip(pair_count) {
+                    out.push(MarkdownDiffBlock {
+                        kind: "deleted",
+                        old: Some(block),
+                        new: None,
+                    });
+                }
+                for block in adds.into_iter().skip(pair_count) {
+                    out.push(MarkdownDiffBlock {
+                        kind: "added",
+                        old: None,
+                        new: Some(block),
+                    });
+                }
+            }
+            MarkdownBlockOp::Add(new) => {
+                out.push(MarkdownDiffBlock {
+                    kind: "added",
+                    old: None,
+                    new: Some(new.clone()),
+                });
+                index += 1;
+            }
+        }
+    }
+    out
+}
+
 fn render_markdown_file(
     file_path: &str,
     workspace_id: &str,
     ws: &WorkspaceEntry,
     root: &FsPath,
     state: &AppState,
+    access_role: AccessRole,
 ) -> Response {
     match fs::read_to_string(file_path) {
         Ok(markdown_input) => {
-            let renderer = MarkdownRenderer::new(&state.theme);
-            let (html_content, has_mermaid, toc) = renderer.render(&markdown_input);
+            let renderer = default_markdown_engine(&state.theme);
+            let rendered = MarkdownEngine::render(&renderer, &markdown_input);
 
             let title = std::path::Path::new(file_path)
                 .file_name()
@@ -1824,7 +4751,8 @@ fn render_markdown_file(
             context.insert("file_path", file_path);
             context.insert("workspace_id", workspace_id);
             context.insert("version", env!("CARGO_PKG_VERSION"));
-            context.insert("content", &html_content);
+            context.insert("content", &rendered.html);
+            context.insert("history_url", &format!("/_/{workspace_id}/git/history"));
             // Back link: parent dir of this file within the workspace.
             // Suppressed for single-file workspaces — `/{id}/` 303-redirects
             // back to this same file (see `handle_workspace_root`), so a
@@ -1843,17 +4771,25 @@ fn render_markdown_file(
                 .unwrap_or_else(|| format!("/{workspace_id}/"));
             context.insert("back_link", &back_link);
             context.insert("show_back_link", &!ws.is_ephemeral());
-            context.insert("has_mermaid", &has_mermaid);
-            context.insert("toc", &toc);
+            context.insert("has_mermaid", &rendered.has_mermaid);
+            context.insert("has_math", &rendered.has_math);
+            context.insert("toc", &rendered.toc);
+            context.insert("markdown_diagnostics", &rendered.diagnostics);
+            context.insert("referenced_assets", &rendered.referenced_assets);
             let flags = ws.flags();
+            let initiator = access_role.can_initiate();
             context.insert("shared_annotation", &flags.shared_annotation);
             context.insert("enable_viewed", &flags.enable_viewed);
             context.insert("enable_search", &flags.enable_search);
-            context.insert("enable_edit", &flags.enable_edit);
+            context.insert(
+                "access_role",
+                &format!("{access_role:?}").to_ascii_lowercase(),
+            );
+            context.insert("enable_edit", &(flags.enable_edit && initiator));
             context.insert("enable_live", &flags.enable_live);
-            context.insert("enable_chat", &flags.enable_chat);
+            context.insert("enable_chat", &(flags.enable_chat && initiator));
 
-            if flags.enable_edit {
+            if flags.enable_edit && initiator {
                 // JSON-encode and HTML-escape so </script> in content can't break the page.
                 let json = js_json_safe(serde_json::to_string(&markdown_input).unwrap_or_default());
                 context.insert("markdown_content_json", &json);
@@ -1877,6 +4813,7 @@ fn render_markdown_file(
             );
             context.insert("show_back_link", &false);
             context.insert("has_mermaid", &false);
+            context.insert("has_math", &false);
 
             render_template(state, "layout.html", &context)
         }
@@ -1889,6 +4826,7 @@ fn render_directory_listing(
     root: &FsPath,
     dir_param: Option<&str>,
     state: &AppState,
+    access_role: AccessRole,
 ) -> Response {
     let current_dir = if let Some(dir_str) = dir_param {
         let p = PathBuf::from(dir_str);
@@ -1919,7 +4857,13 @@ fn render_directory_listing(
     struct Entry {
         name: String,
         is_dir: bool,
+        is_markdown: bool,
+        is_hidden: bool,
+        show_in_markdown: bool,
         link: String,
+        rel_git_path: String,
+        last_commit_subject: Option<String>,
+        last_commit_time: Option<String>,
     }
 
     let mut entries: Vec<Entry> = match fs::read_dir(&current_dir) {
@@ -1928,31 +4872,42 @@ fn render_directory_listing(
             .filter_map(|entry| {
                 let path = entry.path();
                 let name = entry.file_name().to_string_lossy().to_string();
-                if name.starts_with('.') {
-                    return None;
-                }
+                let is_hidden = name.starts_with('.');
                 // Use file_type() — avoids stat() syscall that can block on AutoFS mount points.
                 let file_type = match entry.file_type() {
                     Ok(ft) => ft,
                     Err(_) => return None,
                 };
                 let is_dir = file_type.is_dir();
+                let is_markdown = !is_dir && is_markdown_path(&path);
+                let show_in_markdown = !is_hidden && (is_dir || is_markdown);
                 let rel = path.strip_prefix(root).unwrap_or(&path).to_path_buf();
+                let rel_git_path = rel.to_string_lossy().replace('\\', "/");
                 let rel_url = path_to_route(&rel);
                 if is_dir {
                     Some(Entry {
                         name,
                         is_dir: true,
+                        is_markdown,
+                        is_hidden,
+                        show_in_markdown,
                         link: format!("/{workspace_id}/{rel_url}/"),
+                        rel_git_path,
+                        last_commit_subject: None,
+                        last_commit_time: None,
                     })
-                } else if is_markdown_path(&path) {
+                } else {
                     Some(Entry {
                         name,
                         is_dir: false,
+                        is_markdown,
+                        is_hidden,
+                        show_in_markdown,
                         link: format!("/{workspace_id}/{rel_url}"),
+                        rel_git_path,
+                        last_commit_subject: None,
+                        last_commit_time: None,
                     })
-                } else {
-                    None
                 }
             })
             .collect(),
@@ -1971,6 +4926,23 @@ fn render_directory_listing(
         _ => a.name.cmp(&b.name),
     });
 
+    let git_status = git::status(root);
+    if git_status.available {
+        let rel_paths: Vec<String> = entries
+            .iter()
+            .map(|entry| entry.rel_git_path.clone())
+            .collect();
+        if let Ok(path_commits) = git::last_commits_for_paths(root, &rel_paths) {
+            for entry in entries.iter_mut() {
+                let Some(commit) = path_commits.get(&entry.rel_git_path) else {
+                    continue;
+                };
+                entry.last_commit_subject = Some(commit.subject.clone());
+                entry.last_commit_time = Some(commit.time.clone());
+            }
+        }
+    }
+
     let show_parent = current_dir != root;
     let parent_link: Option<String> = if show_parent {
         current_dir.parent().map(|parent| {
@@ -1988,16 +4960,125 @@ fn render_directory_listing(
         None
     };
 
+    let flags = ws.flags();
+    let feature_statuses = vec![
+        WorkspaceFeatureStatus {
+            key: "enable_search",
+            label: "Search",
+            label_key: "web.ws.feature.search",
+            enabled: flags.enable_search,
+        },
+        WorkspaceFeatureStatus {
+            key: "enable_viewed",
+            label: "Viewed tracking",
+            label_key: "web.ws.feature.viewed",
+            enabled: flags.enable_viewed,
+        },
+        WorkspaceFeatureStatus {
+            key: "enable_edit",
+            label: "Edit",
+            label_key: "web.ws.feature.edit",
+            enabled: flags.enable_edit,
+        },
+        WorkspaceFeatureStatus {
+            key: "enable_live",
+            label: "Live",
+            label_key: "web.ws.feature.live",
+            enabled: flags.enable_live,
+        },
+        WorkspaceFeatureStatus {
+            key: "enable_chat",
+            label: "AI Chat",
+            label_key: "web.ws.feature.chat",
+            enabled: flags.enable_chat,
+        },
+        WorkspaceFeatureStatus {
+            key: "shared_annotation",
+            label: "Shared notes",
+            label_key: "web.ws.feature.shared",
+            enabled: flags.shared_annotation,
+        },
+    ];
+    let git_commits = if git_status.available {
+        git::history(root, 6).unwrap_or_default()
+    } else {
+        Vec::new()
+    };
+    let git_commit_count = if git_status.available {
+        git::commit_count(root).unwrap_or(0)
+    } else {
+        0
+    };
+    let git_branches = if git_status.available {
+        git::branches(root).unwrap_or_default()
+    } else {
+        Vec::new()
+    };
+    let git_branch_count = if git_status.available {
+        git_branches.len()
+    } else {
+        0
+    };
+    let git_tag_count = if git_status.available {
+        git::tag_count(root).unwrap_or(0)
+    } else {
+        0
+    };
+    let git_changed_count = git_status.added
+        + git_status.modified
+        + git_status.deleted
+        + git_status.renamed
+        + git_status.untracked;
+    let work_diff_has_markdown_changes = git_status.available
+        && git::diff_has_markdown_changes(root, "HEAD", "worktree").unwrap_or(false);
+    let work_diff_url =
+        work_diff_has_markdown_changes.then(|| markdown_work_diff_page_url(workspace_id));
+    let latest_commit = git_commits.first().cloned();
+    let latest_commit_diff_url = latest_commit
+        .as_ref()
+        .and_then(|commit| git_commit_markdown_diff_url(root, workspace_id, commit, "rendered"));
+    let is_workspace_root = current_dir == root;
+    let can_initiate = access_role.can_initiate();
+    let can_add_file = can_initiate && flags.enable_edit;
+
     let mut context = base_context(state);
     context.insert("workspace_id", workspace_id);
+    context.insert(
+        "access_role",
+        &format!("{access_role:?}").to_ascii_lowercase(),
+    );
     context.insert("current_dir", &current_dir.display().to_string());
+    context.insert("history_url", &format!("/_/{workspace_id}/git/history"));
+    context.insert("work_diff_url", &work_diff_url);
+    context.insert("latest_commit", &latest_commit);
+    context.insert("latest_commit_diff_url", &latest_commit_diff_url);
+    context.insert("git_changed_count", &git_changed_count);
+    context.insert("git_commit_count", &git_commit_count);
+    context.insert("git_branch_count", &git_branch_count);
+    context.insert("git_tag_count", &git_tag_count);
+    context.insert("git_branches", &git_branches);
+    context.insert("git_commits", &git_commits);
+    context.insert("feature_statuses", &feature_statuses);
+    context.insert("git", &git_status);
+    context.insert("is_workspace_root", &is_workspace_root);
+    context.insert("can_initiate", &can_initiate);
+    context.insert("can_add_file", &can_add_file);
+    context.insert("branches_url", &format!("/_/{workspace_id}/git/branches"));
+    context.insert("tags_url", &format!("/_/{workspace_id}/git/tags"));
+    context.insert("checkout_url", &format!("/_/{workspace_id}/git/checkout"));
+    context.insert("files_data_url", &format!("/_/{workspace_id}/files/data"));
+    context.insert(
+        "settings_features_url",
+        &format!("/_/{workspace_id}/settings/features"),
+    );
+    context.insert(
+        "create_file_url",
+        &format!("/_/{workspace_id}/files/create"),
+    );
     context.insert("entries", &entries);
     context.insert("show_parent", &show_parent);
     context.insert("parent_link", &parent_link);
-    context.insert(
-        "enable_search",
-        &ws.enable_search.load(std::sync::atomic::Ordering::Relaxed),
-    );
+    context.insert("enable_search", &flags.enable_search);
 
     render_template(state, "directory.html", &context)
 }
@@ -2020,7 +5101,11 @@ async fn serve_css(AxumPath(filename): AxumPath<String>) -> impl IntoResponse {
 }
 
 async fn serve_js(AxumPath(path): AxumPath<String>) -> impl IntoResponse {
-    serve_static_file(&path, JsAssets::get, "application/javascript")
+    let content_type = mime_guess::from_path(&path)
+        .first_or_octet_stream()
+        .essence_str()
+        .to_string();
+    serve_static_file(&path, JsAssets::get, &content_type)
 }
 
 fn serve_static_file<F>(filename: &str, getter: F, content_type: &str) -> Response
@@ -2074,6 +5159,7 @@ struct SaveFileResponse {
 
 async fn save_file_handler(
     State(state): State<AppState>,
+    headers: axum::http::HeaderMap,
     Json(payload): Json<SaveFileRequest>,
 ) -> impl IntoResponse {
     let ws = match state.workspace_registry.get(&payload.workspace_id) {
@@ -2086,6 +5172,17 @@ async fn save_file_handler(
             .into_response()
         }
     };
+
+    let is_management = headers_have_management_token(&state, &headers);
+    let is_initiator = access_cookie_role_for_headers(&state, &payload.workspace_id, &headers)
+        .is_some_and(AccessRole::can_initiate);
+    if !is_management && !is_initiator {
+        return Json(SaveFileResponse {
+            success: false,
+            message: "Access denied".into(),
+        })
+        .into_response();
+    }
 
     if !ws.enable_edit.load(std::sync::atomic::Ordering::Relaxed) {
         return Json(SaveFileResponse {
@@ -2190,15 +5287,21 @@ struct PreviewRequest {
 struct PreviewResponse {
     html: String,
     has_mermaid: bool,
+    has_math: bool,
 }
 
 async fn preview_handler(
     State(state): State<AppState>,
     Json(payload): Json<PreviewRequest>,
 ) -> impl IntoResponse {
-    let renderer = MarkdownRenderer::new(&state.theme);
-    let (html, has_mermaid, _toc) = renderer.render(&payload.content);
-    Json(PreviewResponse { html, has_mermaid }).into_response()
+    let renderer = default_markdown_engine(&state.theme);
+    let rendered = MarkdownEngine::render(&renderer, &payload.content);
+    Json(PreviewResponse {
+        html: rendered.html,
+        has_mermaid: rendered.has_mermaid,
+        has_math: rendered.has_math,
+    })
+    .into_response()
 }
 
 #[cfg(test)]
@@ -2208,7 +5311,7 @@ mod tests {
     use serde_json::json;
 
     use axum::http::HeaderMap;
-    use std::net::{IpAddr, Ipv4Addr};
+    use std::net::{IpAddr, Ipv4Addr, SocketAddr};
 
     fn test_tera() -> Tera {
         let mut tera = Tera::default();
@@ -2238,8 +5341,10 @@ mod tests {
             default_chat_mode: Arc::new("in_page".into()),
             editor_theme: Arc::new("follow".into()),
             access_code_hash: Arc::new(String::new()),
+            collaborator_access_code_hash: Arc::new(String::new()),
             access_secret: Arc::new("test-salt".into()),
             access_attempts: Arc::new(std::sync::Mutex::new(std::collections::HashMap::new())),
+            markdown_diff_cache: Arc::new(Mutex::new(MarkdownDiffCache::default())),
             print_collapsed_content: false,
             shutdown_tx,
             #[cfg(debug_assertions)]
@@ -2257,7 +5362,15 @@ mod tests {
             flags,
             single_file: None,
             access_code_hash: String::new(),
+            collaborator_access_code_hash: String::new(),
         })
+    }
+
+    fn initiator_access_scope_for(state: &AppState, id: &str) -> Option<(String, String)> {
+        access_requirements_for(state, id)
+            .into_iter()
+            .find(|req| req.role == AccessRole::Initiator)
+            .map(|req| (req.hash, req.scope))
     }
 
     /// Repro for the reported "only the global code lets me into a workspace
@@ -2277,12 +5390,13 @@ mod tests {
             flags: WorkspaceFlags::default(),
             single_file: None,
             access_code_hash: String::new(),
+            collaborator_access_code_hash: String::new(),
         });
         assert!(reg.set_access_code(&id, &ws_hash));
 
         let mut state = test_state(reg.clone());
         state.access_code_hash = Arc::new(global_hash.clone());
-        let (h, scope) = access_scope_for(&state, &id).expect("workspace is gated");
+        let (h, scope) = initiator_access_scope_for(&state, &id).expect("workspace is gated");
         assert_eq!(scope, format!("w:{id}"), "must use the workspace scope");
         assert_eq!(h, ws_hash, "live: workspace code must win over global");
 
@@ -2294,6 +5408,7 @@ mod tests {
             flags: WorkspaceFlags::default(),
             single_file: None,
             access_code_hash: ws_hash.clone(),
+            collaborator_access_code_hash: String::new(),
         });
         assert_eq!(id, id2, "workspace id must be stable across reseed");
         assert_eq!(
@@ -2303,7 +5418,7 @@ mod tests {
         );
         let mut state2 = test_state(reg2);
         state2.access_code_hash = Arc::new(global_hash);
-        let (h2, scope2) = access_scope_for(&state2, &id2).expect("gated after reseed");
+        let (h2, scope2) = initiator_access_scope_for(&state2, &id2).expect("gated after reseed");
         assert_eq!(scope2, format!("w:{id2}"));
         assert_eq!(h2, ws_hash, "after restart: workspace code must STILL win");
     }
@@ -2331,11 +5446,73 @@ mod tests {
         assert!(back.contains(&("s".to_string(), "abcde".to_string())));
     }
 
+    #[test]
+    fn access_cookie_resolves_initiator_and_collaborator_roles() {
+        let tmp = tempfile::tempdir().unwrap();
+        let salt = "test-salt";
+        let initiator_hash = crate::workspace::hash_access_code(salt, "owner-code");
+        let collaborator_hash = crate::workspace::hash_access_code(salt, "guest-code");
+        let reg = Arc::new(WorkspaceRegistry::new(salt.into()));
+        let id = reg.add(WorkspaceConfig {
+            path: dunce::canonicalize(tmp.path()).unwrap(),
+            flags: WorkspaceFlags::default(),
+            single_file: None,
+            access_code_hash: initiator_hash.clone(),
+            collaborator_access_code_hash: collaborator_hash.clone(),
+        });
+        let state = test_state(reg);
+
+        let initiator_cookie = make_access_cookie(
+            salt,
+            &[(format!("w:{id}"), initiator_hash)],
+            access_now_unix() + 100,
+        );
+        assert_eq!(
+            access_role_from_cookie(&state, &id, Some(&initiator_cookie)),
+            Some(AccessRole::Initiator)
+        );
+
+        let collaborator_cookie = make_access_cookie(
+            salt,
+            &[(format!("w:{id}:collaborator"), collaborator_hash)],
+            access_now_unix() + 100,
+        );
+        assert_eq!(
+            access_role_from_cookie(&state, &id, Some(&collaborator_cookie)),
+            Some(AccessRole::Collaborator)
+        );
+    }
+
+    #[test]
+    fn equal_initiator_and_collaborator_hash_does_not_create_collaborator_role() {
+        let tmp = tempfile::tempdir().unwrap();
+        let salt = "test-salt";
+        let hash = crate::workspace::hash_access_code(salt, "same-code");
+        let reg = Arc::new(WorkspaceRegistry::new(salt.into()));
+        let id = reg.add(WorkspaceConfig {
+            path: dunce::canonicalize(tmp.path()).unwrap(),
+            flags: WorkspaceFlags::default(),
+            single_file: None,
+            access_code_hash: hash.clone(),
+            collaborator_access_code_hash: hash,
+        });
+        let state = test_state(reg);
+        let roles: Vec<AccessRole> = access_requirements_for(&state, &id)
+            .into_iter()
+            .map(|req| req.role)
+            .collect();
+        assert_eq!(roles, vec![AccessRole::Initiator]);
+    }
+
     async fn response_text(response: Response) -> String {
-        let bytes = to_bytes(response.into_body(), usize::MAX)
-            .await
-            .expect("response body");
+        let bytes = response_bytes(response).await;
         String::from_utf8(bytes.to_vec()).expect("utf-8 response")
+    }
+
+    async fn response_bytes(response: Response) -> axum::body::Bytes {
+        to_bytes(response.into_body(), usize::MAX)
+            .await
+            .expect("response body")
     }
 
     fn all_flags() -> WorkspaceFlags {
@@ -2397,6 +5574,32 @@ mod tests {
         let h = headers_with(None, Some("127.0.0.1:1618"));
         assert!(check_ws_origin(&h, &loopback()));
         assert!(!check_ws_origin(&h, &lan_peer()));
+    }
+
+    #[test]
+    fn save_origin_allows_lan_same_origin_but_not_missing_or_cross_origin() {
+        let same_origin = headers_with(
+            Some("http://192.168.1.13:59285"),
+            Some("192.168.1.13:59285"),
+        );
+        assert!(same_origin_or_loopback_no_origin(&same_origin, &lan_peer()));
+
+        let cross_origin =
+            headers_with(Some("http://evil.example.com"), Some("192.168.1.13:59285"));
+        assert!(!same_origin_or_loopback_no_origin(
+            &cross_origin,
+            &lan_peer()
+        ));
+
+        let missing_origin = headers_with(None, Some("192.168.1.13:59285"));
+        assert!(!same_origin_or_loopback_no_origin(
+            &missing_origin,
+            &lan_peer()
+        ));
+        assert!(same_origin_or_loopback_no_origin(
+            &missing_origin,
+            &loopback()
+        ));
     }
 
     #[test]
@@ -2463,6 +5666,14 @@ mod tests {
         let serialized = serde_json::to_string(&msg).unwrap();
         assert!(serialized.contains("\"type\":\"live_action\""));
         assert!(serialized.contains("\"clientId\":\"test-id\""));
+
+        let file = WebSocketMessage::FileChanged {
+            workspace_id: "ws1".into(),
+            path: "docs/a.md".into(),
+        };
+        let serialized = serde_json::to_string(&file).unwrap();
+        assert!(serialized.contains("\"type\":\"file_changed\""));
+        assert!(serialized.contains("\"workspace_id\":\"ws1\""));
     }
 
     /// `NewAnnotation` round-trips `op_id` verbatim in both directions and
@@ -2527,8 +5738,10 @@ mod tests {
             default_chat_mode: Arc::new("in_page".into()),
             editor_theme: Arc::new("follow".into()),
             access_code_hash: Arc::new(String::new()),
+            collaborator_access_code_hash: Arc::new(String::new()),
             access_secret: Arc::new("test-salt".into()),
             access_attempts: Arc::new(std::sync::Mutex::new(std::collections::HashMap::new())),
+            markdown_diff_cache: Arc::new(Mutex::new(MarkdownDiffCache::default())),
             print_collapsed_content: false,
             shutdown_tx: tx,
             #[cfg(debug_assertions)]
@@ -2546,7 +5759,17 @@ mod tests {
                 interface: None,
             },
             BindHostOption {
+                address: "::1".into(),
+                kind: BindHostKind::Localhost,
+                interface: None,
+            },
+            BindHostOption {
                 address: "0.0.0.0".into(),
+                kind: BindHostKind::AllInterfaces,
+                interface: None,
+            },
+            BindHostOption {
+                address: "::".into(),
                 kind: BindHostKind::AllInterfaces,
                 interface: None,
             },
@@ -2560,11 +5783,21 @@ mod tests {
                 kind: BindHostKind::Interface,
                 interface: Some("eth1".into()),
             },
+            BindHostOption {
+                address: "fd00::20".into(),
+                kind: BindHostKind::Interface,
+                interface: Some("en0".into()),
+            },
+            BindHostOption {
+                address: "2001:db8::5".into(),
+                kind: BindHostKind::Interface,
+                interface: Some("utun0".into()),
+            },
         ]
     }
 
     #[test]
-    fn reachable_wildcard_lists_localhost_then_interfaces() {
+    fn reachable_ipv4_wildcard_lists_ipv4_localhost_then_interfaces() {
         let r = assemble_reachable_urls("0.0.0.0", "", 6419, &sample_hosts());
         assert_eq!(r.all.len(), 3);
         assert_eq!(r.all[0].label, "localhost");
@@ -2573,6 +5806,17 @@ mod tests {
         assert_eq!(r.all[2].url, "http://10.0.0.5:6419");
         // No advertised preference → first interface is featured (not localhost).
         assert_eq!(r.featured, "http://192.168.1.20:6419");
+    }
+
+    #[test]
+    fn reachable_ipv6_wildcard_lists_ipv6_localhost_then_interfaces() {
+        let r = assemble_reachable_urls("::", "", 6419, &sample_hosts());
+        assert_eq!(r.all.len(), 3);
+        assert_eq!(r.all[0].label, "localhost");
+        assert_eq!(r.all[0].url, "http://[::1]:6419");
+        assert_eq!(r.all[1].url, "http://[fd00::20]:6419");
+        assert_eq!(r.all[2].url, "http://[2001:db8::5]:6419");
+        assert_eq!(r.featured, "http://[fd00::20]:6419");
     }
 
     #[test]
@@ -2588,6 +5832,14 @@ mod tests {
             assemble_reachable_urls("0.0.0.0", "172.16.9.9", 6419, &hosts).featured,
             "http://192.168.1.20:6419"
         );
+        assert_eq!(
+            assemble_reachable_urls("::", "2001:db8::5", 6419, &hosts).featured,
+            "http://[2001:db8::5]:6419"
+        );
+        assert_eq!(
+            assemble_reachable_urls("::", "[fd00::99]", 6419, &hosts).featured,
+            "http://[fd00::20]:6419"
+        );
     }
 
     #[test]
@@ -2600,7 +5852,17 @@ mod tests {
                 interface: None,
             },
             BindHostOption {
+                address: "::1".into(),
+                kind: BindHostKind::Localhost,
+                interface: None,
+            },
+            BindHostOption {
                 address: "0.0.0.0".into(),
+                kind: BindHostKind::AllInterfaces,
+                interface: None,
+            },
+            BindHostOption {
+                address: "::".into(),
                 kind: BindHostKind::AllInterfaces,
                 interface: None,
             },
@@ -2608,6 +5870,9 @@ mod tests {
         let r = assemble_reachable_urls("0.0.0.0", "", 6419, &hosts);
         assert_eq!(r.all.len(), 1);
         assert_eq!(r.featured, "http://127.0.0.1:6419");
+        let r = assemble_reachable_urls("::", "", 6419, &hosts);
+        assert_eq!(r.all.len(), 1);
+        assert_eq!(r.featured, "http://[::1]:6419");
     }
 
     #[test]
@@ -2617,6 +5882,15 @@ mod tests {
         assert_eq!(r.all.len(), 1);
         assert_eq!(r.all[0].label, "en0");
         assert_eq!(r.featured, "http://192.168.1.20:6419");
+    }
+
+    #[test]
+    fn reachable_specific_ipv6_bind_lists_bracketed_address() {
+        let r = assemble_reachable_urls("fd00::20", "", 6419, &sample_hosts());
+        assert_eq!(r.all.len(), 1);
+        assert_eq!(r.all[0].label, "en0");
+        assert_eq!(r.all[0].url, "http://[fd00::20]:6419");
+        assert_eq!(r.featured, "http://[fd00::20]:6419");
     }
 
     #[test]
@@ -2672,6 +5946,10 @@ mod tests {
             access_gated_workspace("/_/ws/abcd1234").as_deref(),
             Some("abcd1234")
         );
+        assert_eq!(
+            access_gated_workspace("/_/abcd1234/git/diff/work").as_deref(),
+            Some("abcd1234")
+        );
         assert!(access_gated_workspace("/_/css/tokens.css").is_none());
         assert!(access_gated_workspace("/_/unlock").is_none());
         assert!(access_gated_workspace("/api/preview").is_none());
@@ -2722,15 +6000,741 @@ mod tests {
         let id = add_test_workspace(&registry, dir.path().to_path_buf(), all_flags());
         let state = test_state(registry);
 
-        let response = handle_workspace_path(State(state), AxumPath((id, "README.md".to_string())))
-            .await
-            .into_response();
+        let response = handle_workspace_path(
+            State(state),
+            AxumPath((id.clone(), "README.md".to_string())),
+            None,
+        )
+        .await
+        .into_response();
         assert_eq!(response.status(), StatusCode::OK);
-        let body = response_text(response).await;
+        let body = html_escape::decode_html_entities(&response_text(response).await).to_string();
         assert!(body.contains("Windows route check"));
         assert!(body.contains("alpha beta gamma"));
         assert!(body.contains("enable-edit"));
         assert!(body.contains("enable-search"));
+        assert!(body.contains("id=\"theme-link-text\""));
+        assert!(!body.contains(&format!("/_/{id}/git/history")));
+    }
+
+    #[tokio::test]
+    async fn workspace_path_handler_loads_math_assets_when_needed() {
+        let dir = tempfile::tempdir().unwrap();
+        let file = dir.path().join("README.md");
+        fs::write(&file, "Inline $E = mc^2$.\n\n$$\na^2 + b^2 = c^2\n$$").unwrap();
+
+        let registry = Arc::new(WorkspaceRegistry::new("math-assets-test".into()));
+        let id = add_test_workspace(&registry, dir.path().to_path_buf(), all_flags());
+        let state = test_state(registry);
+
+        let response =
+            handle_workspace_path(State(state), AxumPath((id, "README.md".to_string())), None)
+                .await
+                .into_response();
+        assert_eq!(response.status(), StatusCode::OK);
+        let body = response_text(response).await;
+        assert!(body.contains("/_/js/katex/katex.min.css"), "{body}");
+        assert!(body.contains("/_/js/katex/katex.min.js"), "{body}");
+        assert!(body.contains("/_/js/math-render.js"), "{body}");
+        assert!(body.contains("data-math-display=\"true\""), "{body}");
+    }
+
+    #[tokio::test]
+    async fn collaborator_page_hides_initiator_only_features() {
+        let dir = tempfile::tempdir().unwrap();
+        fs::write(dir.path().join("README.md"), "# Role check").unwrap();
+
+        let registry = Arc::new(WorkspaceRegistry::new("role-render-test".into()));
+        let id = add_test_workspace(&registry, dir.path().to_path_buf(), all_flags());
+        let state = test_state(registry);
+
+        let response = handle_workspace_path(
+            State(state),
+            AxumPath((id, "README.md".to_string())),
+            Some(Extension(AccessRole::Collaborator)),
+        )
+        .await
+        .into_response();
+        assert_eq!(response.status(), StatusCode::OK);
+        let body = response_text(response).await;
+        assert!(body.contains(r#"meta name="access-role" content="collaborator""#));
+        assert!(body.contains(r#"meta name="enable-edit" content="false""#));
+        assert!(body.contains(r#"meta name="enable-chat" content="false""#));
+        assert!(!body.contains(r#"meta name="mgmt-token""#));
+    }
+
+    #[tokio::test]
+    async fn workspace_feature_controls_render_and_update_flags() {
+        let dir = tempfile::tempdir().unwrap();
+        fs::write(dir.path().join("README.md"), "# Feature controls").unwrap();
+
+        let registry = Arc::new(WorkspaceRegistry::new("feature-controls-test".into()));
+        let id = add_test_workspace(
+            &registry,
+            dir.path().to_path_buf(),
+            WorkspaceFlags {
+                enable_search: true,
+                enable_viewed: false,
+                enable_edit: false,
+                enable_live: false,
+                enable_chat: false,
+                shared_annotation: false,
+            },
+        );
+        let state = test_state(registry.clone());
+
+        let response = handle_workspace_root(
+            State(state.clone()),
+            AxumPath(id.clone()),
+            Some(Extension(AccessRole::Initiator)),
+        )
+        .await
+        .into_response();
+        assert_eq!(response.status(), StatusCode::OK);
+        let body = html_escape::decode_html_entities(&response_text(response).await).to_string();
+        assert!(body.contains("data-workspace-feature-form"));
+        assert!(body.contains(&format!(r#"data-update-url="/_/{id}/settings/features""#)));
+        assert!(body.contains(r#"data-feature-key="enable_search""#));
+        assert!(body.contains(r#"type="checkbox""#));
+
+        let next_flags = WorkspaceFlags {
+            enable_search: false,
+            enable_viewed: true,
+            enable_edit: true,
+            enable_live: true,
+            enable_chat: true,
+            shared_annotation: true,
+        };
+        let response = handle_workspace_update_features(
+            State(state.clone()),
+            AxumPath(id.clone()),
+            Json(UpdateWorkspaceFeaturesRequest { flags: next_flags }),
+        )
+        .await;
+        assert_eq!(response.status(), StatusCode::OK);
+        let body: serde_json::Value = serde_json::from_str(&response_text(response).await).unwrap();
+        assert_eq!(body["success"], true);
+        assert_eq!(registry.get(&id).unwrap().flags(), next_flags);
+
+        let response = handle_workspace_root(
+            State(state),
+            AxumPath(id),
+            Some(Extension(AccessRole::Collaborator)),
+        )
+        .await
+        .into_response();
+        assert_eq!(response.status(), StatusCode::OK);
+        let body = response_text(response).await;
+        assert!(body.contains(r#"data-can-edit="false""#));
+        assert!(body.contains("disabled"));
+    }
+
+    #[tokio::test]
+    async fn dist_asset_route_uses_extension_mime_type() {
+        let response = serve_js(AxumPath("katex/katex.min.css".into()))
+            .await
+            .into_response();
+        assert_eq!(response.status(), StatusCode::OK);
+        assert_eq!(
+            response.headers().get(header::CONTENT_TYPE).unwrap(),
+            "text/css"
+        );
+    }
+
+    #[test]
+    fn unified_diff_html_renders_word_highlights_and_escapes_text() {
+        let html = render_unified_diff_html(
+            "--- a.md\n+++ a.md\n@@ -1 +1 @@\n-old price <b>\n+new price <b>\n",
+        );
+
+        assert!(html.contains("git-diff-meta"));
+        assert!(html.contains("git-diff-word-del"));
+        assert!(html.contains("git-diff-word-add"));
+        assert!(html.contains("&lt;b&gt;"));
+        assert!(!html.contains("<b>"));
+    }
+
+    #[test]
+    fn pretty_compare_range_accepts_slash_refs() {
+        let (base, compare) =
+            parse_pretty_compare_range("main...feat/wasm-ref-test-backend").unwrap();
+        assert_eq!(base, "main");
+        assert_eq!(compare, "feat/wasm-ref-test-backend");
+    }
+
+    #[tokio::test]
+    async fn directory_git_diff_actions_disable_without_markdown_changes() {
+        let dir = tempfile::tempdir().unwrap();
+        fs::write(dir.path().join("a.md"), "# Notes\n").unwrap();
+        std::process::Command::new("git")
+            .arg("-C")
+            .arg(dir.path())
+            .arg("init")
+            .output()
+            .unwrap();
+        std::process::Command::new("git")
+            .arg("-C")
+            .arg(dir.path())
+            .args(["config", "user.email", "test@example.com"])
+            .output()
+            .unwrap();
+        std::process::Command::new("git")
+            .arg("-C")
+            .arg(dir.path())
+            .args(["config", "user.name", "Test User"])
+            .output()
+            .unwrap();
+        std::process::Command::new("git")
+            .arg("-C")
+            .arg(dir.path())
+            .args(["add", "."])
+            .output()
+            .unwrap();
+        std::process::Command::new("git")
+            .arg("-C")
+            .arg(dir.path())
+            .args(["commit", "-m", "initial markdown"])
+            .output()
+            .unwrap();
+        fs::write(dir.path().join("notes.txt"), "Not markdown\n").unwrap();
+        std::process::Command::new("git")
+            .arg("-C")
+            .arg(dir.path())
+            .args(["add", "."])
+            .output()
+            .unwrap();
+        std::process::Command::new("git")
+            .arg("-C")
+            .arg(dir.path())
+            .args(["commit", "-m", "txt only"])
+            .output()
+            .unwrap();
+
+        let registry = Arc::new(WorkspaceRegistry::new("git-md-actions-test".into()));
+        let id = add_test_workspace(&registry, dir.path().to_path_buf(), all_flags());
+        let state = test_state(registry);
+
+        let response = handle_workspace_root(State(state), AxumPath(id.clone()), None)
+            .await
+            .into_response();
+        assert_eq!(response.status(), StatusCode::OK);
+        let body = html_escape::decode_html_entities(&response_text(response).await).to_string();
+        assert!(body.contains("txt only"));
+        assert!(body.contains("workspace-action-disabled"));
+        assert!(!body.contains(&format!("/_/{id}/git/show/")));
+        assert!(!body.contains(&format!("/_/{id}/git/diff/work?view=rendered")));
+        assert!(!body.contains(&format!("/_/{id}/compare/")));
+        assert!(!body.contains(">Markdown diff<"));
+        assert!(body.contains(&format!("/_/{id}/git/history")));
+    }
+
+    #[tokio::test]
+    async fn git_history_and_working_diff_pages_render() {
+        let dir = tempfile::tempdir().unwrap();
+        fs::write(dir.path().join("a.md"), "# Old\n").unwrap();
+        std::process::Command::new("git")
+            .arg("-C")
+            .arg(dir.path())
+            .arg("init")
+            .output()
+            .unwrap();
+        std::process::Command::new("git")
+            .arg("-C")
+            .arg(dir.path())
+            .args(["config", "user.email", "test@example.com"])
+            .output()
+            .unwrap();
+        std::process::Command::new("git")
+            .arg("-C")
+            .arg(dir.path())
+            .args(["config", "user.name", "Test User"])
+            .output()
+            .unwrap();
+        std::process::Command::new("git")
+            .arg("-C")
+            .arg(dir.path())
+            .args(["add", "."])
+            .output()
+            .unwrap();
+        std::process::Command::new("git")
+            .arg("-C")
+            .arg(dir.path())
+            .args(["commit", "-m", "initial"])
+            .output()
+            .unwrap();
+        fs::write(dir.path().join("a.md"), "# New\n").unwrap();
+        fs::write(dir.path().join("notes.txt"), "Not markdown\n").unwrap();
+
+        let registry = Arc::new(WorkspaceRegistry::new("git-web-test".into()));
+        let id = add_test_workspace(&registry, dir.path().to_path_buf(), all_flags());
+        let state = test_state(registry);
+
+        let root = handle_workspace_root(State(state.clone()), AxumPath(id.clone()), None)
+            .await
+            .into_response();
+        assert_eq!(root.status(), StatusCode::OK);
+        let body = html_escape::decode_html_entities(&response_text(root).await).to_string();
+        assert!(body.contains("workspace-shell"));
+        assert!(body.contains("workspace-meta-panel"));
+        assert!(body.contains("workspace-side-section"));
+        assert!(body.contains("workspace-repo-toolbar"));
+        assert!(body.contains("data-go-to-file"));
+        assert!(body.contains("data-open-add-file"));
+        assert!(body.contains("data-checkout-url"));
+        assert!(body.contains(&format!("/_/{id}/git/branches")));
+        assert!(body.contains(&format!("/_/{id}/git/tags")));
+        assert!(body.contains(&format!("/_/{id}/files/data")));
+        assert!(body.contains(&format!("/_/{id}/files/create")));
+        assert!(body.contains("workspace-commit-header"));
+        assert!(body.contains("workspace-commits-link"));
+        assert!(body.contains("workspace-entry-commit"));
+        assert!(body.contains("data-copy-text"));
+        assert!(body.contains("Workspace changes"));
+        assert!(body.contains("initial"));
+        assert!(body.contains("1 Commits"));
+        assert!(!body.contains("workspace-topbar"));
+        assert!(!body.contains("workspace-side-card"));
+        assert!(!body.contains("workspace-tabs"));
+        assert!(!body.contains("data-inline-diff"));
+        assert!(body.contains(&format!("/_/{id}/compare/")));
+        assert!(body.contains("?view=rendered"));
+        assert!(body.contains(&format!("/_/{id}/compare/HEAD...worktree?view=rendered")));
+        assert!(!body.contains(&format!("/_/{id}/git/show/")));
+        assert!(!body.contains(&format!("/_/{id}/git/diff/work?view=rendered")));
+        assert!(!body.contains(">Markdown diff<"));
+        assert!(!body.contains("Snapshot"));
+
+        let diff = handle_git_working_diff(
+            State(state.clone()),
+            AxumPath(id.clone()),
+            Query(GitViewQuery {
+                view: None,
+                f: None,
+            }),
+            None,
+        )
+        .await
+        .into_response();
+        assert_eq!(diff.status(), StatusCode::OK);
+        let body = html_escape::decode_html_entities(&response_text(diff).await).to_string();
+        assert!(body.contains("Comparing changes"));
+        assert!(body.contains("git-diff-sidebar"));
+        assert!(body.contains("git-source-diff-pane"));
+        assert!(body.contains("data-diff-filter"));
+        assert!(body.contains("data-diff-file-list"));
+        assert!(body.contains("Comparing changes"));
+        assert!(body.contains(">Base<"));
+        assert!(body.contains(">Compare<"));
+        assert!(!body.contains("data-md-engine-status"));
+        assert!(!body.contains("git-diff-compare-submit"));
+        assert!(body.contains("data-compare-options-status-url"));
+        assert!(body.contains("a.md"));
+        assert!(!body.contains("notes.txt"));
+        assert!(body.contains("data-virtual-diff"));
+        assert!(body.contains("data-current-diff-view=\"raw\""));
+        assert!(body.contains("git-diff-view-seg"));
+        assert!(body.contains("data-diff-view-seg"));
+        assert!(body.contains("data-markdown-diff"));
+        assert!(body.contains("data-md-diff-content"));
+        assert!(!body.contains("data-md-old-content"));
+        assert!(!body.contains("data-md-new-content"));
+        assert!(!body.contains("data-markon-interactive-body"));
+        assert!(!body.contains("/_/js/main.js"));
+        assert!(body.contains("/_/js/workspace-diff.js"));
+        assert!(body.contains("/_/js/markdown-diff.js"));
+        // Both views consume one unified Markdown block payload (view=rendered).
+        assert!(!body.contains(&format!(
+            "/_/{id}/compare/HEAD...worktree?view=raw&format=data"
+        )));
+        assert!(body.contains(&format!("/_/{id}/compare/HEAD...worktree?view=rendered")));
+        assert!(!body.contains("md-diff-shell"));
+        assert!(!body.contains("html_diff"));
+
+        let compare = handle_pretty_compare_diff(
+            State(state.clone()),
+            AxumPath((id.clone(), "HEAD...worktree".to_string())),
+            Query(PrettyCompareQuery {
+                view: None,
+                format: None,
+                f: None,
+            }),
+            None,
+        )
+        .await
+        .into_response();
+        assert_eq!(compare.status(), StatusCode::OK);
+        let body = html_escape::decode_html_entities(&response_text(compare).await).to_string();
+        assert!(body.contains(&format!("/_/{id}/compare/HEAD...worktree?view=raw")));
+        assert!(body.contains(r#"name="base""#));
+        assert!(body.contains(r#"name="compare""#));
+        assert!(body.contains("Worktree"));
+
+        let compare_data = handle_pretty_compare_diff(
+            State(state.clone()),
+            AxumPath((id.clone(), "HEAD...worktree".to_string())),
+            Query(PrettyCompareQuery {
+                view: Some("raw".to_string()),
+                format: Some("data".to_string()),
+                f: None,
+            }),
+            None,
+        )
+        .await
+        .into_response();
+        assert_eq!(compare_data.status(), StatusCode::OK);
+        let body = response_text(compare_data).await;
+        assert!(body.contains("\"range\":\"HEAD..worktree\""));
+        assert!(body.contains("\"path\":\"a.md\""));
+        assert!(!body.contains("notes.txt"));
+
+        let diff_data = handle_git_working_diff_data(
+            State(state.clone()),
+            AxumPath(id.clone()),
+            Query(GitViewQuery {
+                view: None,
+                f: None,
+            }),
+        )
+        .await
+        .into_response();
+        assert_eq!(diff_data.status(), StatusCode::OK);
+        let body = response_text(diff_data).await;
+        assert!(body.contains("\"title\":\"Working tree diff\""));
+        assert!(body.contains("\"path\":\"a.md\""));
+        assert!(!body.contains("notes.txt"));
+        assert!(body.contains("\"rows\""));
+        assert!(body.contains("git-diff-add"));
+        let diff_json: serde_json::Value = serde_json::from_str(&body).unwrap();
+        let split_line = diff_json["rows"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|row| {
+                row["kind"] == "line"
+                    && row
+                        .get("old_class_name")
+                        .is_some_and(|class| class.as_str().unwrap_or("").contains("git-diff-del"))
+            })
+            .unwrap();
+        assert!(split_line.get("old_line_no").is_some());
+        assert!(split_line.get("new_line_no").is_some());
+        assert!(split_line.get("old_segments").is_some());
+        assert!(split_line.get("new_segments").is_some());
+        assert!(!body.contains("html_diff"));
+
+        let filtered_diff_data = handle_git_working_diff_data(
+            State(state.clone()),
+            AxumPath(id.clone()),
+            Query(GitViewQuery {
+                view: None,
+                f: Some("missing.md".to_string()),
+            }),
+        )
+        .await
+        .into_response();
+        assert_eq!(filtered_diff_data.status(), StatusCode::OK);
+        let body = response_text(filtered_diff_data).await;
+        assert!(body.contains(r#""files":[]"#));
+        assert!(!body.contains("\"path\":\"a.md\""));
+
+        let markdown_diff = handle_git_working_diff(
+            State(state.clone()),
+            AxumPath(id.clone()),
+            Query(GitViewQuery {
+                view: Some("rendered".to_string()),
+                f: None,
+            }),
+            Some(Extension(AccessRole::Initiator)),
+        )
+        .await
+        .into_response();
+        assert_eq!(markdown_diff.status(), StatusCode::OK);
+        let body =
+            html_escape::decode_html_entities(&response_text(markdown_diff).await).to_string();
+        // The page no longer carries a synthetic `__markon_diff__` annotation key;
+        // each file binds to its own canonical `abs_path`, and the page advertises
+        // whether this is an annotatable worktree diff.
+        assert!(!body.contains("__markon_diff__"));
+        assert!(!body.contains(r#"name="file-path""#));
+        assert!(body.contains(r#"name="is-worktree-diff" content="true""#));
+        assert!(body.contains(r#"name="shared-annotation" content="true""#));
+        assert!(body.contains(r#"name="enable-edit" content="false""#));
+        assert!(body.contains("git-diff-page"));
+        assert!(body.contains("git-diff-sidebar"));
+        assert!(body.contains("git-diff-view-seg"));
+        assert!(body.contains("data-markdown-diff"));
+        assert!(body.contains("data-md-diff-content"));
+        // Rendered diff now defaults to the all-files continuous view (empty
+        // default path); the file list focuses a single file on demand.
+        assert!(body.contains(r#"data-default-diff-path="""#));
+        assert!(!body.contains("data-md-old-content"));
+        assert!(!body.contains("data-md-new-content"));
+        assert!(!body.contains("data-markon-interactive-body"));
+        assert!(body.contains(r#"name="view" value="rendered""#));
+        assert!(body.contains("/_/css/editor.css"));
+        assert!(!body.contains("/_/js/main.js"));
+        assert!(body.contains("/_/js/markdown-diff.js"));
+        assert!(body.contains(&format!(
+            "/_/{id}/compare/HEAD...worktree?view=rendered&format=data"
+        )));
+        assert!(!body.contains("markdown-diff/data/work"));
+        assert!(!body.contains("md-diff-shell"));
+        assert!(!body.contains("md-diff-source"));
+        assert!(!body.contains("Open source diff"));
+
+        let markdown_work_data = handle_git_working_diff_data(
+            State(state.clone()),
+            AxumPath(id.clone()),
+            Query(GitViewQuery {
+                view: Some("rendered".to_string()),
+                f: None,
+            }),
+        )
+        .await
+        .into_response();
+        assert_eq!(markdown_work_data.status(), StatusCode::OK);
+        let body = response_text(markdown_work_data).await;
+        assert!(body.contains("\"title\":\"Compare HEAD and worktree\""));
+        assert!(body.contains("\"path\":\"a.md\""));
+
+        let filtered_markdown_work_data = handle_git_working_diff_data(
+            State(state.clone()),
+            AxumPath(id.clone()),
+            Query(GitViewQuery {
+                view: Some("rendered".to_string()),
+                f: Some("missing.md".to_string()),
+            }),
+        )
+        .await
+        .into_response();
+        assert_eq!(filtered_markdown_work_data.status(), StatusCode::OK);
+        let body = response_text(filtered_markdown_work_data).await;
+        assert!(body.contains(r#""files":[]"#));
+        assert!(!body.contains("\"path\":\"a.md\""));
+
+        let markdown_compare = handle_pretty_compare_diff(
+            State(state.clone()),
+            AxumPath((id.clone(), "HEAD...worktree".to_string())),
+            Query(PrettyCompareQuery {
+                view: Some("rendered".to_string()),
+                format: None,
+                f: None,
+            }),
+            Some(Extension(AccessRole::Initiator)),
+        )
+        .await
+        .into_response();
+        assert_eq!(markdown_compare.status(), StatusCode::OK);
+        let body =
+            html_escape::decode_html_entities(&response_text(markdown_compare).await).to_string();
+        assert!(body.contains(&format!("/_/{id}/compare/HEAD...worktree?view=rendered")));
+        assert!(body.contains(r#"name="view" value="rendered""#));
+        assert!(!body.contains(&format!("/_/{id}/git/diff/work")));
+
+        let markdown_compare_data = handle_pretty_compare_diff(
+            State(state.clone()),
+            AxumPath((id.clone(), "HEAD...worktree".to_string())),
+            Query(PrettyCompareQuery {
+                view: Some("rendered".to_string()),
+                format: Some("data".to_string()),
+                f: None,
+            }),
+            None,
+        )
+        .await
+        .into_response();
+        assert_eq!(markdown_compare_data.status(), StatusCode::OK);
+        let body = response_text(markdown_compare_data).await;
+        assert!(body.contains("\"title\":\"Compare HEAD and worktree\""));
+        assert!(body.contains("\"path\":\"a.md\""));
+
+        let history = handle_git_history(State(state.clone()), AxumPath(id.clone()))
+            .await
+            .into_response();
+        assert_eq!(history.status(), StatusCode::OK);
+        let body = html_escape::decode_html_entities(&response_text(history).await).to_string();
+        assert!(body.contains("Git History"));
+        assert!(body.contains("initial"));
+        assert!(body.contains(&format!("/_/{id}/compare/")));
+        assert!(body.contains(&format!("/_/{id}/compare/HEAD...worktree?view=rendered")));
+        assert!(!body.contains(&format!("/_/{id}/git/show/")));
+        assert!(!body.contains(&format!("/_/{id}/git/diff/work")));
+
+        let history_data = handle_git_history_data(State(state.clone()), AxumPath(id.clone()))
+            .await
+            .into_response();
+        assert_eq!(history_data.status(), StatusCode::OK);
+        let body = response_text(history_data).await;
+        assert!(body.contains("\"subject\":\"initial\""));
+
+        let branches = handle_git_branches(State(state.clone()), AxumPath(id.clone()))
+            .await
+            .into_response();
+        assert_eq!(branches.status(), StatusCode::OK);
+        let body = response_text(branches).await;
+        assert!(body.contains("refs-title"));
+        assert!(body.contains("web.ws.git.branches"));
+
+        let tags = handle_git_tags(State(state), AxumPath(id.clone()))
+            .await
+            .into_response();
+        assert_eq!(tags.status(), StatusCode::OK);
+        let body = response_text(tags).await;
+        assert!(body.contains("refs-title"));
+        assert!(body.contains("web.ws.git.tags"));
+    }
+
+    #[test]
+    fn rendered_markdown_diff_cache_hits_and_invalidates_worktree_content() {
+        let dir = tempfile::tempdir().unwrap();
+        fs::write(dir.path().join("a.md"), "# Title\n\nOld body\n").unwrap();
+        std::process::Command::new("git")
+            .arg("-C")
+            .arg(dir.path())
+            .arg("init")
+            .output()
+            .unwrap();
+        std::process::Command::new("git")
+            .arg("-C")
+            .arg(dir.path())
+            .args(["config", "user.email", "test@example.com"])
+            .output()
+            .unwrap();
+        std::process::Command::new("git")
+            .arg("-C")
+            .arg(dir.path())
+            .args(["config", "user.name", "Test User"])
+            .output()
+            .unwrap();
+        std::process::Command::new("git")
+            .arg("-C")
+            .arg(dir.path())
+            .args(["add", "."])
+            .output()
+            .unwrap();
+        std::process::Command::new("git")
+            .arg("-C")
+            .arg(dir.path())
+            .args(["commit", "-m", "initial"])
+            .output()
+            .unwrap();
+        fs::write(dir.path().join("a.md"), "# Title\n\nNew body\n").unwrap();
+
+        let registry = Arc::new(WorkspaceRegistry::new("git-cache-test".into()));
+        let state = test_state(registry);
+
+        let first =
+            markdown_compare_diff_data(&state, dir.path(), "HEAD", "worktree", Some("a.md"))
+                .unwrap();
+        assert_eq!(first.files.len(), 1);
+        // `abs_path` is the per-file annotation key. It must be byte-identical to
+        // the canonical path `render_markdown_file` derives for the same file
+        // opened normally (worktree-root join + dunce canonicalize).
+        let expected_abs = canonicalize_route_path(&dir.path().join("a.md"))
+            .unwrap()
+            .to_string_lossy()
+            .into_owned();
+        assert_eq!(first.files[0].abs_path, expected_abs);
+        assert!(serde_json::to_string(&first).unwrap().contains("New body"));
+        let first_stats = state.markdown_diff_cache.lock().unwrap().stats();
+        assert_eq!(first_stats.file_hits, 0);
+        assert_eq!(first_stats.file_misses, 1);
+        assert_eq!(first_stats.document_hits, 0);
+        assert_eq!(first_stats.document_misses, 2);
+        assert_eq!(first_stats.document_entries, 2);
+        assert_eq!(first_stats.file_entries, 1);
+
+        let second =
+            markdown_compare_diff_data(&state, dir.path(), "HEAD", "worktree", Some("a.md"))
+                .unwrap();
+        assert_eq!(second.files.len(), 1);
+        let second_stats = state.markdown_diff_cache.lock().unwrap().stats();
+        assert_eq!(second_stats.file_hits, 1);
+        assert_eq!(second_stats.file_misses, 1);
+        assert_eq!(second_stats.document_hits, 0);
+        assert_eq!(second_stats.document_misses, 2);
+
+        fs::write(dir.path().join("a.md"), "# Title\n\nNewest body\n").unwrap();
+        let third =
+            markdown_compare_diff_data(&state, dir.path(), "HEAD", "worktree", Some("a.md"))
+                .unwrap();
+        let third_json = serde_json::to_string(&third).unwrap();
+        assert!(third_json.contains("Newest body"));
+        assert!(!third_json.contains("New body\\n"));
+        let third_stats = state.markdown_diff_cache.lock().unwrap().stats();
+        assert_eq!(third_stats.file_hits, 1);
+        assert_eq!(third_stats.file_misses, 2);
+        assert_eq!(third_stats.document_hits, 1);
+        assert_eq!(third_stats.document_misses, 3);
+        assert_eq!(third_stats.document_entries, 3);
+        assert_eq!(third_stats.file_entries, 2);
+    }
+
+    // Regression for finding F / §10.4: when the workspace is a *subdirectory* of
+    // the git repo, the per-file `abs_path` (the annotation key) must still be
+    // byte-identical to the canonical path the normal file view derives — i.e.
+    // `canonicalize(ws_root.join(rel))` — for BOTH a tracked modified file and an
+    // untracked new file. Before `git diff --relative`, the two enumeration
+    // sources carried different path bases (tracked: repo-root-relative; untracked:
+    // workspace-relative), so the untracked file's key landed under the repo root
+    // instead of the workspace, diverging from the normal view.
+    #[test]
+    fn rendered_markdown_diff_abs_path_matches_normal_view_in_repo_subdir() {
+        let repo = tempfile::tempdir().unwrap();
+        let git_init = |args: &[&str]| {
+            std::process::Command::new("git")
+                .arg("-C")
+                .arg(repo.path())
+                .args(args)
+                .output()
+                .unwrap();
+        };
+        // Workspace is a subdirectory of the repo: repo/docs.
+        let ws_root = repo.path().join("docs");
+        fs::create_dir_all(&ws_root).unwrap();
+        // A tracked file that we will modify (exists on both sides).
+        fs::write(ws_root.join("tracked.md"), "# Title\n\nOld body\n").unwrap();
+        git_init(&["init"]);
+        git_init(&["config", "user.email", "test@example.com"]);
+        git_init(&["config", "user.name", "Test User"]);
+        git_init(&["add", "."]);
+        git_init(&["commit", "-m", "initial"]);
+        // Tracked-modified new side + a brand new untracked file, both in the subdir.
+        fs::write(ws_root.join("tracked.md"), "# Title\n\nNew body\n").unwrap();
+        fs::write(ws_root.join("untracked.md"), "# Fresh\n\nBrand new\n").unwrap();
+
+        let registry = Arc::new(WorkspaceRegistry::new("subdir-abs-test".into()));
+        let state = test_state(registry);
+
+        // Pass the SUBDIRECTORY as the workspace root, exactly as the route would.
+        let data =
+            markdown_compare_diff_data(&state, &ws_root, "HEAD", "worktree", None).unwrap();
+        assert_eq!(data.files.len(), 2, "expected tracked + untracked file");
+
+        for rel in ["tracked.md", "untracked.md"] {
+            let file = data
+                .files
+                .iter()
+                .find(|f| f.path == rel)
+                .unwrap_or_else(|| panic!("missing diff entry for {rel}; got {:?}",
+                    data.files.iter().map(|f| f.path.clone()).collect::<Vec<_>>()));
+            // The normal file-view annotation key: canonicalize(ws_root.join(rel)).
+            let expected = canonicalize_route_path(&ws_root.join(rel))
+                .unwrap()
+                .to_string_lossy()
+                .into_owned();
+            assert_eq!(
+                file.abs_path, expected,
+                "abs_path for {rel} must match the normal-view key byte-for-byte"
+            );
+        }
+
+        // The tracked file's NEW side must have actually loaded (Defect 3): in a
+        // subdir workspace the old code read `root.join(repo_relative_path)` and
+        // failed, yielding an empty new side. Assert the new content is present.
+        let json = serde_json::to_string(&data).unwrap();
+        assert!(json.contains("New body"), "tracked new side must load in a subdir workspace");
+        assert!(json.contains("Brand new"), "untracked new side must load");
     }
 
     #[tokio::test]
@@ -2749,7 +6753,7 @@ mod tests {
         let outside_name = outside.path().file_name().unwrap().to_string_lossy();
         let route = format!("../{outside_name}");
 
-        let response = handle_workspace_path(State(state), AxumPath((id, route)))
+        let response = handle_workspace_path(State(state), AxumPath((id, route)), None)
             .await
             .into_response();
         assert_eq!(response.status(), StatusCode::FORBIDDEN);
@@ -2761,7 +6765,8 @@ mod tests {
         let sub = dir.path().join("sub");
         fs::create_dir(&sub).unwrap();
         fs::write(sub.join("README.md"), "# nested").unwrap();
-        fs::write(sub.join("notes.txt"), "not listed").unwrap();
+        fs::write(sub.join("notes.txt"), "listed in all-files mode").unwrap();
+        fs::write(sub.join(".env"), "hidden but listed in all-files mode").unwrap();
 
         let registry = Arc::new(WorkspaceRegistry::new("listing-test".into()));
         let id = add_test_workspace(
@@ -2771,14 +6776,19 @@ mod tests {
         );
         let state = test_state(registry);
 
-        let response = handle_workspace_path(State(state), AxumPath((id.clone(), "sub/".into())))
-            .await
-            .into_response();
+        let response =
+            handle_workspace_path(State(state), AxumPath((id.clone(), "sub/".into())), None)
+                .await
+                .into_response();
         assert_eq!(response.status(), StatusCode::OK);
         let body = html_escape::decode_html_entities(&response_text(response).await).to_string();
         assert!(body.contains(&format!("/{id}/sub/README.md")));
+        assert!(body.contains(&format!("/{id}/sub/notes.txt")));
+        assert!(body.contains(&format!("/{id}/sub/.env")));
+        assert!(body.contains("data-file-filter=\"markdown\""));
+        assert!(body.contains("data-filter-visible-markdown=\"false\""));
         assert!(body.contains(&format!("/{id}/")));
-        assert!(!body.contains("notes.txt"));
+        assert!(!body.contains(&format!("/_/{id}/git/history")));
     }
 
     #[tokio::test]
@@ -2803,7 +6813,7 @@ mod tests {
             file_path: "README.md".into(),
             content: "# relative save".into(),
         };
-        let response = save_file_handler(State(state.clone()), Json(relative))
+        let response = save_file_handler(State(state.clone()), HeaderMap::new(), Json(relative))
             .await
             .into_response();
         assert_eq!(response.status(), StatusCode::OK);
@@ -2816,7 +6826,7 @@ mod tests {
             file_path: file.to_string_lossy().to_string(),
             content: "# absolute save".into(),
         };
-        let response = save_file_handler(State(state), Json(absolute))
+        let response = save_file_handler(State(state), HeaderMap::new(), Json(absolute))
             .await
             .into_response();
         assert_eq!(response.status(), StatusCode::OK);
@@ -2847,7 +6857,7 @@ mod tests {
             file_path: outside.path().to_string_lossy().to_string(),
             content: "# should not write".into(),
         };
-        let response = save_file_handler(State(state), Json(request))
+        let response = save_file_handler(State(state), HeaderMap::new(), Json(request))
             .await
             .into_response();
         assert_eq!(response.status(), StatusCode::OK);
@@ -2855,6 +6865,98 @@ mod tests {
         assert_eq!(body["success"], false);
         assert_eq!(body["message"], "Access denied");
         assert_eq!(fs::read_to_string(outside.path()).unwrap(), "# outside");
+    }
+
+    #[tokio::test]
+    async fn workspace_create_file_creates_inside_workspace_and_rejects_traversal() {
+        let dir = tempfile::tempdir().unwrap();
+        let registry = Arc::new(WorkspaceRegistry::new("create-file-test".into()));
+        let id = add_test_workspace(
+            &registry,
+            dir.path().to_path_buf(),
+            WorkspaceFlags {
+                enable_edit: true,
+                ..WorkspaceFlags::default()
+            },
+        );
+        let state = test_state(registry);
+
+        let request = CreateFileRequest {
+            path: "docs/new-note.md".into(),
+            content: Some("# New note\n".into()),
+        };
+        let response =
+            handle_workspace_create_file(State(state.clone()), AxumPath(id.clone()), Json(request))
+                .await
+                .into_response();
+        assert_eq!(response.status(), StatusCode::OK);
+        let body: serde_json::Value = serde_json::from_str(&response_text(response).await).unwrap();
+        assert_eq!(body["success"], true);
+        assert_eq!(
+            fs::read_to_string(dir.path().join("docs/new-note.md")).unwrap(),
+            "# New note\n"
+        );
+
+        let request = CreateFileRequest {
+            path: "../outside.md".into(),
+            content: Some("# outside".into()),
+        };
+        let response = handle_workspace_create_file(State(state), AxumPath(id), Json(request))
+            .await
+            .into_response();
+        assert_eq!(response.status(), StatusCode::OK);
+        let body: serde_json::Value = serde_json::from_str(&response_text(response).await).unwrap();
+        assert_eq!(body["success"], false);
+        assert_eq!(body["message"], "Invalid file path");
+        assert!(!dir.path().join("../outside.md").exists());
+    }
+
+    #[tokio::test]
+    async fn collaborator_cookie_cannot_save_even_when_edit_is_enabled() {
+        let dir = tempfile::tempdir().unwrap();
+        let file = dir.path().join("README.md");
+        fs::write(&file, "# before").unwrap();
+
+        let salt = "test-salt";
+        let initiator_hash = crate::workspace::hash_access_code(salt, "owner-code");
+        let collaborator_hash = crate::workspace::hash_access_code(salt, "guest-code");
+        let registry = Arc::new(WorkspaceRegistry::new(salt.into()));
+        let id = registry.add(WorkspaceConfig {
+            path: dunce::canonicalize(dir.path()).unwrap(),
+            flags: WorkspaceFlags {
+                enable_edit: true,
+                ..WorkspaceFlags::default()
+            },
+            single_file: None,
+            access_code_hash: initiator_hash,
+            collaborator_access_code_hash: collaborator_hash.clone(),
+        });
+        let state = test_state(registry);
+
+        let cookie = make_access_cookie(
+            salt,
+            &[(format!("w:{id}:collaborator"), collaborator_hash)],
+            access_now_unix() + 100,
+        );
+        let mut headers = HeaderMap::new();
+        headers.insert(
+            header::COOKIE,
+            axum::http::HeaderValue::from_str(cookie.split(';').next().unwrap()).unwrap(),
+        );
+
+        let request = SaveFileRequest {
+            workspace_id: id,
+            file_path: "README.md".into(),
+            content: "# after".into(),
+        };
+        let response = save_file_handler(State(state), headers, Json(request))
+            .await
+            .into_response();
+        assert_eq!(response.status(), StatusCode::OK);
+        let body: serde_json::Value = serde_json::from_str(&response_text(response).await).unwrap();
+        assert_eq!(body["success"], false);
+        assert_eq!(body["message"], "Access denied");
+        assert_eq!(fs::read_to_string(&file).unwrap(), "# before");
     }
 
     #[tokio::test]
@@ -2870,10 +6972,11 @@ mod tests {
             flags: WorkspaceFlags::default(),
             single_file: Some("opened.md".into()),
             access_code_hash: String::new(),
+            collaborator_access_code_hash: String::new(),
         });
         let state = test_state(registry);
 
-        let root = handle_workspace_root(State(state.clone()), AxumPath(id.clone()))
+        let root = handle_workspace_root(State(state.clone()), AxumPath(id.clone()), None)
             .await
             .into_response();
         assert_eq!(root.status(), StatusCode::SEE_OTHER);
@@ -2885,6 +6988,7 @@ mod tests {
         let opened = handle_workspace_path(
             State(state.clone()),
             AxumPath((id.clone(), "opened.md".into())),
+            None,
         )
         .await
         .into_response();
@@ -2893,14 +6997,16 @@ mod tests {
         let asset = handle_workspace_path(
             State(state.clone()),
             AxumPath((id.clone(), "pic.png".into())),
+            None,
         )
         .await
         .into_response();
         assert_eq!(asset.status(), StatusCode::OK);
 
-        let sibling = handle_workspace_path(State(state), AxumPath((id, "sibling.md".into())))
-            .await
-            .into_response();
+        let sibling =
+            handle_workspace_path(State(state), AxumPath((id, "sibling.md".into())), None)
+                .await
+                .into_response();
         assert_eq!(sibling.status(), StatusCode::NOT_FOUND);
     }
 }

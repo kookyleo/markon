@@ -1,0 +1,166 @@
+<!DOCTYPE html>
+<html lang="en" dir="auto" data-theme="{{ theme }}" data-theme-default="{{ theme }}">
+<head>
+    {% include "theme-boot.html" %}
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{ title }}</title>
+    <link rel="stylesheet" href="/_/css/tokens.css">
+    <style>
+        body {
+            margin: 0;
+            background: var(--markon-bg-default);
+            color: var(--markon-fg-default);
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+            line-height: 1.5;
+        }
+        a,
+        a:visited {
+            color: var(--markon-accent);
+            text-decoration: none;
+        }
+        a:hover {
+            text-decoration: underline;
+        }
+        .git-page {
+            max-width: 980px;
+            margin: 0 auto;
+            padding: 32px 20px 48px;
+        }
+        .git-header {
+            display: flex;
+            align-items: flex-start;
+            justify-content: space-between;
+            gap: 16px;
+            padding-bottom: 16px;
+            border-bottom: 1px solid var(--markon-border-default);
+        }
+        .git-title {
+            margin: 0;
+            font-size: 28px;
+            line-height: 1.2;
+        }
+        .git-actions,
+        .git-row-actions {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+        }
+        .git-button {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            min-height: 32px;
+            padding: 6px 10px;
+            border: 1px solid var(--markon-border-default);
+            border-radius: var(--markon-radius-sm);
+            background: var(--markon-bg-default);
+            color: var(--markon-fg-default) !important;
+            font-size: 13px;
+        }
+        .git-button.primary {
+            border-color: var(--markon-accent);
+            background: var(--markon-accent);
+            color: var(--markon-fg-on-emphasis) !important;
+        }
+        .git-button.is-disabled {
+            border-color: var(--markon-border-default);
+            background: var(--markon-bg-muted);
+            color: var(--markon-fg-muted) !important;
+            cursor: default;
+            opacity: 0.75;
+        }
+        .git-list {
+            margin-top: 18px;
+            border: 1px solid var(--markon-border-default);
+            border-radius: var(--markon-radius-lg);
+            overflow: hidden;
+        }
+        .git-row {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 14px;
+            padding: 12px 14px;
+            background: var(--markon-bg-default);
+        }
+        .git-row + .git-row {
+            border-top: 1px solid var(--markon-border-default);
+        }
+        .git-subject {
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+            font-size: 14px;
+            font-weight: 600;
+        }
+        .git-meta,
+        .git-empty {
+            color: var(--markon-fg-muted);
+            font-size: 13px;
+        }
+        .git-mono {
+            font-family: 'SF Mono', Monaco, 'Cascadia Code', 'Roboto Mono', Consolas, monospace;
+            font-size: 12px;
+        }
+        .git-empty {
+            margin-top: 18px;
+            padding: 16px;
+            border: 1px solid var(--markon-border-default);
+            border-radius: var(--markon-radius-lg);
+            background: var(--markon-bg-muted);
+        }
+        @media (max-width: 720px) {
+            .git-header,
+            .git-row {
+                flex-direction: column;
+                align-items: stretch;
+            }
+            .git-button {
+                width: 100%;
+            }
+        }
+    </style>
+    {% include "i18n-boot.html" %}
+</head>
+<body>
+    <main class="git-page">
+        <header class="git-header">
+            <div>
+                <h1 class="git-title">Git History</h1>
+                <div class="git-meta">{{ commits | length }} commits</div>
+            </div>
+            <nav class="git-actions" aria-label="Git actions">
+                <a class="git-button" href="{{ files_url }}">Files</a>
+                {% if work_diff_url %}
+                <a class="git-button primary" href="{{ work_diff_url }}">Working diff</a>
+                {% else %}
+                <span class="git-button primary is-disabled">Working diff</span>
+                {% endif %}
+            </nav>
+        </header>
+
+        {% if has_commits %}
+        <section class="git-list">
+            {% for commit in commits %}
+            <article class="git-row">
+                <div>
+                    <div class="git-subject">{{ commit.subject }}</div>
+                    <div class="git-meta"><span class="git-mono">{{ commit.short_hash }}</span> · {{ commit.author }} · {{ commit.date }}</div>
+                </div>
+                <div class="git-row-actions">
+                    {% if commit.diff_url %}
+                    <a class="git-button" href="{{ commit.diff_url }}">Show diff</a>
+                    {% else %}
+                    <span class="git-button is-disabled">Show diff</span>
+                    {% endif %}
+                </div>
+            </article>
+            {% endfor %}
+        </section>
+        {% else %}
+        <section class="git-empty">No commits in this workspace yet.</section>
+        {% endif %}
+    </main>
+</body>
+</html>

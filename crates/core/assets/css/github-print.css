@@ -77,8 +77,8 @@
 
   /* Remove dark backgrounds inside diagrams/content */
   .markdown-body,
-  .mermaid,
-  .mermaid svg {
+  .markon-diagram,
+  .markon-diagram svg {
     background: transparent !important;
   }
 
@@ -450,17 +450,17 @@
     widows: 3 !important;
   }
 
-  /* ========== MERMAID DIAGRAMS ========== */
-  /* Mermaid diagrams - move border to inner graphic to avoid border-only pages */
-  .mermaid {
+  /* ========== DIAGRAMS ========== */
+  /* Rendered diagrams - move border to inner graphic to avoid border-only pages */
+  .markon-diagram {
     page-break-inside: auto !important;
     border: none !important;
     padding: 0 !important;
     margin: 8pt 0 !important;
     overflow: visible !important;
   }
-  .mermaid svg,
-  .mermaid img {
+  .markon-diagram svg,
+  .markon-diagram img {
     display: block !important;
     width: 100% !important;
     height: auto !important;
@@ -472,126 +472,126 @@
     border: none !important;
   }
   /* Reduce gap between heading and first diagram to help fit on current page */
-  .markdown-body h1 + .mermaid,
-  .markdown-body h2 + .mermaid,
-  .markdown-body h3 + .mermaid {
+  .markdown-body h1 + .markon-diagram,
+  .markdown-body h2 + .markon-diagram,
+  .markdown-body h3 + .markon-diagram {
     margin-top: 6pt !important;
   }
 
-  /* Force light theme colors for Mermaid diagrams in print mode */
+  /* Force light theme colors for Rendered diagrams in print mode */
   /* Override dark theme backgrounds and colors */
-  .mermaid svg * {
+  .markon-diagram svg * {
     /* Remove all dark backgrounds from SVG elements */
     background: transparent !important;
   }
 
-  /* Mermaid diagram elements - force light theme colors */
-  .mermaid svg rect,
-  .mermaid svg circle,
-  .mermaid svg ellipse,
-  .mermaid svg polygon,
-  .mermaid svg path {
+  /* Rendered diagram elements - force light theme colors */
+  .markon-diagram svg rect,
+  .markon-diagram svg circle,
+  .markon-diagram svg ellipse,
+  .markon-diagram svg polygon,
+  .markon-diagram svg path {
     /* Remove dark fills, preserve stroke for visibility */
     fill: #ffffff !important;
   }
 
   /* Preserve stroke colors but ensure they're visible on white */
-  .mermaid svg .node rect,
-  .mermaid svg .node circle,
-  .mermaid svg .node ellipse,
-  .mermaid svg .node polygon {
+  .markon-diagram svg .node rect,
+  .markon-diagram svg .node circle,
+  .markon-diagram svg .node ellipse,
+  .markon-diagram svg .node polygon {
     stroke: #333333 !important;
     stroke-width: 1.5px !important;
   }
 
   /* Edge paths and arrows */
-  .mermaid svg .edgePath path,
-  .mermaid svg .flowchart-link {
+  .markon-diagram svg .edgePath path,
+  .markon-diagram svg .flowchart-link {
     stroke: #333333 !important;
     fill: none !important;
   }
 
-  .mermaid svg marker path {
+  .markon-diagram svg marker path {
     fill: #333333 !important;
     stroke: #333333 !important;
   }
 
   /* Text labels - ensure dark text on white background */
-  .mermaid svg text,
-  .mermaid svg .nodeLabel,
-  .mermaid svg .edgeLabel,
-  .mermaid svg .label {
+  .markon-diagram svg text,
+  .markon-diagram svg .nodeLabel,
+  .markon-diagram svg .edgeLabel,
+  .markon-diagram svg .label {
     fill: #000000 !important;
     color: #000000 !important;
   }
 
   /* Label backgrounds */
-  .mermaid svg .labelBkg,
-  .mermaid svg .edgeLabel rect {
+  .markon-diagram svg .labelBkg,
+  .markon-diagram svg .edgeLabel rect {
     fill: #ffffff !important;
     stroke: #cccccc !important;
   }
 
   /* Cluster/subgraph backgrounds */
-  .mermaid svg .cluster rect,
-  .mermaid svg g.cluster polygon {
+  .markon-diagram svg .cluster rect,
+  .markon-diagram svg g.cluster polygon {
     fill: #f9f9f9 !important;
     stroke: #666666 !important;
   }
 
   /* Note boxes and special elements */
-  .mermaid svg .note rect,
-  .mermaid svg .noteText {
+  .markon-diagram svg .note rect,
+  .markon-diagram svg .noteText {
     fill: #fffbea !important;
     stroke: #666666 !important;
   }
 
   /* State diagram specific */
-  .mermaid svg .statediagram-state rect {
+  .markon-diagram svg .statediagram-state rect {
     fill: #ffffff !important;
     stroke: #333333 !important;
   }
 
   /* Sequence diagram specific */
-  .mermaid svg .actor {
+  .markon-diagram svg .actor {
     fill: #ffffff !important;
     stroke: #333333 !important;
   }
 
-  .mermaid svg .actor-line {
+  .markon-diagram svg .actor-line {
     stroke: #666666 !important;
   }
 
-  .mermaid svg .messageLine0,
-  .mermaid svg .messageLine1 {
+  .markon-diagram svg .messageLine0,
+  .markon-diagram svg .messageLine1 {
     stroke: #333333 !important;
   }
 
-  .mermaid svg .activation0,
-  .mermaid svg .activation1,
-  .mermaid svg .activation2 {
+  .markon-diagram svg .activation0,
+  .markon-diagram svg .activation1,
+  .markon-diagram svg .activation2 {
     fill: #f4f4f4 !important;
     stroke: #666666 !important;
   }
 
   /* Class diagram specific */
-  .mermaid svg .classGroup rect {
+  .markon-diagram svg .classGroup rect {
     fill: #ffffff !important;
     stroke: #333333 !important;
   }
 
-  .mermaid svg .divider {
+  .markon-diagram svg .divider {
     stroke: #666666 !important;
   }
 
   /* Gantt chart specific */
-  .mermaid svg .task,
-  .mermaid svg .taskText {
+  .markon-diagram svg .task,
+  .markon-diagram svg .taskText {
     fill: #ffffff !important;
     stroke: #333333 !important;
   }
 
-  .mermaid svg .grid .tick line {
+  .markon-diagram svg .grid .tick line {
     stroke: #e0e0e0 !important;
   }
 

@@ -1,0 +1,1034 @@
+<!DOCTYPE html>
+<html lang="en" dir="auto" data-theme="{{ theme }}" data-theme-default="{{ theme }}" data-editor-theme="{{ editor_theme | default(value='follow') }}">
+<head>
+    {% include "theme-boot.html" %}
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="workspace-id" content="{{ workspace_id }}">
+    <meta name="access-role" content="{{ access_role | default(value='initiator') }}">
+    <meta name="shared-annotation" content="{{ shared_annotation }}">
+    <meta name="is-worktree-diff" content="{{ is_worktree_diff }}">
+    <meta name="enable-viewed" content="false">
+    <meta name="enable-search" content="false">
+    <meta name="enable-edit" content="false">
+    <meta name="enable-live" content="{{ enable_live }}">
+    <meta name="enable-chat" content="false">
+    <meta name="default-chat-mode" content="{{ default_chat_mode }}">
+    <title>{{ title }}</title>
+    <link id="markon-github-markdown-light" rel="stylesheet" href="/_/css/github-markdown-light.css" media="not all">
+    <link id="markon-github-markdown-dark" rel="stylesheet" href="/_/css/github-markdown-dark.css" media="not all">
+    <script>window.MarkonTheme && window.MarkonTheme.applyStylesheetMedia();</script>
+    <link rel="stylesheet" href="/_/css/tokens.css">
+    <link rel="stylesheet" href="/_/css/editor.css">
+    <link rel="stylesheet" href="/_/css/collaboration.css">
+    <style>
+        * {
+            box-sizing: border-box;
+        }
+        :root {
+            --markon-note-width: 280px;
+            --markon-rail-edge-gap: 40px;
+        }
+        body {
+            margin: 0;
+            min-height: 100vh;
+            background: var(--markon-bg-default);
+            color: var(--markon-fg-default);
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+            line-height: 1.5;
+        }
+        a,
+        a:visited {
+            color: var(--markon-accent);
+            text-decoration: none;
+        }
+        a:hover {
+            text-decoration: underline;
+        }
+        button,
+        input {
+            font: inherit;
+        }
+        .git-diff-page {
+            min-height: 100vh;
+            height: 100vh;
+            overflow: hidden;
+        }
+        .git-diff-range-label,
+        .git-file-meta,
+        .git-nav-counts,
+        .workspace-diff-empty {
+            color: var(--markon-fg-muted);
+            font-size: 12px;
+        }
+        .git-diff-title {
+            margin: 0;
+            font-size: 18px;
+            line-height: 1.25;
+        }
+        .git-diff-summary {
+            min-width: 0;
+            margin-bottom: 14px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 10px;
+        }
+        .git-diff-range-group {
+            display: grid;
+            grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+            gap: 8px;
+            min-width: 0;
+        }
+        .git-diff-range-part {
+            display: grid;
+            gap: 2px;
+            align-content: center;
+            min-height: 44px;
+            min-width: 0;
+            border: 1px solid var(--markon-border-default);
+            border-radius: var(--markon-radius-sm);
+            padding: 6px 9px;
+            background: var(--markon-bg-muted);
+            color: var(--markon-fg-default);
+            font-size: 13px;
+        }
+        .git-diff-range-select {
+            width: 100%;
+            min-width: 0;
+            max-width: none;
+            border: 0;
+            padding: 0 18px 0 0;
+            background: transparent;
+            color: var(--markon-fg-default);
+            font-weight: 650;
+        }
+        .git-diff-range-select:focus {
+            outline: 0;
+        }
+        .git-diff-range-select option:disabled {
+            color: var(--markon-fg-muted);
+        }
+        /* Compact segmented Raw/Rendered toggle (sits in the summary function row). */
+        .git-diff-view-seg {
+            display: inline-flex;
+            flex: none;
+            padding: 2px;
+            border: 1px solid var(--markon-border-default);
+            border-radius: 999px;
+            background: var(--markon-bg-muted);
+        }
+        .git-diff-seg-btn {
+            border: 0;
+            border-radius: 999px;
+            padding: 3px 11px;
+            background: transparent;
+            color: var(--markon-fg-muted);
+            font-size: 12px;
+            font-weight: 650;
+            line-height: 1.6;
+            cursor: pointer;
+            transition: background 140ms ease, color 140ms ease;
+        }
+        .git-diff-seg-btn[aria-pressed="true"] {
+            background: color-mix(in srgb, var(--markon-accent) 18%, var(--markon-bg-default));
+            color: var(--markon-accent);
+        }
+        .git-diff-seg-btn:focus-visible {
+            outline: 2px solid color-mix(in srgb, var(--markon-accent) 65%, transparent);
+            outline-offset: 1px;
+        }
+        .git-diff-body {
+            height: 100vh;
+            min-height: 100vh;
+            display: grid;
+            grid-template-columns: minmax(260px, 330px) minmax(0, 1fr) minmax(0, 1fr);
+            grid-template-areas: "sidebar old new";
+            overflow: hidden;
+        }
+        .git-diff-sidebar {
+            grid-area: sidebar;
+            min-width: 0;
+            min-height: 0;
+            overflow: auto;
+            padding: 18px;
+            border-right: 1px solid var(--markon-border-default);
+            background: var(--markon-bg-default);
+        }
+        .git-sidebar-block {
+            padding-bottom: 16px;
+            margin-bottom: 16px;
+            border-bottom: 1px solid var(--markon-border-default);
+        }
+        .git-sidebar-block:last-child {
+            border-bottom: 0;
+        }
+        .git-filter {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            margin-bottom: 16px;
+        }
+        .git-filter-input {
+            flex: 1;
+            min-width: 0;
+            min-height: 34px;
+            border: 1px solid var(--markon-border-default);
+            border-radius: var(--markon-radius-sm);
+            padding: 6px 9px;
+            background: var(--markon-bg-default);
+            color: var(--markon-fg-default);
+            font-size: 13px;
+        }
+        .git-filter-input::placeholder {
+            color: var(--markon-fg-muted);
+        }
+        /* File-list filter button + simple "Markdown only" menu. */
+        .git-filter-menu-wrap {
+            position: relative;
+            flex: none;
+        }
+        .git-filter-btn {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            width: 34px;
+            height: 34px;
+            border: 1px solid var(--markon-border-default);
+            border-radius: var(--markon-radius-sm);
+            background: var(--markon-bg-default);
+            color: var(--markon-fg-muted);
+            cursor: pointer;
+        }
+        .git-filter-btn:hover {
+            color: var(--markon-fg-default);
+            border-color: color-mix(in srgb, var(--markon-fg-default) 30%, var(--markon-border-default));
+        }
+        .git-filter-btn.is-active {
+            color: var(--markon-accent);
+            border-color: color-mix(in srgb, var(--markon-accent) 60%, var(--markon-border-default));
+            background: color-mix(in srgb, var(--markon-accent) 12%, var(--markon-bg-default));
+        }
+        .git-filter-menu {
+            position: absolute;
+            right: 0;
+            top: calc(100% + 4px);
+            z-index: 20;
+            min-width: 180px;
+            padding: 6px;
+            border: 1px solid var(--markon-border-default);
+            border-radius: var(--markon-radius-sm);
+            background: var(--markon-bg-default);
+            box-shadow: 0 8px 24px color-mix(in srgb, var(--markon-fg-default) 22%, transparent);
+        }
+        .git-filter-opt {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 6px 10px;
+            border-radius: var(--markon-radius-sm);
+            cursor: pointer;
+            user-select: none;
+            font-size: 13px;
+            color: var(--markon-fg-default);
+        }
+        .git-filter-opt:hover {
+            background: color-mix(in srgb, var(--markon-fg-default) 10%, transparent);
+        }
+        .git-filter-opt input {
+            margin: 0;
+            cursor: pointer;
+        }
+        .git-files {
+            list-style: none;
+            margin: 0;
+            padding: 0;
+        }
+        .git-files li {
+            margin: 0;
+            padding: 0;
+        }
+        .git-nav-entry {
+            width: 100%;
+            display: grid;
+            grid-template-columns: minmax(0, 1fr) auto;
+            align-items: center;
+            gap: 8px;
+            min-height: 28px;
+            border: 0;
+            border-radius: 0;
+            padding: 4px 0 4px calc(var(--depth) * 14px);
+            background: transparent;
+            color: var(--markon-fg-default);
+            text-align: left;
+            cursor: default;
+        }
+        .git-nav-entry.is-file {
+            cursor: pointer;
+        }
+        .git-nav-entry.is-file:hover,
+        .git-nav-entry.is-active {
+            color: var(--markon-accent);
+        }
+        .git-nav-main {
+            min-width: 0;
+            display: inline-flex;
+            align-items: center;
+            gap: 7px;
+        }
+        .git-nav-icon {
+            flex: 0 0 auto;
+            width: 14px;
+            color: var(--markon-fg-muted);
+            text-align: center;
+        }
+        .git-nav-name {
+            min-width: 0;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+            font-size: 13px;
+            font-weight: 550;
+        }
+        .git-nav-entry.is-dir .git-nav-name {
+            color: var(--markon-fg-muted);
+            font-weight: 650;
+        }
+        .git-nav-counts {
+            flex: 0 0 auto;
+            white-space: nowrap;
+        }
+        .git-source-diff-pane {
+            grid-column: 2 / 4;
+            min-width: 0;
+            min-height: 0;
+            overflow: hidden;
+            background: var(--markon-bg-default);
+        }
+        .git-preview-scroll {
+            grid-column: 2 / 4;
+            min-width: 0;
+            min-height: 0;
+            overflow: auto;
+            background: var(--markon-bg-default);
+        }
+        .git-preview-pane {
+            width: min(100%, 1120px);
+            min-width: 0;
+            min-height: 100%;
+            margin: 0 auto;
+            overflow: visible;
+            background: var(--markon-bg-default);
+        }
+        .workspace-diff-content {
+            width: 100%;
+            height: 100%;
+            min-height: 0;
+            overflow: auto;
+            position: relative;
+            padding: 14px;
+        }
+        .workspace-diff-content.is-virtualized-diff {
+            padding: 0;
+        }
+        .workspace-diff-row-line {
+            display: grid;
+            grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+            margin: 0;
+            overflow: visible;
+            background: var(--markon-bg-default);
+            color: var(--markon-fg-default);
+            font-family: 'SF Mono', Monaco, 'Cascadia Code', 'Roboto Mono', Consolas, monospace;
+            font-size: 12px;
+            line-height: 1.45;
+        }
+        .workspace-diff-split-cell {
+            min-width: 0;
+            display: grid;
+            grid-template-columns: 54px minmax(0, 1fr);
+        }
+        .workspace-diff-split-cell + .workspace-diff-split-cell {
+            border-left: 1px solid var(--markon-border-default);
+        }
+        .workspace-diff-line-no {
+            padding: 2px 8px;
+            border-right: 1px solid var(--markon-border-default);
+            color: var(--markon-fg-muted);
+            text-align: right;
+            user-select: none;
+        }
+        .workspace-diff-code {
+            min-width: 0;
+            padding: 2px 10px;
+            color: inherit;
+            font: inherit;
+            white-space: pre-wrap;
+            overflow-wrap: anywhere;
+        }
+        .git-diff-empty-side {
+            background: color-mix(in srgb, var(--markon-bg-muted) 74%, transparent);
+        }
+        .git-diff-add {
+            background: color-mix(in srgb, var(--markon-success) 12%, transparent);
+        }
+        .git-diff-del {
+            background: color-mix(in srgb, var(--markon-danger) 11%, transparent);
+        }
+        /* Word-level highlight sits clearly above the line tint: stronger fill
+           plus a faint same-hue ring so the exact changed tokens read at a glance. */
+        .git-diff-word-add,
+        .git-diff-word-del {
+            border-radius: var(--markon-radius-sm);
+            padding: 0 1px;
+        }
+        .git-diff-word-add {
+            background: color-mix(in srgb, var(--markon-success) 52%, transparent);
+            box-shadow: 0 0 0 1px color-mix(in srgb, var(--markon-success) 45%, transparent);
+        }
+        .git-diff-word-del {
+            background: color-mix(in srgb, var(--markon-danger) 50%, transparent);
+            box-shadow: 0 0 0 1px color-mix(in srgb, var(--markon-danger) 42%, transparent);
+        }
+        /* Rendered view, structural (item-level) modified diff: changed list/table
+           items shown old-then-new with a tint; unchanged items are plain context.
+           The diff shading is ONE unified style — a band overlay drawn in JS and
+           measured against the block (content-width tint + gutter rail + +/- marker,
+           identical to the change cards), so it never depends on the list's own
+           indentation. The <li>.md-diff-item-old/new classes are just markers the
+           JS finds; their visuals come entirely from the band overlay. */
+        .md-diff-rendered-structural {
+            position: relative;
+            isolation: isolate;
+            /* It is a grid item; without this it expands to its min-content (a wide
+               table's natural width) and overflows the column, blowing the whole
+               diff out horizontally. min-width:0 lets the inner table's own
+               max-width:100% + overflow:auto contain it. */
+            min-width: 0;
+        }
+        .md-diff-item-band {
+            position: absolute;
+            left: 0;
+            right: 0;
+            z-index: -1;
+            pointer-events: none;
+        }
+        .md-diff-item-band-old {
+            --md-diff-guide-color: color-mix(in srgb, var(--markon-danger) 82%, var(--markon-fg-default));
+            background: color-mix(in srgb, var(--markon-danger) 13%, transparent);
+        }
+        .md-diff-item-band-new {
+            --md-diff-guide-color: color-mix(in srgb, var(--markon-success) 86%, var(--markon-fg-default));
+            background: color-mix(in srgb, var(--markon-success) 13%, transparent);
+        }
+        .md-diff-item-band::before {
+            content: attr(data-diff-marker);
+            position: absolute;
+            top: 0;
+            bottom: 0;
+            right: calc(100% + 8px);
+            width: 26px;
+            box-sizing: border-box;
+            border-right: 3px solid var(--md-diff-guide-color);
+            padding-right: 8px;
+            color: var(--md-diff-guide-color);
+            font-family: 'SF Mono', Monaco, 'Cascadia Code', 'Roboto Mono', Consolas, monospace;
+            font-size: 16px;
+            font-weight: 800;
+            line-height: 1.2;
+            text-align: left;
+        }
+        /* Raw view: one wrapper per diff block, holding its source line rows. */
+        .workspace-diff-block { display: block; }
+        /* Unchanged context lines (no add/del tint). */
+        .git-diff-ctx { background: var(--markon-bg-default); }
+        .workspace-diff-empty {
+            margin: 12px;
+            padding: 16px;
+            border: 1px solid var(--markon-border-default);
+            border-radius: var(--markon-radius-sm);
+            background: var(--markon-bg-muted);
+        }
+        /* No empty placeholder box during load/transition — only show when it
+           actually carries a message. */
+        .workspace-diff-empty:empty {
+            display: none;
+        }
+        .workspace-diff-empty.is-error {
+            border-color: color-mix(in srgb, var(--markon-danger) 36%, var(--markon-border-default));
+            color: var(--markon-danger);
+        }
+        [data-diff-view-panel][hidden] {
+            display: none !important;
+        }
+        .git-markdown-diff-content {
+            max-width: 1120px;
+            margin: 0 auto;
+            padding: 34px 46px 88px;
+            background: var(--markon-bg-default);
+        }
+        .git-markdown-diff-content.is-virtualized-md-diff {
+            padding: 0;
+            position: relative;
+            /* Full panel width so file headers span edge-to-edge like the raw
+               view (the 1120px reading cap applies to single-file articles). */
+            width: 100%;
+            max-width: none;
+        }
+        .md-diff-file-section {
+            width: 100%;
+        }
+        .md-diff-file-title {
+            overflow-wrap: anywhere;
+            font-size: 13px;
+            font-weight: 650;
+        }
+        .md-diff-file-meta,
+        .md-diff-block-meta {
+            color: var(--markon-fg-muted);
+            font-size: 12px;
+        }
+        .md-diff-file-section {
+            margin: 0;
+        }
+        /* Clear visual break between files: a gap of panel background plus each
+           file closed top (header border) and bottom (body border). */
+        .md-diff-file-section + .md-diff-file-section {
+            margin-top: 108px;
+        }
+        /* The big inter-file gap separates EXPANDED content. A collapsed (Viewed)
+           file is just a header row, so any boundary touching one collapses to a
+           compact gap (the sticky header borders provide the separation). */
+        .md-diff-file-section.is-collapsed + .md-diff-file-section,
+        .md-diff-file-section + .md-diff-file-section.is-collapsed {
+            margin-top: 0;
+        }
+        /* Native stacked-sticky header: each header sticks to the top while its
+           own section scrolls, and the next section's header pushes it out — the
+           GitHub PR-review pattern, no JS, no scroll jitter. Styled to match the
+           raw view's file row: full-width, no radius, top/bottom border only. */
+        .md-diff-file-header {
+            position: sticky;
+            top: 0;
+            z-index: 3;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 12px;
+            min-height: 44px;
+            padding: 9px 46px;
+            border-top: 1px solid var(--markon-border-default);
+            border-bottom: 1px solid var(--markon-border-default);
+            background: var(--markon-bg-muted);
+            /* The whole bar is a control surface (chevron / copy / Viewed / menu)
+               with a double-click-to-fold affordance — never a text target, so
+               the double-click can't accidentally select the file path. */
+            -webkit-user-select: none;
+            user-select: none;
+        }
+        .md-diff-file-left {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            min-width: 0;
+        }
+        .md-diff-file-right {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            flex: none;
+        }
+        .md-diff-file-title {
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+            font-weight: 650;
+        }
+        /* icon buttons (chevron / copy / kebab) */
+        .md-diff-chevron,
+        .md-diff-file-copy,
+        .md-diff-menu-btn {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            flex: none;
+            width: 24px;
+            height: 24px;
+            padding: 0;
+            border: 0;
+            border-radius: var(--markon-radius-sm);
+            background: transparent;
+            color: var(--markon-fg-muted);
+            cursor: pointer;
+        }
+        .md-diff-chevron:hover,
+        .md-diff-file-copy:hover,
+        .md-diff-menu-btn:hover {
+            background: color-mix(in srgb, var(--markon-fg-default) 10%, transparent);
+            color: var(--markon-fg-default);
+        }
+        .md-diff-chevron {
+            transition: transform 120ms ease;
+        }
+        .md-diff-file-header.is-collapsed .md-diff-chevron {
+            transform: rotate(-90deg);
+        }
+        .md-diff-file-copy.is-copied {
+            color: var(--markon-success, #3fb950);
+        }
+        /* diffstat: +N -M and a 5-square bar */
+        .md-diff-stat {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            flex: none;
+            font-size: 12px;
+            font-variant-numeric: tabular-nums;
+        }
+        .md-diff-stat-add { color: var(--markon-success, #3fb950); font-weight: 650; }
+        .md-diff-stat-del { color: var(--markon-danger); font-weight: 650; }
+        .md-diff-stat-bars {
+            display: inline-flex;
+            gap: 2px;
+        }
+        .md-diff-bar {
+            width: 9px;
+            height: 9px;
+            border-radius: 2px;
+            background: color-mix(in srgb, var(--markon-fg-default) 18%, transparent);
+        }
+        .md-diff-bar.is-add { background: var(--markon-success, #3fb950); }
+        .md-diff-bar.is-del { background: var(--markon-danger); }
+        /* bordered "Viewed" checkbox */
+        .md-diff-file-check {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            flex: none;
+            cursor: pointer;
+            user-select: none;
+            font-size: 12px;
+            color: var(--markon-fg-default);
+            white-space: nowrap;
+            padding: 3px 9px;
+            border: 1px solid var(--markon-border-default);
+            border-radius: var(--markon-radius-sm);
+            background: var(--markon-bg-default);
+        }
+        .md-diff-file-check:hover {
+            border-color: color-mix(in srgb, var(--markon-fg-default) 30%, var(--markon-border-default));
+        }
+        .md-diff-file-check input {
+            cursor: pointer;
+            margin: 0;
+        }
+        /* kebab menu popover */
+        .md-diff-menu {
+            position: relative;
+            flex: none;
+        }
+        .md-diff-menu-pop {
+            position: absolute;
+            top: calc(100% + 4px);
+            right: 0;
+            z-index: 20;
+            min-width: 168px;
+            padding: 6px;
+            border: 1px solid var(--markon-border-default);
+            border-radius: var(--markon-radius-sm);
+            background: var(--markon-bg-default);
+            box-shadow: 0 8px 24px color-mix(in srgb, var(--markon-fg-default) 22%, transparent);
+        }
+        .md-diff-menu-item {
+            display: block;
+            width: 100%;
+            text-align: left;
+            padding: 6px 10px;
+            border: 0;
+            border-radius: var(--markon-radius-sm);
+            background: transparent;
+            color: var(--markon-fg-default);
+            font-size: 13px;
+            cursor: pointer;
+        }
+        .md-diff-menu-item:hover {
+            background: color-mix(in srgb, var(--markon-fg-default) 10%, transparent);
+        }
+        .md-diff-menu-item.is-danger {
+            color: var(--markon-danger);
+        }
+        .md-diff-file-header.is-collapsed {
+            background: var(--markon-bg-default);
+        }
+        .md-diff-file-header.is-collapsed .md-diff-file-title {
+            opacity: 0.62;
+        }
+        .md-diff-file-body {
+            padding: 12px 46px 16px;
+        }
+        /* Raw diff lines carry their own gutter; let them span the full width. */
+        .md-diff-file-body.workspace-diff-body {
+            padding: 0;
+        }
+        /* Collapsed run of unchanged blocks: a centered label (with an unfold
+           icon) sitting on a faint dashed "fold seam" line, with generous
+           vertical whitespace — reads as "content folded here, click to expand". */
+        .md-diff-gap {
+            display: flex;
+            align-items: center;
+            gap: 14px;
+            width: 100%;
+            margin: 38px 0;
+            padding: 0;
+            border: none;
+            background: none;
+            font: inherit;
+            font-size: 12px;
+            cursor: pointer;
+            /* A click-to-expand affordance, not a text target. */
+            -webkit-user-select: none;
+            user-select: none;
+        }
+        .md-diff-gap::before,
+        .md-diff-gap::after {
+            content: "";
+            flex: 1;
+            min-width: 0;
+            height: 0;
+            border-top: 1px dashed var(--markon-border-default);
+            opacity: 0.85;
+        }
+        .md-diff-gap-label {
+            flex: none;
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            white-space: nowrap;
+            color: var(--markon-fg-muted);
+            transition: color 0.12s ease;
+        }
+        .md-diff-gap-icon {
+            opacity: 0.85;
+        }
+        .md-diff-gap:hover .md-diff-gap-label {
+            color: var(--markon-accent-fg, #2f81f7);
+        }
+        .md-diff-file-section.is-collapsed .md-diff-file-body {
+            display: none;
+        }
+        /* Expanding a collapsed run: the space is opened and the 下文 re-pinned in
+           one synchronous step (no per-frame scrolling → no jank), then the
+           revealed blocks fade + settle in. Only opacity/transform animate, which
+           are compositor-driven and smooth. The wrapper is a plain, margin-neutral
+           box so unwrapping it at the end changes nothing. */
+        .md-diff-reveal > * {
+            opacity: 0;
+            transform: translateY(-6px);
+            transition: opacity 280ms ease, transform 280ms cubic-bezier(0.33, 1, 0.68, 1);
+        }
+        .md-diff-reveal.is-open > * {
+            opacity: 1;
+            transform: none;
+        }
+        @media (prefers-reduced-motion: reduce) {
+            .md-diff-reveal > * {
+                transition: none;
+            }
+        }
+        .md-diff-diagnostics {
+            padding: 9px 12px;
+            border: 1px solid color-mix(in srgb, var(--markon-danger) 30%, var(--markon-border-default));
+            border-radius: var(--markon-radius-sm);
+            background: color-mix(in srgb, var(--markon-danger) 7%, transparent);
+            color: var(--markon-danger);
+            font-size: 12px;
+        }
+        .md-diff-block {
+            margin: 0;
+            border: 0;
+            border-radius: 0;
+            overflow: visible;
+        }
+        .md-diff-block.is-modified,
+        .md-diff-block.is-added,
+        .md-diff-block.is-deleted {
+            display: grid;
+            gap: 0;
+            margin: 16px 0;
+            overflow: visible;
+        }
+        .md-diff-block.is-modified:first-of-type,
+        .md-diff-block.is-added:first-of-type,
+        .md-diff-block.is-deleted:first-of-type {
+            margin-top: 0;
+        }
+        .md-diff-change-card {
+            min-width: 0;
+            position: relative;
+            display: flow-root;
+            margin: 0;
+            padding: 0;
+            border: 0;
+            border-radius: 0;
+            background: transparent;
+            isolation: isolate;
+        }
+        .md-diff-change-card::before {
+            content: "";
+            position: absolute;
+            z-index: 0;
+            inset: 0;
+            border-radius: 0;
+            pointer-events: none;
+        }
+        .md-diff-change-card::after {
+            content: attr(data-diff-marker);
+            position: absolute;
+            z-index: 2;
+            top: 0;
+            bottom: 0;
+            right: calc(100% + 8px);
+            width: 26px;
+            box-sizing: border-box;
+            border-right: 3px solid var(--md-diff-guide-color);
+            padding-right: 8px;
+            color: var(--md-diff-guide-color);
+            font-family: 'SF Mono', Monaco, 'Cascadia Code', 'Roboto Mono', Consolas, monospace;
+            font-size: 16px;
+            font-weight: 800;
+            line-height: 1.2;
+            text-align: left;
+            pointer-events: none;
+            user-select: none;
+        }
+        .md-diff-change-card-old {
+            --md-diff-guide-color: color-mix(in srgb, var(--markon-danger) 82%, var(--markon-fg-default));
+        }
+        .md-diff-change-card-old::before {
+            background: color-mix(in srgb, var(--markon-danger) 10%, transparent);
+        }
+        .md-diff-change-card-new {
+            --md-diff-guide-color: color-mix(in srgb, var(--markon-success) 86%, var(--markon-fg-default));
+        }
+        .md-diff-change-card-new::before {
+            background: color-mix(in srgb, var(--markon-success) 10%, transparent);
+        }
+        .md-diff-rendered {
+            position: relative;
+            z-index: 1;
+            max-width: none;
+            padding: 0;
+            background: transparent;
+        }
+        /* Wide tables in the rendered diff fit the column and wrap their cells
+           (long commands/code break at spaces) instead of forcing a horizontal
+           scrollbar — a reviewer should see every column at once. */
+        .git-markdown-diff-content table {
+            display: table;
+            width: 100%;
+            table-layout: auto;
+        }
+        .git-markdown-diff-content th,
+        .git-markdown-diff-content td {
+            overflow-wrap: anywhere;
+        }
+        .git-markdown-diff-content th code,
+        .git-markdown-diff-content td code {
+            white-space: pre-wrap;
+            overflow-wrap: anywhere;
+        }
+        /* No heading-depth indentation: the diff matches the document, which does
+           not indent content under headings (markdown's own list/blockquote
+           indentation still comes from the rendered HTML). */
+        .md-diff-rendered-sectioned {
+            padding-left: 0;
+            padding-right: 0;
+        }
+        /* Inside a change card the rendered block hugs the band (no leading/
+           trailing margin). Equal/context blocks instead keep their natural
+           markdown margins so the diff flows exactly like the document. */
+        .md-diff-change-card .md-diff-rendered > :first-child,
+        .md-diff-change-card .md-diff-rendered .heading-section:first-child {
+            margin-top: 0;
+        }
+        .md-diff-change-card .md-diff-rendered > :last-child,
+        .md-diff-change-card .md-diff-rendered .heading-section:last-child {
+            margin-bottom: 0;
+        }
+        .md-diff-placeholder {
+            min-height: 1px;
+        }
+        .md-diff-empty {
+            padding: 16px;
+            border: 1px solid var(--markon-border-default);
+            border-radius: var(--markon-radius-sm);
+            background: var(--markon-bg-muted);
+            color: var(--markon-fg-muted);
+            font-size: 12px;
+        }
+        .md-diff-empty:empty {
+            display: none;
+        }
+        @media (max-width: 920px) {
+            .git-diff-page {
+                height: auto;
+                overflow: visible;
+            }
+            .git-diff-body {
+                display: block;
+                overflow: visible;
+                height: auto;
+                min-height: 100vh;
+            }
+            .git-diff-sidebar {
+                max-height: 42vh;
+                border-right: 0;
+                border-bottom: 1px solid var(--markon-border-default);
+            }
+            .git-source-diff-pane,
+            .git-preview-scroll,
+            .git-preview-pane {
+                height: 72vh;
+            }
+            .git-preview-scroll {
+                display: grid;
+            }
+            .md-diff-file-header {
+                align-items: flex-start;
+                flex-direction: column;
+            }
+        }
+    </style>
+    {% if styles_css %}<style>{{ styles_css | safe }}</style>{% endif %}
+    {% include "i18n-boot.html" %}
+    {% if shortcuts_json %}<script>window.__MARKON_SHORTCUTS__ = {{ shortcuts_json | safe }};</script>{% endif %}
+</head>
+<body>
+    <main class="git-diff-page"
+          data-diff-shell
+          data-current-diff-view="{{ initial_diff_view }}"
+          data-source-url="{{ source_diff_url }}"
+          data-markdown-url="{{ markdown_diff_url }}"
+          data-markdown-diff
+          data-diff-data-url="{{ markdown_diff_data_url }}"
+          data-default-diff-path="{{ default_diff_path }}"
+          data-diff-autoload="{% if initial_diff_view == "rendered" %}true{% else %}false{% endif %}">
+        <section class="git-diff-body">
+            <aside class="git-diff-sidebar">
+                <section class="git-diff-summary">
+                    <h1 class="git-diff-title">Comparing changes</h1>
+                    <div class="git-diff-view-seg" role="group" aria-label="Diff view" data-diff-view-seg>
+                        <button type="button" class="git-diff-seg-btn" data-view="raw"
+                                aria-pressed="{% if initial_diff_view == "rendered" %}false{% else %}true{% endif %}">Raw</button>
+                        <button type="button" class="git-diff-seg-btn" data-view="rendered"
+                                aria-pressed="{% if initial_diff_view == "rendered" %}true{% else %}false{% endif %}">Rendered</button>
+                    </div>
+                </section>
+                <section class="git-sidebar-block" aria-label="Diff options">
+                <form class="git-diff-range-group"
+                      action="{{ compare_url }}"
+                      method="get"
+                      aria-label="Compared revisions"
+                      data-compare-form
+                      data-compare-path-base="{{ compare_path_base }}"
+                      data-compare-options-status-url="{{ compare_options_status_url }}">
+                    <input data-diff-view-input type="hidden" name="view" value="rendered" {% if initial_diff_view != "rendered" %}disabled{% endif %}>
+                    <label class="git-diff-range-part">
+                        <span class="git-diff-range-label">Base</span>
+                        <select class="git-diff-range-select" name="base">
+                            {% for option in compare_base_options %}
+                            <option value="{{ option.value }}" {% if option.selected %}selected{% endif %}{% if option.disabled %} disabled{% endif %}>{{ option.label }}</option>
+                            {% endfor %}
+                        </select>
+                    </label>
+                    <label class="git-diff-range-part">
+                        <span class="git-diff-range-label">Compare</span>
+                        <select class="git-diff-range-select" name="compare">
+                            {% for option in compare_compare_options %}
+                            <option value="{{ option.value }}" {% if option.selected %}selected{% endif %}{% if option.disabled %} disabled{% endif %}>{{ option.label }}</option>
+                            {% endfor %}
+                        </select>
+                    </label>
+                </form>
+                </section>
+                <section class="git-sidebar-block">
+                    <div class="git-filter">
+                        <input class="git-filter-input" type="search" placeholder="Filter files..." data-diff-filter>
+                        <div class="git-filter-menu-wrap">
+                            <button class="git-filter-btn" type="button" aria-label="Filter options"
+                                    aria-haspopup="menu" aria-expanded="false" data-diff-filter-toggle>
+                                <svg viewBox="0 0 16 16" width="15" height="15" aria-hidden="true"><path fill="currentColor" d="M.75 3h14.5a.75.75 0 0 1 .53 1.28L10 10.06V14a.75.75 0 0 1-1.14.64l-2.5-1.5A.75.75 0 0 1 6 12.5v-2.44L.22 4.28A.75.75 0 0 1 .75 3Z"/></svg>
+                            </button>
+                            <div class="git-filter-menu" role="menu" hidden data-diff-filter-menu>
+                                <label class="git-filter-opt">
+                                    <input type="checkbox" data-diff-md-only>
+                                    <span>Markdown only</span>
+                                </label>
+                            </div>
+                        </div>
+                    </div>
+                    {% if diff.nav_entries | length > 0 %}
+                    <ul class="git-files" data-diff-file-list>
+                        {% for entry in diff.nav_entries %}
+                        <li data-diff-nav-entry
+                            data-diff-kind="{{ entry.kind }}"
+                            data-diff-path="{{ entry.path }}">
+                            {% if entry.kind == "file" %}
+                            <button class="git-nav-entry is-file git-file-link"
+                                    type="button"
+                                    aria-pressed="false"
+                                    style="--depth: {{ entry.depth }}"
+                                    data-diff-scroll-path="{{ entry.path }}">
+                                <span class="git-nav-main">
+                                    <span class="git-nav-icon" aria-hidden="true">-</span>
+                                    <span class="git-nav-name">{{ entry.name }}</span>
+                                </span>
+                                <span class="git-nav-counts">+{{ entry.additions }} -{{ entry.deletions }}</span>
+                            </button>
+                            {% else %}
+                            <div class="git-nav-entry is-dir"
+                                 style="--depth: {{ entry.depth }}">
+                                <span class="git-nav-main">
+                                    <span class="git-nav-icon" aria-hidden="true">/</span>
+                                    <span class="git-nav-name">{{ entry.name }}</span>
+                                </span>
+                            </div>
+                            {% endif %}
+                        </li>
+                        {% endfor %}
+                    </ul>
+                    {% else %}
+                    <div class="workspace-diff-empty">No changed files.</div>
+                    {% endif %}
+                </section>
+            </aside>
+            <section class="git-source-diff-pane"
+                     data-diff-view-panel="raw"
+                     data-standalone-diff
+                     {% if initial_diff_view == "rendered" %}hidden{% endif %}>
+                <div class="workspace-diff-content"
+                     data-virtual-diff
+                     data-diff-autoload="{% if initial_diff_view == "raw" %}true{% else %}false{% endif %}"
+                     data-diff-data-url="{{ markdown_diff_data_url }}"
+                     data-diff-open-url="">
+                    <div class="workspace-diff-empty"></div>
+                </div>
+            </section>
+            <section class="git-preview-scroll"
+                     data-diff-view-panel="rendered"
+                     {% if initial_diff_view != "rendered" %}hidden{% endif %}>
+                <article class="git-preview-pane git-markdown-diff-content markdown-body"
+                         data-md-diff-content>
+                    <div class="md-diff-empty"></div>
+                </article>
+            </section>
+        </section>
+    </main>
+    <!-- File-list filter + Raw/Rendered view switcher (classic IIFE, runs
+         during parse before the deferred diff-view modules). -->
+    <script src="/_/js/diff-controls.js"></script>
+    <script type="module" src="/_/js/workspace-diff.js"></script>
+    <script type="module" src="/_/js/markdown-diff.js"></script>
+    <script type="module" src="/_/js/diff-annotations.js"></script>
+    <script type="module" src="/_/js/diff-shortcuts.js"></script>
+</body>
+</html>
