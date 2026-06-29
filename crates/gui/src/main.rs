@@ -383,6 +383,36 @@ fn show_settings_window(app: &tauri::AppHandle) {
     }
 }
 
+/// Show Settings as a *deferred* fallback after a macOS activation that carried
+/// no file. A Finder double-click delivers BOTH a `Reopen` activation and an
+/// `Opened` (the file) Apple Event, in either order — so reacting to `Reopen`
+/// synchronously pops Settings before the paired `Opened` can open the file in
+/// the browser. Waiting briefly and bailing out if a file-open marks the state
+/// makes the decision order-independent: a real file-open wins, a genuine bare
+/// reactivation still surfaces Settings a beat later.
+#[cfg(target_os = "macos")]
+fn schedule_settings_fallback(app: &tauri::AppHandle) {
+    let handle = app.clone();
+    std::thread::spawn(move || {
+        std::thread::sleep(std::time::Duration::from_millis(350));
+        let inner = handle.clone();
+        let _ = handle.run_on_main_thread(move || {
+            if let Some(state) = inner.try_state::<AppState>() {
+                // An Opened/argv file-open raced in → don't cover it with Settings.
+                if state.consume_recent_file_open() {
+                    return;
+                }
+            }
+            if let Some(w) = inner.get_webview_window("settings") {
+                if w.is_visible().unwrap_or(false) {
+                    return;
+                }
+            }
+            show_settings_window(&inner);
+        });
+    });
+}
+
 /// Returns the POSIX path of the front Finder window's target directory, if any.
 /// Used to detect Finder-toolbar clicks in RunEvent::Reopen.
 #[cfg(target_os = "macos")]
@@ -453,7 +483,13 @@ fn main() {
                     }
                     return;
                 }
+                // No Markdown file in argv. macOS may still deliver the file via a
+                // separate Opened Apple Event right after, so defer the Settings
+                // fallback and let a file-open cancel it.
+                schedule_settings_fallback(app);
+                return;
             }
+            #[cfg(not(target_os = "macos"))]
             show_settings_window(app);
         }))
         .setup(move |app| {
@@ -716,9 +752,11 @@ fn main() {
                     }
                 }
                 // No Finder-toolbar intent → behave like a plain reactivation:
-                // surface Settings if there's nothing else visible.
+                // surface Settings if there's nothing else visible — but DEFER it,
+                // so a paired `Opened` (double-click delivers both, any order) can
+                // open the file in the browser instead of us popping the panel.
                 if !has_visible_windows {
-                    show_settings_window(app_handle);
+                    schedule_settings_fallback(app_handle);
                 }
             }
             _ => {}
