@@ -180,6 +180,45 @@ export const persistViewedSet = (dataUrl: string | null | undefined, set: Set<st
     }
 };
 
+/** Whether "Viewed" files are shown (GitHub-style filter). Persisted per diff;
+ *  defaults to true. When false, viewed files are hidden from the sidebar list
+ *  AND their sections are hidden in the content. */
+const showViewedStorageKey = (dataUrl?: string | null): string | null => {
+    if (!dataUrl) return null;
+    try {
+        const url = new URL(dataUrl, window.location.origin);
+        return `markon:diff:showviewed:${url.pathname}`;
+    } catch {
+        return `markon:diff:showviewed:${dataUrl}`;
+    }
+};
+
+export const loadShowViewed = (dataUrl?: string | null): boolean => {
+    const key = showViewedStorageKey(dataUrl);
+    if (!key) return true;
+    try {
+        return window.localStorage.getItem(key) !== '0';
+    } catch {
+        return true;
+    }
+};
+
+export const persistShowViewed = (dataUrl: string | null | undefined, show: boolean): void => {
+    const key = showViewedStorageKey(dataUrl);
+    if (!key) return;
+    try {
+        window.localStorage.setItem(key, show ? '1' : '0');
+    } catch {
+        /* ignore quota/availability */
+    }
+};
+
+/** Event the content view dispatches when its Viewed set changes, so the sidebar
+ *  filter can re-evaluate. detail.viewed = the current viewed file paths. */
+export const VIEWED_CHANGED_EVENT = 'markon:diff-viewed-changed';
+/** Event the sidebar funnel dispatches when the "show viewed" filter toggles. */
+export const SHOW_VIEWED_EVENT = 'markon:diff-showviewed';
+
 const SVG_CHEVRON =
     '<svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><path fill="currentColor" d="M12.78 6.22a.75.75 0 0 1 0 1.06l-4.25 4.25a.75.75 0 0 1-1.06 0L3.22 7.28a.75.75 0 0 1 1.06-1.06L8 9.94l3.72-3.72a.75.75 0 0 1 1.06 0Z"/></svg>';
 const SVG_COPY =

@@ -2967,6 +2967,15 @@ struct GitDiffNavEntry<'a> {
 struct GitCompareOption {
     value: String,
     label: String,
+    /// Option family for the rich picker UI: worktree | head | branch | tag | commit.
+    kind: String,
+    /// Commit subject (commits only; "" otherwise).
+    subject: String,
+    /// Secondary detail — short hash for commits/tags, "current" for the current
+    /// branch, "" otherwise.
+    detail: String,
+    /// Relative time (commits/tags; "" otherwise).
+    date: String,
     selected: bool,
     disabled: bool,
 }
@@ -3939,35 +3948,83 @@ fn git_compare_options(
 ) -> Vec<GitCompareOption> {
     // 1) Gather unique candidates in display order (a handful of cheap git
     //    calls). `check` marks options whose "disabled" state needs a diff probe.
+    // A candidate carries the rich metadata the picker panel renders (kind /
+    // subject / detail / date), plus `check` = whether its disabled state needs a
+    // markdown-diff probe.
+    struct Cand {
+        value: String,
+        label: String,
+        kind: String,
+        subject: String,
+        detail: String,
+        date: String,
+        check: bool,
+    }
     let mut seen = std::collections::BTreeSet::new();
-    let mut candidates: Vec<(String, String, bool)> = Vec::new();
-    let mut add = |value: String, label: String, check: bool| {
-        if seen.insert(value.clone()) {
-            candidates.push((value, label, check));
+    let mut candidates: Vec<Cand> = Vec::new();
+    let mut add = |c: Cand| {
+        if seen.insert(c.value.clone()) {
+            candidates.push(c);
         }
     };
 
-    add("HEAD".to_string(), "HEAD".to_string(), true);
+    add(Cand {
+        value: "HEAD".to_string(),
+        label: "HEAD".to_string(),
+        kind: "head".to_string(),
+        subject: "Latest commit".to_string(),
+        detail: String::new(),
+        date: String::new(),
+        check: true,
+    });
     for branch in git::branches(root).unwrap_or_default() {
         let label = if branch.current {
             format!("{} (current)", branch.name)
         } else {
             branch.name.clone()
         };
-        add(branch.name, label, false);
+        add(Cand {
+            value: branch.name,
+            label,
+            kind: "branch".to_string(),
+            subject: String::new(),
+            detail: if branch.current { "current".to_string() } else { String::new() },
+            date: String::new(),
+            check: false,
+        });
     }
     for commit in git::history(root, 50).unwrap_or_default() {
-        add(
-            commit.hash,
-            format!("{} {}", commit.short_hash, commit.subject),
-            true,
-        );
+        add(Cand {
+            value: commit.hash,
+            label: format!("{} {}", commit.short_hash, commit.subject),
+            kind: "commit".to_string(),
+            subject: commit.subject,
+            detail: commit.short_hash,
+            date: commit.relative_time,
+            check: true,
+        });
     }
     for tag in git::tags(root, 200).unwrap_or_default() {
-        add(tag.name.clone(), format!("{} (tag)", tag.name), false);
+        add(Cand {
+            value: tag.name.clone(),
+            label: format!("{} (tag)", tag.name),
+            kind: "tag".to_string(),
+            subject: String::new(),
+            detail: tag.short_hash,
+            date: tag.relative_time,
+            check: false,
+        });
     }
     if include_worktree {
-        add("worktree".to_string(), "Worktree".to_string(), true);
+        add(Cand {
+            value: "worktree".to_string(),
+            label: "Worktree".to_string(),
+            kind: "worktree".to_string(),
+            subject: "Uncommitted working-tree files".to_string(),
+            detail: String::new(),
+            date: String::new(),
+            check: true,
+        });
     }
 
     // 2) Resolve each option's `disabled` state in parallel. Every probe spawns
@@ -3976,15 +4033,19 @@ fn git_compare_options(
     let checked = matches!(status_mode, GitCompareOptionStatusMode::Checked);
     let mut out: Vec<GitCompareOption> = candidates
         .par_iter()
-        .map(|(value, label, check)| {
+        .map(|c| {
             let disabled = checked
-                && *check
-                && value != selected
-                && !git_compare_option_has_markdown_changes(root, value, other_ref, role);
+                && c.check
+                && c.value != selected
+                && !git_compare_option_has_markdown_changes(root, &c.value, other_ref, role);
             GitCompareOption {
-                selected: value == selected,
-                value: value.clone(),
-                label: label.clone(),
+                selected: c.value == selected,
+                value: c.value.clone(),
+                label: c.label.clone(),
+                kind: c.kind.clone(),
+                subject: c.subject.clone(),
+                detail: c.detail.clone(),
+                date: c.date.clone(),
                 disabled,
             }
         })
@@ -3996,6 +4057,10 @@ fn git_compare_options(
             GitCompareOption {
                 value: selected.to_string(),
                 label: short_git_ref(selected),
+                kind: "commit".to_string(),
+                subject: String::new(),
+                detail: short_git_ref(selected),
+                date: String::new(),
                 selected: true,
                 disabled: false,
             },
@@ -4123,7 +4188,7 @@ fn render_git_diff_page(
     // renders every changed file in one scroll instead of just the first.
     let default_diff_path = "";
     let mut context = base_context(state);
-    context.insert("title", &format!("markon diff - {}", diff.range));
+    context.insert("title", &format!("Markdiff · {}", diff.range));
     context.insert("workspace_id", workspace_id);
     context.insert(
         "diff",
@@ -4142,6 +4207,18 @@ fn render_git_diff_page(
     context.insert("enable_live", &flags.enable_live);
     context.insert("history_url", &format!("/_/{workspace_id}/git/history"));
     context.insert("files_url", &format!("/{workspace_id}/"));
+    // Home-collapsed workspace path shown beside the title (links to the home).
+    let ws_display_path = {
+        let p = ws.root.to_string_lossy().to_string();
+        match dirs::home_dir() {
+            Some(home) => match p.strip_prefix(home.to_string_lossy().as_ref()) {
+                Some(rest) => format!("~{rest}"),
+                None => p,
+            },
+            None => p,
+        }
+    };
+    context.insert("workspace_display_path", &ws_display_path);
     context.insert("work_diff_url", &markdown_work_diff_page_url(workspace_id));
     context.insert(
         "markdown_diff_url",
@@ -4163,28 +4240,34 @@ fn render_git_diff_page(
     context.insert("initial_diff_view", initial_view);
     context.insert("default_diff_path", &default_diff_path);
     context.insert("is_markdown_diff", &(initial_view == "rendered"));
-    context.insert(
-        "compare_base_options",
-        &git_compare_options(
-            &ws.root,
-            &base_value,
-            false,
-            &compare_value,
-            GitCompareOptionRole::Base,
-            GitCompareOptionStatusMode::Fast,
-        ),
+    let base_options = git_compare_options(
+        &ws.root,
+        &base_value,
+        false,
+        &compare_value,
+        GitCompareOptionRole::Base,
+        GitCompareOptionStatusMode::Fast,
     );
-    context.insert(
-        "compare_compare_options",
-        &git_compare_options(
-            &ws.root,
-            &compare_value,
-            true,
-            &base_value,
-            GitCompareOptionRole::Compare,
-            GitCompareOptionStatusMode::Fast,
-        ),
+    let compare_options = git_compare_options(
+        &ws.root,
+        &compare_value,
+        true,
+        &base_value,
+        GitCompareOptionRole::Compare,
+        GitCompareOptionStatusMode::Fast,
     );
+    // One JSON bundle drives the custom Base↔Compare picker panel (rich rows with
+    // subject/date, quick presets, client-side navigation + status probing).
+    let picker_json = serde_json::json!({
+        "base": base_options,
+        "compare": compare_options,
+        "baseValue": base_value,
+        "compareValue": compare_value,
+        "pathBase": format!("/_/{workspace_id}/compare"),
+        "statusUrl": format!("/_/{workspace_id}/compare/options"),
+    })
+    .to_string();
+    context.insert("compare_picker_json", &picker_json);
     // "Worktree-targeting" = the Compare (new) side is the live worktree, for ANY
     // base (HEAD…Worktree, a-tag…Worktree, …). That new side is the set of real,
     // writable files on disk — what annotations bind to and what the sidebar's
@@ -6413,17 +6496,18 @@ mod tests {
         .into_response();
         assert_eq!(diff.status(), StatusCode::OK);
         let body = html_escape::decode_html_entities(&response_text(diff).await).to_string();
-        assert!(body.contains("Comparing changes"));
+        assert!(body.contains("Markdiff"));
         assert!(body.contains("git-diff-sidebar"));
         assert!(body.contains("git-source-diff-pane"));
         assert!(body.contains("data-diff-filter"));
         assert!(body.contains("data-diff-file-list"));
-        assert!(body.contains("Comparing changes"));
+        assert!(body.contains("Markdiff"));
         assert!(body.contains(">Base<"));
         assert!(body.contains(">Compare<"));
         assert!(!body.contains("data-md-engine-status"));
         assert!(!body.contains("git-diff-compare-submit"));
-        assert!(body.contains("data-compare-options-status-url"));
+        assert!(body.contains("data-compare-status-url"));
+        assert!(body.contains("data-compare-picker"));
         assert!(body.contains("a.md"));
         assert!(!body.contains("notes.txt"));
         assert!(body.contains("data-virtual-diff"));
@@ -6461,8 +6545,8 @@ mod tests {
         assert_eq!(compare.status(), StatusCode::OK);
         let body = html_escape::decode_html_entities(&response_text(compare).await).to_string();
         assert!(body.contains(&format!("/_/{id}/compare/HEAD...worktree?view=raw")));
-        assert!(body.contains(r#"name="base""#));
-        assert!(body.contains(r#"name="compare""#));
+        assert!(body.contains("data-compare-trigger"));
+        assert!(body.contains("data-compare-picker"));
         assert!(body.contains("Worktree"));
 
         let compare_data = handle_pretty_compare_diff(
@@ -6566,7 +6650,7 @@ mod tests {
         assert!(!body.contains("data-md-old-content"));
         assert!(!body.contains("data-md-new-content"));
         assert!(!body.contains("data-markon-interactive-body"));
-        assert!(body.contains(r#"name="view" value="rendered""#));
+        assert!(body.contains("/_/js/diff-ref-picker.js"));
         assert!(body.contains("/_/css/editor.css"));
         assert!(!body.contains("/_/js/main.js"));
         assert!(body.contains("/_/js/markdown-diff.js"));
@@ -6624,7 +6708,7 @@ mod tests {
         let body =
             html_escape::decode_html_entities(&response_text(markdown_compare).await).to_string();
         assert!(body.contains(&format!("/_/{id}/compare/HEAD...worktree?view=rendered")));
-        assert!(body.contains(r#"name="view" value="rendered""#));
+        assert!(body.contains("data-compare-trigger"));
         assert!(!body.contains(&format!("/_/{id}/git/diff/work")));
 
         let markdown_compare_data = handle_pretty_compare_diff(

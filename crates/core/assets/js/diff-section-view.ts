@@ -13,6 +13,9 @@ import {
     persistCollapsedSet,
     loadViewedSet,
     persistViewedSet,
+    loadShowViewed,
+    VIEWED_CHANGED_EVENT,
+    SHOW_VIEWED_EVENT,
     topFileInScroller,
     lineAtTop,
     scrollSectionToLine,
@@ -74,12 +77,24 @@ export abstract class DiffSectionView {
     #cleanup: (() => void) | null = null;
     #collapsed = new Set<string>();
     #viewed = new Set<string>();
+    /** Whether viewed files are shown (the sidebar "Viewed files" toggle). When
+     *  false, viewed files' sections are hidden. */
+    #showViewed = true;
     #anchor: DiffAnchor | null = null;
     #expansion: ExpansionStore | null = null;
     protected scrollElement: HTMLElement | null = null;
 
     constructor(root: HTMLElement) {
         this.root = root;
+        // The sidebar funnel's "Viewed files" toggle broadcasts here; hide/show
+        // viewed files' sections to match.
+        document.addEventListener(SHOW_VIEWED_EVENT, (e) => {
+            const detail = (e as CustomEvent).detail;
+            if (detail && typeof detail.showViewed === 'boolean') {
+                this.#showViewed = detail.showViewed;
+                this.#applyViewedVisibility();
+            }
+        });
     }
 
     // ── Hooks for subclasses ────────────────────────────────────────────────────
@@ -199,6 +214,7 @@ export abstract class DiffSectionView {
         this.#files = files;
         this.#collapsed = loadCollapsedSet(this.root.dataset.diffDataUrl);
         this.#viewed = loadViewedSet(this.root.dataset.diffDataUrl);
+        this.#showViewed = loadShowViewed(this.root.dataset.diffDataUrl);
         this.#expansion = expansionStore(this.root.dataset.diffDataUrl);
         this.#sections = new Map();
 
@@ -214,6 +230,7 @@ export abstract class DiffSectionView {
             fragment.appendChild(entry.section);
         }
         pane.appendChild(fragment);
+        this.#applyViewedVisibility();
         scrollElement.scrollTo({ top: 0, left: 0, behavior: 'instant' });
 
         if (typeof IntersectionObserver !== 'undefined') {
@@ -471,6 +488,20 @@ export abstract class DiffSectionView {
             // reflects the new viewed mark.
             const entry = this.#sections.get(path);
             entry?.section.firstElementChild?.replaceWith(this.#createFileHeader(entry.file));
+        }
+        // When the "Viewed files" filter is off, a freshly-viewed file should
+        // hide (and un-viewing should reveal it).
+        this.#applyViewedVisibility();
+        // Tell the sidebar funnel so its file list re-filters.
+        document.dispatchEvent(
+            new CustomEvent(VIEWED_CHANGED_EVENT, { detail: { viewed: [...this.#viewed] } }),
+        );
+    }
+
+    /** Hide sections for viewed files while the "Viewed files" filter is off. */
+    #applyViewedVisibility(): void {
+        for (const [path, entry] of this.#sections) {
+            entry.section.hidden = !this.#showViewed && this.#viewed.has(path);
         }
     }
 

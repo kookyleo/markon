@@ -163,6 +163,9 @@ function mountFolderAffordance(row: HTMLElement, folderPath: string, urls: Creat
     if (row.querySelector(':scope > .git-nav-add')) return;
     const li = row.closest<HTMLElement>('[data-diff-nav-entry]');
     if (!li) return;
+    // The workspace root (empty path) hosts children at depth 0, so its create
+    // depth is -1; a real folder's children sit one level past its own depth.
+    const createDepth = (): number => (folderPath === '' ? -1 : rowDepth(row));
     const btn = document.createElement('button');
     btn.type = 'button';
     btn.className = 'git-nav-add';
@@ -172,13 +175,13 @@ function mountFolderAffordance(row: HTMLElement, folderPath: string, urls: Creat
     btn.addEventListener('click', (e) => {
         e.preventDefault();
         e.stopPropagation();
-        openCreateMenu(btn, folderPath, rowDepth(row), li, li.parentElement as HTMLElement, urls);
+        openCreateMenu(btn, folderPath, createDepth(), li, li.parentElement as HTMLElement, urls);
     });
     row.appendChild(btn);
     // Right-click anywhere on the folder row opens the same menu.
     row.addEventListener('contextmenu', (e) => {
         e.preventDefault();
-        openCreateMenu(btn, folderPath, rowDepth(row), li, li.parentElement as HTMLElement, urls);
+        openCreateMenu(btn, folderPath, createDepth(), li, li.parentElement as HTMLElement, urls);
     });
 }
 
@@ -192,20 +195,21 @@ const init = (): void => {
     };
     if (!urls.file || !urls.folder) return;
 
-    // Root-level affordance: a "+ New" button above the tree.
-    const rootBtn = document.createElement('button');
-    rootBtn.type = 'button';
-    rootBtn.className = 'git-nav-add-root';
-    rootBtn.innerHTML = `${PLUS_SVG}<span>New</span>`;
-    rootBtn.title = 'New file or folder at the workspace root';
+    // Workspace root: a "/" row at the top of the tree carrying the same
+    // hover/right-click "+" affordance as folders (no special always-on button).
     const rootLi = document.createElement('li');
-    rootLi.className = 'git-nav-root-add-row';
-    rootLi.appendChild(rootBtn);
+    rootLi.setAttribute('data-diff-nav-entry', '');
+    rootLi.setAttribute('data-diff-kind', 'dir');
+    rootLi.setAttribute('data-diff-path', '');
+    const rootRow = document.createElement('div');
+    rootRow.className = 'git-nav-entry is-dir';
+    rootRow.style.setProperty('--depth', '0');
+    rootRow.innerHTML =
+        '<span class="git-nav-main"><span class="git-nav-icon" aria-hidden="true">/</span>' +
+        '<span class="git-nav-name"></span></span>';
+    rootLi.appendChild(rootRow);
     list.prepend(rootLi);
-    rootBtn.addEventListener('click', (e) => {
-        e.preventDefault();
-        openCreateMenu(rootBtn, '', -1, rootLi, list, urls);
-    });
+    mountFolderAffordance(rootRow, '', urls);
 
     // Per-folder affordances.
     list.querySelectorAll<HTMLElement>('.git-nav-entry.is-dir').forEach((row) => {

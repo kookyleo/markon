@@ -55,7 +55,6 @@
             height: 100vh;
             overflow: hidden;
         }
-        .git-diff-range-label,
         .git-file-meta,
         .workspace-diff-empty {
             color: var(--markon-fg-muted);
@@ -66,49 +65,256 @@
             font-size: 18px;
             line-height: 1.25;
         }
+        .git-diff-titlebox {
+            min-width: 0;
+            display: flex;
+            flex-direction: column;
+            gap: 2px;
+        }
+        /* Workspace path under the title; links to the workspace home. */
+        .git-diff-ws-path {
+            min-width: 0;
+            max-width: 240px;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+            color: var(--markon-fg-muted);
+            font-size: 12px;
+        }
+        .git-diff-ws-path:hover {
+            color: var(--markon-accent);
+            text-decoration: underline;
+        }
         .git-diff-summary {
             min-width: 0;
             margin-bottom: 14px;
             display: flex;
-            align-items: center;
+            align-items: flex-start;
             justify-content: space-between;
             gap: 10px;
         }
-        .git-diff-range-group {
-            display: grid;
-            grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
-            gap: 8px;
-            min-width: 0;
-        }
-        .git-diff-range-part {
-            display: grid;
-            gap: 2px;
-            align-content: center;
-            min-height: 44px;
-            min-width: 0;
-            border: 1px solid var(--markon-border-default);
-            border-radius: var(--markon-radius-sm);
-            padding: 6px 9px;
-            background: var(--markon-bg-muted);
-            color: var(--markon-fg-default);
-            font-size: 13px;
-        }
-        .git-diff-range-select {
+        /* ── Base↔Compare picker control ───────────────────────────────────── */
+        .git-compare-control { min-width: 0; }
+        .git-compare-trigger {
             width: 100%;
             min-width: 0;
-            max-width: none;
-            border: 0;
-            padding: 0 18px 0 0;
-            background: transparent;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            min-height: 44px;
+            padding: 6px 10px;
+            border: 1px solid var(--markon-border-default);
+            border-radius: var(--markon-radius-sm);
+            background: var(--markon-bg-muted);
             color: var(--markon-fg-default);
+            cursor: pointer;
+            text-align: left;
+        }
+        .git-compare-trigger:hover {
+            border-color: color-mix(in srgb, var(--markon-fg-default) 30%, var(--markon-border-default));
+        }
+        .git-compare-leg {
+            min-width: 0;
+            display: grid;
+            gap: 1px;
+            flex: 1;
+        }
+        .git-compare-leg-label {
+            color: var(--markon-fg-muted);
+            font-size: 11px;
+        }
+        .git-compare-leg-value {
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+            font-size: 13px;
             font-weight: 650;
         }
-        .git-diff-range-select:focus {
-            outline: 0;
+        .git-compare-sep {
+            flex: none;
+            color: var(--markon-fg-muted);
+            font-size: 13px;
         }
-        .git-diff-range-select option:disabled {
+        .git-compare-chevron { flex: none; color: var(--markon-fg-muted); }
+        /* ── Picker panel (popover) ────────────────────────────────────────── */
+        .git-compare-panel {
+            position: fixed;
+            z-index: 60;
+            display: flex;
+            flex-direction: column;
+            max-height: min(70vh, 560px);
+            border: 1px solid var(--markon-border-default);
+            border-radius: var(--markon-radius-md, 10px);
+            background: var(--markon-bg-default);
+            box-shadow: 0 14px 40px color-mix(in srgb, var(--markon-fg-default) 26%, transparent);
+            overflow: hidden;
+        }
+        .git-compare-presets {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 6px;
+            padding: 10px 12px;
+            border-bottom: 1px solid var(--markon-border-default);
+        }
+        .git-compare-preset {
+            padding: 4px 10px;
+            border: 1px solid var(--markon-border-default);
+            border-radius: 999px;
+            background: var(--markon-bg-muted);
+            color: var(--markon-fg-default);
+            font-size: 12px;
+            cursor: pointer;
+        }
+        .git-compare-preset:hover {
+            color: var(--markon-accent);
+            border-color: color-mix(in srgb, var(--markon-accent) 55%, var(--markon-border-default));
+        }
+        .git-compare-cols {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            min-height: 0;
+            flex: 1;
+        }
+        .git-compare-col {
+            display: flex;
+            flex-direction: column;
+            min-height: 0;
+            min-width: 0;
+            padding: 10px;
+        }
+        .git-compare-col + .git-compare-col {
+            border-left: 1px solid var(--markon-border-default);
+        }
+        .git-compare-col-title {
+            font-size: 12px;
+            font-weight: 700;
+            color: var(--markon-fg-muted);
+            margin-bottom: 6px;
+        }
+        .git-compare-search {
+            min-height: 30px;
+            margin-bottom: 6px;
+            border: 1px solid var(--markon-border-default);
+            border-radius: var(--markon-radius-sm);
+            padding: 4px 8px;
+            background: var(--markon-bg-default);
+            color: var(--markon-fg-default);
+            font-size: 12px;
+        }
+        .git-compare-search:focus { outline: none; border-color: var(--markon-accent); }
+        .git-compare-list {
+            min-height: 0;
+            overflow: auto;
+            flex: 1;
+        }
+        .git-compare-group {
+            position: sticky;
+            top: 0;
+            padding: 5px 4px 3px;
+            background: var(--markon-bg-default);
+            color: var(--markon-fg-muted);
+            font-size: 10px;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.04em;
+        }
+        .git-compare-row {
+            width: 100%;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 5px 6px;
+            border: 0;
+            border-radius: var(--markon-radius-sm);
+            background: transparent;
+            color: var(--markon-fg-default);
+            text-align: left;
+            cursor: pointer;
+        }
+        .git-compare-row:hover { background: color-mix(in srgb, var(--markon-fg-default) 8%, transparent); }
+        .git-compare-row.is-selected {
+            background: color-mix(in srgb, var(--markon-accent) 16%, var(--markon-bg-default));
+        }
+        .git-compare-row.is-disabled {
+            opacity: 0.4;
+            cursor: not-allowed;
+        }
+        .git-compare-badge {
+            flex: none;
+            min-width: 30px;
+            text-align: center;
+            padding: 1px 4px;
+            border-radius: 4px;
+            background: color-mix(in srgb, var(--markon-fg-default) 12%, transparent);
+            color: var(--markon-fg-muted);
+            font-size: 9px;
+            font-weight: 700;
+            font-variant-numeric: tabular-nums;
+        }
+        .git-compare-badge-branch { background: color-mix(in srgb, var(--markon-accent) 22%, transparent); color: var(--markon-accent); }
+        .git-compare-badge-worktree { background: color-mix(in srgb, var(--markon-success, #3fb950) 22%, transparent); color: var(--markon-success, #3fb950); }
+        .git-compare-row-main {
+            min-width: 0;
+            flex: 1;
+            display: grid;
+            gap: 1px;
+        }
+        .git-compare-row-name {
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+            font-size: 13px;
+            font-weight: 600;
+            font-family: 'SF Mono', Monaco, 'Roboto Mono', Consolas, monospace;
+        }
+        .git-compare-row-sub {
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+            font-size: 11px;
             color: var(--markon-fg-muted);
         }
+        .git-compare-row-detail,
+        .git-compare-row-date {
+            flex: none;
+            color: var(--markon-fg-muted);
+            font-size: 11px;
+            white-space: nowrap;
+        }
+        .git-compare-empty {
+            padding: 12px 6px;
+            color: var(--markon-fg-muted);
+            font-size: 12px;
+        }
+        .git-compare-foot {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 10px;
+            padding: 10px 12px;
+            border-top: 1px solid var(--markon-border-default);
+        }
+        .git-compare-foot-summary {
+            min-width: 0;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+            color: var(--markon-fg-muted);
+            font-size: 12px;
+            font-family: 'SF Mono', Monaco, 'Roboto Mono', Consolas, monospace;
+        }
+        .git-compare-apply {
+            flex: none;
+            padding: 6px 16px;
+            border: 0;
+            border-radius: var(--markon-radius-sm);
+            background: var(--markon-accent);
+            color: #fff;
+            font-size: 13px;
+            font-weight: 650;
+            cursor: pointer;
+        }
+        .git-compare-apply:disabled { opacity: 0.5; cursor: not-allowed; }
         /* Compact segmented Raw/Rendered toggle (sits in the summary function row). */
         .git-diff-view-seg {
             display: inline-flex;
@@ -1006,7 +1212,10 @@
         <section class="git-diff-body">
             <aside class="git-diff-sidebar">
                 <section class="git-diff-summary">
-                    <h1 class="git-diff-title">Comparing changes</h1>
+                    <div class="git-diff-titlebox">
+                        <h1 class="git-diff-title">Markdiff</h1>
+                        <a class="git-diff-ws-path" href="{{ files_url }}" title="{{ workspace_display_path }}">{{ workspace_display_path }}</a>
+                    </div>
                     <div class="git-diff-view-seg" role="group" aria-label="Diff view" data-diff-view-seg>
                         <button type="button" class="git-diff-seg-btn" data-view="raw"
                                 aria-pressed="{% if initial_diff_view == "rendered" %}false{% else %}true{% endif %}">Raw</button>
@@ -1015,31 +1224,25 @@
                     </div>
                 </section>
                 <section class="git-sidebar-block" aria-label="Diff options">
-                <form class="git-diff-range-group"
-                      action="{{ compare_url }}"
-                      method="get"
-                      aria-label="Compared revisions"
-                      data-compare-form
-                      data-compare-path-base="{{ compare_path_base }}"
-                      data-compare-options-status-url="{{ compare_options_status_url }}">
-                    <input data-diff-view-input type="hidden" name="view" value="rendered" {% if initial_diff_view != "rendered" %}disabled{% endif %}>
-                    <label class="git-diff-range-part">
-                        <span class="git-diff-range-label">Base</span>
-                        <select class="git-diff-range-select" name="base">
-                            {% for option in compare_base_options %}
-                            <option value="{{ option.value }}" {% if option.selected %}selected{% endif %}{% if option.disabled %} disabled{% endif %}>{{ option.label }}</option>
-                            {% endfor %}
-                        </select>
-                    </label>
-                    <label class="git-diff-range-part">
-                        <span class="git-diff-range-label">Compare</span>
-                        <select class="git-diff-range-select" name="compare">
-                            {% for option in compare_compare_options %}
-                            <option value="{{ option.value }}" {% if option.selected %}selected{% endif %}{% if option.disabled %} disabled{% endif %}>{{ option.label }}</option>
-                            {% endfor %}
-                        </select>
-                    </label>
-                </form>
+                    <div class="git-compare-control"
+                         data-compare-control
+                         data-compare-path-base="{{ compare_path_base }}"
+                         data-compare-status-url="{{ compare_options_status_url }}">
+                        <button type="button" class="git-compare-trigger" data-compare-trigger
+                                aria-haspopup="dialog" aria-expanded="false" aria-label="Choose compared revisions">
+                            <span class="git-compare-leg">
+                                <span class="git-compare-leg-label">Base</span>
+                                <span class="git-compare-leg-value" data-compare-base-label>…</span>
+                            </span>
+                            <span class="git-compare-sep" aria-hidden="true">→</span>
+                            <span class="git-compare-leg">
+                                <span class="git-compare-leg-label">Compare</span>
+                                <span class="git-compare-leg-value" data-compare-compare-label>…</span>
+                            </span>
+                            <svg class="git-compare-chevron" viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><path fill="currentColor" d="M12.78 6.22a.75.75 0 0 1 0 1.06l-4.25 4.25a.75.75 0 0 1-1.06 0L3.22 7.28a.75.75 0 0 1 1.06-1.06L8 9.94l3.72-3.72a.75.75 0 0 1 1.06 0Z"/></svg>
+                        </button>
+                    </div>
+                    <script type="application/json" data-compare-picker>{{ compare_picker_json | safe }}</script>
                 </section>
                 <section class="git-sidebar-block">
                     <div class="git-filter">
@@ -1051,8 +1254,8 @@
                             </button>
                             <div class="git-filter-menu" role="menu" hidden data-diff-filter-menu>
                                 <label class="git-filter-opt">
-                                    <input type="checkbox" data-diff-md-only>
-                                    <span>Markdown only</span>
+                                    <input type="checkbox" data-diff-show-viewed checked>
+                                    <span>Viewed files</span>
                                 </label>
                             </div>
                         </div>
@@ -1123,5 +1326,6 @@
     <script type="module" src="/_/js/diff-annotations.js"></script>
     <script type="module" src="/_/js/diff-shortcuts.js"></script>
     <script type="module" src="/_/js/diff-file-create.js"></script>
+    <script type="module" src="/_/js/diff-ref-picker.js"></script>
 </body>
 </html>

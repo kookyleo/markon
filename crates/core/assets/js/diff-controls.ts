@@ -1,7 +1,7 @@
 /**
- * Compare/diff page controls: the file-list filter (+ "Markdown only" menu) and
- * the Raw⇄Rendered view switcher (segment toggle, file selection, compare-range
- * form, history/hash sync, stored view preference).
+ * Compare/diff page controls: the file-list filter (+ a GitHub-style "Viewed
+ * files" toggle) and the Raw⇄Rendered view switcher (segment toggle, file
+ * selection, history/hash sync, stored view preference).
  *
  * Built as a CLASSIC (IIFE) bundle and loaded as a non-module `<script>` at the
  * same point in `git-diff.html` where these used to live inline — so it still
@@ -11,29 +11,38 @@
  * point; every call is guarded, exactly as the original inline code was.
  */
 
+import {
+    loadViewedSet,
+    loadShowViewed,
+    persistShowViewed,
+    VIEWED_CHANGED_EVENT,
+    SHOW_VIEWED_EVENT,
+} from './diff-file-header';
+
 type View = 'rendered' | 'raw';
 type CleanupMenu = HTMLElement & { __cleanup?: (() => void) | null };
 
-// ── File-list filter + "Markdown only" menu ─────────────────────────────────
+// ── File-list filter + "Viewed files" toggle ────────────────────────────────
 function initFilter(): void {
     const filter = document.querySelector<HTMLInputElement>('[data-diff-filter]');
     const entries = Array.from(document.querySelectorAll<HTMLElement>('[data-diff-nav-entry]'));
     const filterBtn = document.querySelector<HTMLElement>('[data-diff-filter-toggle]');
     const filterMenu = document.querySelector<CleanupMenu>('[data-diff-filter-menu]');
-    const mdOnlyInput = document.querySelector<HTMLInputElement>('[data-diff-md-only]');
-    const MD_ONLY_KEY = 'markon:diff:mdonly';
-    let mdOnly = false;
-    try { mdOnly = window.localStorage.getItem(MD_ONLY_KEY) === '1'; } catch { /* ignore */ }
+    const showViewedInput = document.querySelector<HTMLInputElement>('[data-diff-show-viewed]');
+    // Same data URL the content views key their Viewed set on (shell attr).
+    const dataUrl = document.querySelector('[data-diff-shell]')?.getAttribute('data-diff-data-url') || '';
 
-    const isMd = (path: string): boolean => /\.md$/i.test(path);
+    let viewedSet = loadViewedSet(dataUrl);
+    let showViewed = loadShowViewed(dataUrl);
+
     const fileVisible = (path: string, query: string): boolean => {
-        if (mdOnly && !isMd(path)) return false;
+        if (!showViewed && viewedSet.has(path)) return false;
         if (query && path.toLowerCase().indexOf(query) === -1) return false;
         return true;
     };
     const applyFilter = (): void => {
         const query = ((filter && filter.value) || '').trim().toLowerCase();
-        const filtering = !!query || mdOnly;
+        const filtering = !!query || !showViewed;
         const visibleFiles = entries.filter(
             (entry) =>
                 entry.getAttribute('data-diff-kind') === 'file' &&
@@ -52,12 +61,28 @@ function initFilter(): void {
             }
             entry.style.display = visible ? '' : 'none';
         });
-        if (filterBtn) filterBtn.classList.toggle('is-active', mdOnly);
+        if (filterBtn) filterBtn.classList.toggle('is-active', !showViewed);
     };
     if (filter) filter.addEventListener('input', applyFilter);
 
-    // Filter menu (Markdown only).
-    if (mdOnlyInput) mdOnlyInput.checked = mdOnly;
+    // "Viewed files" toggle: hide/show viewed files in the sidebar, and broadcast
+    // so the content view hides/shows their sections too.
+    if (showViewedInput) {
+        showViewedInput.checked = showViewed;
+        showViewedInput.addEventListener('change', () => {
+            showViewed = showViewedInput.checked;
+            persistShowViewed(dataUrl, showViewed);
+            applyFilter();
+            document.dispatchEvent(new CustomEvent(SHOW_VIEWED_EVENT, { detail: { showViewed } }));
+        });
+    }
+    // Content view toggled a file's Viewed state → re-evaluate the sidebar.
+    document.addEventListener(VIEWED_CHANGED_EVENT, (e) => {
+        const detail = (e as CustomEvent).detail;
+        viewedSet = detail && Array.isArray(detail.viewed) ? new Set<string>(detail.viewed) : loadViewedSet(dataUrl);
+        applyFilter();
+    });
+
     const setMenuOpen = (open: boolean): void => {
         if (!filterMenu || !filterBtn) return;
         filterMenu.hidden = !open;
@@ -81,12 +106,6 @@ function initFilter(): void {
         }
     };
     if (filterBtn) filterBtn.addEventListener('click', () => setMenuOpen(!!filterMenu && !!filterMenu.hidden));
-    if (mdOnlyInput)
-        mdOnlyInput.addEventListener('change', () => {
-            mdOnly = mdOnlyInput.checked;
-            try { window.localStorage.setItem(MD_ONLY_KEY, mdOnly ? '1' : '0'); } catch { /* ignore */ }
-            applyFilter();
-        });
     applyFilter();
 }
 
