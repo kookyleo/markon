@@ -79,6 +79,27 @@ function init(): void {
         if (url !== currentRelUrl()) location.href = url;
     };
 
+    // Quick-preset links, rendered INLINE under the trigger (not in the popover).
+    const renderPresets = (): void => {
+        const host = control.querySelector<HTMLElement>('[data-compare-quick]');
+        if (!host) return;
+        host.replaceChildren();
+        const add = (label: string, base: string, compare: string): void => {
+            if (!data.base.some((o) => o.value === base) && base !== 'HEAD') return;
+            if (!data.compare.some((o) => o.value === compare)) return;
+            const b = document.createElement('button');
+            b.type = 'button';
+            b.className = 'git-compare-preset';
+            b.textContent = label;
+            b.addEventListener('click', () => navigate(base, compare));
+            host.appendChild(b);
+        };
+        if (data.compare.some((o) => o.kind === 'worktree')) add('Uncommitted changes', 'HEAD', 'worktree');
+        const commits = data.base.filter((o) => o.kind === 'commit');
+        if (commits.length >= 2) add('Latest commit', commits[1].value, 'HEAD');
+    };
+    renderPresets();
+
     // ── Panel ───────────────────────────────────────────────────────────────
     const close = (): void => {
         panel?.remove();
@@ -193,25 +214,6 @@ function init(): void {
         p.className = 'git-compare-panel';
         p.setAttribute('role', 'dialog');
         p.setAttribute('aria-label', 'Choose compared revisions');
-
-        // Quick presets.
-        const presets = document.createElement('div');
-        presets.className = 'git-compare-presets';
-        const addPreset = (label: string, base: string, compare: string): void => {
-            if (!data.base.some((o) => o.value === base) && base !== 'HEAD') return;
-            if (!data.compare.some((o) => o.value === compare)) return;
-            const b = document.createElement('button');
-            b.type = 'button';
-            b.className = 'git-compare-preset';
-            b.textContent = label;
-            b.addEventListener('click', () => navigate(base, compare));
-            presets.appendChild(b);
-        };
-        const hasWorktree = data.compare.some((o) => o.kind === 'worktree');
-        if (hasWorktree) addPreset('Uncommitted changes', 'HEAD', 'worktree');
-        const commits = data.base.filter((o) => o.kind === 'commit');
-        if (commits.length >= 2) addPreset('Latest commit', commits[1].value, 'HEAD');
-        if (presets.childElementCount) p.appendChild(presets);
 
         // Two columns.
         const cols = document.createElement('div');
