@@ -226,8 +226,10 @@ const SVG_COPY =
 const SVG_KEBAB =
     '<svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><path fill="currentColor" d="M8 9a1.5 1.5 0 1 0 0-3 1.5 1.5 0 0 0 0 3ZM1.5 9a1.5 1.5 0 1 0 0-3 1.5 1.5 0 0 0 0 3Zm13 0a1.5 1.5 0 1 0 0-3 1.5 1.5 0 0 0 0 3Z"/></svg>';
 // Pure diagonal up-right arrow (octicon arrow-up-right) — "open in new window".
+// Slightly smaller than the copy icon's 14px so the diagonal glyph reads as the
+// same optical size next to it.
 const SVG_OPEN_EXTERNAL =
-    '<svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><path fill="currentColor" d="M5.22 14.78a.75.75 0 0 1 0-1.06L12.44 6.5H7.75a.75.75 0 0 1 0-1.5h6.5a.75.75 0 0 1 .75.75v6.5a.75.75 0 0 1-1.5 0V7.56l-7.22 7.22a.75.75 0 0 1-1.06 0Z"/></svg>';
+    '<svg viewBox="0 0 16 16" width="13" height="13" aria-hidden="true"><path fill="currentColor" d="M5.22 14.78a.75.75 0 0 1 0-1.06L12.44 6.5H7.75a.75.75 0 0 1 0-1.5h6.5a.75.75 0 0 1 .75.75v6.5a.75.75 0 0 1-1.5 0V7.56l-7.22 7.22a.75.75 0 0 1-1.06 0Z"/></svg>';
 
 const workspaceId = (): string =>
     document.querySelector('meta[name="workspace-id"]')?.getAttribute('content') || '';

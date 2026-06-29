@@ -77,25 +77,26 @@
             flex-direction: column;
             gap: 2px;
         }
-        /* Collapse-the-sidebar button (sits left of the title). */
+        /* Collapse-the-sidebar button (sits at the title row's right edge). Flat
+           ghost icon button — no border/box, hover background only. */
         .git-sidebar-toggle {
             flex: 0 0 auto;
             margin-left: auto;
             display: inline-flex;
             align-items: center;
             justify-content: center;
-            width: 30px;
-            height: 30px;
+            width: 28px;
+            height: 28px;
             padding: 0;
-            border: 1px solid var(--markon-border-default);
+            border: 0;
             border-radius: var(--markon-radius-sm);
-            background: var(--markon-bg-default);
+            background: transparent;
             color: var(--markon-fg-muted);
             cursor: pointer;
         }
         .git-sidebar-toggle:hover {
             color: var(--markon-fg-default);
-            border-color: color-mix(in srgb, var(--markon-fg-default) 30%, var(--markon-border-default));
+            background: color-mix(in srgb, var(--markon-fg-default) 10%, transparent);
         }
         .git-sidebar-toggle svg { display: block; }
         /* Workspace path under the title; links to the workspace home. */
@@ -391,27 +392,28 @@
         [data-diff-shell][data-sidebar-collapsed] .git-diff-sidebar {
             display: none;
         }
+        /* Floating re-open button (collapsed state). Flat ghost icon aligned with
+           the file-header icon row (which sits at y≈11, height 24). */
         .git-sidebar-reopen {
             position: absolute;
-            top: 12px;
-            left: 12px;
+            top: 11px;
+            left: 14px;
             z-index: 30;
             display: none;
             align-items: center;
             justify-content: center;
-            width: 32px;
-            height: 32px;
+            width: 24px;
+            height: 24px;
             padding: 0;
-            border: 1px solid var(--markon-border-default);
+            border: 0;
             border-radius: var(--markon-radius-sm);
-            background: var(--markon-bg-default);
+            background: transparent;
             color: var(--markon-fg-muted);
             cursor: pointer;
-            box-shadow: 0 2px 8px color-mix(in srgb, var(--markon-fg-default) 14%, transparent);
         }
         .git-sidebar-reopen:hover {
             color: var(--markon-fg-default);
-            border-color: color-mix(in srgb, var(--markon-fg-default) 30%, var(--markon-border-default));
+            background: color-mix(in srgb, var(--markon-fg-default) 10%, transparent);
         }
         .git-sidebar-reopen svg { display: block; }
         [data-diff-shell][data-sidebar-collapsed] .git-sidebar-reopen {
