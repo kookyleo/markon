@@ -30,7 +30,7 @@ const folderRowInner = (): string =>
  *  the project name (NOT "/", which reads like the filesystem root). No chevron. */
 const rootRowInner = (): string =>
     '<span class="git-nav-twist" aria-hidden="true"></span>' +
-    '<span class="git-nav-main"><span class="git-nav-icon git-nav-folder" aria-hidden="true"><svg viewBox="0 0 64 64" width="15" height="15"><path fill="currentColor" d="M27 36H15a3.003 3.003 0 0 1-3-3V15a3.003 3.003 0 0 1 3-3h12a3.003 3.003 0 0 1 3 3v18a3.003 3.003 0 0 1-3 3zM15 14a1 1 0 0 0-1 1v18a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1V15a1 1 0 0 0-1-1zM27 52H15a3.003 3.003 0 0 1-3-3v-8a3.003 3.003 0 0 1 3-3h12a3.003 3.003 0 0 1 3 3v8a3.003 3.003 0 0 1-3 3zM15 40a1 1 0 0 0-1 1v8a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-8a1 1 0 0 0-1-1zM48 52H36a3.003 3.003 0 0 1-3-3V31a3.003 3.003 0 0 1 3-3h12a3.003 3.003 0 0 1 3 3v18a3.003 3.003 0 0 1-3 3zM36 30a1 1 0 0 0-1 1v18a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1V31a1 1 0 0 0-1-1zM48 26H36a3.003 3.003 0 0 1-3-3v-8a3.003 3.003 0 0 1 3-3h12a3.003 3.003 0 0 1 3 3v8a3.003 3.003 0 0 1-3 3zM36 14a1 1 0 0 0-1 1v8a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-8a1 1 0 0 0-1-1z"/></svg></span>' +
+    '<span class="git-nav-main"><span class="git-nav-icon git-nav-folder" aria-hidden="true"><svg viewBox="11 11 42 42" width="16" height="16"><path fill="currentColor" d="M27 36H15a3.003 3.003 0 0 1-3-3V15a3.003 3.003 0 0 1 3-3h12a3.003 3.003 0 0 1 3 3v18a3.003 3.003 0 0 1-3 3zM15 14a1 1 0 0 0-1 1v18a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1V15a1 1 0 0 0-1-1zM27 52H15a3.003 3.003 0 0 1-3-3v-8a3.003 3.003 0 0 1 3-3h12a3.003 3.003 0 0 1 3 3v8a3.003 3.003 0 0 1-3 3zM15 40a1 1 0 0 0-1 1v8a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-8a1 1 0 0 0-1-1zM48 52H36a3.003 3.003 0 0 1-3-3V31a3.003 3.003 0 0 1 3-3h12a3.003 3.003 0 0 1 3 3v18a3.003 3.003 0 0 1-3 3zM36 30a1 1 0 0 0-1 1v18a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1V31a1 1 0 0 0-1-1zM48 26H36a3.003 3.003 0 0 1-3-3v-8a3.003 3.003 0 0 1 3-3h12a3.003 3.003 0 0 1 3 3v8a3.003 3.003 0 0 1-3 3zM36 14a1 1 0 0 0-1 1v8a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-8a1 1 0 0 0-1-1z"/></svg></span>' +
     '<span class="git-nav-name"></span></span>';
 
 /** The project/workspace display name (last path segment), for the root row. */
@@ -230,8 +230,9 @@ const init = (): void => {
     rootRow.className = 'git-nav-entry is-dir is-root';
     rootRow.style.setProperty('--depth', '0');
     rootRow.innerHTML = rootRowInner();
-    // Trailing "/" marks it as the workspace scope/root.
-    rootRow.querySelector('.git-nav-name')!.textContent = `${projectName()}/`;
+    // Trailing "/" marks it as the workspace scope/root (thin space before the
+    // slash so it isn't cramped against the name).
+    rootRow.querySelector('.git-nav-name')!.textContent = `${projectName()} /`;
     rootRow.title = 'Workspace root';
     rootLi.appendChild(rootRow);
     list.prepend(rootLi);
