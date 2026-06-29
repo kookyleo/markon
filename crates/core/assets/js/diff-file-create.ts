@@ -30,7 +30,7 @@ const folderRowInner = (): string =>
  *  the project name (NOT "/", which reads like the filesystem root). No chevron. */
 const rootRowInner = (): string =>
     '<span class="git-nav-twist" aria-hidden="true"></span>' +
-    '<span class="git-nav-main"><span class="git-nav-icon git-nav-folder" aria-hidden="true"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><rect x="3" y="3" width="7" height="9" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="12" width="7" height="9" rx="1.5"/></svg></span>' +
+    '<span class="git-nav-main"><span class="git-nav-icon git-nav-folder" aria-hidden="true"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"><rect x="3" y="3" width="7" height="8" rx="1.4"/><rect x="3" y="15" width="7" height="6" rx="1.4"/><rect x="14" y="3" width="7" height="6" rx="1.4"/><rect x="14" y="13" width="7" height="8" rx="1.4"/></svg></span>' +
     '<span class="git-nav-name"></span></span>';
 
 /** The project/workspace display name (last path segment), for the root row. */
