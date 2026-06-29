@@ -130,7 +130,16 @@ function init(): void {
                     if (row.classList.contains('is-disabled')) return;
                     if (side === 'base') pendingBase = o.value; else pendingCompare = o.value;
                     syncSelection();
-                    void refreshStatus();
+                    // Auto-submit: once both sides are chosen, picking either one
+                    // navigates straight to the range (no separate Compare button).
+                    // navigate() is a no-op when the URL is unchanged or
+                    // base === compare, so the panel stays open in those cases and
+                    // we refresh the grey-out status instead.
+                    if (pendingBase && pendingCompare && pendingBase !== pendingCompare) {
+                        navigate(pendingBase, pendingCompare);
+                    } else {
+                        void refreshStatus();
+                    }
                 });
                 listEl.appendChild(row);
             }
@@ -147,16 +156,12 @@ function init(): void {
     let compareListEl: HTMLElement;
     let baseSearch: HTMLInputElement;
     let compareSearch: HTMLInputElement;
-    let footSummaryEl: HTMLElement;
-    let applyBtn: HTMLButtonElement;
 
     const syncSelection = (): void => {
         baseListEl.querySelectorAll<HTMLElement>('.git-compare-row').forEach((r) =>
             r.classList.toggle('is-selected', r.dataset.value === pendingBase));
         compareListEl.querySelectorAll<HTMLElement>('.git-compare-row').forEach((r) =>
             r.classList.toggle('is-selected', r.dataset.value === pendingCompare));
-        footSummaryEl.textContent = `${shortValue(data.base, pendingBase)} → ${shortValue(data.compare, pendingCompare)}`;
-        applyBtn.disabled = !pendingBase || !pendingCompare || pendingBase === pendingCompare;
     };
 
     /** Grey rows that produce no Markdown changes vs the other pending side. */
@@ -235,19 +240,6 @@ function init(): void {
         cols.append(baseCol.col, compareCol.col);
         p.appendChild(cols);
 
-        // Footer.
-        const foot = document.createElement('div');
-        foot.className = 'git-compare-foot';
-        footSummaryEl = document.createElement('span');
-        footSummaryEl.className = 'git-compare-foot-summary';
-        applyBtn = document.createElement('button');
-        applyBtn.type = 'button';
-        applyBtn.className = 'git-compare-apply';
-        applyBtn.textContent = 'Compare';
-        applyBtn.addEventListener('click', () => navigate(pendingBase, pendingCompare));
-        foot.append(footSummaryEl, applyBtn);
-        p.appendChild(foot);
-
         renderColumn(baseListEl, data.base, 'base', '');
         renderColumn(compareListEl, data.compare, 'compare', '');
         syncSelection();
@@ -256,7 +248,7 @@ function init(): void {
 
     const positionPanel = (p: HTMLElement, anchor: HTMLElement): void => {
         const r = anchor.getBoundingClientRect();
-        const width = Math.min(560, window.innerWidth - 16);
+        const width = Math.min(720, window.innerWidth - 16);
         p.style.width = `${width}px`;
         let left = r.left;
         if (left + width > window.innerWidth - 8) left = window.innerWidth - width - 8;

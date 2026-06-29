@@ -192,7 +192,7 @@
             z-index: 60;
             display: flex;
             flex-direction: column;
-            max-height: min(70vh, 560px);
+            max-height: min(52vh, 400px);
             border: 1px solid var(--markon-border-default);
             border-radius: var(--markon-radius-md, 10px);
             background: var(--markon-bg-default);
@@ -336,35 +336,6 @@
             color: var(--markon-fg-muted);
             font-size: 12px;
         }
-        .git-compare-foot {
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-            gap: 10px;
-            padding: 10px 12px;
-            border-top: 1px solid var(--markon-border-default);
-        }
-        .git-compare-foot-summary {
-            min-width: 0;
-            overflow: hidden;
-            text-overflow: ellipsis;
-            white-space: nowrap;
-            color: var(--markon-fg-muted);
-            font-size: 12px;
-            font-family: 'SF Mono', Monaco, 'Roboto Mono', Consolas, monospace;
-        }
-        .git-compare-apply {
-            flex: none;
-            padding: 6px 16px;
-            border: 0;
-            border-radius: var(--markon-radius-sm);
-            background: var(--markon-accent);
-            color: #fff;
-            font-size: 13px;
-            font-weight: 650;
-            cursor: pointer;
-        }
-        .git-compare-apply:disabled { opacity: 0.5; cursor: not-allowed; }
         /* Compact segmented Raw/Rendered toggle (sits in the summary function row). */
         .git-diff-view-seg {
             display: inline-flex;
