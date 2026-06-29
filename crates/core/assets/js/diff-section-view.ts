@@ -358,7 +358,9 @@ export abstract class DiffSectionView {
         // meaning into the fold-line text so it's self-explanatory.
         const pureRename =
             file.status === 'renamed' && !(file.additions || 0) && !(file.deletions || 0);
-        const note = pureRename ? 'Renamed, no content changes' : undefined;
+        const gapOpts = pureRename
+            ? { note: 'This file was only renamed or moved — its content is unchanged.', standalone: true }
+            : undefined;
         return createGap(count, (gap) => {
             // Remember the expansion so it survives re-renders / view switches.
             this.#expansion?.add(file.path, start);
@@ -421,7 +423,7 @@ export abstract class DiffSectionView {
                 if (scrollEl) scrollEl.style.overflowAnchor = '';
                 reveal.classList.add('is-open'); // fade + settle the content in
             });
-        }, note);
+        }, gapOpts);
     }
 
     #derenderBody(entry: SectionEntry): void {

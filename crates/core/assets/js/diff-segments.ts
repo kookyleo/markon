@@ -149,11 +149,13 @@ export function expansionStore(dataUrl?: string | null): ExpansionStore {
 export function createGap(
     count: number,
     onExpand: (gap: HTMLButtonElement) => void,
-    note?: string,
+    opts?: { note?: string; standalone?: boolean },
 ): HTMLButtonElement {
     const gap = document.createElement('button');
     gap.type = 'button';
-    gap.className = 'md-diff-gap';
+    // `standalone` (e.g. a pure-rename file whose whole body is this one fold)
+    // gets a compact variant — no big surrounding whitespace.
+    gap.className = opts?.standalone ? 'md-diff-gap md-diff-gap-standalone' : 'md-diff-gap';
     const label = document.createElement('span');
     label.className = 'md-diff-gap-label';
     // Unfold (up+down chevrons) icon, signalling the row expands on click.
@@ -163,8 +165,13 @@ export function createGap(
         '<path fill="currentColor" d="M8 13.5 4.8 10.3l1.06-1.06L8 11.38l2.14-2.14 1.06 1.06L8 13.5Z"/></svg>';
     const text = document.createElement('span');
     const showText = count === 1 ? 'Show 1 unchanged block' : `Show ${count} unchanged blocks`;
-    // `note` (e.g. a pure-rename hint) is folded into the same fold-line text.
-    text.textContent = note ? `${note} · ${showText}` : showText;
+    // A standalone note replaces the "Show N" text (clicking still expands);
+    // otherwise an optional note is folded in front of it.
+    text.textContent = opts?.standalone
+        ? (opts.note || showText)
+        : opts?.note
+            ? `${opts.note} · ${showText}`
+            : showText;
     label.appendChild(text);
     gap.appendChild(label);
     gap.addEventListener('click', () => onExpand(gap));

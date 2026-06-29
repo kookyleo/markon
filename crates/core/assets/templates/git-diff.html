@@ -1061,23 +1061,6 @@
         }
         .md-diff-bar.is-add { background: var(--markon-success, #3fb950); }
         .md-diff-bar.is-del { background: var(--markon-danger); }
-        /* "Renamed · no content changes" badge (replaces +0 -0 for pure renames) */
-        .md-diff-renamed {
-            display: inline-flex;
-            align-items: center;
-            gap: 7px;
-            flex: none;
-            font-size: 12px;
-            white-space: nowrap;
-        }
-        .md-diff-renamed-pill {
-            padding: 1px 7px;
-            border-radius: 999px;
-            border: 1px solid color-mix(in srgb, var(--markon-accent) 45%, var(--markon-border-default));
-            color: var(--markon-accent);
-            font-weight: 600;
-        }
-        .md-diff-renamed-note { color: var(--markon-fg-muted); }
         /* bordered "Viewed" checkbox */
         .md-diff-file-check {
             display: inline-flex;
@@ -1160,6 +1143,11 @@
             box-sizing: border-box;
             padding-left: 46px;
             padding-right: 46px;
+        }
+        /* Standalone fold (whole body is one fold, e.g. a pure rename): compact,
+           no large surrounding whitespace. */
+        .md-diff-gap.md-diff-gap-standalone {
+            margin: 10px 0;
         }
         .md-diff-gap {
             display: flex;
