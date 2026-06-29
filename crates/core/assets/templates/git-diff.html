@@ -375,13 +375,28 @@
             gap: 8px;
             margin-bottom: 16px;
         }
+        .git-filter-field {
+            position: relative;
+            flex: 1;
+            min-width: 0;
+            display: flex;
+            align-items: center;
+        }
+        .git-filter-search-icon {
+            position: absolute;
+            left: 9px;
+            top: 50%;
+            transform: translateY(-50%);
+            color: var(--markon-fg-muted);
+            pointer-events: none;
+        }
         .git-filter-input {
             flex: 1;
             min-width: 0;
             min-height: 34px;
             border: 1px solid var(--markon-border-default);
             border-radius: var(--markon-radius-sm);
-            padding: 6px 9px;
+            padding: 6px 9px 6px 30px;
             background: var(--markon-bg-default);
             color: var(--markon-fg-default);
             font-size: 13px;
@@ -455,39 +470,78 @@
             padding: 0;
         }
         .git-nav-entry {
+            --guide: color-mix(in srgb, var(--markon-fg-default) 11%, transparent);
             width: 100%;
             display: grid;
-            grid-template-columns: minmax(0, 1fr);
+            grid-template-columns: 16px minmax(0, 1fr);
             align-items: center;
-            gap: 8px;
+            gap: 2px;
             min-height: 28px;
             border: 0;
-            border-radius: 0;
-            padding: 4px 0 4px calc(var(--depth) * 14px);
+            border-radius: var(--markon-radius-sm);
+            padding: 3px 6px 3px calc(var(--depth) * 14px);
             background: transparent;
             color: var(--markon-fg-default);
             text-align: left;
             cursor: default;
+            /* GitHub-style tree guide lines: one vertical rule per ancestor level,
+               drawn across the indent zone (width = depth * 14px). */
+            background-image: repeating-linear-gradient(
+                to right, var(--guide) 0, var(--guide) 1px, transparent 1px, transparent 14px);
+            background-size: calc(var(--depth) * 14px) 100%;
+            background-repeat: no-repeat;
+            background-position: 13px 0;
         }
         .git-nav-entry.is-file {
             cursor: pointer;
         }
         .git-nav-entry.is-file:hover,
+        .git-nav-entry.is-dir:hover {
+            background-color: color-mix(in srgb, var(--markon-fg-default) 6%, transparent);
+        }
         .git-nav-entry.is-active {
+            background-color: color-mix(in srgb, var(--markon-accent) 12%, transparent);
+        }
+        .git-nav-entry.is-active .git-nav-name {
             color: var(--markon-accent);
+        }
+        /* Twist gutter: chevron for folders, blank (aligning) for files. */
+        .git-nav-twist {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            width: 16px;
+            height: 16px;
+            color: var(--markon-fg-muted);
+        }
+        .git-nav-chevron {
+            transition: transform 0.12s ease;
+            transform: rotate(90deg);
+        }
+        .git-nav-entry.is-dir[aria-expanded="false"] .git-nav-chevron {
+            transform: rotate(0deg);
         }
         .git-nav-main {
             min-width: 0;
             display: inline-flex;
             align-items: center;
-            gap: 7px;
+            gap: 6px;
         }
         .git-nav-icon {
             flex: 0 0 auto;
-            width: 14px;
-            color: var(--markon-fg-muted);
-            text-align: center;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            width: 16px;
+            height: 16px;
         }
+        .git-nav-icon svg { display: block; }
+        .git-nav-folder { color: var(--markon-fg-muted); }
+        .git-nav-status.is-added    { color: var(--markon-diff-add-fg, #2da44e); }
+        .git-nav-status.is-deleted  { color: var(--markon-diff-del-fg, #cf222e); }
+        .git-nav-status.is-modified { color: var(--markon-attention-fg, #bf8700); }
+        .git-nav-status.is-renamed,
+        .git-nav-status.is-copied   { color: var(--markon-accent, #1f6feb); }
         .git-nav-name {
             min-width: 0;
             overflow: hidden;
@@ -496,10 +550,15 @@
             font-size: 13px;
             font-weight: 550;
         }
-        .git-nav-entry.is-dir .git-nav-name {
-            color: var(--markon-fg-muted);
-            font-weight: 650;
+        .git-nav-entry.is-dir {
+            cursor: pointer;
         }
+        .git-nav-entry.is-dir .git-nav-name {
+            color: var(--markon-fg-default);
+            font-weight: 600;
+        }
+        .git-nav-entry.is-root .git-nav-twist { visibility: hidden; }
+        .git-nav-entry.is-root .git-nav-name { color: var(--markon-fg-muted); }
         /* Inline "new file/folder" affordances (only when diff-editable). */
         .git-nav-entry.is-dir {
             position: relative;
@@ -1294,7 +1353,10 @@
                 </section>
                 <section class="git-sidebar-block">
                     <div class="git-filter">
-                        <input class="git-filter-input" type="search" placeholder="Filter files..." data-diff-filter>
+                        <div class="git-filter-field">
+                            <svg class="git-filter-search-icon" viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><path fill="currentColor" d="M10.68 11.74a6 6 0 0 1-7.922-8.982 6 6 0 0 1 8.982 7.922l3.04 3.04a.749.749 0 0 1-.326 1.275.749.749 0 0 1-.734-.215ZM11.5 7a4.499 4.499 0 1 0-8.997 0A4.499 4.499 0 0 0 11.5 7Z"/></svg>
+                            <input class="git-filter-input" type="search" placeholder="Filter files..." data-diff-filter>
+                        </div>
                         <div class="git-filter-menu-wrap">
                             <button class="git-filter-btn" type="button" aria-label="Filter options"
                                     aria-haspopup="menu" aria-expanded="false" data-diff-filter-toggle>
@@ -1321,17 +1383,27 @@
                                     type="button"
                                     aria-pressed="false"
                                     style="--depth: {{ entry.depth }}"
+                                    data-diff-status="{{ entry.status }}"
                                     data-diff-scroll-path="{{ entry.path }}">
+                                <span class="git-nav-twist" aria-hidden="true"></span>
                                 <span class="git-nav-main">
-                                    <span class="git-nav-icon" aria-hidden="true">-</span>
+                                    <span class="git-nav-icon git-nav-status is-{{ entry.status }}" aria-hidden="true">
+                                        {% if entry.status == "added" %}<svg viewBox="0 0 16 16" width="16" height="16"><path fill="currentColor" d="M13.25 1c.966 0 1.75.784 1.75 1.75v10.5A1.75 1.75 0 0 1 13.25 15H2.75A1.75 1.75 0 0 1 1 13.25V2.75C1 1.784 1.784 1 2.75 1ZM2.75 2.5a.25.25 0 0 0-.25.25v10.5c0 .138.112.25.25.25h10.5a.25.25 0 0 0 .25-.25V2.75a.25.25 0 0 0-.25-.25ZM8 4a.75.75 0 0 1 .75.75v2.5h2.5a.75.75 0 0 1 0 1.5h-2.5v2.5a.75.75 0 0 1-1.5 0v-2.5h-2.5a.75.75 0 0 1 0-1.5h2.5v-2.5A.75.75 0 0 1 8 4Z"/></svg>
+                                        {% elif entry.status == "deleted" %}<svg viewBox="0 0 16 16" width="16" height="16"><path fill="currentColor" d="M13.25 1c.966 0 1.75.784 1.75 1.75v10.5A1.75 1.75 0 0 1 13.25 15H2.75A1.75 1.75 0 0 1 1 13.25V2.75C1 1.784 1.784 1 2.75 1ZM2.75 2.5a.25.25 0 0 0-.25.25v10.5c0 .138.112.25.25.25h10.5a.25.25 0 0 0 .25-.25V2.75a.25.25 0 0 0-.25-.25ZM4.75 7.25h6.5a.75.75 0 0 1 0 1.5h-6.5a.75.75 0 0 1 0-1.5Z"/></svg>
+                                        {% elif entry.status == "renamed" or entry.status == "copied" %}<svg viewBox="0 0 16 16" width="16" height="16"><path fill="currentColor" d="M13.25 1c.966 0 1.75.784 1.75 1.75v10.5A1.75 1.75 0 0 1 13.25 15H2.75A1.75 1.75 0 0 1 1 13.25V2.75C1 1.784 1.784 1 2.75 1ZM2.75 2.5a.25.25 0 0 0-.25.25v10.5c0 .138.112.25.25.25h10.5a.25.25 0 0 0 .25-.25V2.75a.25.25 0 0 0-.25-.25Zm8.78 4.97a.75.75 0 0 1 0 1.06l-2 2a.75.75 0 1 1-1.06-1.06l.72-.72H5.25a.75.75 0 0 1 0-1.5h3.94l-.72-.72a.75.75 0 0 1 1.06-1.06Z"/></svg>
+                                        {% else %}<svg viewBox="0 0 16 16" width="16" height="16"><path fill="currentColor" d="M13.25 1c.966 0 1.75.784 1.75 1.75v10.5A1.75 1.75 0 0 1 13.25 15H2.75A1.75 1.75 0 0 1 1 13.25V2.75C1 1.784 1.784 1 2.75 1ZM2.75 2.5a.25.25 0 0 0-.25.25v10.5c0 .138.112.25.25.25h10.5a.25.25 0 0 0 .25-.25V2.75a.25.25 0 0 0-.25-.25ZM10 8a2 2 0 1 1-4 0 2 2 0 0 1 4 0Z"/></svg>{% endif %}
+                                    </span>
                                     <span class="git-nav-name">{{ entry.name }}</span>
                                 </span>
                             </button>
                             {% else %}
                             <div class="git-nav-entry is-dir"
-                                 style="--depth: {{ entry.depth }}">
+                                 style="--depth: {{ entry.depth }}"
+                                 role="button" tabindex="0" aria-expanded="true"
+                                 data-diff-dir-toggle>
+                                <span class="git-nav-twist" aria-hidden="true"><svg class="git-nav-chevron" viewBox="0 0 16 16" width="12" height="12"><path fill="currentColor" d="M6.22 3.22a.75.75 0 0 1 1.06 0l4.25 4.25a.75.75 0 0 1 0 1.06l-4.25 4.25a.75.75 0 0 1-1.06-1.06L9.94 8 6.22 4.28a.75.75 0 0 1 0-1.06Z"/></svg></span>
                                 <span class="git-nav-main">
-                                    <span class="git-nav-icon" aria-hidden="true">/</span>
+                                    <span class="git-nav-icon git-nav-folder" aria-hidden="true"><svg viewBox="0 0 16 16" width="16" height="16"><path fill="currentColor" d="M1.75 1A1.75 1.75 0 0 0 0 2.75v10.5C0 14.216.784 15 1.75 15h12.5A1.75 1.75 0 0 0 16 13.25v-8.5A1.75 1.75 0 0 0 14.25 3H7.5a.25.25 0 0 1-.2-.1l-.9-1.2C6.07 1.26 5.55 1 5 1Z"/></svg></span>
                                     <span class="git-nav-name">{{ entry.name }}</span>
                                 </span>
                             </div>

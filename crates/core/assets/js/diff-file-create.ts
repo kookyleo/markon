@@ -19,6 +19,13 @@ interface CreateUrls { file: string; folder: string; }
 const PLUS_SVG =
     '<svg viewBox="0 0 16 16" width="13" height="13" aria-hidden="true"><path fill="currentColor" d="M8 2.75a.75.75 0 0 1 .75.75v3.75h3.75a.75.75 0 0 1 0 1.5H8.75v3.75a.75.75 0 0 1-1.5 0V8.75H3.5a.75.75 0 0 1 0-1.5h3.75V3.5A.75.75 0 0 1 8 2.75Z"/></svg>';
 
+/** Inner markup of a folder row: chevron twist + folder octicon + name. Matches
+ *  the server-rendered GitHub-style tree so created folders look identical. */
+const folderRowInner = (): string =>
+    '<span class="git-nav-twist" aria-hidden="true"><svg class="git-nav-chevron" viewBox="0 0 16 16" width="12" height="12"><path fill="currentColor" d="M6.22 3.22a.75.75 0 0 1 1.06 0l4.25 4.25a.75.75 0 0 1 0 1.06l-4.25 4.25a.75.75 0 0 1-1.06-1.06L9.94 8 6.22 4.28a.75.75 0 0 1 0-1.06Z"/></svg></span>' +
+    '<span class="git-nav-main"><span class="git-nav-icon git-nav-folder" aria-hidden="true"><svg viewBox="0 0 16 16" width="16" height="16"><path fill="currentColor" d="M1.75 1A1.75 1.75 0 0 0 0 2.75v10.5C0 14.216.784 15 1.75 15h12.5A1.75 1.75 0 0 0 16 13.25v-8.5A1.75 1.75 0 0 0 14.25 3H7.5a.25.25 0 0 1-.2-.1l-.9-1.2C6.07 1.26 5.55 1 5 1Z"/></svg></span>' +
+    '<span class="git-nav-name"></span></span>';
+
 const workspaceId = (): string =>
     document.querySelector('meta[name="workspace-id"]')?.getAttribute('content') || '';
 
@@ -60,11 +67,13 @@ function buildFolderRow(path: string, depth: number, urls: CreateUrls): HTMLLIEl
     li.setAttribute('data-diff-path', path);
     const row = document.createElement('div');
     row.className = 'git-nav-entry is-dir';
+    row.setAttribute('role', 'button');
+    row.setAttribute('tabindex', '0');
+    row.setAttribute('aria-expanded', 'true');
+    row.setAttribute('data-diff-dir-toggle', '');
     row.style.setProperty('--depth', String(depth));
     const name = path.split('/').pop() || path;
-    row.innerHTML =
-        '<span class="git-nav-main"><span class="git-nav-icon" aria-hidden="true">/</span>' +
-        `<span class="git-nav-name"></span></span>`;
+    row.innerHTML = folderRowInner();
     row.querySelector('.git-nav-name')!.textContent = name;
     li.appendChild(row);
     mountFolderAffordance(row, path, urls);
@@ -202,11 +211,10 @@ const init = (): void => {
     rootLi.setAttribute('data-diff-kind', 'dir');
     rootLi.setAttribute('data-diff-path', '');
     const rootRow = document.createElement('div');
-    rootRow.className = 'git-nav-entry is-dir';
+    rootRow.className = 'git-nav-entry is-dir is-root';
     rootRow.style.setProperty('--depth', '0');
-    rootRow.innerHTML =
-        '<span class="git-nav-main"><span class="git-nav-icon" aria-hidden="true">/</span>' +
-        '<span class="git-nav-name"></span></span>';
+    rootRow.innerHTML = folderRowInner();
+    rootRow.querySelector('.git-nav-name')!.textContent = '/';
     rootLi.appendChild(rootRow);
     list.prepend(rootLi);
     mountFolderAffordance(rootRow, '', urls);

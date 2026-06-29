@@ -35,6 +35,16 @@ function initFilter(): void {
     let viewedSet = loadViewedSet(dataUrl);
     let showViewed = loadShowViewed(dataUrl);
 
+    // Collapsed folder paths (session-only, like GitHub's tree). A descendant is
+    // hidden when any ancestor folder is collapsed.
+    const collapsed = new Set<string>();
+    const underCollapsed = (path: string): boolean => {
+        for (const c of collapsed) {
+            if (path !== c && path.indexOf(c + '/') === 0) return true;
+        }
+        return false;
+    };
+
     const fileVisible = (path: string, query: string): boolean => {
         if (!showViewed && viewedSet.has(path)) return false;
         if (query && path.toLowerCase().indexOf(query) === -1) return false;
@@ -59,11 +69,43 @@ function initFilter(): void {
                     !filtering ||
                     visibleFiles.some((file) => (file.getAttribute('data-diff-path') || '').indexOf(path + '/') === 0);
             }
+            // A text query reveals matches regardless of collapse (GitHub does the
+            // same); otherwise honour collapsed ancestors.
+            if (visible && !query && underCollapsed(path)) visible = false;
             entry.style.display = visible ? '' : 'none';
         });
         if (filterBtn) filterBtn.classList.toggle('is-active', !showViewed);
     };
     if (filter) filter.addEventListener('input', applyFilter);
+
+    // Folder rows toggle their subtree open/closed (click or Enter/Space). The
+    // inline "+" create button stops propagation, so it never triggers a toggle.
+    const list = document.querySelector<HTMLElement>('[data-diff-file-list]');
+    const toggleDir = (dir: HTMLElement): void => {
+        const li = dir.closest<HTMLElement>('[data-diff-nav-entry]');
+        const path = li?.getAttribute('data-diff-path') || '';
+        if (!path) return; // root affordance row has no subtree to fold
+        if (collapsed.has(path)) collapsed.delete(path);
+        else collapsed.add(path);
+        dir.setAttribute('aria-expanded', collapsed.has(path) ? 'false' : 'true');
+        applyFilter();
+    };
+    if (list) {
+        list.addEventListener('click', (e) => {
+            const target = e.target as HTMLElement;
+            if (target.closest('.git-nav-add')) return;
+            const dir = target.closest<HTMLElement>('[data-diff-dir-toggle]');
+            if (dir) toggleDir(dir);
+        });
+        list.addEventListener('keydown', (e) => {
+            if (e.key !== 'Enter' && e.key !== ' ') return;
+            const dir = (e.target as HTMLElement).closest<HTMLElement>('[data-diff-dir-toggle]');
+            if (dir) {
+                e.preventDefault();
+                toggleDir(dir);
+            }
+        });
+    }
 
     // "Viewed files" toggle: hide/show viewed files in the sidebar, and broadcast
     // so the content view hides/shows their sections too.
