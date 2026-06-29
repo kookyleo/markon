@@ -68,7 +68,7 @@
         .git-diff-titlebox {
             min-width: 0;
             display: flex;
-            align-items: center;
+            align-items: flex-start;
             gap: 8px;
         }
         .git-diff-titletext {
@@ -85,8 +85,8 @@
             display: inline-flex;
             align-items: center;
             justify-content: center;
-            width: 28px;
-            height: 28px;
+            width: 24px;
+            height: 24px;
             padding: 0;
             border: 0;
             border-radius: var(--markon-radius-sm);
@@ -380,7 +380,10 @@
             min-width: 0;
             min-height: 0;
             overflow: auto;
-            padding: 18px;
+            /* Top padding matches the floating re-open button's offset (11px) so
+               the collapse toggle and the re-open icon land on the same line —
+               toggling the sidebar only shifts the button horizontally. */
+            padding: 11px 18px 18px;
             border-right: 1px solid var(--markon-border-default);
             background: var(--markon-bg-default);
         }
@@ -1103,6 +1106,15 @@
         /* Collapsed run of unchanged blocks: a centered label (with an unfold
            icon) sitting on a faint dashed "fold seam" line, with generous
            vertical whitespace — reads as "content folded here, click to expand". */
+        /* One shared gap (createGap) is used by both views. The rendered body
+           insets its content 46px; the raw body has no padding (so its code spans
+           full width). Inset the raw gap 46px too so the dashed "fold seam" is the
+           SAME document width in both views. */
+        .workspace-diff-body .md-diff-gap {
+            box-sizing: border-box;
+            padding-left: 46px;
+            padding-right: 46px;
+        }
         .md-diff-gap {
             display: flex;
             align-items: center;
