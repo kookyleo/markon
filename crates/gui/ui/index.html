@@ -438,6 +438,8 @@
       font-size: 13px; cursor: default;
     }
     .ws-menu-item:hover { background: var(--surface-2); }
+    .ws-menu-danger { color: var(--danger); }
+    .ws-menu-danger:hover { background: rgba(255,59,48,0.1); }
     .ws-alias-panel {
       position: absolute; right: 0; top: 30px; z-index: 20;
       width: 240px;
@@ -2031,11 +2033,6 @@
             </svg>
           </button>
           <div class="ws-collab-lock-editor" style="display:none">${accessCodeEditorHTML(true)}</div>
-          <button class="ws-icon-btn remove-btn" title="${T('ws.remove')}">
-            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-              <line x1="5" y1="12" x2="19" y2="12"/>
-            </svg>
-          </button>
           <div class="ws-more">
             <button class="ws-icon-btn more-btn" title="${T('ws.more')}">
               <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
@@ -2044,6 +2041,7 @@
             </button>
             <div class="ws-more-menu" style="display:none">
               <button class="ws-menu-item set-alias-item" type="button">${T('ws.alias.tip')}</button>
+              <button class="ws-menu-item ws-menu-danger remove-item" type="button">${T('ws.remove')}</button>
             </div>
             <div class="ws-alias-panel" style="display:none">
               <div class="ws-alias-panel-title">${T('ws.alias.tip')}</div>
@@ -2088,6 +2086,11 @@
           input.focus();
           input.select();
         });
+        card.querySelector('.remove-item').addEventListener('click', async () => {
+          closeAll();
+          await invoke('remove_workspace', { id: ws.id });
+          refreshWorkspaces();
+        });
         const save = async () => {
           if (busy) return;
           busy = true;
@@ -2103,11 +2106,6 @@
         });
       })();
 
-      // Remove
-      card.querySelector('.remove-btn').addEventListener('click', async () => {
-        await invoke('remove_workspace', { id: ws.id });
-        refreshWorkspaces();
-      });
 
       // Per-workspace access code (overrides the server code; empty clears).
       // The lock icon morphs *in place* into the editor: clicking it hides the
