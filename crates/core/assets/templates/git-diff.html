@@ -1195,16 +1195,17 @@
         /* j/k keyboard focus: an accent rail at the file body's left edge spanning
            the focused change block. scroll-margin keeps it clear of the sticky
            header when scrolled into view. */
-        .md-diff-block.is-focused {
+        /* j/k focus rail — shared by both views (the `.is-focused` block carries
+           the shared `diff-change-block` marker). Only the horizontal offset
+           differs, because the rendered block sits 46px right of the divider
+           while the raw block starts at the divider itself. */
+        .diff-change-block.is-focused {
             position: relative;
             scroll-margin-top: 60px;
         }
-        .md-diff-block.is-focused::before {
+        .diff-change-block.is-focused::before {
             content: "";
             position: absolute;
-            /* Centre the 4px rail on the sidebar↔content divider (block sits 46px
-               right of it, so -48 straddles the divider line). */
-            left: -48px;
             top: -3px;
             bottom: -3px;
             width: 4px;
@@ -1212,6 +1213,10 @@
             background: var(--markon-accent);
             box-shadow: 0 0 0 1px color-mix(in srgb, var(--markon-accent) 35%, transparent);
         }
+        /* Rendered: block content is inset 46px from the divider → -48 centres the
+           4px rail on it. Raw: block starts at the divider → -2 centres it. */
+        .md-diff-block.is-focused::before { left: -48px; }
+        .workspace-diff-block.is-focused::before { left: -2px; }
         .md-diff-change-card {
             min-width: 0;
             position: relative;
@@ -1520,6 +1525,7 @@
                      {% if initial_diff_view == "rendered" %}hidden{% endif %}>
                 <div class="workspace-diff-content"
                      data-virtual-diff
+                     data-diff-scroller
                      data-diff-autoload="{% if initial_diff_view == "raw" %}true{% else %}false{% endif %}"
                      data-diff-data-url="{{ markdown_diff_data_url }}"
                      data-diff-open-url="">
@@ -1528,6 +1534,7 @@
             </section>
             <section class="git-preview-scroll"
                      data-diff-view-panel="rendered"
+                     data-diff-scroller
                      {% if initial_diff_view != "rendered" %}hidden{% endif %}>
                 <article class="git-preview-pane git-markdown-diff-content markdown-body"
                          data-md-diff-content>

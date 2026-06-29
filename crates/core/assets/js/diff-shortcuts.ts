@@ -20,45 +20,31 @@ const toggleView = (shell: HTMLElement): void => {
     document.querySelector<HTMLElement>(`[data-diff-view-seg] [data-view="${next}"]`)?.click();
 };
 
-/** Sidebar file buttons currently visible (respecting the filter). */
-const visibleFileButtons = (): HTMLElement[] =>
-    [...document.querySelectorAll<HTMLElement>('[data-diff-scroll-path]')].filter((button) => {
-        const entry = button.closest<HTMLElement>('[data-diff-nav-entry]');
-        return !entry || entry.style.display !== 'none';
-    });
+// ── Step through individual changed blocks (BOTH views) ─────────────────────
+// Both views mark their changed-block wrappers with the shared `diff-change-block`
+// class and their scroll container with `data-diff-scroller`, so this one stepper
+// works for Raw and Rendered alike — only the surface DOM differs, not the logic.
+const CHANGE_SELECTOR =
+    '.diff-change-block.is-modified, .diff-change-block.is-added, .diff-change-block.is-deleted';
 
-/** Jump to the next/previous changed file (dir = +1 / -1). Anchors on the
- *  currently-selected file, else the file at the top of the viewport. */
-const cycleFile = (shell: HTMLElement, dir: 1 | -1): void => {
-    const buttons = visibleFileButtons();
-    if (!buttons.length) return;
-
-    let index = buttons.findIndex((b) => b.classList.contains('is-active'));
-    if (index < 0) {
-        const api = currentView(shell) === 'rendered' ? window.markonMarkdownDiff : window.markonSourceDiff;
-        const topPath = api?.topAnchor?.()?.path ?? null;
-        index = topPath ? buttons.findIndex((b) => b.getAttribute('data-diff-scroll-path') === topPath) : -1;
-    }
-
-    const target =
-        index < 0
-            ? dir > 0
-                ? buttons[0]
-                : buttons[buttons.length - 1]
-            : buttons[Math.min(buttons.length - 1, Math.max(0, index + dir))];
-    target?.click();
+/** The active view panel and the element that actually scrolls inside it. */
+const activeScroller = (shell: HTMLElement): { panel: HTMLElement; scroller: HTMLElement } | null => {
+    const view = currentView(shell);
+    const panel = document.querySelector<HTMLElement>(`[data-diff-view-panel="${view}"]`);
+    if (!panel || panel.hidden) return null;
+    const scroller = panel.matches('[data-diff-scroller]')
+        ? panel
+        : panel.querySelector<HTMLElement>('[data-diff-scroller]') || panel;
+    return { panel, scroller };
 };
 
-// ── Step through individual changes (Rendered view) ─────────────────────────
-const CHANGE_SELECTOR =
-    '.md-diff-block.is-modified, .md-diff-block.is-added, .md-diff-block.is-deleted';
-
-/** Move focus to the next/previous changed block in the Rendered view, scroll it
+/** Move focus to the next/previous changed block in the active view, scroll it
  *  under the sticky header, and mark it `.is-focused` (a left accent rail). Only
  *  visible blocks count, so viewed-hidden sections are skipped. */
-const stepChange = (dir: 1 | -1): void => {
-    const panel = document.querySelector<HTMLElement>('[data-diff-view-panel="rendered"]');
-    if (!panel) return;
+const stepBlock = (shell: HTMLElement, dir: 1 | -1): void => {
+    const ctx = activeScroller(shell);
+    if (!ctx) return;
+    const { panel, scroller } = ctx;
     const blocks = [...panel.querySelectorAll<HTMLElement>(CHANGE_SELECTOR)].filter(
         (b) => b.offsetParent !== null,
     );
@@ -71,7 +57,7 @@ const stepChange = (dir: 1 | -1): void => {
     } else {
         // No current focus: pick the first change just past the sticky header
         // (going down) or just above it (going up).
-        const line = panel.getBoundingClientRect().top + 56;
+        const line = scroller.getBoundingClientRect().top + 56;
         if (dir > 0) {
             next = blocks.find((b) => b.getBoundingClientRect().top > line + 4) || blocks[0];
         } else {
@@ -82,15 +68,15 @@ const stepChange = (dir: 1 | -1): void => {
     if (!next) {
         // Boundary of the currently-rendered range — nudge the scroll so the
         // next section virtualizes in; the following press continues from there.
-        panel.scrollBy({ top: dir * panel.clientHeight * 0.85, behavior: 'smooth' });
+        scroller.scrollBy({ top: dir * scroller.clientHeight * 0.85, behavior: 'smooth' });
         return;
     }
     blocks.forEach((b) => b.classList.remove('is-focused'));
     next.classList.add('is-focused');
     const header = next.closest('.md-diff-file-section')?.querySelector<HTMLElement>('.md-diff-file-header');
     const offset = (header?.offsetHeight || 44) + 10;
-    const y = next.getBoundingClientRect().top - panel.getBoundingClientRect().top - offset + panel.scrollTop;
-    panel.scrollTo({ top: Math.max(0, y), behavior: 'smooth' });
+    const y = next.getBoundingClientRect().top - scroller.getBoundingClientRect().top - offset + scroller.scrollTop;
+    scroller.scrollTo({ top: Math.max(0, y), behavior: 'smooth' });
 };
 
 const init = (): void => {
@@ -101,13 +87,11 @@ const init = (): void => {
     // Global (every page).
     km.register('HELP', () => km.showHelp());
     km.register('THEME_PANEL', () => window.MarkonTheme?.togglePanel());
-    // Diff-specific. j/k step through individual changes in the Rendered view;
-    // in Raw they fall back to next/previous file.
-    const step = (dir: 1 | -1): void =>
-        currentView(shell) === 'rendered' ? stepChange(dir) : cycleFile(shell, dir);
+    // Diff-specific. j/k step through individual changed blocks in BOTH views
+    // (the same stepper; only the underlying DOM differs).
     km.register('DIFF_TOGGLE_VIEW', () => toggleView(shell));
-    km.register('DIFF_NEXT_FILE', () => step(1));
-    km.register('DIFF_PREV_FILE', () => step(-1));
+    km.register('DIFF_NEXT_FILE', () => stepBlock(shell, 1));
+    km.register('DIFF_PREV_FILE', () => stepBlock(shell, -1));
 
     document.addEventListener('keydown', (e) => km.handle(e));
     window.shortcutsManager = km;

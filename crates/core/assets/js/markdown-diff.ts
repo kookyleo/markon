@@ -103,7 +103,10 @@ export class MarkdownDiffPage extends DiffSectionView {
 
     protected renderBlock(file: MarkdownDiffFile, block: MarkdownDiffBlock, rowIndex: number): HTMLElement {
         const row = document.createElement('article');
-        row.className = `md-diff-block is-${block.kind}`;
+        // `diff-change-block` is the SHARED marker both views' blocks carry, so the
+        // j/k stepping (diff-shortcuts.ts) and the focus rail target one selector
+        // regardless of view.
+        row.className = `diff-change-block md-diff-block is-${block.kind}`;
         row.dataset.mdDiffPair = String(rowIndex);
         // Source line span, so the cross-mode anchor can interpolate a precise
         // line WITHIN a tall block (the AST is block-level, not line-level).

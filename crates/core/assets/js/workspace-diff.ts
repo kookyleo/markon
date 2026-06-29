@@ -47,7 +47,9 @@ class SourceDiffView extends DiffSectionView {
 
     protected renderBlock(file: MarkdownDiffFile, block: MarkdownDiffBlock, index: number): HTMLElement {
         const wrap = document.createElement('div');
-        wrap.className = `workspace-diff-block is-${block.kind}`;
+        // `diff-change-block` is the shared marker (see markdown-diff.ts) so j/k
+        // stepping + focus rail work identically across both views.
+        wrap.className = `diff-change-block workspace-diff-block is-${block.kind}`;
         wrap.dataset.mdDiffPair = String(index);
         const pairs = this.#blockPairs(file, block);
         if (this.#unified()) {
