@@ -23,14 +23,14 @@ const PLUS_SVG =
  *  the server-rendered GitHub-style tree so created folders look identical. */
 const folderRowInner = (): string =>
     '<span class="git-nav-twist" aria-hidden="true"><svg class="git-nav-chevron" viewBox="0 0 16 16" width="12" height="12"><path fill="currentColor" d="M6.22 3.22a.75.75 0 0 1 1.06 0l4.25 4.25a.75.75 0 0 1 0 1.06l-4.25 4.25a.75.75 0 0 1-1.06-1.06L9.94 8 6.22 4.28a.75.75 0 0 1 0-1.06Z"/></svg></span>' +
-    '<span class="git-nav-main"><span class="git-nav-icon git-nav-folder" aria-hidden="true"><svg viewBox="0 0 16 16" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linejoin="round"><path d="M1.6 4c0-.69.56-1.25 1.25-1.25h2.26c.33 0 .65.13.88.36l.86.86c.24.24.55.37.89.37h4.55c.69 0 1.25.56 1.25 1.25v6.05c0 .69-.56 1.25-1.25 1.25H2.85c-.69 0-1.25-.56-1.25-1.25Z"/></svg></span>' +
+    '<span class="git-nav-main"><span class="git-nav-icon git-nav-folder" aria-hidden="true"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2Z"/></svg></span>' +
     '<span class="git-nav-name"></span></span>';
 
 /** Inner markup of the workspace-root row: a folder-with-badge workspace icon +
  *  the project name (NOT "/", which reads like the filesystem root). No chevron. */
 const rootRowInner = (): string =>
     '<span class="git-nav-twist" aria-hidden="true"></span>' +
-    '<span class="git-nav-main"><span class="git-nav-icon git-nav-folder" aria-hidden="true"><svg viewBox="11 11 42 42" width="16" height="16"><path fill="currentColor" d="M27 36H15a3.003 3.003 0 0 1-3-3V15a3.003 3.003 0 0 1 3-3h12a3.003 3.003 0 0 1 3 3v18a3.003 3.003 0 0 1-3 3zM15 14a1 1 0 0 0-1 1v18a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1V15a1 1 0 0 0-1-1zM27 52H15a3.003 3.003 0 0 1-3-3v-8a3.003 3.003 0 0 1 3-3h12a3.003 3.003 0 0 1 3 3v8a3.003 3.003 0 0 1-3 3zM15 40a1 1 0 0 0-1 1v8a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-8a1 1 0 0 0-1-1zM48 52H36a3.003 3.003 0 0 1-3-3V31a3.003 3.003 0 0 1 3-3h12a3.003 3.003 0 0 1 3 3v18a3.003 3.003 0 0 1-3 3zM36 30a1 1 0 0 0-1 1v18a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1V31a1 1 0 0 0-1-1zM48 26H36a3.003 3.003 0 0 1-3-3v-8a3.003 3.003 0 0 1 3-3h12a3.003 3.003 0 0 1 3 3v8a3.003 3.003 0 0 1-3 3zM36 14a1 1 0 0 0-1 1v8a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-8a1 1 0 0 0-1-1z"/></svg></span>' +
+    '<span class="git-nav-main"><span class="git-nav-icon git-nav-folder" aria-hidden="true"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><rect x="3" y="3" width="7" height="9" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="12" width="7" height="9" rx="1.5"/></svg></span>' +
     '<span class="git-nav-name"></span></span>';
 
 /** The project/workspace display name (last path segment), for the root row. */
