@@ -146,7 +146,11 @@ export function expansionStore(dataUrl?: string | null): ExpansionStore {
 
 /** A collapsed run of unchanged blocks: a full-width button that expands them.
  *  `onExpand` receives the button so the caller can replace it with the blocks. */
-export function createGap(count: number, onExpand: (gap: HTMLButtonElement) => void): HTMLButtonElement {
+export function createGap(
+    count: number,
+    onExpand: (gap: HTMLButtonElement) => void,
+    note?: string,
+): HTMLButtonElement {
     const gap = document.createElement('button');
     gap.type = 'button';
     gap.className = 'md-diff-gap';
@@ -158,7 +162,9 @@ export function createGap(count: number, onExpand: (gap: HTMLButtonElement) => v
         '<path fill="currentColor" d="M8 2.5 11.2 5.7l-1.06 1.06L8 4.62 5.86 6.76 4.8 5.7 8 2.5Z"/>' +
         '<path fill="currentColor" d="M8 13.5 4.8 10.3l1.06-1.06L8 11.38l2.14-2.14 1.06 1.06L8 13.5Z"/></svg>';
     const text = document.createElement('span');
-    text.textContent = count === 1 ? 'Show 1 unchanged block' : `Show ${count} unchanged blocks`;
+    const showText = count === 1 ? 'Show 1 unchanged block' : `Show ${count} unchanged blocks`;
+    // `note` (e.g. a pure-rename hint) is folded into the same fold-line text.
+    text.textContent = note ? `${note} · ${showText}` : showText;
     label.appendChild(text);
     gap.appendChild(label);
     gap.addEventListener('click', () => onExpand(gap));

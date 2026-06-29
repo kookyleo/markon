@@ -353,6 +353,12 @@ export abstract class DiffSectionView {
     protected afterBodyRendered(_body: HTMLElement): void { /* no-op */ }
 
     #createGap(file: MarkdownDiffFile, start: number, count: number): HTMLElement {
+        // A pure rename (renamed, byte-identical) has no changed blocks, so its
+        // whole body is this single fold. Fold the "renamed, no content changes"
+        // meaning into the fold-line text so it's self-explanatory.
+        const pureRename =
+            file.status === 'renamed' && !(file.additions || 0) && !(file.deletions || 0);
+        const note = pureRename ? 'Renamed, no content changes' : undefined;
         return createGap(count, (gap) => {
             // Remember the expansion so it survives re-renders / view switches.
             this.#expansion?.add(file.path, start);
@@ -415,7 +421,7 @@ export abstract class DiffSectionView {
                 if (scrollEl) scrollEl.style.overflowAnchor = '';
                 reveal.classList.add('is-open'); // fade + settle the content in
             });
-        });
+        }, note);
     }
 
     #derenderBody(entry: SectionEntry): void {

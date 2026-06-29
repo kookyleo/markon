@@ -559,21 +559,24 @@
             grid-template-columns: 16px minmax(0, 1fr);
             align-items: center;
             gap: 2px;
-            min-height: 28px;
+            min-height: 30px;
             border: 0;
             border-radius: var(--markon-radius-sm);
-            padding: 3px 6px 3px calc(var(--depth) * 14px);
+            /* A little left/vertical padding so the hover background wraps the icon
+               with breathing room instead of hugging it. */
+            padding: 5px 6px 5px calc(5px + var(--depth) * 14px);
             background: transparent;
             color: var(--markon-fg-default);
             text-align: left;
             cursor: default;
             /* GitHub-style tree guide lines: one vertical rule per ancestor level,
-               drawn across the indent zone (width = depth * 14px). */
+               drawn across the indent zone (width = depth * 14px). Shifted right by
+               the same 5px base padding so they stay under the indent. */
             background-image: repeating-linear-gradient(
                 to right, var(--guide) 0, var(--guide) 1px, transparent 1px, transparent 14px);
             background-size: calc(var(--depth) * 14px) 100%;
             background-repeat: no-repeat;
-            background-position: 13px 0;
+            background-position: 18px 0;
         }
         .git-nav-entry.is-file {
             cursor: pointer;
