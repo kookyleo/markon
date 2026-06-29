@@ -94,6 +94,26 @@ const init = (): void => {
     km.register('DIFF_PREV_FILE', () => stepBlock(shell, -1));
 
     document.addEventListener('keydown', (e) => km.handle(e));
+
+    // Click-to-focus: clicking (or interacting) inside a changed block makes it
+    // the focused block, so the rail follows clicks — not just j/k. Selecting a
+    // file in the sidebar clears the now-stale focus.
+    const clearFocus = (): void =>
+        document.querySelectorAll<HTMLElement>('.diff-change-block.is-focused')
+            .forEach((b) => b.classList.remove('is-focused'));
+    document.addEventListener('click', (e) => {
+        const target = e.target as Element | null;
+        if (!target) return;
+        if (target.closest('[data-diff-scroll-path]')) { clearFocus(); return; }
+        const block = target.closest<HTMLElement>(CHANGE_SELECTOR);
+        if (!block) return;
+        const ctx = activeScroller(shell);
+        if (!ctx || !ctx.panel.contains(block)) return;
+        ctx.panel.querySelectorAll<HTMLElement>('.diff-change-block.is-focused')
+            .forEach((b) => b.classList.remove('is-focused'));
+        block.classList.add('is-focused');
+    });
+
     window.shortcutsManager = km;
 };
 
