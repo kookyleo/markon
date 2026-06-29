@@ -17,6 +17,9 @@ import {
 } from './diff-segments';
 
 type SideLine = { no: number | null; segs: WordSeg[]; cls: string };
+type RowPair = { old: SideLine; new: SideLine };
+
+const EMPTY_CLS = 'git-diff-empty-side';
 
 class SourceDiffView extends DiffSectionView {
     protected get scrollSelector(): string | null { return null; } // root scrolls
@@ -25,10 +28,18 @@ class SourceDiffView extends DiffSectionView {
     protected get bodyClass(): string { return 'workspace-diff-body'; }
     protected get emptyBlocksMessage(): string { return 'No source to preview.'; }
 
+    /** Single-column 'unified' layout vs the default two-column 'split'. Driven
+     *  by a data attribute on the root so a re-`load()` re-renders in the new
+     *  mode without any extra state to thread through. */
+    #unified(): boolean { return this.root.dataset.rawLayout === 'unified'; }
+
     protected estimateBlock(block: MarkdownDiffBlock): number {
         const oldN = this.#lineCount(block.old);
         const newN = this.#lineCount(block.new);
-        const rows = block.kind === 'modified' ? Math.max(oldN, newN)
+        // Unified stacks deletions ABOVE insertions, so a modified block needs
+        // roughly old+new rows instead of max(old,new).
+        const modifiedRows = this.#unified() ? oldN + newN : Math.max(oldN, newN);
+        const rows = block.kind === 'modified' ? modifiedRows
             : block.kind === 'equal' ? newN || oldN
             : block.kind === 'deleted' ? oldN : newN;
         return Math.max(24, rows * 22);
@@ -38,39 +49,50 @@ class SourceDiffView extends DiffSectionView {
         const wrap = document.createElement('div');
         wrap.className = `workspace-diff-block is-${block.kind}`;
         wrap.dataset.mdDiffPair = String(index);
+        const pairs = this.#blockPairs(file, block);
+        if (this.#unified()) {
+            for (const pair of pairs) this.#appendUnified(wrap, pair);
+        } else {
+            for (const pair of pairs) wrap.appendChild(this.#row(pair.old, pair.new));
+        }
+        return wrap;
+    }
 
+    /** Old/new line pairing for a block — the shared model both layouts render
+     *  from. Split shows each pair as one two-cell row; unified expands a changed
+     *  pair into a deletion row followed by an insertion row. */
+    #blockPairs(file: MarkdownDiffFile, block: MarkdownDiffBlock): RowPair[] {
         const oldLines = sourceLines(file.old_source, block.old?.start_line, block.old?.end_line);
         const newLines = sourceLines(file.new_source, block.new?.start_line, block.new?.end_line);
         const oldStart = block.old?.start_line ?? null;
         const newStart = block.new?.start_line ?? null;
+        const pairs: RowPair[] = [];
 
         if (block.kind === 'equal') {
             // Context: pair lines 1:1 (same content on both sides).
             const count = Math.max(oldLines.length, newLines.length);
             for (let i = 0; i < count; i += 1) {
                 const text = newLines[i] ?? oldLines[i] ?? '';
-                wrap.appendChild(this.#row(
-                    { no: oldStart != null ? oldStart + i : null, segs: [{ text, cls: null }], cls: 'git-diff-ctx' },
-                    { no: newStart != null ? newStart + i : null, segs: [{ text, cls: null }], cls: 'git-diff-ctx' },
-                ));
+                pairs.push({
+                    old: { no: oldStart != null ? oldStart + i : null, segs: [{ text, cls: null }], cls: 'git-diff-ctx' },
+                    new: { no: newStart != null ? newStart + i : null, segs: [{ text, cls: null }], cls: 'git-diff-ctx' },
+                });
             }
-            return wrap;
+            return pairs;
         }
-
         if (block.kind === 'added') {
-            newLines.forEach((text, i) => wrap.appendChild(this.#row(
-                this.#empty(),
-                { no: newStart != null ? newStart + i : null, segs: [{ text, cls: 'add' }], cls: 'git-diff-add' },
-            )));
-            return wrap;
+            newLines.forEach((text, i) => pairs.push({
+                old: this.#empty(),
+                new: { no: newStart != null ? newStart + i : null, segs: [{ text, cls: 'add' }], cls: 'git-diff-add' },
+            }));
+            return pairs;
         }
-
         if (block.kind === 'deleted') {
-            oldLines.forEach((text, i) => wrap.appendChild(this.#row(
-                { no: oldStart != null ? oldStart + i : null, segs: [{ text, cls: 'del' }], cls: 'git-diff-del' },
-                this.#empty(),
-            )));
-            return wrap;
+            oldLines.forEach((text, i) => pairs.push({
+                old: { no: oldStart != null ? oldStart + i : null, segs: [{ text, cls: 'del' }], cls: 'git-diff-del' },
+                new: this.#empty(),
+            }));
+            return pairs;
         }
 
         // modified: line-level LCS so unchanged lines in the block stay aligned
@@ -81,35 +103,36 @@ class SourceDiffView extends DiffSectionView {
         for (const op of lineDiff(oldLines, newLines)) {
             if (op.type === 'equal') {
                 const text = newLines[op.newIndex];
-                wrap.appendChild(this.#row(
-                    { no: oldNo(op.oldIndex), segs: [{ text, cls: null }], cls: 'git-diff-ctx' },
-                    { no: newNo(op.newIndex), segs: [{ text, cls: null }], cls: 'git-diff-ctx' },
-                ));
+                pairs.push({
+                    old: { no: oldNo(op.oldIndex), segs: [{ text, cls: null }], cls: 'git-diff-ctx' },
+                    new: { no: newNo(op.newIndex), segs: [{ text, cls: null }], cls: 'git-diff-ctx' },
+                });
             } else if (op.type === 'replace') {
                 const { old, new: nw } = wordDiff(oldLines[op.oldIndex], newLines[op.newIndex]);
-                wrap.appendChild(this.#row(
-                    { no: oldNo(op.oldIndex), segs: old, cls: 'git-diff-del' },
-                    { no: newNo(op.newIndex), segs: nw, cls: 'git-diff-add' },
-                ));
+                pairs.push({
+                    old: { no: oldNo(op.oldIndex), segs: old, cls: 'git-diff-del' },
+                    new: { no: newNo(op.newIndex), segs: nw, cls: 'git-diff-add' },
+                });
             } else if (op.type === 'del') {
-                wrap.appendChild(this.#row(
-                    { no: oldNo(op.oldIndex), segs: [{ text: oldLines[op.oldIndex], cls: 'del' }], cls: 'git-diff-del' },
-                    this.#empty(),
-                ));
+                pairs.push({
+                    old: { no: oldNo(op.oldIndex), segs: [{ text: oldLines[op.oldIndex], cls: 'del' }], cls: 'git-diff-del' },
+                    new: this.#empty(),
+                });
             } else {
-                wrap.appendChild(this.#row(
-                    this.#empty(),
-                    { no: newNo(op.newIndex), segs: [{ text: newLines[op.newIndex], cls: 'add' }], cls: 'git-diff-add' },
-                ));
+                pairs.push({
+                    old: this.#empty(),
+                    new: { no: newNo(op.newIndex), segs: [{ text: newLines[op.newIndex], cls: 'add' }], cls: 'git-diff-add' },
+                });
             }
         }
-        return wrap;
+        return pairs;
     }
 
     #empty(): SideLine {
-        return { no: null, segs: [], cls: 'git-diff-empty-side' };
+        return { no: null, segs: [], cls: EMPTY_CLS };
     }
 
+    // ── Split (two-column) rows ─────────────────────────────────────────────────
     #row(oldSide: SideLine, newSide: SideLine): HTMLElement {
         const line = document.createElement('div');
         line.className = 'workspace-diff-row-line workspace-diff-split-line';
@@ -127,9 +150,46 @@ class SourceDiffView extends DiffSectionView {
         const gutter = document.createElement('span');
         gutter.className = 'workspace-diff-line-no';
         gutter.textContent = side.no == null ? '' : String(side.no);
+        cell.append(gutter, this.#code(side.segs));
+        return cell;
+    }
+
+    // ── Unified (single-column) rows ────────────────────────────────────────────
+    #appendUnified(wrap: HTMLElement, pair: RowPair): void {
+        const oEmpty = pair.old.cls === EMPTY_CLS;
+        const nEmpty = pair.new.cls === EMPTY_CLS;
+        if (!oEmpty && !nEmpty && pair.old.cls === 'git-diff-ctx') {
+            wrap.appendChild(this.#unifiedRow(pair.old.no, pair.new.no, pair.new.segs, 'git-diff-ctx', ' '));
+            return;
+        }
+        // GitHub order: deletions first, then insertions.
+        if (!oEmpty) wrap.appendChild(this.#unifiedRow(pair.old.no, null, pair.old.segs, 'git-diff-del', '-'));
+        if (!nEmpty) wrap.appendChild(this.#unifiedRow(null, pair.new.no, pair.new.segs, 'git-diff-add', '+'));
+    }
+
+    #unifiedRow(oldNo: number | null, newNo: number | null, segs: WordSeg[], cls: string, sign: string): HTMLElement {
+        const line = document.createElement('div');
+        line.className = `workspace-diff-row-line workspace-diff-unified-line ${cls}`;
+        const lineNo = newNo ?? oldNo;
+        if (lineNo != null) line.dataset.line = String(lineNo);
+        const oldGutter = document.createElement('span');
+        oldGutter.className = 'workspace-diff-line-no';
+        oldGutter.textContent = oldNo == null ? '' : String(oldNo);
+        const newGutter = document.createElement('span');
+        newGutter.className = 'workspace-diff-line-no';
+        newGutter.textContent = newNo == null ? '' : String(newNo);
+        const marker = document.createElement('span');
+        marker.className = 'workspace-diff-sign';
+        marker.textContent = sign;
+        line.append(oldGutter, newGutter, marker, this.#code(segs));
+        return line;
+    }
+
+    /** A `<code>` element with word-level add/del highlight spans. */
+    #code(segs: WordSeg[]): HTMLElement {
         const code = document.createElement('code');
         code.className = 'workspace-diff-code';
-        for (const seg of side.segs) {
+        for (const seg of segs) {
             if (seg.cls) {
                 const span = document.createElement('span');
                 span.className = seg.cls === 'add' ? 'git-diff-word-add' : 'git-diff-word-del';
@@ -139,8 +199,7 @@ class SourceDiffView extends DiffSectionView {
                 code.appendChild(document.createTextNode(seg.text));
             }
         }
-        cell.append(gutter, code);
-        return cell;
+        return code;
     }
 
     #lineCount(block: MarkdownBlockSummary | null | undefined): number {
@@ -180,6 +239,17 @@ const init = (): void => {
         scrollToPath: (path: string) => { const r = rawRoot(); if (r) getView(r).scrollToPath(path); },
         topAnchor: () => { const r = rawRoot(); return r ? getView(r).topAnchor() : null; },
         anchorTo: (anchor) => { const r = rawRoot(); if (r) getView(r).anchorTo(anchor); },
+        setLayout: (mode) => {
+            const r = rawRoot();
+            if (!r) return;
+            if (r.dataset.rawLayout === mode) return;
+            // Re-render in place, keeping the line currently at the top in view.
+            const view = getView(r);
+            const anchor = view.topAnchor();
+            r.dataset.rawLayout = mode;
+            if (anchor) view.anchorTo(anchor);
+            void view.load();
+        },
     };
 };
 

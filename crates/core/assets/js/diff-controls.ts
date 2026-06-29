@@ -35,6 +35,26 @@ function initFilter(): void {
     let viewedSet = loadViewedSet(dataUrl);
     let showViewed = loadShowViewed(dataUrl);
 
+    // "N / M viewed" counter (top of the sidebar). M = changed-file count from the
+    // nav; N = how many of those are marked viewed. Kept live off the same event.
+    const filePaths = new Set(
+        entries
+            .filter((e) => e.getAttribute('data-diff-kind') === 'file')
+            .map((e) => e.getAttribute('data-diff-path') || ''),
+    );
+    const countWrap = document.querySelector<HTMLElement>('[data-diff-viewed-count]');
+    const countText = document.querySelector<HTMLElement>('[data-diff-viewed-count-text]');
+    const updateViewedCount = (): void => {
+        if (!countWrap || !countText) return;
+        const total = filePaths.size;
+        if (!total) { countWrap.hidden = true; return; }
+        let viewed = 0;
+        filePaths.forEach((p) => { if (viewedSet.has(p)) viewed += 1; });
+        countText.textContent = `${viewed} / ${total} viewed`;
+        countWrap.hidden = false;
+        countWrap.classList.toggle('is-complete', viewed === total);
+    };
+
     // Collapsed folder paths (session-only, like GitHub's tree). A descendant is
     // hidden when any ancestor folder is collapsed.
     const collapsed = new Set<string>();
@@ -123,6 +143,7 @@ function initFilter(): void {
         const detail = (e as CustomEvent).detail;
         viewedSet = detail && Array.isArray(detail.viewed) ? new Set<string>(detail.viewed) : loadViewedSet(dataUrl);
         applyFilter();
+        updateViewedCount();
     });
 
     const setMenuOpen = (open: boolean): void => {
@@ -149,6 +170,71 @@ function initFilter(): void {
     };
     if (filterBtn) filterBtn.addEventListener('click', () => setMenuOpen(!!filterMenu && !!filterMenu.hidden));
     applyFilter();
+    updateViewedCount();
+}
+
+// ── Sidebar collapse toggle ──────────────────────────────────────────────────
+function initSidebarToggle(): void {
+    const shell = document.querySelector<HTMLElement>('[data-diff-shell]');
+    if (!shell) return;
+    const wsId = document.querySelector('meta[name="workspace-id"]')?.getAttribute('content') || '';
+    const KEY = wsId ? `markon:diff:sidebar:${wsId}` : 'markon:diff:sidebar';
+
+    const setCollapsed = (collapsed: boolean, persist = true): void => {
+        if (collapsed) shell.setAttribute('data-sidebar-collapsed', '');
+        else shell.removeAttribute('data-sidebar-collapsed');
+        if (persist) {
+            try { window.localStorage.setItem(KEY, collapsed ? 'collapsed' : 'open'); } catch { /* ignore */ }
+        }
+    };
+    try {
+        if (window.localStorage.getItem(KEY) === 'collapsed') setCollapsed(true, false);
+    } catch { /* ignore */ }
+
+    document.querySelector<HTMLElement>('[data-sidebar-toggle]')
+        ?.addEventListener('click', () => setCollapsed(true));
+    document.querySelector<HTMLElement>('[data-sidebar-reopen]')
+        ?.addEventListener('click', () => setCollapsed(false));
+}
+
+// ── Raw Unified/Split layout switch ──────────────────────────────────────────
+function initLayoutSwitch(): void {
+    const seg = document.querySelector<HTMLElement>('[data-diff-layout-seg]');
+    const rawRoot = document.querySelector<HTMLElement>('[data-virtual-diff]');
+    if (!seg || !rawRoot) return;
+    const buttons = Array.from(seg.querySelectorAll<HTMLElement>('[data-layout]'));
+    const wsId = document.querySelector('meta[name="workspace-id"]')?.getAttribute('content') || '';
+    const KEY = wsId ? `markon:diff:rawlayout:${wsId}` : 'markon:diff:rawlayout';
+
+    const stored = ((): 'split' | 'unified' => {
+        try { return window.localStorage.getItem(KEY) === 'unified' ? 'unified' : 'split'; }
+        catch { return 'split'; }
+    })();
+    // Set BEFORE workspace-diff's first render (this classic script runs during
+    // parse, ahead of the deferred module) so it renders in the stored layout.
+    rawRoot.dataset.rawLayout = stored;
+
+    const reflect = (mode: 'split' | 'unified'): void => {
+        buttons.forEach((b) => b.setAttribute('aria-pressed', b.getAttribute('data-layout') === mode ? 'true' : 'false'));
+    };
+    reflect(stored);
+
+    buttons.forEach((button) => {
+        button.addEventListener('click', () => {
+            const mode = button.getAttribute('data-layout') === 'unified' ? 'unified' : 'split';
+            try { window.localStorage.setItem(KEY, mode); } catch { /* ignore */ }
+            reflect(mode);
+            window.markonSourceDiff?.setLayout?.(mode);
+        });
+    });
+
+    // The layout switch only applies to the Raw view; hide it while Rendered.
+    const sync = (): void => {
+        const shell = document.querySelector<HTMLElement>('[data-diff-shell]');
+        seg.hidden = shell?.getAttribute('data-current-diff-view') === 'rendered';
+    };
+    document.addEventListener('markon:diff-view-change', sync);
+    sync();
 }
 
 // ── Raw⇄Rendered view switcher + file selection + compare form ──────────────
@@ -391,5 +477,7 @@ function initViewSwitcher(): void {
 
 initFilter();
 initViewSwitcher();
+initSidebarToggle();
+initLayoutSwitch();
 
 export {};

@@ -41,6 +41,9 @@ declare global {
       selectPath: (path?: string | null) => void;
       topAnchor: () => { path: string; line: number | null } | null;
       anchorTo: (anchor: { path: string; line: number | null } | null) => void;
+      /** Switch the Raw view between two-column 'split' and single-column
+       *  'unified' layouts, preserving scroll position. */
+      setLayout: (mode: 'split' | 'unified') => void;
     };
     markonMarkdownDiff?: {
       load: () => void;
