@@ -206,37 +206,41 @@
         }
         .git-compare-chevron { flex: none; color: var(--markon-fg-muted); }
         /* ── Picker panel (popover) ────────────────────────────────────────── */
+        /* The panel itself is a transparent positioning wrapper: quick presets
+           (plain links) on top, then the bordered columns surface. */
         .git-compare-panel {
             position: fixed;
             z-index: 60;
             display: flex;
             flex-direction: column;
+            gap: 8px;
+        }
+        .git-compare-presets {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 16px;
+            padding: 2px 4px;
+        }
+        .git-compare-preset {
+            padding: 0;
+            border: 0;
+            background: none;
+            color: var(--markon-accent);
+            font-size: 13px;
+            cursor: pointer;
+        }
+        .git-compare-preset:hover { text-decoration: underline; }
+        /* Bordered surface holding the two columns. */
+        .git-compare-surface {
+            display: flex;
+            flex-direction: column;
+            min-height: 0;
             max-height: min(52vh, 400px);
             border: 1px solid var(--markon-border-default);
             border-radius: var(--markon-radius-md, 10px);
             background: var(--markon-bg-default);
             box-shadow: 0 3px 10px color-mix(in srgb, var(--markon-fg-default) 14%, transparent);
             overflow: hidden;
-        }
-        .git-compare-presets {
-            display: flex;
-            flex-wrap: wrap;
-            gap: 6px;
-            padding: 10px 12px;
-            border-bottom: 1px solid var(--markon-border-default);
-        }
-        .git-compare-preset {
-            padding: 4px 10px;
-            border: 1px solid var(--markon-border-default);
-            border-radius: 999px;
-            background: var(--markon-bg-muted);
-            color: var(--markon-fg-default);
-            font-size: 12px;
-            cursor: pointer;
-        }
-        .git-compare-preset:hover {
-            color: var(--markon-accent);
-            border-color: color-mix(in srgb, var(--markon-accent) 55%, var(--markon-border-default));
         }
         .git-compare-cols {
             display: grid;

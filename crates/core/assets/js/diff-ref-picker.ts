@@ -238,7 +238,12 @@ function init(): void {
         baseSearch.addEventListener('input', () => renderColumn(baseListEl, data.base, 'base', baseSearch.value));
         compareSearch.addEventListener('input', () => renderColumn(compareListEl, data.compare, 'compare', compareSearch.value));
         cols.append(baseCol.col, compareCol.col);
-        p.appendChild(cols);
+        // The columns live in their own bordered surface; presets sit outside it
+        // (above) as plain links — the panel itself is just a transparent wrapper.
+        const surface = document.createElement('div');
+        surface.className = 'git-compare-surface';
+        surface.appendChild(cols);
+        p.appendChild(surface);
 
         renderColumn(baseListEl, data.base, 'base', '');
         renderColumn(compareListEl, data.compare, 'compare', '');
