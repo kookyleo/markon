@@ -225,6 +225,9 @@ const SVG_COPY =
     '<svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><path fill="currentColor" d="M0 6.75C0 5.784.784 5 1.75 5h1.5a.75.75 0 0 1 0 1.5h-1.5a.25.25 0 0 0-.25.25v7.5c0 .138.112.25.25.25h7.5a.25.25 0 0 0 .25-.25v-1.5a.75.75 0 0 1 1.5 0v1.5A1.75 1.75 0 0 1 9.25 16h-7.5A1.75 1.75 0 0 1 0 14.25Z"/><path fill="currentColor" d="M5 1.75C5 .784 5.784 0 6.75 0h7.5C15.216 0 16 .784 16 1.75v7.5A1.75 1.75 0 0 1 14.25 11h-7.5A1.75 1.75 0 0 1 5 9.25Zm1.75-.25a.25.25 0 0 0-.25.25v7.5c0 .138.112.25.25.25h7.5a.25.25 0 0 0 .25-.25v-7.5a.25.25 0 0 0-.25-.25Z"/></svg>';
 const SVG_KEBAB =
     '<svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><path fill="currentColor" d="M8 9a1.5 1.5 0 1 0 0-3 1.5 1.5 0 0 0 0 3ZM1.5 9a1.5 1.5 0 1 0 0-3 1.5 1.5 0 0 0 0 3Zm13 0a1.5 1.5 0 1 0 0-3 1.5 1.5 0 0 0 0 3Z"/></svg>';
+// Diagonal up-right "open in new window" arrow (octicon link-external).
+const SVG_OPEN_EXTERNAL =
+    '<svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><path fill="currentColor" d="M3.75 2h3.5a.75.75 0 0 1 0 1.5h-3.5a.25.25 0 0 0-.25.25v8.5c0 .138.112.25.25.25h8.5a.25.25 0 0 0 .25-.25v-3.5a.75.75 0 0 1 1.5 0v3.5A1.75 1.75 0 0 1 12.25 14h-8.5A1.75 1.75 0 0 1 2 12.25v-8.5C2 2.784 2.784 2 3.75 2Zm6.854-1h4.146a.25.25 0 0 1 .25.25v4.146a.25.25 0 0 1-.427.177L13.03 4.03 9.28 7.78a.751.751 0 0 1-1.042-.018.751.751 0 0 1-.018-1.042l3.75-3.75-1.543-1.543A.25.25 0 0 1 10.604 1Z"/></svg>';
 
 const workspaceId = (): string =>
     document.querySelector('meta[name="workspace-id"]')?.getAttribute('content') || '';
@@ -369,8 +372,9 @@ const buildMenu = (opts: DiffFileHeaderOpts): HTMLElement => {
     pop.setAttribute('role', 'menu');
     pop.hidden = true;
 
+    // "View file" now lives next to the copy-path button in the header; the menu
+    // keeps the less-frequent Edit / Delete actions.
     const items: Array<{ label: string; action: () => void; danger?: boolean }> = [
-        { label: 'View file', action: () => openFile(opts.path, false) },
         { label: 'Edit file', action: () => openFile(opts.path, true, currentEditLine(menu)) },
         { label: 'Delete file', action: () => void deleteFile(opts.path, opts.onDeleted), danger: true },
     ];
@@ -445,7 +449,16 @@ export function createDiffFileHeader(opts: DiffFileHeaderOpts): HTMLElement {
     copy.innerHTML = SVG_COPY;
     copy.addEventListener('click', () => void copyPath(opts.path, copy));
 
-    left.append(chevron, title, copy);
+    // Open the file's reading view in a new window (was "View file" in the menu).
+    const open = document.createElement('button');
+    open.type = 'button';
+    open.className = 'md-diff-file-open';
+    open.title = 'Open file in new window';
+    open.setAttribute('aria-label', 'Open file in new window');
+    open.innerHTML = SVG_OPEN_EXTERNAL;
+    open.addEventListener('click', () => openFile(opts.path, false));
+
+    left.append(chevron, title, copy, open);
 
     // ── Right: diffstat · Viewed · kebab menu ──────────────────────────────────
     const right = document.createElement('div');
