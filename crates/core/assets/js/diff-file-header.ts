@@ -304,6 +304,20 @@ const deleteFile = async (path: string, onDeleted?: () => void): Promise<void> =
     }
 };
 
+/** Badge shown in place of the diffstat for a pure rename (no content change). */
+const buildRenamedBadge = (): HTMLElement => {
+    const wrap = document.createElement('span');
+    wrap.className = 'md-diff-renamed';
+    const pill = document.createElement('span');
+    pill.className = 'md-diff-renamed-pill';
+    pill.textContent = 'Renamed';
+    const note = document.createElement('span');
+    note.className = 'md-diff-renamed-note';
+    note.textContent = 'no content changes';
+    wrap.append(pill, note);
+    return wrap;
+};
+
 const buildDiffstat = (additions: number, deletions: number): HTMLElement => {
     const stat = document.createElement('span');
     stat.className = 'md-diff-stat';
@@ -476,7 +490,12 @@ export function createDiffFileHeader(opts: DiffFileHeaderOpts): HTMLElement {
     checkText.textContent = 'Viewed';
     check.append(input, checkText);
 
-    right.append(buildDiffstat(opts.additions || 0, opts.deletions || 0), check, buildMenu(opts));
+    // A pure rename (path moved, byte-identical content → 0/0) is a real change
+    // worth listing, but "+0 -0" reads as nothing happened. Show a clear
+    // "Renamed · no content changes" badge instead of the empty diffstat.
+    const pureRename = opts.status === 'renamed' && !(opts.additions || 0) && !(opts.deletions || 0);
+    const stat = pureRename ? buildRenamedBadge() : buildDiffstat(opts.additions || 0, opts.deletions || 0);
+    right.append(stat, check, buildMenu(opts));
 
     header.append(left, right);
 
