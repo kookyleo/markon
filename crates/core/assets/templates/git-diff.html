@@ -1165,6 +1165,36 @@
         .md-diff-empty:empty {
             display: none;
         }
+        /* Centered "all done" state when the Viewed-files filter hides every
+           changed file (all are marked viewed). */
+        .md-diff-viewed-empty {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            gap: 10px;
+            min-height: 60vh;
+            padding: 24px;
+            text-align: center;
+        }
+        .md-diff-viewed-empty-emoji {
+            font-size: 40px;
+            line-height: 1;
+        }
+        .md-diff-viewed-empty-title {
+            color: var(--markon-fg-default);
+            font-size: 15px;
+            font-weight: 600;
+        }
+        .md-diff-viewed-empty-link {
+            border: 0;
+            background: none;
+            padding: 0;
+            color: var(--markon-accent);
+            font-size: 13px;
+            cursor: pointer;
+        }
+        .md-diff-viewed-empty-link:hover { text-decoration: underline; }
         @media (max-width: 920px) {
             .git-diff-page {
                 height: auto;

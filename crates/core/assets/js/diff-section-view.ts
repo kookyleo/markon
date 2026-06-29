@@ -498,11 +498,40 @@ export abstract class DiffSectionView {
         );
     }
 
-    /** Hide sections for viewed files while the "Viewed files" filter is off. */
+    /** Hide sections for viewed files while the "Viewed files" filter is off.
+     *  When that hides everything (all changed files are viewed), show a centered
+     *  "all done" state with a link to restore the Viewed-files display. */
     #applyViewedVisibility(): void {
+        let anyVisible = false;
         for (const [path, entry] of this.#sections) {
-            entry.section.hidden = !this.#showViewed && this.#viewed.has(path);
+            const hidden = !this.#showViewed && this.#viewed.has(path);
+            entry.section.hidden = hidden;
+            if (!hidden) anyVisible = true;
         }
+        if (!this.#showViewed && this.#sections.size > 0 && !anyVisible) this.#showViewedEmpty();
+        else this.#contentPane()?.querySelector('.md-diff-viewed-empty')?.remove();
+    }
+
+    #showViewedEmpty(): void {
+        const pane = this.#contentPane();
+        if (!pane || pane.querySelector('.md-diff-viewed-empty')) return;
+        const el = document.createElement('div');
+        el.className = 'md-diff-viewed-empty';
+        el.innerHTML =
+            '<div class="md-diff-viewed-empty-emoji">🎉</div>' +
+            '<div class="md-diff-viewed-empty-title">All done — every changed file is marked viewed.</div>';
+        const link = document.createElement('button');
+        link.type = 'button';
+        link.className = 'md-diff-viewed-empty-link';
+        link.textContent = 'See all checked files';
+        link.addEventListener('click', () => {
+            // Re-check the funnel's "Viewed files" box (its change handler persists
+            // the choice, re-filters the sidebar, and broadcasts back to here).
+            const cb = document.querySelector<HTMLInputElement>('[data-diff-show-viewed]');
+            if (cb) { cb.checked = true; cb.dispatchEvent(new Event('change', { bubbles: true })); }
+        });
+        el.appendChild(link);
+        pane.appendChild(el);
     }
 
     #destroyVirtualizer(): void {
