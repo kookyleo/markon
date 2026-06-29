@@ -49,6 +49,50 @@ const cycleFile = (shell: HTMLElement, dir: 1 | -1): void => {
     target?.click();
 };
 
+// ── Step through individual changes (Rendered view) ─────────────────────────
+const CHANGE_SELECTOR =
+    '.md-diff-block.is-modified, .md-diff-block.is-added, .md-diff-block.is-deleted';
+
+/** Move focus to the next/previous changed block in the Rendered view, scroll it
+ *  under the sticky header, and mark it `.is-focused` (a left accent rail). Only
+ *  visible blocks count, so viewed-hidden sections are skipped. */
+const stepChange = (dir: 1 | -1): void => {
+    const panel = document.querySelector<HTMLElement>('[data-diff-view-panel="rendered"]');
+    if (!panel) return;
+    const blocks = [...panel.querySelectorAll<HTMLElement>(CHANGE_SELECTOR)].filter(
+        (b) => b.offsetParent !== null,
+    );
+    if (!blocks.length) return;
+
+    let index = blocks.findIndex((b) => b.classList.contains('is-focused'));
+    let next: HTMLElement | undefined;
+    if (index >= 0) {
+        next = blocks[index + dir];
+    } else {
+        // No current focus: pick the first change just past the sticky header
+        // (going down) or just above it (going up).
+        const line = panel.getBoundingClientRect().top + 56;
+        if (dir > 0) {
+            next = blocks.find((b) => b.getBoundingClientRect().top > line + 4) || blocks[0];
+        } else {
+            const above = blocks.filter((b) => b.getBoundingClientRect().top < line - 4);
+            next = above[above.length - 1] || blocks[blocks.length - 1];
+        }
+    }
+    if (!next) {
+        // Boundary of the currently-rendered range — nudge the scroll so the
+        // next section virtualizes in; the following press continues from there.
+        panel.scrollBy({ top: dir * panel.clientHeight * 0.85, behavior: 'smooth' });
+        return;
+    }
+    blocks.forEach((b) => b.classList.remove('is-focused'));
+    next.classList.add('is-focused');
+    const header = next.closest('.md-diff-file-section')?.querySelector<HTMLElement>('.md-diff-file-header');
+    const offset = (header?.offsetHeight || 44) + 10;
+    const y = next.getBoundingClientRect().top - panel.getBoundingClientRect().top - offset + panel.scrollTop;
+    panel.scrollTo({ top: Math.max(0, y), behavior: 'smooth' });
+};
+
 const init = (): void => {
     const shell = document.querySelector<HTMLElement>('[data-diff-shell]');
     if (!shell) return;
@@ -57,10 +101,13 @@ const init = (): void => {
     // Global (every page).
     km.register('HELP', () => km.showHelp());
     km.register('THEME_PANEL', () => window.MarkonTheme?.togglePanel());
-    // Diff-specific.
+    // Diff-specific. j/k step through individual changes in the Rendered view;
+    // in Raw they fall back to next/previous file.
+    const step = (dir: 1 | -1): void =>
+        currentView(shell) === 'rendered' ? stepChange(dir) : cycleFile(shell, dir);
     km.register('DIFF_TOGGLE_VIEW', () => toggleView(shell));
-    km.register('DIFF_NEXT_FILE', () => cycleFile(shell, 1));
-    km.register('DIFF_PREV_FILE', () => cycleFile(shell, -1));
+    km.register('DIFF_NEXT_FILE', () => step(1));
+    km.register('DIFF_PREV_FILE', () => step(-1));
 
     document.addEventListener('keydown', (e) => km.handle(e));
     window.shortcutsManager = km;

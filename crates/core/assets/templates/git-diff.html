@@ -1058,6 +1058,24 @@
         .md-diff-block.is-deleted:first-of-type {
             margin-top: 0;
         }
+        /* j/k keyboard focus: an accent rail at the file body's left edge spanning
+           the focused change block. scroll-margin keeps it clear of the sticky
+           header when scrolled into view. */
+        .md-diff-block.is-focused {
+            position: relative;
+            scroll-margin-top: 60px;
+        }
+        .md-diff-block.is-focused::before {
+            content: "";
+            position: absolute;
+            left: -46px;
+            top: -3px;
+            bottom: -3px;
+            width: 4px;
+            border-radius: 2px;
+            background: var(--markon-accent);
+            box-shadow: 0 0 0 1px color-mix(in srgb, var(--markon-accent) 35%, transparent);
+        }
         .md-diff-change-card {
             min-width: 0;
             position: relative;
