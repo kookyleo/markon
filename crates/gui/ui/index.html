@@ -418,10 +418,40 @@
       color: var(--text-2);
       overflow: hidden; text-overflow: ellipsis;
     }
-    .ws-alias-editor { flex: 1; min-width: 0; display: flex; align-items: center; gap: 6px; }
+    /* "…" more-menu + its alias panel (anchored to the more button). */
+    .ws-more { position: relative; flex-shrink: 0; }
+    .ws-more-menu {
+      position: absolute; right: 0; top: 30px; z-index: 20;
+      min-width: 140px;
+      padding: 4px;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      box-shadow: 0 4px 16px rgba(0,0,0,0.18);
+    }
+    .ws-menu-item {
+      display: block; width: 100%;
+      text-align: left;
+      padding: 6px 10px;
+      border: none; border-radius: 6px;
+      background: transparent; color: var(--text);
+      font-size: 13px; cursor: default;
+    }
+    .ws-menu-item:hover { background: var(--surface-2); }
+    .ws-alias-panel {
+      position: absolute; right: 0; top: 30px; z-index: 20;
+      width: 240px;
+      padding: 10px;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      box-shadow: 0 4px 16px rgba(0,0,0,0.18);
+    }
+    .ws-alias-panel-title { font-size: 12px; color: var(--text-2); margin-bottom: 6px; }
+    .ws-alias-panel-row { display: flex; align-items: center; gap: 6px; }
     .ws-alias-input {
       flex: 1; min-width: 0;
-      height: 26px;
+      height: 28px;
       padding: 2px 8px;
       border: 1px solid var(--accent);
       border-radius: 6px;
@@ -432,7 +462,7 @@
     .ws-alias-input:focus { outline: none; }
     .ws-alias-ok {
       flex-shrink: 0;
-      width: 26px; height: 26px;
+      width: 28px; height: 28px;
       border: none; border-radius: 6px;
       background: var(--accent); color: #fff;
       cursor: default;
@@ -1979,15 +2009,6 @@
         <div class="ws-row-top">
           ${leadIcon}
           ${nameBlock}
-          <button class="ws-icon-btn alias-btn" title="${T('ws.alias.tip')}">
-            <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
-              <circle cx="5" cy="12" r="1.6"/><circle cx="12" cy="12" r="1.6"/><circle cx="19" cy="12" r="1.6"/>
-            </svg>
-          </button>
-          <div class="ws-alias-editor" style="display:none">
-            <input class="ws-alias-input" type="text" placeholder="${esc(T('ws.alias.placeholder'))}">
-            <button class="ws-alias-ok" title="${T('ws.alias.save')}">✓</button>
-          </div>
           <button class="ws-icon-btn open-btn" title="${T('ws.open.tip')}">
             <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
               <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/>
@@ -2015,6 +2036,23 @@
               <line x1="5" y1="12" x2="19" y2="12"/>
             </svg>
           </button>
+          <div class="ws-more">
+            <button class="ws-icon-btn more-btn" title="${T('ws.more')}">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+                <circle cx="5" cy="12" r="1.6"/><circle cx="12" cy="12" r="1.6"/><circle cx="19" cy="12" r="1.6"/>
+              </svg>
+            </button>
+            <div class="ws-more-menu" style="display:none">
+              <button class="ws-menu-item set-alias-item" type="button">${T('ws.alias.tip')}</button>
+            </div>
+            <div class="ws-alias-panel" style="display:none">
+              <div class="ws-alias-panel-title">${T('ws.alias.tip')}</div>
+              <div class="ws-alias-panel-row">
+                <input class="ws-alias-input" type="text" placeholder="${esc(T('ws.alias.placeholder'))}">
+                <button class="ws-alias-ok" title="${T('ws.alias.save')}">✓</button>
+              </div>
+            </div>
+          </div>
         </div>
       `;
 
@@ -2023,14 +2061,33 @@
         invoke('open_url', { url: ws.url });
       });
 
-      // Alias (short display name) — the "…" button morphs into an inline input.
-      (function wireAlias() {
-        const btn = card.querySelector('.alias-btn');
-        const editor = card.querySelector('.ws-alias-editor');
-        const input = editor.querySelector('.ws-alias-input');
-        const ok = editor.querySelector('.ws-alias-ok');
+      // "…" more-menu → "Set alias" item → small panel with an input.
+      (function wireMore() {
+        const moreBtn = card.querySelector('.more-btn');
+        const menu = card.querySelector('.ws-more-menu');
+        const aliasItem = card.querySelector('.set-alias-item');
+        const panel = card.querySelector('.ws-alias-panel');
+        const input = panel.querySelector('.ws-alias-input');
+        const ok = panel.querySelector('.ws-alias-ok');
         let busy = false;
-        const close = () => { editor.style.display = 'none'; btn.style.display = ''; };
+        const closeAll = () => { menu.style.display = 'none'; panel.style.display = 'none'; };
+        const onDocClick = (e) => { if (!card.querySelector('.ws-more').contains(e.target)) closeAll(); };
+        moreBtn.addEventListener('click', (e) => {
+          e.stopPropagation();
+          const open = menu.style.display !== 'none';
+          closeAll();
+          if (!open) {
+            menu.style.display = 'block';
+            document.addEventListener('click', onDocClick);
+          }
+        });
+        aliasItem.addEventListener('click', () => {
+          menu.style.display = 'none';
+          panel.style.display = 'block';
+          input.value = ws.alias || '';
+          input.focus();
+          input.select();
+        });
         const save = async () => {
           if (busy) return;
           busy = true;
@@ -2039,19 +2096,11 @@
             refreshWorkspaces();
           } catch (e) { toast(T('ws.update.fail') + ': ' + e, 'err'); busy = false; }
         };
-        btn.addEventListener('click', () => {
-          input.value = ws.alias || '';
-          btn.style.display = 'none';
-          editor.style.display = 'flex';
-          input.focus();
-          input.select();
-        });
         ok.addEventListener('click', save);
         input.addEventListener('keydown', (e) => {
           if (e.key === 'Enter') { e.preventDefault(); save(); }
-          else if (e.key === 'Escape') { e.preventDefault(); close(); }
+          else if (e.key === 'Escape') { e.preventDefault(); closeAll(); }
         });
-        input.addEventListener('blur', () => { setTimeout(() => { if (document.activeElement !== ok) close(); }, 150); });
       })();
 
       // Remove

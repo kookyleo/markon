@@ -138,6 +138,7 @@
     "ws.add.hint":    "新建工作区",
     "ws.open.tip":    "在浏览器中打开",
     "ws.remove":      "从列表中移除",
+    "ws.more":        "更多",
     "ws.alias.tip":         "设置别名",
     "ws.alias.placeholder": "短名称（留空清除）",
     "ws.alias.save":        "保存别名",

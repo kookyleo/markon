@@ -138,6 +138,7 @@
     "ws.add.hint":    "New workspace",
     "ws.open.tip":    "Open in browser",
     "ws.remove":      "Remove from list",
+    "ws.more":        "More",
     "ws.alias.tip":         "Set alias",
     "ws.alias.placeholder": "Short name (empty to clear)",
     "ws.alias.save":        "Save alias",

@@ -138,6 +138,7 @@
     "ws.add.hint":    "新しいワークスペース",
     "ws.open.tip":    "ブラウザで開く",
     "ws.remove":      "リストから削除",
+    "ws.more":        "その他",
     "ws.alias.tip":         "エイリアスを設定",
     "ws.alias.placeholder": "短い名前（空で解除）",
     "ws.alias.save":        "エイリアスを保存",
