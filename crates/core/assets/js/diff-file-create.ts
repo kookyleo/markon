@@ -30,7 +30,7 @@ const folderRowInner = (): string =>
  *  the project name (NOT "/", which reads like the filesystem root). No chevron. */
 const rootRowInner = (): string =>
     '<span class="git-nav-twist" aria-hidden="true"></span>' +
-    '<span class="git-nav-main"><span class="git-nav-icon git-nav-folder" aria-hidden="true"><svg viewBox="0 0 16 16" width="16" height="16"><path fill="currentColor" d="M1.75 1A1.75 1.75 0 0 0 0 2.75v10.5C0 14.216.784 15 1.75 15h12.5A1.75 1.75 0 0 0 16 13.25v-8.5A1.75 1.75 0 0 0 14.25 3H7.5a.25.25 0 0 1-.2-.1l-.9-1.2C6.07 1.26 5.55 1 5 1Z"/><circle class="git-ws-badge-cut" cx="12" cy="11.4" r="3.4"/><circle class="git-ws-badge-dot" cx="12" cy="11.4" r="2.1"/></svg></span>' +
+    '<span class="git-nav-main"><span class="git-nav-icon git-nav-folder" aria-hidden="true"><svg viewBox="0 0 64 64" width="15" height="15"><path fill="currentColor" d="M27 36H15a3.003 3.003 0 0 1-3-3V15a3.003 3.003 0 0 1 3-3h12a3.003 3.003 0 0 1 3 3v18a3.003 3.003 0 0 1-3 3zM15 14a1 1 0 0 0-1 1v18a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1V15a1 1 0 0 0-1-1zM27 52H15a3.003 3.003 0 0 1-3-3v-8a3.003 3.003 0 0 1 3-3h12a3.003 3.003 0 0 1 3 3v8a3.003 3.003 0 0 1-3 3zM15 40a1 1 0 0 0-1 1v8a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-8a1 1 0 0 0-1-1zM48 52H36a3.003 3.003 0 0 1-3-3V31a3.003 3.003 0 0 1 3-3h12a3.003 3.003 0 0 1 3 3v18a3.003 3.003 0 0 1-3 3zM36 30a1 1 0 0 0-1 1v18a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1V31a1 1 0 0 0-1-1zM48 26H36a3.003 3.003 0 0 1-3-3v-8a3.003 3.003 0 0 1 3-3h12a3.003 3.003 0 0 1 3 3v8a3.003 3.003 0 0 1-3 3zM36 14a1 1 0 0 0-1 1v8a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-8a1 1 0 0 0-1-1z"/></svg></span>' +
     '<span class="git-nav-name"></span></span>';
 
 /** The project/workspace display name (last path segment), for the root row. */
