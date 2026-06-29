@@ -80,6 +80,7 @@
         /* Collapse-the-sidebar button (sits left of the title). */
         .git-sidebar-toggle {
             flex: 0 0 auto;
+            margin-left: auto;
             display: inline-flex;
             align-items: center;
             justify-content: center;
@@ -1419,14 +1420,14 @@
             <aside class="git-diff-sidebar">
                 <section class="git-diff-summary">
                     <div class="git-diff-titlebox">
-                        <button type="button" class="git-sidebar-toggle" data-sidebar-toggle
-                                aria-label="Collapse sidebar" title="Collapse sidebar">
-                            <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><path fill="currentColor" d="M6.823 7.823a.25.25 0 0 1 0 .354l-2.396 2.396A.25.25 0 0 1 4 10.396V5.604a.25.25 0 0 1 .427-.177Z"/><path fill="currentColor" d="M1.75 0h12.5C15.216 0 16 .784 16 1.75v12.5A1.75 1.75 0 0 1 14.25 16H1.75A1.75 1.75 0 0 1 0 14.25V1.75C0 .784.784 0 1.75 0ZM1.5 1.75v12.5c0 .138.112.25.25.25H9.5v-13H1.75a.25.25 0 0 0-.25.25Zm13 12.5V1.75a.25.25 0 0 0-.25-.25H11v13h3.25a.25.25 0 0 0 .25-.25Z"/></svg>
-                        </button>
                         <div class="git-diff-titletext">
                             <h1 class="git-diff-title">Markdiff</h1>
                             <a class="git-diff-ws-path" href="{{ files_url }}" title="{{ workspace_display_path }}">{{ workspace_display_path }}</a>
                         </div>
+                        <button type="button" class="git-sidebar-toggle" data-sidebar-toggle
+                                aria-label="Collapse sidebar" title="Collapse sidebar">
+                            <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><path fill="currentColor" d="M6.823 7.823a.25.25 0 0 1 0 .354l-2.396 2.396A.25.25 0 0 1 4 10.396V5.604a.25.25 0 0 1 .427-.177Z"/><path fill="currentColor" d="M1.75 0h12.5C15.216 0 16 .784 16 1.75v12.5A1.75 1.75 0 0 1 14.25 16H1.75A1.75 1.75 0 0 1 0 14.25V1.75C0 .784.784 0 1.75 0ZM1.5 1.75v12.5c0 .138.112.25.25.25H9.5v-13H1.75a.25.25 0 0 0-.25.25Zm13 12.5V1.75a.25.25 0 0 0-.25-.25H11v13h3.25a.25.25 0 0 0 .25-.25Z"/></svg>
+                        </button>
                     </div>
                     <div class="git-diff-view-seg" role="group" aria-label="Diff view" data-diff-view-seg>
                         <button type="button" class="git-diff-seg-btn" data-view="raw"
