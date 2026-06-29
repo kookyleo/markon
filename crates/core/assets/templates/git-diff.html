@@ -99,18 +99,33 @@
             background: color-mix(in srgb, var(--markon-fg-default) 10%, transparent);
         }
         .git-sidebar-toggle svg { display: block; }
-        /* Workspace path under the title; links to the workspace home. */
+        /* Workspace path under the title (repo icon + path); links to home. A bit
+           of top spacing separates it from the title. */
         .git-diff-ws-path {
+            display: inline-flex;
+            align-items: center;
+            gap: 5px;
             min-width: 0;
             max-width: 240px;
-            overflow: hidden;
-            text-overflow: ellipsis;
-            white-space: nowrap;
+            margin-top: 3px;
             color: var(--markon-fg-muted);
             font-size: 12px;
         }
+        .git-diff-ws-icon { flex: 0 0 auto; display: block; }
+        /* Workspace folder icon: a folder with a small accent corner badge (so it
+           reads as the workspace root, distinct from a plain folder). */
+        .git-ws-badge-cut { fill: var(--markon-bg-default); }
+        .git-ws-badge-dot { fill: var(--markon-accent); }
+        .git-diff-ws-path-text {
+            min-width: 0;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
         .git-diff-ws-path:hover {
             color: var(--markon-accent);
+        }
+        .git-diff-ws-path:hover .git-diff-ws-path-text {
             text-decoration: underline;
         }
         .git-diff-summary {
@@ -121,25 +136,32 @@
             align-items: stretch;
             gap: 12px;
         }
-        /* Secondary control row: Unified/Split layout switch + viewed counter. */
-        .git-diff-subcontrols {
+        /* View controls row (under Base→Compare): viewed ratio on the left, the
+           Raw|Rendered + Unified|Split icon toggles on the right. */
+        .git-diff-viewbar {
             display: flex;
             align-items: center;
             justify-content: space-between;
             gap: 10px;
-            min-height: 26px;
+            min-height: 28px;
+            margin: 12px 0 4px;
+        }
+        .git-diff-viewbar-toggles {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
         }
         .git-diff-layout-seg[hidden] { display: none; }
         .git-diff-viewed-count {
             display: inline-flex;
             align-items: center;
             gap: 5px;
-            margin-left: auto;
             color: var(--markon-fg-muted);
             font-size: 12px;
             font-weight: 550;
             white-space: nowrap;
         }
+        .git-diff-viewed-count[hidden] { display: none; }
         .git-diff-viewed-count.is-complete {
             color: var(--markon-diff-add-fg, #2da44e);
         }
@@ -347,9 +369,12 @@
             background: var(--markon-bg-muted);
         }
         .git-diff-seg-btn {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
             border: 0;
             border-radius: 999px;
-            padding: 3px 11px;
+            padding: 4px 9px;
             background: transparent;
             color: var(--markon-fg-muted);
             font-size: 12px;
@@ -358,6 +383,7 @@
             cursor: pointer;
             transition: background 140ms ease, color 140ms ease;
         }
+        .git-diff-seg-btn svg { display: block; }
         .git-diff-seg-btn[aria-pressed="true"] {
             background: color-mix(in srgb, var(--markon-accent) 18%, var(--markon-bg-default));
             color: var(--markon-accent);
@@ -618,7 +644,11 @@
             color: var(--markon-fg-default);
             font-weight: 600;
         }
-        .git-nav-entry.is-root .git-nav-twist { visibility: hidden; }
+        /* Root row: no chevron gutter, flush-left (the workspace scope header). */
+        .git-nav-entry.is-root {
+            grid-template-columns: minmax(0, 1fr);
+        }
+        .git-nav-entry.is-root .git-nav-twist { display: none; }
         .git-nav-entry.is-root .git-nav-name { color: var(--markon-fg-default); font-weight: 650; }
         /* Inline "new file/folder" affordances (only when diff-editable). */
         .git-nav-entry.is-dir {
@@ -1237,10 +1267,8 @@
             position: absolute;
             top: -3px;
             bottom: -3px;
-            width: 4px;
-            border-radius: 2px;
+            width: 3px;
             background: var(--markon-accent);
-            box-shadow: 0 0 0 1px color-mix(in srgb, var(--markon-accent) 35%, transparent);
         }
         /* Rendered: block content is inset 46px from the divider → -48 centres the
            4px rail on it. Raw: block starts at the divider → -2 centres it. */
@@ -1433,29 +1461,12 @@
                     <div class="git-diff-titlebox">
                         <div class="git-diff-titletext">
                             <h1 class="git-diff-title">Markdiff</h1>
-                            <a class="git-diff-ws-path" href="{{ files_url }}" title="{{ workspace_display_path }}">{{ workspace_display_path }}</a>
+                            <a class="git-diff-ws-path" href="{{ files_url }}" title="{{ workspace_display_path }}"><svg class="git-diff-ws-icon" viewBox="0 0 16 16" width="13" height="13" aria-hidden="true"><path fill="currentColor" d="M1.75 1A1.75 1.75 0 0 0 0 2.75v10.5C0 14.216.784 15 1.75 15h12.5A1.75 1.75 0 0 0 16 13.25v-8.5A1.75 1.75 0 0 0 14.25 3H7.5a.25.25 0 0 1-.2-.1l-.9-1.2C6.07 1.26 5.55 1 5 1Z"/><circle class="git-ws-badge-cut" cx="12" cy="11.4" r="3.4"/><circle class="git-ws-badge-dot" cx="12" cy="11.4" r="2.1"/></svg><span class="git-diff-ws-path-text">{{ workspace_display_path }}</span></a>
                         </div>
                         <button type="button" class="git-sidebar-toggle" data-sidebar-toggle
                                 aria-label="Collapse sidebar" title="Collapse sidebar">
                             <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><path fill="currentColor" d="M6.823 7.823a.25.25 0 0 1 0 .354l-2.396 2.396A.25.25 0 0 1 4 10.396V5.604a.25.25 0 0 1 .427-.177Z"/><path fill="currentColor" d="M1.75 0h12.5C15.216 0 16 .784 16 1.75v12.5A1.75 1.75 0 0 1 14.25 16H1.75A1.75 1.75 0 0 1 0 14.25V1.75C0 .784.784 0 1.75 0ZM1.5 1.75v12.5c0 .138.112.25.25.25H9.5v-13H1.75a.25.25 0 0 0-.25.25Zm13 12.5V1.75a.25.25 0 0 0-.25-.25H11v13h3.25a.25.25 0 0 0 .25-.25Z"/></svg>
                         </button>
-                    </div>
-                    <div class="git-diff-view-seg" role="group" aria-label="Diff view" data-diff-view-seg>
-                        <button type="button" class="git-diff-seg-btn" data-view="raw"
-                                aria-pressed="{% if initial_diff_view == "rendered" %}false{% else %}true{% endif %}">Raw</button>
-                        <button type="button" class="git-diff-seg-btn" data-view="rendered"
-                                aria-pressed="{% if initial_diff_view == "rendered" %}true{% else %}false{% endif %}">Rendered</button>
-                    </div>
-                    <div class="git-diff-subcontrols">
-                        <div class="git-diff-view-seg git-diff-layout-seg" role="group" aria-label="Raw layout"
-                             data-diff-layout-seg {% if initial_diff_view == "rendered" %}hidden{% endif %}>
-                            <button type="button" class="git-diff-seg-btn" data-layout="unified" aria-pressed="false">Unified</button>
-                            <button type="button" class="git-diff-seg-btn" data-layout="split" aria-pressed="true">Split</button>
-                        </div>
-                        <span class="git-diff-viewed-count" data-diff-viewed-count aria-live="polite" hidden>
-                            <svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><path fill="currentColor" d="M13.78 4.22a.75.75 0 0 1 0 1.06l-7.25 7.25a.75.75 0 0 1-1.06 0L2.22 9.28a.751.751 0 0 1 .018-1.042.751.751 0 0 1 1.042-.018L6 10.94l6.72-6.72a.75.75 0 0 1 1.06 0Z"/></svg>
-                            <span data-diff-viewed-count-text></span>
-                        </span>
                     </div>
                 </section>
                 <section class="git-sidebar-block" aria-label="Diff options">
@@ -1479,6 +1490,25 @@
                     </div>
                     <script type="application/json" data-compare-picker>{{ compare_picker_json | safe }}</script>
                 </section>
+                <div class="git-diff-viewbar">
+                    <span class="git-diff-viewed-count" data-diff-viewed-count aria-live="polite" hidden>
+                        <svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><path fill="currentColor" d="M13.78 4.22a.75.75 0 0 1 0 1.06l-7.25 7.25a.75.75 0 0 1-1.06 0L2.22 9.28a.751.751 0 0 1 .018-1.042.751.751 0 0 1 1.042-.018L6 10.94l6.72-6.72a.75.75 0 0 1 1.06 0Z"/></svg>
+                        <span data-diff-viewed-count-text></span>
+                    </span>
+                    <div class="git-diff-viewbar-toggles">
+                        <div class="git-diff-view-seg" role="group" aria-label="Diff view" data-diff-view-seg>
+                            <button type="button" class="git-diff-seg-btn" data-view="raw" title="Raw (source)" aria-label="Raw (source)"
+                                    aria-pressed="{% if initial_diff_view == "rendered" %}false{% else %}true{% endif %}"><svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><path fill="currentColor" d="m11.28 3.22 4.25 4.25a.75.75 0 0 1 0 1.06l-4.25 4.25a.749.749 0 0 1-1.275-.326.749.749 0 0 1 .215-.734L13.94 8l-3.72-3.72a.749.749 0 0 1 .326-1.275.749.749 0 0 1 .734.215Zm-6.56 0a.751.751 0 0 1 1.042.018.751.751 0 0 1 .018 1.042L2.06 8l3.72 3.72a.749.749 0 0 1-.326 1.275.749.749 0 0 1-.734-.215L.47 8.53a.75.75 0 0 1 0-1.06Z"/></svg></button>
+                            <button type="button" class="git-diff-seg-btn" data-view="rendered" title="Rendered" aria-label="Rendered"
+                                    aria-pressed="{% if initial_diff_view == "rendered" %}true{% else %}false{% endif %}"><svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><path fill="currentColor" d="M8 2c1.981 0 3.671.992 4.933 2.078 1.27 1.091 2.187 2.345 2.637 3.023a1.62 1.62 0 0 1 0 1.798c-.45.678-1.367 1.932-2.637 3.023C11.67 13.008 9.981 14 8 14c-1.981 0-3.671-.992-4.933-2.078C1.797 10.831.88 9.577.43 8.9a1.62 1.62 0 0 1 0-1.798c.45-.677 1.367-1.931 2.637-3.022C4.33 2.992 6.019 2 8 2ZM1.679 7.932a.12.12 0 0 0 0 .136c.411.622 1.241 1.75 2.366 2.717C5.176 11.758 6.527 12.5 8 12.5c1.473 0 2.825-.742 3.955-1.715 1.124-.967 1.954-2.096 2.366-2.717a.12.12 0 0 0 0-.136c-.412-.621-1.242-1.75-2.366-2.717C10.824 4.242 9.473 3.5 8 3.5c-1.473 0-2.825.742-3.955 1.715-1.124.967-1.954 2.096-2.366 2.717ZM8 10a2 2 0 1 1-.001-3.999A2 2 0 0 1 8 10Z"/></svg></button>
+                        </div>
+                        <div class="git-diff-view-seg git-diff-layout-seg" role="group" aria-label="Raw layout"
+                             data-diff-layout-seg {% if initial_diff_view == "rendered" %}hidden{% endif %}>
+                            <button type="button" class="git-diff-seg-btn" data-layout="unified" title="Unified" aria-label="Unified" aria-pressed="false"><svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.3" aria-hidden="true"><rect x="2" y="3" width="12" height="10" rx="1.5"/><line x1="2.4" y1="8" x2="13.6" y2="8"/></svg></button>
+                            <button type="button" class="git-diff-seg-btn" data-layout="split" title="Split" aria-label="Split" aria-pressed="true"><svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.3" aria-hidden="true"><rect x="2" y="3" width="12" height="10" rx="1.5"/><line x1="8" y1="3.4" x2="8" y2="12.6"/></svg></button>
+                        </div>
+                    </div>
+                </div>
                 <section class="git-sidebar-block">
                     <div class="git-filter">
                         <div class="git-filter-field">

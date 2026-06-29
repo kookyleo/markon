@@ -26,11 +26,11 @@ const folderRowInner = (): string =>
     '<span class="git-nav-main"><span class="git-nav-icon git-nav-folder" aria-hidden="true"><svg viewBox="0 0 16 16" width="16" height="16"><path fill="currentColor" d="M1.75 1A1.75 1.75 0 0 0 0 2.75v10.5C0 14.216.784 15 1.75 15h12.5A1.75 1.75 0 0 0 16 13.25v-8.5A1.75 1.75 0 0 0 14.25 3H7.5a.25.25 0 0 1-.2-.1l-.9-1.2C6.07 1.26 5.55 1 5 1Z"/></svg></span>' +
     '<span class="git-nav-name"></span></span>';
 
-/** Inner markup of the workspace-root row: a repository octicon + the project
- *  name (NOT "/", which reads like the filesystem root). No chevron. */
+/** Inner markup of the workspace-root row: a folder-with-badge workspace icon +
+ *  the project name (NOT "/", which reads like the filesystem root). No chevron. */
 const rootRowInner = (): string =>
     '<span class="git-nav-twist" aria-hidden="true"></span>' +
-    '<span class="git-nav-main"><span class="git-nav-icon git-nav-folder" aria-hidden="true"><svg viewBox="0 0 16 16" width="16" height="16"><path fill="currentColor" d="M2 2.5A2.5 2.5 0 0 1 4.5 0h8.75a.75.75 0 0 1 .75.75v12.5a.75.75 0 0 1-.75.75h-2.5a.75.75 0 0 1 0-1.5h1.75v-2h-8a1 1 0 0 0-.714 1.7.75.75 0 1 1-1.072 1.05A2.495 2.495 0 0 1 2 11.5Zm10.5-1h-8a1 1 0 0 0-1 1v6.708A2.486 2.486 0 0 1 4.5 9h8ZM5 12.25a.25.25 0 0 1 .25-.25h3.5a.25.25 0 0 1 .25.25v3.25a.25.25 0 0 1-.4.2l-1.45-1.087a.249.249 0 0 0-.3 0L5.4 15.7a.25.25 0 0 1-.4-.2Z"/></svg></span>' +
+    '<span class="git-nav-main"><span class="git-nav-icon git-nav-folder" aria-hidden="true"><svg viewBox="0 0 16 16" width="16" height="16"><path fill="currentColor" d="M1.75 1A1.75 1.75 0 0 0 0 2.75v10.5C0 14.216.784 15 1.75 15h12.5A1.75 1.75 0 0 0 16 13.25v-8.5A1.75 1.75 0 0 0 14.25 3H7.5a.25.25 0 0 1-.2-.1l-.9-1.2C6.07 1.26 5.55 1 5 1Z"/><circle class="git-ws-badge-cut" cx="12" cy="11.4" r="3.4"/><circle class="git-ws-badge-dot" cx="12" cy="11.4" r="2.1"/></svg></span>' +
     '<span class="git-nav-name"></span></span>';
 
 /** The project/workspace display name (last path segment), for the root row. */
@@ -230,7 +230,8 @@ const init = (): void => {
     rootRow.className = 'git-nav-entry is-dir is-root';
     rootRow.style.setProperty('--depth', '0');
     rootRow.innerHTML = rootRowInner();
-    rootRow.querySelector('.git-nav-name')!.textContent = projectName();
+    // Trailing "/" marks it as the workspace scope/root.
+    rootRow.querySelector('.git-nav-name')!.textContent = `${projectName()}/`;
     rootRow.title = 'Workspace root';
     rootLi.appendChild(rootRow);
     list.prepend(rootLi);
