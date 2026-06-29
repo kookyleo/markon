@@ -217,7 +217,10 @@ pub fn commit_count(root: &Path) -> Result<usize> {
 
 pub fn branches(root: &Path) -> Result<Vec<GitBranch>> {
     ensure_repo(root)?;
-    let output = run_git(root, &["branch", "--format=%(HEAD)%x1f%(refname:short)"])?;
+    // NOTE: ref-filter formats (`branch`/`for-each-ref`/`tag`) do NOT interpret
+    // the `%x1f` hex escape that `log --pretty` does — they emit it literally. So
+    // the field separator is the real U+001F byte embedded in the format string.
+    let output = run_git(root, &["branch", "--format=%(HEAD)\u{1f}%(refname:short)"])?;
     if !output.status.success() {
         return Err(GitError::Command(command_error(&output)));
     }
@@ -250,7 +253,9 @@ pub fn tags(root: &Path, limit: usize) -> Result<Vec<GitTag>> {
             "for-each-ref",
             "--sort=-creatordate",
             &count,
-            "--format=%(refname:short)%x1f%(objectname:short)%x1f%(creatordate:relative)",
+            // ref-filter emits `%x1f` literally (see note in `branches`); use the
+            // real U+001F byte as the field separator instead.
+            "--format=%(refname:short)\u{1f}%(objectname:short)\u{1f}%(creatordate:relative)",
             "refs/tags",
         ],
     )?;
