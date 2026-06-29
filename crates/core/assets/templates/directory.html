@@ -1243,7 +1243,11 @@
         <section class="workspace-main">
             <header class="workspace-meta-panel" aria-labelledby="dir-heading">
                 <div class="workspace-kicker" data-i18n="web.ws.heading">Workspace</div>
+                {% if workspace_alias %}
+                <h1 id="dir-heading" class="workspace-title" data-title-key="web.ws.title">{{ workspace_alias }}</h1>
+                {% else %}
                 <h1 id="dir-heading" class="workspace-title" data-i18n-key="web.ws.heading" data-title-key="web.ws.title">Workspace</h1>
+                {% endif %}
                 <dl class="workspace-meta-list">
                     <div class="workspace-meta-row">
                         <dt data-i18n="web.ws.meta.path">Path</dt>
@@ -1326,6 +1330,7 @@
                             <div class="workspace-dropdown-menu">
                                 <button class="workspace-menu-item" type="button" data-copy-current-url><span data-i18n="web.ws.copy_url">Copy workspace URL</span></button>
                                 <button class="workspace-menu-item" type="button" data-copy-text="{{ current_dir }}"><span data-i18n="web.ws.copy_path">Copy workspace path</span></button>
+                                {% if access_role == "initiator" %}<button class="workspace-menu-item" type="button" data-set-alias data-alias-url="/_/{{ workspace_id }}/settings/alias" data-current-alias="{{ workspace_alias }}"><span data-i18n="web.ws.set_alias">Set alias…</span></button>{% endif %}
                                 {% if work_diff_url %}<a class="workspace-menu-item" href="{{ work_diff_url }}" data-i18n="web.ws.git.working_diff">Working diff</a>{% endif %}
                             </div>
                         </div>

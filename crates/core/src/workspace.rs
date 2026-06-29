@@ -36,7 +36,7 @@ pub struct WorkspaceFlags {
     pub shared_annotation: bool,
 }
 
-#[derive(Clone)]
+#[derive(Clone, Default)]
 pub struct WorkspaceConfig {
     pub path: PathBuf,
     pub flags: WorkspaceFlags,
@@ -50,6 +50,9 @@ pub struct WorkspaceConfig {
     /// Per-workspace collaborator access-code hash (empty = inherit the
     /// server-level collaborator code).
     pub collaborator_access_code_hash: String,
+    /// Optional short display name shown instead of the (often long) path.
+    /// Purely cosmetic — never part of `hash_id`.
+    pub alias: String,
 }
 
 pub(crate) struct WorkspaceEntry {
@@ -80,6 +83,9 @@ pub(crate) struct WorkspaceEntry {
     /// Per-workspace collaborator access-code hash (empty = inherit the
     /// server-level collaborator code).
     pub collaborator_access_code_hash: RwLock<String>,
+    /// Optional short display name (empty = none). RwLock so the GUI/web can
+    /// rename a workspace live without re-registering it.
+    pub alias: RwLock<String>,
 }
 
 impl WorkspaceEntry {
@@ -108,6 +114,10 @@ impl WorkspaceEntry {
 
     pub(crate) fn collaborator_access_code_hash(&self) -> String {
         self.collaborator_access_code_hash.read().unwrap().clone()
+    }
+
+    pub(crate) fn alias(&self) -> String {
+        self.alias.read().unwrap().clone()
     }
 
     /// True when `rel` is the workspace's pinned file or one of the assets it
@@ -152,6 +162,9 @@ pub struct WorkspaceInfo {
     /// Per-workspace collaborator access-code hash (empty = inherit the server code).
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub collaborator_access_code_hash: String,
+    /// Optional short display name (empty = none).
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub alias: String,
 }
 
 /// Invoked whenever the registry mutates (add / update_flags / remove).
@@ -361,6 +374,7 @@ impl WorkspaceRegistry {
             pending_edits: Arc::new(PendingEditStore::new()),
             access_code_hash: RwLock::new(config.access_code_hash),
             collaborator_access_code_hash: RwLock::new(config.collaborator_access_code_hash),
+            alias: RwLock::new(config.alias),
         });
         self.inner
             .write()
@@ -467,6 +481,19 @@ impl WorkspaceRegistry {
         self.notify_persist();
         true
     }
+
+    /// Set (or clear, with an empty string) a workspace's alias and persist.
+    /// Returns false if the id isn't registered.
+    pub fn set_alias(&self, id: &str, alias: &str) -> bool {
+        let guard = self.inner.read().unwrap();
+        let Some(entry) = guard.get(id) else {
+            return false;
+        };
+        *entry.alias.write().unwrap() = alias.to_string();
+        drop(guard);
+        self.notify_persist();
+        true
+    }
     pub(crate) fn list(&self) -> Vec<Arc<WorkspaceEntry>> {
         let mut v: Vec<_> = self.inner.read().unwrap().values().cloned().collect();
         // HashMap iteration order is non-deterministic, which leaked into the
@@ -494,6 +521,7 @@ impl WorkspaceRegistry {
                 single_file: e.single_file.clone(),
                 access_code_hash: e.access_code_hash(),
                 collaborator_access_code_hash: e.collaborator_access_code_hash(),
+                alias: e.alias(),
             })
             .collect()
     }
@@ -780,6 +808,7 @@ mod tests {
             single_file: None,
             access_code_hash: String::new(),
             collaborator_access_code_hash: String::new(),
+            ..Default::default()
         });
 
         assert_eq!(id, hash_id(&root, salt));
@@ -857,6 +886,7 @@ mod tests {
             single_file: single.map(str::to_string),
             access_code_hash: String::new(),
             collaborator_access_code_hash: String::new(),
+            ..Default::default()
         };
         // Insert in a scrambled order.
         reg.add(mk(base.join("charlie"), None));
@@ -951,6 +981,7 @@ mod tests {
             single_file: Some("pinned.md".into()),
             access_code_hash: String::new(),
             collaborator_access_code_hash: String::new(),
+            ..Default::default()
         });
 
         let entry = registry.get(&id).unwrap();
@@ -985,6 +1016,7 @@ mod tests {
             single_file: Some("note.md".into()),
             access_code_hash: String::new(),
             collaborator_access_code_hash: String::new(),
+            ..Default::default()
         });
         let entry = registry.get(&id).unwrap();
         assert!(entry.search_index.load().is_none());

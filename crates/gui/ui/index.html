@@ -404,6 +404,39 @@
       text-overflow: ellipsis;
       line-height: 1.4;
     }
+    /* When a workspace has an alias, show it as the primary label with the path
+       as a muted subtitle. */
+    .ws-path.ws-named { display: flex; flex-direction: column; gap: 1px; }
+    .ws-alias-name {
+      font-family: -apple-system, system-ui, sans-serif;
+      font-weight: 600;
+      font-size: 13px;
+      overflow: hidden; text-overflow: ellipsis;
+    }
+    .ws-subpath {
+      font-size: 11px;
+      color: var(--text-2);
+      overflow: hidden; text-overflow: ellipsis;
+    }
+    .ws-alias-editor { flex: 1; min-width: 0; display: flex; align-items: center; gap: 6px; }
+    .ws-alias-input {
+      flex: 1; min-width: 0;
+      height: 26px;
+      padding: 2px 8px;
+      border: 1px solid var(--accent);
+      border-radius: 6px;
+      background: var(--surface);
+      color: var(--text);
+      font-size: 12.5px;
+    }
+    .ws-alias-input:focus { outline: none; }
+    .ws-alias-ok {
+      flex-shrink: 0;
+      width: 26px; height: 26px;
+      border: none; border-radius: 6px;
+      background: var(--accent); color: #fff;
+      cursor: default;
+    }
     .ws-icon-btn {
       width: 26px; height: 26px;
       border-radius: 6px;
@@ -1938,10 +1971,23 @@
         ? `<span class="ws-lead-icon" title="${esc(T('ws.tag.single'))}"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="9" y1="13" x2="15" y2="13"/><line x1="9" y1="17" x2="13" y2="17"/></svg></span>`
         : '';
 
+      const aliasName = (ws.alias || '').trim();
+      const nameBlock = aliasName
+        ? `<span class="ws-path ws-named" title="${esc(fullPath)}"><span class="ws-alias-name">${esc(aliasName)}</span><span class="ws-subpath">${esc(shortPath)}</span></span>`
+        : `<span class="ws-path" title="${esc(fullPath)}">${esc(shortPath)}</span>`;
       card.innerHTML = `
         <div class="ws-row-top">
           ${leadIcon}
-          <span class="ws-path" title="${esc(fullPath)}">${esc(shortPath)}</span>
+          ${nameBlock}
+          <button class="ws-icon-btn alias-btn" title="${T('ws.alias.tip')}">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+              <circle cx="5" cy="12" r="1.6"/><circle cx="12" cy="12" r="1.6"/><circle cx="19" cy="12" r="1.6"/>
+            </svg>
+          </button>
+          <div class="ws-alias-editor" style="display:none">
+            <input class="ws-alias-input" type="text" placeholder="${esc(T('ws.alias.placeholder'))}">
+            <button class="ws-alias-ok" title="${T('ws.alias.save')}">✓</button>
+          </div>
           <button class="ws-icon-btn open-btn" title="${T('ws.open.tip')}">
             <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
               <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/>
@@ -1976,6 +2022,37 @@
       card.querySelector('.open-btn').addEventListener('click', () => {
         invoke('open_url', { url: ws.url });
       });
+
+      // Alias (short display name) — the "…" button morphs into an inline input.
+      (function wireAlias() {
+        const btn = card.querySelector('.alias-btn');
+        const editor = card.querySelector('.ws-alias-editor');
+        const input = editor.querySelector('.ws-alias-input');
+        const ok = editor.querySelector('.ws-alias-ok');
+        let busy = false;
+        const close = () => { editor.style.display = 'none'; btn.style.display = ''; };
+        const save = async () => {
+          if (busy) return;
+          busy = true;
+          try {
+            await invoke('set_alias', { workspaceId: ws.id, alias: input.value.trim() });
+            refreshWorkspaces();
+          } catch (e) { toast(T('ws.update.fail') + ': ' + e, 'err'); busy = false; }
+        };
+        btn.addEventListener('click', () => {
+          input.value = ws.alias || '';
+          btn.style.display = 'none';
+          editor.style.display = 'flex';
+          input.focus();
+          input.select();
+        });
+        ok.addEventListener('click', save);
+        input.addEventListener('keydown', (e) => {
+          if (e.key === 'Enter') { e.preventDefault(); save(); }
+          else if (e.key === 'Escape') { e.preventDefault(); close(); }
+        });
+        input.addEventListener('blur', () => { setTimeout(() => { if (document.activeElement !== ok) close(); }, 150); });
+      })();
 
       // Remove
       card.querySelector('.remove-btn').addEventListener('click', async () => {

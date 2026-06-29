@@ -181,6 +181,7 @@ fn ensure_example_workspace(app: &tauri::App, settings: &mut AppSettings) {
         },
         access_code_hash: String::new(),
         collaborator_access_code_hash: String::new(),
+        alias: String::new(),
     });
     if let Err(e) = settings.save() {
         tracing::warn!("failed to persist example workspace onboarding state: {e}");
@@ -362,6 +363,7 @@ fn handle_open_path(app: &tauri::AppHandle, path: &Path) {
             single_file,
             access_code_hash: String::new(),
             collaborator_access_code_hash: String::new(),
+            alias: String::new(),
         });
     drop(server);
 
@@ -679,6 +681,7 @@ fn main() {
             commands::save_settings,
             commands::set_access_code,
             commands::set_collaborator_access_code,
+            commands::set_alias,
             commands::set_tray_resident,
             commands::add_workspace,
             commands::remove_workspace,

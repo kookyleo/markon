@@ -823,6 +823,7 @@ mod tests {
             single_file: None,
             access_code_hash: String::new(),
             collaborator_access_code_hash: String::new(),
+            ..Default::default()
         });
 
         let db_tmp = tempfile::NamedTempFile::new().expect("sqlite tmpfile");

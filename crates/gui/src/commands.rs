@@ -261,6 +261,7 @@ pub fn add_workspace(path: String, state: State<AppState>) -> Result<serde_json:
         single_file: None,
         access_code_hash: String::new(),
         collaborator_access_code_hash: String::new(),
+        alias: String::new(),
     });
     let port = server.port();
     drop(server);
@@ -329,9 +330,28 @@ pub fn get_workspaces(state: State<AppState>) -> Vec<serde_json::Value> {
                 // single-file workspaces (see `ui/index.html: refreshWorkspaces`).
                 "ephemeral": info.ephemeral,
                 "single_file": info.single_file,
+                // Optional short display name (empty = none).
+                "alias": info.alias,
             })
         })
         .collect()
+}
+
+/// Set (or clear, with an empty string) a workspace's alias. Per-workspace and
+/// live — updates the shared registry (persists via its hook), no restart.
+#[tauri::command]
+pub fn set_alias(workspace_id: String, alias: String, state: State<AppState>) -> Result<(), String> {
+    if state
+        .server
+        .lock()
+        .unwrap()
+        .registry
+        .set_alias(&workspace_id, alias.trim())
+    {
+        Ok(())
+    } else {
+        Err("workspace not found".into())
+    }
 }
 
 #[tauri::command]

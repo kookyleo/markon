@@ -22,7 +22,9 @@ const t: I18nFn = (window.__MARKON_I18N__ && window.__MARKON_I18N__.t) || ((k: s
 
 // ── Static i18n labels ──────────────────────────────────────────────────────
 const heading = document.getElementById('dir-heading');
-if (heading) heading.textContent = t(heading.dataset.i18nKey || 'web.dir.heading');
+// Only translate when an i18n key is present; a server-rendered alias has no
+// key and must be left as-is (don't fall back to the generic heading).
+if (heading && heading.dataset.i18nKey) heading.textContent = t(heading.dataset.i18nKey);
 const labelMap: Record<string, string> = {
     'dir-current-label': 'web.dir.current',
     'dir-footer': 'web.footer',
@@ -155,6 +157,26 @@ document.querySelectorAll<HTMLElement>('[data-copy-current-url]').forEach((butto
             button.textContent = t(ok ? 'web.ws.meta.copied' : 'web.ws.meta.copy_failed');
             window.setTimeout(() => { button.textContent = original; }, 1200);
         });
+    });
+});
+
+// Set/clear the workspace alias (a short display name). Prompt-based — a
+// secondary, low-traffic action folded into the menu.
+document.querySelectorAll<HTMLElement>('[data-set-alias]').forEach((button) => {
+    button.addEventListener('click', () => {
+        const url = button.getAttribute('data-alias-url') || '';
+        if (!url) return;
+        const current = button.getAttribute('data-current-alias') || '';
+        const next = window.prompt(t('web.ws.set_alias_prompt'), current);
+        if (next === null) return; // cancelled
+        fetch(url, {
+            method: 'POST',
+            credentials: 'same-origin',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ alias: next.trim() }),
+        })
+            .then((resp) => { if (resp.ok) window.location.reload(); else window.alert(t('web.ws.set_alias_failed')); })
+            .catch(() => window.alert(t('web.ws.set_alias_failed')));
     });
 });
 

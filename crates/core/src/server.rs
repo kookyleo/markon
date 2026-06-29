@@ -59,6 +59,8 @@ pub struct WorkspaceInit {
     /// Per-workspace collaborator access-code hash (empty = inherit the server
     /// collaborator code).
     pub collaborator_access_code_hash: String,
+    /// Optional short display name (empty = none).
+    pub alias: String,
 }
 
 /// Server configuration
@@ -581,6 +583,7 @@ pub async fn start(config: ServerConfig) -> Result<(), String> {
             single_file: None,
             access_code_hash: ws_init.access_code_hash,
             collaborator_access_code_hash: ws_init.collaborator_access_code_hash,
+            alias: ws_init.alias,
         });
         if first_workspace_url_path.is_none() {
             let url_path = workspace_url_path(&id, ws_init.initial_path.as_deref());
@@ -756,6 +759,15 @@ pub async fn start(config: ServerConfig) -> Result<(), String> {
         .route(
             "/_/{workspace_id}/settings/features",
             post(handle_workspace_update_features)
+                .route_layer(axum::middleware::from_fn_with_state(
+                    state.clone(),
+                    require_initiator_role,
+                ))
+                .route_layer(axum::middleware::from_fn(require_same_origin)),
+        )
+        .route(
+            "/_/{workspace_id}/settings/alias",
+            post(handle_workspace_update_alias)
                 .route_layer(axum::middleware::from_fn_with_state(
                     state.clone(),
                     require_initiator_role,
@@ -2740,6 +2752,34 @@ async fn handle_workspace_update_features(
     }
 }
 
+#[derive(Deserialize)]
+struct UpdateWorkspaceAliasRequest {
+    #[serde(default)]
+    alias: String,
+}
+
+/// Set/clear a workspace's alias from the web (directory page). Gated by
+/// `require_initiator_role` + `require_same_origin` (NOT the master token), so
+/// it's reachable from the served page without GUI-only privileges.
+async fn handle_workspace_update_alias(
+    State(state): State<AppState>,
+    AxumPath(workspace_id): AxumPath<String>,
+    Json(payload): Json<UpdateWorkspaceAliasRequest>,
+) -> Response {
+    if state
+        .workspace_registry
+        .set_alias(&workspace_id, payload.alias.trim())
+    {
+        Json(serde_json::json!({ "success": true })).into_response()
+    } else {
+        (
+            StatusCode::NOT_FOUND,
+            Json(serde_json::json!({ "success": false, "message": "Workspace not found" })),
+        )
+            .into_response()
+    }
+}
+
 // ── Workspace management API ──────────────────────────────────────────────────
 
 #[derive(Deserialize)]
@@ -2792,6 +2832,7 @@ async fn add_workspace_handler(
         single_file: None,
         access_code_hash: req.access_code_hash,
         collaborator_access_code_hash: req.collaborator_access_code_hash,
+        alias: String::new(),
     });
     Json(AddWorkspaceResponse { id }).into_response()
 }
@@ -4219,6 +4260,7 @@ fn render_git_diff_page(
         }
     };
     context.insert("workspace_display_path", &ws_display_path);
+    context.insert("workspace_alias", &ws.alias());
     context.insert("work_diff_url", &markdown_work_diff_page_url(workspace_id));
     context.insert(
         "markdown_diff_url",
@@ -5222,6 +5264,7 @@ fn render_directory_listing(
 
     let mut context = base_context(state);
     context.insert("workspace_id", workspace_id);
+    context.insert("workspace_alias", &ws.alias());
     context.insert(
         "access_role",
         &format!("{access_role:?}").to_ascii_lowercase(),
@@ -5542,6 +5585,7 @@ mod tests {
             single_file: None,
             access_code_hash: String::new(),
             collaborator_access_code_hash: String::new(),
+            ..Default::default()
         })
     }
 
@@ -5570,6 +5614,7 @@ mod tests {
             single_file: None,
             access_code_hash: String::new(),
             collaborator_access_code_hash: String::new(),
+            ..Default::default()
         });
         assert!(reg.set_access_code(&id, &ws_hash));
 
@@ -5588,6 +5633,7 @@ mod tests {
             single_file: None,
             access_code_hash: ws_hash.clone(),
             collaborator_access_code_hash: String::new(),
+            ..Default::default()
         });
         assert_eq!(id, id2, "workspace id must be stable across reseed");
         assert_eq!(
@@ -5638,6 +5684,7 @@ mod tests {
             single_file: None,
             access_code_hash: initiator_hash.clone(),
             collaborator_access_code_hash: collaborator_hash.clone(),
+            ..Default::default()
         });
         let state = test_state(reg);
 
@@ -5674,6 +5721,7 @@ mod tests {
             single_file: None,
             access_code_hash: hash.clone(),
             collaborator_access_code_hash: hash,
+            ..Default::default()
         });
         let state = test_state(reg);
         let roles: Vec<AccessRole> = access_requirements_for(&state, &id)
@@ -7170,6 +7218,7 @@ mod tests {
             single_file: None,
             access_code_hash: initiator_hash,
             collaborator_access_code_hash: collaborator_hash.clone(),
+            ..Default::default()
         });
         let state = test_state(registry);
 
@@ -7213,6 +7262,7 @@ mod tests {
             single_file: Some("opened.md".into()),
             access_code_hash: String::new(),
             collaborator_access_code_hash: String::new(),
+            ..Default::default()
         });
         let state = test_state(registry);
 

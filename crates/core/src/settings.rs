@@ -163,6 +163,9 @@ pub struct WorkspaceSettings {
     /// collaborator code (or no collaborator token).
     #[serde(default)]
     pub collaborator_access_code_hash: String,
+    /// Optional short display name shown instead of the path. Empty = none.
+    #[serde(default)]
+    pub alias: String,
 }
 
 /// Per-provider configuration block. Each provider keeps its own complete
@@ -476,6 +479,7 @@ impl AppSettings {
             "collaborator_access_code_hash",
             &mut workspace.collaborator_access_code_hash,
         );
+        recover_field(object, "alias", &mut workspace.alias);
         workspace.flags = serde_json::from_value::<WorkspaceFlags>(value.clone())
             .unwrap_or_else(|_| recover_workspace_flags(object));
         Some(workspace)
@@ -551,6 +555,7 @@ impl AppSettings {
                 initial_path: None,
                 access_code_hash: w.access_code_hash.clone(),
                 collaborator_access_code_hash: w.collaborator_access_code_hash.clone(),
+                alias: w.alias.clone(),
             })
             .collect();
         ServerConfig {
@@ -629,6 +634,7 @@ impl AppSettings {
                 flags: info.flags,
                 access_code_hash: info.access_code_hash,
                 collaborator_access_code_hash: info.collaborator_access_code_hash,
+                alias: info.alias,
             })
             .collect();
     }
@@ -826,6 +832,7 @@ mod tests {
             },
             access_code_hash: "6d243".into(),
             collaborator_access_code_hash: "c0de".into(),
+            ..Default::default()
         }];
         // save_at (NOT save()) — write into the TempHome, never the real ~/.markon.
         s.save_at(home.path()).unwrap();
@@ -1050,18 +1057,21 @@ mod tests {
                     flags: WorkspaceFlags::default(),
                     access_code_hash: String::new(),
                     collaborator_access_code_hash: String::new(),
+                    ..Default::default()
                 },
                 WorkspaceSettings {
                     path: "/b".to_string(),
                     flags: WorkspaceFlags::default(),
                     access_code_hash: String::new(),
                     collaborator_access_code_hash: String::new(),
+                    ..Default::default()
                 },
                 WorkspaceSettings {
                     path: "/a".to_string(),
                     flags: WorkspaceFlags::default(),
                     access_code_hash: String::new(),
                     collaborator_access_code_hash: String::new(),
+                    ..Default::default()
                 },
             ],
             language: String::new(),
@@ -1108,6 +1118,7 @@ mod tests {
             single_file: None,
             access_code_hash: "abc".to_string(),
             collaborator_access_code_hash: "def".to_string(),
+            ..Default::default()
         });
         reg.add(WorkspaceConfig {
             path: ws_path.clone(),
@@ -1115,6 +1126,7 @@ mod tests {
             single_file: Some("note.md".to_string()),
             access_code_hash: String::new(),
             collaborator_access_code_hash: String::new(),
+            ..Default::default()
         });
 
         let mut s = AppSettings::default();
@@ -1269,6 +1281,7 @@ mod tests {
                 flags: WorkspaceFlags::default(),
                 access_code_hash: String::new(),
                 collaborator_access_code_hash: String::new(),
+                ..Default::default()
             }],
             ..AppSettings::default()
         };
