@@ -97,7 +97,12 @@ function initViewSwitcher(): void {
     const viewInput = document.querySelector<HTMLInputElement>('[data-diff-view-input]');
     const segButtons = Array.from(document.querySelectorAll<HTMLElement>('[data-diff-view-seg] [data-view]'));
     const compareForm = document.querySelector<HTMLFormElement>('[data-compare-form]');
-    const VIEW_PREF_KEY = 'markon:diff:view';
+    // Raw/Rendered is remembered PER WORKSPACE: the key carries the workspace id
+    // so each workspace keeps its own preference (a doc-heavy repo can default to
+    // Rendered while a code repo stays on Raw). Falls back to a shared key when
+    // the id is somehow absent.
+    const wsId = document.querySelector('meta[name="workspace-id"]')?.getAttribute('content') || '';
+    const VIEW_PREF_KEY = wsId ? `markon:diff:view:${wsId}` : 'markon:diff:view';
 
     const storedViewPref = (): View | null => {
         try {
