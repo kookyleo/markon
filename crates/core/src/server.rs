@@ -129,13 +129,13 @@ pub(crate) struct AccessAttempts {
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum AccessRole {
-    Initiator,
+    Admin,
     Collaborator,
 }
 
 impl AccessRole {
     fn can_initiate(self) -> bool {
-        matches!(self, Self::Initiator)
+        matches!(self, Self::Admin)
     }
 }
 
@@ -712,7 +712,7 @@ pub async fn start(config: ServerConfig) -> Result<(), String> {
             post(handle_git_commit)
                 .route_layer(axum::middleware::from_fn_with_state(
                     state.clone(),
-                    require_initiator_role,
+                    require_admin_role,
                 ))
                 .route_layer(axum::middleware::from_fn(require_same_origin)),
         )
@@ -721,7 +721,7 @@ pub async fn start(config: ServerConfig) -> Result<(), String> {
             post(handle_git_checkout)
                 .route_layer(axum::middleware::from_fn_with_state(
                     state.clone(),
-                    require_initiator_role,
+                    require_admin_role,
                 ))
                 .route_layer(axum::middleware::from_fn(require_same_origin)),
         )
@@ -734,7 +734,7 @@ pub async fn start(config: ServerConfig) -> Result<(), String> {
             post(handle_workspace_create_file)
                 .route_layer(axum::middleware::from_fn_with_state(
                     state.clone(),
-                    require_initiator_role,
+                    require_admin_role,
                 ))
                 .route_layer(axum::middleware::from_fn(require_same_origin)),
         )
@@ -743,7 +743,7 @@ pub async fn start(config: ServerConfig) -> Result<(), String> {
             post(handle_workspace_create_folder)
                 .route_layer(axum::middleware::from_fn_with_state(
                     state.clone(),
-                    require_initiator_role,
+                    require_admin_role,
                 ))
                 .route_layer(axum::middleware::from_fn(require_same_origin)),
         )
@@ -752,7 +752,7 @@ pub async fn start(config: ServerConfig) -> Result<(), String> {
             post(handle_workspace_delete_file)
                 .route_layer(axum::middleware::from_fn_with_state(
                     state.clone(),
-                    require_initiator_role,
+                    require_admin_role,
                 ))
                 .route_layer(axum::middleware::from_fn(require_same_origin)),
         )
@@ -761,7 +761,7 @@ pub async fn start(config: ServerConfig) -> Result<(), String> {
             post(handle_workspace_update_features)
                 .route_layer(axum::middleware::from_fn_with_state(
                     state.clone(),
-                    require_initiator_role,
+                    require_admin_role,
                 ))
                 .route_layer(axum::middleware::from_fn(require_same_origin)),
         )
@@ -770,7 +770,7 @@ pub async fn start(config: ServerConfig) -> Result<(), String> {
             post(handle_workspace_update_alias)
                 .route_layer(axum::middleware::from_fn_with_state(
                     state.clone(),
-                    require_initiator_role,
+                    require_admin_role,
                 ))
                 .route_layer(axum::middleware::from_fn(require_same_origin)),
         )
@@ -806,7 +806,7 @@ pub async fn start(config: ServerConfig) -> Result<(), String> {
             post(handle_git_commit)
                 .route_layer(axum::middleware::from_fn_with_state(
                     state.clone(),
-                    require_initiator_role,
+                    require_admin_role,
                 ))
                 .route_layer(axum::middleware::from_fn(require_same_origin)),
         )
@@ -815,7 +815,7 @@ pub async fn start(config: ServerConfig) -> Result<(), String> {
             post(handle_git_checkout)
                 .route_layer(axum::middleware::from_fn_with_state(
                     state.clone(),
-                    require_initiator_role,
+                    require_admin_role,
                 ))
                 .route_layer(axum::middleware::from_fn(require_same_origin)),
         )
@@ -828,7 +828,7 @@ pub async fn start(config: ServerConfig) -> Result<(), String> {
             post(handle_workspace_create_file)
                 .route_layer(axum::middleware::from_fn_with_state(
                     state.clone(),
-                    require_initiator_role,
+                    require_admin_role,
                 ))
                 .route_layer(axum::middleware::from_fn(require_same_origin)),
         )
@@ -837,7 +837,7 @@ pub async fn start(config: ServerConfig) -> Result<(), String> {
             post(handle_workspace_create_folder)
                 .route_layer(axum::middleware::from_fn_with_state(
                     state.clone(),
-                    require_initiator_role,
+                    require_admin_role,
                 ))
                 .route_layer(axum::middleware::from_fn(require_same_origin)),
         )
@@ -846,7 +846,7 @@ pub async fn start(config: ServerConfig) -> Result<(), String> {
             post(handle_workspace_update_features)
                 .route_layer(axum::middleware::from_fn_with_state(
                     state.clone(),
-                    require_initiator_role,
+                    require_admin_role,
                 ))
                 .route_layer(axum::middleware::from_fn(require_same_origin)),
         )
@@ -878,7 +878,7 @@ pub async fn start(config: ServerConfig) -> Result<(), String> {
         crate::chat::routes::router()
             .route_layer(axum::middleware::from_fn_with_state(
                 state.clone(),
-                require_initiator_role,
+                require_admin_role,
             ))
             .route_layer(axum::middleware::from_fn(require_same_origin)),
     );
@@ -1273,17 +1273,17 @@ fn access_record_success(state: &AppState, ip: std::net::IpAddr) {
 }
 
 /// The effective access requirements for a workspace. The legacy
-/// `access_code_hash` is the **initiator** token. Collaborator tokens are
-/// separate and intentionally use distinct cookie scopes, while initiator
-/// scopes keep their old values (`s` / `w:{id}`) so existing initiator cookies
+/// `access_code_hash` is the **admin** token. Collaborator tokens are
+/// separate and intentionally use distinct cookie scopes, while admin
+/// scopes keep their old values (`s` / `w:{id}`) so existing admin cookies
 /// continue to work after the upgrade.
 fn access_requirements_for(state: &AppState, ws_id: &str) -> Vec<AccessRequirement> {
     let entry = state.workspace_registry.get(ws_id);
-    let workspace_initiator = entry.as_ref().map(|e| e.access_code_hash());
+    let workspace_admin = entry.as_ref().map(|e| e.access_code_hash());
     let workspace_collaborator = entry.as_ref().map(|e| e.collaborator_access_code_hash());
 
-    let (initiator_hash, initiator_scope) =
-        if let Some(hash) = workspace_initiator.filter(|hash| !hash.is_empty()) {
+    let (admin_hash, admin_scope) =
+        if let Some(hash) = workspace_admin.filter(|hash| !hash.is_empty()) {
             (hash, format!("w:{ws_id}"))
         } else if !state.access_code_hash.is_empty() {
             (state.access_code_hash.as_str().to_string(), "s".to_string())
@@ -1304,17 +1304,17 @@ fn access_requirements_for(state: &AppState, ws_id: &str) -> Vec<AccessRequireme
         };
 
     let mut out = Vec::new();
-    if !initiator_hash.is_empty() {
+    if !admin_hash.is_empty() {
         out.push(AccessRequirement {
-            role: AccessRole::Initiator,
-            hash: initiator_hash.clone(),
-            scope: initiator_scope,
+            role: AccessRole::Admin,
+            hash: admin_hash.clone(),
+            scope: admin_scope,
         });
     }
     // The two role tokens must be different. Runtime skips an already-invalid
     // equal-hash collaborator requirement so a stale/bad settings file cannot
     // make one token ambiguously unlock two roles.
-    if !collaborator_hash.is_empty() && collaborator_hash != initiator_hash {
+    if !collaborator_hash.is_empty() && collaborator_hash != admin_hash {
         out.push(AccessRequirement {
             role: AccessRole::Collaborator,
             hash: collaborator_hash,
@@ -1331,10 +1331,10 @@ fn access_role_from_cookie(
 ) -> Option<AccessRole> {
     let requirements = access_requirements_for(state, ws_id);
     if requirements.is_empty() {
-        return Some(AccessRole::Initiator);
+        return Some(AccessRole::Admin);
     }
     let scopes = access_cookie_scopes(&state.access_secret, cookie_header);
-    for wanted_role in [AccessRole::Initiator, AccessRole::Collaborator] {
+    for wanted_role in [AccessRole::Admin, AccessRole::Collaborator] {
         for req in requirements.iter().filter(|req| req.role == wanted_role) {
             if scopes
                 .iter()
@@ -1422,7 +1422,7 @@ async fn require_access_code(
     };
     let requirements = access_requirements_for(&state, &ws_id);
     if requirements.is_empty() {
-        req.extensions_mut().insert(AccessRole::Initiator);
+        req.extensions_mut().insert(AccessRole::Admin);
         return next.run(req).await;
     };
     let cookie = req
@@ -1440,7 +1440,7 @@ async fn require_access_code(
     }
 }
 
-async fn require_initiator_role(
+async fn require_admin_role(
     State(state): State<AppState>,
     req: axum::extract::Request,
     next: axum::middleware::Next,
@@ -1451,7 +1451,7 @@ async fn require_initiator_role(
         access_cookie_role_for_headers(&state, &ws_id, req.headers())
             .unwrap_or(AccessRole::Collaborator)
     } else {
-        AccessRole::Initiator
+        AccessRole::Admin
     };
     if role.can_initiate() {
         next.run(req).await
@@ -1966,7 +1966,7 @@ async fn handle_chat_popout(
     // `enable-chat` meta flag.
     let role = role
         .map(|Extension(role)| role)
-        .unwrap_or(AccessRole::Initiator);
+        .unwrap_or(AccessRole::Admin);
     if !ws.flags().enable_chat || !role.can_initiate() {
         return StatusCode::NOT_FOUND.into_response();
     }
@@ -1992,7 +1992,7 @@ async fn handle_workspace_root(
     let root = canonical_workspace_root(&ws);
     let role = role
         .map(|Extension(role)| role)
-        .unwrap_or(AccessRole::Initiator);
+        .unwrap_or(AccessRole::Admin);
     render_directory_listing(&workspace_id, &ws, &root, None, &state, role)
 }
 
@@ -2025,7 +2025,7 @@ async fn handle_workspace_path(
     let root = canonical_workspace_root(&ws);
     let role = role
         .map(|Extension(role)| role)
-        .unwrap_or(AccessRole::Initiator);
+        .unwrap_or(AccessRole::Admin);
     if !is_inside_workspace(&canonical, &root) {
         return (StatusCode::FORBIDDEN, "Access denied").into_response();
     }
@@ -2147,7 +2147,7 @@ async fn handle_git_working_diff(
     };
     let role = role
         .map(|Extension(role)| role)
-        .unwrap_or(AccessRole::Initiator);
+        .unwrap_or(AccessRole::Admin);
     let initial_view = diff_view_from_query(query.view.as_deref());
     match git::working_diff(&ws.root) {
         Ok(diff) => render_git_diff_page(&state, &workspace_id, &ws, role, &diff, initial_view),
@@ -2216,7 +2216,7 @@ async fn handle_git_commit_diff(
     };
     let role = role
         .map(|Extension(role)| role)
-        .unwrap_or(AccessRole::Initiator);
+        .unwrap_or(AccessRole::Admin);
     let initial_view = diff_view_from_query(query.view.as_deref());
     match git::commit_diff(&ws.root, &commit) {
         Ok(diff) => render_git_diff_page(&state, &workspace_id, &ws, role, &diff, initial_view),
@@ -2291,7 +2291,7 @@ async fn handle_pretty_compare_diff(
     };
     let role = role
         .map(|Extension(role)| role)
-        .unwrap_or(AccessRole::Initiator);
+        .unwrap_or(AccessRole::Admin);
     let initial_view = diff_view_from_query(query.view.as_deref());
     if query.format.as_deref() == Some("data") && initial_view == "rendered" {
         return match markdown_compare_diff_data(
@@ -2760,7 +2760,7 @@ struct UpdateWorkspaceAliasRequest {
 }
 
 /// Set/clear a workspace's alias from the web (directory page). Gated by
-/// `require_initiator_role` + `require_same_origin` (NOT the master token), so
+/// `require_admin_role` + `require_same_origin` (NOT the master token), so
 /// it's reachable from the served page without GUI-only privileges.
 async fn handle_workspace_update_alias(
     State(state): State<AppState>,
@@ -2823,7 +2823,7 @@ async fn add_workspace_handler(
     {
         return (
             StatusCode::BAD_REQUEST,
-            "initiator and collaborator access codes must be different",
+            "admin and collaborator access codes must be different",
         )
             .into_response();
     }
@@ -2885,7 +2885,7 @@ async fn update_workspace_access_handler(
     if !next_access.is_empty() && next_access == next_collaborator {
         return (
             StatusCode::BAD_REQUEST,
-            "initiator and collaborator access codes must be different",
+            "admin and collaborator access codes must be different",
         )
             .into_response();
     }
@@ -4999,7 +4999,7 @@ fn render_markdown_file(
             context.insert("markdown_diagnostics", &rendered.diagnostics);
             context.insert("referenced_assets", &rendered.referenced_assets);
             let flags = ws.flags();
-            let initiator = access_role.can_initiate();
+            let admin = access_role.can_initiate();
             context.insert("shared_annotation", &flags.shared_annotation);
             context.insert("enable_viewed", &flags.enable_viewed);
             context.insert("enable_search", &flags.enable_search);
@@ -5007,11 +5007,11 @@ fn render_markdown_file(
                 "access_role",
                 &format!("{access_role:?}").to_ascii_lowercase(),
             );
-            context.insert("enable_edit", &(flags.enable_edit && initiator));
+            context.insert("enable_edit", &(flags.enable_edit && admin));
             context.insert("enable_live", &flags.enable_live);
-            context.insert("enable_chat", &(flags.enable_chat && initiator));
+            context.insert("enable_chat", &(flags.enable_chat && admin));
 
-            if flags.enable_edit && initiator {
+            if flags.enable_edit && admin {
                 // JSON-encode and HTML-escape so </script> in content can't break the page.
                 let json = js_json_safe(serde_json::to_string(&markdown_input).unwrap_or_default());
                 context.insert("markdown_content_json", &json);
@@ -5397,9 +5397,9 @@ async fn save_file_handler(
     };
 
     let is_management = headers_have_management_token(&state, &headers);
-    let is_initiator = access_cookie_role_for_headers(&state, &payload.workspace_id, &headers)
+    let is_admin = access_cookie_role_for_headers(&state, &payload.workspace_id, &headers)
         .is_some_and(AccessRole::can_initiate);
-    if !is_management && !is_initiator {
+    if !is_management && !is_admin {
         return Json(SaveFileResponse {
             success: false,
             message: "Access denied".into(),
@@ -5590,10 +5590,10 @@ mod tests {
         })
     }
 
-    fn initiator_access_scope_for(state: &AppState, id: &str) -> Option<(String, String)> {
+    fn admin_access_scope_for(state: &AppState, id: &str) -> Option<(String, String)> {
         access_requirements_for(state, id)
             .into_iter()
-            .find(|req| req.role == AccessRole::Initiator)
+            .find(|req| req.role == AccessRole::Admin)
             .map(|req| (req.hash, req.scope))
     }
 
@@ -5621,7 +5621,7 @@ mod tests {
 
         let mut state = test_state(reg.clone());
         state.access_code_hash = Arc::new(global_hash.clone());
-        let (h, scope) = initiator_access_scope_for(&state, &id).expect("workspace is gated");
+        let (h, scope) = admin_access_scope_for(&state, &id).expect("workspace is gated");
         assert_eq!(scope, format!("w:{id}"), "must use the workspace scope");
         assert_eq!(h, ws_hash, "live: workspace code must win over global");
 
@@ -5644,7 +5644,7 @@ mod tests {
         );
         let mut state2 = test_state(reg2);
         state2.access_code_hash = Arc::new(global_hash);
-        let (h2, scope2) = initiator_access_scope_for(&state2, &id2).expect("gated after reseed");
+        let (h2, scope2) = admin_access_scope_for(&state2, &id2).expect("gated after reseed");
         assert_eq!(scope2, format!("w:{id2}"));
         assert_eq!(h2, ws_hash, "after restart: workspace code must STILL win");
     }
@@ -5673,30 +5673,30 @@ mod tests {
     }
 
     #[test]
-    fn access_cookie_resolves_initiator_and_collaborator_roles() {
+    fn access_cookie_resolves_admin_and_collaborator_roles() {
         let tmp = tempfile::tempdir().unwrap();
         let salt = "test-salt";
-        let initiator_hash = crate::workspace::hash_access_code(salt, "owner-code");
+        let admin_hash = crate::workspace::hash_access_code(salt, "owner-code");
         let collaborator_hash = crate::workspace::hash_access_code(salt, "guest-code");
         let reg = Arc::new(WorkspaceRegistry::new(salt.into()));
         let id = reg.add(WorkspaceConfig {
             path: dunce::canonicalize(tmp.path()).unwrap(),
             flags: WorkspaceFlags::default(),
             single_file: None,
-            access_code_hash: initiator_hash.clone(),
+            access_code_hash: admin_hash.clone(),
             collaborator_access_code_hash: collaborator_hash.clone(),
             ..Default::default()
         });
         let state = test_state(reg);
 
-        let initiator_cookie = make_access_cookie(
+        let admin_cookie = make_access_cookie(
             salt,
-            &[(format!("w:{id}"), initiator_hash)],
+            &[(format!("w:{id}"), admin_hash)],
             access_now_unix() + 100,
         );
         assert_eq!(
-            access_role_from_cookie(&state, &id, Some(&initiator_cookie)),
-            Some(AccessRole::Initiator)
+            access_role_from_cookie(&state, &id, Some(&admin_cookie)),
+            Some(AccessRole::Admin)
         );
 
         let collaborator_cookie = make_access_cookie(
@@ -5711,7 +5711,7 @@ mod tests {
     }
 
     #[test]
-    fn equal_initiator_and_collaborator_hash_does_not_create_collaborator_role() {
+    fn equal_admin_and_collaborator_hash_does_not_create_collaborator_role() {
         let tmp = tempfile::tempdir().unwrap();
         let salt = "test-salt";
         let hash = crate::workspace::hash_access_code(salt, "same-code");
@@ -5729,7 +5729,7 @@ mod tests {
             .into_iter()
             .map(|req| req.role)
             .collect();
-        assert_eq!(roles, vec![AccessRole::Initiator]);
+        assert_eq!(roles, vec![AccessRole::Admin]);
     }
 
     async fn response_text(response: Response) -> String {
@@ -6268,7 +6268,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn collaborator_page_hides_initiator_only_features() {
+    async fn collaborator_page_hides_admin_only_features() {
         let dir = tempfile::tempdir().unwrap();
         fs::write(dir.path().join("README.md"), "# Role check").unwrap();
 
@@ -6314,7 +6314,7 @@ mod tests {
         let response = handle_workspace_root(
             State(state.clone()),
             AxumPath(id.clone()),
-            Some(Extension(AccessRole::Initiator)),
+            Some(Extension(AccessRole::Admin)),
         )
         .await
         .into_response();
@@ -6673,7 +6673,7 @@ mod tests {
                 view: Some("rendered".to_string()),
                 f: None,
             }),
-            Some(Extension(AccessRole::Initiator)),
+            Some(Extension(AccessRole::Admin)),
         )
         .await
         .into_response();
@@ -6749,7 +6749,7 @@ mod tests {
                 format: None,
                 f: None,
             }),
-            Some(Extension(AccessRole::Initiator)),
+            Some(Extension(AccessRole::Admin)),
         )
         .await
         .into_response();
@@ -7207,7 +7207,7 @@ mod tests {
         fs::write(&file, "# before").unwrap();
 
         let salt = "test-salt";
-        let initiator_hash = crate::workspace::hash_access_code(salt, "owner-code");
+        let admin_hash = crate::workspace::hash_access_code(salt, "owner-code");
         let collaborator_hash = crate::workspace::hash_access_code(salt, "guest-code");
         let registry = Arc::new(WorkspaceRegistry::new(salt.into()));
         let id = registry.add(WorkspaceConfig {
@@ -7217,7 +7217,7 @@ mod tests {
                 ..WorkspaceFlags::default()
             },
             single_file: None,
-            access_code_hash: initiator_hash,
+            access_code_hash: admin_hash,
             collaborator_access_code_hash: collaborator_hash.clone(),
             ..Default::default()
         });
