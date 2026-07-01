@@ -179,7 +179,6 @@ fn ensure_example_workspace(app: &tauri::App, settings: &mut AppSettings) {
             enable_chat: false,
             shared_annotation: true,
         },
-        access_code_hash: String::new(),
         collaborator_access_code_hash: String::new(),
         alias: String::new(),
     });
@@ -361,7 +360,6 @@ fn handle_open_path(app: &tauri::AppHandle, path: &Path) {
             path: ws_root,
             flags,
             single_file,
-            access_code_hash: String::new(),
             collaborator_access_code_hash: String::new(),
             alias: String::new(),
         });
@@ -679,7 +677,6 @@ fn main() {
         .invoke_handler(tauri::generate_handler![
             commands::get_settings,
             commands::save_settings,
-            commands::set_access_code,
             commands::set_collaborator_access_code,
             commands::set_alias,
             commands::set_tray_resident,

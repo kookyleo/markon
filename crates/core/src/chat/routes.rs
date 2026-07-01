@@ -821,7 +821,6 @@ mod tests {
             path: tmp.path().to_path_buf(),
             flags,
             single_file: None,
-            access_code_hash: String::new(),
             collaborator_access_code_hash: String::new(),
             ..Default::default()
         });
@@ -847,7 +846,6 @@ mod tests {
             styles_css: Arc::new(String::new()),
             default_chat_mode: Arc::new("in_page".into()),
             editor_theme: Arc::new("follow".into()),
-            access_code_hash: Arc::new(String::new()),
             collaborator_access_code_hash: Arc::new(String::new()),
             access_secret: Arc::new("test-salt".into()),
             access_attempts: Arc::new(std::sync::Mutex::new(std::collections::HashMap::new())),

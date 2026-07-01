@@ -45,8 +45,6 @@ pub struct WorkspaceConfig {
     /// opening `~/Downloads/note.md` does not turn `~/Downloads` into an
     /// indexed, browsable workspace. Ephemeral (not persisted).
     pub single_file: Option<String>,
-    /// Per-workspace access-code hash (empty = inherit the server code).
-    pub access_code_hash: String,
     /// Per-workspace collaborator access-code hash (empty = inherit the
     /// server-level collaborator code).
     pub collaborator_access_code_hash: String,
@@ -77,9 +75,6 @@ pub(crate) struct WorkspaceEntry {
     /// user's accept/reject. Lives on the workspace so HTTP handlers and
     /// the agent loop can share the same store.
     pub pending_edits: Arc<PendingEditStore>,
-    /// Per-workspace access-code hash (empty = inherit server code). RwLock so
-    /// the GUI can update it live without re-registering the workspace.
-    pub access_code_hash: RwLock<String>,
     /// Per-workspace collaborator access-code hash (empty = inherit the
     /// server-level collaborator code).
     pub collaborator_access_code_hash: RwLock<String>,
@@ -106,10 +101,6 @@ impl WorkspaceEntry {
 
     pub(crate) fn is_ephemeral(&self) -> bool {
         self.single_file.is_some()
-    }
-
-    pub(crate) fn access_code_hash(&self) -> String {
-        self.access_code_hash.read().unwrap().clone()
     }
 
     pub(crate) fn collaborator_access_code_hash(&self) -> String {
@@ -156,9 +147,6 @@ pub struct WorkspaceInfo {
     /// or re-derive the URL. Omitted from the wire format when None.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub single_file: Option<String>,
-    /// Per-workspace access-code hash (empty = inherit the server code).
-    #[serde(default, skip_serializing_if = "String::is_empty")]
-    pub access_code_hash: String,
     /// Per-workspace collaborator access-code hash (empty = inherit the server code).
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub collaborator_access_code_hash: String,
@@ -372,7 +360,6 @@ impl WorkspaceRegistry {
             single_file: single_file.clone(),
             allowed_assets: RwLock::new(HashSet::new()),
             pending_edits: Arc::new(PendingEditStore::new()),
-            access_code_hash: RwLock::new(config.access_code_hash),
             collaborator_access_code_hash: RwLock::new(config.collaborator_access_code_hash),
             alias: RwLock::new(config.alias),
         });
@@ -456,19 +443,6 @@ impl WorkspaceRegistry {
     pub(crate) fn get(&self, id: &str) -> Option<Arc<WorkspaceEntry>> {
         self.inner.read().unwrap().get(id).cloned()
     }
-    /// Set (or clear, with an empty string) a workspace's access-code hash and
-    /// persist. Returns false if the id isn't registered.
-    pub fn set_access_code(&self, id: &str, hash: &str) -> bool {
-        let guard = self.inner.read().unwrap();
-        let Some(entry) = guard.get(id) else {
-            return false;
-        };
-        *entry.access_code_hash.write().unwrap() = hash.to_string();
-        drop(guard);
-        self.notify_persist();
-        true
-    }
-
     /// Set (or clear) a workspace's collaborator access-code hash and persist.
     /// Returns false if the id isn't registered.
     pub fn set_collaborator_access_code(&self, id: &str, hash: &str) -> bool {
@@ -519,7 +493,6 @@ impl WorkspaceRegistry {
                 search_ready: e.search_ready(),
                 ephemeral: e.is_ephemeral(),
                 single_file: e.single_file.clone(),
-                access_code_hash: e.access_code_hash(),
                 collaborator_access_code_hash: e.collaborator_access_code_hash(),
                 alias: e.alias(),
             })
@@ -806,7 +779,6 @@ mod tests {
             path: root.clone(),
             flags: WorkspaceFlags::default(),
             single_file: None,
-            access_code_hash: String::new(),
             collaborator_access_code_hash: String::new(),
             ..Default::default()
         });
@@ -884,7 +856,6 @@ mod tests {
             path,
             flags: WorkspaceFlags::default(),
             single_file: single.map(str::to_string),
-            access_code_hash: String::new(),
             collaborator_access_code_hash: String::new(),
             ..Default::default()
         };
@@ -979,7 +950,6 @@ mod tests {
                 ..Default::default()
             },
             single_file: Some("pinned.md".into()),
-            access_code_hash: String::new(),
             collaborator_access_code_hash: String::new(),
             ..Default::default()
         });
@@ -1014,7 +984,6 @@ mod tests {
             path: dir.to_path_buf(),
             flags: WorkspaceFlags::default(),
             single_file: Some("note.md".into()),
-            access_code_hash: String::new(),
             collaborator_access_code_hash: String::new(),
             ..Default::default()
         });

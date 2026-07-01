@@ -513,7 +513,6 @@
     /* Per-workspace access-code editor: lives *in* the toolbar, in the lock
        icon's slot. Clicking the lock hides it and reveals this (input + ✓) in
        place; collapsing reverses back to the lock. Holds the shared .ac-editor.*/
-    .ws-lock-editor,
     .ws-collab-lock-editor {
       display: flex;
       align-items: center;
@@ -975,10 +974,6 @@
             <div class="pref-control" style="color:#d93025;font-size:12px;line-height:1.4;max-width:380px"></div>
           </div>
           <div class="pref-row">
-            <span class="pref-label" data-i18n="pref.access_code"></span>
-            <div class="pref-control" id="access_code_control"></div>
-          </div>
-          <div class="pref-row">
             <span class="pref-label" data-i18n="pref.collaborator_access_code"></span>
             <div class="pref-control" id="collaborator_access_code_control"></div>
           </div>
@@ -1286,10 +1281,6 @@
                 <input type="text" id="cli-qr" data-i18n-placeholder="cli.entry.tip">
               </div>
               <div class="cli-field cli-field-full">
-                <span data-i18n="cli.lbl.access"></span>
-                <input type="text" id="cli-access" data-i18n-placeholder="cli.access.tip">
-              </div>
-              <div class="cli-field cli-field-full">
                 <span data-i18n="cli.lbl.collab_access"></span>
                 <input type="text" id="cli-collab-access" data-i18n-placeholder="cli.collab_access.tip">
               </div>
@@ -1429,7 +1420,6 @@
   // Length of the server-level access code (0 = none) — seeded by loadSettings
   // from the stored hash's length (which equals the code length), used to draw
   // the right number of • in the widget's "code is set" token.
-  let globalCodeLen = 0;
   let globalCollaboratorCodeLen = 0;
 
   // ── Tab navigation ──────────────────────────────────────────────────────
@@ -1522,7 +1512,6 @@
     document.getElementById('theme').value = s.theme;
     document.getElementById('language').value = s.language || 'auto';
     document.getElementById('web_editor_theme').value = s.web_editor_theme || 'follow';
-    globalCodeLen = (s.access_code_hash || '').length;
     globalCollaboratorCodeLen = (s.collaborator_access_code_hash || '').length;
     renderGlobalAccessCode();
     document.getElementById('web_language').value = s.web_language || 'auto';
@@ -1781,24 +1770,12 @@
   // the server so the running gate picks up the change. Called from
   // loadSettings (seed) and applyI18n (relabel on language switch).
   function renderGlobalAccessCode() {
-    const wrap = document.getElementById('access_code_control');
     const collaboratorWrap = document.getElementById('collaborator_access_code_control');
-    if (!wrap || !collaboratorWrap) return;
+    if (!collaboratorWrap) return;
     // Don't tear down a widget mid-edit (e.g. language switched while typing);
     // labels catch up on the next rebuild.
-    if (wrap.querySelector('.ac-editor.editing') || collaboratorWrap.querySelector('.ac-editor.editing')) return;
-    wrap.innerHTML = accessCodeEditorHTML();
+    if (collaboratorWrap.querySelector('.ac-editor.editing')) return;
     collaboratorWrap.innerHTML = accessCodeEditorHTML();
-    const ctl = wireAccessCode(wrap.querySelector('.ac-editor'), {
-      len: globalCodeLen,
-      onApply: async (code, btn) => {
-        try {
-          await invoke('set_access_code', { workspaceId: null, code });
-          globalCodeLen = code.trim().length;
-          ctl.applied(globalCodeLen, btn);
-        } catch (e) { toast(String(e), 'err'); }
-      },
-    });
     const collaboratorCtl = wireAccessCode(collaboratorWrap.querySelector('.ac-editor'), {
       len: globalCollaboratorCodeLen,
       onApply: async (code, btn) => {
@@ -2061,13 +2038,6 @@
               <line x1="10" y1="14" x2="21" y2="3"/>
             </svg>
           </button>
-          <button class="ws-icon-btn lock-btn" title="${ws.access_code_len > 0 ? T('ws.lock.on') : T('ws.lock.tip')}" style="${ws.access_code_len > 0 ? 'color:var(--accent)' : ''}">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-              <rect x="3" y="11" width="18" height="11" rx="2"/>
-              <path d="M7 11V7a5 5 0 0 1 10 0v4"/>
-            </svg>
-          </button>
-          <div class="ws-lock-editor" style="display:none">${accessCodeEditorHTML(true)}</div>
           <button class="ws-icon-btn collab-lock-btn" title="${ws.collaborator_access_code_len > 0 ? T('ws.collab_lock.on') : T('ws.collab_lock.tip')}" style="${ws.collaborator_access_code_len > 0 ? 'color:var(--accent)' : ''}">
             <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
               <path d="M16 21v-2a4 4 0 0 0-4-4H7a4 4 0 0 0-4 4v2"/>
@@ -2215,7 +2185,6 @@
           ctl.focus();
         });
       }
-      wireWorkspaceAccess('.lock-btn', '.ws-lock-editor', ws.access_code_len, 'ws.lock.on', 'ws.lock.tip', 'set_access_code');
       wireWorkspaceAccess('.collab-lock-btn', '.ws-collab-lock-editor', ws.collaborator_access_code_len, 'ws.collab_lock.on', 'ws.collab_lock.tip', 'set_collaborator_access_code');
 
       list.appendChild(card);
@@ -2644,13 +2613,11 @@
     const port  = document.getElementById('cli-port').value;
     const host  = document.getElementById('cli-host').value;
     const qr    = document.getElementById('cli-qr').value.trim();
-    const access = document.getElementById('cli-access').value.trim();
     const collaboratorAccess = document.getElementById('cli-collab-access').value.trim();
     let parts = ['markon'];
     if (port && port !== '6419') parts.push(`-p ${port}`);
     if (host) parts.push(`--host ${host}`);
     if (qr) parts.push(`--entry ${shellArg(qr)}`);
-    if (access) parts.push(`--access-code ${shellArg(access)}`);
     if (collaboratorAccess) parts.push(`--collaborator-access-code ${shellArg(collaboratorAccess)}`);
     if (document.getElementById('cli-open').checked)   parts.push('-b');
     parts.push(shellArg(path));

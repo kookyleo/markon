@@ -153,12 +153,11 @@ pub fn save_settings(
     state: State<AppState>,
 ) -> Result<(), String> {
     // Preserve existing workspaces (managed separately via the
-    // add/remove/update commands) and the access-code hash (set via the
-    // dedicated set_access_code command, which hashes the plaintext, never
-    // through the settings form) — the form round-trip must not clobber them.
+    // add/remove/update commands) and the collaborator access-code hash (set
+    // via the dedicated command, which hashes the plaintext, never through the
+    // settings form) — the form round-trip must not clobber them.
     let (
         existing_workspaces,
-        existing_access_code,
         existing_collaborator_access_code,
         example_workspace_hidden,
         existing_salt,
@@ -166,7 +165,6 @@ pub fn save_settings(
         let s = state.settings.lock().unwrap();
         (
             s.workspaces.clone(),
-            s.access_code_hash.clone(),
             s.collaborator_access_code_hash.clone(),
             s.example_workspace_hidden,
             s.salt.clone(),
@@ -174,7 +172,6 @@ pub fn save_settings(
     };
     let mut settings = settings;
     settings.workspaces = existing_workspaces;
-    settings.access_code_hash = existing_access_code;
     settings.collaborator_access_code_hash = existing_collaborator_access_code;
     settings.example_workspace_hidden = example_workspace_hidden;
     // The salt determines every workspace id and is never part of the settings
@@ -259,7 +256,6 @@ pub fn add_workspace(path: String, state: State<AppState>) -> Result<serde_json:
         path: canonical,
         flags,
         single_file: None,
-        access_code_hash: String::new(),
         collaborator_access_code_hash: String::new(),
         alias: String::new(),
     });
@@ -364,12 +360,11 @@ pub fn get_workspaces(state: State<AppState>) -> Vec<serde_json::Value> {
                 "enable_live": info.flags.enable_live,
                 "enable_chat": info.flags.enable_chat,
                 "shared_annotation": info.flags.shared_annotation,
-                // Length of the per-workspace access code, 0 = none. The stored
-                // hash length equals the code length (see
+                // Length of the per-workspace collaborator access code, 0 =
+                // none. The stored hash length equals the code length (see
                 // workspace::hash_access_code), so the panel both detects "code
-                // set" and renders that many • in the indicator token from this
-                // one field. Not the digest itself.
-                "access_code_len": info.access_code_hash.chars().count(),
+                // set" and renders that many • in the indicator token. Not the
+                // digest itself.
                 "collaborator_access_code_len": info.collaborator_access_code_hash.chars().count(),
                 "search_ready": info.search_ready,
                 // Surfaced so the Settings UI can filter out Open-With
@@ -610,104 +605,11 @@ pub async fn list_chat_models(
     models::list_models(kind, &api_key, &base_url).await
 }
 
-const ACCESS_CODE_CONFLICT: &str = "admin and collaborator access codes must be different";
-
-fn code_matches_hash(salt: &str, code: &str, hash: &str) -> bool {
-    !code.trim().is_empty()
-        && !hash.is_empty()
-        && markon_core::workspace::access_code_matches(salt, code.trim(), hash)
-}
-
-fn workspace_effective_hash(local_hash: &str, global_hash: &str) -> String {
-    if local_hash.is_empty() {
-        global_hash.to_string()
-    } else {
-        local_hash.to_string()
-    }
-}
-
-/// Set or clear an admin access code. `workspace_id` None/empty → the
-/// server-level code (needs a server restart so the running AppState picks it
-/// up); otherwise the named workspace's code is updated live on the registry.
-/// An empty `code` clears. The plaintext is hashed here (salted) and never
-/// stored.
-#[tauri::command]
-pub fn set_access_code(
-    workspace_id: Option<String>,
-    code: String,
-    app: tauri::AppHandle,
-    state: State<AppState>,
-) -> Result<(), String> {
-    let settings_snapshot = state.settings.lock().unwrap().clone();
-    let salt = settings_snapshot.salt.clone();
-    let code = code.trim();
-    let hash = if code.is_empty() {
-        String::new()
-    } else {
-        markon_core::workspace::hash_access_code(&salt, code)
-    };
-    match workspace_id {
-        Some(id) if !id.is_empty() => {
-            let workspace = state
-                .server
-                .lock()
-                .unwrap()
-                .registry
-                .info_list()
-                .into_iter()
-                .find(|info| info.id == id)
-                .ok_or_else(|| "workspace not found".to_string())?;
-            let effective_collaborator = workspace_effective_hash(
-                &workspace.collaborator_access_code_hash,
-                &settings_snapshot.collaborator_access_code_hash,
-            );
-            if code_matches_hash(&salt, code, &effective_collaborator) {
-                return Err(ACCESS_CODE_CONFLICT.into());
-            }
-            // Per-workspace: live update on the shared registry (persists via
-            // the registry's persist hook). No restart needed.
-            if state
-                .server
-                .lock()
-                .unwrap()
-                .registry
-                .set_access_code(&id, &hash)
-            {
-                Ok(())
-            } else {
-                Err("workspace not found".into())
-            }
-        }
-        _ => {
-            // Server-level: persist + restart so the new AppState carries it.
-            {
-                let mut s = state.settings.lock().unwrap();
-                if code_matches_hash(&salt, code, &s.collaborator_access_code_hash) {
-                    return Err(ACCESS_CODE_CONFLICT.into());
-                }
-                for ws in &s.workspaces {
-                    if !ws.access_code_hash.is_empty() {
-                        continue;
-                    }
-                    let effective_collaborator = workspace_effective_hash(
-                        &ws.collaborator_access_code_hash,
-                        &s.collaborator_access_code_hash,
-                    );
-                    if code_matches_hash(&salt, code, &effective_collaborator) {
-                        return Err(ACCESS_CODE_CONFLICT.into());
-                    }
-                }
-                s.access_code_hash = hash;
-                s.save()?;
-            }
-            restart_server_and_broadcast(&app, &state)
-        }
-    }
-}
-
-/// Set or clear a collaborator access code. See [`set_access_code`] for the
-/// same storage/restart rules. The collaborator code must never equal the
-/// effective admin code for the same scope.
+/// Set or clear a workspace's collaborator access code. `workspace_id`
+/// None/empty → the server-level code (needs a server restart so the running
+/// AppState picks it up); otherwise the named workspace's code is updated live
+/// on the registry. An empty `code` clears. The plaintext is hashed here
+/// (salted) and never stored.
 #[tauri::command]
 pub fn set_collaborator_access_code(
     workspace_id: Option<String>,
@@ -715,8 +617,7 @@ pub fn set_collaborator_access_code(
     app: tauri::AppHandle,
     state: State<AppState>,
 ) -> Result<(), String> {
-    let settings_snapshot = state.settings.lock().unwrap().clone();
-    let salt = settings_snapshot.salt.clone();
+    let salt = state.settings.lock().unwrap().salt.clone();
     let code = code.trim();
     let hash = if code.is_empty() {
         String::new()
@@ -725,22 +626,8 @@ pub fn set_collaborator_access_code(
     };
     match workspace_id {
         Some(id) if !id.is_empty() => {
-            let workspace = state
-                .server
-                .lock()
-                .unwrap()
-                .registry
-                .info_list()
-                .into_iter()
-                .find(|info| info.id == id)
-                .ok_or_else(|| "workspace not found".to_string())?;
-            let effective_admin = workspace_effective_hash(
-                &workspace.access_code_hash,
-                &settings_snapshot.access_code_hash,
-            );
-            if code_matches_hash(&salt, code, &effective_admin) {
-                return Err(ACCESS_CODE_CONFLICT.into());
-            }
+            // Per-workspace: live update on the shared registry (persists via
+            // the registry's persist hook). No restart needed.
             if state
                 .server
                 .lock()
@@ -754,21 +641,9 @@ pub fn set_collaborator_access_code(
             }
         }
         _ => {
+            // Server-level: persist + restart so the new AppState carries it.
             {
                 let mut s = state.settings.lock().unwrap();
-                if code_matches_hash(&salt, code, &s.access_code_hash) {
-                    return Err(ACCESS_CODE_CONFLICT.into());
-                }
-                for ws in &s.workspaces {
-                    if !ws.collaborator_access_code_hash.is_empty() {
-                        continue;
-                    }
-                    let effective_admin =
-                        workspace_effective_hash(&ws.access_code_hash, &s.access_code_hash);
-                    if code_matches_hash(&salt, code, &effective_admin) {
-                        return Err(ACCESS_CODE_CONFLICT.into());
-                    }
-                }
                 s.collaborator_access_code_hash = hash;
                 s.save()?;
             }

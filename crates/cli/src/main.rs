@@ -4,8 +4,7 @@ use markon_core::net::{available_bind_hosts, BindHostKind};
 use markon_core::server::{self, ServerConfig, WorkspaceInit};
 use markon_core::settings::AppSettings;
 use markon_core::workspace::{
-    access_code_matches, expand_and_canonicalize, hash_access_code, ServerLock, WorkspaceFlags,
-    WorkspaceRegistry,
+    expand_and_canonicalize, hash_access_code, ServerLock, WorkspaceFlags, WorkspaceRegistry,
 };
 use serde::{Deserialize, Serialize};
 use std::io::IsTerminal;
@@ -14,7 +13,6 @@ use std::sync::{Arc, Mutex};
 
 mod feedback;
 
-const DAEMON_ACCESS_CODE_HASH_ENV: &str = "MARKON_DAEMON_ACCESS_CODE_HASH";
 const DAEMON_COLLABORATOR_ACCESS_CODE_HASH_ENV: &str =
     "MARKON_DAEMON_COLLABORATOR_ACCESS_CODE_HASH";
 
@@ -84,10 +82,6 @@ struct Cli {
     /// Salt for workspace ID generation.
     #[arg(long)]
     salt: Option<String>,
-
-    /// Set or clear the workspace admin access code. Empty string clears.
-    #[arg(long, value_name = "CODE")]
-    access_code: Option<String>,
 
     /// Set or clear the workspace collaborator access code. Empty string clears.
     #[arg(long, value_name = "CODE")]
@@ -183,10 +177,6 @@ struct WorkspaceListEntry {
     flags: WorkspaceFlags,
     #[serde(default)]
     search_ready: bool,
-    #[serde(default)]
-    access_code_hash: String,
-    #[serde(default)]
-    collaborator_access_code_hash: String,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -325,39 +315,12 @@ fn workspace_path_matches(saved_path: &str, root: &Path) -> bool {
     saved == root
 }
 
-fn effective_access_hash(local_hash: &str, global_hash: &str) -> String {
-    if local_hash.is_empty() {
-        global_hash.to_string()
-    } else {
-        local_hash.to_string()
-    }
-}
-
-fn access_code_conflict_error() -> Box<dyn std::error::Error> {
-    "admin and collaborator access codes must be different".into()
-}
-
-fn code_matches_hash(salt: &str, code: &str, hash: &str) -> bool {
-    !code.trim().is_empty() && !hash.is_empty() && access_code_matches(salt, code.trim(), hash)
-}
-
-fn resolve_workspace_access_hashes(
-    settings: &AppSettings,
-    saved_access_hash: &str,
+fn resolve_workspace_collaborator_hash(
     saved_collaborator_hash: &str,
-    access_code: Option<&str>,
     collaborator_access_code: Option<&str>,
     salt: &str,
-) -> Result<(String, String), Box<dyn std::error::Error>> {
-    if let (Some(a), Some(c)) = (access_code, collaborator_access_code) {
-        let a = a.trim();
-        let c = c.trim();
-        if !a.is_empty() && a == c {
-            return Err(access_code_conflict_error());
-        }
-    }
-
-    let access_hash = access_code
+) -> String {
+    collaborator_access_code
         .map(|code| {
             let code = code.trim();
             if code.is_empty() {
@@ -366,65 +329,21 @@ fn resolve_workspace_access_hashes(
                 hash_access_code(salt, code)
             }
         })
-        .unwrap_or_else(|| saved_access_hash.to_string());
-    let collaborator_hash = collaborator_access_code
-        .map(|code| {
-            let code = code.trim();
-            if code.is_empty() {
-                String::new()
-            } else {
-                hash_access_code(salt, code)
-            }
-        })
-        .unwrap_or_else(|| saved_collaborator_hash.to_string());
+        .unwrap_or_else(|| saved_collaborator_hash.to_string())
+}
 
-    if !access_hash.is_empty() && access_hash == collaborator_hash {
-        return Err(access_code_conflict_error());
-    }
-
-    let effective_access = effective_access_hash(&access_hash, &settings.access_code_hash);
-    let effective_collaborator =
-        effective_access_hash(&collaborator_hash, &settings.collaborator_access_code_hash);
-
-    if access_code.is_some_and(|code| code_matches_hash(salt, code, &effective_collaborator)) {
-        return Err(access_code_conflict_error());
-    }
-    if collaborator_access_code.is_some_and(|code| code_matches_hash(salt, code, &effective_access))
+fn resolve_workspace_collaborator_hash_from_env_or_cli(
+    saved_collaborator_hash: &str,
+    collaborator_access_code: Option<&str>,
+    salt: &str,
+) -> String {
+    if let Ok(daemon_collaborator_hash) =
+        std::env::var(DAEMON_COLLABORATOR_ACCESS_CODE_HASH_ENV)
     {
-        return Err(access_code_conflict_error());
+        return daemon_collaborator_hash;
     }
 
-    Ok((access_hash, collaborator_hash))
-}
-
-fn resolve_workspace_access_hashes_from_env_or_cli(
-    settings: &AppSettings,
-    saved_access_hash: &str,
-    saved_collaborator_hash: &str,
-    access_code: Option<&str>,
-    collaborator_access_code: Option<&str>,
-    salt: &str,
-) -> Result<(String, String), Box<dyn std::error::Error>> {
-    let daemon_access_hash = std::env::var(DAEMON_ACCESS_CODE_HASH_ENV).ok();
-    let daemon_collaborator_hash = std::env::var(DAEMON_COLLABORATOR_ACCESS_CODE_HASH_ENV).ok();
-    if daemon_access_hash.is_some() || daemon_collaborator_hash.is_some() {
-        let access_hash = daemon_access_hash.unwrap_or_else(|| saved_access_hash.to_string());
-        let collaborator_hash =
-            daemon_collaborator_hash.unwrap_or_else(|| saved_collaborator_hash.to_string());
-        if !access_hash.is_empty() && access_hash == collaborator_hash {
-            return Err(access_code_conflict_error());
-        }
-        return Ok((access_hash, collaborator_hash));
-    }
-
-    resolve_workspace_access_hashes(
-        settings,
-        saved_access_hash,
-        saved_collaborator_hash,
-        access_code,
-        collaborator_access_code,
-        salt,
-    )
+    resolve_workspace_collaborator_hash(saved_collaborator_hash, collaborator_access_code, salt)
 }
 
 fn daemon_args_without_access_codes<I>(args: I) -> Vec<String>
@@ -438,11 +357,11 @@ where
             skip_next = false;
             continue;
         }
-        if arg == "--access-code" || arg == "--collaborator-access-code" {
+        if arg == "--collaborator-access-code" {
             skip_next = true;
             continue;
         }
-        if arg.starts_with("--access-code=") || arg.starts_with("--collaborator-access-code=") {
+        if arg.starts_with("--collaborator-access-code=") {
             continue;
         }
         out.push(arg);
@@ -812,29 +731,24 @@ async fn add_or_update_workspace(
     token: &str,
     ws_path: &str,
     flags: WorkspaceFlags,
-    access_code_hash: Option<&str>,
     collaborator_access_code_hash: Option<&str>,
 ) -> Result<String, Box<dyn std::error::Error>> {
     let client = reqwest::Client::new();
 
     // Mirrors the server's AddWorkspaceRequest so a new WorkspaceFlags field is
-    // carried automatically. Access code hashes are already salted on the CLI
-    // side and are optional: omitted means "inherit global/no change".
+    // carried automatically. The collaborator hash is already salted on the CLI
+    // side and is optional: omitted means "inherit global/no change".
     #[derive(Serialize)]
     struct AddWorkspaceBody<'a> {
         path: &'a str,
         #[serde(flatten)]
         flags: WorkspaceFlags,
         #[serde(default, skip_serializing_if = "str::is_empty")]
-        access_code_hash: &'a str,
-        #[serde(default, skip_serializing_if = "str::is_empty")]
         collaborator_access_code_hash: &'a str,
     }
 
     #[derive(Serialize)]
     struct WorkspaceAccessBody<'a> {
-        #[serde(skip_serializing_if = "Option::is_none")]
-        access_code_hash: Option<&'a str>,
         #[serde(skip_serializing_if = "Option::is_none")]
         collaborator_access_code_hash: Option<&'a str>,
     }
@@ -844,18 +758,11 @@ async fn add_or_update_workspace(
 
     if let Some(existing) = workspaces.iter().find(|w| w.path == ws_path) {
         let id = &existing.id;
-        if access_code_hash.is_some() || collaborator_access_code_hash.is_some() {
-            let next_access = access_code_hash.unwrap_or(&existing.access_code_hash);
-            let next_collaborator =
-                collaborator_access_code_hash.unwrap_or(&existing.collaborator_access_code_hash);
-            if !next_access.is_empty() && next_access == next_collaborator {
-                return Err(access_code_conflict_error());
-            }
+        if collaborator_access_code_hash.is_some() {
             client
                 .put(format!("http://127.0.0.1:{port}/api/workspace/{id}/access"))
                 .header("X-Markon-Token", token)
                 .json(&WorkspaceAccessBody {
-                    access_code_hash,
                     collaborator_access_code_hash,
                 })
                 .send()
@@ -871,7 +778,6 @@ async fn add_or_update_workspace(
         .json(&AddWorkspaceBody {
             path: ws_path,
             flags,
-            access_code_hash: access_code_hash.unwrap_or_default(),
             collaborator_access_code_hash: collaborator_access_code_hash.unwrap_or_default(),
         })
         .send()
@@ -1007,7 +913,6 @@ async fn main() {
         path: ws_root.clone(),
         flags,
         initial_path: initial_path.clone(),
-        access_code_hash: String::new(),
         collaborator_access_code_hash: String::new(),
         alias: saved_workspace.map(|w| w.alias.clone()).unwrap_or_default(),
     };
@@ -1018,27 +923,15 @@ async fn main() {
             settings.salt.clone()
         }
     });
-    let (workspace_access_code_hash, workspace_collaborator_access_code_hash) =
-        match resolve_workspace_access_hashes_from_env_or_cli(
-            &settings,
-            saved_workspace
-                .map(|w| w.access_code_hash.as_str())
-                .unwrap_or_default(),
+    let workspace_collaborator_access_code_hash =
+        resolve_workspace_collaborator_hash_from_env_or_cli(
             saved_workspace
                 .map(|w| w.collaborator_access_code_hash.as_str())
                 .unwrap_or_default(),
-            cli.access_code.as_deref(),
             cli.collaborator_access_code.as_deref(),
             &effective_salt,
-        ) {
-            Ok(hashes) => hashes,
-            Err(e) => {
-                eprintln!("Error: {e}");
-                return;
-            }
-        };
+        );
     let ws_init = WorkspaceInit {
-        access_code_hash: workspace_access_code_hash.clone(),
         collaborator_access_code_hash: workspace_collaborator_access_code_hash.clone(),
         ..ws_init
     };
@@ -1063,9 +956,6 @@ async fn main() {
                 &lock.token,
                 &ws_root.to_string_lossy(),
                 flags,
-                cli.access_code
-                    .as_ref()
-                    .map(|_| workspace_access_code_hash.as_str()),
                 cli.collaborator_access_code
                     .as_ref()
                     .map(|_| workspace_collaborator_access_code_hash.as_str()),
@@ -1123,9 +1013,6 @@ async fn main() {
             .stdin(Stdio::null())
             .stdout(Stdio::null())
             .stderr(Stdio::null());
-        if cli.access_code.is_some() {
-            command.env(DAEMON_ACCESS_CODE_HASH_ENV, &workspace_access_code_hash);
-        }
         if cli.collaborator_access_code.is_some() {
             command.env(
                 DAEMON_COLLABORATOR_ACCESS_CODE_HASH_ENV,
@@ -1174,11 +1061,6 @@ async fn main() {
                 path: PathBuf::from(&w.path),
                 flags: w.flags,
                 initial_path: if explicit { initial_path.clone() } else { None },
-                access_code_hash: if explicit {
-                    workspace_access_code_hash.clone()
-                } else {
-                    w.access_code_hash.clone()
-                },
                 collaborator_access_code_hash: if explicit {
                     workspace_collaborator_access_code_hash.clone()
                 } else {
@@ -1197,7 +1079,6 @@ async fn main() {
     let styles_css = settings.render_styles_css();
     let default_chat_mode = settings.default_chat_mode.clone();
     let editor_theme = settings.web_editor_theme.clone();
-    let access_code_hash = settings.access_code_hash.clone();
     let collaborator_access_code_hash = settings.collaborator_access_code_hash.clone();
     let db_path = settings.db_path.clone();
     // CLI flag forces inclusion; otherwise inherit the persisted preference so
@@ -1242,7 +1123,6 @@ async fn main() {
         styles_css,
         default_chat_mode,
         editor_theme,
-        access_code_hash,
         collaborator_access_code_hash,
         print_collapsed_content,
     })
@@ -1490,60 +1370,36 @@ mod tests {
     }
 
     #[test]
-    fn workspace_access_hashes_preserve_saved_values_when_cli_omits_codes() {
-        let settings = AppSettings {
-            access_code_hash: hash_access_code("salt", "global-owner"),
-            collaborator_access_code_hash: hash_access_code("salt", "global-guest"),
-            ..AppSettings::default()
-        };
-        let saved_owner = hash_access_code("salt", "owner");
+    fn workspace_collaborator_hash_preserves_saved_value_when_cli_omits_code() {
         let saved_guest = hash_access_code("salt", "guest");
 
-        let (owner, guest) = resolve_workspace_access_hashes(
-            &settings,
-            &saved_owner,
-            &saved_guest,
-            None,
-            None,
-            "salt",
-        )
-        .unwrap();
+        let guest = resolve_workspace_collaborator_hash(&saved_guest, None, "salt");
 
-        assert_eq!(owner, saved_owner);
         assert_eq!(guest, saved_guest);
     }
 
     #[test]
-    fn workspace_access_hashes_reject_equal_cli_codes() {
-        let settings = AppSettings::default();
-        let err =
-            resolve_workspace_access_hashes(&settings, "", "", Some("same"), Some("same"), "salt")
-                .unwrap_err()
-                .to_string();
+    fn workspace_collaborator_hash_uses_cli_code_when_provided() {
+        let saved_guest = hash_access_code("salt", "guest");
 
-        assert!(err.contains("must be different"));
+        let guest = resolve_workspace_collaborator_hash(&saved_guest, Some("newguest"), "salt");
+
+        assert_eq!(guest, hash_access_code("salt", "newguest"));
     }
 
     #[test]
-    fn workspace_access_hashes_reject_effective_global_conflict() {
-        let settings = AppSettings {
-            collaborator_access_code_hash: hash_access_code("salt", "guest"),
-            ..AppSettings::default()
-        };
+    fn workspace_collaborator_hash_clears_on_empty_cli_code() {
+        let saved_guest = hash_access_code("salt", "guest");
 
-        let err = resolve_workspace_access_hashes(&settings, "", "", Some("guest"), None, "salt")
-            .unwrap_err()
-            .to_string();
+        let guest = resolve_workspace_collaborator_hash(&saved_guest, Some(""), "salt");
 
-        assert!(err.contains("must be different"));
+        assert!(guest.is_empty());
     }
 
     #[test]
     fn daemon_args_strip_plaintext_access_codes() {
         let args = daemon_args_without_access_codes(
             [
-                "--access-code",
-                "owner secret",
                 "--collaborator-access-code=guest secret",
                 "--host",
                 "0.0.0.0",

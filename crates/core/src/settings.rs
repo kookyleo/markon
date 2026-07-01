@@ -155,10 +155,6 @@ pub struct WorkspaceSettings {
     pub path: String,
     #[serde(flatten, default)]
     pub flags: WorkspaceFlags,
-    /// Per-workspace access code (salted hash); overrides the server-level code
-    /// for this workspace. Empty = inherit the server code (or no gate).
-    #[serde(default)]
-    pub access_code_hash: String,
     /// Per-workspace collaborator access code. Empty = inherit the server-level
     /// collaborator code (or no collaborator token).
     #[serde(default)]
@@ -238,11 +234,6 @@ pub struct AppSettings {
     /// preset). Emitted as the `data-editor-theme` attribute on <html>.
     #[serde(default = "default_follow")]
     pub web_editor_theme: String,
-    /// Server-level access code, stored as a salted hash (see
-    /// `workspace::hash_access_code`). Empty = no gate (current behaviour).
-    /// A workspace's own `access_code_hash` overrides this for that workspace.
-    #[serde(default)]
-    pub access_code_hash: String,
     /// Server-level collaborator access code. Empty = no collaborator token
     /// unless a workspace defines its own.
     #[serde(default)]
@@ -315,7 +306,6 @@ impl Default for AppSettings {
             web_theme: "auto".to_string(),
             web_language: "auto".to_string(),
             web_editor_theme: "follow".to_string(),
-            access_code_hash: String::new(),
             collaborator_access_code_hash: String::new(),
             db_path: None,
             salt: String::new(),
@@ -418,7 +408,6 @@ impl AppSettings {
         recover_field(object, "web_theme", &mut settings.web_theme);
         recover_field(object, "web_language", &mut settings.web_language);
         recover_field(object, "web_editor_theme", &mut settings.web_editor_theme);
-        recover_field(object, "access_code_hash", &mut settings.access_code_hash);
         recover_field(
             object,
             "collaborator_access_code_hash",
@@ -473,7 +462,6 @@ impl AppSettings {
         if workspace.path.is_empty() {
             return None;
         }
-        recover_field(object, "access_code_hash", &mut workspace.access_code_hash);
         recover_field(
             object,
             "collaborator_access_code_hash",
@@ -553,7 +541,6 @@ impl AppSettings {
                 path: PathBuf::from(&w.path),
                 flags: w.flags,
                 initial_path: None,
-                access_code_hash: w.access_code_hash.clone(),
                 collaborator_access_code_hash: w.collaborator_access_code_hash.clone(),
                 alias: w.alias.clone(),
             })
@@ -585,7 +572,6 @@ impl AppSettings {
             shortcuts_json: self.render_shortcuts_json(),
             default_chat_mode: self.default_chat_mode.clone(),
             editor_theme: self.web_editor_theme.clone(),
-            access_code_hash: self.access_code_hash.clone(),
             collaborator_access_code_hash: self.collaborator_access_code_hash.clone(),
             print_collapsed_content: self.print_collapsed_content,
         }
@@ -632,7 +618,6 @@ impl AppSettings {
             .map(|info| WorkspaceSettings {
                 path: info.path,
                 flags: info.flags,
-                access_code_hash: info.access_code_hash,
                 collaborator_access_code_hash: info.collaborator_access_code_hash,
                 alias: info.alias,
             })
@@ -813,16 +798,15 @@ mod tests {
         assert_eq!(saved["workspaces"][0]["path"].as_str(), Some("/tmp/docs"));
     }
 
-    /// Repro: a per-workspace access_code_hash must survive the real
-    /// settings.json save→load round-trip (the `#[serde(flatten)]` flags sit
-    /// next to it) AND flow into the server config used to reseed the registry
-    /// after a restart. If it doesn't, a restarted workspace loses its code and
-    /// the gate falls back to the global code.
+    /// Repro: a per-workspace collaborator access-code hash must survive the
+    /// real settings.json save→load round-trip (the `#[serde(flatten)]` flags
+    /// sit next to it) AND flow into the server config used to reseed the
+    /// registry after a restart. If it doesn't, a restarted workspace loses its
+    /// code and the gate falls back to the global code.
     #[test]
     fn workspace_access_code_hash_survives_settings_round_trip() {
         let home = TempHome::new("ws-access");
         let mut s = AppSettings::load_at(home.path());
-        s.access_code_hash = "aeadd".into(); // global
         s.collaborator_access_code_hash = "c011ab".into(); // global collaborator
         s.workspaces = vec![WorkspaceSettings {
             path: "/tmp/ws".into(),
@@ -830,7 +814,6 @@ mod tests {
                 enable_search: true,
                 ..Default::default()
             },
-            access_code_hash: "6d243".into(),
             collaborator_access_code_hash: "c0de".into(),
             ..Default::default()
         }];
@@ -840,28 +823,16 @@ mod tests {
         let back = AppSettings::load_at(home.path());
         assert_eq!(back.workspaces.len(), 1);
         assert_eq!(
-            back.workspaces[0].access_code_hash, "6d243",
-            "per-workspace access code dropped on load"
-        );
-        assert_eq!(
             back.workspaces[0].collaborator_access_code_hash, "c0de",
             "per-workspace collaborator access code dropped on load"
         );
         assert!(back.workspaces[0].flags.enable_search);
-        assert_eq!(
-            back.access_code_hash, "aeadd",
-            "global code dropped on load"
-        );
         assert_eq!(
             back.collaborator_access_code_hash, "c011ab",
             "global collaborator code dropped on load"
         );
 
         let cfg = back.to_server_config(8080);
-        assert_eq!(
-            cfg.initial_workspaces[0].access_code_hash, "6d243",
-            "access code must reach the server config that reseeds the registry"
-        );
         assert_eq!(
             cfg.initial_workspaces[0].collaborator_access_code_hash, "c0de",
             "collaborator access code must reach the server config that reseeds the registry"
@@ -894,14 +865,12 @@ mod tests {
         assert_eq!(s.workspaces.len(), 1);
         assert_eq!(s.workspaces[0].path, "/docs");
         assert!(s.workspaces[0].flags.enable_viewed);
-        assert_eq!(s.workspaces[0].access_code_hash, "abc");
         assert_eq!(s.workspaces[0].collaborator_access_code_hash, "def");
         assert!(!s.example_workspace_hidden);
 
         let cfg = s.to_server_config(6419);
         assert_eq!(cfg.initial_workspaces[0].path, PathBuf::from("/docs"));
         assert!(cfg.initial_workspaces[0].flags.enable_viewed);
-        assert_eq!(cfg.initial_workspaces[0].access_code_hash, "abc");
         assert_eq!(
             cfg.initial_workspaces[0].collaborator_access_code_hash,
             "def"
@@ -942,7 +911,6 @@ mod tests {
         assert_eq!(loaded.workspaces.len(), 1);
         assert_eq!(loaded.workspaces[0].path, "/tmp/docs");
         assert!(loaded.workspaces[0].flags.enable_viewed);
-        assert_eq!(loaded.workspaces[0].access_code_hash, "owner");
         assert_eq!(loaded.workspaces[0].collaborator_access_code_hash, "guest");
         assert_eq!(
             hash_id(Path::new(&loaded.workspaces[0].path), &loaded.salt),
@@ -1055,21 +1023,18 @@ mod tests {
                 WorkspaceSettings {
                     path: "/a".to_string(),
                     flags: WorkspaceFlags::default(),
-                    access_code_hash: String::new(),
                     collaborator_access_code_hash: String::new(),
                     ..Default::default()
                 },
                 WorkspaceSettings {
                     path: "/b".to_string(),
                     flags: WorkspaceFlags::default(),
-                    access_code_hash: String::new(),
                     collaborator_access_code_hash: String::new(),
                     ..Default::default()
                 },
                 WorkspaceSettings {
                     path: "/a".to_string(),
                     flags: WorkspaceFlags::default(),
-                    access_code_hash: String::new(),
                     collaborator_access_code_hash: String::new(),
                     ..Default::default()
                 },
@@ -1116,7 +1081,6 @@ mod tests {
             path: ws_path.clone(),
             flags: WorkspaceFlags::default(),
             single_file: None,
-            access_code_hash: "abc".to_string(),
             collaborator_access_code_hash: "def".to_string(),
             ..Default::default()
         });
@@ -1124,7 +1088,6 @@ mod tests {
             path: ws_path.clone(),
             flags: WorkspaceFlags::default(),
             single_file: Some("note.md".to_string()),
-            access_code_hash: String::new(),
             collaborator_access_code_hash: String::new(),
             ..Default::default()
         });
@@ -1134,7 +1097,7 @@ mod tests {
 
         assert_eq!(s.workspaces.len(), 1, "ephemeral entry must be excluded");
         assert_eq!(s.workspaces[0].path, ws_path.to_string_lossy());
-        assert_eq!(s.workspaces[0].access_code_hash, "abc");
+        assert_eq!(s.workspaces[0].collaborator_access_code_hash, "def");
     }
 
     /// Helper: build settings with the given `web_styles` map and nothing else.
@@ -1279,7 +1242,6 @@ mod tests {
             workspaces: vec![WorkspaceSettings {
                 path: "/docs".to_string(),
                 flags: WorkspaceFlags::default(),
-                access_code_hash: String::new(),
                 collaborator_access_code_hash: String::new(),
                 ..Default::default()
             }],

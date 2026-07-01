@@ -1267,7 +1267,7 @@
                         <dd class="workspace-mono">{{ workspace_id }}</dd>
                         <button class="workspace-copy-button" type="button" data-copy-text="{{ workspace_id }}" data-i18n="web.ws.meta.copy_id">Copy ID</button>
                     </div>
-                    {% if access_role == "admin" %}
+                    {% if is_local %}
                     <div class="workspace-meta-row workspace-copy-row">
                         <dt data-i18n="web.ws.meta.alias">Alias</dt>
                         <dd>{% if workspace_alias %}{{ workspace_alias }}{% else %}<span class="workspace-meta-empty" data-i18n="web.ws.meta.no_alias">Not set</span>{% endif %}</dd>
@@ -1298,13 +1298,13 @@
                             <div class="workspace-dropdown-menu">
                                 <div class="workspace-menu-title" data-i18n="web.ws.git.switch_branch">Switch branch</div>
                                 {% for branch in git_branches %}
-                                <button class="workspace-menu-item" type="button" data-checkout-branch="{{ branch.name }}" {% if branch.current or not can_initiate %}disabled{% endif %}>
+                                <button class="workspace-menu-item" type="button" data-checkout-branch="{{ branch.name }}" {% if branch.current or not is_local %}disabled{% endif %}>
                                     <span>{{ branch.name }}</span>
                                     {% if branch.current %}<span class="refs-current" data-i18n="web.ws.git.current_branch">Current branch</span>{% endif %}
                                 </button>
                                 {% endfor %}
-                                {% if not can_initiate %}
-                                <div class="workspace-menu-title" data-i18n="web.ws.git.admin_only">Admin access required</div>
+                                {% if not is_local %}
+                                <div class="workspace-menu-title" data-i18n="web.ws.git.local_only">Local access required</div>
                                 {% endif %}
                             </div>
                             {% endif %}
@@ -1407,13 +1407,13 @@
                     <div class="workspace-feature-list"
                          data-workspace-feature-form
                          data-update-url="{{ settings_features_url }}"
-                         data-can-edit="{{ can_initiate }}">
+                         data-can-edit="{{ is_local }}">
                         {% for feature in feature_statuses %}
-                        <label class="workspace-feature-switch {% if feature.enabled %}is-on{% endif %}{% if not can_initiate %} is-disabled{% endif %}">
+                        <label class="workspace-feature-switch {% if feature.enabled %}is-on{% endif %}{% if not is_local %} is-disabled{% endif %}">
                             <input type="checkbox"
                                    data-feature-key="{{ feature.key }}"
                                    {% if feature.enabled %}checked{% endif %}
-                                   {% if not can_initiate %}disabled{% endif %}>
+                                   {% if not is_local %}disabled{% endif %}>
                             <span class="workspace-feature-toggle" aria-hidden="true"></span>
                             <span data-i18n="{{ feature.label_key }}">{{ feature.label }}</span>
                         </label>
