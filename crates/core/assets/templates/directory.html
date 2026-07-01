@@ -665,8 +665,16 @@
             height: 22px;
             flex: 0 0 auto;
             border-radius: 999px;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 11px;
+            font-weight: 600;
+            line-height: 1;
+            color: #fff;
+            /* Fallback tint until the initials script derives a per-author hue. */
             background: var(--markon-bg-muted);
-            border: 1px solid var(--markon-border-default);
+            user-select: none;
         }
         .workspace-commit-author {
             flex: 0 0 auto;
@@ -821,6 +829,7 @@
             text-overflow: ellipsis;
             white-space: nowrap;
         }
+        .workspace-meta-empty { color: var(--markon-fg-muted); }
         .workspace-copy-row {
             align-items: center;
         }
@@ -1258,6 +1267,13 @@
                         <dd class="workspace-mono">{{ workspace_id }}</dd>
                         <button class="workspace-copy-button" type="button" data-copy-text="{{ workspace_id }}" data-i18n="web.ws.meta.copy_id">Copy ID</button>
                     </div>
+                    {% if access_role == "admin" %}
+                    <div class="workspace-meta-row workspace-copy-row">
+                        <dt data-i18n="web.ws.meta.alias">Alias</dt>
+                        <dd>{% if workspace_alias %}{{ workspace_alias }}{% else %}<span class="workspace-meta-empty" data-i18n="web.ws.meta.no_alias">Not set</span>{% endif %}</dd>
+                        <button class="workspace-copy-button" type="button" data-set-alias data-alias-url="/_/{{ workspace_id }}/settings/alias" data-current-alias="{{ workspace_alias }}" data-i18n="web.ws.set_alias">Set alias…</button>
+                    </div>
+                    {% endif %}
                     <div class="workspace-meta-row">
                         <dt data-i18n="web.ws.meta.branch">Branch</dt>
                         <dd>{% if git.available %}{% if git.branch %}{{ git.branch }}{% else %}<span data-i18n="web.ws.git.detached">Detached HEAD</span>{% endif %}{% else %}<span data-i18n="web.ws.git.none">Not a git repository</span>{% endif %}</dd>
@@ -1288,7 +1304,7 @@
                                 </button>
                                 {% endfor %}
                                 {% if not can_initiate %}
-                                <div class="workspace-menu-title" data-i18n="web.ws.git.initiator_only">Initiator access required</div>
+                                <div class="workspace-menu-title" data-i18n="web.ws.git.admin_only">Admin access required</div>
                                 {% endif %}
                             </div>
                             {% endif %}
@@ -1330,7 +1346,6 @@
                             <div class="workspace-dropdown-menu">
                                 <button class="workspace-menu-item" type="button" data-copy-current-url><span data-i18n="web.ws.copy_url">Copy workspace URL</span></button>
                                 <button class="workspace-menu-item" type="button" data-copy-text="{{ current_dir }}"><span data-i18n="web.ws.copy_path">Copy workspace path</span></button>
-                                {% if access_role == "initiator" %}<button class="workspace-menu-item" type="button" data-set-alias data-alias-url="/_/{{ workspace_id }}/settings/alias" data-current-alias="{{ workspace_alias }}"><span data-i18n="web.ws.set_alias">Set alias…</span></button>{% endif %}
                                 {% if work_diff_url %}<a class="workspace-menu-item" href="{{ work_diff_url }}" data-i18n="web.ws.git.working_diff">Working diff</a>{% endif %}
                             </div>
                         </div>
@@ -1348,7 +1363,7 @@
                 {% if git.available and latest_commit %}
                 <div class="workspace-commit-header">
                     <div class="workspace-commit-main">
-                        <span class="workspace-commit-avatar" aria-hidden="true"></span>
+                        <span class="workspace-commit-avatar" data-avatar="{{ latest_commit.author }}" aria-hidden="true">{{ latest_commit.author | truncate(length=1, end="") | upper }}</span>
                         <span class="workspace-commit-author">{{ latest_commit.author }}</span>
                         <span class="workspace-commit-subject" title="{{ latest_commit.subject }}">{{ latest_commit.subject }}</span>
                         <span class="workspace-commit-ok" aria-hidden="true">✓</span>
@@ -1550,6 +1565,20 @@
     </div>
     {% endif %}
     <!-- Directory/workspace page controls (classic IIFE, runs during parse). -->
+    <script>
+    (function () {
+        // Initials avatar: derive a stable, per-author hue from the name so the
+        // same author always gets the same colour (GitHub-identicon spirit, but
+        // offline). The initial itself is rendered server-side.
+        document.querySelectorAll('.workspace-commit-avatar[data-avatar]').forEach(function (el) {
+            var name = el.getAttribute('data-avatar') || '';
+            if (!name) return;
+            var h = 0;
+            for (var i = 0; i < name.length; i++) h = (h * 31 + name.charCodeAt(i)) >>> 0;
+            el.style.background = 'hsl(' + (h % 360) + ' 46% 42%)';
+        });
+    })();
+    </script>
     <script src="/_/js/directory.js"></script>
     <script type="module" src="/_/js/workspace-diff.js"></script>
     <script type="module" src="/_/js/main.js"></script>
