@@ -6136,6 +6136,68 @@ mod tests {
         assert!(body.contains("disabled"));
     }
 
+    /// New model: edit/chat are collaboration abilities gated purely by the
+    /// per-workspace flag, so a remote (LAN) collaborator gets the in-browser
+    /// editor + save token and the chat panel when the flags are on — the
+    /// inverse of the old "admin-only" gate. Structural management stays
+    /// loopback-only (covered by the directory `data-can-edit=false` test).
+    #[tokio::test]
+    async fn remote_collaborator_editor_and_chat_follow_flags() {
+        let dir = tempfile::tempdir().unwrap();
+        fs::write(dir.path().join("README.md"), "# hi\n\nbody\n").unwrap();
+
+        // edit + chat ON → remote (LAN) peer gets editor, save token, and chat.
+        let reg_on = Arc::new(WorkspaceRegistry::new("remote-flags-on".into()));
+        let id_on = add_test_workspace(
+            &reg_on,
+            dir.path().to_path_buf(),
+            WorkspaceFlags {
+                enable_edit: true,
+                enable_chat: true,
+                ..Default::default()
+            },
+        );
+        let on = response_text(
+            handle_workspace_path(
+                State(test_state(reg_on)),
+                AxumPath((id_on, "README.md".to_string())),
+                axum::extract::ConnectInfo(lan_peer()),
+            )
+            .await
+            .into_response(),
+        )
+        .await;
+        assert!(
+            on.contains(r#"<meta name="enable-edit" content="true">"#),
+            "{on}"
+        );
+        assert!(
+            on.contains(r#"name="mgmt-token""#),
+            "remote collaborator with the edit flag must receive the save token"
+        );
+        assert!(on.contains(r#"<meta name="enable-chat" content="true">"#));
+
+        // both OFF → no save token and no chat for the same remote peer.
+        let reg_off = Arc::new(WorkspaceRegistry::new("remote-flags-off".into()));
+        let id_off = add_test_workspace(&reg_off, dir.path().to_path_buf(), WorkspaceFlags::default());
+        let off = response_text(
+            handle_workspace_path(
+                State(test_state(reg_off)),
+                AxumPath((id_off, "README.md".to_string())),
+                axum::extract::ConnectInfo(lan_peer()),
+            )
+            .await
+            .into_response(),
+        )
+        .await;
+        assert!(off.contains(r#"<meta name="enable-edit" content="false">"#));
+        assert!(
+            !off.contains(r#"name="mgmt-token""#),
+            "no edit flag → no save token even on a readable page"
+        );
+        assert!(off.contains(r#"<meta name="enable-chat" content="false">"#));
+    }
+
     #[tokio::test]
     async fn dist_asset_route_uses_extension_mime_type() {
         let response = serve_js(AxumPath("katex/katex.min.css".into()))
