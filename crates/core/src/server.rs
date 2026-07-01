@@ -2270,9 +2270,10 @@ struct GitCompareOptionsStatusQuery {
 }
 
 fn diff_view_from_query(view: Option<&str>) -> &'static str {
+    // Rendered is the default; only an explicit ?view=raw selects the source view.
     match view {
-        Some("rendered") => "rendered",
-        _ => "raw",
+        Some("raw") => "raw",
+        _ => "rendered",
     }
 }
 
@@ -6559,7 +6560,7 @@ mod tests {
         assert!(body.contains("a.md"));
         assert!(!body.contains("notes.txt"));
         assert!(body.contains("data-virtual-diff"));
-        assert!(body.contains("data-current-diff-view=\"raw\""));
+        assert!(body.contains("data-current-diff-view=\"rendered\""));
         assert!(body.contains("git-diff-view-seg"));
         assert!(body.contains("data-diff-view-seg"));
         assert!(body.contains("data-markdown-diff"));
@@ -6619,7 +6620,7 @@ mod tests {
             State(state.clone()),
             AxumPath(id.clone()),
             Query(GitViewQuery {
-                view: None,
+                view: Some("raw".to_string()),
                 f: None,
             }),
         )
