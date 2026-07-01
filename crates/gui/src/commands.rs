@@ -272,6 +272,52 @@ pub fn add_workspace(path: String, state: State<AppState>) -> Result<serde_json:
     Ok(serde_json::json!({ "id": id, "url": url }))
 }
 
+fn flags_from_params(
+    enable_search: bool,
+    enable_viewed: bool,
+    enable_edit: bool,
+    enable_live: bool,
+    enable_chat: bool,
+    shared_annotation: bool,
+) -> WorkspaceFlags {
+    WorkspaceFlags {
+        enable_search,
+        enable_viewed,
+        enable_edit,
+        enable_live,
+        enable_chat,
+        shared_annotation,
+    }
+}
+
+/// Update a workspace's feature flags in place. `registry.update_flags` fires
+/// the persist hook, so the change is written to settings and survives restart.
+#[tauri::command]
+pub fn update_workspace(
+    id: String,
+    enable_search: bool,
+    enable_viewed: bool,
+    enable_edit: bool,
+    enable_live: bool,
+    enable_chat: bool,
+    shared_annotation: bool,
+    state: State<AppState>,
+) -> Result<(), String> {
+    let flags = flags_from_params(
+        enable_search,
+        enable_viewed,
+        enable_edit,
+        enable_live,
+        enable_chat,
+        shared_annotation,
+    );
+    let server = state.server.lock().unwrap();
+    if !server.registry.update_flags(&id, flags) {
+        return Err(format!("Workspace {id} not found"));
+    }
+    Ok(())
+}
+
 #[tauri::command]
 pub fn remove_workspace(id: String, state: State<AppState>) -> Result<(), String> {
     let server = state.server.lock().unwrap();
@@ -564,7 +610,7 @@ pub async fn list_chat_models(
     models::list_models(kind, &api_key, &base_url).await
 }
 
-const ACCESS_CODE_CONFLICT: &str = "initiator and collaborator access codes must be different";
+const ACCESS_CODE_CONFLICT: &str = "admin and collaborator access codes must be different";
 
 fn code_matches_hash(salt: &str, code: &str, hash: &str) -> bool {
     !code.trim().is_empty()
@@ -580,7 +626,7 @@ fn workspace_effective_hash(local_hash: &str, global_hash: &str) -> String {
     }
 }
 
-/// Set or clear an initiator access code. `workspace_id` None/empty → the
+/// Set or clear an admin access code. `workspace_id` None/empty → the
 /// server-level code (needs a server restart so the running AppState picks it
 /// up); otherwise the named workspace's code is updated live on the registry.
 /// An empty `code` clears. The plaintext is hashed here (salted) and never
@@ -661,7 +707,7 @@ pub fn set_access_code(
 
 /// Set or clear a collaborator access code. See [`set_access_code`] for the
 /// same storage/restart rules. The collaborator code must never equal the
-/// effective initiator code for the same scope.
+/// effective admin code for the same scope.
 #[tauri::command]
 pub fn set_collaborator_access_code(
     workspace_id: Option<String>,
@@ -688,11 +734,11 @@ pub fn set_collaborator_access_code(
                 .into_iter()
                 .find(|info| info.id == id)
                 .ok_or_else(|| "workspace not found".to_string())?;
-            let effective_initiator = workspace_effective_hash(
+            let effective_admin = workspace_effective_hash(
                 &workspace.access_code_hash,
                 &settings_snapshot.access_code_hash,
             );
-            if code_matches_hash(&salt, code, &effective_initiator) {
+            if code_matches_hash(&salt, code, &effective_admin) {
                 return Err(ACCESS_CODE_CONFLICT.into());
             }
             if state
@@ -717,9 +763,9 @@ pub fn set_collaborator_access_code(
                     if !ws.collaborator_access_code_hash.is_empty() {
                         continue;
                     }
-                    let effective_initiator =
+                    let effective_admin =
                         workspace_effective_hash(&ws.access_code_hash, &s.access_code_hash);
-                    if code_matches_hash(&salt, code, &effective_initiator) {
+                    if code_matches_hash(&salt, code, &effective_admin) {
                         return Err(ACCESS_CODE_CONFLICT.into());
                     }
                 }

@@ -684,6 +684,7 @@ fn main() {
             commands::set_alias,
             commands::set_tray_resident,
             commands::add_workspace,
+            commands::update_workspace,
             commands::remove_workspace,
             commands::get_workspaces,
             commands::open_url,

@@ -418,6 +418,32 @@
       color: var(--text-2);
       overflow: hidden; text-overflow: ellipsis;
     }
+    /* Row 2: per-workspace feature flags */
+    .ws-flags {
+      display: flex;
+      gap: 1px;
+      margin-top: 6px;
+      flex-wrap: wrap;
+    }
+    .ws-flag {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+      padding: 3px 7px;
+      border-radius: 4px;
+      font-size: 11.5px;
+      color: var(--text-3);
+      cursor: default;
+      transition: color 0.1s;
+    }
+    .ws-flag:hover { color: var(--text-2); }
+    .ws-flag input[type="checkbox"] {
+      width: 12px; height: 12px;
+      accent-color: var(--accent);
+      cursor: pointer;
+      flex-shrink: 0;
+    }
+    .ws-flag.checked { color: var(--text); }
     /* "…" more-menu + its alias panel (anchored to the more button). */
     .ws-more { position: relative; flex-shrink: 0; }
     .ws-more-menu {
@@ -1991,6 +2017,23 @@
       card.className = 'ws-card';
       card.dataset.id = ws.id;
 
+      // Per-workspace feature flags (second row). Order here defines the index
+      // used by the change handler below, so keep it in sync with that.
+      const flagDefs = [
+        { key: 'search',     label: T('ws.flag.search'), tip: ws.enable_search && ws.search_ready ? T('ws.flag.search.ready') : T('ws.flag.search.tip'), checked: ws.enable_search },
+        { key: 'viewed',     label: T('ws.flag.viewed'), tip: T('ws.flag.viewed.tip'), checked: ws.enable_viewed },
+        { key: 'edit',       label: T('ws.flag.edit'),   tip: T('ws.flag.edit.tip'),   checked: ws.enable_edit },
+        { key: 'live',       label: T('ws.flag.live'),   tip: T('ws.flag.live.tip'),   checked: ws.enable_live },
+        { key: 'chat',       label: T('ws.flag.chat'),   tip: T('ws.flag.chat.tip'),   checked: ws.enable_chat },
+        { key: 'annotation', label: T('ws.flag.shared'), tip: T('ws.flag.shared.tip'), checked: ws.shared_annotation },
+      ];
+      const flagsHtml = flagDefs.map(f =>
+        `<label class="ws-flag ${f.checked ? 'checked' : ''}" title="${esc(f.tip)}">
+          <input type="checkbox" data-flag="${f.key}" ${f.checked ? 'checked' : ''}>
+          ${esc(f.label)}
+        </label>`
+      ).join('');
+
       // Single-file workspaces show the FILE (parent dir + pinned name); normal
       // workspaces show the folder. Shorten the home dir to ~.
       const fullPath = ws.single_file ? `${ws.path}/${ws.single_file}` : ws.path;
@@ -2052,11 +2095,36 @@
             </div>
           </div>
         </div>
+        <div class="ws-flags">${flagsHtml}</div>
       `;
 
       // Open in browser
       card.querySelector('.open-btn').addEventListener('click', () => {
         invoke('open_url', { url: ws.url });
+      });
+
+      // Toggle feature flags — persisted via update_workspace (registry
+      // update_flags fires the persist hook, so it survives restart).
+      card.querySelectorAll('.ws-flag input').forEach(cb => {
+        cb.addEventListener('change', async () => {
+          const checks = card.querySelectorAll('.ws-flag input');
+          try {
+            await invoke('update_workspace', {
+              id: ws.id,
+              enableSearch:     checks[0].checked,
+              enableViewed:     checks[1].checked,
+              enableEdit:       checks[2].checked,
+              enableLive:       checks[3].checked,
+              enableChat:       checks[4].checked,
+              sharedAnnotation: checks[5].checked,
+            });
+            checks.forEach(c => {
+              c.closest('.ws-flag').classList.toggle('checked', c.checked);
+            });
+            // Re-render so the Search flag can pick up its search_ready state.
+            refreshWorkspaces();
+          } catch (e) { toast(T('ws.update.fail') + ': ' + e, 'err'); }
+        });
       });
 
       // "…" more-menu → "Set alias" item → small panel with an input.
