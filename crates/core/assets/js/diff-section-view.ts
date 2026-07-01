@@ -287,6 +287,12 @@ export abstract class DiffSectionView {
         // file; `diff-new-side-filter.sectionForNode` keys off this attribute, so
         // a section without it is simply not annotatable (commit…commit diffs).
         if (file.abs_path) section.dataset.absPath = file.abs_path;
+        // A pure rename (no content change) is just a one-line fold; flag it so the
+        // big inter-file gap collapses around it (otherwise the short body looks
+        // wildly unbalanced — tiny above the fold, the 108px gap below).
+        if (file.status === 'renamed' && !(file.additions || 0) && !(file.deletions || 0)) {
+            section.classList.add('is-pure-rename');
+        }
         const collapsed = this.#collapsed.has(file.path);
         section.classList.toggle('is-collapsed', collapsed);
 
@@ -527,16 +533,16 @@ export abstract class DiffSectionView {
         el.className = 'md-diff-viewed-empty';
         el.innerHTML =
             '<div class="md-diff-viewed-empty-emoji">🎉</div>' +
-            '<div class="md-diff-viewed-empty-title">All done — every changed file is marked viewed.</div>';
+            '<div class="md-diff-viewed-empty-title">All done — every changed file is marked Viewed.</div>';
         const link = document.createElement('button');
         link.type = 'button';
         link.className = 'md-diff-viewed-empty-link';
-        link.textContent = 'See all checked files';
+        link.textContent = 'Show all files';
         link.addEventListener('click', () => {
-            // Re-check the funnel's "Viewed files" box (its change handler persists
-            // the choice, re-filters the sidebar, and broadcasts back to here).
+            // Un-check the funnel's "Hide Viewed files" box (its change handler
+            // persists the choice, re-filters the sidebar, and broadcasts here).
             const cb = document.querySelector<HTMLInputElement>('[data-diff-show-viewed]');
-            if (cb) { cb.checked = true; cb.dispatchEvent(new Event('change', { bubbles: true })); }
+            if (cb) { cb.checked = false; cb.dispatchEvent(new Event('change', { bubbles: true })); }
         });
         el.appendChild(link);
         pane.appendChild(el);

@@ -26,6 +26,8 @@ type CleanupMenu = HTMLElement & { __cleanup?: (() => void) | null };
 function initFilter(): void {
     const filter = document.querySelector<HTMLInputElement>('[data-diff-filter]');
     const entries = Array.from(document.querySelectorAll<HTMLElement>('[data-diff-nav-entry]'));
+    const moreBtn = document.querySelector<HTMLElement>('[data-diff-more-toggle]');
+    const moreMenu = document.querySelector<CleanupMenu>('[data-diff-more-menu]');
     const filterBtn = document.querySelector<HTMLElement>('[data-diff-filter-toggle]');
     const filterMenu = document.querySelector<CleanupMenu>('[data-diff-filter-menu]');
     const showViewedInput = document.querySelector<HTMLInputElement>('[data-diff-show-viewed]');
@@ -127,12 +129,13 @@ function initFilter(): void {
         });
     }
 
-    // "Viewed files" toggle: hide/show viewed files in the sidebar, and broadcast
-    // so the content view hides/shows their sections too.
+    // "Hide Viewed files" toggle: the checkbox is phrased as the INVERSE of the
+    // internal showViewed flag (checked = hide viewed), so mirror it both ways.
+    // Broadcast so the content view hides/shows their sections too.
     if (showViewedInput) {
-        showViewedInput.checked = showViewed;
+        showViewedInput.checked = !showViewed;
         showViewedInput.addEventListener('change', () => {
-            showViewed = showViewedInput.checked;
+            showViewed = !showViewedInput.checked;
             persistShowViewed(dataUrl, showViewed);
             applyFilter();
             document.dispatchEvent(new CustomEvent(SHOW_VIEWED_EVENT, { detail: { showViewed } }));
@@ -146,29 +149,47 @@ function initFilter(): void {
         updateViewedCount();
     });
 
-    const setMenuOpen = (open: boolean): void => {
-        if (!filterMenu || !filterBtn) return;
-        filterMenu.hidden = !open;
-        filterBtn.setAttribute('aria-expanded', open ? 'true' : 'false');
-        if (open) {
-            const onDoc = (e: MouseEvent): void => {
-                if (!filterMenu.contains(e.target as Node) && e.target !== filterBtn) setMenuOpen(false);
-            };
-            const onKey = (e: KeyboardEvent): void => {
-                if (e.key === 'Escape') setMenuOpen(false);
-            };
-            filterMenu.__cleanup = (): void => {
-                document.removeEventListener('mousedown', onDoc, true);
-                document.removeEventListener('keydown', onKey, true);
-            };
-            document.addEventListener('mousedown', onDoc, true);
-            document.addEventListener('keydown', onKey, true);
-        } else if (filterMenu.__cleanup) {
-            filterMenu.__cleanup();
-            filterMenu.__cleanup = null;
-        }
+    // Small popovers: the "…" Raw-layout menu and the filter funnel's "Viewed
+    // files" toggle. Each opens on its button, closes on outside-click/Escape,
+    // and opening one closes any other that's open.
+    const shellEl = document.querySelector<HTMLElement>('[data-diff-shell]');
+    const menus: Array<(open: boolean) => void> = [];
+    const bindMenu = (btn: HTMLElement | null, menu: CleanupMenu | null, canOpen?: () => boolean): void => {
+        if (!btn || !menu) return;
+        const setOpen = (open: boolean): void => {
+            if (open) menus.forEach((close) => { if (close !== setOpen) close(false); });
+            menu.hidden = !open;
+            btn.setAttribute('aria-expanded', open ? 'true' : 'false');
+            if (open) {
+                const onDoc = (e: MouseEvent): void => {
+                    if (!menu.contains(e.target as Node) && !btn.contains(e.target as Node)) setOpen(false);
+                };
+                const onKey = (e: KeyboardEvent): void => {
+                    if (e.key === 'Escape') setOpen(false);
+                };
+                menu.__cleanup = (): void => {
+                    document.removeEventListener('mousedown', onDoc, true);
+                    document.removeEventListener('keydown', onKey, true);
+                };
+                document.addEventListener('mousedown', onDoc, true);
+                document.addEventListener('keydown', onKey, true);
+            } else if (menu.__cleanup) {
+                menu.__cleanup();
+                menu.__cleanup = null;
+            }
+        };
+        menus.push(setOpen);
+        btn.addEventListener('click', () => {
+            if (canOpen && !canOpen()) return;
+            setOpen(!!menu.hidden);
+        });
     };
-    if (filterBtn) filterBtn.addEventListener('click', () => setMenuOpen(!!filterMenu && !!filterMenu.hidden));
+    // Raw is a split button (the Raw segment IS the menu toggle): open the
+    // Split/Unified menu only when Raw is already active; otherwise let the
+    // segment's own click handler switch to Raw first (Rendered|Raw stays the
+    // top-level choice). The guard keeps the menu shut on that switch click.
+    bindMenu(moreBtn, moreMenu, () => shellEl?.getAttribute('data-current-diff-view') === 'raw');
+    bindMenu(filterBtn, filterMenu);
     applyFilter();
     updateViewedCount();
 }
@@ -215,7 +236,7 @@ function initLayoutSwitch(): void {
     rawRoot.dataset.rawLayout = stored;
 
     const reflect = (mode: 'split' | 'unified'): void => {
-        buttons.forEach((b) => b.setAttribute('aria-pressed', b.getAttribute('data-layout') === mode ? 'true' : 'false'));
+        buttons.forEach((b) => b.setAttribute('aria-checked', b.getAttribute('data-layout') === mode ? 'true' : 'false'));
     };
     reflect(stored);
 
@@ -228,13 +249,8 @@ function initLayoutSwitch(): void {
         });
     });
 
-    // The layout switch only applies to the Raw view; hide it while Rendered.
-    const sync = (): void => {
-        const shell = document.querySelector<HTMLElement>('[data-diff-shell]');
-        seg.hidden = shell?.getAttribute('data-current-diff-view') === 'rendered';
-    };
-    document.addEventListener('markon:diff-view-change', sync);
-    sync();
+    // The caret that opens this menu is the Raw segment's own dropdown affordance,
+    // so it stays put across views — no show/hide wiring needed.
 }
 
 // ── Raw⇄Rendered view switcher + file selection + compare form ──────────────
@@ -381,6 +397,9 @@ function initViewSwitcher(): void {
     segButtons.forEach((button) => {
         button.addEventListener('click', () => {
             const view = normalizeView(button.getAttribute('data-view'));
+            // Already on this view (e.g. clicking Raw again to drop its layout
+            // menu) → don't re-activate or re-render the panel.
+            if (view === normalizeView(shell.getAttribute('data-current-diff-view'))) return;
             persistViewPref(view);
             activate(view, true);
         });
