@@ -167,9 +167,9 @@ Options:
                                    - --host <IP>: specific IP address
       --entry [<BASE_URL>]         External access prefix; generates a QR code (alias: --qr)
   -b, --open-browser [<BASE_URL>]  Auto-open browser (optional: custom URL)
-      --access-code <CODE>         Set or clear this workspace's initiator access code
       --collaborator-access-code <CODE>
                                    Set or clear this workspace's collaborator access code
+                                   (remote-visitor gate; loopback is always allowed)
       --print-collapsed-content    Include collapsed (viewed) sections when printing
       --salt <SALT>                Salt for hashing access codes / identity
   -h, --help                       Print help
@@ -203,8 +203,8 @@ markon --host 0.0.0.0 --qr http://192.168.1.100:6419 README.md
 # Auto-open browser with custom URL (reverse proxy)
 markon -b http://docs.example.com
 
-# Set per-workspace access codes while adding/opening a workspace
-markon --access-code owner-secret --collaborator-access-code guest-secret README.md
+# Set a per-workspace collaborator access code (remote-visitor gate) while adding a workspace
+markon --collaborator-access-code guest-secret README.md
 
 # Workspace features are controlled in the browser workspace settings
 markon --qr -b README.md
@@ -321,13 +321,19 @@ When **Shared notes** is enabled:
 3. Open on any device: `http://server-ip:6419`
 4. All annotations sync across devices in real time
 
-### Access Codes
+### Permissions & Access Codes
 
-Markon can gate viewer access with access codes, configured from the GUI or while adding a workspace from the CLI:
+Markon splits permissions by **where you connect from**, with no accounts or roles:
 
-- **Server-level (global) code**: set in **General** settings. It gates every workspace that does not define its own code.
-- **Per-workspace code**: set via the lock icon on each workspace card, or pass `--access-code` / `--collaborator-access-code` when adding a workspace from the CLI. A workspace's own code **overrides** the global one — the global code only applies to workspaces without their own.
-- Viewers unlock at a browser gate before they can read.
+- **Loopback (`127.0.0.1`) = full admin, no code.** The desktop GUI and any local browser tab on `127.0.0.1` count as loopback and get every capability — toggling workspace features, editing aliases, adding/removing workspaces, `git commit` / `checkout`, and creating/deleting files — all without any code.
+- **Remote (LAN / other machines) = collaborator.** What a remote visitor can do is decided by that workspace's **feature flags**: `edit` on → edit and save body text; `chat` on → use the AI assistant; `annotation` (shared) on → annotate; and so on. Remote visitors can never perform admin/structural actions.
+
+A **collaborator access code** gates remote visitors. When a scope has one, remote visitors must unlock at a browser gate first; **loopback is always allowed through**. It is two-level with nearest-scope override:
+
+- **Server-level (global) collaborator code**: set in **General** settings; it gates every workspace that does not define its own.
+- **Per-workspace collaborator code**: set via the collaborator lock icon on each workspace card, or pass `--collaborator-access-code` when adding a workspace from the CLI. A workspace's own code **overrides** the global one.
+
+From loopback you can also manage workspaces via the CLI (`markon set <id|index> <feature> <on|off>`, `markon ls`, `markon detach`, `markon shutdown`).
 
 This is **app-layer access control**, not transport security. Codes travel over whatever connection you expose, so put Markon behind HTTPS / a reverse proxy for any real exposure. See [REVERSE_PROXY.md](REVERSE_PROXY.md).
 
@@ -335,7 +341,7 @@ This is **app-layer access control**, not transport security. Codes travel over 
 
 Opening a single `.md` file — via Finder's **Open With** or `markon path/to/file.md` — creates a **single-file workspace**:
 
-- It appears in the GUI workspace list with a file icon and can use the same access-code controls as any other workspace.
+- It appears in the GUI workspace list with a file icon and can use the same feature flags and collaborator-code controls as any other workspace.
 - It is **transient**: single-file workspaces are not persisted across server restarts.
 - Its full-text search is **scoped to that one file**.
 

@@ -169,8 +169,7 @@ markon --host README.md
 | `--host [IP]` | 绑定地址（用于局域网访问）<br>- 不指定：仅本地 (127.0.0.1)<br>- `--host`：交互式选择<br>- `--host 0.0.0.0`：所有接口<br>- `--host <IP>`：指定 IP | `markon --host 0.0.0.0` |
 | `-b, --open-browser [BASE_URL]` | 自动打开浏览器；可选传入 BASE_URL 覆盖默认 | `markon -b` |
 | `--entry, --qr [PREFIX]` | 指定外部访问地址前缀（生成二维码） | `markon --entry http://{IP}:6419` |
-| `--access-code <CODE>` | 设置或清除该工作区的发起者访问码 | `markon --access-code owner README.md` |
-| `--collaborator-access-code <CODE>` | 设置或清除该工作区的协作者访问码 | `markon --collaborator-access-code guest README.md` |
+| `--collaborator-access-code <CODE>` | 设置或清除该工作区的协作者访问码（远程访客门禁；本机始终免码） | `markon --collaborator-access-code guest README.md` |
 
 ### 常用示例
 
@@ -184,8 +183,8 @@ markon --host 0.0.0.0 --entry http://192.168.1.100:6419
 # 局域网访问 - 交互式选择网络接口
 markon --host
 
-# 添加工作区时设置访问码
-markon --access-code owner-secret --collaborator-access-code guest-secret README.md
+# 添加工作区时设置协作者访问码（远程访客门禁；本机始终免码）
+markon --collaborator-access-code guest-secret README.md
 
 # 工作区功能在浏览器里的 workspace 设置页控制
 markon --entry {YOUR_URL} README.md
@@ -289,22 +288,27 @@ Markon 使用 `/_/` 作为所有系统资源（CSS、JavaScript、WebSocket、fa
 3. 在任何设备打开：`http://server-ip:6419`
 4. 所有标注在设备间实时同步
 
-### 访问码
+### 权限与访问码
 
-Markon 可以用访问码为浏览者设置访问门禁，可在 GUI 中配置，也可在 CLI 添加工作区时设置：
+Markon 的权限只按**访问来源**分两层，不需要账号或角色：
 
-- **服务级（全局）访问码**：在 **General（通用）** 设置里配置，对所有未单独设码的工作区生效。
-- **工作区访问码**：在工作区卡片的锁按钮中配置，或用 CLI 的 `--access-code` / `--collaborator-access-code` 设置。
-- **工作区级访问码**：通过每个工作区卡片上的锁形图标设置。工作区自己的访问码会**覆盖**全局码——全局码只对没有自己访问码的工作区生效。
-- 浏览者打开时会先在浏览器门禁页解锁，才能阅读。
+- **本机（loopback，`127.0.0.1`）= 完整管理，免码**。桌面版 GUI，以及本机浏览器打开的 `127.0.0.1` 页面都算本机，拥有全部能力——改功能开关、改别名、增删工作区、`git commit` / `checkout`、增删文件——全部无需任何码。
+- **远程（局域网 / 其它机器）= 协作者**。能做什么由该工作区的**功能开关**决定：`edit` 开可编辑保存正文，`chat` 开可用 AI 助手，`annotation`（共享便条 / shared）开可批注，等等。远程不能做管理 / 结构性操作。
 
-这是**应用层的访问控制**，并非传输层安全。访问码会沿着你暴露出去的连接传输，正式对外暴露时请把 Markon 放在 HTTPS / 反向代理之后。参见 [反向代理说明](REVERSE_PROXY.zh.md)。
+**协作者访问码**是给远程访客的门禁：某范围设了它，远程访客要先在浏览器门禁页输入正确的码才能进入；**本机永远免码放行**。两级、就近覆盖：
+
+- **全局协作者码（服务级）**：在 **General（通用）** 设置里配置，对所有未单独设码的工作区生效。
+- **工作区协作者码**：通过工作区卡片上的**协作者锁图标**设置，或用 CLI 的 `--collaborator-access-code` 设置。工作区自己的码会**覆盖**全局码——全局码只对没有自己码的工作区生效。
+
+从本机还可以用 CLI 直接管理工作区（`markon set <id|序号> <feature> <on|off>`、`markon ls`、`markon detach`、`markon shutdown`）。
+
+这是**应用层的访问控制**，并非传输层安全。协作者码会沿着你暴露出去的连接传输，正式对外暴露时请把 Markon 放在 HTTPS / 反向代理之后。参见 [反向代理说明](REVERSE_PROXY.zh.md)。
 
 ### 单文件工作区
 
 打开单个 `.md` 文件——通过 Finder 的「Open With」或 `markon path/to/file.md`——会创建一个**单文件工作区**：
 
-- 它会出现在 GUI 工作区列表中（文件图标），并可像任何工作区一样配置（主题、功能开关、访问码等）。
+- 它会出现在 GUI 工作区列表中（文件图标），并可像任何工作区一样配置（主题、功能开关、协作者访问码等）。
 - 它是**临时的**：单文件工作区不会在服务重启后保留。
 - 它的全文搜索仅**限定于该文件**。
 

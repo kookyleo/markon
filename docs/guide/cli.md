@@ -11,7 +11,7 @@ markon [FILE] [OPTIONS]
 - **`FILE`** — 要渲染的 Markdown 文件或目录（可选）。省略时使用当前目录。
 
 ::: tip 桌面版用户
-桌面版内置了可视化的 CLI 命令生成器——打开 **Tips** 标签页，填写目标路径、服务地址和访问码，即可一键复制完整命令或生成 shell alias。
+桌面版内置了可视化的 CLI 命令生成器——打开 **Tips** 标签页，填写目标路径、服务地址和协作者访问码，即可一键复制完整命令或生成 shell alias。
 
 ![GUI 内置的 CLI 命令生成器](/screenshots/gui-cli-builder.png)
 :::
@@ -24,8 +24,7 @@ markon [FILE] [OPTIONS]
 | `--host [IP]` | 绑定地址，省略值时交互式选择 | `127.0.0.1` |
 | `-b, --open-browser [BASE_URL]` | 自动打开浏览器；可选传入 BASE_URL 覆盖默认（不传则用本地工作区地址） | 是（若提供路径） |
 | `--entry, --qr [PREFIX]` | 指定外部访问地址前缀（生成二维码） | — |
-| `--access-code <CODE>` | 设置或清除该工作区的发起者访问码 | — |
-| `--collaborator-access-code <CODE>` | 设置或清除该工作区的协作者访问码 | — |
+| `--collaborator-access-code <CODE>` | 设置或清除该工作区的协作者访问码（远程访客门禁；本机始终免码） | — |
 | `--print-collapsed-content` | 打印时包含折叠章节的内容（默认隐藏折叠内容） | false |
 | `--salt <STRING>` | 自定义 workspace ID salt | — |
 
@@ -57,6 +56,21 @@ markon ls
 markon detach 1          # 通过序号移除
 markon detach abc12345   # 通过 ID 移除
 ```
+
+### 开关工作区功能
+
+本机 CLI 可以像桌面 GUI 一样直接开关某个工作区的功能（走本机管理 API，等同管理员，无需任何码）：
+
+```bash
+markon set 3 edit on         # 通过序号，打开「编辑」
+markon set abc12345 chat off # 通过 ID，关闭「AI 对话」
+```
+
+- 第一个参数是 `ls` 输出里的**序号或 ID**。
+- feature 名可选：`search`（搜索）/ `viewed`（已读追踪）/ `edit`（编辑）/ `live`（Live）/ `chat`（AI 对话）/ `shared`（共享便条）。
+- 最后一个参数是 `on` 或 `off`。
+
+> 管理与结构性操作（改功能开关 / 别名、增删工作区、git 提交等）只在本机可用；远程访客只有该工作区功能开关允许的协作能力。详见[访问权限](/features/access)。
 
 ### 停止服务
 
@@ -138,15 +152,13 @@ markon --entry https://docs.example.com
 → 配置细节见 [反向代理](/advanced/reverse-proxy)
 
 
-### 设置工作区访问码
+### 设置协作者访问码
 
 ```bash
-markon --access-code owner-secret \
-  --collaborator-access-code guest-secret \
-  README.md
+markon --collaborator-access-code guest-secret README.md
 ```
 
-两个访问码不能相同。明文只用于这次 CLI 调用，Markon 写入 `settings.json` 时只保存加盐 hash。
+给远程访客加一道门禁：设了协作者访问码后，从其它机器访问该工作区要先在门禁页输入正确的码；**本机（桌面版 / 本机浏览器）始终免码放行**。明文只用于这次 CLI 调用，Markon 写入 `settings.json` 时只保存加盐 hash。传空字符串则清除该工作区的码。详见[访问权限](/features/access)。
 
 ## `--host` 详解
 

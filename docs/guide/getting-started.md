@@ -74,8 +74,8 @@ markon
 # 指定端口
 markon -p 8080 README.md
 
-# 添加工作区时设置访问码
-markon --access-code owner-secret --collaborator-access-code guest-secret README.md
+# 添加工作区时设置协作者访问码（远程访客门禁；本机始终免码）
+markon --collaborator-access-code guest-secret README.md
 
 # 搜索、编辑、Live、AI 对话等功能在浏览器工作区设置页开启
 markon README.md

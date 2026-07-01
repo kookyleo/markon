@@ -95,9 +95,13 @@ Markon 的用户数据**独立于进程**,持久在 `~/.markon/`:
   在各自层面都做得更干净。**关注点分离:通道在 markon 之下,app 保持纯 HTTP。**
 
 **正交的应用层控制(markon 确实提供)**:
-- **可选访问码门禁**(认证层,见 `server.rs` 的 access gate / `access_scope_for`)——
-  解决「知道 URL 就能进」;与 TLS(保密层)是**两件不同的事**。
-- 一旦经任意 HTTPS 暴露,访问码 cookie 应按 `X-Forwarded-Proto: https` 条件追加 `Secure`
+- **按来源分权**(授权层):**本机(loopback)= 管理员**,免码放行全部能力(改功能开关 /
+  别名、增删工作区、git commit/checkout、增删文件);**远程 = 协作者**,能力由该工作区的
+  功能开关(feature flags)决定,不能做管理 / 结构性操作。
+- **可选协作者访问码门禁**(认证层,见 `server.rs` 的 access gate / `access_scope_for`)——
+  只拦**远程**访客(本机始终放行),两级就近覆盖(全局 + 按工作区);解决「知道 URL 就能进」,
+  与 TLS(保密层)是**两件不同的事**。
+- 一旦经任意 HTTPS 暴露,协作者访问码 cookie 应按 `X-Forwarded-Proto: https` 条件追加 `Secure`
   (**尚未实现**,留作正式上线 HTTPS 时的小跟进)。
 
 **按访问方式的推荐**:`localhost` → 无需任何加密;内网 IP 自用 → Tailscale(或纯本地、
