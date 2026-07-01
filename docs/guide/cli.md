@@ -28,7 +28,7 @@ markon [FILE] [OPTIONS]
 | `--print-collapsed-content` | 打印时包含折叠章节的内容（默认隐藏折叠内容） | false |
 | `--salt <STRING>` | 自定义 workspace ID salt | — |
 
-工作区功能（搜索、已读追踪、编辑、Live、AI 对话、共享便条）统一在浏览器工作区设置页中控制；CLI 只继承全局默认值来初始化新工作区。
+工作区功能（搜索、已读追踪、编辑、Live、AI 对话、共享批注）统一在浏览器工作区设置页中控制；CLI 只继承全局默认值来初始化新工作区。
 
 ## 工作区管理
 
@@ -67,7 +67,7 @@ markon set abc12345 chat off # 通过 ID，关闭「AI 对话」
 ```
 
 - 第一个参数是 `ls` 输出里的**序号或 ID**。
-- feature 名可选：`search`（搜索）/ `viewed`（已读追踪）/ `edit`（编辑）/ `live`（Live）/ `chat`（AI 对话）/ `shared`（共享便条）。
+- feature 名可选：`search`（搜索）/ `viewed`（已读追踪）/ `edit`（编辑）/ `live`（Live）/ `chat`（AI 对话）/ `shared`（共享批注）。
 - 最后一个参数是 `on` 或 `off`。
 
 > 管理与结构性操作（改功能开关 / 别名、增删工作区、git 提交等）只在本机可用；远程访客只有该工作区功能开关允许的协作能力。详见[访问权限](/features/access)。
@@ -129,7 +129,7 @@ markon --host 0.0.0.0 --entry http://192.168.1.100:6419
 
 - `--host 0.0.0.0` — 绑定所有网络接口，局域网可访问
 - `--entry` — 指定外部访问地址前缀，终端将打印完整的工作区二维码
-- 在浏览器工作区设置页启用 **共享便条** / **已读追踪** 等功能
+- 在浏览器工作区设置页启用 **共享批注** / **已读追踪** 等功能
 
 ![CLI 启动后显示访问链接和 QR 码，移动端扫码即可打开](/screenshots/cli-qr.png)
 
@@ -173,7 +173,7 @@ markon --host 192.168.1.5    # 绑定到指定 IP
 
 ## 数据存储位置
 
-工作区启用 **共享便条** 或 **AI 对话** 后，SQLite 数据库默认存储在：
+工作区启用 **共享批注** 或 **AI 对话** 后，SQLite 数据库默认存储在：
 
 - **Linux/macOS**：`~/.markon/annotation.sqlite`
 - **Windows**：`%USERPROFILE%\.markon\annotation.sqlite`

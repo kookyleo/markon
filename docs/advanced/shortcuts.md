@@ -19,7 +19,7 @@
 | 快捷键 | 功能 |
 |--------|------|
 | <kbd>j</kbd> / <kbd>k</kbd> | 下/上一个标题 |
-| <kbd>Ctrl</kbd>/<kbd>Cmd</kbd> + <kbd>j</kbd> / <kbd>k</kbd> | 下/上一个标注 |
+| <kbd>Ctrl</kbd>/<kbd>Cmd</kbd> + <kbd>j</kbd> / <kbd>k</kbd> | 下/上一个批注 |
 | <kbd>Space</kbd> | 向下平滑滚动 1/3 页（<kbd>Esc</kbd> 停止） |
 
 ## 章节控制

@@ -45,7 +45,7 @@ export const zh = {
         {
           text: '进阶用法',
           items: [
-            { text: '共享标注', link: '/advanced/shared-annotations' },
+            { text: '共享批注', link: '/advanced/shared-annotations' },
             { text: '反向代理', link: '/advanced/reverse-proxy' },
             { text: '自定义样式', link: '/advanced/custom-styles' },
             { text: '键盘快捷键', link: '/advanced/shortcuts' },

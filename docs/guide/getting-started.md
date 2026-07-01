@@ -102,6 +102,6 @@ markon --host 0.0.0.0 --entry https://example.com/
 
 ## 下一步
 
-- 了解 [核心功能](/features/search) — 全文搜索、已读追踪、快捷编辑、标注与高亮、章节打印、[实时协作 Live](/features/live)、[与文档对话](/features/chat)
-- 配置 [共享标注](/advanced/shared-annotations) 实现多端同步
+- 了解 [核心功能](/features/search) — 全文搜索、已读追踪、快捷编辑、批注与高亮、章节打印、[实时协作 Live](/features/live)、[与文档对话](/features/chat)
+- 配置 [共享批注](/advanced/shared-annotations) 实现多端同步
 - 查看 [键盘快捷键](/advanced/shortcuts) 提升效率

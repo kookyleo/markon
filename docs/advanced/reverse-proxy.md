@@ -4,7 +4,7 @@
 
 ## 访问控制
 
-Markon 没有按账号的角色体系，权限只按**访问来源**分：本机（loopback）等同管理员、拥有全部能力；远程访客是协作者，能力由工作区功能开关决定。远程访问还可以叠加一道[协作者访问码门禁](/features/access)（支持全局口令与按工作区独立口令）。开启后，**远程访客**要在浏览器门禁页输入正确口令才能进入（本机始终免码）；未配置口令时，凡是能访问到该地址的远程访客，均可读取工作区的全部内容，并在启用「共享便条」或「编辑」等功能后具有相应写入能力。
+Markon 没有按账号的角色体系，权限只按**访问来源**分：本机（loopback）等同管理员、拥有全部能力；远程访客是协作者，能力由工作区功能开关决定。远程访问还可以叠加一道[协作者访问码门禁](/features/access)（支持全局口令与按工作区独立口令）。开启后，**远程访客**要在浏览器门禁页输入正确口令才能进入（本机始终免码）；未配置口令时，凡是能访问到该地址的远程访客，均可读取工作区的全部内容，并在启用「共享批注」或「编辑」等功能后具有相应写入能力。
 
 不过协作者访问码属于**应用层**控制，并不等同于网关层认证。真正对外暴露时，仍应配好 TLS 与反向代理。
 
@@ -46,7 +46,7 @@ markon --host 127.0.0.1 -p 6419 \
 - `--host 127.0.0.1` — 仅本地访问，安全
 - `-b https://docs.example.com` — 启动后浏览器打开公网 URL（不传 BASE 则只开本地地址）
 - `--qr https://docs.example.com`（`--entry` 别名）— 终端二维码与日志中的「accessible at」用公网 URL；不设这条会回落到内网 IP
-- 搜索、共享便条等工作区功能在浏览器工作区设置页启用
+- 搜索、共享批注等工作区功能在浏览器工作区设置页启用
 
 ## Nginx
 
@@ -62,7 +62,7 @@ server {
     proxy_pass http://127.0.0.1:6419;
     proxy_http_version 1.1;
 
-    # WebSocket 支持（共享标注需要）
+    # WebSocket 支持（共享批注需要）
     proxy_set_header Upgrade $http_upgrade;
     proxy_set_header Connection "upgrade";
 
@@ -96,7 +96,7 @@ VirtualHost 配置：
   SSLCertificateFile    /path/to/fullchain.pem
   SSLCertificateKeyFile /path/to/privkey.pem
 
-  # WebSocket (共享标注)
+  # WebSocket (共享批注)
   RewriteEngine on
   RewriteCond %{HTTP:Upgrade} websocket [NC]
   RewriteCond %{HTTP:Connection} upgrade [NC]

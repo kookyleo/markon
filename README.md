@@ -222,7 +222,7 @@ markon --qr -b README.md
 **Annotations**:
 - Select text → Choose highlight/strikethrough/note from toolbar
 - Local mode: Stored in browser LocalStorage
-- Shared mode: enable **Shared notes** from workspace settings for SQLite + WebSocket sync
+- Shared mode: enable **Shared annotations** from workspace settings for SQLite + WebSocket sync
 - Custom DB path: set `MARKON_SQLITE_PATH=/path/to/db` before starting Markon
 
 **Section Viewed**:
@@ -230,7 +230,7 @@ markon --qr -b README.md
 - Click "(click to expand)" → Temporarily view collapsed section
 - Uncheck box → Section expands permanently
 - Batch toolbar (after H1): "All Viewed" / "Unviewed" buttons
-- Storage: LocalStorage (default) or SQLite when **Shared notes** is enabled
+- Storage: LocalStorage (default) or SQLite when **Shared annotations** is enabled
 
 **Full-Text Search**:
 - Press `/` to open search modal
@@ -303,7 +303,7 @@ mkdir static         # URL: /static/* (not /_/*)
 
 ### Shared Annotation Mode
 
-When **Shared notes** is enabled:
+When **Shared annotations** is enabled:
 
 **Database location**:
 - Linux/macOS: `~/.markon/annotation.sqlite`
@@ -317,7 +317,7 @@ When **Shared notes** is enabled:
 
 **Multi-device usage**:
 1. Start on the server: `markon --host 0.0.0.0 README.md`
-2. Enable **Shared notes** from the browser workspace settings
+2. Enable **Shared annotations** from the browser workspace settings
 3. Open on any device: `http://server-ip:6419`
 4. All annotations sync across devices in real time
 
@@ -456,7 +456,7 @@ Then open `http://{IP}:6419` from any device. Use `--entry` to generate a QR cod
 
 **Local mode** (default): browser LocalStorage (per-browser)
 
-**Shared mode**: SQLite database when **Shared notes** is enabled for the workspace
+**Shared mode**: SQLite database when **Shared annotations** is enabled for the workspace
 - Linux/macOS: `~/.markon/annotation.sqlite`
 - Windows: `%USERPROFILE%\.markon\annotation.sqlite`
 - Custom: set `MARKON_SQLITE_PATH=/path/to/db` before starting Markon

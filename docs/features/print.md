@@ -40,7 +40,7 @@
 - ✅ 代码块语法高亮
 - ✅ 图表 SVG（Mermaid、PlantUML、D2、DOT/Graphviz、Vega-Lite/Vega/chart、ECharts、Chart.js/chart.js）
 - ✅ 表格、列表、引用块
-- ✅ 标注（高亮色、删除线、便条）
+- ✅ 批注（高亮色、删除线、便条）
 
 自动隐藏：
 
