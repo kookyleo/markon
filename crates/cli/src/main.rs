@@ -85,7 +85,7 @@ struct Cli {
     #[arg(long)]
     salt: Option<String>,
 
-    /// Set or clear the workspace initiator access code. Empty string clears.
+    /// Set or clear the workspace admin access code. Empty string clears.
     #[arg(long, value_name = "CODE")]
     access_code: Option<String>,
 
@@ -115,6 +115,15 @@ enum Commands {
     Detach {
         /// Workspace ID or index (from 'markon ls').
         target: String,
+    },
+    /// Toggle a workspace feature on/off, e.g. `markon set 3 edit on`.
+    Set {
+        /// Workspace ID or index (from 'markon ls').
+        target: String,
+        /// Feature: search | viewed | edit | live | chat | shared
+        feature: String,
+        /// on | off
+        value: String,
     },
     /// Shutdown the background Markon server.
     Shutdown,
@@ -325,7 +334,7 @@ fn effective_access_hash(local_hash: &str, global_hash: &str) -> String {
 }
 
 fn access_code_conflict_error() -> Box<dyn std::error::Error> {
-    "initiator and collaborator access codes must be different".into()
+    "admin and collaborator access codes must be different".into()
 }
 
 fn code_matches_hash(salt: &str, code: &str, hash: &str) -> bool {
@@ -730,6 +739,61 @@ async fn detach_workspace(
     Ok(())
 }
 
+/// Toggle one feature flag on a workspace, resolved by ID or `markon ls` index.
+/// Fetches the current flags, flips the requested one, and PUTs the full set
+/// back (the mgmt endpoint replaces flags wholesale).
+async fn set_workspace_feature(
+    port: u16,
+    token: &str,
+    target: &str,
+    feature: &str,
+    value: &str,
+) -> Result<(), Box<dyn std::error::Error>> {
+    let on = match value.to_ascii_lowercase().as_str() {
+        "on" | "true" | "1" | "yes" | "enable" | "enabled" => true,
+        "off" | "false" | "0" | "no" | "disable" | "disabled" => false,
+        other => return Err(format!("Invalid value '{other}' — use on or off").into()),
+    };
+    let client = reqwest::Client::new();
+    let workspaces = fetch_workspaces(&client, port, token).await?;
+    let entry = if let Ok(idx) = target.parse::<usize>() {
+        if idx == 0 || idx > workspaces.len() {
+            return Err(format!("Index {idx} out of range (1-{})", workspaces.len()).into());
+        }
+        &workspaces[idx - 1]
+    } else {
+        workspaces
+            .iter()
+            .find(|w| w.id == target)
+            .ok_or_else(|| format!("No workspace with id '{target}'"))?
+    };
+    let id = entry.id.clone();
+    let mut flags = entry.flags;
+    match feature.to_ascii_lowercase().as_str() {
+        "search" => flags.enable_search = on,
+        "viewed" => flags.enable_viewed = on,
+        "edit" => flags.enable_edit = on,
+        "live" => flags.enable_live = on,
+        "chat" => flags.enable_chat = on,
+        "shared" | "annotation" | "notes" => flags.shared_annotation = on,
+        other => {
+            return Err(format!(
+                "Unknown feature '{other}' — use search, viewed, edit, live, chat, or shared"
+            )
+            .into())
+        }
+    }
+    client
+        .put(format!("http://127.0.0.1:{port}/api/workspace/{id}"))
+        .header("X-Markon-Token", token)
+        .json(&flags)
+        .send()
+        .await?
+        .error_for_status()?;
+    println!("{id}: {feature} = {}", if on { "on" } else { "off" });
+    Ok(())
+}
+
 async fn shutdown_server(port: u16, token: &str) -> Result<(), Box<dyn std::error::Error>> {
     let client = reqwest::Client::new();
     client
@@ -885,6 +949,11 @@ async fn main() {
                 .await
             }
             Commands::Detach { target } => detach_workspace(port, &token, &target).await,
+            Commands::Set {
+                target,
+                feature,
+                value,
+            } => set_workspace_feature(port, &token, &target, &feature, &value).await,
             Commands::Shutdown => shutdown_server(port, &token).await,
             Commands::Bug { .. } | Commands::Idea { .. } | Commands::Ask { .. } => {
                 unreachable!("handled above")
@@ -940,6 +1009,7 @@ async fn main() {
         initial_path: initial_path.clone(),
         access_code_hash: String::new(),
         collaborator_access_code_hash: String::new(),
+        alias: saved_workspace.map(|w| w.alias.clone()).unwrap_or_default(),
     };
     let effective_salt = cli.salt.clone().unwrap_or_else(|| {
         if settings.salt.is_empty() {
@@ -1114,6 +1184,7 @@ async fn main() {
                 } else {
                     w.collaborator_access_code_hash.clone()
                 },
+                alias: w.alias.clone(),
             }
         })
         .collect();
