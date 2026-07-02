@@ -711,7 +711,19 @@ document.addEventListener('keydown', (event) => {
         });
     });
 
-    refresh();
+    // Defer the first measure/clamp until layout is settled — running during
+    // script parse reads a not-yet-final `clientWidth` and would wrongly clamp
+    // the columns to a tiny width. Apply the stored/default vars immediately so
+    // there's no flash, then re-measure once the page has laid out.
+    applyVars();
+    positionHandles();
+    const initialRefresh = (): void => refresh();
+    if (document.readyState === 'loading') {
+        window.addEventListener('DOMContentLoaded', () => requestAnimationFrame(initialRefresh), { once: true });
+    } else {
+        requestAnimationFrame(initialRefresh);
+    }
+    window.addEventListener('load', initialRefresh, { once: true });
     window.addEventListener('resize', refresh);
 })();
 
