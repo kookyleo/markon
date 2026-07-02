@@ -5,9 +5,6 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>{{ title }}</title>
-    <link id="markon-github-markdown-light" rel="stylesheet" href="/_/css/github-markdown-light.css" media="not all">
-    <link id="markon-github-markdown-dark" rel="stylesheet" href="/_/css/github-markdown-dark.css" media="not all">
-    <script>window.MarkonTheme && window.MarkonTheme.applyStylesheetMedia();</script>
     <link rel="stylesheet" href="/_/css/tokens.css">
     <style>
         body {
@@ -28,60 +25,234 @@
         .refs-page {
             max-width: 980px;
             margin: 0 auto;
-            padding: 34px 24px 56px;
+            padding: 32px 20px 48px;
         }
         .refs-nav {
             display: flex;
-            gap: 12px;
-            margin-bottom: 22px;
+            gap: 8px;
+            align-items: center;
+            margin-bottom: 18px;
             color: var(--markon-fg-muted);
             font-size: 13px;
         }
+        .refs-nav span {
+            color: var(--markon-fg-muted);
+        }
+        .refs-head {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            flex-wrap: wrap;
+            margin-bottom: 20px;
+        }
         .refs-title {
-            margin: 0 0 16px;
-            padding-bottom: 14px;
-            border-bottom: 1px solid var(--markon-border-default);
-            font-size: 24px;
+            margin: 0;
+            font-size: 20px;
+            font-weight: 600;
             line-height: 1.25;
         }
-        .refs-list {
-            display: flex;
-            flex-direction: column;
-            margin: 0;
-            padding: 0;
-            list-style: none;
+
+        /* --- Search (branches, client-side filter) --- */
+        .refs-search {
+            flex: 1 1 260px;
+            min-width: 200px;
+            max-width: 340px;
+            margin-left: auto;
         }
-        .refs-item {
+        .refs-search input {
+            width: 100%;
+            box-sizing: border-box;
+            min-height: 32px;
+            padding: 5px 12px;
+            border: 1px solid var(--markon-border-default);
+            border-radius: var(--markon-radius-sm);
+            background: var(--markon-bg-default);
+            color: var(--markon-fg-default);
+            font: inherit;
+        }
+        .refs-search input::placeholder {
+            color: var(--markon-fg-muted);
+        }
+        .refs-search input:focus {
+            outline: none;
+            border-color: var(--markon-accent);
+            box-shadow: 0 0 0 1px var(--markon-accent);
+        }
+
+        /* --- Box: 1px border + rounded, header row on muted, hairline rows --- */
+        .refs-box {
+            border: 1px solid var(--markon-border-default);
+            border-radius: var(--markon-radius-sm);
+            background: var(--markon-bg-default);
+            overflow: hidden;
+        }
+        .refs-box + .refs-box {
+            margin-top: 20px;
+        }
+        .refs-box-head {
+            padding: 10px 16px;
+            border-bottom: 1px solid var(--markon-border-default);
+            background: var(--markon-bg-muted);
+            color: var(--markon-fg-muted);
+            font-size: 12px;
+            font-weight: 600;
+        }
+        .refs-cols {
             display: grid;
             grid-template-columns: minmax(0, 1fr) max-content;
             align-items: center;
-            gap: 14px;
-            padding: 12px 0;
-            border-bottom: 1px solid var(--markon-border-default);
+            gap: 16px;
         }
-        .refs-name {
+        .refs-row {
+            padding: 12px 16px;
+        }
+        .refs-row + .refs-row {
+            border-top: 1px solid var(--markon-border-default);
+        }
+        .refs-row:hover {
+            background: var(--markon-bg-muted);
+        }
+
+        /* --- Branch cell: pill + copy + relative time --- */
+        .refs-branch-main {
+            display: flex;
+            align-items: center;
+            gap: 8px;
             min-width: 0;
+        }
+        .refs-pill {
+            max-width: 100%;
             overflow: hidden;
             text-overflow: ellipsis;
             white-space: nowrap;
-            color: var(--markon-fg-default);
-            font-weight: 650;
+            padding: 2px 8px;
+            border-radius: var(--markon-radius-sm);
+            background: color-mix(in srgb, var(--markon-accent) 12%, transparent);
+            color: var(--markon-accent);
+            font-family: var(--markon-mono-font, ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, monospace);
+            font-size: 12px;
+            font-weight: 500;
         }
-        .refs-meta {
+        .refs-copy {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            width: 28px;
+            height: 28px;
+            flex: 0 0 auto;
+            padding: 0;
+            border: 0;
+            border-radius: var(--markon-radius-sm);
+            background: transparent;
+            color: var(--markon-fg-muted);
+            cursor: pointer;
+        }
+        .refs-copy:hover {
+            background: var(--markon-bg-muted);
+            color: var(--markon-accent);
+        }
+        .refs-copy.is-copied {
+            color: var(--markon-success-emphasis);
+        }
+        .refs-icon {
+            width: 16px;
+            height: 16px;
+            flex: 0 0 auto;
+            fill: currentColor;
+        }
+        .refs-updated {
+            margin-top: 4px;
+            color: var(--markon-fg-muted);
+            font-size: 12px;
+        }
+        .refs-side {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            flex: 0 0 auto;
             color: var(--markon-fg-muted);
             font-size: 12px;
             white-space: nowrap;
         }
-        .refs-current {
-            color: var(--markon-success);
-            font-weight: 650;
+        .refs-badge {
+            padding: 1px 8px;
+            border: 1px solid var(--markon-border-default);
+            border-radius: 999px;
+            color: var(--markon-fg-muted);
+            font-size: 12px;
+            font-weight: 500;
         }
-        .refs-empty {
-            padding: 20px 0;
+        .refs-aheadbehind {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            color: var(--markon-fg-muted);
+            font-variant-numeric: tabular-nums;
+        }
+        .refs-aheadbehind .sep {
+            width: 1px;
+            height: 12px;
+            background: var(--markon-border-default);
+        }
+        .refs-num {
+            display: inline-flex;
+            align-items: center;
+            gap: 2px;
+        }
+
+        /* --- Tag rows --- */
+        .refs-tag-main {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            min-width: 0;
+        }
+        .refs-tag-icon {
             color: var(--markon-fg-muted);
         }
-        .workspace-mono {
-            font-family: 'SF Mono', Monaco, 'Cascadia Code', 'Roboto Mono', Consolas, monospace;
+        .refs-tag-name {
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+            font-weight: 600;
+        }
+        .refs-mono {
+            font-family: var(--markon-mono-font, ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, monospace);
+            font-size: 12px;
+            color: var(--markon-fg-muted);
+        }
+
+        /* --- Empty state (GitHub-style centered) --- */
+        .refs-empty {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 12px;
+            padding: 56px 24px;
+            border: 1px solid var(--markon-border-default);
+            border-radius: var(--markon-radius-sm);
+            background: var(--markon-bg-default);
+            text-align: center;
+        }
+        .refs-empty-icon {
+            width: 40px;
+            height: 40px;
+            fill: var(--markon-fg-muted);
+            opacity: 0.7;
+        }
+        .refs-empty-title {
+            font-size: 16px;
+            font-weight: 600;
+        }
+
+        @media (max-width: 640px) {
+            .refs-cols {
+                grid-template-columns: minmax(0, 1fr);
+                gap: 8px;
+            }
+            .refs-search {
+                margin-left: 0;
+            }
         }
     </style>
     {% if styles_css %}<style>{{ styles_css | safe }}</style>{% endif %}
@@ -90,36 +261,118 @@
 <body>
     <main class="refs-page">
         <nav class="refs-nav">
-            <a href="{{ files_url }}" data-i18n="web.ws.files">Files</a>
+            <a href="{{ files_url }}" data-i18n="web.ws.heading">Workspace</a>
             <span aria-hidden="true">/</span>
             <a href="{{ history_url }}" data-i18n="web.ws.git.history">Git history</a>
         </nav>
-        <h1 class="refs-title" data-i18n="{{ page_title_key }}">{{ page_title }}</h1>
-        {% if has_items %}
-        <ul class="refs-list">
-            {% if mode == "branches" %}
-            {% for branch in branches %}
-            <li class="refs-item">
-                <div class="refs-name">{{ branch.name }}</div>
-                <div class="refs-meta">
-                    {% if branch.current %}<span class="refs-current" data-i18n="web.ws.git.current_branch">Current branch</span>{% endif %}
-                </div>
-            </li>
-            {% endfor %}
-            {% else %}
-            {% for tag in tags %}
-            <li class="refs-item">
-                <div class="refs-name">{{ tag.name }}</div>
-                <div class="refs-meta">
-                    <span class="workspace-mono">{{ tag.short_hash }}</span>
-                    {% if tag.relative_time %}<span aria-hidden="true"> · </span><span>{{ tag.relative_time }}</span>{% endif %}
-                </div>
-            </li>
-            {% endfor %}
+
+        {% if mode == "branches" %}
+        <div class="refs-head">
+            <h1 class="refs-title" data-i18n="{{ page_title_key }}">{{ page_title }}</h1>
+            {% if has_items %}
+            <div class="refs-search">
+                <input type="search" id="refs-branch-search" autocomplete="off"
+                    placeholder="Search branches…" data-i18n-placeholder="web.ws.git.search_branches"
+                    aria-label="Search branches" data-i18n-aria="web.ws.git.search_branches">
+            </div>
             {% endif %}
-        </ul>
+        </div>
+
+        {% if has_items %}
+        {% if default_branch %}
+        <div class="refs-box" data-branch-group>
+            <div class="refs-box-head refs-cols">
+                <span data-i18n="web.ws.git.default">Default</span>
+                <span data-i18n="web.ws.git.updated">Updated</span>
+            </div>
+            <div class="refs-row refs-cols" data-branch-row data-branch-name="{{ default_branch.name }}">
+                <div>
+                    <div class="refs-branch-main">
+                        <span class="refs-pill">{{ default_branch.name }}</span>
+                        <button class="refs-copy" type="button" data-copy="{{ default_branch.name }}"
+                            data-i18n-title="web.ws.git.copy_branch" data-i18n-aria="web.ws.git.copy_branch">
+                            <svg class="refs-icon" viewBox="0 0 16 16" aria-hidden="true"><path d="M0 6.75C0 5.784.784 5 1.75 5h1.5a.75.75 0 0 1 0 1.5h-1.5a.25.25 0 0 0-.25.25v7.5c0 .138.112.25.25.25h7.5a.25.25 0 0 0 .25-.25v-1.5a.75.75 0 0 1 1.5 0v1.5A1.75 1.75 0 0 1 9.25 16h-7.5A1.75 1.75 0 0 1 0 14.25Z"></path><path d="M5 1.75C5 .784 5.784 0 6.75 0h7.5C15.216 0 16 .784 16 1.75v7.5A1.75 1.75 0 0 1 14.25 11h-7.5A1.75 1.75 0 0 1 5 9.25Zm1.75-.25a.25.25 0 0 0-.25.25v7.5c0 .138.112.25.25.25h7.5a.25.25 0 0 0 .25-.25v-7.5a.25.25 0 0 0-.25-.25Z"></path></svg>
+                        </button>
+                    </div>
+                    {% if default_branch.updated %}<div class="refs-updated">{{ default_branch.updated }}</div>{% endif %}
+                </div>
+                <div class="refs-side">
+                    <span class="refs-badge" data-i18n="web.ws.git.default">Default</span>
+                </div>
+            </div>
+        </div>
+        {% endif %}
+
+        {% if other_branches %}
+        <div class="refs-box" data-branch-group>
+            <div class="refs-box-head refs-cols">
+                <span data-i18n="web.ws.git.branches">Branches</span>
+                <span class="refs-aheadbehind">
+                    <span data-i18n="web.ws.git.behind">Behind</span>
+                    <span class="sep" aria-hidden="true"></span>
+                    <span data-i18n="web.ws.git.ahead">Ahead</span>
+                </span>
+            </div>
+            {% for branch in other_branches %}
+            <div class="refs-row refs-cols" data-branch-row data-branch-name="{{ branch.name }}">
+                <div>
+                    <div class="refs-branch-main">
+                        <span class="refs-pill">{{ branch.name }}</span>
+                        <button class="refs-copy" type="button" data-copy="{{ branch.name }}"
+                            data-i18n-title="web.ws.git.copy_branch" data-i18n-aria="web.ws.git.copy_branch">
+                            <svg class="refs-icon" viewBox="0 0 16 16" aria-hidden="true"><path d="M0 6.75C0 5.784.784 5 1.75 5h1.5a.75.75 0 0 1 0 1.5h-1.5a.25.25 0 0 0-.25.25v7.5c0 .138.112.25.25.25h7.5a.25.25 0 0 0 .25-.25v-1.5a.75.75 0 0 1 1.5 0v1.5A1.75 1.75 0 0 1 9.25 16h-7.5A1.75 1.75 0 0 1 0 14.25Z"></path><path d="M5 1.75C5 .784 5.784 0 6.75 0h7.5C15.216 0 16 .784 16 1.75v7.5A1.75 1.75 0 0 1 14.25 11h-7.5A1.75 1.75 0 0 1 5 9.25Zm1.75-.25a.25.25 0 0 0-.25.25v7.5c0 .138.112.25.25.25h7.5a.25.25 0 0 0 .25-.25v-7.5a.25.25 0 0 0-.25-.25Z"></path></svg>
+                        </button>
+                    </div>
+                    {% if branch.updated %}<div class="refs-updated">{{ branch.updated }}</div>{% endif %}
+                </div>
+                <div class="refs-side">
+                    {% if branch.has_counts %}
+                    <span class="refs-aheadbehind">
+                        <span class="refs-num">{{ branch.behind }}</span>
+                        <span class="sep" aria-hidden="true"></span>
+                        <span class="refs-num">{{ branch.ahead }}</span>
+                    </span>
+                    {% else %}
+                    <span aria-hidden="true">—</span>
+                    {% endif %}
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+        {% endif %}
         {% else %}
-        <div class="refs-empty" data-i18n="{{ empty_key }}"></div>
+        <div class="refs-empty">
+            <svg class="refs-empty-icon" viewBox="0 0 16 16" aria-hidden="true"><path d="M9.5 3.25a2.25 2.25 0 1 1 3 2.122V6A2.5 2.5 0 0 1 10 8.5H6a1 1 0 0 0-1 1v1.128a2.251 2.251 0 1 1-1.5 0V5.372a2.25 2.25 0 1 1 1.5 0v1.836A2.493 2.493 0 0 1 6 7h4a1 1 0 0 0 1-1v-.628A2.25 2.25 0 0 1 9.5 3.25Zm-6 0a.75.75 0 1 0 1.5 0 .75.75 0 0 0-1.5 0Zm8.25-.75a.75.75 0 1 0 0 1.5.75.75 0 0 0 0-1.5ZM4.25 12a.75.75 0 1 0 0 1.5.75.75 0 0 0 0-1.5Z"></path></svg>
+            <div class="refs-empty-title" data-i18n="{{ empty_key }}">No branches found.</div>
+        </div>
+        {% endif %}
+
+        {% else %}
+        <div class="refs-head">
+            <h1 class="refs-title" data-i18n="{{ page_title_key }}">{{ page_title }}</h1>
+        </div>
+
+        {% if has_items %}
+        <div class="refs-box">
+            {% for tag in tags %}
+            <div class="refs-row refs-cols">
+                <div class="refs-tag-main">
+                    <svg class="refs-icon refs-tag-icon" viewBox="0 0 16 16" aria-hidden="true"><path d="M1 7.775V2.75C1 1.784 1.784 1 2.75 1h5.025c.464 0 .91.184 1.238.513l6.25 6.25a1.75 1.75 0 0 1 0 2.474l-5.026 5.026a1.75 1.75 0 0 1-2.474 0l-6.25-6.25A1.752 1.752 0 0 1 1 7.775Zm1.5 0c0 .066.026.13.073.177l6.25 6.25a.25.25 0 0 0 .354 0l5.025-5.025a.25.25 0 0 0 0-.354l-6.25-6.25a.25.25 0 0 0-.177-.073H2.75a.25.25 0 0 0-.25.25ZM6 5a1 1 0 1 1 0 2 1 1 0 0 1 0-2Z"></path></svg>
+                    <span class="refs-tag-name">{{ tag.name }}</span>
+                </div>
+                <div class="refs-side">
+                    <span class="refs-mono">{{ tag.short_hash }}</span>
+                    {% if tag.relative_time %}<span aria-hidden="true">·</span><span>{{ tag.relative_time }}</span>{% endif %}
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+        {% else %}
+        <div class="refs-empty">
+            <svg class="refs-empty-icon" viewBox="0 0 16 16" aria-hidden="true"><path d="M1 7.775V2.75C1 1.784 1.784 1 2.75 1h5.025c.464 0 .91.184 1.238.513l6.25 6.25a1.75 1.75 0 0 1 0 2.474l-5.026 5.026a1.75 1.75 0 0 1-2.474 0l-6.25-6.25A1.752 1.752 0 0 1 1 7.775Zm1.5 0c0 .066.026.13.073.177l6.25 6.25a.25.25 0 0 0 .354 0l5.025-5.025a.25.25 0 0 0 0-.354l-6.25-6.25a.25.25 0 0 0-.177-.073H2.75a.25.25 0 0 0-.25.25ZM6 5a1 1 0 1 1 0 2 1 1 0 0 1 0-2Z"></path></svg>
+            <div class="refs-empty-title" data-i18n="{{ empty_key }}">No tags yet</div>
+        </div>
+        {% endif %}
         {% endif %}
     </main>
     <script src="/_/js/git-refs.js"></script>

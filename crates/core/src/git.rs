@@ -309,6 +309,113 @@ pub fn branch_count(root: &Path) -> Result<usize> {
     Ok(branches(root)?.len())
 }
 
+/// Read-only, GitHub-style per-branch detail: the branch name, whether it is
+/// checked out / the repo default, its relative last-commit time, and how far it
+/// sits ahead/behind the default branch. `ahead`/`behind` are `None` for the
+/// default branch itself and whenever the comparison can't be computed.
+#[derive(Debug, Clone, Serialize)]
+pub struct GitBranchDetail {
+    pub name: String,
+    pub current: bool,
+    pub is_default: bool,
+    pub updated: String,
+    pub ahead: Option<usize>,
+    pub behind: Option<usize>,
+}
+
+/// Best-effort default branch name. Prefers the remote HEAD symref
+/// (`origin/HEAD -> origin/main`, stripped to `main`); falling back to a local
+/// `main`, then `master`, then the currently checked-out branch. Returns `None`
+/// only when the repository has no branches at all.
+fn default_branch(root: &Path) -> Option<String> {
+    if let Some(head) = git_stdout(root, &["symbolic-ref", "--short", "refs/remotes/origin/HEAD"])
+        .filter(|s| !s.is_empty())
+    {
+        let name = head.strip_prefix("origin/").unwrap_or(&head).trim();
+        if !name.is_empty() {
+            return Some(name.to_string());
+        }
+    }
+    let known = branches(root).unwrap_or_default();
+    if known.iter().any(|b| b.name == "main") {
+        return Some("main".to_string());
+    }
+    if known.iter().any(|b| b.name == "master") {
+        return Some("master".to_string());
+    }
+    known
+        .iter()
+        .find(|b| b.current)
+        .or_else(|| known.first())
+        .map(|b| b.name.clone())
+}
+
+/// `git rev-list --left-right --count <base>...<head>` → `(behind, ahead)`.
+///
+/// The left count is commits reachable from `base` but not `head` (how far the
+/// branch is *behind* the default); the right count is the reverse (*ahead*).
+/// Returns `None` when the range can't be resolved. The range is a single argv
+/// element (never a shell string), and branch names come straight from git's own
+/// ref list, so no caller input reaches the command line.
+fn rev_list_ahead_behind(root: &Path, base: &str, head: &str) -> Option<(usize, usize)> {
+    let range = format!("{base}...{head}");
+    let output = run_git(root, &["rev-list", "--left-right", "--count", &range]).ok()?;
+    if !output.status.success() {
+        return None;
+    }
+    let text = String::from_utf8_lossy(&output.stdout);
+    let mut parts = text.split_whitespace();
+    let behind = parts.next()?.parse().ok()?;
+    let ahead = parts.next()?.parse().ok()?;
+    Some((behind, ahead))
+}
+
+/// Read-only branch listing enriched for the GitHub-style branches page: default
+/// flag, relative last-commit time, and ahead/behind vs. the default branch.
+/// `branches()` keeps its lean shape for callers that only need names/counts.
+pub fn branches_detailed(root: &Path) -> Result<Vec<GitBranchDetail>> {
+    ensure_repo(root)?;
+    // ref-filter emits `%x1f` literally (see the note in `branches`); the field
+    // separator is the real U+001F byte embedded in the format string.
+    let output = run_git(
+        root,
+        &["branch", "--format=%(HEAD)\u{1f}%(refname:short)\u{1f}%(committerdate:relative)"],
+    )?;
+    if !output.status.success() {
+        return Err(GitError::Command(command_error(&output)));
+    }
+    let default = default_branch(root);
+    let mut result = Vec::new();
+    for line in String::from_utf8_lossy(&output.stdout).lines() {
+        let mut parts = line.split('\x1f');
+        let head = parts.next().unwrap_or_default();
+        let name = parts.next().unwrap_or_default().trim();
+        if name.is_empty() {
+            continue;
+        }
+        let updated = parts.next().unwrap_or_default().trim().to_string();
+        let is_default = default.as_deref() == Some(name);
+        let (mut behind, mut ahead) = (None, None);
+        if !is_default {
+            if let Some(default_name) = default.as_deref() {
+                if let Some((b, a)) = rev_list_ahead_behind(root, default_name, name) {
+                    behind = Some(b);
+                    ahead = Some(a);
+                }
+            }
+        }
+        result.push(GitBranchDetail {
+            name: name.to_string(),
+            current: head.trim() == "*",
+            is_default,
+            updated,
+            ahead,
+            behind,
+        });
+    }
+    Ok(result)
+}
+
 pub fn tags(root: &Path, limit: usize) -> Result<Vec<GitTag>> {
     ensure_repo(root)?;
     let count = format!("--count={}", limit.clamp(1, 200));

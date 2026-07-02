@@ -2054,7 +2054,7 @@ async fn handle_git_branches(
     let Some(ws) = state.workspace_registry.get(&workspace_id) else {
         return StatusCode::NOT_FOUND.into_response();
     };
-    match git::branches(&ws.root) {
+    match git::branches_detailed(&ws.root) {
         Ok(branches) => render_git_branches_page(&state, &workspace_id, &branches),
         Err(git::GitError::NotRepository) => {
             (StatusCode::CONFLICT, "Workspace is not a git repository").into_response()
@@ -4420,7 +4420,7 @@ fn render_git_history_page(
 fn render_git_branches_page(
     state: &AppState,
     workspace_id: &str,
-    branches: &[git::GitBranch],
+    branches: &[git::GitBranchDetail],
 ) -> Response {
     let mut context = base_context(state);
     context.insert("title", "markon git branches");
@@ -4431,8 +4431,46 @@ fn render_git_branches_page(
     context.insert("page_title_key", "web.ws.git.branches");
     context.insert("empty_key", "web.ws.git.no_branches");
     context.insert("mode", "branches");
-    context.insert("branches", branches);
-    context.insert("tags", &Vec::<git::GitTag>::new());
+
+    // Row shape the template renders directly: `has_counts` flags whether the
+    // ahead/behind comparison resolved (so `Some(0)` still shows `0｜0` while an
+    // unresolved `None` shows a placeholder), and the counts are flattened to
+    // plain numbers to avoid null/`Option` ambiguity in the template.
+    #[derive(Serialize)]
+    struct BranchRow {
+        name: String,
+        updated: String,
+        is_default: bool,
+        has_counts: bool,
+        behind: usize,
+        ahead: usize,
+    }
+    let to_row = |b: &git::GitBranchDetail| BranchRow {
+        name: b.name.clone(),
+        updated: b.updated.clone(),
+        is_default: b.is_default,
+        has_counts: b.behind.is_some() && b.ahead.is_some(),
+        behind: b.behind.unwrap_or(0),
+        ahead: b.ahead.unwrap_or(0),
+    };
+
+    // Group GitHub-style: the default branch on its own, the rest name-sorted.
+    let default_branch = branches.iter().find(|b| b.is_default).map(to_row);
+    let mut other_branches: Vec<BranchRow> = branches
+        .iter()
+        .filter(|b| !b.is_default)
+        .map(to_row)
+        .collect();
+    other_branches.sort_by(|a, b| a.name.cmp(&b.name));
+    let default_branch_name = default_branch
+        .as_ref()
+        .map(|b| b.name.clone())
+        .unwrap_or_default();
+
+    context.insert("default_branch", &default_branch);
+    context.insert("other_branches", &other_branches);
+    context.insert("default_branch_name", &default_branch_name);
+    context.insert("branch_total", &branches.len());
     context.insert("has_items", &!branches.is_empty());
     render_template(state, "git-refs.html", &context)
 }
@@ -6827,9 +6865,17 @@ mod tests {
         assert!(body.contains("\"title\":\"Compare HEAD and worktree\""));
         assert!(body.contains("\"path\":\"a.md\""));
 
-        let history = handle_git_history(State(state.clone()), AxumPath(id.clone()))
-            .await
-            .into_response();
+        let history = handle_git_history(
+            State(state.clone()),
+            AxumPath(id.clone()),
+            Query(GitHistoryQuery {
+                branch: None,
+                author: None,
+                range: None,
+            }),
+        )
+        .await
+        .into_response();
         assert_eq!(history.status(), StatusCode::OK);
         let body = html_escape::decode_html_entities(&response_text(history).await).to_string();
         assert!(body.contains("Git History"));
