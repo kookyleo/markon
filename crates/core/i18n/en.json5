@@ -257,6 +257,7 @@
     "web.ws.meta.alias":   "Alias",
     "web.ws.meta.no_alias": "Not set",
     "web.ws.meta.copy_id": "Copy ID",
+    "web.ws.meta.copy_path": "Copy path",
     "web.ws.meta.copied":  "Copied",
     "web.ws.meta.copy_failed": "Copy failed",
     "web.ws.git":          "Git",

@@ -256,6 +256,7 @@
     "web.ws.meta.alias":   "别名",
     "web.ws.meta.no_alias": "未设置",
     "web.ws.meta.copy_id": "复制 ID",
+    "web.ws.meta.copy_path": "复制路径",
     "web.ws.meta.copied":  "已复制",
     "web.ws.meta.copy_failed": "复制失败",
     "web.ws.git":          "Git",

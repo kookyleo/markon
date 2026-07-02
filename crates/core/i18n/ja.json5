@@ -257,6 +257,7 @@
     "web.ws.meta.alias":   "エイリアス",
     "web.ws.meta.no_alias": "未設定",
     "web.ws.meta.copy_id": "ID をコピー",
+    "web.ws.meta.copy_path": "パスをコピー",
     "web.ws.meta.copied":  "コピー済み",
     "web.ws.meta.copy_failed": "コピー失敗",
     "web.ws.git":          "Git",

@@ -1276,22 +1276,15 @@
             <header class="workspace-meta-panel" aria-labelledby="dir-heading">
                 <h1 id="dir-heading" class="workspace-title" data-i18n="web.ws.heading" data-title-key="web.ws.title">Workspace</h1>
                 <dl class="workspace-meta-list">
-                    <div class="workspace-meta-row">
-                        <dt data-i18n="web.ws.meta.path">Path</dt>
+                    <div class="workspace-meta-row workspace-copy-row">
                         <dd class="workspace-path-dd" title="{{ current_dir }}"><span class="workspace-name-pill">{% if workspace_alias %}{{ workspace_alias }}{% else %}{{ workspace_name }}{% endif %}</span><span class="workspace-path-text">{{ current_dir }}</span></dd>
+                        <button class="workspace-copy-button" type="button" data-copy-text="{{ current_dir }}" data-i18n="web.ws.meta.copy_path">Copy path</button>
                     </div>
                     <div class="workspace-meta-row workspace-copy-row">
                         <dt data-i18n="web.ws.meta.id">Workspace ID</dt>
                         <dd class="workspace-mono">{{ workspace_id }}</dd>
                         <button class="workspace-copy-button" type="button" data-copy-text="{{ workspace_id }}" data-i18n="web.ws.meta.copy_id">Copy ID</button>
                     </div>
-                    {% if is_local %}
-                    <div class="workspace-meta-row workspace-copy-row">
-                        <dt data-i18n="web.ws.meta.alias">Alias</dt>
-                        <dd>{% if workspace_alias %}{{ workspace_alias }}{% else %}<span class="workspace-meta-empty" data-i18n="web.ws.meta.no_alias">Not set</span>{% endif %}</dd>
-                        <button class="workspace-copy-button" type="button" data-set-alias data-alias-url="/_/{{ workspace_id }}/settings/alias" data-current-alias="{{ workspace_alias }}" data-i18n="web.ws.set_alias">Set alias…</button>
-                    </div>
-                    {% endif %}
                 </dl>
             </header>
 
@@ -1410,8 +1403,7 @@
         <aside class="workspace-detail">
             <section class="workspace-side-section">
                 <div class="workspace-section-main">
-                    <div class="workspace-pane-kicker" data-i18n="web.ws.heading">Workspace</div>
-                    <h2 class="workspace-section-title" data-i18n="web.ws.settings">Workspace Settings</h2>
+                    <h2 class="workspace-section-title" data-i18n="web.ws.features">Features</h2>
                 </div>
                 <div class="workspace-section-body">
                     <div class="workspace-feature-list"
