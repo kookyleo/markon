@@ -43,19 +43,8 @@
             color: var(--markon-fg-default);
             border-bottom: 2px solid var(--markon-border-default);
         }
-        .dir-path {
-            color: var(--markon-fg-muted);
-        }
-
         h1 {
             padding-bottom: 10px;
-        }
-
-        .directory-page {
-            width: 100%;
-            max-width: 980px;
-            margin: 40px auto;
-            padding: 0 20px;
         }
 
         ul {
@@ -103,31 +92,6 @@
             text-decoration: underline;
         }
 
-        .dir-path {
-            font-size: 0.9em;
-            margin-bottom: 20px;
-        }
-        .dir-actions {
-            display: flex;
-            gap: 8px;
-            flex-wrap: wrap;
-            margin: 0 0 18px;
-        }
-        .dir-action {
-            display: inline-flex;
-            align-items: center;
-            border: 1px solid var(--markon-border-default);
-            border-radius: var(--markon-radius-sm);
-            padding: 6px 10px;
-            background: var(--markon-bg-muted);
-            color: var(--markon-fg-default) !important;
-            font-size: 13px;
-            text-decoration: none;
-        }
-        .dir-action:hover {
-            text-decoration: none;
-            background: var(--markon-bg-elevated);
-        }
         .workspace-muted,
         .workspace-meta {
             color: var(--markon-fg-muted);
@@ -254,12 +218,6 @@
             color: var(--markon-accent);
             font-weight: 650;
         }
-        .dir-filter-toolbar {
-            display: flex;
-            align-items: center;
-            justify-content: flex-end;
-            margin: 0 0 12px;
-        }
         .dir-list[data-file-filter="markdown"] li[data-filter-visible-markdown="false"] {
             display: none;
         }
@@ -361,6 +319,10 @@
             overflow: visible;
             padding: 28px 30px 34px;
             background: var(--markon-bg-default);
+        }
+        /* Subdirectory view: no right rail, so the file area spans full width. */
+        .workspace-shell--full .workspace-main {
+            margin-right: 0;
         }
         .workspace-meta-panel {
             padding-bottom: 22px;
@@ -1138,6 +1100,30 @@
             text-overflow: ellipsis;
             white-space: nowrap;
         }
+        .workspace-breadcrumb {
+            display: flex;
+            align-items: center;
+            flex-wrap: wrap;
+            min-width: 0;
+            gap: 2px;
+            font-size: 13px;
+        }
+        .workspace-breadcrumb-link,
+        .workspace-breadcrumb-link:visited {
+            color: var(--markon-accent);
+            text-decoration: none;
+        }
+        .workspace-breadcrumb-link:hover {
+            text-decoration: underline;
+        }
+        .workspace-breadcrumb-sep {
+            color: var(--markon-fg-muted);
+            padding: 0 2px;
+        }
+        .workspace-breadcrumb-current {
+            color: var(--markon-fg-default);
+            font-weight: 600;
+        }
         .workspace-copy-row {
             align-items: center;
         }
@@ -1361,33 +1347,6 @@
             }
         }
 
-        .footer {
-            margin-top: 10px;
-            padding-top: 20px;
-            font-size: 0.9rem;
-            text-align: left;
-            margin-left: -1px;
-        }
-
-        .footer,
-        .footer a,
-        .footer a:visited,
-        .footer-separator {
-            color: var(--markon-fg-muted);
-        }
-
-        .footer a {
-            text-decoration: none;
-        }
-
-        .footer a:hover {
-            text-decoration: underline;
-        }
-
-        .footer-separator {
-            margin: 0 8px;
-        }
-
         /* ========================================
            SEARCH MODAL
            ======================================== */
@@ -1552,8 +1511,7 @@
     {% include "i18n-boot.html" %}
 </head>
 <body>
-    {% if is_workspace_root %}
-    <main class="workspace-shell"
+    <main class="workspace-shell{% if not is_workspace_root %} workspace-shell--full{% endif %}"
           data-workspace-workbench
           data-workspace-id="{{ workspace_id }}"
           data-checkout-url="{{ checkout_url }}">
@@ -1561,6 +1519,7 @@
             <header class="workspace-meta-panel" aria-labelledby="dir-heading">
                 <h1 id="dir-heading" class="workspace-title" data-i18n="web.ws.heading" data-title-key="web.ws.title">Workspace</h1>
                 <dl class="workspace-meta-list">
+                    {% if is_workspace_root %}
                     <div class="workspace-meta-row workspace-copy-row">
                         <dd class="workspace-path-dd" title="{{ current_dir }}"><span class="workspace-name-pill">{% if workspace_alias %}{{ workspace_alias }}{% else %}{{ workspace_name }}{% endif %}</span><span class="workspace-path-text">{{ current_dir }}</span></dd>
                         <button class="workspace-copy-button" type="button" data-copy-text="{{ current_dir }}" data-i18n="web.ws.meta.copy_path">Copy path</button>
@@ -1570,6 +1529,16 @@
                         <dd class="workspace-mono">{{ workspace_id }}</dd>
                         <button class="workspace-copy-button" type="button" data-copy-text="{{ workspace_id }}" data-i18n="web.ws.meta.copy_id">Copy ID</button>
                     </div>
+                    {% else %}
+                    <div class="workspace-meta-row workspace-copy-row">
+                        <dd class="workspace-path-dd" title="{{ current_dir }}">
+                            <nav class="workspace-breadcrumb" aria-label="Breadcrumb">
+                                {% for seg in breadcrumb %}{% if seg.is_current %}<span class="workspace-breadcrumb-current">{{ seg.name }}</span>{% else %}<a class="workspace-breadcrumb-link" href="{{ seg.link }}">{{ seg.name }}</a><span class="workspace-breadcrumb-sep" aria-hidden="true">/</span>{% endif %}{% endfor %}
+                            </nav>
+                        </dd>
+                        <button class="workspace-copy-button" type="button" data-copy-text="{{ current_dir }}" data-i18n="web.ws.meta.copy_path">Copy path</button>
+                    </div>
+                    {% endif %}
                 </dl>
             </header>
 
@@ -1680,6 +1649,15 @@
                 </div>
                 {% endif %}
                 <ul class="dir-list workspace-repo-file-list" data-file-filter="markdown">
+                    {% if show_parent %}
+                    <li class="workspace-entry-parent" data-entry-kind="dir">
+                        <div class="workspace-entry-name">
+                            <span class="dir-icon dir-icon-folder" aria-hidden="true"></span><a href="{{ parent_link }}"><strong>..</strong></a>
+                        </div>
+                        <div class="workspace-entry-commit"></div>
+                        <div class="workspace-entry-time"></div>
+                    </li>
+                    {% endif %}
                     {% for entry in entries %}
                     <li data-entry-kind="{% if entry.is_dir %}dir{% else %}file{% endif %}"
                         data-entry-markdown="{{ entry.is_markdown }}"
@@ -1700,6 +1678,7 @@
             </section>
         </section>
 
+        {% if is_workspace_root %}
         <aside class="workspace-detail">
             <section class="workspace-side-section">
                 <div class="workspace-section-main">
@@ -1779,6 +1758,7 @@
                 <a id="dir-kbd-link" href="#" onclick="window.shortcutsManager.showHelp(); return false;">Keyboard Shortcuts (?)</a>
             </section>
         </aside>
+        {% endif %}
 
         {% if can_add_file %}
         <div class="workspace-modal" data-add-file-modal data-create-file-url="{{ create_file_url }}" aria-hidden="true">
@@ -1817,48 +1797,6 @@
         </div>
         {% endif %}
     </main>
-    {% else %}
-    <div class="directory-page">
-        <h1 id="dir-heading" data-i18n-key="web.dir.heading" data-title-key="web.title.dir">Directory Listing</h1>
-        <div class="dir-path"><span id="dir-current-label">Current directory:</span> {{ current_dir }}</div>
-        {% if git.available %}
-        <div class="dir-actions">
-            <a class="dir-action" href="{{ history_url }}" data-i18n="web.ws.git.history">Git history</a>
-            {% if work_diff_url %}<a class="dir-action" href="{{ work_diff_url }}" data-i18n="web.ws.git.working_diff">Working diff</a>{% endif %}
-        </div>
-        {% endif %}
-        <div class="dir-filter-toolbar">
-            <div class="file-filter-switch" role="group" data-file-filter-switch>
-                <button type="button" data-file-filter-value="all" data-i18n="web.dir.filter.all">All files</button>
-                <button class="is-active" type="button" data-file-filter-value="markdown" aria-pressed="true" data-i18n="web.dir.filter.markdown">Markdown only</button>
-            </div>
-        </div>
-        <ul class="dir-list" data-file-filter="markdown">
-            {% if show_parent %}
-            <li><span class="dir-icon dir-icon-folder" aria-hidden="true"></span><a href="{{ parent_link }}"><strong>..</strong></a></li>
-            {% endif %}
-            {% for entry in entries %}
-            <li data-entry-kind="{% if entry.is_dir %}dir{% else %}file{% endif %}"
-                data-entry-markdown="{{ entry.is_markdown }}"
-                data-entry-hidden="{{ entry.is_hidden }}"
-                data-filter-visible-markdown="{{ entry.show_in_markdown }}">
-                {% if entry.is_dir %}
-                <span class="dir-icon dir-icon-folder" aria-hidden="true"></span><a href="{{ entry.link }}"><strong>{{ entry.name }}/</strong></a>
-                {% else %}
-                <span class="dir-icon dir-icon-file" aria-hidden="true"></span><a href="{{ entry.link }}">{{ entry.name }}</a>
-                {% endif %}
-            </li>
-            {% endfor %}
-        </ul>
-        <footer class="container footer">
-            <a id="dir-footer" href="https://kookyleo.github.io/markon/">Powered by markon</a>
-            <span class="footer-separator"> | </span>
-            <a id="dir-feedback-link" href="https://github.com/kookyleo/markon/issues/new?title=%5BFeedback%5D%20&body=One-line%20summary%3A%0A%0A%23%23%20Environment%0A-%20markon%20version%3A%0A-%20OS%3A%0A-%20Browser%3A%0A%0A%23%23%20Steps%20to%20reproduce%0A1.%0A%0A%23%23%20Expected%0A%0A%23%23%20Actual%0A" target="_blank" rel="noopener noreferrer">Feedback</a>
-            <span class="footer-separator"> | </span>
-            <a id="dir-kbd-link" href="#" onclick="window.shortcutsManager.showHelp(); return false;">Keyboard Shortcuts (?)</a>
-        </footer>
-    </div>
-    {% endif %}
 
     {% if enable_search %}
     <div id="search-modal" class="search-modal">

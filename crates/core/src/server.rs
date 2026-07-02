@@ -5282,6 +5282,61 @@ fn render_directory_listing(
         None
     };
 
+    // Breadcrumb from workspace root down to `current_dir`. The first segment is
+    // the workspace itself (alias, falling back to the root dir name) linking to
+    // the workspace root; each deeper segment links to its own subdirectory. The
+    // final segment is the current directory and carries no link. At the root the
+    // breadcrumb is a single (current) segment. Path components are joined with
+    // `/` so Windows separators normalise like `path_to_route`.
+    #[derive(serde::Serialize)]
+    struct BreadcrumbSegment {
+        name: String,
+        link: String,
+        is_current: bool,
+    }
+    let alias = ws.alias();
+    let workspace_display_name = if alias.is_empty() {
+        root.file_name()
+            .map(|n| n.to_string_lossy().to_string())
+            .unwrap_or_default()
+    } else {
+        alias
+    };
+    let rel_components: Vec<String> = current_dir
+        .strip_prefix(root)
+        .ok()
+        .map(|rel| {
+            rel.components()
+                .filter_map(|c| match c {
+                    std::path::Component::Normal(part) => {
+                        Some(part.to_string_lossy().to_string())
+                    }
+                    _ => None,
+                })
+                .collect()
+        })
+        .unwrap_or_default();
+    let mut breadcrumb: Vec<BreadcrumbSegment> = Vec::new();
+    let depth = rel_components.len();
+    breadcrumb.push(BreadcrumbSegment {
+        name: workspace_display_name,
+        link: format!("/{workspace_id}/"),
+        is_current: depth == 0,
+    });
+    let mut acc = String::new();
+    for (i, comp) in rel_components.iter().enumerate() {
+        if acc.is_empty() {
+            acc = comp.clone();
+        } else {
+            acc = format!("{acc}/{comp}");
+        }
+        breadcrumb.push(BreadcrumbSegment {
+            name: comp.clone(),
+            link: format!("/{workspace_id}/{acc}/"),
+            is_current: i + 1 == depth,
+        });
+    }
+
     let flags = ws.flags();
     let feature_statuses = vec![
         WorkspaceFeatureStatus {
@@ -5409,6 +5464,7 @@ fn render_directory_listing(
     context.insert("entries", &entries);
     context.insert("show_parent", &show_parent);
     context.insert("parent_link", &parent_link);
+    context.insert("breadcrumb", &breadcrumb);
     context.insert("enable_search", &flags.enable_search);
 
     render_template(state, "directory.html", &context)
