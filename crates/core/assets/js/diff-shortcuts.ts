@@ -84,16 +84,6 @@ const init = (): void => {
     if (!shell) return;
 
     const km = new KeyboardShortcutsManager();
-    // Global (every page).
-    km.register('HELP', () => km.showHelp());
-    km.register('THEME_PANEL', () => window.MarkonTheme?.togglePanel());
-    // Diff-specific. j/k step through individual changed blocks in BOTH views
-    // (the same stepper; only the underlying DOM differs).
-    km.register('DIFF_TOGGLE_VIEW', () => toggleView(shell));
-    km.register('DIFF_NEXT_FILE', () => stepBlock(shell, 1));
-    km.register('DIFF_PREV_FILE', () => stepBlock(shell, -1));
-
-    document.addEventListener('keydown', (e) => km.handle(e));
 
     // Click-to-focus: clicking (or interacting) inside a changed block makes it
     // the focused block, so the rail follows clicks — not just j/k. Selecting a
@@ -101,6 +91,27 @@ const init = (): void => {
     const clearFocus = (): void =>
         document.querySelectorAll<HTMLElement>('.diff-change-block.is-focused')
             .forEach((b) => b.classList.remove('is-focused'));
+
+    // Global (every page).
+    km.register('HELP', () => km.showHelp());
+    km.register('THEME_PANEL', () => window.MarkonTheme?.togglePanel());
+    // Escape: dismiss the help overlay if open, else drop the focused-block rail.
+    km.register('ESCAPE', () => {
+        const panel = document.querySelector<HTMLElement>('.shortcuts-help-panel');
+        if (panel) {
+            panel.classList.remove('visible');
+            setTimeout(() => panel.remove(), 200);
+            return;
+        }
+        clearFocus();
+    });
+    // Diff-specific. j/k step through individual changed blocks in BOTH views
+    // (the same stepper; only the underlying DOM differs).
+    km.register('DIFF_TOGGLE_VIEW', () => toggleView(shell));
+    km.register('DIFF_NEXT_FILE', () => stepBlock(shell, 1));
+    km.register('DIFF_PREV_FILE', () => stepBlock(shell, -1));
+
+    document.addEventListener('keydown', (e) => km.handle(e));
     document.addEventListener('click', (e) => {
         const target = e.target as Element | null;
         if (!target) return;

@@ -404,12 +404,9 @@ export class MarkonApp {
         const shortcuts = this.#shortcutsManager;
         if (!shortcuts) return;
 
+        // Always available (document view AND directory/workspace landing).
         shortcuts.register('HELP', () => {
             shortcuts.showHelp();
-        });
-
-        shortcuts.register('THEME_PANEL', () => {
-            window.MarkonTheme?.togglePanel();
         });
 
         if (this.#searchManager) {
@@ -420,6 +417,22 @@ export class MarkonApp {
 
         shortcuts.register('ESCAPE', () => {
             this.#handleEscapeKey();
+        });
+
+        // Directory / workspace landing page: no markdown body, so none of the
+        // document-view features below exist here. Notably `t` is owned by the
+        // go-to-file finder (its visible `T` keycap, wired in directory.ts) —
+        // registering THEME_PANEL on the same key would double-fire, so it's
+        // deliberately left out. The `?` panel then lists only Help / Escape
+        // (+ Search when enabled): exactly what this page can actually do.
+        if (!this.#markdownBody) {
+            Logger.log('MarkonApp', 'Directory mode: minimal shortcuts registered');
+            return;
+        }
+
+        // ── Document view only, below ────────────────────────────────────────
+        shortcuts.register('THEME_PANEL', () => {
+            window.MarkonTheme?.togglePanel();
         });
 
         shortcuts.register('TOGGLE_TOC', () => {

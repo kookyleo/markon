@@ -154,6 +154,17 @@ async function build() {
     format: 'iife',
     target: ['es2022'],
   };
+  // Shared keyboard-shortcuts entry for the lightweight read-only pages that
+  // don't boot MarkonApp (git history, branches/tags). ESM module so it can
+  // pull in KeyboardShortcutsManager + the help-panel component.
+  const pageShortcutsOpts = {
+    ...shared,
+    entryPoints: [resolve(srcDir, 'page-shortcuts.ts')],
+    outfile: resolve(outDir, 'page-shortcuts.js'),
+    format: 'esm',
+    target: ['es2022'],
+    // main.ts owns the dev reload EventSource.
+  };
   const mathRenderOpts = {
     ...shared,
     entryPoints: [resolve(srcDir, 'math-render.ts')],
@@ -193,6 +204,7 @@ async function build() {
     const ctxLayoutPage = await esbuild.context(layoutPageOpts);
     const ctxAccessGate = await esbuild.context(accessGateOpts);
     const ctxGitRefs = await esbuild.context(gitRefsOpts);
+    const ctxPageShortcuts = await esbuild.context(pageShortcutsOpts);
     const ctxMathRender = await esbuild.context(mathRenderOpts);
     await ctxMain.watch();
     await ctxViewed.watch();
@@ -207,6 +219,7 @@ async function build() {
     await ctxLayoutPage.watch();
     await ctxAccessGate.watch();
     await ctxGitRefs.watch();
+    await ctxPageShortcuts.watch();
     await ctxMathRender.watch();
     console.log('[build] watching…');
   } else {
@@ -224,6 +237,7 @@ async function build() {
       esbuild.build(layoutPageOpts),
       esbuild.build(accessGateOpts),
       esbuild.build(gitRefsOpts),
+      esbuild.build(pageShortcutsOpts),
       esbuild.build(mathRenderOpts),
     ]);
     console.log('[build] done');
