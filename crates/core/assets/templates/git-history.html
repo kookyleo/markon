@@ -27,30 +27,34 @@
             margin: 0 auto;
             padding: 32px 20px 48px;
         }
-        .git-header {
-            display: flex;
-            align-items: flex-start;
-            justify-content: space-between;
-            gap: 16px;
-            padding-bottom: 16px;
-            border-bottom: 1px solid var(--markon-border-default);
-        }
         .git-title {
-            margin: 0;
-            font-size: 24px;
+            margin: 0 0 16px;
+            font-size: 20px;
             font-weight: 600;
             line-height: 1.25;
         }
-        .git-actions,
-        .git-row-actions {
+
+        /* --- Toolbar: branch pill (left) + filter placeholders (right) --- */
+        .git-toolbar {
             display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 12px;
             flex-wrap: wrap;
+            margin-bottom: 20px;
+        }
+        .git-toolbar-left,
+        .git-toolbar-right {
+            display: flex;
+            align-items: center;
             gap: 8px;
+            flex-wrap: wrap;
         }
         .git-button {
             display: inline-flex;
             align-items: center;
             justify-content: center;
+            gap: 6px;
             min-height: 32px;
             padding: 5px 12px;
             border: 1px solid var(--markon-border-default);
@@ -59,6 +63,7 @@
             color: var(--markon-fg-default) !important;
             font-size: 14px;
             font-weight: 500;
+            cursor: pointer;
         }
         .git-button:hover {
             text-decoration: none;
@@ -83,60 +88,181 @@
             cursor: default;
             opacity: 0.75;
         }
-        .git-list {
-            margin-top: 16px;
-            border: 1px solid var(--markon-border-default);
-            border-radius: var(--markon-radius-sm);
-            overflow: hidden;
+        .git-branch-pill {
+            font-weight: 600;
         }
-        .git-row {
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-            gap: 16px;
-            padding: 12px 16px;
-            background: var(--markon-bg-default);
+        .git-caret {
+            font-size: 10px;
+            color: var(--markon-fg-muted);
         }
-        .git-row:hover {
+        .git-icon {
+            width: 16px;
+            height: 16px;
+            flex: 0 0 auto;
+            fill: currentColor;
+        }
+        .git-filter {
+            color: var(--markon-fg-default) !important;
+            background: transparent;
+            border: 0;
+            box-shadow: none;
+            padding: 5px 8px;
+        }
+        .git-filter:hover {
             background: var(--markon-bg-muted);
         }
-        .git-row + .git-row {
+
+        /* --- Timeline: continuous rail with a node per day --- */
+        .git-timeline {
+            position: relative;
+        }
+        .git-timeline::before {
+            content: "";
+            position: absolute;
+            left: 8px;
+            top: 10px;
+            bottom: 10px;
+            width: 2px;
+            background: var(--markon-border-default);
+        }
+        .git-day {
+            position: relative;
+            padding-left: 32px;
+            padding-bottom: 24px;
+        }
+        .git-day:last-child {
+            padding-bottom: 0;
+        }
+        .git-day-title {
+            position: relative;
+            margin: 0 0 16px;
+            font-size: 14px;
+            font-weight: 400;
+            color: var(--markon-fg-muted);
+        }
+        .git-day-title::before {
+            content: "";
+            position: absolute;
+            left: -28px;
+            top: 4px;
+            width: 10px;
+            height: 10px;
+            border-radius: 999px;
+            background: var(--markon-fg-muted);
+            box-shadow: 0 0 0 4px var(--markon-bg-default);
+        }
+
+        /* --- Commit box --- */
+        .git-box {
+            border: 1px solid var(--markon-border-default);
+            border-radius: var(--markon-radius-sm);
+            background: var(--markon-bg-default);
+            overflow: hidden;
+        }
+        .git-commit {
+            display: flex;
+            align-items: flex-start;
+            gap: 12px;
+            padding: 12px 16px;
+        }
+        .git-commit + .git-commit {
             border-top: 1px solid var(--markon-border-default);
         }
-        .git-subject {
+        .git-commit:hover {
+            background: var(--markon-bg-muted);
+        }
+        .git-avatar {
+            width: 24px;
+            height: 24px;
+            flex: 0 0 auto;
+            margin-top: 1px;
+            border-radius: 999px;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 12px;
+            font-weight: 600;
+            line-height: 1;
+            color: #fff;
+            background: var(--markon-bg-muted);
+            user-select: none;
+        }
+        .git-commit-main {
+            flex: 1 1 auto;
+            min-width: 0;
+        }
+        .git-commit-subject {
+            font-size: 14px;
+            font-weight: 600;
+            line-height: 1.35;
             overflow: hidden;
             text-overflow: ellipsis;
             white-space: nowrap;
-            font-size: 14px;
-            font-weight: 600;
         }
-        .git-meta,
-        .git-empty {
+        .git-commit-meta {
+            margin-top: 2px;
             color: var(--markon-fg-muted);
             font-size: 12px;
         }
-        .git-meta {
-            margin-top: 4px;
+        .git-commit-author {
+            font-weight: 600;
+            color: var(--markon-fg-default);
+        }
+        .git-commit-side {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            flex: 0 0 auto;
         }
         .git-mono {
             font-family: ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, monospace;
             font-size: 12px;
         }
+        .git-hash {
+            color: var(--markon-fg-muted);
+        }
+        .git-copy {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            width: 28px;
+            height: 28px;
+            padding: 0;
+            border: 0;
+            border-radius: var(--markon-radius-sm);
+            background: transparent;
+            color: var(--markon-fg-muted);
+            cursor: pointer;
+        }
+        .git-copy:hover {
+            background: var(--markon-bg-muted);
+            color: var(--markon-accent);
+        }
+        .git-copy.is-copied {
+            color: var(--markon-success-emphasis);
+        }
+        .git-show-diff {
+            padding: 3px 12px;
+            min-height: 28px;
+            font-size: 14px;
+        }
+
         .git-empty {
-            margin-top: 16px;
             padding: 16px;
             border: 1px solid var(--markon-border-default);
             border-radius: var(--markon-radius-sm);
             background: var(--markon-bg-muted);
+            color: var(--markon-fg-muted);
+            font-size: 14px;
         }
+
         @media (max-width: 720px) {
-            .git-header,
-            .git-row {
-                flex-direction: column;
-                align-items: stretch;
+            .git-commit {
+                flex-wrap: wrap;
             }
-            .git-button {
+            .git-commit-side {
                 width: 100%;
+                justify-content: flex-end;
             }
         }
     </style>
@@ -144,41 +270,122 @@
 </head>
 <body>
     <main class="git-page">
-        <header class="git-header">
-            <div>
-                <h1 class="git-title">Git History</h1>
-                <div class="git-meta">{{ commits | length }} commits</div>
+        <h1 class="git-title" data-i18n="web.ws.git.commits">Commits</h1>
+
+        <div class="git-toolbar">
+            <div class="git-toolbar-left">
+                <button class="git-button git-branch-pill" type="button" aria-label="Branch">
+                    <svg class="git-icon" viewBox="0 0 16 16" aria-hidden="true"><path d="M9.5 3.25a2.25 2.25 0 1 1 3 2.122V6A2.5 2.5 0 0 1 10 8.5H6a1 1 0 0 0-1 1v1.128a2.251 2.251 0 1 1-1.5 0V5.372a2.25 2.25 0 1 1 1.5 0v1.836A2.493 2.493 0 0 1 6 7h4a1 1 0 0 0 1-1v-.628A2.25 2.25 0 0 1 9.5 3.25Zm-6 0a.75.75 0 1 0 1.5 0 .75.75 0 0 0-1.5 0Zm8.25-.75a.75.75 0 1 0 0 1.5.75.75 0 0 0 0-1.5ZM4.25 12a.75.75 0 1 0 0 1.5.75.75 0 0 0 0-1.5Z"></path></svg>
+                    <span>{{ current_branch }}</span>
+                    <span class="git-caret" aria-hidden="true">&#9662;</span>
+                </button>
             </div>
-            <nav class="git-actions" aria-label="Git actions">
+            <div class="git-toolbar-right">
+                <button class="git-button git-filter" type="button" disabled>
+                    <span data-i18n="web.ws.git.all_users">All users</span>
+                    <span class="git-caret" aria-hidden="true">&#9662;</span>
+                </button>
+                <button class="git-button git-filter" type="button" disabled>
+                    <span data-i18n="web.ws.git.all_time">All time</span>
+                    <span class="git-caret" aria-hidden="true">&#9662;</span>
+                </button>
                 {% if work_diff_url %}
-                <a class="git-button primary" href="{{ work_diff_url }}">Working diff</a>
+                <a class="git-button primary" href="{{ work_diff_url }}" data-i18n="web.ws.git.working_diff">Working diff</a>
                 {% else %}
-                <span class="git-button primary is-disabled">Working diff</span>
+                <span class="git-button primary is-disabled" data-i18n="web.ws.git.working_diff">Working diff</span>
                 {% endif %}
-            </nav>
-        </header>
+            </div>
+        </div>
 
         {% if has_commits %}
-        <section class="git-list">
-            {% for commit in commits %}
-            <article class="git-row">
-                <div>
-                    <div class="git-subject">{{ commit.subject }}</div>
-                    <div class="git-meta"><span class="git-mono">{{ commit.short_hash }}</span> · {{ commit.author }} · {{ commit.date }}</div>
+        <div class="git-timeline">
+            {% for day in groups %}
+            <section class="git-day">
+                <h2 class="git-day-title">
+                    <span data-i18n="web.ws.git.commits_on">Commits on</span> {{ day.day_label }}
+                </h2>
+                <div class="git-box">
+                    {% for commit in day.commits %}
+                    <article class="git-commit">
+                        <span class="git-avatar" data-avatar="{{ commit.author }}" aria-hidden="true">{{ commit.author | truncate(length=1, end="") | upper }}</span>
+                        <div class="git-commit-main">
+                            <div class="git-commit-subject">{{ commit.subject }}</div>
+                            <div class="git-commit-meta">
+                                <span class="git-commit-author">{{ commit.author }}</span>
+                                <span data-i18n="web.ws.git.committed">committed</span>
+                                <span class="git-commit-date" data-date="{{ commit.date }}">{{ commit.date }}</span>
+                            </div>
+                        </div>
+                        <div class="git-commit-side">
+                            <span class="git-mono git-hash">{{ commit.short_hash }}</span>
+                            <button class="git-copy" type="button" data-copy-hash="{{ commit.short_hash }}" title="Copy commit hash" aria-label="Copy commit hash">
+                                <svg class="git-icon" viewBox="0 0 16 16" aria-hidden="true"><path d="M0 6.75C0 5.784.784 5 1.75 5h1.5a.75.75 0 0 1 0 1.5h-1.5a.25.25 0 0 0-.25.25v7.5c0 .138.112.25.25.25h7.5a.25.25 0 0 0 .25-.25v-1.5a.75.75 0 0 1 1.5 0v1.5A1.75 1.75 0 0 1 9.25 16h-7.5A1.75 1.75 0 0 1 0 14.25Z"></path><path d="M5 1.75C5 .784 5.784 0 6.75 0h7.5C15.216 0 16 .784 16 1.75v7.5A1.75 1.75 0 0 1 14.25 11h-7.5A1.75 1.75 0 0 1 5 9.25Zm1.75-.25a.25.25 0 0 0-.25.25v7.5c0 .138.112.25.25.25h7.5a.25.25 0 0 0 .25-.25v-7.5a.25.25 0 0 0-.25-.25Z"></path></svg>
+                            </button>
+                            {% if commit.diff_url %}
+                            <a class="git-button git-show-diff" href="{{ commit.diff_url }}" data-i18n="web.ws.git.show_diff">Show diff</a>
+                            {% else %}
+                            <span class="git-button git-show-diff is-disabled" data-i18n="web.ws.git.show_diff">Show diff</span>
+                            {% endif %}
+                        </div>
+                    </article>
+                    {% endfor %}
                 </div>
-                <div class="git-row-actions">
-                    {% if commit.diff_url %}
-                    <a class="git-button" href="{{ commit.diff_url }}">Show diff</a>
-                    {% else %}
-                    <span class="git-button is-disabled">Show diff</span>
-                    {% endif %}
-                </div>
-            </article>
+            </section>
             {% endfor %}
-        </section>
+        </div>
         {% else %}
-        <section class="git-empty">No commits in this workspace yet.</section>
+        <section class="git-empty" data-i18n="web.ws.git.no_commits">No commits in this workspace yet.</section>
         {% endif %}
     </main>
+
+    <!-- Page-local controls: avatar tinting + hash copy (no directory.ts here). -->
+    <script>
+    (function () {
+        // Stable per-author hue for the initials avatar (matches directory.html).
+        document.querySelectorAll('.git-avatar[data-avatar]').forEach(function (el) {
+            var name = el.getAttribute('data-avatar') || '';
+            if (!name) return;
+            var h = 0;
+            for (var i = 0; i < name.length; i++) h = (h * 31 + name.charCodeAt(i)) >>> 0;
+            el.style.background = 'hsl(' + (h % 360) + ' 46% 42%)';
+        });
+
+        // Friendlier commit date ("Mar 7, 2026") when the ISO string parses.
+        document.querySelectorAll('.git-commit-date[data-date]').forEach(function (el) {
+            var raw = el.getAttribute('data-date') || '';
+            var d = new Date(raw);
+            if (isNaN(d.getTime())) return;
+            try {
+                el.textContent = d.toLocaleDateString(undefined, {
+                    year: 'numeric', month: 'short', day: 'numeric'
+                });
+            } catch (e) { /* leave the raw value */ }
+        });
+
+        // Copy the commit hash to the clipboard; briefly flag success.
+        function flash(button) {
+            button.classList.add('is-copied');
+            setTimeout(function () { button.classList.remove('is-copied'); }, 1200);
+        }
+        document.querySelectorAll('.git-copy[data-copy-hash]').forEach(function (button) {
+            button.addEventListener('click', function () {
+                var text = button.getAttribute('data-copy-hash') || '';
+                if (!text) return;
+                if (navigator.clipboard && navigator.clipboard.writeText) {
+                    navigator.clipboard.writeText(text).then(function () { flash(button); }, function () {});
+                } else {
+                    var ta = document.createElement('textarea');
+                    ta.value = text;
+                    ta.style.position = 'fixed';
+                    ta.style.opacity = '0';
+                    document.body.appendChild(ta);
+                    ta.select();
+                    try { document.execCommand('copy'); flash(button); } catch (e) {}
+                    document.body.removeChild(ta);
+                }
+            });
+        });
+    })();
+    </script>
 </body>
 </html>

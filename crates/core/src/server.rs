@@ -4190,31 +4190,90 @@ struct GitHistoryCommitTemplate<'a> {
     diff_url: Option<String>,
 }
 
+/// One calendar day worth of commits, matching GitHub's date-grouped Commits
+/// page. `commits` keeps the incoming reverse-chronological order.
+#[derive(Serialize)]
+struct GitHistoryDay<'a> {
+    day_label: String,
+    commits: Vec<GitHistoryCommitTemplate<'a>>,
+}
+
+/// Turn an ISO date like `2026-03-07T08:30:43+08:00` into GitHub's
+/// `Mar 7, 2026` heading. No new deps — the month is mapped by hand from the
+/// `MM` field. Falls back to the raw string if the date is malformed.
+fn git_history_day_label(date: &str) -> String {
+    if date.len() < 10 {
+        return date.to_string();
+    }
+    let year = &date[0..4];
+    let month = match &date[5..7] {
+        "01" => "Jan",
+        "02" => "Feb",
+        "03" => "Mar",
+        "04" => "Apr",
+        "05" => "May",
+        "06" => "Jun",
+        "07" => "Jul",
+        "08" => "Aug",
+        "09" => "Sep",
+        "10" => "Oct",
+        "11" => "Nov",
+        "12" => "Dec",
+        other => other,
+    };
+    let day = date[8..10].trim_start_matches('0');
+    let day = if day.is_empty() { "0" } else { day };
+    format!("{month} {day}, {year}")
+}
+
 fn render_git_history_page(
     state: &AppState,
     workspace_id: &str,
     root: &FsPath,
     commits: &[git::GitCommit],
 ) -> Response {
-    let commit_items: Vec<GitHistoryCommitTemplate<'_>> = commits
-        .iter()
-        .map(|commit| GitHistoryCommitTemplate {
+    // Group commits by their `YYYY-MM-DD` prefix while preserving the incoming
+    // reverse-chronological order (commits are already sorted newest-first).
+    let mut groups: Vec<GitHistoryDay<'_>> = Vec::new();
+    let mut last_key: Option<&str> = None;
+    for commit in commits {
+        let key = commit.date.get(0..10).unwrap_or(commit.date.as_str());
+        let item = GitHistoryCommitTemplate {
             short_hash: &commit.short_hash,
             author: &commit.author,
             date: &commit.date,
             subject: &commit.subject,
             diff_url: git_commit_markdown_diff_url(root, workspace_id, commit, "rendered"),
-        })
-        .collect();
+        };
+        if last_key == Some(key) {
+            groups
+                .last_mut()
+                .expect("last_key set implies a prior group")
+                .commits
+                .push(item);
+        } else {
+            groups.push(GitHistoryDay {
+                day_label: git_history_day_label(&commit.date),
+                commits: vec![item],
+            });
+            last_key = Some(key);
+        }
+    }
+    let current_branch = git::branches(root)
+        .ok()
+        .and_then(|branches| branches.into_iter().find(|b| b.current).map(|b| b.name))
+        .unwrap_or_else(|| "main".to_string());
     let work_diff_url = git::diff_has_markdown_changes(root, "HEAD", "worktree")
         .unwrap_or(false)
         .then(|| markdown_work_diff_page_url(workspace_id));
     let mut context = base_context(state);
     context.insert("title", "markon git history");
     context.insert("workspace_id", workspace_id);
-    context.insert("commits", &commit_items);
+    context.insert("groups", &groups);
+    context.insert("commit_count", &commits.len());
+    context.insert("current_branch", &current_branch);
     context.insert("files_url", &format!("/{workspace_id}/"));
-    context.insert("has_commits", &!commit_items.is_empty());
+    context.insert("has_commits", &!groups.is_empty());
     context.insert("work_diff_url", &work_diff_url);
     render_template(state, "git-history.html", &context)
 }
