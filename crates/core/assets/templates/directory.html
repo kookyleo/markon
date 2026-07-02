@@ -930,14 +930,48 @@
             margin: 0;
             padding-bottom: 24px;
         }
+        /* Resizable columns: widths are driven by CSS variables on the list
+           wrapper (defaults below) so a single drag updates top-level rows and
+           every expanded tree row at once. */
+        .workspace-file-list-wrap {
+            position: relative;
+            --ws-col-name: 320px;
+            --ws-col-commit: 420px;
+        }
         .workspace-repo-file-list li {
             display: grid;
-            grid-template-columns: minmax(220px, 0.9fr) minmax(220px, 1.35fr) max-content;
+            grid-template-columns: var(--ws-col-name, 320px) var(--ws-col-commit, 420px) minmax(0, 1fr);
             align-items: center;
             column-gap: 18px;
             min-width: 0;
             padding: 10px 0;
             border-bottom: 0;
+        }
+        .ws-col-handle {
+            position: absolute;
+            top: 0;
+            bottom: 0;
+            width: 9px;
+            margin-left: -4px;
+            cursor: col-resize;
+            z-index: 3;
+            touch-action: none;
+            user-select: none;
+        }
+        .ws-col-handle::before {
+            content: "";
+            position: absolute;
+            left: 4px;
+            top: 6px;
+            bottom: 6px;
+            width: 2px;
+            border-radius: 2px;
+            background: transparent;
+            transition: background 0.12s ease;
+        }
+        .ws-col-handle:hover::before,
+        .ws-col-handle.is-dragging::before {
+            background: var(--markon-accent, #0969da);
         }
         .workspace-entry-name {
             display: flex;
@@ -1053,7 +1087,7 @@
         }
         .workspace-tree-row {
             display: grid;
-            grid-template-columns: minmax(220px, 0.9fr) minmax(220px, 1.35fr) max-content;
+            grid-template-columns: var(--ws-col-name, 320px) var(--ws-col-commit, 420px) minmax(0, 1fr);
             align-items: center;
             column-gap: 18px;
             min-width: 0;
@@ -1479,6 +1513,10 @@
             .workspace-entry-time {
                 white-space: normal;
             }
+            /* Single-column layout: no resizable boundaries. */
+            .ws-col-handle {
+                display: none;
+            }
         }
 
         /* ========================================
@@ -1782,6 +1820,7 @@
                     </div>
                 </div>
                 {% endif %}
+                <div class="workspace-file-list-wrap" data-col-resize data-ws-id="{{ workspace_id }}">
                 <ul class="dir-list workspace-repo-file-list" data-file-filter="markdown" data-dir-data-url="{{ files_dir_url }}">
                     {% if show_parent %}
                     <li class="workspace-entry-parent" data-entry-kind="dir">
@@ -1809,6 +1848,9 @@
                     </li>
                     {% endfor %}
                 </ul>
+                    <div class="ws-col-handle" data-col-handle="0" role="separator" aria-orientation="vertical" aria-hidden="true" hidden></div>
+                    <div class="ws-col-handle" data-col-handle="1" role="separator" aria-orientation="vertical" aria-hidden="true" hidden></div>
+                </div>
             </section>
         </section>
 

@@ -618,6 +618,103 @@ document.addEventListener('keydown', (event) => {
     if (li) { event.preventDefault(); toggleTreeDir(li); }
 });
 
+// ── Resizable file-table columns (name | commit | time) ─────────────────────
+// The three-column grid width comes from `--ws-col-name` / `--ws-col-commit`
+// CSS variables on the list wrapper; top-level rows and every (deep) tree row
+// inherit them, so one drag resizes them all in sync. Widths persist per
+// workspace in localStorage. Handles are hidden below the single-column
+// breakpoint (see the 720px media query).
+(function setupColumnResize(): void {
+    const wrap = document.querySelector<HTMLElement>('[data-col-resize]');
+    if (!wrap) return;
+    const handles = Array.from(wrap.querySelectorAll<HTMLElement>('[data-col-handle]'));
+    if (handles.length < 2) return;
+    const GAP = 18;      // column-gap in px
+    const MIN = 140;     // min width for name / commit columns
+    const TIME_MIN = 90; // reserve at least this much for the time column
+    const wsId = wrap.getAttribute('data-ws-id') || '';
+    const storeKey = 'markon:ws-cols:' + wsId;
+    const isNarrow = (): boolean => window.matchMedia('(max-width: 720px)').matches;
+
+    let nameW = 320;
+    let commitW = 420;
+    try {
+        const raw = window.localStorage.getItem(storeKey);
+        if (raw) {
+            const parsed = JSON.parse(raw) as { name?: unknown; commit?: unknown };
+            if (typeof parsed.name === 'number' && parsed.name > 0) nameW = parsed.name;
+            if (typeof parsed.commit === 'number' && parsed.commit > 0) commitW = parsed.commit;
+        }
+    } catch { /* ignore */ }
+
+    function clampWidths(): void {
+        const total = wrap!.clientWidth || 0;
+        if (total <= 0) return;
+        const maxName = Math.max(MIN, total - 2 * GAP - commitW - TIME_MIN);
+        nameW = Math.max(MIN, Math.min(nameW, maxName));
+        const maxCommit = Math.max(MIN, total - 2 * GAP - nameW - TIME_MIN);
+        commitW = Math.max(MIN, Math.min(commitW, maxCommit));
+    }
+    function applyVars(): void {
+        wrap!.style.setProperty('--ws-col-name', nameW + 'px');
+        wrap!.style.setProperty('--ws-col-commit', commitW + 'px');
+    }
+    function positionHandles(): void {
+        handles[0].style.left = (nameW + GAP / 2) + 'px';
+        handles[1].style.left = (nameW + GAP + commitW + GAP / 2) + 'px';
+    }
+    function save(): void {
+        try {
+            window.localStorage.setItem(storeKey, JSON.stringify({ name: nameW, commit: commitW }));
+        } catch { /* ignore */ }
+    }
+    function refresh(): void {
+        clampWidths();
+        applyVars();
+        positionHandles();
+    }
+
+    handles.forEach((handle, idx) => {
+        handle.hidden = false;
+        handle.addEventListener('pointerdown', (event: PointerEvent) => {
+            if (isNarrow()) return;
+            event.preventDefault();
+            const startX = event.clientX;
+            const startName = nameW;
+            const startCommit = commitW;
+            const total = wrap!.clientWidth || 0;
+            handle.classList.add('is-dragging');
+            try { handle.setPointerCapture(event.pointerId); } catch { /* ignore */ }
+            const onMove = (e: PointerEvent): void => {
+                const delta = e.clientX - startX;
+                if (idx === 0) {
+                    const maxName = Math.max(MIN, total - 2 * GAP - commitW - TIME_MIN);
+                    nameW = Math.max(MIN, Math.min(startName + delta, maxName));
+                } else {
+                    const maxCommit = Math.max(MIN, total - 2 * GAP - nameW - TIME_MIN);
+                    commitW = Math.max(MIN, Math.min(startCommit + delta, maxCommit));
+                }
+                applyVars();
+                positionHandles();
+            };
+            const onUp = (e: PointerEvent): void => {
+                handle.classList.remove('is-dragging');
+                try { handle.releasePointerCapture(e.pointerId); } catch { /* ignore */ }
+                handle.removeEventListener('pointermove', onMove);
+                handle.removeEventListener('pointerup', onUp);
+                handle.removeEventListener('pointercancel', onUp);
+                save();
+            };
+            handle.addEventListener('pointermove', onMove);
+            handle.addEventListener('pointerup', onUp);
+            handle.addEventListener('pointercancel', onUp);
+        });
+    });
+
+    refresh();
+    window.addEventListener('resize', refresh);
+})();
+
 // ── Add-file modal ──────────────────────────────────────────────────────────
 document.querySelectorAll<HTMLElement>('[data-open-add-file]').forEach((button) => {
     button.addEventListener('click', (event) => {
