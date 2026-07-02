@@ -1119,6 +1119,101 @@ pub fn commit_diff(root: &Path, rev: &str) -> Result<GitDiff> {
     })
 }
 
+/// Per-commit info needed to build git-history diff links.
+#[derive(Debug, Clone, Default)]
+pub struct CommitDiffInfo {
+    /// First-parent hash, or `None` for a root commit (compare against the
+    /// empty tree).
+    pub parent: Option<String>,
+    /// Whether the commit touches any Markdown (`.md`) path — checking both
+    /// sides of a rename, mirroring the per-file markdown filter.
+    pub has_markdown: bool,
+}
+
+/// Resolve [`CommitDiffInfo`] for many commits in a single `git log` pass.
+///
+/// The history page needs, per commit, (a) whether it changed any Markdown file
+/// (to decide if a diff link is offered) and (b) its parent hash (the diff
+/// base). Done naively that is one `git show --patch` plus one `rev-parse` per
+/// commit — hundreds of git subprocesses for a full page. `--no-walk=unsorted`
+/// lists exactly the given commits (no ancestry walk) with their parents and a
+/// name-status file list, all at once.
+pub fn commit_diff_index(root: &Path, hashes: &[&str]) -> Result<HashMap<String, CommitDiffInfo>> {
+    ensure_repo(root)?;
+    // Only feed trusted full hashes (they come from our own history walk); this
+    // also guarantees none can be mistaken for a flag on the command line.
+    let revs: Vec<&str> = hashes
+        .iter()
+        .copied()
+        .filter(|h| valid_hex_rev(h))
+        .collect();
+    if revs.is_empty() {
+        return Ok(HashMap::new());
+    }
+    // Header lines are prefixed with U+001F so they can't be confused with a
+    // name-status line (which starts with a status letter).
+    let mut args: Vec<&str> = vec![
+        "log",
+        "--no-walk=unsorted",
+        "--no-ext-diff",
+        "--find-renames",
+        "--name-status",
+        "--format=\x1f%H\x1f%P",
+    ];
+    args.extend(revs.iter().copied());
+    args.push("--");
+    args.push(".");
+
+    let output = run_git(root, &args)?;
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        if stderr.contains("does not have any commits") {
+            return Ok(HashMap::new());
+        }
+        return Err(GitError::Command(stderr.trim().to_string()));
+    }
+
+    let mut map: HashMap<String, CommitDiffInfo> = HashMap::new();
+    let mut current: Option<String> = None;
+    for line in String::from_utf8_lossy(&output.stdout).lines() {
+        if let Some(header) = line.strip_prefix('\x1f') {
+            let mut parts = header.split('\x1f');
+            let hash = match parts.next() {
+                Some(h) if !h.is_empty() => h.to_string(),
+                _ => continue,
+            };
+            let parent = parts
+                .next()
+                .and_then(|parents| parents.split_whitespace().next())
+                .map(str::to_string);
+            map.insert(
+                hash.clone(),
+                CommitDiffInfo {
+                    parent,
+                    has_markdown: false,
+                },
+            );
+            current = Some(hash);
+        } else if !line.is_empty() {
+            // Name-status entry: `STATUS\tpath[\told\tnew]`. Any path field on
+            // either side of a rename that ends in `.md` marks the commit.
+            if let Some(hash) = current.as_deref() {
+                if let Some(info) = map.get_mut(hash) {
+                    if !info.has_markdown
+                        && line
+                            .split('\t')
+                            .skip(1)
+                            .any(|path| is_markdown_git_path(path))
+                    {
+                        info.has_markdown = true;
+                    }
+                }
+            }
+        }
+    }
+    Ok(map)
+}
+
 pub fn parent_commit(root: &Path, rev: &str) -> Result<Option<String>> {
     ensure_repo(root)?;
     if !valid_hex_rev(rev) {

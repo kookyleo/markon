@@ -4312,16 +4312,32 @@ fn render_git_history_page(
 ) -> Response {
     // Group commits by their `YYYY-MM-DD` prefix while preserving the incoming
     // reverse-chronological order (commits are already sorted newest-first).
+    // Resolve every commit's parent + markdown-changed flag in one git pass, so
+    // the per-commit diff link below is a pure hashmap lookup rather than a
+    // `git show` + `rev-parse` subprocess pair per row.
+    let commit_hashes: Vec<&str> = commits.iter().map(|c| c.hash.as_str()).collect();
+    let diff_index = git::commit_diff_index(root, &commit_hashes).unwrap_or_default();
     let mut groups: Vec<GitHistoryDay<'_>> = Vec::new();
     let mut last_key: Option<&str> = None;
     for commit in commits {
         let key = commit.date.get(0..10).unwrap_or(commit.date.as_str());
+        let diff_url = diff_index
+            .get(&commit.hash)
+            .filter(|info| info.has_markdown)
+            .map(|info| {
+                pretty_compare_page_url(
+                    workspace_id,
+                    info.parent.as_deref().unwrap_or(GIT_EMPTY_TREE_HASH),
+                    &commit.hash,
+                    "rendered",
+                )
+            });
         let item = GitHistoryCommitTemplate {
             short_hash: &commit.short_hash,
             author: &commit.author,
             date: &commit.date,
             subject: &commit.subject,
-            diff_url: git_commit_markdown_diff_url(root, workspace_id, commit, "rendered"),
+            diff_url,
         };
         if last_key == Some(key) {
             groups
