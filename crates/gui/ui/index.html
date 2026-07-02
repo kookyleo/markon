@@ -2385,6 +2385,9 @@
       renderShortcuts();
       renderHelpTip();
     }
+    // The workspace add FAB tooltip is always present — keep it labelled
+    // on first load and on every language switch.
+    renderWorkspaceAddTip();
     // Re-render web styles rows (labels/hints/tooltips are built dynamically)
     if (document.getElementById('webstyles-list')?.children.length) {
       renderWebStyles();
