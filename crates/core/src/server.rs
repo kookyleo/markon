@@ -707,6 +707,10 @@ pub async fn start(config: ServerConfig) -> Result<(), String> {
             get(handle_workspace_files_data),
         )
         .route(
+            "/_/{workspace_id}/files/dir",
+            get(handle_workspace_dir_data),
+        )
+        .route(
             "/_/{workspace_id}/files/create",
             post(handle_workspace_create_file)
                 .route_layer(axum::middleware::from_fn(require_loopback))
@@ -778,6 +782,10 @@ pub async fn start(config: ServerConfig) -> Result<(), String> {
         .route(
             "/{workspace_id}/_/files/data",
             get(handle_workspace_files_data),
+        )
+        .route(
+            "/{workspace_id}/_/files/dir",
+            get(handle_workspace_dir_data),
         )
         .route(
             "/{workspace_id}/_/files/create",
@@ -5142,6 +5150,129 @@ fn render_markdown_file(
     }
 }
 
+/// One row of a directory listing. Shared between the server-rendered file table
+/// (`render_directory_listing`) and the JSON endpoint that feeds the inline tree
+/// (`handle_workspace_dir_data`), so both stay byte-for-byte consistent in what
+/// they list, how they sort, and the commit metadata they attach.
+#[derive(serde::Serialize)]
+struct DirListingEntry {
+    name: String,
+    is_dir: bool,
+    is_markdown: bool,
+    is_hidden: bool,
+    show_in_markdown: bool,
+    link: String,
+    rel_git_path: String,
+    last_commit_subject: Option<String>,
+    last_commit_time: Option<String>,
+}
+
+/// List the direct children of `current_dir` (already canonicalized and verified
+/// inside `root`), sorted directories-first then by name, with the last-commit
+/// subject/time attached per entry when the workspace is a git repo. Only this
+/// one directory level is walked and only these paths are queried for commits —
+/// cheap enough to serve on demand as a folder is expanded.
+fn collect_directory_entries(
+    workspace_id: &str,
+    root: &FsPath,
+    current_dir: &FsPath,
+) -> std::io::Result<Vec<DirListingEntry>> {
+    let mut entries: Vec<DirListingEntry> = fs::read_dir(current_dir)?
+        .filter_map(|e| e.ok())
+        .filter_map(|entry| {
+            let path = entry.path();
+            let name = entry.file_name().to_string_lossy().to_string();
+            let is_hidden = name.starts_with('.');
+            // Use file_type() — avoids stat() syscall that can block on AutoFS mount points.
+            let file_type = entry.file_type().ok()?;
+            let is_dir = file_type.is_dir();
+            let is_markdown = !is_dir && is_markdown_path(&path);
+            let show_in_markdown = !is_hidden && (is_dir || is_markdown);
+            let rel = path.strip_prefix(root).unwrap_or(&path).to_path_buf();
+            let rel_git_path = rel.to_string_lossy().replace('\\', "/");
+            let rel_url = path_to_route(&rel);
+            let link = if is_dir {
+                format!("/{workspace_id}/{rel_url}/")
+            } else {
+                format!("/{workspace_id}/{rel_url}")
+            };
+            Some(DirListingEntry {
+                name,
+                is_dir,
+                is_markdown,
+                is_hidden,
+                show_in_markdown,
+                link,
+                rel_git_path,
+                last_commit_subject: None,
+                last_commit_time: None,
+            })
+        })
+        .collect();
+
+    entries.sort_by(|a, b| match (a.is_dir, b.is_dir) {
+        (true, false) => std::cmp::Ordering::Less,
+        (false, true) => std::cmp::Ordering::Greater,
+        _ => a.name.cmp(&b.name),
+    });
+
+    let git_status = git::status(root);
+    if git_status.available {
+        let rel_paths: Vec<String> = entries
+            .iter()
+            .map(|entry| entry.rel_git_path.clone())
+            .collect();
+        if let Ok(path_commits) = git::last_commits_for_paths(root, &rel_paths) {
+            for entry in entries.iter_mut() {
+                let Some(commit) = path_commits.get(&entry.rel_git_path) else {
+                    continue;
+                };
+                entry.last_commit_subject = Some(commit.subject.clone());
+                entry.last_commit_time = Some(commit.time.clone());
+            }
+        }
+    }
+
+    Ok(entries)
+}
+
+/// JSON: the direct children of a directory (relative to the workspace root),
+/// used by the inline directory tree on the workspace landing page. Mirrors the
+/// auth/boundary handling of `handle_workspace_files_data`: canonicalize the
+/// requested path and reject anything that escapes the workspace root.
+async fn handle_workspace_dir_data(
+    State(state): State<AppState>,
+    AxumPath(workspace_id): AxumPath<String>,
+    Query(query): Query<DirListingQuery>,
+) -> impl IntoResponse {
+    let Some(ws) = state.workspace_registry.get(&workspace_id) else {
+        return StatusCode::NOT_FOUND.into_response();
+    };
+    let root = canonical_workspace_root(&ws);
+    let rel = query.path.as_deref().unwrap_or("").trim().trim_matches('/');
+    let target = if rel.is_empty() {
+        root.clone()
+    } else {
+        root.join(rel)
+    };
+    let current_dir = match canonicalize_route_path(&target) {
+        Ok(p) => p,
+        Err(_) => return StatusCode::NOT_FOUND.into_response(),
+    };
+    if !current_dir.starts_with(&root) {
+        return StatusCode::NOT_FOUND.into_response();
+    }
+    match collect_directory_entries(&workspace_id, &root, &current_dir) {
+        Ok(entries) => Json(entries).into_response(),
+        Err(_) => Json(Vec::<DirListingEntry>::new()).into_response(),
+    }
+}
+
+#[derive(Deserialize)]
+struct DirListingQuery {
+    path: Option<String>,
+}
+
 fn render_directory_listing(
     workspace_id: &str,
     ws: &WorkspaceEntry,
@@ -5175,64 +5306,8 @@ fn render_directory_listing(
         return StatusCode::NOT_FOUND.into_response();
     }
 
-    #[derive(serde::Serialize)]
-    struct Entry {
-        name: String,
-        is_dir: bool,
-        is_markdown: bool,
-        is_hidden: bool,
-        show_in_markdown: bool,
-        link: String,
-        rel_git_path: String,
-        last_commit_subject: Option<String>,
-        last_commit_time: Option<String>,
-    }
-
-    let mut entries: Vec<Entry> = match fs::read_dir(&current_dir) {
-        Ok(dir_entries) => dir_entries
-            .filter_map(|e| e.ok())
-            .filter_map(|entry| {
-                let path = entry.path();
-                let name = entry.file_name().to_string_lossy().to_string();
-                let is_hidden = name.starts_with('.');
-                // Use file_type() — avoids stat() syscall that can block on AutoFS mount points.
-                let file_type = match entry.file_type() {
-                    Ok(ft) => ft,
-                    Err(_) => return None,
-                };
-                let is_dir = file_type.is_dir();
-                let is_markdown = !is_dir && is_markdown_path(&path);
-                let show_in_markdown = !is_hidden && (is_dir || is_markdown);
-                let rel = path.strip_prefix(root).unwrap_or(&path).to_path_buf();
-                let rel_git_path = rel.to_string_lossy().replace('\\', "/");
-                let rel_url = path_to_route(&rel);
-                if is_dir {
-                    Some(Entry {
-                        name,
-                        is_dir: true,
-                        is_markdown,
-                        is_hidden,
-                        show_in_markdown,
-                        link: format!("/{workspace_id}/{rel_url}/"),
-                        rel_git_path,
-                        last_commit_subject: None,
-                        last_commit_time: None,
-                    })
-                } else {
-                    Some(Entry {
-                        name,
-                        is_dir: false,
-                        is_markdown,
-                        is_hidden,
-                        show_in_markdown,
-                        link: format!("/{workspace_id}/{rel_url}"),
-                        rel_git_path,
-                        last_commit_subject: None,
-                        last_commit_time: None,
-                    })
-                }
-            })
-            .collect(),
+    let entries = match collect_directory_entries(workspace_id, root, &current_dir) {
+        Ok(entries) => entries,
         Err(e) => {
             return (
                 StatusCode::INTERNAL_SERVER_ERROR,
@@ -5241,29 +5316,7 @@ fn render_directory_listing(
                 .into_response()
         }
     };
-
-    entries.sort_by(|a, b| match (a.is_dir, b.is_dir) {
-        (true, false) => std::cmp::Ordering::Less,
-        (false, true) => std::cmp::Ordering::Greater,
-        _ => a.name.cmp(&b.name),
-    });
-
     let git_status = git::status(root);
-    if git_status.available {
-        let rel_paths: Vec<String> = entries
-            .iter()
-            .map(|entry| entry.rel_git_path.clone())
-            .collect();
-        if let Ok(path_commits) = git::last_commits_for_paths(root, &rel_paths) {
-            for entry in entries.iter_mut() {
-                let Some(commit) = path_commits.get(&entry.rel_git_path) else {
-                    continue;
-                };
-                entry.last_commit_subject = Some(commit.subject.clone());
-                entry.last_commit_time = Some(commit.time.clone());
-            }
-        }
-    }
 
     let show_parent = current_dir != root;
     let parent_link: Option<String> = if show_parent {
@@ -5449,6 +5502,7 @@ fn render_directory_listing(
     context.insert("tags_url", &format!("/_/{workspace_id}/git/tags"));
     context.insert("checkout_url", &format!("/_/{workspace_id}/git/checkout"));
     context.insert("files_data_url", &format!("/_/{workspace_id}/files/data"));
+    context.insert("files_dir_url", &format!("/_/{workspace_id}/files/dir"));
     context.insert(
         "settings_features_url",
         &format!("/_/{workspace_id}/settings/features"),

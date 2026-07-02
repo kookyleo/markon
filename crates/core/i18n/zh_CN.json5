@@ -313,6 +313,8 @@
     "web.ws.go_to_file.placeholder": "跳转到文件",
     "web.ws.go_to_file.loading": "正在加载文件…",
     "web.ws.go_to_file.empty": "未找到文件。",
+    "web.ws.tree.toggle": "展开目录",
+    "web.ws.tree.empty": "空目录",
     "web.ws.add_file": "添加文件",
     "web.ws.new_markdown_file": "新建 Markdown 文件",
     "web.ws.code": "Code",

@@ -314,6 +314,8 @@
     "web.ws.go_to_file.placeholder": "ファイルへ移動",
     "web.ws.go_to_file.loading": "ファイルを読み込み中…",
     "web.ws.go_to_file.empty": "ファイルが見つかりません。",
+    "web.ws.tree.toggle": "フォルダーを展開",
+    "web.ws.tree.empty": "空のフォルダー",
     "web.ws.add_file": "ファイルを追加",
     "web.ws.new_markdown_file": "新規 Markdown ファイル",
     "web.ws.code": "Code",

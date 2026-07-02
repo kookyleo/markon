@@ -314,6 +314,8 @@
     "web.ws.go_to_file.placeholder": "Go to file",
     "web.ws.go_to_file.loading": "Loading files…",
     "web.ws.go_to_file.empty": "No files found.",
+    "web.ws.tree.toggle": "Expand folder",
+    "web.ws.tree.empty": "Empty folder",
     "web.ws.add_file": "Add file",
     "web.ws.new_markdown_file": "New Markdown file",
     "web.ws.code": "Code",

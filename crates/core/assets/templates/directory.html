@@ -964,6 +964,139 @@
         .workspace-entry-name strong {
             font-weight: 400;
         }
+
+        /* ── Inline directory tree (expand a folder in place) ──────────────── */
+        .workspace-entry-toggle {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            min-width: 0;
+            margin: 0;
+            padding: 0;
+            border: 0;
+            background: transparent;
+            font: inherit;
+            text-align: left;
+            cursor: pointer;
+            color: var(--markon-fg-default);
+        }
+        .workspace-entry-toggle .dir-icon {
+            margin-right: 0;
+            flex: 0 0 auto;
+        }
+        .workspace-entry-toggle strong {
+            min-width: 0;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+            font-size: 14px;
+            font-weight: 400;
+            color: var(--markon-fg-default);
+        }
+        .workspace-entry-toggle:hover strong {
+            color: var(--markon-accent);
+            text-decoration: underline;
+        }
+        .workspace-tree-chevron {
+            flex: 0 0 auto;
+            display: inline-block;
+            width: 12px;
+            height: 12px;
+            background-repeat: no-repeat;
+            background-position: center;
+            background-size: contain;
+            background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none' stroke='%23586069' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'><path d='M6 4l4 4-4 4'/></svg>");
+            transition: transform 0.12s ease;
+        }
+        html[data-theme="dark"] .workspace-tree-chevron {
+            background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none' stroke='%238b949e' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'><path d='M6 4l4 4-4 4'/></svg>");
+        }
+        [aria-expanded="true"] > .workspace-tree-chevron {
+            transform: rotate(90deg);
+        }
+        .workspace-tree-spacer {
+            flex: 0 0 auto;
+            display: inline-block;
+            width: 12px;
+            height: 12px;
+        }
+        /* Children container spans the full grid row (overrides the 3-col grid
+           applied to every `.workspace-repo-file-list li`). The tree rows inside
+           re-establish the same 3 columns so name/commit/time stay aligned with
+           the top-level rows. */
+        .workspace-repo-file-list li.workspace-entry-children {
+            display: block;
+            grid-column: 1 / -1;
+            padding: 0;
+        }
+        .workspace-repo-file-list li.workspace-entry-children.is-collapsed {
+            display: none;
+        }
+        .workspace-repo-file-list .workspace-tree {
+            list-style: none;
+            margin: 0;
+            padding: 0;
+        }
+        .workspace-repo-file-list .workspace-tree.is-collapsed {
+            display: none;
+        }
+        /* Higher specificity than `.workspace-repo-file-list li` (the grid rule). */
+        .workspace-repo-file-list .workspace-tree > li {
+            display: block;
+            padding: 0;
+        }
+        /* Markdown filter linkage: the `data-file-filter` attribute lives on the
+           `.dir-list` ancestor, so the same mechanism that hides top-level rows
+           also hides tree rows whose entry isn't shown in markdown mode. */
+        .dir-list[data-file-filter="markdown"] .workspace-tree-item[data-filter-visible-markdown="false"] {
+            display: none;
+        }
+        .workspace-tree-row {
+            display: grid;
+            grid-template-columns: minmax(220px, 0.9fr) minmax(220px, 1.35fr) max-content;
+            align-items: center;
+            column-gap: 18px;
+            min-width: 0;
+            padding: 8px 0;
+            border-radius: 4px;
+        }
+        .workspace-tree-row[role="button"] {
+            cursor: pointer;
+        }
+        .workspace-tree-row:hover {
+            background: var(--markon-bg-subtle, rgba(110, 118, 129, 0.08));
+        }
+        .workspace-tree-name {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            min-width: 0;
+        }
+        .workspace-tree-name .dir-icon {
+            margin-right: 0;
+            flex: 0 0 auto;
+        }
+        .workspace-tree-name a,
+        .workspace-tree-label {
+            min-width: 0;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+            font-size: 14px;
+            font-weight: 400;
+            color: var(--markon-fg-default) !important;
+        }
+        .workspace-tree-name a:hover,
+        .workspace-tree-row[role="button"]:hover .workspace-tree-label {
+            color: var(--markon-accent) !important;
+            text-decoration: underline;
+        }
+        .workspace-tree-empty {
+            padding: 6px 0;
+            color: var(--markon-fg-muted, #6e7781);
+            font-size: 13px;
+        }
+
         .workspace-detail {
             position: fixed;
             top: 0;
@@ -1334,7 +1467,8 @@
                 flex: 1;
             }
             .workspace-commit-header,
-            .workspace-repo-file-list li {
+            .workspace-repo-file-list li,
+            .workspace-repo-file-list .workspace-tree-row {
                 grid-template-columns: minmax(0, 1fr);
                 gap: 4px;
             }
@@ -1648,7 +1782,7 @@
                     </div>
                 </div>
                 {% endif %}
-                <ul class="dir-list workspace-repo-file-list" data-file-filter="markdown">
+                <ul class="dir-list workspace-repo-file-list" data-file-filter="markdown" data-dir-data-url="{{ files_dir_url }}">
                     {% if show_parent %}
                     <li class="workspace-entry-parent" data-entry-kind="dir">
                         <div class="workspace-entry-name">
@@ -1665,7 +1799,7 @@
                         data-filter-visible-markdown="{{ entry.show_in_markdown }}">
                         <div class="workspace-entry-name">
                             {% if entry.is_dir %}
-                            <span class="dir-icon dir-icon-folder" aria-hidden="true"></span><a href="{{ entry.link }}"><strong>{{ entry.name }}/</strong></a>
+                            <button type="button" class="workspace-entry-toggle" data-dir-toggle data-dir-path="{{ entry.rel_git_path }}" data-dir-link="{{ entry.link }}" aria-expanded="false" data-i18n-aria="web.ws.tree.toggle" aria-label="Expand folder"><span class="workspace-tree-chevron" aria-hidden="true"></span><span class="dir-icon dir-icon-folder" aria-hidden="true"></span><strong>{{ entry.name }}/</strong></button>
                             {% else %}
                             <span class="dir-icon dir-icon-file" aria-hidden="true"></span><a href="{{ entry.link }}">{{ entry.name }}</a>
                             {% endif %}

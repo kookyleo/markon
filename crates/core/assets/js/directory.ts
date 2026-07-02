@@ -361,15 +361,27 @@ function renderGoToFile(): void {
     });
     setGoActive(0, goLinks());
 }
+// Shared, de-duplicated fetch of the full file list. Both the go-to-file finder
+// and the inline directory tree consume `goFiles`; this guards against a double
+// fetch when a user opens the finder and expands a folder around the same time.
+let goFilesPromise: Promise<GoToFileEntry[]> | null = null;
+function ensureGoFiles(): Promise<GoToFileEntry[]> {
+    if (goFiles) return Promise.resolve(goFiles);
+    if (goFilesPromise) return goFilesPromise;
+    if (!goFinder) return Promise.resolve([]);
+    goFilesPromise = fetch(goFinder.getAttribute('data-files-data-url') || '', { credentials: 'same-origin' })
+        .then((resp) => { if (!resp.ok) throw new Error(resp.statusText); return resp.json(); })
+        .then((files: GoToFileEntry[]) => { goFiles = files || []; return goFiles; })
+        .catch((err) => { goFiles = []; throw err; });
+    return goFilesPromise;
+}
 function loadGoFiles(): void {
     if (goFiles) { renderGoToFile(); return; }
     if (!goFinder) return;
     if (goEmpty) goEmpty.textContent = t('web.ws.go_to_file.loading');
-    fetch(goFinder.getAttribute('data-files-data-url') || '', { credentials: 'same-origin' })
-        .then((resp) => { if (!resp.ok) throw new Error(resp.statusText); return resp.json(); })
-        .then((files: GoToFileEntry[]) => { goFiles = files || []; renderGoToFile(); })
+    ensureGoFiles()
+        .then(() => renderGoToFile())
         .catch((err) => {
-            goFiles = [];
             if (goEmpty) goEmpty.textContent = err.message || String(err);
             renderGoToFile();
         });
@@ -404,6 +416,206 @@ if (goInput) {
 document.addEventListener('click', (event) => {
     const node = event.target as Node | null;
     if (goFinder && node && !goFinder.contains(node)) closeFinder();
+});
+
+// ── Inline directory tree (expand a folder row in place) ────────────────────
+// Folder rows on the file table expand in place into a lazily-built tree instead
+// of navigating to the sub-directory page. Each folder's direct children are
+// fetched on first expand from `/_/{id}/files/dir?path=<rel>` — the same shape
+// the server renders the top-level table from, so tree rows carry the same
+// last-commit metadata and the same three columns (name | commit | time). The
+// markdown/all filter is honoured purely via CSS: the `data-file-filter`
+// attribute on the `.dir-list` ancestor drives both top-level and tree rows.
+interface DirEntry {
+    name: string;
+    is_dir: boolean;
+    is_markdown: boolean;
+    is_hidden: boolean;
+    show_in_markdown: boolean;
+    link: string;
+    rel_git_path: string;
+    last_commit_subject: string | null;
+    last_commit_time: string | null;
+}
+const dirList = document.querySelector<HTMLElement>('.workspace-repo-file-list[data-dir-data-url]');
+const dirDataUrl = (dirList && dirList.getAttribute('data-dir-data-url')) || '';
+// Per-directory fetch cache (keyed by rel path) so re-expanding never refetches.
+const dirCache = new Map<string, Promise<DirEntry[]>>();
+function fetchDir(dirPath: string): Promise<DirEntry[]> {
+    const cached = dirCache.get(dirPath);
+    if (cached) return cached;
+    if (!dirDataUrl) return Promise.resolve([]);
+    const url = dirDataUrl + '?path=' + encodeURIComponent(dirPath);
+    const req = fetch(url, { credentials: 'same-origin' })
+        .then((resp) => { if (!resp.ok) throw new Error(resp.statusText); return resp.json(); })
+        .then((entries: DirEntry[]) => entries || [])
+        .catch((err) => { dirCache.delete(dirPath); throw err; });
+    dirCache.set(dirPath, req);
+    return req;
+}
+function makeIcon(kind: 'folder' | 'file'): HTMLElement {
+    const icon = document.createElement('span');
+    icon.className = 'dir-icon dir-icon-' + kind;
+    icon.setAttribute('aria-hidden', 'true');
+    return icon;
+}
+// Render `entries` into `ul` at the given depth (0 = direct children of the
+// expanded top-level folder). Each row is a three-column grid aligned with the
+// top-level table; sub-folder rows are themselves toggleable.
+function renderTree(ul: HTMLElement, entries: DirEntry[], depth: number): void {
+    const pad = ((depth + 1) * 18) + 'px';
+    if (!entries.length) {
+        const li = document.createElement('li');
+        const empty = document.createElement('div');
+        empty.className = 'workspace-tree-empty';
+        empty.style.paddingLeft = pad;
+        empty.textContent = t('web.ws.tree.empty');
+        li.appendChild(empty);
+        ul.appendChild(li);
+        return;
+    }
+    for (const entry of entries) {
+        const li = document.createElement('li');
+        li.className = 'workspace-tree-item';
+        li.setAttribute('data-filter-visible-markdown', entry.show_in_markdown ? 'true' : 'false');
+        const row = document.createElement('div');
+        row.className = 'workspace-tree-row';
+        const name = document.createElement('div');
+        name.className = 'workspace-tree-name';
+        name.style.paddingLeft = pad;
+        if (entry.is_dir) {
+            li.setAttribute('data-tree-dir', '');
+            li.setAttribute('data-tree-path', entry.rel_git_path);
+            li.dataset.depth = String(depth);
+            row.setAttribute('role', 'button');
+            row.setAttribute('tabindex', '0');
+            row.setAttribute('aria-expanded', 'false');
+            const chevron = document.createElement('span');
+            chevron.className = 'workspace-tree-chevron';
+            chevron.setAttribute('aria-hidden', 'true');
+            const label = document.createElement('span');
+            label.className = 'workspace-tree-label';
+            label.textContent = entry.name + '/';
+            name.appendChild(chevron);
+            name.appendChild(makeIcon('folder'));
+            name.appendChild(label);
+        } else {
+            const spacer = document.createElement('span');
+            spacer.className = 'workspace-tree-spacer';
+            spacer.setAttribute('aria-hidden', 'true');
+            const a = document.createElement('a');
+            a.href = entry.link;
+            a.textContent = entry.name;
+            name.appendChild(spacer);
+            name.appendChild(makeIcon('file'));
+            name.appendChild(a);
+        }
+        const commit = document.createElement('div');
+        commit.className = 'workspace-entry-commit';
+        if (entry.last_commit_subject) {
+            commit.textContent = entry.last_commit_subject;
+            commit.title = entry.last_commit_subject;
+        }
+        const time = document.createElement('div');
+        time.className = 'workspace-entry-time';
+        if (entry.last_commit_time) time.textContent = entry.last_commit_time;
+        row.appendChild(name);
+        row.appendChild(commit);
+        row.appendChild(time);
+        li.appendChild(row);
+        if (entry.is_dir) {
+            const childUl = document.createElement('ul');
+            childUl.className = 'workspace-tree is-collapsed';
+            li.appendChild(childUl);
+        }
+        ul.appendChild(li);
+    }
+}
+function toggleTreeDir(li: HTMLElement): void {
+    const row = li.querySelector<HTMLElement>(':scope > .workspace-tree-row');
+    const childUl = li.querySelector<HTMLElement>(':scope > ul.workspace-tree');
+    if (!row || !childUl) return;
+    const expanded = row.getAttribute('aria-expanded') === 'true';
+    if (expanded) {
+        childUl.classList.add('is-collapsed');
+        row.setAttribute('aria-expanded', 'false');
+        return;
+    }
+    row.setAttribute('aria-expanded', 'true');
+    if (childUl.getAttribute('data-built')) {
+        childUl.classList.remove('is-collapsed');
+        return;
+    }
+    const depth = parseInt(li.dataset.depth || '0', 10);
+    fetchDir(li.getAttribute('data-tree-path') || '')
+        .then((entries) => {
+            if (row.getAttribute('aria-expanded') !== 'true') return; // collapsed while loading
+            if (!childUl.getAttribute('data-built')) {
+                renderTree(childUl, entries, depth + 1);
+                childUl.setAttribute('data-built', '1');
+            }
+            childUl.classList.remove('is-collapsed');
+        })
+        .catch(() => { row.setAttribute('aria-expanded', 'false'); });
+}
+function toggleTopDir(button: HTMLElement): void {
+    const li = button.closest<HTMLElement>('[data-entry-kind]');
+    if (!li) return;
+    const dirPath = button.getAttribute('data-dir-path') || '';
+    const expanded = button.getAttribute('aria-expanded') === 'true';
+    const sibling = li.nextElementSibling as HTMLElement | null;
+    const container = sibling && sibling.matches('[data-dir-children]') &&
+        sibling.getAttribute('data-parent') === dirPath ? sibling : null;
+    if (expanded) {
+        if (container) container.classList.add('is-collapsed');
+        button.setAttribute('aria-expanded', 'false');
+        return;
+    }
+    button.setAttribute('aria-expanded', 'true');
+    if (container) { container.classList.remove('is-collapsed'); return; }
+    fetchDir(dirPath)
+        .then((entries) => {
+            // A rapid collapse before the fetch resolved must win.
+            if (button.getAttribute('aria-expanded') !== 'true') return;
+            const fresh = li.nextElementSibling as HTMLElement | null;
+            if (fresh && fresh.matches('[data-dir-children]') &&
+                fresh.getAttribute('data-parent') === dirPath) {
+                fresh.classList.remove('is-collapsed');
+                return;
+            }
+            const box = document.createElement('li');
+            box.className = 'workspace-entry-children';
+            box.setAttribute('data-dir-children', '');
+            box.setAttribute('data-parent', dirPath);
+            const ul = document.createElement('ul');
+            ul.className = 'workspace-tree';
+            renderTree(ul, entries, 0);
+            box.appendChild(ul);
+            li.parentNode && li.parentNode.insertBefore(box, li.nextSibling);
+        })
+        .catch(() => { button.setAttribute('aria-expanded', 'false'); });
+}
+document.querySelectorAll<HTMLElement>('[data-dir-toggle]').forEach((button) => {
+    button.addEventListener('click', (event) => {
+        event.preventDefault();
+        toggleTopDir(button);
+    });
+});
+// Sub-folder rows inside the tree are wired via delegation (they are built lazily).
+document.addEventListener('click', (event) => {
+    const target = event.target as Element | null;
+    const row = target && target.closest ? target.closest('.workspace-tree-row[role="button"]') : null;
+    if (!row) return;
+    const li = row.closest<HTMLElement>('[data-tree-dir]');
+    if (li) toggleTreeDir(li);
+});
+document.addEventListener('keydown', (event) => {
+    if (event.key !== 'Enter' && event.key !== ' ') return;
+    const target = event.target as Element | null;
+    if (!target || !target.classList || !target.classList.contains('workspace-tree-row')) return;
+    if (target.getAttribute('role') !== 'button') return;
+    const li = target.closest<HTMLElement>('[data-tree-dir]');
+    if (li) { event.preventDefault(); toggleTreeDir(li); }
 });
 
 // ── Add-file modal ──────────────────────────────────────────────────────────
