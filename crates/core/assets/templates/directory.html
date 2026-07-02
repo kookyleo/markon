@@ -276,7 +276,7 @@
             line-height: 1.2;
         }
         .workspace-title {
-            margin: 3px 0 0;
+            margin: 3px 0 10px;
             padding: 0;
             border: 0;
             overflow: hidden;
@@ -1329,11 +1329,14 @@
                         </button>
                         {% if can_add_file %}
                         <div class="workspace-dropdown" data-workspace-dropdown>
-                            <button class="workspace-tool-button" type="button">
-                                <span data-i18n="web.ws.add_file">Add file</span>
+                            <button class="workspace-tool-button workspace-tool-icon" type="button" aria-label="Add file" title="Add file">
+                                <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 3.25v9.5M3.25 8h9.5"/></svg>
                                 <span aria-hidden="true">⌄</span>
                             </button>
                             <div class="workspace-dropdown-menu">
+                                <button class="workspace-menu-item" type="button" data-open-add-folder>
+                                    <span data-i18n="web.ws.new_folder">New folder</span>
+                                </button>
                                 <button class="workspace-menu-item" type="button" data-open-add-file>
                                     <span data-i18n="web.ws.new_markdown_file">New Markdown file</span>
                                 </button>
@@ -1503,6 +1506,22 @@
                         <div class="workspace-modal-status" data-add-file-status></div>
                         <button class="workspace-tool-button" type="button" data-close-workspace-modal data-i18n="web.ws.cancel">Cancel</button>
                         <button class="workspace-green-button" type="submit" data-i18n="web.ws.create_file">Create file</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+        <div class="workspace-modal" data-add-folder-modal data-create-folder-url="{{ create_folder_url }}" aria-hidden="true">
+            <div class="workspace-modal-panel" role="dialog" aria-modal="true" aria-labelledby="add-folder-title">
+                <div class="workspace-modal-header">
+                    <h2 id="add-folder-title" class="workspace-modal-title" data-i18n="web.ws.new_folder">New folder</h2>
+                    <button class="workspace-modal-close" type="button" data-close-workspace-modal aria-label="Close">×</button>
+                </div>
+                <form class="workspace-modal-body" data-add-folder-form>
+                    <input class="workspace-modal-input" type="text" data-add-folder-path placeholder="docs/new-section" autocomplete="off" spellcheck="false">
+                    <div class="workspace-modal-actions">
+                        <div class="workspace-modal-status" data-add-folder-status></div>
+                        <button class="workspace-tool-button" type="button" data-close-workspace-modal data-i18n="web.ws.cancel">Cancel</button>
+                        <button class="workspace-green-button" type="submit" data-i18n="web.ws.create_folder">Create folder</button>
                     </div>
                 </form>
             </div>

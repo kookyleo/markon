@@ -5148,6 +5148,10 @@ fn render_directory_listing(
         "create_file_url",
         &format!("/_/{workspace_id}/files/create"),
     );
+    context.insert(
+        "create_folder_url",
+        &format!("/_/{workspace_id}/files/folder"),
+    );
     context.insert("entries", &entries);
     context.insert("show_parent", &show_parent);
     context.insert("parent_link", &parent_link);

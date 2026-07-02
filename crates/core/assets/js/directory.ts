@@ -344,6 +344,46 @@ if (addForm) {
     });
 }
 
+// ── Add-folder modal ────────────────────────────────────────────────────────
+document.querySelectorAll<HTMLElement>('[data-open-add-folder]').forEach((button) => {
+    button.addEventListener('click', (event) => {
+        event.preventDefault();
+        openWorkspaceModal(document.querySelector('[data-add-folder-modal]'));
+    });
+});
+const addFolderForm = document.querySelector<HTMLFormElement>('[data-add-folder-form]');
+if (addFolderForm) {
+    addFolderForm.addEventListener('submit', (event) => {
+        event.preventDefault();
+        const modal = document.querySelector('[data-add-folder-modal]');
+        const pathInput = addFolderForm.querySelector<HTMLInputElement>('[data-add-folder-path]');
+        const status = addFolderForm.querySelector<HTMLElement>('[data-add-folder-status]');
+        const rel = ((pathInput && pathInput.value) || '').trim();
+        if (!rel) {
+            if (status) status.textContent = t('web.ws.create_folder.path_required');
+            return;
+        }
+        if (status) status.textContent = t('web.ws.create_folder.creating');
+        fetch((modal && modal.getAttribute('data-create-folder-url')) || '', {
+            method: 'POST',
+            credentials: 'same-origin',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ path: rel }),
+        })
+            .then((resp) =>
+                resp.text().then((text) => {
+                    let data: { success?: boolean; message?: string; url?: string } = {};
+                    try { data = text ? JSON.parse(text) : {}; } catch { /* ignore */ }
+                    if (!resp.ok || data.success === false) throw new Error(data.message || text || resp.statusText);
+                    window.location.href = data.url || window.location.href;
+                }),
+            )
+            .catch((err) => {
+                if (status) status.textContent = err.message || String(err);
+            });
+    });
+}
+
 // ── Keyboard: Esc closes modals, `t` opens go-to-file ───────────────────────
 document.addEventListener('keydown', (event) => {
     const target = event.target as HTMLElement | null;
@@ -364,6 +404,8 @@ const go = document.querySelector<HTMLInputElement>('[data-go-to-file-input]');
 if (go) go.placeholder = t('web.ws.go_to_file.placeholder');
 const addPath = document.querySelector<HTMLInputElement>('[data-add-file-path]');
 if (addPath) addPath.placeholder = t('web.ws.create_file.placeholder');
+const addFolderPath = document.querySelector<HTMLInputElement>('[data-add-folder-path]');
+if (addFolderPath) addFolderPath.placeholder = t('web.ws.create_folder.placeholder');
 document.title = t((heading && heading.dataset.titleKey) || 'web.title.dir');
 
 export {};
