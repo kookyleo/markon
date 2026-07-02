@@ -848,6 +848,21 @@
             border-bottom: 0;
             padding-bottom: 0;
         }
+        .workspace-side-footer {
+            display: flex;
+            flex-direction: column;
+            align-items: flex-start;
+            gap: 8px;
+        }
+        .workspace-side-footer a {
+            color: var(--markon-fg-muted);
+            font-size: 12px;
+            text-decoration: none;
+        }
+        .workspace-side-footer a:hover {
+            color: var(--markon-accent);
+            text-decoration: underline;
+        }
         .workspace-section-body {
             display: flex;
             flex-direction: column;
@@ -1552,6 +1567,12 @@
                     <a href="{{ history_url }}" data-i18n="web.ws.git.history">Git history</a>
                     {% endif %}
                 </div>
+            </section>
+
+            <section class="workspace-side-section workspace-side-footer">
+                <a id="dir-footer" href="https://kookyleo.github.io/markon/">Powered by markon</a>
+                <a id="dir-feedback-link" href="https://github.com/kookyleo/markon/issues/new?title=%5BFeedback%5D%20&body=One-line%20summary%3A%0A%0A%23%23%20Environment%0A-%20markon%20version%3A%0A-%20OS%3A%0A-%20Browser%3A%0A%0A%23%23%20Steps%20to%20reproduce%0A1.%0A%0A%23%23%20Expected%0A%0A%23%23%20Actual%0A" target="_blank" rel="noopener noreferrer">Feedback</a>
+                <a id="dir-kbd-link" href="#" onclick="window.shortcutsManager.showHelp(); return false;">Keyboard Shortcuts (?)</a>
             </section>
         </aside>
 

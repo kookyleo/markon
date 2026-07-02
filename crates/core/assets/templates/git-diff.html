@@ -410,7 +410,7 @@
             white-space: nowrap;
             font-size: 13px;
             font-weight: 600;
-            font-family: 'SF Mono', Monaco, 'Roboto Mono', Consolas, monospace;
+            font-family: ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, 'Liberation Mono', monospace;
         }
         .git-compare-row-sub {
             overflow: hidden;
@@ -931,9 +931,9 @@
             overflow: visible;
             background: var(--markon-bg-default);
             color: var(--markon-fg-default);
-            font-family: 'SF Mono', Monaco, 'Cascadia Code', 'Roboto Mono', Consolas, monospace;
+            font-family: ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, 'Liberation Mono', monospace;
             font-size: 12px;
-            line-height: 1.45;
+            line-height: 1.5;
         }
         .workspace-diff-split-line {
             grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
@@ -982,6 +982,15 @@
         }
         .git-diff-del {
             background: color-mix(in srgb, var(--markon-danger) 11%, transparent);
+        }
+        /* GitHub's two-tone diff gutter: the line-number column carries a stronger
+           add/del tint than the code, layered over the row tint for a combined
+           shade so the changed side reads at a glance. */
+        .git-diff-add .workspace-diff-line-no {
+            background: color-mix(in srgb, var(--markon-success) 16%, transparent);
+        }
+        .git-diff-del .workspace-diff-line-no {
+            background: color-mix(in srgb, var(--markon-danger) 15%, transparent);
         }
         /* Word-level highlight sits clearly above the line tint: stronger fill
            plus a faint same-hue ring so the exact changed tokens read at a glance. */
@@ -1040,7 +1049,7 @@
             border-right: 3px solid var(--md-diff-guide-color);
             padding-right: 8px;
             color: var(--md-diff-guide-color);
-            font-family: 'SF Mono', Monaco, 'Cascadia Code', 'Roboto Mono', Consolas, monospace;
+            font-family: ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, 'Liberation Mono', monospace;
             font-size: 16px;
             font-weight: 800;
             line-height: 1.2;
@@ -1134,8 +1143,8 @@
             align-items: center;
             justify-content: space-between;
             gap: 12px;
-            min-height: 44px;
-            padding: 9px 46px;
+            min-height: 40px;
+            padding: 8px 46px;
             border-top: 1px solid var(--markon-border-default);
             border-bottom: 1px solid var(--markon-border-default);
             background: var(--markon-bg-muted);
@@ -1462,7 +1471,7 @@
             border-right: 3px solid var(--md-diff-guide-color);
             padding-right: 8px;
             color: var(--md-diff-guide-color);
-            font-family: 'SF Mono', Monaco, 'Cascadia Code', 'Roboto Mono', Consolas, monospace;
+            font-family: ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, 'Liberation Mono', monospace;
             font-size: 16px;
             font-weight: 800;
             line-height: 1.2;
