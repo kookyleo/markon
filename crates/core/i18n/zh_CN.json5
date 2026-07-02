@@ -358,7 +358,7 @@
 
     // ── 批注 / 高亮 ─────────────────────────────────────────
     "web.annot.unhighlight": "取消高亮",
-    "web.annot.note":       "备注",
+    "web.annot.note":       "便条",
     "web.chat.discuss":     "聊聊",
     "web.chat.quote.dismiss": "移除引用",
     "web.chat.popout":      "独立窗口",
@@ -383,11 +383,11 @@
     "web.annot.yellow":     "黄色",
     "web.annot.strike":     "删除线",
     "web.annot.clear":      "清除本页所有批注",
-    "web.note.edit":        "编辑备注",
-    "web.note.delete":      "删除备注",
+    "web.note.edit":        "编辑便条",
+    "web.note.delete":      "删除便条",
 
     // ── 模态框 ───────────────────────────────────────────────
-    "web.modal.note.placeholder": "输入备注内容…",
+    "web.modal.note.placeholder": "输入便条内容…",
     "web.modal.cancel":     "取消",
     "web.modal.save":       "保存",
     "web.modal.ok":         "确定",
