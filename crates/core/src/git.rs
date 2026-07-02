@@ -172,20 +172,60 @@ pub fn status(root: &Path) -> GitStatus {
     out
 }
 
+/// Optional filters for [`history_filtered`]. Every field is `None` by default,
+/// which reproduces the plain [`history`] behaviour (HEAD, all authors, all time).
+#[derive(Debug, Clone, Default)]
+pub struct HistoryFilter {
+    /// Branch to walk instead of HEAD. Validated against [`branches`] before use;
+    /// an unknown branch is ignored and the walk falls back to HEAD.
+    pub branch: Option<String>,
+    /// `--author=<value>` filter (substring / regex, as git interprets it).
+    pub author: Option<String>,
+    /// `--since=<value>` filter (any git approxidate, e.g. "1 week ago").
+    pub since: Option<String>,
+}
+
 pub fn history(root: &Path, limit: usize) -> Result<Vec<GitCommit>> {
+    history_filtered(root, limit, &HistoryFilter::default())
+}
+
+pub fn history_filtered(
+    root: &Path,
+    limit: usize,
+    filter: &HistoryFilter,
+) -> Result<Vec<GitCommit>> {
     ensure_repo(root)?;
     let max_count = format!("--max-count={}", limit.clamp(1, 200));
-    let output = run_git(
-        root,
-        &[
-            "log",
-            "--date=iso-strict",
-            "--format=%H%x1f%h%x1f%an%x1f%ad%x1f%cr%x1f%s",
-            &max_count,
-            "--",
-            ".",
-        ],
-    )?;
+
+    // Every value below is passed to `run_git` as its own argument (never joined
+    // into a shell string), so author/since text can't inject flags or commands.
+    // The branch is additionally whitelisted against the real branch list so it
+    // can't smuggle an arbitrary rev / path onto the `git log` command line.
+    let mut args: Vec<String> = vec![
+        "log".to_string(),
+        "--date=iso-strict".to_string(),
+        "--format=%H%x1f%h%x1f%an%x1f%ad%x1f%cr%x1f%s".to_string(),
+        max_count,
+    ];
+    if let Some(author) = filter.author.as_deref().map(str::trim).filter(|a| !a.is_empty()) {
+        args.push(format!("--author={author}"));
+    }
+    if let Some(since) = filter.since.as_deref().map(str::trim).filter(|s| !s.is_empty()) {
+        args.push(format!("--since={since}"));
+    }
+    // The rev (branch) must sit before the `-- .` pathspec separator. Only accept
+    // a branch that actually exists; otherwise leave it out so git walks HEAD.
+    if let Some(branch) = filter.branch.as_deref().map(str::trim).filter(|b| !b.is_empty()) {
+        let known = branches(root).unwrap_or_default();
+        if known.iter().any(|candidate| candidate.name == branch) {
+            args.push(branch.to_string());
+        }
+    }
+    args.push("--".to_string());
+    args.push(".".to_string());
+
+    let arg_refs: Vec<&str> = args.iter().map(String::as_str).collect();
+    let output = run_git(root, &arg_refs)?;
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr);
         if stderr.contains("does not have any commits") {
@@ -197,6 +237,31 @@ pub fn history(root: &Path, limit: usize) -> Result<Vec<GitCommit>> {
         .lines()
         .filter_map(parse_commit_line)
         .collect())
+}
+
+/// Distinct commit author names for the workspace path, most-recent first and
+/// de-duplicated while preserving order. Empty repositories yield an empty list.
+pub fn authors(root: &Path) -> Result<Vec<String>> {
+    ensure_repo(root)?;
+    let output = run_git(root, &["log", "--format=%an", "--", "."])?;
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        if stderr.contains("does not have any commits") {
+            return Ok(Vec::new());
+        }
+        return Err(GitError::Command(stderr.trim().to_string()));
+    }
+    let mut seen: Vec<String> = Vec::new();
+    for name in String::from_utf8_lossy(&output.stdout)
+        .lines()
+        .map(str::trim)
+        .filter(|line| !line.is_empty())
+    {
+        if !seen.iter().any(|existing| existing == name) {
+            seen.push(name.to_string());
+        }
+    }
+    Ok(seen)
 }
 
 pub fn commit_count(root: &Path) -> Result<usize> {

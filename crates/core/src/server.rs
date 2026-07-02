@@ -1955,15 +1955,67 @@ async fn handle_workspace_path(
     }
 }
 
+#[derive(Deserialize)]
+struct GitHistoryQuery {
+    branch: Option<String>,
+    author: Option<String>,
+    range: Option<String>,
+}
+
+/// Map a toolbar range key to a git `--since` approxidate. `""`/`"all"` (and any
+/// unknown key) mean "no lower bound".
+fn git_history_since(range: Option<&str>) -> Option<String> {
+    match range.map(str::trim).unwrap_or("") {
+        "day" => Some("1 day ago".to_string()),
+        "week" => Some("1 week ago".to_string()),
+        "month" => Some("1 month ago".to_string()),
+        "year" => Some("1 year ago".to_string()),
+        _ => None,
+    }
+}
+
 async fn handle_git_history(
     State(state): State<AppState>,
     AxumPath(workspace_id): AxumPath<String>,
+    Query(q): Query<GitHistoryQuery>,
 ) -> impl IntoResponse {
     let Some(ws) = state.workspace_registry.get(&workspace_id) else {
         return StatusCode::NOT_FOUND.into_response();
     };
-    match git::history(&ws.root, 80) {
-        Ok(commits) => render_git_history_page(&state, &workspace_id, &ws.root, &commits),
+    let branch = q
+        .branch
+        .as_deref()
+        .map(str::trim)
+        .filter(|b| !b.is_empty())
+        .map(str::to_string);
+    let author = q
+        .author
+        .as_deref()
+        .map(str::trim)
+        .filter(|a| !a.is_empty())
+        .map(str::to_string);
+    let range_key = q
+        .range
+        .as_deref()
+        .map(str::trim)
+        .filter(|r| !r.is_empty() && *r != "all")
+        .unwrap_or("")
+        .to_string();
+    let filter = git::HistoryFilter {
+        branch: branch.clone(),
+        author: author.clone(),
+        since: git_history_since(Some(&range_key)),
+    };
+    match git::history_filtered(&ws.root, 80, &filter) {
+        Ok(commits) => render_git_history_page(
+            &state,
+            &workspace_id,
+            &ws.root,
+            &commits,
+            branch.as_deref(),
+            author.as_deref(),
+            &range_key,
+        ),
         Err(git::GitError::NotRepository) => {
             (StatusCode::CONFLICT, "Workspace is not a git repository").into_response()
         }
@@ -4226,11 +4278,37 @@ fn git_history_day_label(date: &str) -> String {
     format!("{month} {day}, {year}")
 }
 
+/// One selectable branch in the toolbar's branch dropdown; `current` marks the
+/// entry that matches the active `?branch=` (or the real checked-out branch).
+#[derive(Serialize)]
+struct GitBranchOption {
+    name: String,
+    current: bool,
+}
+
+/// A time-range preset for the "All time" dropdown.
+#[derive(Serialize)]
+struct GitRangeOption {
+    key: &'static str,
+    label: &'static str,
+    current: bool,
+}
+
+/// An author entry for the "All users" dropdown.
+#[derive(Serialize)]
+struct GitAuthorOption {
+    name: String,
+    current: bool,
+}
+
 fn render_git_history_page(
     state: &AppState,
     workspace_id: &str,
     root: &FsPath,
     commits: &[git::GitCommit],
+    selected_branch: Option<&str>,
+    selected_author: Option<&str>,
+    range_key: &str,
 ) -> Response {
     // Group commits by their `YYYY-MM-DD` prefix while preserving the incoming
     // reverse-chronological order (commits are already sorted newest-first).
@@ -4259,10 +4337,61 @@ fn render_git_history_page(
             last_key = Some(key);
         }
     }
-    let current_branch = git::branches(root)
-        .ok()
-        .and_then(|branches| branches.into_iter().find(|b| b.current).map(|b| b.name))
+    // Real branch list + the name actually checked out, used both to build the
+    // dropdown and to label it when no explicit `?branch=` is selected.
+    let all_branches = git::branches(root).unwrap_or_default();
+    let checked_out = all_branches
+        .iter()
+        .find(|b| b.current)
+        .map(|b| b.name.clone())
         .unwrap_or_else(|| "main".to_string());
+    // Only honour a `?branch=` that really exists (mirrors history_filtered's
+    // whitelist, so the label never lies about which rev was walked).
+    let active_branch = selected_branch
+        .filter(|name| all_branches.iter().any(|b| b.name == *name))
+        .map(str::to_string);
+    let current_branch_label = active_branch.clone().unwrap_or_else(|| checked_out.clone());
+    let branch_options: Vec<GitBranchOption> = all_branches
+        .iter()
+        .map(|b| GitBranchOption {
+            name: b.name.clone(),
+            current: b.name == current_branch_label,
+        })
+        .collect();
+
+    let author_list = git::authors(root).unwrap_or_default();
+    let author_options: Vec<GitAuthorOption> = author_list
+        .iter()
+        .map(|name| GitAuthorOption {
+            name: name.clone(),
+            current: selected_author == Some(name.as_str()),
+        })
+        .collect();
+    let current_author_label = selected_author
+        .map(str::to_string)
+        .unwrap_or_else(|| "All users".to_string());
+
+    const RANGE_PRESETS: [(&str, &str); 5] = [
+        ("", "All time"),
+        ("day", "Last 24 hours"),
+        ("week", "Last 7 days"),
+        ("month", "Last 30 days"),
+        ("year", "Last 12 months"),
+    ];
+    let range_options: Vec<GitRangeOption> = RANGE_PRESETS
+        .iter()
+        .map(|(key, label)| GitRangeOption {
+            key,
+            label,
+            current: *key == range_key,
+        })
+        .collect();
+    let current_range_label = RANGE_PRESETS
+        .iter()
+        .find(|(key, _)| *key == range_key)
+        .map(|(_, label)| *label)
+        .unwrap_or("All time");
+
     let work_diff_url = git::diff_has_markdown_changes(root, "HEAD", "worktree")
         .unwrap_or(false)
         .then(|| markdown_work_diff_page_url(workspace_id));
@@ -4271,7 +4400,15 @@ fn render_git_history_page(
     context.insert("workspace_id", workspace_id);
     context.insert("groups", &groups);
     context.insert("commit_count", &commits.len());
-    context.insert("current_branch", &current_branch);
+    context.insert("current_branch", &current_branch_label);
+    context.insert("current_branch_label", &current_branch_label);
+    context.insert("branches", &branch_options);
+    context.insert("authors", &author_options);
+    context.insert("current_author", &selected_author);
+    context.insert("current_author_label", &current_author_label);
+    context.insert("ranges", &range_options);
+    context.insert("current_range", &range_key);
+    context.insert("current_range_label", &current_range_label);
     context.insert("files_url", &format!("/{workspace_id}/"));
     context.insert("has_commits", &!groups.is_empty());
     context.insert("work_diff_url", &work_diff_url);

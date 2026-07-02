@@ -112,6 +112,68 @@
             background: var(--markon-bg-muted);
         }
 
+        /* --- Dropdowns: button + pop-over list (branch / author / range) --- */
+        .git-dropdown {
+            position: relative;
+            display: inline-flex;
+        }
+        .git-menu {
+            display: none;
+            position: absolute;
+            top: calc(100% + 6px);
+            min-width: 200px;
+            max-width: 320px;
+            max-height: 320px;
+            overflow-y: auto;
+            padding: 4px;
+            border: 1px solid var(--markon-border-default);
+            border-radius: var(--markon-radius-lg, 12px);
+            background: var(--markon-bg-default);
+            box-shadow: 0 8px 24px rgba(0, 0, 0, 0.18);
+            z-index: 20;
+        }
+        .git-dropdown.is-open .git-menu {
+            display: block;
+        }
+        .git-toolbar-left .git-menu {
+            left: 0;
+        }
+        .git-toolbar-right .git-menu {
+            right: 0;
+        }
+        .git-menu-item {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            width: 100%;
+            box-sizing: border-box;
+            min-height: 32px;
+            padding: 5px 8px 5px 6px;
+            border: 0;
+            border-radius: var(--markon-radius-sm);
+            background: transparent;
+            color: var(--markon-fg-default) !important;
+            font-size: 14px;
+            text-align: left;
+            cursor: pointer;
+        }
+        .git-menu-item:hover {
+            background: var(--markon-bg-muted);
+            text-decoration: none;
+        }
+        .git-menu-check {
+            flex: 0 0 auto;
+            width: 16px;
+            text-align: center;
+            color: var(--markon-accent);
+        }
+        .git-menu-label {
+            flex: 1 1 auto;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+
         /* --- Timeline: continuous rail with a node per day --- */
         .git-timeline {
             position: relative;
@@ -274,21 +336,55 @@
 
         <div class="git-toolbar">
             <div class="git-toolbar-left">
-                <button class="git-button git-branch-pill" type="button" aria-label="Branch">
-                    <svg class="git-icon" viewBox="0 0 16 16" aria-hidden="true"><path d="M9.5 3.25a2.25 2.25 0 1 1 3 2.122V6A2.5 2.5 0 0 1 10 8.5H6a1 1 0 0 0-1 1v1.128a2.251 2.251 0 1 1-1.5 0V5.372a2.25 2.25 0 1 1 1.5 0v1.836A2.493 2.493 0 0 1 6 7h4a1 1 0 0 0 1-1v-.628A2.25 2.25 0 0 1 9.5 3.25Zm-6 0a.75.75 0 1 0 1.5 0 .75.75 0 0 0-1.5 0Zm8.25-.75a.75.75 0 1 0 0 1.5.75.75 0 0 0 0-1.5ZM4.25 12a.75.75 0 1 0 0 1.5.75.75 0 0 0 0-1.5Z"></path></svg>
-                    <span>{{ current_branch }}</span>
-                    <span class="git-caret" aria-hidden="true">&#9662;</span>
-                </button>
+                <div class="git-dropdown" data-dropdown>
+                    <button class="git-button git-branch-pill" type="button" aria-haspopup="true" aria-expanded="false" aria-label="Branch" data-dropdown-toggle>
+                        <svg class="git-icon" viewBox="0 0 16 16" aria-hidden="true"><path d="M9.5 3.25a2.25 2.25 0 1 1 3 2.122V6A2.5 2.5 0 0 1 10 8.5H6a1 1 0 0 0-1 1v1.128a2.251 2.251 0 1 1-1.5 0V5.372a2.25 2.25 0 1 1 1.5 0v1.836A2.493 2.493 0 0 1 6 7h4a1 1 0 0 0 1-1v-.628A2.25 2.25 0 0 1 9.5 3.25Zm-6 0a.75.75 0 1 0 1.5 0 .75.75 0 0 0-1.5 0Zm8.25-.75a.75.75 0 1 0 0 1.5.75.75 0 0 0 0-1.5ZM4.25 12a.75.75 0 1 0 0 1.5.75.75 0 0 0 0-1.5Z"></path></svg>
+                        <span>{{ current_branch_label }}</span>
+                        <span class="git-caret" aria-hidden="true">&#9662;</span>
+                    </button>
+                    <div class="git-menu" role="menu">
+                        {% for branch in branches %}
+                        <button class="git-menu-item" type="button" role="menuitem" data-nav-param="branch" data-nav-value="{{ branch.name }}">
+                            <span class="git-menu-check" aria-hidden="true">{% if branch.current %}&#10003;{% endif %}</span>
+                            <span class="git-menu-label">{{ branch.name }}</span>
+                        </button>
+                        {% endfor %}
+                    </div>
+                </div>
             </div>
             <div class="git-toolbar-right">
-                <button class="git-button git-filter" type="button" disabled>
-                    <span data-i18n="web.ws.git.all_users">All users</span>
-                    <span class="git-caret" aria-hidden="true">&#9662;</span>
-                </button>
-                <button class="git-button git-filter" type="button" disabled>
-                    <span data-i18n="web.ws.git.all_time">All time</span>
-                    <span class="git-caret" aria-hidden="true">&#9662;</span>
-                </button>
+                <div class="git-dropdown" data-dropdown>
+                    <button class="git-button git-filter" type="button" aria-haspopup="true" aria-expanded="false" data-dropdown-toggle>
+                        <span>{{ current_author_label }}</span>
+                        <span class="git-caret" aria-hidden="true">&#9662;</span>
+                    </button>
+                    <div class="git-menu" role="menu">
+                        <button class="git-menu-item" type="button" role="menuitem" data-nav-param="author" data-nav-value="">
+                            <span class="git-menu-check" aria-hidden="true">{% if not current_author %}&#10003;{% endif %}</span>
+                            <span class="git-menu-label" data-i18n="web.ws.git.all_users">All users</span>
+                        </button>
+                        {% for author in authors %}
+                        <button class="git-menu-item" type="button" role="menuitem" data-nav-param="author" data-nav-value="{{ author.name }}">
+                            <span class="git-menu-check" aria-hidden="true">{% if author.current %}&#10003;{% endif %}</span>
+                            <span class="git-menu-label">{{ author.name }}</span>
+                        </button>
+                        {% endfor %}
+                    </div>
+                </div>
+                <div class="git-dropdown" data-dropdown>
+                    <button class="git-button git-filter" type="button" aria-haspopup="true" aria-expanded="false" data-dropdown-toggle>
+                        <span>{{ current_range_label }}</span>
+                        <span class="git-caret" aria-hidden="true">&#9662;</span>
+                    </button>
+                    <div class="git-menu" role="menu">
+                        {% for range in ranges %}
+                        <button class="git-menu-item" type="button" role="menuitem" data-nav-param="range" data-nav-value="{{ range.key }}">
+                            <span class="git-menu-check" aria-hidden="true">{% if range.current %}&#10003;{% endif %}</span>
+                            <span class="git-menu-label">{{ range.label }}</span>
+                        </button>
+                        {% endfor %}
+                    </div>
+                </div>
                 {% if work_diff_url %}
                 <a class="git-button primary" href="{{ work_diff_url }}" data-i18n="web.ws.git.working_diff">Working diff</a>
                 {% else %}
@@ -341,6 +437,55 @@
     <!-- Page-local controls: avatar tinting + hash copy (no directory.ts here). -->
     <script>
     (function () {
+        // --- Toolbar dropdowns: open/close + filter navigation ---
+        var dropdowns = Array.prototype.slice.call(document.querySelectorAll('[data-dropdown]'));
+
+        function closeAll(except) {
+            dropdowns.forEach(function (dd) {
+                if (dd === except) return;
+                dd.classList.remove('is-open');
+                var toggle = dd.querySelector('[data-dropdown-toggle]');
+                if (toggle) toggle.setAttribute('aria-expanded', 'false');
+            });
+        }
+
+        // Merge a single query param into the current URL, preserving the other
+        // filters. An empty value removes the param (e.g. "All users"/"All time").
+        function navigate(param, value) {
+            var params = new URLSearchParams(location.search);
+            if (value) {
+                params.set(param, value);
+            } else {
+                params.delete(param);
+            }
+            var qs = params.toString();
+            location.search = qs ? '?' + qs : '';
+        }
+
+        dropdowns.forEach(function (dd) {
+            var toggle = dd.querySelector('[data-dropdown-toggle]');
+            if (toggle) {
+                toggle.addEventListener('click', function (event) {
+                    event.stopPropagation();
+                    var willOpen = !dd.classList.contains('is-open');
+                    closeAll(dd);
+                    dd.classList.toggle('is-open', willOpen);
+                    toggle.setAttribute('aria-expanded', willOpen ? 'true' : 'false');
+                });
+            }
+            dd.querySelectorAll('[data-nav-param]').forEach(function (item) {
+                item.addEventListener('click', function (event) {
+                    event.preventDefault();
+                    navigate(item.getAttribute('data-nav-param') || '', item.getAttribute('data-nav-value') || '');
+                });
+            });
+        });
+
+        document.addEventListener('click', function () { closeAll(null); });
+        document.addEventListener('keydown', function (event) {
+            if (event.key === 'Escape') closeAll(null);
+        });
+
         // Stable per-author hue for the initials avatar (matches directory.html).
         document.querySelectorAll('.git-avatar[data-avatar]').forEach(function (el) {
             var name = el.getAttribute('data-avatar') || '';
