@@ -5498,6 +5498,7 @@ fn render_directory_listing(
     context.insert("git", &git_status);
     context.insert("is_workspace_root", &is_workspace_root);
     context.insert("can_add_file", &can_add_file);
+    context.insert("version", env!("CARGO_PKG_VERSION"));
     context.insert("branches_url", &format!("/_/{workspace_id}/git/branches"));
     context.insert("tags_url", &format!("/_/{workspace_id}/git/tags"));
     context.insert("checkout_url", &format!("/_/{workspace_id}/git/checkout"));

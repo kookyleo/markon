@@ -1162,10 +1162,14 @@
             padding-bottom: 0;
         }
         .workspace-side-footer {
+            /* Sink the footer link cluster to the bottom of the fixed, full-height
+               aside (flex column) so it sits at the page's bottom-right corner. */
+            margin-top: auto;
+            padding-top: 22px;
             display: flex;
             flex-direction: column;
             align-items: flex-start;
-            gap: 8px;
+            gap: 6px;
         }
         .workspace-side-footer a {
             color: var(--markon-fg-muted);
@@ -1936,6 +1940,8 @@
                 <a id="dir-footer" href="https://kookyleo.github.io/markon/">Powered by markon</a>
                 <a id="dir-feedback-link" href="https://github.com/kookyleo/markon/issues/new?title=%5BFeedback%5D%20&body=One-line%20summary%3A%0A%0A%23%23%20Environment%0A-%20markon%20version%3A%0A-%20OS%3A%0A-%20Browser%3A%0A%0A%23%23%20Steps%20to%20reproduce%0A1.%0A%0A%23%23%20Expected%0A%0A%23%23%20Actual%0A" target="_blank" rel="noopener noreferrer">Feedback</a>
                 <a id="dir-kbd-link" href="#" onclick="window.shortcutsManager.showHelp(); return false;">Keyboard Shortcuts (?)</a>
+                <a id="theme-link-text" href="#">Theme: Auto</a>
+                <a id="footer-version" href="https://github.com/kookyleo/markon/releases" target="_blank" rel="noopener noreferrer" title="markon version">v{{ version }}</a>
             </section>
         </aside>
         {% endif %}
