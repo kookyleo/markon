@@ -350,7 +350,7 @@
     "web.ws.feature.update_failed": "更新工作区设置失败",
     "web.ws.files":        "文件",
     "web.toc.title":       "目录",
-    "web.back":            "← 返回文件列表",
+    "web.back":            "← 返回工作区",
     "web.search":          "搜索",
     "web.search.placeholder": "搜索…",
     "web.search.noresult": "未找到结果",

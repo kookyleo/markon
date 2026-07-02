@@ -351,7 +351,7 @@
     "web.ws.feature.update_failed": "ワークスペース設定を更新できません",
     "web.ws.files":        "ファイル",
     "web.toc.title":       "目次",
-    "web.back":            "← ファイル一覧に戻る",
+    "web.back":            "← ワークスペースに戻る",
     "web.search":          "検索",
     "web.search.placeholder": "検索…",
     "web.search.noresult": "結果が見つかりません",

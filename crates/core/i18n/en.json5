@@ -351,7 +351,7 @@
     "web.ws.feature.update_failed": "Failed to update workspace settings",
     "web.ws.files":        "Files",
     "web.toc.title":       "Table of Contents",
-    "web.back":            "← Back to file list",
+    "web.back":            "← Back to workspace",
     "web.search":          "Search",
     "web.search.placeholder": "Search…",
     "web.search.noresult": "No results found",

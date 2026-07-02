@@ -630,8 +630,8 @@ document.addEventListener('keydown', (event) => {
     const handles = Array.from(wrap.querySelectorAll<HTMLElement>('[data-col-handle]'));
     if (handles.length < 2) return;
     const GAP = 18;      // column-gap in px
-    const MIN = 140;     // min width for name / commit columns
-    const TIME_MIN = 90; // reserve at least this much for the time column
+    const MIN = 72;      // min width for name / commit columns
+    const TIME_MIN = 64; // reserve at least this much for the time column
     const wsId = wrap.getAttribute('data-ws-id') || '';
     const storeKey = 'markon:ws-cols:' + wsId;
     const isNarrow = (): boolean => window.matchMedia('(max-width: 720px)').matches;
