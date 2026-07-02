@@ -396,11 +396,11 @@
             display: inline-flex;
             align-items: center;
             gap: 8px;
-            min-height: 34px;
+            min-height: 32px;
             max-width: 100%;
             border: 1px solid var(--markon-border-default);
             border-radius: var(--markon-radius-sm);
-            padding: 6px 10px;
+            padding: 5px 10px;
             background: var(--markon-bg-muted);
             color: var(--markon-fg-default) !important;
             font: 600 13px/1.2 var(--markon-ui-font);
@@ -601,6 +601,158 @@
         .workspace-file-finder.is-open .workspace-file-finder-pop {
             display: block;
         }
+        /* Switch branches/tags panel (GitHub-style) */
+        .workspace-branch-panel {
+            width: 320px;
+            min-width: 320px;
+            max-width: min(360px, calc(100vw - 32px));
+            padding: 0;
+            overflow: hidden;
+        }
+        .branch-panel-head {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 8px;
+            padding: 8px 8px 8px 12px;
+            border-bottom: 1px solid var(--markon-border-default);
+        }
+        .branch-panel-title {
+            color: var(--markon-fg-default);
+            font: 600 13px/1.2 var(--markon-ui-font);
+        }
+        .branch-panel-close {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            width: 24px;
+            height: 24px;
+            border: 0;
+            border-radius: var(--markon-radius-sm);
+            background: transparent;
+            color: var(--markon-fg-muted);
+            cursor: pointer;
+        }
+        .branch-panel-close:hover {
+            background: var(--markon-bg-muted);
+            color: var(--markon-fg-default);
+        }
+        .branch-panel-close svg {
+            width: 14px;
+            height: 14px;
+        }
+        .branch-panel-tabs {
+            display: flex;
+            gap: 4px;
+            padding: 6px 8px 0;
+            border-bottom: 1px solid var(--markon-border-default);
+        }
+        .branch-panel-tab {
+            border: 0;
+            border-bottom: 2px solid transparent;
+            padding: 6px 8px 8px;
+            background: transparent;
+            color: var(--markon-fg-muted);
+            font: 600 12px/1.2 var(--markon-ui-font);
+            cursor: pointer;
+        }
+        .branch-panel-tab:hover {
+            color: var(--markon-fg-default);
+        }
+        .branch-panel-tab.is-active {
+            color: var(--markon-fg-default);
+            border-bottom-color: var(--markon-accent);
+        }
+        .branch-panel-search {
+            padding: 8px;
+            border-bottom: 1px solid var(--markon-border-default);
+        }
+        .branch-panel-search input {
+            width: 100%;
+            height: 30px;
+            border: 1px solid var(--markon-border-default);
+            border-radius: 6px;
+            padding: 0 8px;
+            background: var(--markon-bg-default);
+            color: var(--markon-fg-default);
+            font: 13px/1.2 var(--markon-ui-font);
+            outline: none;
+        }
+        .branch-panel-search input:focus {
+            border-color: var(--markon-accent);
+        }
+        .branch-panel-list {
+            margin: 0;
+            padding: 4px;
+            list-style: none;
+            max-height: 40vh;
+            overflow-y: auto;
+        }
+        .branch-panel-item {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            width: 100%;
+            min-height: 32px;
+            border: 0;
+            border-radius: var(--markon-radius-sm);
+            padding: 4px 8px;
+            background: transparent;
+            color: var(--markon-fg-default);
+            font: 13px/1.2 var(--markon-ui-font);
+            text-align: left;
+            cursor: pointer;
+        }
+        .branch-panel-item:hover:not([disabled]) {
+            background: var(--markon-bg-muted);
+        }
+        .branch-panel-item[disabled] {
+            cursor: default;
+        }
+        .branch-panel-check {
+            flex: 0 0 16px;
+            width: 16px;
+            color: var(--markon-success);
+            text-align: center;
+        }
+        .branch-panel-name {
+            flex: 1 1 auto;
+            min-width: 0;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+        .branch-panel-badge {
+            flex: 0 0 auto;
+            padding: 0 7px;
+            border: 1px solid var(--markon-border-default);
+            border-radius: 999px;
+            color: var(--markon-fg-muted);
+            font-size: 11px;
+            line-height: 18px;
+        }
+        .branch-panel-empty,
+        .branch-panel-note {
+            padding: 8px 12px;
+            color: var(--markon-fg-muted);
+            font-size: 12px;
+        }
+        .branch-panel-tags-link,
+        .branch-panel-foot {
+            display: block;
+            padding: 10px 12px;
+            color: var(--markon-accent) !important;
+            font-size: 13px;
+            text-decoration: none;
+        }
+        .branch-panel-foot {
+            border-top: 1px solid var(--markon-border-default);
+        }
+        .branch-panel-tags-link:hover,
+        .branch-panel-foot:hover {
+            background: var(--markon-bg-muted);
+            text-decoration: none;
+        }
         .refs-current {
             color: var(--markon-success);
             font-size: 12px;
@@ -674,7 +826,7 @@
             font-family: 'SF Mono', Monaco, 'Cascadia Code', 'Roboto Mono', Consolas, monospace;
         }
         .workspace-file-results {
-            margin: 10px 0 0;
+            margin: 0;
             padding: 0;
             list-style: none;
         }
@@ -684,23 +836,39 @@
         .workspace-file-results a {
             display: flex;
             align-items: center;
-            justify-content: space-between;
-            gap: 10px;
-            padding: 7px 8px;
+            gap: 8px;
+            min-height: 32px;
+            padding: 4px 8px;
             border-radius: var(--markon-radius-sm);
             color: var(--markon-fg-default) !important;
+            font-size: 13px;
         }
         .workspace-file-results a:hover {
             background: var(--markon-bg-muted);
             text-decoration: none;
         }
+        .workspace-file-results a.is-active {
+            background: color-mix(in srgb, var(--markon-accent) 12%, transparent);
+            box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--markon-accent) 45%, transparent);
+        }
+        .workspace-file-results .dir-icon {
+            flex: 0 0 16px;
+            margin-right: 0;
+            vertical-align: 0;
+        }
         .workspace-file-result-path {
+            flex: 1 1 auto;
             min-width: 0;
             overflow: hidden;
             text-overflow: ellipsis;
             white-space: nowrap;
         }
+        .workspace-file-result-path strong {
+            font-weight: 700;
+            color: var(--markon-fg-default);
+        }
         .workspace-file-result-badge {
+            flex: 0 0 auto;
             color: var(--markon-fg-muted);
             font-size: 11px;
         }
@@ -1412,17 +1580,41 @@
                                 <span aria-hidden="true">⌄</span>
                             </button>
                             {% if git.available %}
-                            <div class="workspace-dropdown-menu">
-                                <div class="workspace-menu-title" data-i18n="web.ws.git.switch_branch">Switch branch</div>
-                                {% for branch in git_branches %}
-                                <button class="workspace-menu-item" type="button" data-checkout-branch="{{ branch.name }}" {% if branch.current or not is_local %}disabled{% endif %}>
-                                    <span>{{ branch.name }}</span>
-                                    {% if branch.current %}<span class="refs-current" data-i18n="web.ws.git.current_branch">Current branch</span>{% endif %}
-                                </button>
-                                {% endfor %}
-                                {% if not is_local %}
-                                <div class="workspace-menu-title" data-i18n="web.ws.git.local_only">Local access required</div>
-                                {% endif %}
+                            <div class="workspace-dropdown-menu workspace-branch-panel" data-branch-panel>
+                                <div class="branch-panel-head">
+                                    <span class="branch-panel-title" data-i18n="web.ws.git.switch_branches_tags">Switch branches/tags</span>
+                                    <button class="branch-panel-close" type="button" data-branch-panel-close aria-label="Close" data-i18n-aria="web.ws.git.close">
+                                        <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><path d="M3 3l10 10M13 3L3 13"/></svg>
+                                    </button>
+                                </div>
+                                <div class="branch-panel-tabs" role="tablist">
+                                    <button class="branch-panel-tab is-active" type="button" role="tab" data-branch-tab="branches" data-i18n="web.ws.git.branches">Branches</button>
+                                    <button class="branch-panel-tab" type="button" role="tab" data-branch-tab="tags" data-i18n="web.ws.git.tags">Tags</button>
+                                </div>
+                                <div class="branch-panel-search" data-branch-panel-search>
+                                    <input type="search" data-branch-filter placeholder="Find a branch…" data-i18n-placeholder="web.ws.git.find_branch" autocomplete="off" spellcheck="false" aria-label="Find a branch">
+                                </div>
+                                <div class="branch-panel-pane" data-branch-pane="branches">
+                                    <ul class="branch-panel-list">
+                                        {% for branch in git_branches %}
+                                        <li data-branch-item data-branch-name-lower="{{ branch.name | lower }}">
+                                            <button class="branch-panel-item" type="button" data-checkout-branch="{{ branch.name }}" {% if branch.current or not is_local %}disabled{% endif %}>
+                                                <span class="branch-panel-check" aria-hidden="true">{% if branch.current %}✓{% endif %}</span>
+                                                <span class="branch-panel-name">{{ branch.name }}</span>
+                                                {% if branch.is_default %}<span class="branch-panel-badge" data-i18n="web.ws.git.default">default</span>{% endif %}
+                                            </button>
+                                        </li>
+                                        {% endfor %}
+                                    </ul>
+                                    <div class="branch-panel-empty" data-branch-empty hidden data-i18n="web.ws.git.no_branches">No branches found.</div>
+                                    {% if not is_local %}
+                                    <div class="branch-panel-note" data-i18n="web.ws.git.local_only">Local access required</div>
+                                    {% endif %}
+                                </div>
+                                <div class="branch-panel-pane" data-branch-pane="tags" hidden>
+                                    <a class="branch-panel-tags-link" href="{{ tags_url }}"><span data-i18n="web.ws.git.view_all_tags">View all tags</span> →</a>
+                                </div>
+                                <a class="branch-panel-foot" href="{{ branches_url }}"><span data-i18n="web.ws.git.view_all_branches">View all branches</span> →</a>
                             </div>
                             {% endif %}
                         </div>

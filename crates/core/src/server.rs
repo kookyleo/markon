@@ -5315,8 +5315,10 @@ fn render_directory_listing(
     } else {
         0
     };
+    // Detailed branches (adds `is_default`) so the switch-branch panel can flag
+    // the default branch; still carries `name`/`current` for checkout.
     let git_branches = if git_status.available {
-        git::branches(root).unwrap_or_default()
+        git::branches_detailed(root).unwrap_or_default()
     } else {
         Vec::new()
     };

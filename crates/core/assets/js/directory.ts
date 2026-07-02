@@ -41,6 +41,9 @@ document.querySelectorAll<HTMLElement>('[data-i18n]').forEach((el) => {
 document.querySelectorAll<HTMLElement>('[data-i18n-placeholder]').forEach((el) => {
     el.setAttribute('placeholder', t(el.getAttribute('data-i18n-placeholder') || ''));
 });
+document.querySelectorAll<HTMLElement>('[data-i18n-aria]').forEach((el) => {
+    el.setAttribute('aria-label', t(el.getAttribute('data-i18n-aria') || ''));
+});
 
 // ── File filter (Markdown / all) ────────────────────────────────────────────
 function setFileFilter(mode: string | null): void {
@@ -192,6 +195,10 @@ document.querySelectorAll<HTMLElement>('[data-workspace-dropdown] > button').for
             if (other !== menu) other.classList.remove('is-open');
         });
         menu.classList.toggle('is-open', !open);
+        if (!open) {
+            const filter = menu.querySelector<HTMLInputElement>('[data-branch-filter]');
+            if (filter) window.setTimeout(() => filter.focus(), 0);
+        }
     });
 });
 document.addEventListener('click', () => {
@@ -228,6 +235,45 @@ document.querySelectorAll<HTMLButtonElement>('[data-checkout-branch]').forEach((
     });
 });
 
+// ── Switch branches/tags panel (tabs + filter + close) ──────────────────────
+document.querySelectorAll<HTMLElement>('[data-branch-panel]').forEach((panel) => {
+    // Keep clicks inside the panel (search, tabs) from bubbling to the document
+    // outside-click handler that closes the dropdown. Checkout reloads anyway.
+    panel.addEventListener('click', (event) => event.stopPropagation());
+    const dropdown = panel.closest('[data-workspace-dropdown]');
+    const close = panel.querySelector<HTMLElement>('[data-branch-panel-close]');
+    if (close && dropdown) {
+        close.addEventListener('click', () => dropdown.classList.remove('is-open'));
+    }
+    const tabs = Array.from(panel.querySelectorAll<HTMLElement>('[data-branch-tab]'));
+    const panes = Array.from(panel.querySelectorAll<HTMLElement>('[data-branch-pane]'));
+    const search = panel.querySelector<HTMLElement>('[data-branch-panel-search]');
+    tabs.forEach((tab) => {
+        tab.addEventListener('click', () => {
+            const key = tab.getAttribute('data-branch-tab');
+            tabs.forEach((other) => other.classList.toggle('is-active', other === tab));
+            panes.forEach((pane) => { pane.hidden = pane.getAttribute('data-branch-pane') !== key; });
+            if (search) search.hidden = key !== 'branches';
+        });
+    });
+    const filter = panel.querySelector<HTMLInputElement>('[data-branch-filter]');
+    const items = Array.from(panel.querySelectorAll<HTMLElement>('[data-branch-item]'));
+    const empty = panel.querySelector<HTMLElement>('[data-branch-empty]');
+    if (filter) {
+        filter.addEventListener('input', () => {
+            const q = filter.value.trim().toLowerCase();
+            let shown = 0;
+            items.forEach((item) => {
+                const name = item.getAttribute('data-branch-name-lower') || '';
+                const match = !q || name.indexOf(q) !== -1;
+                item.hidden = !match;
+                if (match) shown += 1;
+            });
+            if (empty) empty.hidden = shown !== 0;
+        });
+    }
+});
+
 // ── Workspace modals ────────────────────────────────────────────────────────
 function openWorkspaceModal(modal: Element | null): void {
     if (!modal) return;
@@ -257,27 +303,63 @@ const goInput = document.querySelector<HTMLInputElement>('[data-go-to-file-input
 const goResults = document.querySelector<HTMLElement>('[data-go-to-file-results]');
 const goEmpty = document.querySelector<HTMLElement>('[data-go-to-file-empty]');
 let goFiles: GoToFileEntry[] | null = null;
+let goActive = 0;
+function escapeHtml(s: string): string {
+    return s.replace(/[&<>"']/g, (c) => (
+        { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c] as string
+    ));
+}
+// Escape first, then wrap the (case-insensitive) match in <strong> — never feed
+// a raw path to innerHTML.
+function highlightPath(path: string, q: string): string {
+    if (!q) return escapeHtml(path);
+    const idx = path.toLowerCase().indexOf(q);
+    if (idx === -1) return escapeHtml(path);
+    return escapeHtml(path.slice(0, idx)) +
+        '<strong>' + escapeHtml(path.slice(idx, idx + q.length)) + '</strong>' +
+        escapeHtml(path.slice(idx + q.length));
+}
+function goLinks(): HTMLAnchorElement[] {
+    return goResults ? Array.from(goResults.querySelectorAll<HTMLAnchorElement>('a')) : [];
+}
+function setGoActive(idx: number, links?: HTMLAnchorElement[]): void {
+    const list = links || goLinks();
+    if (!list.length) { goActive = 0; return; }
+    goActive = Math.max(0, Math.min(idx, list.length - 1));
+    list.forEach((a, i) => a.classList.toggle('is-active', i === goActive));
+    const cur = list[goActive];
+    if (cur && cur.scrollIntoView) cur.scrollIntoView({ block: 'nearest' });
+}
 function renderGoToFile(): void {
     if (!goResults) return;
     const q = ((goInput && goInput.value) || '').trim().toLowerCase();
     goResults.innerHTML = '';
     const list = (goFiles || []).filter((file) => !q || file.path.toLowerCase().indexOf(q) !== -1).slice(0, 40);
-    if (goEmpty) goEmpty.style.display = list.length ? 'none' : '';
-    list.forEach((file) => {
+    if (goEmpty) {
+        goEmpty.style.display = list.length ? 'none' : '';
+        if (!list.length && goFiles !== null) goEmpty.textContent = t('web.ws.go_to_file.empty');
+    }
+    list.forEach((file, i) => {
         const li = document.createElement('li');
         const a = document.createElement('a');
         a.href = file.url;
+        const icon = document.createElement('span');
+        icon.className = 'dir-icon dir-icon-file';
+        icon.setAttribute('aria-hidden', 'true');
         const path = document.createElement('span');
         path.className = 'workspace-file-result-path';
-        path.textContent = file.path;
+        path.innerHTML = highlightPath(file.path, q);
         const badge = document.createElement('span');
         badge.className = 'workspace-file-result-badge';
         badge.textContent = file.is_markdown ? 'MD' : '';
+        a.appendChild(icon);
         a.appendChild(path);
         a.appendChild(badge);
+        a.addEventListener('mouseenter', () => setGoActive(i));
         li.appendChild(a);
         goResults.appendChild(li);
     });
+    setGoActive(0, goLinks());
 }
 function loadGoFiles(): void {
     if (goFiles) { renderGoToFile(); return; }
@@ -308,6 +390,16 @@ if (goInput) {
     goInput.addEventListener('focus', openFinder);
     goInput.addEventListener('input', () => { openFinder(); renderGoToFile(); });
     goInput.addEventListener('blur', () => window.setTimeout(closeFinder, 150));
+    goInput.addEventListener('keydown', (event) => {
+        const links = goLinks();
+        if (!links.length) return;
+        if (event.key === 'ArrowDown') { event.preventDefault(); setGoActive(goActive + 1, links); }
+        else if (event.key === 'ArrowUp') { event.preventDefault(); setGoActive(goActive - 1, links); }
+        else if (event.key === 'Enter') {
+            const cur = links[goActive];
+            if (cur) { event.preventDefault(); window.location.href = cur.href; }
+        }
+    });
 }
 document.addEventListener('click', (event) => {
     const node = event.target as Node | null;
