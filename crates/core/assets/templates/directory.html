@@ -512,6 +512,96 @@
         .workspace-menu-item[disabled]:hover {
             background: transparent;
         }
+        .workspace-menu-label {
+            padding: 2px 7px 4px;
+            color: var(--markon-fg-muted);
+            font: 11px/1.2 var(--markon-ui-font);
+        }
+        .workspace-menu-separator {
+            height: 1px;
+            margin: 6px 4px;
+            background: var(--markon-border-default);
+        }
+        .file-filter-switch-menu {
+            display: flex;
+            flex-direction: column;
+            align-items: stretch;
+            gap: 0;
+        }
+        .file-filter-switch-menu button {
+            justify-content: flex-start;
+            text-align: left;
+            width: 100%;
+            min-height: 32px;
+            border-radius: var(--markon-radius-sm);
+            padding: 6px 7px;
+            font: 13px/1.25 var(--markon-ui-font);
+            color: var(--markon-fg-default);
+        }
+        .file-filter-switch-menu button:hover {
+            background: var(--markon-bg-muted);
+            color: var(--markon-fg-default);
+            text-decoration: none;
+        }
+        .file-filter-switch-menu button.is-active {
+            color: var(--markon-accent);
+            font-weight: 650;
+        }
+        /* Go-to-file inline finder (GitHub-style search box) */
+        .workspace-file-finder {
+            position: relative;
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            width: 260px;
+            max-width: 42vw;
+            height: 32px;
+            padding: 0 8px;
+            border: 1px solid var(--markon-border-default);
+            border-radius: 6px;
+            background: var(--markon-bg-default);
+        }
+        .workspace-file-finder:focus-within {
+            border-color: var(--markon-accent);
+        }
+        .workspace-file-finder-icon {
+            flex: none;
+            width: 15px;
+            height: 15px;
+            color: var(--markon-fg-muted);
+        }
+        .workspace-file-finder-input {
+            flex: 1 1 auto;
+            min-width: 0;
+            border: 0;
+            padding: 0;
+            background: transparent;
+            color: var(--markon-fg-default);
+            font: 13px/1.2 var(--markon-ui-font);
+            outline: none;
+        }
+        .workspace-file-finder-input::-webkit-search-cancel-button {
+            display: none;
+        }
+        .workspace-file-finder-pop {
+            position: absolute;
+            z-index: var(--markon-z-modal-inline);
+            top: calc(100% + 6px);
+            left: 0;
+            display: none;
+            width: max(320px, 100%);
+            max-width: min(480px, calc(100vw - 32px));
+            max-height: 60vh;
+            overflow-y: auto;
+            padding: 6px;
+            border: 1px solid var(--markon-border-default);
+            border-radius: var(--markon-radius-lg);
+            background: var(--markon-bg-overlay);
+            box-shadow: var(--markon-shadow-pop);
+        }
+        .workspace-file-finder.is-open .workspace-file-finder-pop {
+            display: block;
+        }
         .refs-current {
             color: var(--markon-success);
             font-size: 12px;
@@ -1322,47 +1412,35 @@
                         </a>
                     </div>
                     <div class="workspace-repo-toolbar-right">
-                        <button class="workspace-tool-button" type="button" data-go-to-file>
-                            <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="7" cy="7" r="4.5"/><path d="m10.5 10.5 3 3"/></svg>
-                            <span data-i18n="web.ws.go_to_file">Go to file</span>
+                        <div class="workspace-file-finder" data-file-finder data-files-data-url="{{ files_data_url }}">
+                            <svg class="workspace-file-finder-icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="7" cy="7" r="4.5"/><path d="m10.5 10.5 3 3"/></svg>
+                            <input class="workspace-file-finder-input" type="search" data-go-to-file-input placeholder="Go to file" autocomplete="off" spellcheck="false" aria-label="Go to file">
                             <span class="workspace-keycap">T</span>
-                        </button>
-                        {% if can_add_file %}
-                        <div class="workspace-dropdown" data-workspace-dropdown>
-                            <button class="workspace-tool-button workspace-tool-icon" type="button" aria-label="Add file" title="Add file">
-                                <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 3.25v9.5M3.25 8h9.5"/></svg>
-                                <span aria-hidden="true">⌄</span>
-                            </button>
-                            <div class="workspace-dropdown-menu">
-                                <button class="workspace-menu-item" type="button" data-open-add-folder>
-                                    <span data-i18n="web.ws.new_folder">New folder</span>
-                                </button>
-                                <button class="workspace-menu-item" type="button" data-open-add-file>
-                                    <span data-i18n="web.ws.new_markdown_file">New Markdown file</span>
-                                </button>
+                            <div class="workspace-file-finder-pop" data-file-finder-pop>
+                                <ul class="workspace-file-results" data-go-to-file-results></ul>
+                                <div class="workspace-empty" data-go-to-file-empty data-i18n="web.ws.go_to_file.empty">No files found.</div>
                             </div>
                         </div>
-                        {% endif %}
                         <div class="workspace-dropdown" data-workspace-dropdown>
-                            <button class="workspace-green-button" type="button">
-                                <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m5.5 3-4 5 4 5M10.5 3l4 5-4 5"/></svg>
-                                <span data-i18n="web.ws.code">Code</span>
-                                <span aria-hidden="true">⌄</span>
+                            <button class="workspace-tool-button workspace-tool-icon" type="button" aria-label="More" title="More">
+                                <svg viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><circle cx="3" cy="8" r="1.35"/><circle cx="8" cy="8" r="1.35"/><circle cx="13" cy="8" r="1.35"/></svg>
                             </button>
                             <div class="workspace-dropdown-menu">
+                                {% if can_add_file %}
+                                <button class="workspace-menu-item" type="button" data-open-add-folder><span data-i18n="web.ws.new_folder">New folder</span></button>
+                                <button class="workspace-menu-item" type="button" data-open-add-file><span data-i18n="web.ws.new_markdown_file">New Markdown file</span></button>
+                                <div class="workspace-menu-separator"></div>
+                                {% endif %}
                                 <button class="workspace-menu-item" type="button" data-copy-current-url><span data-i18n="web.ws.copy_url">Copy workspace URL</span></button>
-                                <button class="workspace-menu-item" type="button" data-copy-text="{{ current_dir }}"><span data-i18n="web.ws.copy_path">Copy workspace path</span></button>
+                                <button class="workspace-menu-item" type="button" data-copy-text="{{ current_dir }}"><span data-i18n="web.ws.copy_path">Copy repo path</span></button>
                                 {% if work_diff_url %}<a class="workspace-menu-item" href="{{ work_diff_url }}" data-i18n="web.ws.git.working_diff">Working diff</a>{% endif %}
+                                <div class="workspace-menu-separator"></div>
+                                <div class="workspace-menu-label" data-i18n="web.ws.files">Files</div>
+                                <div class="file-filter-switch file-filter-switch-menu" role="group" data-file-filter-switch>
+                                    <button type="button" data-file-filter-value="all" data-i18n="web.dir.filter.all">Show all files</button>
+                                    <button class="is-active" type="button" data-file-filter-value="markdown" aria-pressed="true" data-i18n="web.dir.filter.markdown">Show markdown only</button>
+                                </div>
                             </div>
-                        </div>
-                    </div>
-                </div>
-                <div class="workspace-file-toolbar">
-                    <div class="workspace-file-toolbar-main">
-                        <div class="workspace-pane-kicker" data-i18n="web.ws.files">Files</div>
-                        <div class="file-filter-switch" role="group" data-file-filter-switch>
-                            <button type="button" data-file-filter-value="all" data-i18n="web.dir.filter.all">All files</button>
-                            <button class="is-active" type="button" data-file-filter-value="markdown" aria-pressed="true" data-i18n="web.dir.filter.markdown">Markdown only</button>
                         </div>
                     </div>
                 </div>
@@ -1476,20 +1554,6 @@
                 </div>
             </section>
         </aside>
-
-        <div class="workspace-modal" data-go-to-file-modal data-files-data-url="{{ files_data_url }}" aria-hidden="true">
-            <div class="workspace-modal-panel" role="dialog" aria-modal="true" aria-labelledby="go-to-file-title">
-                <div class="workspace-modal-header">
-                    <h2 id="go-to-file-title" class="workspace-modal-title" data-i18n="web.ws.go_to_file">Go to file</h2>
-                    <button class="workspace-modal-close" type="button" data-close-workspace-modal aria-label="Close">×</button>
-                </div>
-                <div class="workspace-modal-body">
-                    <input class="workspace-modal-input" type="search" data-go-to-file-input placeholder="Type a file path">
-                    <ul class="workspace-file-results" data-go-to-file-results></ul>
-                    <div class="workspace-empty" data-go-to-file-empty data-i18n="web.ws.go_to_file.empty">No files found.</div>
-                </div>
-            </div>
-        </div>
 
         {% if can_add_file %}
         <div class="workspace-modal" data-add-file-modal data-create-file-url="{{ create_file_url }}" aria-hidden="true">

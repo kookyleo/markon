@@ -252,7 +252,7 @@ document.querySelectorAll<HTMLElement>('.workspace-modal').forEach((modal) => {
 });
 
 // ── Go-to-file modal ────────────────────────────────────────────────────────
-const goModal = document.querySelector<HTMLElement>('[data-go-to-file-modal]');
+const goFinder = document.querySelector<HTMLElement>('[data-file-finder]');
 const goInput = document.querySelector<HTMLInputElement>('[data-go-to-file-input]');
 const goResults = document.querySelector<HTMLElement>('[data-go-to-file-results]');
 const goEmpty = document.querySelector<HTMLElement>('[data-go-to-file-empty]');
@@ -279,15 +279,11 @@ function renderGoToFile(): void {
         goResults.appendChild(li);
     });
 }
-function openGoToFile(): void {
-    openWorkspaceModal(goModal);
-    if (!goModal) return;
-    if (goFiles) {
-        renderGoToFile();
-        return;
-    }
+function loadGoFiles(): void {
+    if (goFiles) { renderGoToFile(); return; }
+    if (!goFinder) return;
     if (goEmpty) goEmpty.textContent = t('web.ws.go_to_file.loading');
-    fetch(goModal.getAttribute('data-files-data-url') || '', { credentials: 'same-origin' })
+    fetch(goFinder.getAttribute('data-files-data-url') || '', { credentials: 'same-origin' })
         .then((resp) => { if (!resp.ok) throw new Error(resp.statusText); return resp.json(); })
         .then((files: GoToFileEntry[]) => { goFiles = files || []; renderGoToFile(); })
         .catch((err) => {
@@ -296,10 +292,27 @@ function openGoToFile(): void {
             renderGoToFile();
         });
 }
-document.querySelectorAll<HTMLElement>('[data-go-to-file]').forEach((button) => {
-    button.addEventListener('click', openGoToFile);
+function openFinder(): void {
+    if (!goFinder) return;
+    goFinder.classList.add('is-open');
+    loadGoFiles();
+}
+function closeFinder(): void {
+    if (goFinder) goFinder.classList.remove('is-open');
+}
+function focusFinder(): void {
+    if (goInput) { goInput.focus(); goInput.select(); }
+    openFinder();
+}
+if (goInput) {
+    goInput.addEventListener('focus', openFinder);
+    goInput.addEventListener('input', () => { openFinder(); renderGoToFile(); });
+    goInput.addEventListener('blur', () => window.setTimeout(closeFinder, 150));
+}
+document.addEventListener('click', (event) => {
+    const node = event.target as Node | null;
+    if (goFinder && node && !goFinder.contains(node)) closeFinder();
 });
-if (goInput) goInput.addEventListener('input', renderGoToFile);
 
 // ── Add-file modal ──────────────────────────────────────────────────────────
 document.querySelectorAll<HTMLElement>('[data-open-add-file]').forEach((button) => {
@@ -388,10 +401,10 @@ if (addFolderForm) {
 document.addEventListener('keydown', (event) => {
     const target = event.target as HTMLElement | null;
     const isTyping = !!target && /^(INPUT|TEXTAREA|SELECT)$/.test(target.tagName || '');
-    if (event.key === 'Escape') closeWorkspaceModals();
+    if (event.key === 'Escape') { closeWorkspaceModals(); closeFinder(); if (goInput) goInput.blur(); }
     if (!isTyping && event.key && event.key.toLowerCase() === 't') {
         event.preventDefault();
-        openGoToFile();
+        focusFinder();
     }
 });
 
