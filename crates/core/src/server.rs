@@ -5113,6 +5113,13 @@ fn render_directory_listing(
     let mut context = base_context(state);
     context.insert("workspace_id", workspace_id);
     context.insert("workspace_alias", &ws.alias());
+    context.insert(
+        "workspace_name",
+        &root
+            .file_name()
+            .map(|n| n.to_string_lossy().to_string())
+            .unwrap_or_default(),
+    );
     context.insert("is_local", &is_local);
     context.insert("current_dir", &current_dir.display().to_string());
     context.insert("history_url", &format!("/_/{workspace_id}/git/history"));

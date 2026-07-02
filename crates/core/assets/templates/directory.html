@@ -270,7 +270,6 @@
             background: var(--markon-bg-default);
             color: var(--markon-fg-default);
         }
-        .workspace-kicker,
         .workspace-pane-kicker {
             color: var(--markon-fg-muted);
             font-size: 12px;
@@ -830,6 +829,30 @@
             white-space: nowrap;
         }
         .workspace-meta-empty { color: var(--markon-fg-muted); }
+        /* Path row: a neutral name pill (alias|name, matching the compare page)
+           followed by the full current path. */
+        .workspace-path-dd {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            overflow: visible;
+        }
+        .workspace-name-pill {
+            flex: none;
+            padding: 2px 10px;
+            border-radius: 999px;
+            background: var(--markon-bg-muted);
+            color: var(--markon-fg-default);
+            font-size: 11px;
+            line-height: 1.55;
+            white-space: nowrap;
+        }
+        .workspace-path-text {
+            min-width: 0;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
         .workspace-copy-row {
             align-items: center;
         }
@@ -1251,16 +1274,11 @@
           data-checkout-url="{{ checkout_url }}">
         <section class="workspace-main">
             <header class="workspace-meta-panel" aria-labelledby="dir-heading">
-                <div class="workspace-kicker" data-i18n="web.ws.heading">Workspace</div>
-                {% if workspace_alias %}
-                <h1 id="dir-heading" class="workspace-title" data-title-key="web.ws.title">{{ workspace_alias }}</h1>
-                {% else %}
-                <h1 id="dir-heading" class="workspace-title" data-i18n-key="web.ws.heading" data-title-key="web.ws.title">Workspace</h1>
-                {% endif %}
+                <h1 id="dir-heading" class="workspace-title" data-i18n="web.ws.heading" data-title-key="web.ws.title">Workspace</h1>
                 <dl class="workspace-meta-list">
                     <div class="workspace-meta-row">
                         <dt data-i18n="web.ws.meta.path">Path</dt>
-                        <dd title="{{ current_dir }}">{{ current_dir }}</dd>
+                        <dd class="workspace-path-dd" title="{{ current_dir }}"><span class="workspace-name-pill">{% if workspace_alias %}{{ workspace_alias }}{% else %}{{ workspace_name }}{% endif %}</span><span class="workspace-path-text">{{ current_dir }}</span></dd>
                     </div>
                     <div class="workspace-meta-row workspace-copy-row">
                         <dt data-i18n="web.ws.meta.id">Workspace ID</dt>
@@ -1274,14 +1292,6 @@
                         <button class="workspace-copy-button" type="button" data-set-alias data-alias-url="/_/{{ workspace_id }}/settings/alias" data-current-alias="{{ workspace_alias }}" data-i18n="web.ws.set_alias">Set alias…</button>
                     </div>
                     {% endif %}
-                    <div class="workspace-meta-row">
-                        <dt data-i18n="web.ws.meta.branch">Branch</dt>
-                        <dd>{% if git.available %}{% if git.branch %}{{ git.branch }}{% else %}<span data-i18n="web.ws.git.detached">Detached HEAD</span>{% endif %}{% else %}<span data-i18n="web.ws.git.none">Not a git repository</span>{% endif %}</dd>
-                    </div>
-                    <div class="workspace-meta-row">
-                        <dt data-i18n="web.ws.meta.head">HEAD</dt>
-                        <dd class="workspace-mono">{% if git.commit_short %}{{ git.commit_short }}{% else %}<span data-i18n="web.ws.git.no_head">No commit</span>{% endif %}</dd>
-                    </div>
                 </dl>
             </header>
 
