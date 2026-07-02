@@ -442,6 +442,12 @@
             height: 16px;
             flex: 0 0 auto;
         }
+        .workspace-tool-button .workspace-tool-caret {
+            width: 12px;
+            height: 12px;
+            margin-left: -2px;
+            color: var(--markon-fg-muted);
+        }
         .workspace-tool-label {
             min-width: 0;
             overflow: hidden;
@@ -744,9 +750,6 @@
             color: var(--markon-accent) !important;
             font-size: 13px;
             text-decoration: none;
-        }
-        .branch-panel-foot {
-            border-top: 1px solid var(--markon-border-default);
         }
         .branch-panel-tags-link:hover,
         .branch-panel-foot:hover {
@@ -1577,7 +1580,7 @@
                             <button class="workspace-tool-button" type="button" {% if not git.available %}disabled{% endif %}>
                                 <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 3a2 2 0 1 1-2-2 2 2 0 0 1 2 2Zm0 10a2 2 0 1 1-2-2 2 2 0 0 1 2 2Zm8-10a2 2 0 1 1-2-2 2 2 0 0 1 2 2Z"/><path d="M3 5v6m2-8h2.5A3.5 3.5 0 0 1 11 6.5V11"/></svg>
                                 <span class="workspace-tool-label">{% if git.available %}{% if git.branch %}{{ git.branch }}{% else %}<span data-i18n="web.ws.git.detached">Detached HEAD</span>{% endif %}{% else %}<span data-i18n="web.ws.git.none">Not a git repository</span>{% endif %}</span>
-                                <span aria-hidden="true">⌄</span>
+                                <svg class="workspace-tool-caret" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m4 6 4 4 4-4"/></svg>
                             </button>
                             {% if git.available %}
                             <div class="workspace-dropdown-menu workspace-branch-panel" data-branch-panel>
@@ -1610,11 +1613,11 @@
                                     {% if not is_local %}
                                     <div class="branch-panel-note" data-i18n="web.ws.git.local_only">Local access required</div>
                                     {% endif %}
+                                    <a class="branch-panel-foot" href="{{ branches_url }}"><span data-i18n="web.ws.git.view_all_branches">View all branches</span> →</a>
                                 </div>
                                 <div class="branch-panel-pane" data-branch-pane="tags" hidden>
                                     <a class="branch-panel-tags-link" href="{{ tags_url }}"><span data-i18n="web.ws.git.view_all_tags">View all tags</span> →</a>
                                 </div>
-                                <a class="branch-panel-foot" href="{{ branches_url }}"><span data-i18n="web.ws.git.view_all_branches">View all branches</span> →</a>
                             </div>
                             {% endif %}
                         </div>
