@@ -287,6 +287,7 @@
     "web.ws.git.open_all": "すべて開く",
     "web.ws.git.show_diff": "diff を表示",
     "web.ws.git.no_commits": "このワークスペースにはまだコミットがありません。",
+    "web.ws.git.no_commits_filtered": "条件に一致するコミットはありません。",
     "web.ws.git.added": "追加",
     "web.ws.git.modified": "変更",
     "web.ws.git.branch": "ブランチ",

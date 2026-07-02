@@ -287,6 +287,7 @@
     "web.ws.git.open_all": "Open all",
     "web.ws.git.show_diff": "Show diff",
     "web.ws.git.no_commits": "No commits in this workspace yet.",
+    "web.ws.git.no_commits_filtered": "No commits match these filters.",
     "web.ws.git.added": "Added",
     "web.ws.git.modified": "Modified",
     "web.ws.git.branch": "Branch",

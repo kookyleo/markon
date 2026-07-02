@@ -286,6 +286,7 @@
     "web.ws.git.open_all": "查看全部",
     "web.ws.git.show_diff": "查看 diff",
     "web.ws.git.no_commits": "这个工作区还没有提交。",
+    "web.ws.git.no_commits_filtered": "没有符合筛选条件的提交。",
     "web.ws.git.added": "新增",
     "web.ws.git.modified": "修改",
     "web.ws.git.branch": "分支",

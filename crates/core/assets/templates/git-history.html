@@ -430,7 +430,11 @@
             {% endfor %}
         </div>
         {% else %}
+        {% if filters_active %}
+        <section class="git-empty" data-i18n="web.ws.git.no_commits_filtered">No commits match these filters.</section>
+        {% else %}
         <section class="git-empty" data-i18n="web.ws.git.no_commits">No commits in this workspace yet.</section>
+        {% endif %}
         {% endif %}
     </main>
 

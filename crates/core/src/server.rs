@@ -4411,6 +4411,8 @@ fn render_git_history_page(
     context.insert("current_range_label", &current_range_label);
     context.insert("files_url", &format!("/{workspace_id}/"));
     context.insert("has_commits", &!groups.is_empty());
+    let filters_active = selected_author.is_some() || (!range_key.is_empty() && range_key != "all");
+    context.insert("filters_active", &filters_active);
     context.insert("work_diff_url", &work_diff_url);
     render_template(state, "git-history.html", &context)
 }
