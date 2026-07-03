@@ -406,17 +406,28 @@
     }
     /* When a workspace has an alias, show it as the primary label with the path
        as a muted subtitle. */
-    .ws-path.ws-named { display: flex; flex-direction: column; gap: 1px; }
+    /* Alias + path on a single row: alias as a rounded pill, path muted
+       beside it (mirrors the web workspace meta row). */
+    .ws-path.ws-named { display: flex; flex-direction: row; align-items: center; gap: 8px; }
     .ws-alias-name {
+      flex: none;
+      padding: 2px 10px;
+      border-radius: 999px;
+      background: var(--surface-2);
+      color: var(--text);
       font-family: -apple-system, system-ui, sans-serif;
-      font-weight: 600;
-      font-size: 13px;
-      overflow: hidden; text-overflow: ellipsis;
+      font-weight: 500;
+      font-size: 11px;
+      line-height: 1.55;
+      white-space: nowrap;
     }
     .ws-subpath {
-      font-size: 11px;
+      flex: 1;
+      min-width: 0;
+      font-size: 12.5px;
+      font-family: 'SF Mono', Monaco, Menlo, monospace;
       color: var(--text-2);
-      overflow: hidden; text-overflow: ellipsis;
+      overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
     }
     /* Row 2: per-workspace feature flags */
     .ws-flags {
