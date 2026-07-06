@@ -1127,12 +1127,13 @@ dependencies = [
 
 [[package]]
 name = "d2-little"
-version = "0.7.2"
+version = "0.7.1-1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "09079b085f9fcdc0c54b686fbbe1424e8bd60a4d9e4d6647b9f30c8cdecbef8b"
 dependencies = [
  "base32",
  "base64 0.22.1",
  "fancy-regex",
- "font-metrics",
  "log",
  "markdown",
  "regex",
@@ -1140,6 +1141,7 @@ dependencies = [
  "serde",
  "serde_json",
  "supramark-diagram-core",
+ "supramark-font-metrics",
  "ttf-parser 0.21.1",
  "unicode-segmentation",
  "unicode-width 0.1.14",
@@ -1148,6 +1150,8 @@ dependencies = [
 [[package]]
 name = "dagre"
 version = "0.1.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "9468ae6a4b98e7102e0e59ba8f9aacd2266cec71817c19b62b2d61ee260524c1"
 dependencies = [
  "log",
  "serde",
@@ -1375,7 +1379,7 @@ dependencies = [
  "libc",
  "option-ext",
  "redox_users",
- "windows-sys 0.61.2",
+ "windows-sys 0.59.0",
 ]
 
 [[package]]
@@ -1632,7 +1636,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "39cab71617ae0d63f51a36d69f866391735b51691dbda63cf6f96d042b63efeb"
 dependencies = [
  "libc",
- "windows-sys 0.61.2",
+ "windows-sys 0.52.0",
 ]
 
 [[package]]
@@ -1800,15 +1804,6 @@ dependencies = [
  "walkdir",
  "winapi",
  "yeslogic-fontconfig-sys",
-]
-
-[[package]]
-name = "font-metrics"
-version = "0.1.0"
-dependencies = [
- "js-sys",
- "ttf-parser 0.21.1",
- "wasm-bindgen",
 ]
 
 [[package]]
@@ -2339,7 +2334,9 @@ dependencies = [
 
 [[package]]
 name = "graphviz-anywhere"
-version = "0.2.1"
+version = "0.2.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "9b2384ba83cdd5b74ed4d5e988e4bdbf9776a6e29cb037deb6d48f08e7a0c306"
 dependencies = [
  "supramark-diagram-core",
  "thiserror 1.0.69",
@@ -3698,11 +3695,12 @@ dependencies = [
 
 [[package]]
 name = "mermaid-little"
-version = "11.14.0-1"
+version = "11.14.0-4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "77d2b4884532e5bd89678ebad08f4485e97308a145aa98b7f7b3522326f4f4a5"
 dependencies = [
  "dagre",
  "env_logger",
- "font-metrics",
  "json5",
  "libm",
  "log",
@@ -3711,6 +3709,7 @@ dependencies = [
  "serde_json",
  "serde_yml",
  "supramark-diagram-core",
+ "supramark-font-metrics",
  "thiserror 1.0.69",
 ]
 
@@ -3944,7 +3943,7 @@ version = "0.50.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7957b9740744892f114936ab4a57b3f487491bbeafaf8083688b16841a4240e5"
 dependencies = [
- "windows-sys 0.61.2",
+ "windows-sys 0.59.0",
 ]
 
 [[package]]
@@ -4711,11 +4710,12 @@ checksum = "7edddbd0b52d732b21ad9a5fab5c704c14cd949e5e9a1ec5929a24fded1b904c"
 
 [[package]]
 name = "plantuml-little"
-version = "1.2026.2-3"
+version = "1.2026.2-4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "3a725329a275b81e9872f93a39da1dac9828eaae77aae111bc73d4ee1a64aa9d"
 dependencies = [
  "base64 0.22.1",
  "flate2",
- "font-metrics",
  "graphviz-anywhere",
  "libc",
  "log",
@@ -4723,6 +4723,7 @@ dependencies = [
  "serde",
  "serde_json",
  "supramark-diagram-core",
+ "supramark-font-metrics",
  "thiserror 1.0.69",
  "url",
  "zip 0.6.6",
@@ -5045,7 +5046,7 @@ dependencies = [
  "once_cell",
  "socket2",
  "tracing",
- "windows-sys 0.60.2",
+ "windows-sys 0.52.0",
 ]
 
 [[package]]
@@ -5514,7 +5515,7 @@ dependencies = [
  "errno",
  "libc",
  "linux-raw-sys 0.12.1",
- "windows-sys 0.61.2",
+ "windows-sys 0.52.0",
 ]
 
 [[package]]
@@ -6161,7 +6162,9 @@ checksum = "13c2bddecc57b384dee18652358fb23172facb8a2c51ccc10d74c157bdea3292"
 
 [[package]]
 name = "supramark-diagram"
-version = "0.1.0"
+version = "0.1.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "be621b23e2785651bad2dab18331b8ef196dc84304416c3c28140dc9b6cd8132"
 dependencies = [
  "d2-little",
  "graphviz-anywhere",
@@ -6174,6 +6177,8 @@ dependencies = [
 [[package]]
 name = "supramark-diagram-core"
 version = "0.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d12c3914dedc09ea91b71fd8c9ffca160a6a639528684b373c995706fc78f42d"
 dependencies = [
  "serde",
  "serde_json",
@@ -6181,8 +6186,21 @@ dependencies = [
 ]
 
 [[package]]
-name = "supramark-markdown"
+name = "supramark-font-metrics"
 version = "0.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "b2ae7ea5b6a8329cfb2fc3f5622fe2015e27ca23b98dcd050f1dba48e911847d"
+dependencies = [
+ "js-sys",
+ "ttf-parser 0.21.1",
+ "wasm-bindgen",
+]
+
+[[package]]
+name = "supramark-markdown"
+version = "0.1.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "2cfe10855b47b8519696dacfc3e7799cf3cc763315589d27e0d324722b49bcd9"
 dependencies = [
  "argparse",
  "const_format",
@@ -6850,7 +6868,7 @@ dependencies = [
  "getrandom 0.4.2",
  "once_cell",
  "rustix 1.1.4",
- "windows-sys 0.61.2",
+ "windows-sys 0.52.0",
 ]
 
 [[package]]
@@ -8073,7 +8091,7 @@ version = "0.1.11"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c2a7b1c03c876122aa43f3020e6c3c3ee5c05081c9a00739faf7503aeba10d22"
 dependencies = [
- "windows-sys 0.61.2",
+ "windows-sys 0.48.0",
 ]
 
 [[package]]

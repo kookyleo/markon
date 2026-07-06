@@ -21,6 +21,7 @@
 set -euo pipefail
 
 cd "$(dirname "$0")/.."
+export GRAPHVIZ_ANYWHERE_ALLOW_DOWNLOAD="${GRAPHVIZ_ANYWHERE_ALLOW_DOWNLOAD:-1}"
 
 step() { printf '\n\033[1;34m==>\033[0m %s\n' "$1"; }
 fail() { printf '\033[1;31m✗ %s\033[0m\n' "$1" >&2; exit 1; }
@@ -46,12 +47,15 @@ npm run build || fail "frontend build failed"
 scripts/quality-gate.sh || fail "Quality gates failed"
 
 # --- Dry run ---
+# --allow-dirty is intentional here: npm run build creates gitignored
+# assets/dist files that are explicitly included in the markon-core package.
+# The tracked tree was already required clean before that build step.
 step "cargo publish --dry-run -p markon-core"
-cargo publish --dry-run -p markon-core || fail "markon-core dry-run failed"
+cargo publish --dry-run -p markon-core --allow-dirty || fail "markon-core dry-run failed"
 
 # --- Publish core ---
 step "cargo publish -p markon-core"
-cargo publish -p markon-core || fail "markon-core publish failed"
+cargo publish -p markon-core --allow-dirty || fail "markon-core publish failed"
 
 # Wait for crates.io index to propagate
 step "Waiting 30s for crates.io index to update…"

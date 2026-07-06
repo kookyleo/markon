@@ -18,6 +18,8 @@ set -euo pipefail
 
 cd "$(dirname "$0")/.."
 
+export GRAPHVIZ_ANYWHERE_ALLOW_DOWNLOAD="${GRAPHVIZ_ANYWHERE_ALLOW_DOWNLOAD:-1}"
+
 MODE="debug"
 WATCH=0
 for arg in "$@"; do

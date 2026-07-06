@@ -135,5 +135,5 @@ jobs:
       - name: Run tests
         run: npm test
 
-      - name: Run ESLint
-        run: npx eslint 'crates/core/assets/js/**/*.js'
+      - name: Run TypeScript lint
+        run: npm run lint

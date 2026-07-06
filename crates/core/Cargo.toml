@@ -82,8 +82,7 @@ thiserror = "2"
 tracing.workspace = true
 
 [dependencies.supramark-markdown]
-version = "0.1.0"
-path = "../../../GoAskAway/supramark/crates/supramark-markdown"
+version = "0.1.1"
 default-features = false
 features = [
     "commonmark",
@@ -98,8 +97,7 @@ features = [
 ]
 
 [dependencies.supramark-diagram]
-version = "0.1.0"
-path = "../../../GoAskAway/supramark/crates/supramark-diagram"
+version = "0.1.4"
 
 [dev-dependencies]
 tempfile = "3.27"

@@ -194,7 +194,7 @@ graph TD; A-->B;
             $state = ConvertTo-Array (Invoke-Json "GET" "$Base/api/workspaces" $Token)
             return (($state | Where-Object { $_.id -eq $id }).search_ready -eq $true)
         } 45
-        $searchUrl = "$Base/search?ws=$id" + "&q=alpha"
+        $searchUrl = "$Base/_/$id/search?q=alpha"
         $search = ConvertTo-Array (Invoke-Json "GET" $searchUrl $Token)
         Assert-True ($search.Count -ge 1) "Search did not return README.md hit"
 

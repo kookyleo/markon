@@ -26,9 +26,3 @@ authors = ["kookyleo"]
 license = "Apache-2.0"
 repository = "https://github.com/kookyleo/markon"
 homepage = "https://github.com/kookyleo/markon"
-
-[patch.crates-io]
-graphviz-anywhere = { path = "../GoAskAway/supramark/crates/graphviz-anywhere/packages/rust" }
-
-[patch."https://github.com/kookyleo/dagre-rs.git"]
-dagre = { path = "../GoAskAway/supramark/crates/dagre" }

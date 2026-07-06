@@ -2,10 +2,12 @@
   "name": "markon",
   "private": true,
   "type": "module",
-  "description": "Dev-only tooling (vitest, eslint) for Markon. Real project is Cargo-based.",
+  "description": "Dev-only tooling (vitest and TypeScript checks) for Markon. Real project is Cargo-based.",
   "scripts": {
     "dev": "node scripts/build.mjs --watch",
     "build": "node scripts/build.mjs",
+    "lint": "npm run typecheck && npm run lint:eslint",
+    "lint:eslint": "eslint \"crates/core/assets/js/**/*.ts\" \"scripts/**/*.mjs\" eslint.config.js vitest.config.js --max-warnings=0",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "test:watch": "vitest"
@@ -19,11 +21,14 @@
   "author": "kookyleo",
   "license": "Apache-2.0",
   "devDependencies": {
+    "@eslint/js": "^9.39.4",
     "@types/node": "^25.6.0",
     "esbuild": "^0.28.0",
     "eslint": "^9.37.0",
+    "globals": "^15.15.0",
     "jsdom": "^29.0.2",
     "typescript": "^6.0.3",
+    "typescript-eslint": "^8.62.1",
     "vitest": "^4.1.4"
   },
   "dependencies": {

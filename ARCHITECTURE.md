@@ -38,6 +38,26 @@ Markon 的用户数据**独立于进程**,持久在 `~/.markon/`:
 - **降级 / 迁移 fallback**:旧 settings 已有 `workspaces` 但缺 `salt` 时退化为 `markon:{port}`
   并写回,以保持升级前 URL;根本没有 settings 文件的全新安装才生成随机 salt。
 
+### 1.1 URL 路由契约
+
+在不触碰 `workspace_id` 稳定性的前提下,Markon 的 URL 按下列层次划分:
+
+- **用户文档空间**:`/{workspace_id}/` 与 `/{workspace_id}/{path}`。这是唯一直接映射到
+  workspace 文件系统的公开、人类可读空间;目录展开状态使用 root 页 hash,如
+  `/{workspace_id}/#docs/`。
+- **Workspace 内部功能空间**:`/_/{workspace_id}/...`。所有不代表文件本身的工作区级页面 /
+  数据 / 操作都放在这里,例如 `compare`, `git`, `files`, `settings`, `chat`, `search`。
+  这样不会占用用户文件名空间,也能在视觉上明确区分“内容 URL”和“工具 URL”。
+- **全局系统空间**:`/_/...`。静态资源、WebSocket、unlock、dev reload 等不属于某个文件路径的
+  系统能力放在这里。
+- **JSON / 管理 API**:`/api/...`。CLI/GUI 管理、保存、chat agent 等程序接口保持在 API
+  命名空间内,并由各自 token / same-origin / loopback gate 控制。
+- **废弃路径**:`/{workspace_id}/_/...` 与旧 `/search?ws=...` 不提供兼容;
+  这类路径要么按用户文件路径处理,要么返回 404。新链接必须使用 `/_/{workspace_id}/...`。
+
+实现约束:后端新增 URL 必须优先通过 `server.rs` 中的 route helper 生成;前端新增 URL 必须优先
+通过 `crates/core/assets/js/core/routes.ts` 生成,避免在组件里散落手写字符串。
+
 ## 2. 批注与已读数据
 
 - **表结构**(`crates/core/src/server.rs`,均以 `CREATE TABLE IF NOT EXISTS` 建立):

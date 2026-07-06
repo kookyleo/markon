@@ -76,18 +76,18 @@ Simply run `markon` in any directory to browse and render Markdown files with a 
 - ✅ **Auto-Indexing**: File watcher automatically updates index on changes
 - ✅ **Portable URLs**: Relative paths for consistent navigation
 - ✅ **Clean UI**: Full-screen search with content-width constraint (980px)
-- ✅ **Quick Access**: Press `/` to open search, `ESC` to close
+- ✅ **Quick Access**: Press `/` to open search, `Esc` to close
 
 ### Keyboard Shortcuts
 - ✅ **Undo/Redo**: `Ctrl/Cmd+Z`, `Ctrl/Cmd+Shift+Z`, `Ctrl/Cmd+Y`
 - ✅ **Navigation**: `j/k` (next/prev heading), `Ctrl/Cmd+j/k` (next/prev annotation)
-- ✅ **Smart Scroll**: `Space` (smooth 1/3 page scroll, `ESC` to stop)
+- ✅ **Smart Scroll**: `Space` (smooth 1/3 page scroll, `Esc` to stop)
 - ✅ **TOC Control**: `Ctrl/Cmd+\` (toggle/focus TOC)
 - ✅ **Section Control**: `o` (collapse/expand current section)
 - ✅ **Viewed Control**: `v` (toggle current section viewed state)
 - ✅ **Search**: `/` (open full-text search)
 - ✅ **Help Panel**: `?` (show all shortcuts)
-- ✅ **Close/Cancel**: `ESC` (close popups, clear selection, cancel focus)
+- ✅ **Close/Cancel**: `Esc` (close popups, clear selection, cancel focus)
 - ✅ **Platform Detection**: Auto-detects Mac vs Windows/Linux for modifier keys
 
 ### UI/UX Enhancements
@@ -244,7 +244,7 @@ markon --qr -b README.md
 - Press `e` to open editor with line numbers and syntax highlighting
 - Select text → Click "Edit" in toolbar → Auto-jump to source with text selected
 - `Ctrl/Cmd+S`: Save changes (asterisk * in title shows unsaved changes)
-- `ESC`: Close editor and return to view mode
+- `Esc`: Close editor and return to view mode
 - Security: Only `.md` files within the start directory can be edited
 - Theme: Auto-follows light/dark mode with GitHub-style syntax highlighting
 
@@ -271,7 +271,7 @@ markon --qr -b README.md
 - `j` / `k`: Next/Previous heading
 - `Ctrl/Cmd+\`: Toggle TOC
 - `v`: Toggle current section viewed (requires Viewed tracking enabled for the workspace)
-- `ESC`: Close popups/Clear selection
+- `Esc`: Close popups/Clear selection
 
 ## Important Notes
 

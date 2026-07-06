@@ -214,9 +214,12 @@ jobs:
         if: steps.token.outputs.skip != 'true'
         env:
           CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
+          GRAPHVIZ_ANYWHERE_ALLOW_DOWNLOAD: "1"
         # Tolerate "already uploaded" when re-running
         run: |
-          cargo publish -p markon-core || {
+          # --allow-dirty is limited to the generated, gitignored assets/dist
+          # bundle produced above and explicitly included in markon-core.
+          cargo publish -p markon-core --allow-dirty || {
             code=$?
             if cargo search markon-core --limit 1 | grep -q "^markon-core"; then
               CURRENT=$(cargo search markon-core --limit 1 | head -1 | sed -E 's/.*= "([^"]+)".*/\1/')

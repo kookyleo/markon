@@ -1,2 +1,5 @@
 [alias]
 xtask = "run --quiet --package xtask --release --"
+
+[env]
+GRAPHVIZ_ANYWHERE_ALLOW_DOWNLOAD = { value = "1", force = false }

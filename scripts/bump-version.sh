@@ -11,9 +11,9 @@
 #     - npm run build (assets/dist/, required by markon-core's build.rs)
 #   Quality gates (scripts/quality-gate.sh, all must pass with zero warnings):
 #     - cargo fmt --check
-#     - cargo clippy --all-targets -- -D warnings
+#     - cargo clippy --all-targets --all-features -- -D warnings
 #     - cargo test
-#     - npx tsc --noEmit
+#     - npm run lint
 #     - npm test
 #   Publishability gate:
 #     - cargo publish --dry-run -p markon-core
@@ -49,6 +49,7 @@ fi
 MINOR=$(echo "$NEW" | cut -d. -f1-2)
 
 cd "$(dirname "$0")/.."
+export GRAPHVIZ_ANYWHERE_ALLOW_DOWNLOAD="${GRAPHVIZ_ANYWHERE_ALLOW_DOWNLOAD:-1}"
 
 step() { printf '\n\033[1;34m==>\033[0m %s\n' "$1"; }
 fail() { printf '\033[1;31m✗ %s\033[0m\n' "$1" >&2; exit 1; }
