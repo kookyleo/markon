@@ -11,7 +11,9 @@
  * compile time, so the bundled file remains import-free.
  */
 
-const _t = (window.__MARKON_I18N__ && window.__MARKON_I18N__.t) || ((k: string): string => k);
+const _t = (window.__MARKON_I18N__?.t) || ((k: string): string => k);
+
+const exportNotesLabel = (count: number): string => `${_t('web.export.label')} (${count})`;
 
 const runtimeTheme = (): 'light' | 'dark' => {
     const resolved = window.MarkonTheme?.getResolved?.() || document.documentElement.getAttribute('data-theme');
@@ -176,7 +178,7 @@ export class SectionViewedManager {
     updateCheckboxes(): void {
         const checkboxes = document.querySelectorAll<HTMLInputElement>('.viewed-checkbox');
         checkboxes.forEach((checkbox) => {
-            const headingId = checkbox.dataset.headingId;
+            const headingId = checkbox.dataset['headingId'];
             if (headingId) {
                 checkbox.checked = !!this.viewedState[headingId];
             }
@@ -208,7 +210,7 @@ export class SectionViewedManager {
                         const checkbox = document.createElement('input');
                         checkbox.type = 'checkbox';
                         checkbox.className = 'viewed-checkbox';
-                        checkbox.dataset.headingId = headingId;
+                        checkbox.dataset['headingId'] = headingId;
                         checkbox.tabIndex = -1; // Prevent keyboard navigation to checkbox
 
                         if (this.viewedState[headingId]) {
@@ -234,7 +236,7 @@ export class SectionViewedManager {
                     printBtn.className = 'section-action section-print-btn';
                     printBtn.textContent = _t('web.viewed.print');
                     printBtn.title = _t('web.viewed.print.tip');
-                    printBtn.dataset.headingId = headingId;
+                    printBtn.dataset['headingId'] = headingId;
                     return printBtn;
                 },
             });
@@ -247,7 +249,7 @@ export class SectionViewedManager {
                     toggleBtn.className = 'section-action section-expand-toggle';
                     // Default: section is expanded → label is "Collapse".
                     toggleBtn.textContent = _t('web.viewed.collapse');
-                    toggleBtn.dataset.headingId = headingId;
+                    toggleBtn.dataset['headingId'] = headingId;
                     return toggleBtn;
                 },
             });
@@ -318,7 +320,7 @@ export class SectionViewedManager {
         }
         const placeholder = document.createElement('div');
         placeholder.className = 'section-collapsed-placeholder';
-        placeholder.dataset.headingId = headingId;
+        placeholder.dataset['headingId'] = headingId;
         placeholder.textContent = _t('web.viewed.collapsed.hint');
         placeholder.addEventListener('click', () => this.toggleTempExpand(headingId));
         heading.insertAdjacentElement('afterend', placeholder);
@@ -365,29 +367,26 @@ export class SectionViewedManager {
     revealContent(content: HTMLElement[]): void {
         content.forEach((el) => {
             const token = String(++this.revealSeq);
-            el.dataset.markonRevealToken = token;
+            el.dataset['markonRevealToken'] = token;
             el.classList.remove('section-content-hidden');
             el.classList.add('section-content-temp-visible');
 
             let done = false;
-            let fallback: number | undefined;
             const cleanup = (e?: TransitionEvent): void => {
                 if (done) return;
                 if (e && e.target !== el) return;
                 if (e && e.propertyName !== 'opacity') return;
                 done = true;
-                if (el.dataset.markonRevealToken === token) {
+                if (el.dataset['markonRevealToken'] === token) {
                     el.classList.remove('section-content-temp-visible');
-                    delete el.dataset.markonRevealToken;
+                    delete el.dataset['markonRevealToken'];
                 }
                 el.removeEventListener('transitionend', cleanup);
-                if (fallback !== undefined) {
-                    window.clearTimeout(fallback);
-                }
+                window.clearTimeout(fallback);
             };
 
             el.addEventListener('transitionend', cleanup);
-            fallback = window.setTimeout(() => cleanup(), 450);
+            const fallback = window.setTimeout(() => cleanup(), 450);
         });
     }
 
@@ -445,6 +444,7 @@ export class SectionViewedManager {
             return;
         }
         doc.open();
+        // eslint-disable-next-line @typescript-eslint/no-deprecated -- Intentional write into a temporary print iframe.
         doc.write(`<!DOCTYPE html><html><head><meta charset="utf-8"><title>Print Section</title>
 <link rel="stylesheet" href="${themeCss}">
 <link rel="stylesheet" href="/_/css/github-print.css">
@@ -518,7 +518,7 @@ export class SectionViewedManager {
         };
         await waitForImages();
 
-        if (doc.fonts && doc.fonts.ready) {
+        if (doc.fonts) {
             try {
                 await Promise.race([doc.fonts.ready, new Promise<void>((res) => setTimeout(res, resourceTimeout))]);
             } catch {
@@ -555,7 +555,6 @@ export class SectionViewedManager {
             } catch {
                 // ignore
             }
-            console.log('[ViewedManager] printSection: iframe cleaned up');
         };
 
         const iframeWindow = iframe.contentWindow;
@@ -568,7 +567,6 @@ export class SectionViewedManager {
         try {
             iframeWindow?.focus();
             iframeWindow?.print();
-            console.log('[ViewedManager] printSection: print dialog opened for section', headingId);
         } catch (error) {
             console.warn('[ViewedManager] printSection: print blocked or failed', error);
             clearTimeout(fallbackCleanup);
@@ -607,6 +605,7 @@ export class SectionViewedManager {
             return;
         }
 
+        // eslint-disable-next-line @typescript-eslint/no-deprecated -- Intentional write into a newly opened print window.
         printWindow.document.write(
             `<html><head><title>Loading...</title></head><body style="font-family: system-ui; padding: 40px; text-align: center;"><h2>${_t('web.viewed.print.preparing')}</h2></body></html>`,
         );
@@ -668,10 +667,10 @@ export class SectionViewedManager {
         // STEP 5: write into the open window.
         try {
             printWindow.document.open();
+            // eslint-disable-next-line @typescript-eslint/no-deprecated -- Intentional write into a newly opened print window.
             printWindow.document.write(fullHTML);
             printWindow.document.close();
 
-            console.log('[ViewedManager] printSectionInNewWindow: content written to print window');
         } catch (error) {
             console.error('[ViewedManager] printSectionInNewWindow: failed to write content', error);
             printWindow.close();
@@ -745,7 +744,7 @@ export class SectionViewedManager {
     /** Heading IDs of all per-section viewed checkboxes currently in the DOM. */
     private headingIds(): string[] {
         return Array.from(document.querySelectorAll<HTMLInputElement>('.viewed-checkbox'))
-            .map((cb) => cb.dataset.headingId)
+            .map((cb) => cb.dataset['headingId'])
             .filter((id): id is string => Boolean(id));
     }
 
@@ -838,7 +837,7 @@ export class SectionViewedManager {
         document.querySelectorAll<HTMLInputElement>('.viewed-checkbox').forEach((checkbox) => {
             checkbox.addEventListener('change', (e) => {
                 const target = e.target as HTMLInputElement;
-                const headingId = target.dataset.headingId;
+                const headingId = target.dataset['headingId'];
                 if (!headingId) return;
                 this.toggleViewed(headingId, target.checked);
             });
@@ -849,7 +848,7 @@ export class SectionViewedManager {
             toggleBtn.addEventListener('click', (e) => {
                 e.stopPropagation();
                 const target = e.target as HTMLElement;
-                const headingId = target.dataset.headingId;
+                const headingId = target.dataset['headingId'];
                 if (!headingId) return;
                 this.toggleTempExpand(headingId);
             });
@@ -860,7 +859,7 @@ export class SectionViewedManager {
             printBtn.addEventListener('click', (e) => {
                 e.stopPropagation();
                 const target = e.target as HTMLElement;
-                const headingId = target.dataset.headingId;
+                const headingId = target.dataset['headingId'];
                 if (!headingId) return;
                 void this.printSection(headingId);
             });
@@ -905,7 +904,7 @@ export class SectionViewedManager {
             <span class="viewed-toolbar-item"><span class="viewed-toolbar-separator">|</span><a class="btn-collapse-all">${_t('web.viewed.collapseall')}</a></span>
             <span class="viewed-toolbar-item"><span class="viewed-toolbar-separator">|</span><a class="btn-expand-all">${_t('web.viewed.expandall')}</a></span>
             <span class="viewed-toolbar-item"><span class="viewed-toolbar-separator">|</span><a class="btn-print-page">${_t('web.viewed.print')}</a></span>
-            <span class="viewed-toolbar-item"><span class="viewed-toolbar-separator">|</span><a class="btn-export-annotations" title="${_t('web.export.tip')}">${_t('web.export.label')}</a></span>
+            <span class="viewed-toolbar-item"><span class="viewed-toolbar-separator">|</span><a class="btn-export-notes" title="${_t('web.export.tip')}">${_t('web.export.label')}</a></span>
         `);
 
         // The bar is a child of the <h1> and flows inline after the title:
@@ -931,16 +930,33 @@ export class SectionViewedManager {
         toolbar.querySelector<HTMLElement>('.btn-collapse-all')?.addEventListener('click', () => this.collapseAll());
         toolbar.querySelector<HTMLElement>('.btn-expand-all')?.addEventListener('click', () => this.expandAll());
         toolbar.querySelector<HTMLElement>('.btn-print-page')?.addEventListener('click', () => {
-            console.log('[ViewedManager] Printing full page');
             window.print();
         });
-        toolbar.querySelector<HTMLElement>('.btn-export-annotations')?.addEventListener(
+        toolbar.querySelector<HTMLElement>('.btn-export-notes')?.addEventListener(
             'click',
             (e) => {
                 const link = e.currentTarget as HTMLElement;
-                window.markonExportAnnotations?.(link);
+                if (link.getAttribute('aria-disabled') === 'true') {
+                    e.preventDefault();
+                    return;
+                }
+                window.markonExportNotes?.(link);
             },
         );
+        this.updateExportNotesButton();
+        document.addEventListener('markon:notes-count-changed', () => this.updateExportNotesButton());
+    }
+
+    updateExportNotesButton(): void {
+        const link = document.querySelector<HTMLElement>('.btn-export-notes');
+        if (!link) return;
+        const count = Math.max(0, window.markonNotesCount?.() ?? 0);
+        link.textContent = exportNotesLabel(count);
+        const disabled = count === 0;
+        link.classList.toggle('is-disabled', disabled);
+        link.setAttribute('aria-disabled', disabled ? 'true' : 'false');
+        if (disabled) link.setAttribute('tabindex', '-1');
+        else link.removeAttribute('tabindex');
     }
 
     markAllViewed(): void {
@@ -997,7 +1013,7 @@ export class SectionViewedManager {
             .forEach((el) => {
                 el.classList.remove('section-content-hidden');
                 el.classList.remove('section-content-temp-visible');
-                delete el.dataset.markonRevealToken;
+                delete el.dataset['markonRevealToken'];
             });
     }
 
@@ -1013,7 +1029,7 @@ export class SectionViewedManager {
             if (!link) return;
 
             const href = link.getAttribute('href');
-            if (!href || !href.startsWith('#')) return;
+            if (!href?.startsWith('#')) return;
 
             const headingId = href.substring(1);
 

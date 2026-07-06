@@ -188,6 +188,7 @@
     display: block;
     max-width: 100%;
     height: auto;
+    overflow: visible;
 }
 
 .markdown-body .markon-source-fallback {
@@ -291,6 +292,48 @@
     color: var(--markon-accent-hover);
 }
 
+.markdown-body table {
+    border-collapse: separate;
+    border-spacing: 0;
+    border-radius: 4px;
+}
+
+.markdown-body table tr {
+    border-top: 0;
+}
+
+.markdown-body table th,
+.markdown-body table td {
+    background-color: inherit;
+    border: 0;
+    border-right: 1px solid var(--markon-border-default);
+    border-bottom: 1px solid var(--markon-border-default);
+}
+
+.markdown-body table tr > :first-child {
+    border-left: 1px solid var(--markon-border-default);
+}
+
+.markdown-body table > :first-child > tr:first-child > * {
+    border-top: 1px solid var(--markon-border-default);
+}
+
+.markdown-body table > :first-child > tr:first-child > :first-child {
+    border-top-left-radius: 4px;
+}
+
+.markdown-body table > :first-child > tr:first-child > :last-child {
+    border-top-right-radius: 4px;
+}
+
+.markdown-body table > :last-child > tr:last-child > :first-child {
+    border-bottom-left-radius: 4px;
+}
+
+.markdown-body table > :last-child > tr:last-child > :last-child {
+    border-bottom-right-radius: 4px;
+}
+
 /* Annotation focus indicator for keyboard navigation */
 .annotation-focused {
     outline: 2px solid var(--markon-accent);
@@ -359,10 +402,10 @@ html[data-theme="dark"] .heading-section:has(.heading-focused) {
 .markdown-body h4.heading-focused,
 .markdown-body h5.heading-focused,
 .markdown-body h6.heading-focused {
-    background-color: color-mix(in srgb, var(--markon-accent) 10%, transparent);
+    --markon-heading-focus-bg: color-mix(in srgb, var(--markon-accent) 10%, transparent);
+    background-color: var(--markon-heading-focus-bg);
     /* Specificity (0,2,2) beats github-markdown's `.markdown-body h2` (0,1,1). */
     border-bottom: none;
-    /* Top corners rounded, bottom square — matches the section focus frame. */
     border-radius: var(--markon-radius-sm) var(--markon-radius-sm) 0 0;
 }
 
@@ -372,7 +415,50 @@ html[data-theme="dark"] .markdown-body h3.heading-focused,
 html[data-theme="dark"] .markdown-body h4.heading-focused,
 html[data-theme="dark"] .markdown-body h5.heading-focused,
 html[data-theme="dark"] .markdown-body h6.heading-focused {
-    background-color: color-mix(in srgb, var(--markon-accent) 15%, transparent);
+    --markon-heading-focus-bg: color-mix(in srgb, var(--markon-accent) 15%, transparent);
+}
+
+.markdown-body h1.heading-focused::before,
+.markdown-body h1.heading-focused::after,
+.markdown-body h2.heading-focused::before,
+.markdown-body h2.heading-focused::after,
+.markdown-body h3.heading-focused::before,
+.markdown-body h3.heading-focused::after,
+.markdown-body h4.heading-focused::before,
+.markdown-body h4.heading-focused::after,
+.markdown-body h5.heading-focused::before,
+.markdown-body h5.heading-focused::after,
+.markdown-body h6.heading-focused::before,
+.markdown-body h6.heading-focused::after {
+    content: "";
+    position: absolute;
+    bottom: -5px;
+    width: 5px;
+    height: 5px;
+    background-color: var(--markon-heading-focus-bg);
+    pointer-events: none;
+}
+
+.markdown-body h1.heading-focused::before,
+.markdown-body h2.heading-focused::before,
+.markdown-body h3.heading-focused::before,
+.markdown-body h4.heading-focused::before,
+.markdown-body h5.heading-focused::before,
+.markdown-body h6.heading-focused::before {
+    left: 0;
+    -webkit-mask: url("data:image/svg+xml,%3Csvg viewBox='0 0 5 5' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M5 0H0V5Q0 0 5 0Z' fill='black'/%3E%3C/svg%3E") 0 0 / 100% 100% no-repeat;
+    mask: url("data:image/svg+xml,%3Csvg viewBox='0 0 5 5' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M5 0H0V5Q0 0 5 0Z' fill='black'/%3E%3C/svg%3E") 0 0 / 100% 100% no-repeat;
+}
+
+.markdown-body h1.heading-focused::after,
+.markdown-body h2.heading-focused::after,
+.markdown-body h3.heading-focused::after,
+.markdown-body h4.heading-focused::after,
+.markdown-body h5.heading-focused::after,
+.markdown-body h6.heading-focused::after {
+    right: 0;
+    -webkit-mask: url("data:image/svg+xml,%3Csvg viewBox='0 0 5 5' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M0 0H5V5Q5 0 0 0Z' fill='black'/%3E%3C/svg%3E") 0 0 / 100% 100% no-repeat;
+    mask: url("data:image/svg+xml,%3Csvg viewBox='0 0 5 5' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M0 0H5V5Q5 0 0 0Z' fill='black'/%3E%3C/svg%3E") 0 0 / 100% 100% no-repeat;
 }
 
 /* ============================================================
@@ -382,25 +468,23 @@ html[data-theme="dark"] .markdown-body h6.heading-focused {
 
 .note-input-modal {
     position: absolute;
-    z-index: var(--markon-z-modal-inline);
-    background: var(--markon-bg-default);
-    border: 1px solid var(--markon-border-emphasis);
-    border-radius: var(--markon-radius-lg);
-    padding: 12px;
-    box-shadow: var(--markon-shadow-pop);
-    width: 360px;
+    width: max-content;
+    min-width: 360px;
+    max-width: calc(100vw - 24px);
 }
 
 .note-textarea {
-    width: 100%;
+    width: 322px;
+    min-width: 240px;
+    max-width: calc(100vw - 72px);
     padding: 8px 12px;
     border: 1px solid var(--markon-border-emphasis);
     border-radius: var(--markon-radius-sm);
     font-size: 14px;
     font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Noto Sans", Helvetica, Arial, sans-serif;
-    resize: vertical;
+    resize: both;
     min-height: 80px;
-    margin-bottom: 12px;
+    margin: 12px 12px 12px;
     box-sizing: border-box;
 }
 
@@ -414,6 +498,7 @@ html[data-theme="dark"] .markdown-body h6.heading-focused {
     display: flex;
     justify-content: flex-end;
     gap: 8px;
+    margin: 0 12px 12px;
 }
 
 .note-input-actions button {
@@ -599,13 +684,14 @@ html[data-theme="dark"] .markdown-body h6.heading-focused {
 .note-popup .note-actions {
     position: static;
     align-self: flex-end;
-    margin: -8px -12px 4px 0;
+    margin: 12px 16px 4px 0;
     padding: 0;
     background: none;
     border: 0;
     box-shadow: none;
 }
 .note-popup .note-content {
+    margin: 0 16px 12px;
     padding-right: 0;
 }
 
@@ -615,19 +701,14 @@ html[data-theme="dark"] .markdown-body h6.heading-focused {
    ============================================================ */
 
 .confirm-dialog {
+    --markon-modal-surface-border: var(--markon-modal-border-danger);
     position: fixed;
-    background: var(--markon-bg-default);
-    border: 1px solid var(--markon-border-emphasis);
-    border-radius: var(--markon-radius-sm);
-    padding: 10px 12px;
-    box-shadow: var(--markon-shadow-pop);
-    z-index: var(--markon-z-chrome);
     min-width: 180px;
     max-width: 250px;
 }
 
 .confirm-message {
-    margin: 0 0 10px 0;
+    margin: 10px 12px 10px;
     font-size: 13px;
     color: var(--markon-fg-default);
     line-height: 1.4;
@@ -637,6 +718,7 @@ html[data-theme="dark"] .markdown-body h6.heading-focused {
     display: flex;
     justify-content: flex-end;
     gap: 6px;
+    margin: 0 12px 10px;
 }
 
 .confirm-actions button {
@@ -700,12 +782,7 @@ html[data-theme="dark"] .markdown-body h6.heading-focused {
     display: flex;
     flex-direction: column;
     max-width: 300px;
-    background: var(--markon-bg-muted);
-    border: 1px solid var(--markon-accent);
-    border-radius: var(--markon-radius-sm);
-    padding: 12px 16px;
-    box-shadow: var(--markon-shadow-pop);
-    z-index: var(--markon-z-modal);
+    --markon-modal-surface-border: var(--markon-modal-border-accent);
     font-size: 13px;
     line-height: 1.6;
     cursor: default;
@@ -776,6 +853,10 @@ html[data-theme="dark"] .markdown-body h6.heading-focused {
     transform: rotate(180deg);
 }
 
+#toc-container .toc {
+    --markon-modal-surface-border: var(--markon-modal-border-neutral);
+}
+
 /* Mobile TOC styles */
 @media (max-width: 1400px) {
     #toc-icon {
@@ -796,9 +877,6 @@ html[data-theme="dark"] .markdown-body h6.heading-focused {
         margin-bottom: 0;
         max-height: calc(100vh - 40px);
         overflow-y: auto;
-        background-color: var(--markon-bg-elevated);
-        border: 2.5px solid var(--markon-border-emphasis);
-        border-radius: 20px;
         overscroll-behavior: contain;
         box-sizing: border-box;
     }
@@ -815,7 +893,7 @@ html[data-theme="dark"] .markdown-body h6.heading-focused {
         top: 0;
         right: 0;
         z-index: var(--markon-z-content-overlay);
-        border-radius: 0 20px 0 0;
+        border-radius: 0 var(--markon-modal-frame-radius) 0 0;
         background-color: transparent;
         border: none;
     }
@@ -1032,6 +1110,15 @@ html[data-theme="dark"] .markdown-body h6.heading-focused {
     color: var(--markon-accent-hover);
 }
 
+.viewed-toolbar a.is-disabled,
+.viewed-toolbar a[aria-disabled="true"],
+.viewed-toolbar a.is-disabled:hover,
+.viewed-toolbar a[aria-disabled="true"]:hover {
+    color: var(--markon-fg-muted);
+    cursor: default;
+    text-decoration: none;
+}
+
 .viewed-toolbar-separator {
     color: var(--markon-fg-muted);
     margin: 0 4px;
@@ -1177,160 +1264,6 @@ html[data-theme="dark"] .markdown-body h6.heading-focused {
     }
 }
 
-/* ============================================================
-   KEYBOARD SHORTCUTS HELP PANEL
-   Gmail-style modal overlay for displaying shortcuts
-   ============================================================ */
-
-.shortcuts-help-panel {
-    display: none;
-    position: fixed;
-    top: 0;
-    left: 0;
-    width: 100%;
-    height: 100%;
-    z-index: var(--markon-z-chrome);
-    align-items: center;
-    justify-content: center;
-}
-
-.shortcuts-help-panel.visible {
-    display: flex;
-}
-
-.shortcuts-help-overlay {
-    position: absolute;
-    top: 0;
-    left: 0;
-    width: 100%;
-    height: 100%;
-    background: var(--markon-scrim);
-}
-
-.shortcuts-help-modal {
-    position: relative;
-    background: var(--markon-bg-default);
-    border-radius: var(--markon-radius-lg);
-    box-shadow: var(--markon-shadow-modal);
-    max-width: 750px;
-    max-height: 85vh;
-    overflow: hidden;
-    display: flex;
-    flex-direction: column;
-}
-
-.shortcuts-help-header {
-    padding: 0px 18px;
-    border-bottom: 1px solid var(--markon-border-emphasis);
-    background: var(--markon-bg-muted);
-}
-
-.shortcuts-help-content {
-    padding: 14px 18px;
-    overflow-y: auto;
-    flex: 1;
-}
-
-.shortcuts-category {
-    margin-bottom: 16px;
-}
-
-.shortcuts-category:last-child {
-    margin-bottom: 0;
-}
-
-.shortcuts-category h3 {
-    margin: 0 0 8px 0;
-    font-size: 0.75rem;
-    font-weight: 600;
-    color: var(--markon-fg-muted);
-    text-transform: uppercase;
-    letter-spacing: 0.5px;
-}
-
-.shortcuts-list {
-    display: block;
-}
-
-.shortcut-item {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    padding: 4px 0;
-    gap: 16px;
-}
-
-.shortcut-key {
-    flex-shrink: 0;
-    min-width: 140px;
-    white-space: nowrap;
-    text-align: left;
-}
-
-.shortcut-desc {
-    flex: 1;
-    color: var(--markon-fg-default);
-    font-size: 0.8rem;
-    line-height: 1.4;
-    text-align: right;
-}
-
-.shortcut-key kbd {
-    display: inline-block;
-    padding: 2px 6px;
-    font-family: 'SFMono-Regular', 'Consolas', 'Liberation Mono', 'Menlo', monospace;
-    font-size: 0.7rem;
-    color: var(--markon-fg-default);
-    background: var(--markon-bg-muted);
-    border: 1px solid var(--markon-border-emphasis);
-    border-radius: var(--markon-radius-sm);
-    box-shadow: inset 0 -1px 0 var(--markon-border-emphasis);
-    margin-right: 3px;
-}
-
-.shortcuts-help-footer {
-    padding: 10px 18px;
-    border-top: 1px solid var(--markon-border-emphasis);
-    background: var(--markon-bg-muted);
-    text-align: center;
-    font-size: 0.75rem;
-    color: var(--markon-fg-muted);
-}
-
-.shortcuts-help-footer kbd {
-    display: inline-block;
-    padding: 2px 5px;
-    font-family: 'SFMono-Regular', 'Consolas', 'Liberation Mono', 'Menlo', monospace;
-    font-size: 0.7rem;
-    color: var(--markon-fg-default);
-    background: var(--markon-bg-default);
-    border: 1px solid var(--markon-border-emphasis);
-    border-radius: var(--markon-radius-sm);
-    margin: 0 2px;
-}
-
-/* Responsive: single column on smaller screens */
-@media (max-width: 768px) {
-    .shortcuts-help-content {
-        grid-template-columns: 1fr;
-    }
-
-    .shortcuts-help-modal {
-        max-width: 95%;
-    }
-}
-
-/* Dark-theme surfaces/text/borders for the shortcut modal are driven by tokens
-   at the top of this file; its shadow now comes from --markon-shadow-modal,
-   which already carries a deeper dark-theme value. */
-
-/* Print: hide shortcuts panel */
-@media print {
-    .shortcuts-help-panel {
-        display: none !important;
-    }
-}
-
 /* Highlight flash animation for navigation */
 @keyframes highlight-flash {
     0% {
@@ -1349,6 +1282,309 @@ html[data-theme="dark"] .markdown-body h6.heading-focused {
 
 .highlight-flash {
     animation: highlight-flash 1s ease-in-out;
+}
+
+/* ============================================================
+   WORKSPACE SPOTLIGHT
+   Reusable workspace file/content search used by document and workspace pages.
+   ============================================================ */
+
+.workspace-spotlight-trigger {
+    display: inline-flex;
+    align-items: center;
+    gap: 10px;
+    width: 145px;
+    height: 34px;
+    padding: 0 12px;
+    border: 1px solid var(--markon-border-default);
+    border-radius: calc(var(--markon-radius-lg) * 2);
+    background: var(--markon-bg-default);
+    color: var(--markon-fg-muted);
+    cursor: pointer;
+    box-sizing: border-box;
+}
+
+.workspace-spotlight-trigger:hover,
+.workspace-spotlight-trigger:focus-visible {
+    color: var(--markon-fg-default);
+    background: var(--markon-bg-muted);
+    border-color: var(--markon-border-emphasis);
+    outline: none;
+}
+
+.workspace-spotlight-trigger-icon {
+    display: block;
+    width: 18px;
+    height: 18px;
+    flex: 0 0 auto;
+}
+
+.workspace-spotlight-trigger-label {
+    flex: 1 1 auto;
+    min-width: 0;
+    overflow: hidden;
+    color: var(--markon-fg-muted);
+    font: 0.875rem/1 var(--markon-ui-font);
+    text-align: left;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.workspace-spotlight-trigger-kbd {
+    min-width: 20px;
+    padding: 2px 6px;
+    border: 1px solid var(--markon-border-default);
+    border-radius: var(--markon-radius-sm);
+    background: var(--markon-bg-muted);
+    color: var(--markon-fg-muted);
+    font: 0.72rem/1 var(--markon-mono);
+    text-align: center;
+    box-sizing: border-box;
+}
+
+body.workspace-spotlight-open {
+    overflow: hidden;
+}
+
+.workspace-spotlight-overlay {
+    position: fixed;
+    inset: 0;
+    display: none;
+    align-items: flex-start;
+    justify-content: center;
+    padding: clamp(42px, 12vh, 96px) 18px 18px;
+    box-sizing: border-box;
+    overscroll-behavior: none;
+}
+
+.workspace-spotlight-overlay.is-open {
+    display: flex;
+}
+
+.workspace-spotlight-scrim {
+    position: fixed;
+    inset: 0;
+}
+
+.workspace-spotlight-panel {
+    position: relative;
+    z-index: 1;
+    width: min(720px, 100%);
+    max-height: min(720px, calc(100vh - 72px));
+    backdrop-filter: blur(18px) saturate(1.35);
+    -webkit-backdrop-filter: blur(18px) saturate(1.35);
+    color: var(--markon-fg-default);
+    overscroll-behavior: contain;
+}
+
+.workspace-spotlight-input-wrap {
+    position: relative;
+    z-index: 1;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    height: 52px;
+    padding: 0 14px;
+    border-bottom: 1px solid var(--markon-border-default);
+    box-sizing: border-box;
+}
+
+.workspace-spotlight-search-icon {
+    position: relative;
+    top: -1px;
+    flex: 0 0 18px;
+    width: 18px;
+    height: 18px;
+    border: 2px solid var(--markon-fg-muted);
+    border-radius: 50%;
+    box-sizing: border-box;
+    opacity: 0.9;
+}
+
+.workspace-spotlight-search-icon::after {
+    content: "";
+    position: absolute;
+    right: -5px;
+    bottom: -4px;
+    width: 8px;
+    height: 2px;
+    border-radius: 2px;
+    background: var(--markon-fg-muted);
+    transform: rotate(45deg);
+}
+
+.workspace-spotlight-input {
+    flex: 1 1 auto;
+    min-width: 0;
+    border: 0;
+    outline: none;
+    background: transparent;
+    color: var(--markon-fg-default);
+    font: 17px/1.35 var(--markon-ui-font);
+}
+
+.workspace-spotlight-input::placeholder {
+    color: var(--markon-fg-muted);
+}
+
+.workspace-spotlight-results {
+    position: relative;
+    z-index: 1;
+    max-height: calc(min(720px, 100vh - 72px) - 64px);
+    margin: 0;
+    padding: 8px;
+    overflow: auto;
+    list-style: none;
+    overscroll-behavior: contain;
+}
+
+.workspace-spotlight-results li {
+    margin: 0;
+    padding: 0;
+}
+
+.workspace-spotlight-section-label {
+    padding: 10px 10px 5px;
+    color: var(--markon-fg-muted);
+    font: 700 11px/1.2 var(--markon-ui-font);
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+}
+
+.workspace-spotlight-results li:not(.workspace-spotlight-section-label):not(.workspace-spotlight-status-row) + .workspace-spotlight-section-label {
+    margin-top: 16px;
+    padding-top: 12px;
+}
+
+.workspace-spotlight-result {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    min-height: 42px;
+    padding: 7px 10px;
+    border-radius: var(--markon-radius-sm);
+    color: var(--markon-fg-default) !important;
+    font: 15px/1.35 var(--markon-ui-font);
+    text-decoration: none !important;
+    box-sizing: border-box;
+}
+
+.workspace-spotlight-result--content {
+    align-items: flex-start;
+    min-height: 68px;
+}
+
+.workspace-spotlight-result:hover {
+    background: var(--markon-bg-muted);
+}
+
+.workspace-spotlight-result.is-active {
+    background: color-mix(in srgb, var(--markon-accent) 12%, transparent);
+    box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--markon-accent) 45%, transparent);
+}
+
+.workspace-spotlight-result.is-current .workspace-spotlight-result-path {
+    font-weight: 650;
+}
+
+.workspace-spotlight-file-icon {
+    position: relative;
+    flex: 0 0 18px;
+    width: 15px;
+    height: 18px;
+    border: 2px solid var(--markon-fg-muted);
+    border-radius: 2px;
+    box-sizing: border-box;
+    opacity: 0.8;
+}
+
+.workspace-spotlight-file-icon::after {
+    content: "";
+    position: absolute;
+    top: -2px;
+    right: -2px;
+    width: 7px;
+    height: 7px;
+    border-left: 2px solid var(--markon-fg-muted);
+    border-bottom: 2px solid var(--markon-fg-muted);
+    background: var(--markon-bg-overlay);
+    box-sizing: border-box;
+}
+
+.workspace-spotlight-result.is-active .workspace-spotlight-file-icon::after {
+    background: color-mix(in srgb, var(--markon-accent) 12%, var(--markon-bg-overlay));
+}
+
+.workspace-spotlight-result-path {
+    flex: 1 1 auto;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.workspace-spotlight-result-main {
+    display: flex;
+    flex: 1 1 auto;
+    min-width: 0;
+    flex-direction: column;
+    gap: 2px;
+}
+
+.workspace-spotlight-result-title {
+    min-width: 0;
+    overflow: hidden;
+    color: var(--markon-fg-default);
+    font-weight: 650;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.workspace-spotlight-result-main .workspace-spotlight-result-path {
+    color: var(--markon-fg-muted);
+    font-size: 12px;
+}
+
+.workspace-spotlight-result-snippet {
+    display: -webkit-box;
+    overflow: hidden;
+    color: var(--markon-fg-muted);
+    font-size: 12px;
+    line-height: 1.35;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
+}
+
+.workspace-spotlight-result-snippet b {
+    color: var(--markon-fg-default);
+    font-weight: 750;
+}
+
+.workspace-spotlight-result-path strong {
+    font-weight: 750;
+    color: var(--markon-fg-default);
+}
+
+.workspace-spotlight-result-badge {
+    flex: 0 0 auto;
+    color: var(--markon-fg-muted);
+    font-size: 12px;
+    font-weight: 600;
+}
+
+.workspace-spotlight-empty {
+    position: relative;
+    z-index: 1;
+    padding: 28px 16px 32px;
+    color: var(--markon-fg-muted);
+    font: 14px/1.45 var(--markon-ui-font);
+    text-align: center;
+}
+
+.workspace-spotlight-status-row {
+    padding: 8px 10px 12px;
+    color: var(--markon-fg-muted);
+    font: 12px/1.35 var(--markon-ui-font);
 }
 
 /* ============================================================
@@ -1798,7 +2034,7 @@ html[data-theme="dark"] .editor-tab.active {
 }
 
 /* ─────────────────────────────────────────────────────────────────────────
-   Annotation export: per-item quick copy + two-step wizard + export editor
+   Notes export: per-item quick copy + export editor
    ───────────────────────────────────────────────────────────────────────── */
 
 /* Note-card / popup quick-copy button is styled with .note-edit / .note-delete
@@ -1823,202 +2059,13 @@ html[data-theme="dark"] .editor-tab.active {
     opacity: 1;
 }
 
-/* ── Step 1: selection wizard (full-screen overlay) ────────────────────── */
-.export-modal {
-    position: fixed;
-    inset: 0;
-    z-index: var(--markon-z-chrome);
-    background: var(--markon-bg-default);
-    color: var(--markon-fg-default);
-    display: flex;
-    flex-direction: column;
-    font-family: var(--markon-ui-font);
-    font-size: var(--markon-ui-font-size);
-}
-
-/* Background scroll lock applied to <html> while a full-screen overlay (export
-   wizard, editor) is open — blocks wheel scroll-through to the page behind. */
+/* Background scroll lock applied to <html> while a full-screen editor is open
+   — blocks wheel scroll-through to the page behind. */
 .markon-scroll-lock {
     overflow: hidden !important;
 }
 
-/* Single header bar mirrors the step-2 editor: close (X), title, the selection
-   tools, then the live count and the primary Next action on the right. It also
-   carries the only divider before the list. */
-.export-header {
-    display: flex;
-    align-items: center;
-    gap: 12px;
-    /* Shared overlay-bar metrics: one fixed height + horizontal inset across
-       export / editor / search, controls vertically centred (see
-       --markon-bar-* tokens). */
-    height: var(--markon-bar-height);
-    flex-shrink: 0;
-    padding: 0 var(--markon-bar-pad-x);
-    box-sizing: border-box;
-    background: var(--markon-bg-muted);
-    border-bottom: 1px solid var(--markon-border-default);
-}
-
-.export-close {
-    border: none;
-    background: transparent;
-    color: var(--markon-fg-muted);
-    font-size: 18px;
-    line-height: 1;
-    cursor: pointer;
-    padding: 4px 8px;
-    border-radius: var(--markon-radius-sm);
-}
-
-.export-close:hover {
-    background: var(--markon-bg-muted);
-    color: var(--markon-fg-default);
-}
-
-.export-title {
-    margin: 0;
-    font-size: 16px;
-    font-weight: 600;
-}
-
-/* Pushes the count + Next group to the far right; the selection tools stay
-   left, right after the title. */
-.export-count {
-    margin-left: auto;
-    color: var(--markon-fg-muted);
-    font-size: 13px;
-}
-
-.export-next {
-    border-radius: var(--markon-radius-sm);
-    padding: 6px 16px;
-    font-size: 13px;
-    font-weight: 500;
-    cursor: pointer;
-    border: 1px solid var(--markon-accent);
-    background: var(--markon-accent);
-    color: var(--markon-fg-on-emphasis);
-}
-
-.export-next:hover {
-    background: var(--markon-accent-hover);
-    border-color: var(--markon-accent-hover);
-}
-
-.export-next:disabled {
-    opacity: 0.5;
-    cursor: not-allowed;
-}
-
-.export-selectall,
-.export-selectnone {
-    border: 1px solid var(--markon-border-emphasis);
-    background: var(--markon-bg-default);
-    color: var(--markon-fg-default);
-    border-radius: var(--markon-radius-sm);
-    padding: 4px 12px;
-    font-size: 13px;
-    cursor: pointer;
-}
-
-.export-selectall:hover,
-.export-selectnone:hover {
-    background: var(--markon-bg-muted);
-}
-
-.export-body {
-    flex: 1;
-    overflow-y: auto;
-    overscroll-behavior: contain;
-    /* Top skirt = breathing room below the bar (kept on the content, not the
-       bar, so the bar's controls stay vertically centred). */
-    padding: var(--markon-bar-skirt) 20px 24px;
-}
-
-/* Groups are separated by whitespace + a bolder heading rather than rules, to
-   keep the list calm (no per-group horizontal lines). */
-.export-group {
-    margin-top: 18px;
-}
-
-.export-group:first-child {
-    margin-top: 8px;
-}
-
-.export-group-head {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    padding: 4px 0;
-    cursor: pointer;
-}
-
-.export-group-title {
-    font-weight: 600;
-    font-size: 14px;
-}
-
-.export-group-items {
-    display: flex;
-    flex-direction: column;
-    gap: 2px;
-    padding: 4px 0 0;
-}
-
-.export-item {
-    display: grid;
-    grid-template-columns: auto 1fr;
-    align-items: start;
-    gap: 8px;
-    padding: 7px 10px;
-    border-radius: var(--markon-radius-sm);
-    cursor: pointer;
-}
-
-.export-item:hover {
-    background: var(--markon-bg-muted);
-}
-
-.export-item-check,
-.export-group-check {
-    cursor: pointer;
-    margin: 0;
-}
-
-.export-item-check {
-    margin-top: 2px;
-}
-
-.export-group-check {
-    align-self: center;
-}
-
-/* The note is the primary line; the quoted source sits below it, muted. */
-.export-item-body {
-    min-width: 0;
-    display: flex;
-    flex-direction: column;
-    gap: 2px;
-}
-
-.export-item-note {
-    color: var(--markon-fg-default);
-    font-size: 13px;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-}
-
-.export-item-quote {
-    color: var(--markon-fg-muted);
-    font-size: 12px;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-}
-
-/* ── Step 2: export-mode editor (Copy / Download / Back) ───────────────── */
+/* ── Export-mode editor (Copy / Download / optional Back) ──────────────── */
 .editor-copy-btn,
 .editor-back-btn {
     border: 1px solid var(--markon-border-emphasis);

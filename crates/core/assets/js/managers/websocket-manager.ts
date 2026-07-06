@@ -91,7 +91,7 @@ export class WebSocketManager {
     #reconnectAttempts = 0;
     #reconnectTimer: ReturnType<typeof setTimeout> | null = null;
     #stabilityTimer: ReturnType<typeof setTimeout> | null = null;
-    #messageHandlers = new Map<string, Array<(msg: WsInbound) => void>>();
+    #messageHandlers = new Map<string, ((msg: WsInbound) => void)[]>();
     /**
      * Inbound frames that arrived before any handler was registered for their
      * type. The server pushes `all_annotations` (and `viewed_state`) the instant
@@ -109,7 +109,7 @@ export class WebSocketManager {
      * cannot accidentally re-suppress a future genuine remote op with the
      * same — astronomically unlikely but cheap to be correct about — id.
      */
-    #outgoingOpIds: Map<string, number> = new Map();
+    #outgoingOpIds = new Map<string, number>();
 
     constructor(filePath: string) {
         this.#filePath = filePath;
@@ -164,12 +164,12 @@ export class WebSocketManager {
 
                 this.#ws.onerror = (error: Event) => {
                     Logger.error('WebSocket', 'Error occurred:', error);
-                    reject(error);
+                    reject(new Error('WebSocket connection error'));
                 };
             } catch (error) {
                 Logger.error('WebSocket', 'Failed to create connection:', error);
                 this.#setState(WSState.DISCONNECTED);
-                reject(error);
+                reject(error instanceof Error ? error : new Error(String(error)));
             }
         });
     }
@@ -216,7 +216,7 @@ export class WebSocketManager {
     async sendWithOpId(message: WsOutboundWithOpId): Promise<string> {
         const opId = makeOpId();
         this.recordOutgoing(opId);
-        await this.send({ ...message, op_id: opId } as WsOutbound);
+        await this.send({ ...message, op_id: opId });
         return opId;
     }
 
@@ -272,7 +272,7 @@ export class WebSocketManager {
         // Replay any frames of this type that arrived before this handler
         // existed (e.g. the server's connect-time `all_annotations` push).
         const pending = this.#pendingByType.get(type);
-        if (pending && pending.length) {
+        if (pending?.length) {
             this.#pendingByType.delete(type);
             for (const msg of pending) {
                 try {

@@ -51,6 +51,13 @@ class MockWS {
     }
 }
 
+function itemAt<T>(items: ArrayLike<T>, index: number): T {
+    const item = items[index];
+    expect(item).toBeDefined();
+    if (item === undefined) throw new Error(`Missing item at index ${index}`);
+    return item;
+}
+
 describe('WebSocketManager', () => {
     let logSpy: ReturnType<typeof vi.spyOn>;
     let warnSpy: ReturnType<typeof vi.spyOn>;
@@ -86,8 +93,8 @@ describe('WebSocketManager', () => {
         expect(m.isConnected()).toBe(true);
 
         // First frame should be the file path.
-        const ws = MockWS.instances[0];
-        expect(ws.sent[0]).toBe('docs/intro.md');
+        const ws = itemAt(MockWS.instances, 0);
+        expect(itemAt(ws.sent, 0)).toBe('docs/intro.md');
     });
 
     it('dispatches inbound messages to the matching handler', async () => {
@@ -96,12 +103,12 @@ describe('WebSocketManager', () => {
         m.on('new_annotation', handler);
 
         await m.connect();
-        const ws = MockWS.instances[0];
+        const ws = itemAt(MockWS.instances, 0);
 
         ws.dispatchMessage({ type: 'new_annotation', annotation: { id: 'x1' } });
 
         expect(handler).toHaveBeenCalledTimes(1);
-        const arg = handler.mock.calls[0][0];
+        const arg = itemAt(handler.mock.calls, 0)[0];
         expect(arg.type).toBe('new_annotation');
         expect((arg.annotation as { id: string }).id).toBe('x1');
     });
@@ -112,7 +119,7 @@ describe('WebSocketManager', () => {
         m.on('new_annotation', newAnno);
 
         await m.connect();
-        const ws = MockWS.instances[0];
+        const ws = itemAt(MockWS.instances, 0);
         ws.dispatchMessage({ type: 'clear_annotations' });
 
         expect(newAnno).not.toHaveBeenCalled();
@@ -125,7 +132,7 @@ describe('WebSocketManager', () => {
         m.off('clear_annotations', handler);
 
         await m.connect();
-        const ws = MockWS.instances[0];
+        const ws = itemAt(MockWS.instances, 0);
         ws.dispatchMessage({ type: 'clear_annotations' });
 
         expect(handler).not.toHaveBeenCalled();
@@ -134,13 +141,13 @@ describe('WebSocketManager', () => {
     it('send() serialises outbound payload to JSON', async () => {
         const m = new WebSocketManager('a.md');
         await m.connect();
-        const ws = MockWS.instances[0];
+        const ws = itemAt(MockWS.instances, 0);
         // ws.sent[0] is the file path; subsequent entries are JSON frames.
 
         await m.send({ type: 'delete_annotation', id: 'abc' });
 
         expect(ws.sent.length).toBeGreaterThanOrEqual(2);
-        const last = ws.sent[ws.sent.length - 1];
+        const last = itemAt(ws.sent, ws.sent.length - 1);
         expect(JSON.parse(last)).toEqual({ type: 'delete_annotation', id: 'abc' });
     });
 
@@ -161,7 +168,7 @@ describe('WebSocketManager', () => {
         await connectPromise;
 
         expect(MockWS.instances.length).toBe(1);
-        const first = MockWS.instances[0];
+        const first = itemAt(MockWS.instances, 0);
         first.triggerClose(1006, 'lost');
 
         expect(m.getState()).toBe(WSState.RECONNECTING);
@@ -241,7 +248,7 @@ describe('WebSocketManager', () => {
     it('sendWithOpId() tags the outgoing frame and records the id', async () => {
         const m = new WebSocketManager('a.md');
         await m.connect();
-        const ws = MockWS.instances[0];
+        const ws = itemAt(MockWS.instances, 0);
 
         const opId = await m.sendWithOpId({
             type: 'new_annotation',
@@ -250,9 +257,11 @@ describe('WebSocketManager', () => {
 
         expect(opId).toMatch(/^[0-9a-f]{16}$/);
         // ws.sent[0] is the file path; the JSON frame follows.
-        const last = JSON.parse(ws.sent[ws.sent.length - 1]) as Record<string, unknown>;
-        expect(last.type).toBe('new_annotation');
-        expect(last.op_id).toBe(opId);
+        const rawFrame = itemAt(ws.sent, ws.sent.length - 1);
+        expect(rawFrame).toBeDefined();
+        const last = JSON.parse(String(rawFrame)) as Record<string, unknown>;
+        expect(last['type']).toBe('new_annotation');
+        expect(last['op_id']).toBe(opId);
         // The same op_id is recognised as own echo (single-shot).
         expect(m.isOwnEcho(opId)).toBe(true);
         expect(m.isOwnEcho(opId)).toBe(false);

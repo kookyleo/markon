@@ -65,7 +65,6 @@ function collect(root: Node, reject?: RejectFn): { text: string; segments: Segme
 
 /** Global text offset of a DOM (container, offset) position within the root. */
 function offsetOf(
-    root: Node,
     segments: Segment[],
     totalLen: number,
     container: Node,
@@ -134,8 +133,8 @@ export const TextAnchoring = {
     /** Capture a content anchor for `range` within `root`. */
     describe(root: Node, range: Range, reject?: RejectFn): TextAnchor {
         const { text, segments } = collect(root, reject);
-        const start = offsetOf(root, segments, text.length, range.startContainer, range.startOffset);
-        const end = offsetOf(root, segments, text.length, range.endContainer, range.endOffset);
+        const start = offsetOf(segments, text.length, range.startContainer, range.startOffset);
+        const end = offsetOf(segments, text.length, range.endContainer, range.endOffset);
         return {
             position: start,
             exact: text.slice(start, end),

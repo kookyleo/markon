@@ -337,9 +337,7 @@ fn resolve_workspace_collaborator_hash_from_env_or_cli(
     collaborator_access_code: Option<&str>,
     salt: &str,
 ) -> String {
-    if let Ok(daemon_collaborator_hash) =
-        std::env::var(DAEMON_COLLABORATOR_ACCESS_CODE_HASH_ENV)
-    {
+    if let Ok(daemon_collaborator_hash) = std::env::var(DAEMON_COLLABORATOR_ACCESS_CODE_HASH_ENV) {
         return daemon_collaborator_hash;
     }
 

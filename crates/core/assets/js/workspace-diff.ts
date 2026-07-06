@@ -16,24 +16,30 @@ import {
     wordDiff,
 } from './diff-segments';
 
-type SideLine = { no: number | null; segs: WordSeg[]; cls: string };
-type RowPair = { old: SideLine; new: SideLine };
+interface SideLine { no: number | null; segs: WordSeg[]; cls: string }
+interface RowPair { old: SideLine; new: SideLine }
 
 const EMPTY_CLS = 'git-diff-empty-side';
 
+const lineAt = (lines: readonly string[], index: number): string => {
+    const line = lines[index];
+    if (line === undefined) throw new RangeError(`Line index ${index} is outside array bounds`);
+    return line;
+};
+
 class SourceDiffView extends DiffSectionView {
-    protected get scrollSelector(): string | null { return null; } // root scrolls
-    protected get paneSelector(): string | null { return null; } // root is the pane
-    protected get virtualizedClass(): string { return 'is-virtualized-diff'; }
-    protected get bodyClass(): string { return 'workspace-diff-body'; }
-    protected get emptyBlocksMessage(): string { return 'No source to preview.'; }
+    protected override get scrollSelector(): string | null { return null; } // root scrolls
+    protected override get paneSelector(): string | null { return null; } // root is the pane
+    protected override get virtualizedClass(): string { return 'is-virtualized-diff'; }
+    protected override get bodyClass(): string { return 'workspace-diff-body'; }
+    protected override get emptyBlocksMessage(): string { return 'No source to preview.'; }
 
     /** Single-column 'unified' layout vs the default two-column 'split'. Driven
      *  by a data attribute on the root so a re-`load()` re-renders in the new
      *  mode without any extra state to thread through. */
-    #unified(): boolean { return this.root.dataset.rawLayout === 'unified'; }
+    #unified(): boolean { return this.root.dataset['rawLayout'] === 'unified'; }
 
-    protected estimateBlock(block: MarkdownDiffBlock): number {
+    protected override estimateBlock(block: MarkdownDiffBlock): number {
         const oldN = this.#lineCount(block.old);
         const newN = this.#lineCount(block.new);
         // Unified stacks deletions ABOVE insertions, so a modified block needs
@@ -45,12 +51,12 @@ class SourceDiffView extends DiffSectionView {
         return Math.max(24, rows * 22);
     }
 
-    protected renderBlock(file: MarkdownDiffFile, block: MarkdownDiffBlock, index: number): HTMLElement {
+    protected override renderBlock(file: MarkdownDiffFile, block: MarkdownDiffBlock, index: number): HTMLElement {
         const wrap = document.createElement('div');
         // `diff-change-block` is the shared marker (see markdown-diff.ts) so j/k
         // stepping + focus rail work identically across both views.
         wrap.className = `diff-change-block workspace-diff-block is-${block.kind}`;
-        wrap.dataset.mdDiffPair = String(index);
+        wrap.dataset['mdDiffPair'] = String(index);
         const pairs = this.#blockPairs(file, block);
         if (this.#unified()) {
             for (const pair of pairs) this.#appendUnified(wrap, pair);
@@ -104,26 +110,26 @@ class SourceDiffView extends DiffSectionView {
         const newNo = (j: number) => (newStart != null ? newStart + j : null);
         for (const op of lineDiff(oldLines, newLines)) {
             if (op.type === 'equal') {
-                const text = newLines[op.newIndex];
+                const text = lineAt(newLines, op.newIndex);
                 pairs.push({
                     old: { no: oldNo(op.oldIndex), segs: [{ text, cls: null }], cls: 'git-diff-ctx' },
                     new: { no: newNo(op.newIndex), segs: [{ text, cls: null }], cls: 'git-diff-ctx' },
                 });
             } else if (op.type === 'replace') {
-                const { old, new: nw } = wordDiff(oldLines[op.oldIndex], newLines[op.newIndex]);
+                const { old, new: nw } = wordDiff(lineAt(oldLines, op.oldIndex), lineAt(newLines, op.newIndex));
                 pairs.push({
                     old: { no: oldNo(op.oldIndex), segs: old, cls: 'git-diff-del' },
                     new: { no: newNo(op.newIndex), segs: nw, cls: 'git-diff-add' },
                 });
             } else if (op.type === 'del') {
                 pairs.push({
-                    old: { no: oldNo(op.oldIndex), segs: [{ text: oldLines[op.oldIndex], cls: 'del' }], cls: 'git-diff-del' },
+                    old: { no: oldNo(op.oldIndex), segs: [{ text: lineAt(oldLines, op.oldIndex), cls: 'del' }], cls: 'git-diff-del' },
                     new: this.#empty(),
                 });
             } else {
                 pairs.push({
                     old: this.#empty(),
-                    new: { no: newNo(op.newIndex), segs: [{ text: newLines[op.newIndex], cls: 'add' }], cls: 'git-diff-add' },
+                    new: { no: newNo(op.newIndex), segs: [{ text: lineAt(newLines, op.newIndex), cls: 'add' }], cls: 'git-diff-add' },
                 });
             }
         }
@@ -141,7 +147,7 @@ class SourceDiffView extends DiffSectionView {
         // Anchor coordinate: the new-side line number (or old for deletions),
         // matching the rendered view's block source line.
         const lineNo = newSide.no ?? oldSide.no;
-        if (lineNo != null) line.dataset.line = String(lineNo);
+        if (lineNo != null) line.dataset['line'] = String(lineNo);
         line.append(this.#cell(oldSide), this.#cell(newSide));
         return line;
     }
@@ -173,7 +179,7 @@ class SourceDiffView extends DiffSectionView {
         const line = document.createElement('div');
         line.className = `workspace-diff-row-line workspace-diff-unified-line ${cls}`;
         const lineNo = newNo ?? oldNo;
-        if (lineNo != null) line.dataset.line = String(lineNo);
+        if (lineNo != null) line.dataset['line'] = String(lineNo);
         const oldGutter = document.createElement('span');
         oldGutter.className = 'workspace-diff-line-no';
         oldGutter.textContent = oldNo == null ? '' : String(oldNo);
@@ -205,7 +211,7 @@ class SourceDiffView extends DiffSectionView {
     }
 
     #lineCount(block: MarkdownBlockSummary | null | undefined): number {
-        if (!block || block.start_line == null) return 1;
+        if (block?.start_line == null) return 1;
         return Math.max(1, (block.end_line ?? block.start_line) - block.start_line + 1);
     }
 }
@@ -233,7 +239,7 @@ const selectSourcePath = (path?: string | null, root = rawRoot()): void => {
 const init = (): void => {
     document.querySelectorAll<HTMLElement>('[data-virtual-diff]').forEach((root) => {
         getView(root);
-        if (root.dataset.diffAutoload !== 'false') loadSourceDiff(root);
+        if (root.dataset['diffAutoload'] !== 'false') loadSourceDiff(root);
     });
     window.markonSourceDiff = {
         load: () => loadSourceDiff(),
@@ -244,11 +250,11 @@ const init = (): void => {
         setLayout: (mode) => {
             const r = rawRoot();
             if (!r) return;
-            if (r.dataset.rawLayout === mode) return;
+            if (r.dataset['rawLayout'] === mode) return;
             // Re-render in place, keeping the line currently at the top in view.
             const view = getView(r);
             const anchor = view.topAnchor();
-            r.dataset.rawLayout = mode;
+            r.dataset['rawLayout'] = mode;
             if (anchor) view.anchorTo(anchor);
             void view.load();
         },

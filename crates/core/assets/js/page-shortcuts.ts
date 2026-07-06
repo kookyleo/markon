@@ -9,7 +9,7 @@
  *
  * Mirrors the wiring pattern of {@link ./diff-shortcuts}: construct a manager,
  * register the page's real shortcuts, route `keydown` through it, and expose it
- * as `window.shortcutsManager` (the footer "Keyboard Shortcuts" link calls
+ * as `window.shortcutsManager` (the footer "Features & Shortcuts" link calls
  * `showHelp()` on it).
  */
 

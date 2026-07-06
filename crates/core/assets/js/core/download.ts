@@ -1,8 +1,8 @@
 /**
  * Browser-side file download helpers.
  *
- * The project had no local-download capability before the annotation export
- * wizard; this is the single place that turns an in-memory string into a
+ * The project had no local-download capability before notes export; this is
+ * the single place that turns an in-memory string into a
  * "save to disk" prompt via a transient object URL.
  */
 
@@ -30,7 +30,7 @@ export function downloadTextFile(
  * Strips any existing extension and collapses characters that are awkward in
  * file names, while keeping Unicode letters/digits (so CJK titles survive).
  */
-export function toMarkdownFilename(title: string | undefined, fallback = 'annotations'): string {
+export function toMarkdownFilename(title: string | undefined, fallback = 'notes'): string {
     const raw = (title ?? '').trim().replace(/^.*[\\/]/, '').replace(/\.[^.]+$/, '');
     const base = raw
         .replace(/[\s]+/gu, '-')

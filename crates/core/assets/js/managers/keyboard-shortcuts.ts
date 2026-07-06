@@ -3,9 +3,9 @@
  * Unified management of keyboard shortcuts.
  */
 
-import { CONFIG, type ShortcutName } from '../core/config';
+import { CONFIG, type ShortcutDef, type ShortcutName } from '../core/config';
 import { PlatformUtils, Logger } from '../core/utils';
-import { openShortcutsHelp } from '../components/shortcuts-help';
+import { closeShortcutsHelp, openShortcutsHelp } from '../components/shortcuts-help';
 
 /**
  * Handler function invoked when a shortcut matches.
@@ -21,10 +21,34 @@ export class KeyboardShortcutsManager {
     #handlers = new Map<ShortcutName, ShortcutHandler>();
     #enabled = true;
 
+    #comboKey(name: ShortcutName): string {
+        const shortcut = CONFIG.SHORTCUTS[name];
+        return [
+            shortcut.ctrl ? 'ctrl' : '',
+            shortcut.shift ? 'shift' : '',
+            shortcut.key.length === 1 ? shortcut.key.toLowerCase() : shortcut.key,
+        ].filter(Boolean).join('+');
+    }
+
+    #featureKey(name: ShortcutName): string {
+        return (CONFIG.SHORTCUTS[name] as ShortcutDef).feature || name;
+    }
+
     /**
      * Register a handler for a named shortcut.
      */
     register(name: ShortcutName, handler: ShortcutHandler): void {
+        const combo = this.#comboKey(name);
+        const feature = this.#featureKey(name);
+        for (const existingName of this.#handlers.keys()) {
+            if (this.#comboKey(existingName) !== combo) continue;
+            if (this.#featureKey(existingName) === feature) continue;
+            Logger.warn(
+                'KeyboardShortcuts',
+                `Skipped ${name}; shortcut conflicts with registered ${existingName}`,
+            );
+            return;
+        }
         this.#handlers.set(name, handler);
         Logger.log('KeyboardShortcuts', `Registered handler: ${name}`);
     }
@@ -48,7 +72,7 @@ export class KeyboardShortcutsManager {
         const ctrlPressed = isMac ? event.metaKey : event.ctrlKey;
 
         // Special case: single non-letter keys that don't require modifiers.
-        if (!shortcut.ctrl && shortcut.key.length === 1 && !shortcut.key.match(/[a-z]/i)) {
+        if (!shortcut.ctrl && shortcut.key.length === 1 && !(/[a-z]/i.exec(shortcut.key))) {
             return event.key === shortcut.key && !ctrlPressed && !event.altKey;
         }
 
@@ -68,15 +92,17 @@ export class KeyboardShortcutsManager {
     handle(event: KeyboardEvent): boolean {
         if (!this.#enabled) return false;
 
-        // Handle search input escape key
-        const target = event.target as Element | null;
-        if (target && (target as HTMLElement).id === 'search-input' && event.key === 'Escape') {
-            return false;
+        if (document.querySelector('.shortcuts-help-panel') && event.key === 'Escape') {
+            event.preventDefault();
+            closeShortcutsHelp(true);
+            return true;
         }
+
+        const target = event.target as Element | null;
 
         // Don't intercept keys typed inside input fields (except the viewed checkbox).
         const isViewedCheckbox =
-            !!target && !!(target as Element).classList && (target as Element).classList.contains('viewed-checkbox');
+            !!target && !!(target).classList && (target).classList.contains('viewed-checkbox');
 
         const tagName = (target as HTMLElement | null)?.tagName;
         const isContentEditable = !!(target as HTMLElement | null)?.isContentEditable;
@@ -93,7 +119,7 @@ export class KeyboardShortcutsManager {
         // TODO(phase-3-typing): tighten window.tocNavigator type once toc-navigator
         // exposes a stable interface; today it's typed as `unknown` in ambient.d.ts.
         const tocNav = (window as { tocNavigator?: { active?: boolean } }).tocNavigator;
-        if (tocNav && tocNav.active) {
+        if (tocNav?.active) {
             if (event.key === 'j' || event.key === 'k' || event.key === 'ArrowUp' || event.key === 'ArrowDown') {
                 return false;
             }
@@ -104,6 +130,9 @@ export class KeyboardShortcutsManager {
             if (this.matches(event, name)) {
                 Logger.log('KeyboardShortcuts', `Matched: ${name}`);
                 event.preventDefault();
+                if (document.querySelector('.shortcuts-help-panel') && name !== 'HELP') {
+                    closeShortcutsHelp(true);
+                }
                 handler(event);
                 return true;
             }
@@ -113,14 +142,37 @@ export class KeyboardShortcutsManager {
     }
 
     /**
-     * Show the keyboard-shortcuts help panel. Delegates to the reusable
+     * Show the features/shortcuts panel. Delegates to the reusable
      * {@link openShortcutsHelp} component, passing the LIVE set of registered
      * shortcut names — so the panel lists exactly what this page/state offers,
      * not a static catalogue.
      */
     showHelp(): void {
-        openShortcutsHelp(this.#handlers.keys());
+        openShortcutsHelp(this.#handlers.keys(), (name) => this.run(name));
         Logger.log('KeyboardShortcuts', 'Help panel shown');
+    }
+
+    /**
+     * Invoke a registered shortcut by name. Used by the feature panel's
+     * click-to-open rows so clicking and pressing the shortcut share the same
+     * implementation.
+     */
+    run(name: ShortcutName): boolean {
+        const handler = this.#handlers.get(name);
+        if (!handler) return false;
+        const shortcut = CONFIG.SHORTCUTS[name];
+        const isMac = PlatformUtils.isMac();
+        const event = new KeyboardEvent('keydown', {
+            key: shortcut.key,
+            ctrlKey: shortcut.ctrl && !isMac,
+            metaKey: shortcut.ctrl && isMac,
+            shiftKey: shortcut.shift,
+            bubbles: true,
+            cancelable: true,
+        });
+        Logger.log('KeyboardShortcuts', `Run: ${name}`);
+        handler(event);
+        return true;
     }
 
     /**

@@ -1,6 +1,13 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { HighlightManager } from './highlight-manager.js';
 
+function itemAt<T>(items: ArrayLike<T>, index: number): T {
+    const item = items[index];
+    expect(item).toBeDefined();
+    if (item === undefined) throw new Error(`Missing item at index ${index}`);
+    return item;
+}
+
 describe('HighlightManager', () => {
     let logSpy: ReturnType<typeof vi.spyOn>;
     let errorSpy: ReturnType<typeof vi.spyOn>;
@@ -42,7 +49,7 @@ describe('HighlightManager', () => {
 
         const spans = root.querySelectorAll('span.search-highlight');
         expect(spans.length).toBe(1);
-        expect(spans[0].textContent).toBe('world');
+        expect(itemAt(spans, 0).textContent).toBe('world');
         expect(root.textContent).toBe('hello world');
     });
 

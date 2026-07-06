@@ -224,7 +224,7 @@ export function overlaps(
 }
 
 /** Does `pos` overlap any of `obstacles`? Yes/no only — no displacement. */
-function overlapsAny(item: LayoutItem, pos: Point, obstacles: ReadonlyArray<Obstacle>): boolean {
+function overlapsAny(item: LayoutItem, pos: Point, obstacles: readonly Obstacle[]): boolean {
     const my = rectAt(item, pos);
     for (const ob of obstacles) {
         if (overlaps(my, item.shape, ob.rect, ob.shape, item.gap)) return true;
@@ -238,7 +238,7 @@ function overlapsAny(item: LayoutItem, pos: Point, obstacles: ReadonlyArray<Obst
  * as summed AABB intersection area of the effective rects (with `gap` margin).
  * The purified form of the former `_overlapScore`.
  */
-function overlapScore(item: LayoutItem, pos: Point, obstacles: ReadonlyArray<Obstacle>): number {
+function overlapScore(item: LayoutItem, pos: Point, obstacles: readonly Obstacle[]): number {
     const my = rectAt(item, pos);
     const gap = item.gap;
     let area = 0;
@@ -293,6 +293,7 @@ function circleAwayFromRect(
             return a.mag - b.mag;
         });
         const best = candidates[0];
+        if (!best) return mapCenter(cx, cy);
         return mapCenter(best.newCx, best.newCy);
     }
 
@@ -319,7 +320,7 @@ function rectAwayFromCircle(
     const dist = Math.hypot(dx, dy);
     if (dist >= expandedRadius) return currentSpherePos;
 
-    const candidates: Array<{ axis: 'x' | 'y'; delta: number }> = [
+    const candidates: { axis: 'x' | 'y'; delta: number }[] = [
         { axis: 'x', delta: otCx - expandedRadius - myRect.right }, // push left
         { axis: 'x', delta: otCx + expandedRadius - myRect.left }, // push right
         { axis: 'y', delta: otCy - expandedRadius - myRect.bottom }, // push up
@@ -327,6 +328,7 @@ function rectAwayFromCircle(
     ];
     candidates.sort((a, b) => Math.abs(a.delta) - Math.abs(b.delta));
     const best = candidates[0];
+    if (!best) return currentSpherePos;
     return {
         x: currentSpherePos.x + (best.axis === 'x' ? best.delta : 0),
         y: currentSpherePos.y + (best.axis === 'y' ? best.delta : 0),
@@ -419,14 +421,14 @@ function pushAway(
 function searchClearPosition(
     item: LayoutItem,
     home: Point,
-    obstacles: ReadonlyArray<Obstacle>,
+    obstacles: readonly Obstacle[],
     scene: Pick<Scene, 'viewport' | 'margins'>,
 ): Point {
     // Concentric ring radii (px). Each ring sweeps 8 cardinal + diagonal
     // directions before widening. Both lists are fixed and ordered, so the
     // search is fully deterministic.
     const STEPS = [40, 60, 90, 130, 180, 240, 320, 420, 560];
-    const DIRS: Array<{ dx: number; dy: number }> = [
+    const DIRS: { dx: number; dy: number }[] = [
         { dx: 0, dy: -1 },
         { dx: 1, dy: 0 },
         { dx: -1, dy: 0 },
@@ -479,7 +481,7 @@ function searchClearPosition(
  */
 export function place(
     item: LayoutItem,
-    obstacles: ReadonlyArray<Obstacle>,
+    obstacles: readonly Obstacle[],
     scene: Pick<Scene, 'viewport' | 'margins'>,
 ): Point {
     let pos: Point = { ...item.home };
@@ -643,7 +645,7 @@ export function slide(
     box: { width: number; height: number },
     from: Point,
     to: Point,
-    obstacles: ReadonlyArray<BoxRect>,
+    obstacles: readonly BoxRect[],
     viewport: { width: number; height: number },
     margins: { minVisible: number; panelInset: number },
 ): Point {
@@ -660,7 +662,7 @@ export function slide(
     let x = from.x;
     // Clamp the desired x into the on-screen bounds first; the obstacle sweep
     // then caps it further. Math.max/min order tolerates lo > hi (tiny window).
-    let wantX = Math.min(Math.max(to.x, xb.lo), xb.hi);
+    const wantX = Math.min(Math.max(to.x, xb.lo), xb.hi);
     if (wantX > x) {
         // Moving right: the nearest blocking obstacle's left edge caps x at
         // (ob.left - w). Only obstacles we already overlap on Y can block us.
@@ -683,7 +685,7 @@ export function slide(
 
     // ── Axis Y (resolved at the now-fixed x) ──────────────────────────────
     let y = from.y;
-    let wantY = Math.min(Math.max(to.y, yb.lo), yb.hi);
+    const wantY = Math.min(Math.max(to.y, yb.lo), yb.hi);
     if (wantY > y) {
         // Moving down: nearest blocking obstacle's top edge caps y at (ob.top - h).
         let cap = wantY;

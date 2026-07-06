@@ -21,6 +21,21 @@ import {
 
 type View = 'rendered' | 'raw';
 type CleanupMenu = HTMLElement & { __cleanup?: (() => void) | null };
+type CompareOptionStatus = { value?: unknown; disabled?: unknown };
+
+function stringFormValue(data: FormData, name: string): string {
+    const value = data.get(name);
+    return typeof value === 'string' ? value : '';
+}
+
+function readCompareStatus(value: unknown): { base?: CompareOptionStatus[]; compare?: CompareOptionStatus[] } | null {
+    if (!value || typeof value !== 'object') return null;
+    const obj = value as Record<string, unknown>;
+    const status: { base?: CompareOptionStatus[]; compare?: CompareOptionStatus[] } = {};
+    if (Array.isArray(obj['base'])) status.base = obj['base'] as CompareOptionStatus[];
+    if (Array.isArray(obj['compare'])) status.compare = obj['compare'] as CompareOptionStatus[];
+    return status;
+}
 
 // ── File-list filter + "Viewed files" toggle ────────────────────────────────
 function initFilter(): void {
@@ -62,14 +77,14 @@ function initFilter(): void {
     const collapsed = new Set<string>();
     const underCollapsed = (path: string): boolean => {
         for (const c of collapsed) {
-            if (path !== c && path.indexOf(c + '/') === 0) return true;
+            if (path !== c && path.startsWith(c + '/')) return true;
         }
         return false;
     };
 
     const fileVisible = (path: string, query: string): boolean => {
         if (!showViewed && viewedSet.has(path)) return false;
-        if (query && path.toLowerCase().indexOf(query) === -1) return false;
+        if (query && !path.toLowerCase().includes(query)) return false;
         return true;
     };
     const applyFilter = (): void => {
@@ -89,7 +104,7 @@ function initFilter(): void {
             } else {
                 visible =
                     !filtering ||
-                    visibleFiles.some((file) => (file.getAttribute('data-diff-path') || '').indexOf(path + '/') === 0);
+                    visibleFiles.some((file) => (file.getAttribute('data-diff-path') || '').startsWith(path + '/'));
             }
             // A text query reveals matches regardless of collapse (GitHub does the
             // same); otherwise honour collapsed ancestors.
@@ -143,8 +158,8 @@ function initFilter(): void {
     }
     // Content view toggled a file's Viewed state → re-evaluate the sidebar.
     document.addEventListener(VIEWED_CHANGED_EVENT, (e) => {
-        const detail = (e as CustomEvent).detail;
-        viewedSet = detail && Array.isArray(detail.viewed) ? new Set<string>(detail.viewed) : loadViewedSet(dataUrl);
+        const detail = (e as CustomEvent<{ viewed?: unknown }>).detail;
+        viewedSet = Array.isArray(detail?.viewed) ? new Set(detail.viewed.filter((item): item is string => typeof item === 'string')) : loadViewedSet(dataUrl);
         applyFilter();
         updateViewedCount();
     });
@@ -153,7 +168,7 @@ function initFilter(): void {
     // files" toggle. Each opens on its button, closes on outside-click/Escape,
     // and opening one closes any other that's open.
     const shellEl = document.querySelector<HTMLElement>('[data-diff-shell]');
-    const menus: Array<(open: boolean) => void> = [];
+    const menus: ((open: boolean) => void)[] = [];
     const bindMenu = (btn: HTMLElement | null, menu: CleanupMenu | null, canOpen?: () => boolean): void => {
         if (!btn || !menu) return;
         const setOpen = (open: boolean): void => {
@@ -233,7 +248,7 @@ function initLayoutSwitch(): void {
     })();
     // Set BEFORE workspace-diff's first render (this classic script runs during
     // parse, ahead of the deferred module) so it renders in the stored layout.
-    rawRoot.dataset.rawLayout = stored;
+    rawRoot.dataset['rawLayout'] = stored;
 
     const reflect = (mode: 'split' | 'unified'): void => {
         buttons.forEach((b) => b.setAttribute('aria-checked', b.getAttribute('data-layout') === mode ? 'true' : 'false'));
@@ -356,7 +371,7 @@ function initViewSwitcher(): void {
         let anchor = null;
         if (prevView !== view) {
             const prevApi = diffApi(prevView);
-            if (prevApi && prevApi.topAnchor) { try { anchor = prevApi.topAnchor(); } catch { /* ignore */ } }
+            if (prevApi?.topAnchor) { try { anchor = prevApi.topAnchor(); } catch { /* ignore */ } }
         }
         shell.setAttribute('data-current-diff-view', view);
         document.querySelectorAll<HTMLElement>('[data-diff-view-panel]').forEach((panel) => {
@@ -406,12 +421,12 @@ function initViewSwitcher(): void {
     });
 
     const encodeRefForPath = (value: string): string =>
-        String(value || '').split('/').map(encodeURIComponent).join('/');
+        (value || '').split('/').map(encodeURIComponent).join('/');
     const navigateCompare = (): void => {
         if (!compareForm) return;
         const data = new FormData(compareForm);
-        const base = String(data.get('base') || '');
-        const compare = String(data.get('compare') || '');
+        const base = stringFormValue(data, 'base');
+        const compare = stringFormValue(data, 'compare');
         const pathBase = compareForm.getAttribute('data-compare-path-base') || '';
         if (!base || !compare || !pathBase) return;
         const view = normalizeView(shell.getAttribute('data-current-diff-view'));
@@ -426,7 +441,7 @@ function initViewSwitcher(): void {
     };
     const applyCompareOptionStatus = (
         selectName: string,
-        statuses: Array<{ value?: unknown; disabled?: unknown }>,
+        statuses: { value?: unknown; disabled?: unknown }[],
     ): void => {
         if (!compareForm || !Array.isArray(statuses)) return;
         const select = compareForm.querySelector<HTMLSelectElement>('select[name="' + selectName + '"]');
@@ -441,7 +456,8 @@ function initViewSwitcher(): void {
                 option.disabled = false;
                 return;
             }
-            if (byValue.has(option.value)) option.disabled = byValue.get(option.value)!;
+            const disabled = byValue.get(option.value);
+            if (disabled !== undefined) option.disabled = disabled;
         });
     };
     const hydrateCompareOptionStatus = (): void => {
@@ -449,16 +465,17 @@ function initViewSwitcher(): void {
         const statusUrl = compareForm.getAttribute('data-compare-options-status-url');
         if (!statusUrl) return;
         const data = new FormData(compareForm);
-        const base = String(data.get('base') || '');
-        const compare = String(data.get('compare') || '');
+        const base = stringFormValue(data, 'base');
+        const compare = stringFormValue(data, 'compare');
         if (!base || !compare) return;
         const url = statusUrl + '?base=' + encodeURIComponent(base) + '&compare=' + encodeURIComponent(compare);
         fetch(url, { headers: { Accept: 'application/json' } })
-            .then((response) => (response.ok ? response.json() : null))
+            .then((response) => (response.ok ? response.json() as Promise<unknown> : null))
             .then((status) => {
-                if (!status) return;
-                applyCompareOptionStatus('base', status.base);
-                applyCompareOptionStatus('compare', status.compare);
+                const parsed = readCompareStatus(status);
+                if (!parsed) return;
+                applyCompareOptionStatus('base', parsed.base ?? []);
+                applyCompareOptionStatus('compare', parsed.compare ?? []);
             })
             .catch(() => { /* ignore */ });
     };

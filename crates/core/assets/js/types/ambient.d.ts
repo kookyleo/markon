@@ -9,7 +9,7 @@ import type { UndoManager } from '../managers/undo-manager';
 import type { TOCNavigator } from '../navigators/toc-navigator';
 import type { AnnotationNavigator } from '../navigators/annotation-navigator';
 import type { KeyboardShortcutsManager } from '../managers/keyboard-shortcuts';
-import type { SearchManager } from '../managers/search-manager';
+import type { WorkspaceSpotlight } from '../components/workspace-spotlight';
 import type { VisualZoomManager } from '../managers/visual-zoom-manager';
 import type { SectionViewedManager } from '../viewed';
 
@@ -33,7 +33,7 @@ declare global {
     tocNavigator?: TOCNavigator;
     annotationNavigator?: AnnotationNavigator;
     shortcutsManager?: KeyboardShortcutsManager;
-    searchManager?: SearchManager;
+    workspaceSpotlight?: WorkspaceSpotlight;
     visualZoomManager?: VisualZoomManager;
     markonSourceDiff?: {
       load: () => void;
@@ -58,11 +58,14 @@ declare global {
     markonDiffAnnotations?: {
       onBodyRendered: (body: HTMLElement) => void;
       onContentRendered: () => void;
+      exportNotes: (anchor?: HTMLElement | null) => Promise<boolean>;
+      notesCount: () => Promise<number>;
     };
     isSharedAnnotationMode?: boolean;
     openEditorAtLine?: (line: number) => void;
     clearPageAnnotations?: (event?: Event) => void;
-    markonExportAnnotations?: (anchor?: HTMLElement | null) => void;
+    markonExportNotes?: (anchor?: HTMLElement | null) => void;
+    markonNotesCount?: () => number;
 
     /** Native WebSocket assigned by main.ts after the ws-manager connects. */
     ws?: WebSocket;

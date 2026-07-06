@@ -15,7 +15,7 @@ import { CONFIG } from '../core/config';
  */
 function makeFakeWs() {
     const sent: unknown[] = [];
-    const liveHandlers: Array<WsHandler<'live_action'>> = [];
+    const liveHandlers: WsHandler<'live_action'>[] = [];
     const fake = {
         isConnected: () => true,
         on: vi.fn(<T extends WsInbound['type']>(type: T, handler: WsHandler<T>): void => {
@@ -62,18 +62,21 @@ function setupArticle(): HTMLElement {
     return article;
 }
 
-describe('CollaborationManager', () => {
-    let logSpy: ReturnType<typeof vi.spyOn>;
-    let warnSpy: ReturnType<typeof vi.spyOn>;
-    let errorSpy: ReturnType<typeof vi.spyOn>;
+function itemAt<T>(items: ArrayLike<T>, index: number): T {
+    const item = items[index];
+    expect(item).toBeDefined();
+    if (item === undefined) throw new Error(`Missing item at index ${index}`);
+    return item;
+}
 
+describe('CollaborationManager', () => {
     beforeEach(() => {
         document.body.innerHTML = '';
         localStorage.clear();
         sessionStorage.clear();
-        logSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
-        warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
-        errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+        vi.spyOn(console, 'log').mockImplementation(() => {});
+        vi.spyOn(console, 'warn').mockImplementation(() => {});
+        vi.spyOn(console, 'error').mockImplementation(() => {});
         // jsdom's window.scrollTo doesn't accept smooth-scroll options;
         // stub it so smartScrollToHeading is a harmless no-op.
         vi.spyOn(window, 'scrollTo').mockImplementation(() => {});
@@ -83,7 +86,7 @@ describe('CollaborationManager', () => {
         // Tear down any FloatingLayer registered with the global registry
         // so subsequent tests can re-init under the same name 'live'.
         const w = window as unknown as {
-            __TEST_LAYERS__?: Array<{ destroy: () => void }>;
+            __TEST_LAYERS__?: { destroy: () => void }[];
         };
         if (w.__TEST_LAYERS__) {
             for (const l of w.__TEST_LAYERS__) {
@@ -100,7 +103,7 @@ describe('CollaborationManager', () => {
     /** Track the FloatingLayer registered by init() so afterEach can destroy it. */
     function trackLayers(mgr: CollaborationManager): void {
         const w = window as unknown as {
-            __TEST_LAYERS__?: Array<{ destroy: () => void }>;
+            __TEST_LAYERS__?: { destroy: () => void }[];
         };
         w.__TEST_LAYERS__ = w.__TEST_LAYERS__ ?? [];
         if (mgr.layer) w.__TEST_LAYERS__.push(mgr.layer);
@@ -187,10 +190,11 @@ describe('CollaborationManager', () => {
 
         const targets = article.querySelectorAll('.heading-focused');
         expect(targets.length).toBe(1);
-        expect(targets[0].id).toBe('next');
+        const target = itemAt(targets, 0);
+        expect(target.id).toBe('next');
         // Speaker color is staged onto the section as a CSS variable for
         // the breathing pulse keyframe.
-        const section = (targets[0].closest('.heading-section') as HTMLElement)!;
+        const section = (target.closest('.heading-section') as HTMLElement);
         expect(section.style.getPropertyValue('--live-pulse-color')).toBe('#E64560');
     });
 
@@ -248,7 +252,7 @@ describe('CollaborationManager', () => {
 
         // Simulate the local navigation flow (j/k or click) marking a
         // heading as focused. The mutation observer should pick it up.
-        const target = article.querySelectorAll('h2')[1];
+        const target = itemAt(article.querySelectorAll('h2'), 1);
         target.classList.add('heading-focused');
 
         // MutationObserver callbacks run as microtasks; flush.
@@ -261,7 +265,7 @@ describe('CollaborationManager', () => {
                 !!m && typeof m === 'object' && (m as { type?: string }).type === 'live_action',
         );
         expect(live.length).toBeGreaterThanOrEqual(1);
-        const last = live[live.length - 1];
+        const last = itemAt(live, live.length - 1);
         expect(last.data.action).toBe('focus_section');
         expect(last.data.clientId).toBe(mgr.clientId);
         expect(typeof last.data.xpath).toBe('string');

@@ -3,7 +3,7 @@
  *
  * i18n label application, the Markdown/all file filter, workspace feature
  * toggles, copy-to-clipboard buttons, the workspace dropdown, branch checkout,
- * the workspace modals (go-to-file, add-file), and the `t` go-to-file shortcut.
+ * and the workspace modals for adding files/folders.
  *
  * Built as a CLASSIC (IIFE) bundle and loaded as a non-module `<script>` at the
  * same spot in `directory.html` where this used to live inline — it runs during
@@ -12,28 +12,22 @@
 
 type I18nFn = (key: string) => string;
 
-interface GoToFileEntry {
-    path: string;
-    url: string;
-    is_markdown?: boolean;
-}
-
-const t: I18nFn = (window.__MARKON_I18N__ && window.__MARKON_I18N__.t) || ((k: string) => k);
+const t: I18nFn = (window.__MARKON_I18N__?.t) || ((k: string) => k);
 
 // ── Static i18n labels ──────────────────────────────────────────────────────
 const heading = document.getElementById('dir-heading');
 // Only translate when an i18n key is present; a server-rendered alias has no
 // key and must be left as-is (don't fall back to the generic heading).
-if (heading && heading.dataset.i18nKey) heading.textContent = t(heading.dataset.i18nKey);
+if (heading?.dataset['i18nKey']) heading.textContent = t(heading.dataset['i18nKey']);
 const labelMap: Record<string, string> = {
     'dir-current-label': 'web.dir.current',
     'dir-footer': 'web.footer',
     'dir-feedback-link': 'web.footer.feedback',
     'dir-kbd-link': 'web.kbd.link',
 };
-for (const id in labelMap) {
+for (const [id, key] of Object.entries(labelMap)) {
     const el = document.getElementById(id);
-    if (el) el.textContent = t(labelMap[id]);
+    if (el) el.textContent = t(key);
 }
 document.querySelectorAll<HTMLElement>('[data-i18n]').forEach((el) => {
     el.textContent = t(el.getAttribute('data-i18n') || '');
@@ -43,6 +37,10 @@ document.querySelectorAll<HTMLElement>('[data-i18n-placeholder]').forEach((el) =
 });
 document.querySelectorAll<HTMLElement>('[data-i18n-aria]').forEach((el) => {
     el.setAttribute('aria-label', t(el.getAttribute('data-i18n-aria') || ''));
+});
+document.querySelectorAll<HTMLElement>('[data-workspace-spotlight-trigger]').forEach((trigger) => {
+    trigger.setAttribute('aria-label', t('web.wsnav.open'));
+    trigger.setAttribute('title', t('web.wsnav.open'));
 });
 
 // ── File filter (Markdown / all) ────────────────────────────────────────────
@@ -110,21 +108,25 @@ function setupWorkspaceFeatureForm(): void {
                 .then((resp) =>
                     resp.text().then((text) => {
                         let data: { success?: boolean; message?: string } = {};
-                        try { data = text ? JSON.parse(text) : {}; } catch { /* ignore */ }
+                        try { data = text ? JSON.parse(text) as { success?: boolean; message?: string } : {}; } catch { /* ignore */ }
                         if (!resp.ok || data.success === false) throw new Error(data.message || text || resp.statusText);
                         setFeaturePending(form, false);
                     }),
                 )
-                .catch((err) => {
+                .catch((err: unknown) => {
                     input.checked = previous;
                     syncFeatureSwitch(input);
                     setFeaturePending(form, false);
-                    window.alert(t('web.ws.feature.update_failed') + ': ' + (err.message || String(err)));
+                    window.alert(`${t('web.ws.feature.update_failed')}: ${errorMessage(err)}`);
                 });
         });
     });
 }
 setupWorkspaceFeatureForm();
+
+function errorMessage(err: unknown): string {
+    return err instanceof Error ? err.message : String(err);
+}
 
 // ── Copy buttons ────────────────────────────────────────────────────────────
 function copyText(text: string): Promise<boolean> {
@@ -139,6 +141,7 @@ function copyText(text: string): Promise<boolean> {
     document.body.appendChild(ta);
     ta.select();
     let ok = false;
+    // eslint-disable-next-line @typescript-eslint/no-deprecated -- Intentional clipboard fallback for non-secure contexts.
     try { ok = document.execCommand('copy'); } catch { ok = false; }
     ta.remove();
     return Promise.resolve(ok);
@@ -147,7 +150,7 @@ document.querySelectorAll<HTMLElement>('[data-copy-text]').forEach((button) => {
     button.addEventListener('click', () => {
         const value = button.getAttribute('data-copy-text') || '';
         const original = t(button.getAttribute('data-i18n') || 'web.ws.meta.copy_id');
-        copyText(value).then((ok) => {
+        void copyText(value).then((ok) => {
             button.textContent = t(ok ? 'web.ws.meta.copied' : 'web.ws.meta.copy_failed');
             window.setTimeout(() => { button.textContent = original; }, 1200);
         });
@@ -156,7 +159,7 @@ document.querySelectorAll<HTMLElement>('[data-copy-text]').forEach((button) => {
 document.querySelectorAll<HTMLElement>('[data-copy-current-url]').forEach((button) => {
     button.addEventListener('click', () => {
         const original = button.textContent;
-        copyText(window.location.href).then((ok) => {
+        void copyText(window.location.href).then((ok) => {
             button.textContent = t(ok ? 'web.ws.meta.copied' : 'web.ws.meta.copy_failed');
             window.setTimeout(() => { button.textContent = original; }, 1200);
         });
@@ -224,13 +227,13 @@ document.querySelectorAll<HTMLButtonElement>('[data-checkout-branch]').forEach((
             .then((resp) =>
                 resp.text().then((text) => {
                     let data: { success?: boolean; message?: string } = {};
-                    try { data = text ? JSON.parse(text) : {}; } catch { /* ignore */ }
+                    try { data = text ? JSON.parse(text) as { success?: boolean; message?: string } : {}; } catch { /* ignore */ }
                     if (!resp.ok || data.success === false) throw new Error(data.message || text || resp.statusText);
                     window.location.reload();
                 }),
             )
-            .catch((err) => {
-                window.alert(err.message || String(err));
+            .catch((err: unknown) => {
+                window.alert(errorMessage(err));
             });
     });
 });
@@ -265,7 +268,7 @@ document.querySelectorAll<HTMLElement>('[data-branch-panel]').forEach((panel) =>
             let shown = 0;
             items.forEach((item) => {
                 const name = item.getAttribute('data-branch-name-lower') || '';
-                const match = !q || name.indexOf(q) !== -1;
+                const match = !q || name.includes(q);
                 item.hidden = !match;
                 if (match) shown += 1;
             });
@@ -297,127 +300,6 @@ document.querySelectorAll<HTMLElement>('.workspace-modal').forEach((modal) => {
     });
 });
 
-// ── Go-to-file modal ────────────────────────────────────────────────────────
-const goFinder = document.querySelector<HTMLElement>('[data-file-finder]');
-const goInput = document.querySelector<HTMLInputElement>('[data-go-to-file-input]');
-const goResults = document.querySelector<HTMLElement>('[data-go-to-file-results]');
-const goEmpty = document.querySelector<HTMLElement>('[data-go-to-file-empty]');
-let goFiles: GoToFileEntry[] | null = null;
-let goActive = 0;
-function escapeHtml(s: string): string {
-    return s.replace(/[&<>"']/g, (c) => (
-        { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c] as string
-    ));
-}
-// Escape first, then wrap the (case-insensitive) match in <strong> — never feed
-// a raw path to innerHTML.
-function highlightPath(path: string, q: string): string {
-    if (!q) return escapeHtml(path);
-    const idx = path.toLowerCase().indexOf(q);
-    if (idx === -1) return escapeHtml(path);
-    return escapeHtml(path.slice(0, idx)) +
-        '<strong>' + escapeHtml(path.slice(idx, idx + q.length)) + '</strong>' +
-        escapeHtml(path.slice(idx + q.length));
-}
-function goLinks(): HTMLAnchorElement[] {
-    return goResults ? Array.from(goResults.querySelectorAll<HTMLAnchorElement>('a')) : [];
-}
-function setGoActive(idx: number, links?: HTMLAnchorElement[]): void {
-    const list = links || goLinks();
-    if (!list.length) { goActive = 0; return; }
-    goActive = Math.max(0, Math.min(idx, list.length - 1));
-    list.forEach((a, i) => a.classList.toggle('is-active', i === goActive));
-    const cur = list[goActive];
-    if (cur && cur.scrollIntoView) cur.scrollIntoView({ block: 'nearest' });
-}
-function renderGoToFile(): void {
-    if (!goResults) return;
-    const q = ((goInput && goInput.value) || '').trim().toLowerCase();
-    goResults.innerHTML = '';
-    const list = (goFiles || []).filter((file) => !q || file.path.toLowerCase().indexOf(q) !== -1).slice(0, 40);
-    if (goEmpty) {
-        goEmpty.style.display = list.length ? 'none' : '';
-        if (!list.length && goFiles !== null) goEmpty.textContent = t('web.ws.go_to_file.empty');
-    }
-    list.forEach((file, i) => {
-        const li = document.createElement('li');
-        const a = document.createElement('a');
-        a.href = file.url;
-        const icon = document.createElement('span');
-        icon.className = 'dir-icon dir-icon-file';
-        icon.setAttribute('aria-hidden', 'true');
-        const path = document.createElement('span');
-        path.className = 'workspace-file-result-path';
-        path.innerHTML = highlightPath(file.path, q);
-        const badge = document.createElement('span');
-        badge.className = 'workspace-file-result-badge';
-        badge.textContent = file.is_markdown ? 'MD' : '';
-        a.appendChild(icon);
-        a.appendChild(path);
-        a.appendChild(badge);
-        a.addEventListener('mouseenter', () => setGoActive(i));
-        li.appendChild(a);
-        goResults.appendChild(li);
-    });
-    setGoActive(0, goLinks());
-}
-// Shared, de-duplicated fetch of the full file list. Both the go-to-file finder
-// and the inline directory tree consume `goFiles`; this guards against a double
-// fetch when a user opens the finder and expands a folder around the same time.
-let goFilesPromise: Promise<GoToFileEntry[]> | null = null;
-function ensureGoFiles(): Promise<GoToFileEntry[]> {
-    if (goFiles) return Promise.resolve(goFiles);
-    if (goFilesPromise) return goFilesPromise;
-    if (!goFinder) return Promise.resolve([]);
-    goFilesPromise = fetch(goFinder.getAttribute('data-files-data-url') || '', { credentials: 'same-origin' })
-        .then((resp) => { if (!resp.ok) throw new Error(resp.statusText); return resp.json(); })
-        .then((files: GoToFileEntry[]) => { goFiles = files || []; return goFiles; })
-        .catch((err) => { goFiles = []; throw err; });
-    return goFilesPromise;
-}
-function loadGoFiles(): void {
-    if (goFiles) { renderGoToFile(); return; }
-    if (!goFinder) return;
-    if (goEmpty) goEmpty.textContent = t('web.ws.go_to_file.loading');
-    ensureGoFiles()
-        .then(() => renderGoToFile())
-        .catch((err) => {
-            if (goEmpty) goEmpty.textContent = err.message || String(err);
-            renderGoToFile();
-        });
-}
-function openFinder(): void {
-    if (!goFinder) return;
-    goFinder.classList.add('is-open');
-    loadGoFiles();
-}
-function closeFinder(): void {
-    if (goFinder) goFinder.classList.remove('is-open');
-}
-function focusFinder(): void {
-    if (goInput) { goInput.focus(); goInput.select(); }
-    openFinder();
-}
-if (goInput) {
-    goInput.addEventListener('focus', openFinder);
-    goInput.addEventListener('input', () => { openFinder(); renderGoToFile(); });
-    goInput.addEventListener('blur', () => window.setTimeout(closeFinder, 150));
-    goInput.addEventListener('keydown', (event) => {
-        const links = goLinks();
-        if (!links.length) return;
-        if (event.key === 'ArrowDown') { event.preventDefault(); setGoActive(goActive + 1, links); }
-        else if (event.key === 'ArrowUp') { event.preventDefault(); setGoActive(goActive - 1, links); }
-        else if (event.key === 'Enter') {
-            const cur = links[goActive];
-            if (cur) { event.preventDefault(); window.location.href = cur.href; }
-        }
-    });
-}
-document.addEventListener('click', (event) => {
-    const node = event.target as Node | null;
-    if (goFinder && node && !goFinder.contains(node)) closeFinder();
-});
-
 // ── Inline directory tree (expand a folder row in place) ────────────────────
 // Folder rows on the file table expand in place into a lazily-built tree instead
 // of navigating to the sub-directory page. Each folder's direct children are
@@ -447,9 +329,9 @@ function fetchDir(dirPath: string): Promise<DirEntry[]> {
     if (!dirDataUrl) return Promise.resolve([]);
     const url = dirDataUrl + '?path=' + encodeURIComponent(dirPath);
     const req = fetch(url, { credentials: 'same-origin' })
-        .then((resp) => { if (!resp.ok) throw new Error(resp.statusText); return resp.json(); })
-        .then((entries: DirEntry[]) => entries || [])
-        .catch((err) => { dirCache.delete(dirPath); throw err; });
+        .then((resp) => { if (!resp.ok) throw new Error(resp.statusText); return resp.json() as Promise<DirEntry[]>; })
+        .then((entries) => entries || [])
+        .catch((err: unknown) => { dirCache.delete(dirPath); throw err; });
     dirCache.set(dirPath, req);
     return req;
 }
@@ -463,7 +345,7 @@ function makeIcon(kind: 'folder' | 'file'): HTMLElement {
 // expanded top-level folder). Each row is a three-column grid aligned with the
 // top-level table; sub-folder rows are themselves toggleable.
 function renderTree(ul: HTMLElement, entries: DirEntry[], depth: number): void {
-    const pad = ((depth + 1) * 18) + 'px';
+    const pad = `${(depth + 1) * 18 + 5}px`;
     if (!entries.length) {
         const li = document.createElement('li');
         const empty = document.createElement('div');
@@ -477,6 +359,7 @@ function renderTree(ul: HTMLElement, entries: DirEntry[], depth: number): void {
     for (const entry of entries) {
         const li = document.createElement('li');
         li.className = 'workspace-tree-item';
+        li.setAttribute('data-entry-path', entry.rel_git_path);
         li.setAttribute('data-filter-visible-markdown', entry.show_in_markdown ? 'true' : 'false');
         const row = document.createElement('div');
         row.className = 'workspace-tree-row';
@@ -486,27 +369,19 @@ function renderTree(ul: HTMLElement, entries: DirEntry[], depth: number): void {
         if (entry.is_dir) {
             li.setAttribute('data-tree-dir', '');
             li.setAttribute('data-tree-path', entry.rel_git_path);
-            li.dataset.depth = String(depth);
+            li.dataset['depth'] = String(depth);
             row.setAttribute('role', 'button');
             row.setAttribute('tabindex', '0');
             row.setAttribute('aria-expanded', 'false');
-            const chevron = document.createElement('span');
-            chevron.className = 'workspace-tree-chevron';
-            chevron.setAttribute('aria-hidden', 'true');
             const label = document.createElement('span');
             label.className = 'workspace-tree-label';
             label.textContent = entry.name + '/';
-            name.appendChild(chevron);
             name.appendChild(makeIcon('folder'));
             name.appendChild(label);
         } else {
-            const spacer = document.createElement('span');
-            spacer.className = 'workspace-tree-spacer';
-            spacer.setAttribute('aria-hidden', 'true');
             const a = document.createElement('a');
             a.href = entry.link;
             a.textContent = entry.name;
-            name.appendChild(spacer);
             name.appendChild(makeIcon('file'));
             name.appendChild(a);
         }
@@ -531,69 +406,129 @@ function renderTree(ul: HTMLElement, entries: DirEntry[], depth: number): void {
         ul.appendChild(li);
     }
 }
-function toggleTreeDir(li: HTMLElement): void {
+// ── Opened-folder state ⇄ URL hash ──────────────────────────────────────────
+// Expanding a folder is reflected in the address bar as an anchor (e.g.
+// "#docs/sub/") so the in-place view is deep-linkable — no navigating off to a
+// separate "/{id}/docs/" listing page. replaceState keeps folder toggling out
+// of the back-button history.
+function currentHashPath(): string {
+    const raw = window.location.hash.replace(/^#/, '');
+    if (!raw) return '';
+    try { return decodeURIComponent(raw).replace(/\/+$/, ''); }
+    catch { return raw.replace(/\/+$/, ''); }
+}
+function writeHashPath(path: string): void {
+    const base = window.location.pathname + window.location.search;
+    const suffix = path ? '#' + path.split('/').map(encodeURIComponent).join('/') + '/' : '';
+    window.history.replaceState(null, '', base + suffix);
+}
+function noteExpanded(path: string): void {
+    if (path) {
+        clearWorkspaceTarget();
+        writeHashPath(path);
+    }
+}
+function noteCollapsed(path: string): void {
+    const cur = currentHashPath();
+    if (path && (cur === path || cur.startsWith(path + '/'))) {
+        clearWorkspaceTarget();
+        writeHashPath('');
+    }
+}
+
+// Expand a nested tree folder; resolves with its child <ul> once built so the
+// restore walker can descend into it.
+function expandTreeDir(li: HTMLElement): Promise<HTMLElement | null> {
     const row = li.querySelector<HTMLElement>(':scope > .workspace-tree-row');
     const childUl = li.querySelector<HTMLElement>(':scope > ul.workspace-tree');
-    if (!row || !childUl) return;
-    const expanded = row.getAttribute('aria-expanded') === 'true';
-    if (expanded) {
-        childUl.classList.add('is-collapsed');
-        row.setAttribute('aria-expanded', 'false');
-        return;
-    }
+    if (!row || !childUl) return Promise.resolve(null);
     row.setAttribute('aria-expanded', 'true');
     if (childUl.getAttribute('data-built')) {
         childUl.classList.remove('is-collapsed');
-        return;
+        return Promise.resolve(childUl);
     }
-    const depth = parseInt(li.dataset.depth || '0', 10);
-    fetchDir(li.getAttribute('data-tree-path') || '')
+    const depth = parseInt(li.dataset['depth'] || '0', 10);
+    return fetchDir(li.getAttribute('data-tree-path') || '')
         .then((entries) => {
-            if (row.getAttribute('aria-expanded') !== 'true') return; // collapsed while loading
+            if (row.getAttribute('aria-expanded') !== 'true') return null; // collapsed while loading
             if (!childUl.getAttribute('data-built')) {
                 renderTree(childUl, entries, depth + 1);
                 childUl.setAttribute('data-built', '1');
             }
             childUl.classList.remove('is-collapsed');
+            return childUl;
         })
-        .catch(() => { row.setAttribute('aria-expanded', 'false'); });
+        .catch(() => { row.setAttribute('aria-expanded', 'false'); return null; });
 }
-function toggleTopDir(button: HTMLElement): void {
-    const li = button.closest<HTMLElement>('[data-entry-kind]');
-    if (!li) return;
-    const dirPath = button.getAttribute('data-dir-path') || '';
-    const expanded = button.getAttribute('aria-expanded') === 'true';
-    const sibling = li.nextElementSibling as HTMLElement | null;
-    const container = sibling && sibling.matches('[data-dir-children]') &&
-        sibling.getAttribute('data-parent') === dirPath ? sibling : null;
-    if (expanded) {
-        if (container) container.classList.add('is-collapsed');
-        button.setAttribute('aria-expanded', 'false');
+function toggleTreeDir(li: HTMLElement): void {
+    const row = li.querySelector<HTMLElement>(':scope > .workspace-tree-row');
+    const childUl = li.querySelector<HTMLElement>(':scope > ul.workspace-tree');
+    if (!row || !childUl) return;
+    const treePath = li.getAttribute('data-tree-path') || '';
+    if (row.getAttribute('aria-expanded') === 'true') {
+        childUl.classList.add('is-collapsed');
+        row.setAttribute('aria-expanded', 'false');
+        noteCollapsed(treePath);
         return;
     }
+    noteExpanded(treePath);
+    void expandTreeDir(li);
+}
+function topChildContainer(li: HTMLElement, dirPath: string): HTMLElement | null {
+    const sib = li.nextElementSibling as HTMLElement | null;
+    return sib && sib.matches('[data-dir-children]') &&
+        sib.getAttribute('data-parent') === dirPath ? sib : null;
+}
+// Expand a top-level folder; resolves with the child <ul> once built.
+function expandTopDir(button: HTMLElement): Promise<HTMLElement | null> {
+    const li = button.closest<HTMLElement>('[data-entry-kind]');
+    if (!li) return Promise.resolve(null);
+    const dirPath = button.getAttribute('data-dir-path') || '';
     button.setAttribute('aria-expanded', 'true');
-    if (container) { container.classList.remove('is-collapsed'); return; }
-    fetchDir(dirPath)
+    const existing = topChildContainer(li, dirPath);
+    if (existing) {
+        existing.classList.remove('is-collapsed');
+        return Promise.resolve(existing.querySelector<HTMLElement>(':scope > ul.workspace-tree'));
+    }
+    return fetchDir(dirPath)
         .then((entries) => {
             // A rapid collapse before the fetch resolved must win.
-            if (button.getAttribute('aria-expanded') !== 'true') return;
-            const fresh = li.nextElementSibling as HTMLElement | null;
-            if (fresh && fresh.matches('[data-dir-children]') &&
-                fresh.getAttribute('data-parent') === dirPath) {
+            if (button.getAttribute('aria-expanded') !== 'true') return null;
+            const fresh = topChildContainer(li, dirPath);
+            if (fresh) {
                 fresh.classList.remove('is-collapsed');
-                return;
+                return fresh.querySelector<HTMLElement>(':scope > ul.workspace-tree');
             }
             const box = document.createElement('li');
             box.className = 'workspace-entry-children';
             box.setAttribute('data-dir-children', '');
             box.setAttribute('data-parent', dirPath);
+            box.setAttribute(
+                'data-filter-visible-markdown',
+                li.getAttribute('data-filter-visible-markdown') || 'false',
+            );
             const ul = document.createElement('ul');
             ul.className = 'workspace-tree';
             renderTree(ul, entries, 0);
             box.appendChild(ul);
-            li.parentNode && li.parentNode.insertBefore(box, li.nextSibling);
+            if (li.parentNode) li.parentNode.insertBefore(box, li.nextSibling);
+            return ul;
         })
-        .catch(() => { button.setAttribute('aria-expanded', 'false'); });
+        .catch(() => { button.setAttribute('aria-expanded', 'false'); return null; });
+}
+function toggleTopDir(button: HTMLElement): void {
+    const li = button.closest<HTMLElement>('[data-entry-kind]');
+    if (!li) return;
+    const dirPath = button.getAttribute('data-dir-path') || '';
+    if (button.getAttribute('aria-expanded') === 'true') {
+        const container = topChildContainer(li, dirPath);
+        if (container) container.classList.add('is-collapsed');
+        button.setAttribute('aria-expanded', 'false');
+        noteCollapsed(dirPath);
+        return;
+    }
+    noteExpanded(dirPath);
+    void expandTopDir(button);
 }
 document.querySelectorAll<HTMLElement>('[data-dir-toggle]').forEach((button) => {
     button.addEventListener('click', (event) => {
@@ -612,11 +547,73 @@ document.addEventListener('click', (event) => {
 document.addEventListener('keydown', (event) => {
     if (event.key !== 'Enter' && event.key !== ' ') return;
     const target = event.target as Element | null;
-    if (!target || !target.classList || !target.classList.contains('workspace-tree-row')) return;
+    if (!target?.classList?.contains('workspace-tree-row')) return;
     if (target.getAttribute('role') !== 'button') return;
     const li = target.closest<HTMLElement>('[data-tree-dir]');
     if (li) { event.preventDefault(); toggleTreeDir(li); }
 });
+
+// Restore the opened-folder chain encoded in the URL hash (e.g. "#docs/sub/"),
+// expanding each level in place and scrolling the deepest folder into view.
+// Runs on load and whenever the hash is navigated (link/back/forward).
+let restoreToken = 0;
+function clearWorkspaceTarget(): void {
+    document.querySelectorAll('.is-workspace-target').forEach((el) => {
+        el.classList.remove('is-workspace-target');
+    });
+}
+function markWorkspaceTarget(row: HTMLElement | null): boolean {
+    if (!row) return false;
+    if (row.getAttribute('data-filter-visible-markdown') === 'false') setFileFilter('all');
+    clearWorkspaceTarget();
+    row.classList.add('is-workspace-target');
+    row.scrollIntoView({ block: 'center' });
+    return true;
+}
+function findDirectEntry(ul: HTMLElement | null, path: string): HTMLElement | null {
+    if (!ul) return null;
+    return Array.from(ul.querySelectorAll<HTMLElement>(':scope > li[data-entry-path]'))
+        .find((el) => el.getAttribute('data-entry-path') === path) || null;
+}
+function findTopEntry(path: string): HTMLElement | null {
+    return Array.from(document.querySelectorAll<HTMLElement>('.workspace-repo-file-list > li[data-entry-path]'))
+        .find((el) => el.getAttribute('data-entry-path') === path) || null;
+}
+function restoreOpenFromHash(): void {
+    const path = currentHashPath();
+    if (!path) { clearWorkspaceTarget(); return; }
+    const segments = path.split('/').filter(Boolean);
+    if (!segments.length) return;
+    const token = ++restoreToken; // a newer hash change supersedes an in-flight walk
+    if (markWorkspaceTarget(findTopEntry(path))) return;
+    const topBtn = Array.from(document.querySelectorAll<HTMLElement>('[data-dir-toggle]'))
+        .find((b) => b.getAttribute('data-dir-path') === segments[0]);
+    if (!topBtn) return;
+    const bringIntoView = (ul: HTMLElement | null): void => {
+        const row = ul ? (ul.closest('[data-dir-children]') || ul)
+            .previousElementSibling as HTMLElement | null : null;
+        (row || ul)?.scrollIntoView({ block: 'nearest' });
+    };
+    const descend = (ul: HTMLElement | null, idx: number): void => {
+        if (token !== restoreToken || !ul) return;
+        if (idx >= segments.length) { bringIntoView(ul); return; }
+        const acc = segments.slice(0, idx + 1).join('/');
+        const childLi = Array.from(ul.querySelectorAll<HTMLElement>(':scope > li[data-tree-dir]'))
+            .find((el) => el.getAttribute('data-tree-path') === acc) || null;
+        if (!childLi) {
+            if (!markWorkspaceTarget(findDirectEntry(ul, path))) bringIntoView(ul);
+            return;
+        }
+        void expandTreeDir(childLi).then((next) => descend(next, idx + 1));
+    };
+    void expandTopDir(topBtn).then((ul) => descend(ul, 1));
+}
+if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', restoreOpenFromHash, { once: true });
+} else {
+    restoreOpenFromHash();
+}
+window.addEventListener('hashchange', restoreOpenFromHash);
 
 // ── Resizable file-table columns (name | commit | time) ─────────────────────
 // The three-column grid width comes from `--ws-col-name` / `--ws-col-commit`
@@ -629,10 +626,15 @@ document.addEventListener('keydown', (event) => {
     if (!wrap) return;
     const handles = Array.from(wrap.querySelectorAll<HTMLElement>('[data-col-handle]'));
     if (handles.length < 2) return;
+    const [nameHandle, commitHandle] = handles;
+    if (!nameHandle || !commitHandle) return;
+    const resizeWrap: HTMLElement = wrap;
+    const nameResizeHandle: HTMLElement = nameHandle;
+    const commitResizeHandle: HTMLElement = commitHandle;
     const GAP = 18;      // column-gap in px
     const MIN = 72;      // min width for name / commit columns
     const TIME_MIN = 64; // reserve at least this much for the time column
-    const wsId = wrap.getAttribute('data-ws-id') || '';
+    const wsId = resizeWrap.getAttribute('data-ws-id') || '';
     const storeKey = 'markon:ws-cols:' + wsId;
     const isNarrow = (): boolean => window.matchMedia('(max-width: 720px)').matches;
 
@@ -648,7 +650,7 @@ document.addEventListener('keydown', (event) => {
     } catch { /* ignore */ }
 
     function clampWidths(): void {
-        const total = wrap!.clientWidth || 0;
+        const total = resizeWrap.clientWidth || 0;
         if (total <= 0) return;
         const maxName = Math.max(MIN, total - 2 * GAP - commitW - TIME_MIN);
         nameW = Math.max(MIN, Math.min(nameW, maxName));
@@ -656,12 +658,12 @@ document.addEventListener('keydown', (event) => {
         commitW = Math.max(MIN, Math.min(commitW, maxCommit));
     }
     function applyVars(): void {
-        wrap!.style.setProperty('--ws-col-name', nameW + 'px');
-        wrap!.style.setProperty('--ws-col-commit', commitW + 'px');
+        resizeWrap.style.setProperty('--ws-col-name', `${nameW}px`);
+        resizeWrap.style.setProperty('--ws-col-commit', `${commitW}px`);
     }
     function positionHandles(): void {
-        handles[0].style.left = (nameW + GAP / 2) + 'px';
-        handles[1].style.left = (nameW + GAP + commitW + GAP / 2) + 'px';
+        nameResizeHandle.style.left = `${nameW + GAP / 2}px`;
+        commitResizeHandle.style.left = `${nameW + GAP + commitW + GAP / 2}px`;
     }
     function save(): void {
         try {
@@ -674,6 +676,11 @@ document.addEventListener('keydown', (event) => {
         positionHandles();
     }
 
+    // Columns are auto-sized now (the name/tree flexes, the commit subject fits
+    // its own content, the time is content-width), so drag-to-resize no longer
+    // applies — keep every handle hidden and skip the drag wiring.
+    handles.forEach((handle) => { handle.hidden = true; });
+    if (handles.length) return;
     handles.forEach((handle, idx) => {
         handle.hidden = false;
         handle.addEventListener('pointerdown', (event: PointerEvent) => {
@@ -682,7 +689,7 @@ document.addEventListener('keydown', (event) => {
             const startX = event.clientX;
             const startName = nameW;
             const startCommit = commitW;
-            const total = wrap!.clientWidth || 0;
+            const total = resizeWrap.clientWidth || 0;
             handle.classList.add('is-dragging');
             try { handle.setPointerCapture(event.pointerId); } catch { /* ignore */ }
             const onMove = (e: PointerEvent): void => {
@@ -744,7 +751,7 @@ if (addForm) {
         const status = addForm.querySelector<HTMLElement>('[data-add-file-status]');
         let rel = ((pathInput && pathInput.value) || '').trim();
         const last = rel.split('/').pop();
-        if (rel && last && last.indexOf('.') === -1) rel += '.md';
+        if (rel && last && !last.includes('.')) rel += '.md';
         if (!rel) {
             if (status) status.textContent = t('web.ws.create_file.path_required');
             return;
@@ -759,13 +766,13 @@ if (addForm) {
             .then((resp) =>
                 resp.text().then((text) => {
                     let data: { success?: boolean; message?: string; url?: string } = {};
-                    try { data = text ? JSON.parse(text) : {}; } catch { /* ignore */ }
+                    try { data = text ? JSON.parse(text) as { success?: boolean; message?: string; url?: string } : {}; } catch { /* ignore */ }
                     if (!resp.ok || data.success === false) throw new Error(data.message || text || resp.statusText);
                     window.location.href = data.url || window.location.href;
                 }),
             )
-            .catch((err) => {
-                if (status) status.textContent = err.message || String(err);
+            .catch((err: unknown) => {
+                if (status) status.textContent = errorMessage(err);
             });
     });
 }
@@ -799,39 +806,27 @@ if (addFolderForm) {
             .then((resp) =>
                 resp.text().then((text) => {
                     let data: { success?: boolean; message?: string; url?: string } = {};
-                    try { data = text ? JSON.parse(text) : {}; } catch { /* ignore */ }
+                    try { data = text ? JSON.parse(text) as { success?: boolean; message?: string; url?: string } : {}; } catch { /* ignore */ }
                     if (!resp.ok || data.success === false) throw new Error(data.message || text || resp.statusText);
                     window.location.href = data.url || window.location.href;
                 }),
             )
-            .catch((err) => {
-                if (status) status.textContent = err.message || String(err);
+            .catch((err: unknown) => {
+                if (status) status.textContent = errorMessage(err);
             });
     });
 }
 
-// ── Keyboard: Esc closes modals, `t` opens go-to-file ───────────────────────
+// ── Keyboard: Esc closes workspace modals ───────────────────────────────────
 document.addEventListener('keydown', (event) => {
-    const target = event.target as HTMLElement | null;
-    const isTyping = !!target && /^(INPUT|TEXTAREA|SELECT)$/.test(target.tagName || '');
-    if (event.key === 'Escape') { closeWorkspaceModals(); closeFinder(); if (goInput) goInput.blur(); }
-    if (!isTyping && event.key && event.key.toLowerCase() === 't') {
-        event.preventDefault();
-        focusFinder();
-    }
+    if (event.key === 'Escape') closeWorkspaceModals();
 });
 
 // ── Remaining placeholders / title ──────────────────────────────────────────
-const si = document.getElementById('search-input') as HTMLInputElement | null;
-if (si) si.placeholder = t('web.search.placeholder');
-const se = document.getElementById('search-esc-text');
-if (se) se.textContent = t('web.search.esc');
-const go = document.querySelector<HTMLInputElement>('[data-go-to-file-input]');
-if (go) go.placeholder = t('web.ws.go_to_file.placeholder');
 const addPath = document.querySelector<HTMLInputElement>('[data-add-file-path]');
 if (addPath) addPath.placeholder = t('web.ws.create_file.placeholder');
 const addFolderPath = document.querySelector<HTMLInputElement>('[data-add-folder-path]');
 if (addFolderPath) addFolderPath.placeholder = t('web.ws.create_folder.placeholder');
-document.title = t((heading && heading.dataset.titleKey) || 'web.title.dir');
+document.title = t((heading?.dataset['titleKey']) || 'web.title.dir');
 
 export {};

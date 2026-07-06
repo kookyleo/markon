@@ -56,6 +56,13 @@ function makeRange(node: Node, start: number, end: number): Range {
     return r;
 }
 
+function itemAt<T>(items: ArrayLike<T>, index: number): T {
+    const item = items[index];
+    expect(item).toBeDefined();
+    if (item === undefined) throw new Error(`Missing item at index ${index}`);
+    return item;
+}
+
 describe('AnnotationManager', () => {
     let logSpy: ReturnType<typeof vi.spyOn>;
     let warnSpy: ReturnType<typeof vi.spyOn>;
@@ -119,11 +126,11 @@ describe('AnnotationManager', () => {
         await mgr.add(anno);
 
         expect(storage.saveAnnotation).toHaveBeenCalledTimes(1);
-        expect(storage.saved[0].id).toBe(anno.id);
+        expect(itemAt(storage.saved, 0).id).toBe(anno.id);
         expect(mgr.getAll()).toHaveLength(1);
         expect(mgr.getById(anno.id)?.id).toBe(anno.id);
         expect(events).toHaveLength(1);
-        expect(events[0].action).toBe('add');
+        expect(itemAt(events, 0).action).toBe('add');
     });
 
     it('add() with skipSave=true does not call storage (used for remote echoes)', async () => {
@@ -151,7 +158,7 @@ describe('AnnotationManager', () => {
         expect(wrap).not.toBeNull();
         expect(wrap!.tagName).toBe('SPAN');
         expect(wrap!.className).toBe('highlight-yellow');
-        expect(wrap!.dataset.annotationId).toBe(anno.id);
+        expect(wrap!.dataset['annotationId']).toBe(anno.id);
         expect(wrap!.textContent).toBe('highlight');
     });
 
@@ -176,7 +183,7 @@ describe('AnnotationManager', () => {
         mgr.applyToDOM([anno]);
         const wrap = article.querySelector<HTMLElement>('[data-annotation-id]');
         expect(wrap?.classList.contains('has-note')).toBe(true);
-        expect(wrap?.dataset.note).toBe('a note');
+        expect(wrap?.dataset['note']).toBe('a note');
     });
 
     it('delete() removes from internal list, calls storage, and emits a change', async () => {
@@ -256,7 +263,7 @@ describe('AnnotationManager', () => {
         const last = events.at(-1)!;
         expect(last.action).toBe('clear');
         expect(Array.isArray(last.data)).toBe(true);
-        expect((last.data as Annotation[])[0].id).toBe(anno.id);
+        expect(itemAt(last.data as Annotation[], 0).id).toBe(anno.id);
     });
 
     it('applyToDOM keeps inline <code> intact when the range crosses code boundaries', () => {
@@ -280,8 +287,8 @@ describe('AnnotationManager', () => {
         // Both <code> elements still exist and still hold their full text.
         const codes = article.querySelectorAll('code');
         expect(codes.length).toBe(2);
-        expect(codes[0].textContent).toBe('foo');
-        expect(codes[1].textContent).toBe('bar');
+        expect(itemAt(codes, 0).textContent).toBe('foo');
+        expect(itemAt(codes, 1).textContent).toBe('bar');
 
         // No empty <code></code> shells leaked into the DOM.
         codes.forEach(c => expect(c.textContent).not.toBe(''));
@@ -321,8 +328,8 @@ describe('AnnotationManager', () => {
         expect(article.querySelectorAll('[data-annotation-id]').length).toBe(0);
         const codes = article.querySelectorAll('code');
         expect(codes.length).toBe(2);
-        expect(codes[0].textContent).toBe('foo');
-        expect(codes[1].textContent).toBe('bar');
+        expect(itemAt(codes, 0).textContent).toBe('foo');
+        expect(itemAt(codes, 1).textContent).toBe('bar');
         // No empty <code></code> shells regardless of order.
         codes.forEach(c => expect(c.childNodes.length).toBeGreaterThan(0));
         expect(p.textContent).toBe('foo + bar');
@@ -412,7 +419,7 @@ describe('AnnotationManager', () => {
         expect(md).toContain('> a free-floating note');
     });
 
-    it('formatAsMarkdown with ids exports only the selected subset (#13 wizard)', async () => {
+    it('formatAsMarkdown with ids exports only the selected subset (#13)', async () => {
         const article = setupArticle('<h2 id="a">Section A</h2><p>alpha bravo charlie</p>');
         const mgr = new AnnotationManager(makeStorage(), article);
         const p = article.querySelector('p')!;
@@ -463,12 +470,12 @@ describe('AnnotationManager', () => {
 
         const groups = mgr.getGroupedByHeading();
         expect(groups.map(g => g.heading?.text)).toEqual(['Section A', 'Section B']);
-        expect(groups[0].items.map(i => i.id)).toEqual([a.id]);
-        expect(groups[1].items.map(i => i.id)).toEqual([b.id]);
+        expect(itemAt(groups, 0).items.map(i => i.id)).toEqual([a.id]);
+        expect(itemAt(groups, 1).items.map(i => i.id)).toEqual([b.id]);
 
         // Filtering narrows to a single group.
         const onlyB = mgr.getGroupedByHeading(new Set([b.id]));
         expect(onlyB).toHaveLength(1);
-        expect(onlyB[0].heading?.text).toBe('Section B');
+        expect(itemAt(onlyB, 0).heading?.text).toBe('Section B');
     });
 });

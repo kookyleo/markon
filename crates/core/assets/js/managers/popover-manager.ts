@@ -79,7 +79,7 @@ export class PopoverManager {
     #enableEdit: boolean;
     #enableChat: boolean;
     #enableNote: boolean;
-    #reject?: (node: Node) => boolean;
+    #reject: ((node: Node) => boolean) | undefined;
 
     constructor(markdownBody: HTMLElement, options: PopoverManagerOptions = {}) {
         this.#markdownBody = markdownBody;
@@ -152,7 +152,7 @@ export class PopoverManager {
         // When the current selection was applied by Markon Live (follower
         // mirroring the speaker), suppress the annotation toolbar — followers
         // shouldn't see highlight/note options for ranges they didn't make.
-        if (document.body.dataset.markonLiveRemote) {
+        if (document.body.dataset['markonLiveRemote']) {
             return;
         }
 
@@ -308,8 +308,8 @@ export class PopoverManager {
         }
 
         // Pre-offset coords feed DraggableManager's delta math.
-        this.#element.dataset.originalLeft = String(originalLeft);
-        this.#element.dataset.originalTop = String(originalTop);
+        this.#element.dataset['originalLeft'] = String(originalLeft);
+        this.#element.dataset['originalTop'] = String(originalTop);
 
         this.#element.style.left = `${left}px`;
         this.#element.style.top = `${top}px`;
@@ -330,7 +330,7 @@ export class PopoverManager {
             const target = e.target as HTMLElement | null;
             // Resolve the owning [data-action] button via closest() so a click
             // on any child node (icon, nested span) still maps to its action.
-            const action = target?.closest<HTMLElement>('[data-action]')?.dataset.action;
+            const action = target?.closest<HTMLElement>('[data-action]')?.dataset['action'];
             if (!action) return;
 
             if (this.#onAction) {
@@ -418,9 +418,9 @@ export class PopoverManager {
         const he = el as HTMLElement;
         const raw = he.style.getPropertyValue('--anno-author').trim();
         const color = /^#[0-9a-f]{3,8}$/i.test(raw) ? raw : 'var(--markon-fg-muted)';
-        const name = he.dataset.authorName || _t('web.author.anon');
+        const name = he.dataset['authorName'] || _t('web.author.anon');
         let time = '';
-        const ts = Number(he.dataset.authorTime);
+        const ts = Number(he.dataset['authorTime']);
         if (ts) {
             const d = new Date(ts);
             const p = (n: number): string => String(n).padStart(2, '0');

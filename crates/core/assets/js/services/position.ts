@@ -65,7 +65,8 @@ export const Position = {
 
     // Smart scroll to a heading.
     smartScrollToHeading(heading: Element): void {
-        const section = (heading.closest('.heading-section') as HTMLElement | null) ?? (heading as HTMLElement);
+        const section = (heading.closest<HTMLElement>('.heading-section')) ?? heading;
+        if (!(section instanceof HTMLElement)) return;
         const sectionHeight = section.offsetHeight;
         const viewportHeight = window.innerHeight;
 

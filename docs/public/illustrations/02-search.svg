@@ -8,10 +8,10 @@
     <rect x="164" y="128" width="2" height="26" fill="#111827"/>
     <line x1="60" y1="174" x2="740" y2="174" stroke="#E5E7EB"/>
 
-    <!-- ESC hint -->
+    <!-- Esc hint -->
     <g transform="translate(345 192)">
       <rect width="42" height="22" rx="4" fill="#FFFFFF" stroke="#D1D5DB"/>
-      <text x="21" y="16" font-family="ui-sans-serif, system-ui" font-size="11" font-weight="700" fill="#4B5563" text-anchor="middle">ESC</text>
+      <text x="21" y="16" font-family="ui-sans-serif, system-ui" font-size="11" font-weight="700" fill="#4B5563" text-anchor="middle">Esc</text>
     </g>
     <text x="395" y="208" font-family="ui-sans-serif, system-ui" font-size="13" fill="#6B7280">to close</text>
 

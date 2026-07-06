@@ -14,6 +14,7 @@
 interface RefOption {
     value: string;
     label: string;
+    alias: string;
     kind: string; // worktree | head | branch | tag | commit
     subject: string;
     detail: string; // short hash / "current" / ""
@@ -27,6 +28,37 @@ interface PickerData {
     baseValue: string;
     compareValue: string;
 }
+type RefStatus = { value?: unknown; disabled?: unknown };
+
+const isRefOption = (value: unknown): value is RefOption => {
+    if (!value || typeof value !== 'object') return false;
+    const obj = value as Record<string, unknown>;
+    return typeof obj['value'] === 'string'
+        && typeof obj['label'] === 'string'
+        && typeof obj['kind'] === 'string';
+};
+
+const readPickerData = (value: unknown): PickerData | null => {
+    if (!value || typeof value !== 'object') return null;
+    const obj = value as Record<string, unknown>;
+    const base = Array.isArray(obj['base']) ? obj['base'].filter(isRefOption) : [];
+    const compare = Array.isArray(obj['compare']) ? obj['compare'].filter(isRefOption) : [];
+    return {
+        base,
+        compare,
+        baseValue: typeof obj['baseValue'] === 'string' ? obj['baseValue'] : '',
+        compareValue: typeof obj['compareValue'] === 'string' ? obj['compareValue'] : '',
+    };
+};
+
+const readStatus = (value: unknown): { base?: RefStatus[]; compare?: RefStatus[] } | null => {
+    if (!value || typeof value !== 'object') return null;
+    const obj = value as Record<string, unknown>;
+    const status: { base?: RefStatus[]; compare?: RefStatus[] } = {};
+    if (Array.isArray(obj['base'])) status.base = obj['base'] as RefStatus[];
+    if (Array.isArray(obj['compare'])) status.compare = obj['compare'] as RefStatus[];
+    return status;
+};
 
 const KIND_ORDER = ['worktree', 'head', 'branch', 'tag', 'commit'];
 const KIND_GROUP: Record<string, string> = {
@@ -48,9 +80,9 @@ function init(): void {
     const dataEl = document.querySelector<HTMLElement>('[data-compare-picker]');
     const trigger = document.querySelector<HTMLButtonElement>('[data-compare-trigger]');
     if (!control || !dataEl || !trigger) return;
-    let data: PickerData;
-    try { data = JSON.parse(dataEl.textContent || '{}'); } catch { return; }
-    if (!Array.isArray(data.base) || !Array.isArray(data.compare)) return;
+    let data: PickerData | null;
+    try { data = readPickerData(JSON.parse(dataEl.textContent || '{}') as unknown); } catch { return; }
+    if (!data) return;
 
     const pathBase = control.getAttribute('data-compare-path-base') || '';
     const statusUrl = control.getAttribute('data-compare-status-url') || '';
@@ -96,7 +128,8 @@ function init(): void {
         };
         if (data.compare.some((o) => o.kind === 'worktree')) add('Uncommitted changes', 'HEAD', 'worktree');
         const commits = data.base.filter((o) => o.kind === 'commit');
-        if (commits.length >= 2) add('Latest commit', commits[1].value, 'HEAD');
+        const latestCommit = commits[1];
+        if (latestCommit) add('Latest commit', latestCommit.value, 'HEAD');
     };
     renderPresets();
 
@@ -123,7 +156,7 @@ function init(): void {
     ): void => {
         const q = query.trim().toLowerCase();
         const match = (o: RefOption) =>
-            !q || `${o.label} ${o.subject} ${o.value}`.toLowerCase().includes(q);
+            !q || `${o.label} ${o.alias || ''} ${o.subject} ${o.value}`.toLowerCase().includes(q);
         const pending = side === 'base' ? pendingBase : pendingCompare;
         listEl.replaceChildren();
         for (const kind of KIND_ORDER) {
@@ -137,16 +170,17 @@ function init(): void {
                 const row = document.createElement('button');
                 row.type = 'button';
                 row.className = 'git-compare-row';
-                row.dataset.value = o.value;
+                row.dataset['value'] = o.value;
                 row.classList.toggle('is-selected', o.value === pending);
                 if (o.disabled) row.classList.add('is-disabled');
                 const badge = `<span class="git-compare-badge git-compare-badge-${o.kind}">${KIND_BADGE[o.kind] || ''}</span>`;
                 const name = o.kind === 'commit' ? (o.detail || '') : o.label.replace(' (current)', '');
+                const alias = o.alias ? `<span class="git-compare-row-alias">${escapeHtml(o.alias)}</span>` : '';
                 const sub = o.subject ? `<span class="git-compare-row-sub">${escapeHtml(o.subject)}</span>` : '';
                 const detail = o.kind === 'commit' && o.detail ? '' : (o.detail ? `<span class="git-compare-row-detail">${escapeHtml(o.detail)}</span>` : '');
                 const date = o.date ? `<span class="git-compare-row-date">${escapeHtml(o.date)}</span>` : '';
                 row.innerHTML =
-                    `${badge}<span class="git-compare-row-main"><span class="git-compare-row-name">${escapeHtml(name)}</span>${sub}</span>${detail}${date}`;
+                    `${badge}<span class="git-compare-row-main"><span class="git-compare-row-name"><span class="git-compare-row-name-text">${escapeHtml(name)}</span>${alias}</span>${sub}</span>${detail}${date}`;
                 row.addEventListener('click', () => {
                     if (row.classList.contains('is-disabled')) return;
                     if (side === 'base') pendingBase = o.value; else pendingCompare = o.value;
@@ -180,9 +214,9 @@ function init(): void {
 
     const syncSelection = (): void => {
         baseListEl.querySelectorAll<HTMLElement>('.git-compare-row').forEach((r) =>
-            r.classList.toggle('is-selected', r.dataset.value === pendingBase));
+            r.classList.toggle('is-selected', r.dataset['value'] === pendingBase));
         compareListEl.querySelectorAll<HTMLElement>('.git-compare-row').forEach((r) =>
-            r.classList.toggle('is-selected', r.dataset.value === pendingCompare));
+            r.classList.toggle('is-selected', r.dataset['value'] === pendingCompare));
     };
 
     /** Grey rows that produce no Markdown changes vs the other pending side. */
@@ -192,17 +226,17 @@ function init(): void {
             const url = `${statusUrl}?base=${encodeURIComponent(pendingBase)}&compare=${encodeURIComponent(pendingCompare)}`;
             const resp = await fetch(url, { headers: { Accept: 'application/json' } });
             if (!resp.ok) return;
-            const status = await resp.json();
-            const apply = (listEl: HTMLElement, statuses: Array<{ value?: string; disabled?: boolean }>, pending: string) => {
+            const status = readStatus(await resp.json() as unknown);
+            const apply = (listEl: HTMLElement, statuses: RefStatus[] | undefined, pending: string) => {
                 if (!Array.isArray(statuses)) return;
-                const byVal = new Map(statuses.filter((s) => typeof s.value === 'string').map((s) => [s.value as string, !!s.disabled]));
+                const byVal = new Map(statuses.filter((s) => typeof s.value === 'string').map((s) => [s.value, Boolean(s.disabled)]));
                 listEl.querySelectorAll<HTMLElement>('.git-compare-row').forEach((r) => {
-                    const v = r.dataset.value || '';
+                    const v = r.dataset['value'] || '';
                     if (v === pending) { r.classList.remove('is-disabled'); return; }
                     if (byVal.has(v)) r.classList.toggle('is-disabled', !!byVal.get(v));
                 });
             };
-            if (panel) {
+            if (panel && status) {
                 apply(baseListEl, status.base, pendingBase);
                 apply(compareListEl, status.compare, pendingCompare);
             }
@@ -218,7 +252,7 @@ function init(): void {
         // Two columns.
         const cols = document.createElement('div');
         cols.className = 'git-compare-cols';
-        const makeCol = (title: string, side: 'base' | 'compare'): { col: HTMLElement; list: HTMLElement; search: HTMLInputElement } => {
+        const makeCol = (title: string): { col: HTMLElement; list: HTMLElement; search: HTMLInputElement } => {
             const col = document.createElement('div');
             col.className = 'git-compare-col';
             const h = document.createElement('div');
@@ -233,8 +267,8 @@ function init(): void {
             col.append(h, search, list);
             return { col, list, search };
         };
-        const baseCol = makeCol('Base', 'base');
-        const compareCol = makeCol('Compare', 'compare');
+        const baseCol = makeCol('Base');
+        const compareCol = makeCol('Compare');
         baseListEl = baseCol.list; compareListEl = compareCol.list;
         baseSearch = baseCol.search; compareSearch = compareCol.search;
         baseSearch.addEventListener('input', () => renderColumn(baseListEl, data.base, 'base', baseSearch.value));

@@ -207,15 +207,30 @@ pub fn history_filtered(
         "--format=%H%x1f%h%x1f%an%x1f%ad%x1f%cr%x1f%s".to_string(),
         max_count,
     ];
-    if let Some(author) = filter.author.as_deref().map(str::trim).filter(|a| !a.is_empty()) {
+    if let Some(author) = filter
+        .author
+        .as_deref()
+        .map(str::trim)
+        .filter(|a| !a.is_empty())
+    {
         args.push(format!("--author={author}"));
     }
-    if let Some(since) = filter.since.as_deref().map(str::trim).filter(|s| !s.is_empty()) {
+    if let Some(since) = filter
+        .since
+        .as_deref()
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+    {
         args.push(format!("--since={since}"));
     }
     // The rev (branch) must sit before the `-- .` pathspec separator. Only accept
     // a branch that actually exists; otherwise leave it out so git walks HEAD.
-    if let Some(branch) = filter.branch.as_deref().map(str::trim).filter(|b| !b.is_empty()) {
+    if let Some(branch) = filter
+        .branch
+        .as_deref()
+        .map(str::trim)
+        .filter(|b| !b.is_empty())
+    {
         let known = branches(root).unwrap_or_default();
         if known.iter().any(|candidate| candidate.name == branch) {
             args.push(branch.to_string());
@@ -328,8 +343,11 @@ pub struct GitBranchDetail {
 /// `main`, then `master`, then the currently checked-out branch. Returns `None`
 /// only when the repository has no branches at all.
 fn default_branch(root: &Path) -> Option<String> {
-    if let Some(head) = git_stdout(root, &["symbolic-ref", "--short", "refs/remotes/origin/HEAD"])
-        .filter(|s| !s.is_empty())
+    if let Some(head) = git_stdout(
+        root,
+        &["symbolic-ref", "--short", "refs/remotes/origin/HEAD"],
+    )
+    .filter(|s| !s.is_empty())
     {
         let name = head.strip_prefix("origin/").unwrap_or(&head).trim();
         if !name.is_empty() {
@@ -379,7 +397,10 @@ pub fn branches_detailed(root: &Path) -> Result<Vec<GitBranchDetail>> {
     // separator is the real U+001F byte embedded in the format string.
     let output = run_git(
         root,
-        &["branch", "--format=%(HEAD)\u{1f}%(refname:short)\u{1f}%(committerdate:relative)"],
+        &[
+            "branch",
+            "--format=%(HEAD)\u{1f}%(refname:short)\u{1f}%(committerdate:relative)",
+        ],
     )?;
     if !output.status.success() {
         return Err(GitError::Command(command_error(&output)));
@@ -721,13 +742,30 @@ pub fn markdown_diff_listing(
         // prefix is empty, so the output is byte-identical to the unrelative form.
         let args: Vec<&str> = if worktree {
             vec![
-                "diff", "--no-ext-diff", "--find-renames", "--relative", "--raw", "--no-abbrev",
-                "-z", &base, "--", ".",
+                "diff",
+                "--no-ext-diff",
+                "--find-renames",
+                "--relative",
+                "--raw",
+                "--no-abbrev",
+                "-z",
+                &base,
+                "--",
+                ".",
             ]
         } else {
             vec![
-                "diff", "--no-ext-diff", "--find-renames", "--relative", "--raw", "--no-abbrev",
-                "-z", &base, &compare, "--", ".",
+                "diff",
+                "--no-ext-diff",
+                "--find-renames",
+                "--relative",
+                "--raw",
+                "--no-abbrev",
+                "-z",
+                &base,
+                &compare,
+                "--",
+                ".",
             ]
         };
         let out = run_git(root, &args)?;
@@ -740,7 +778,14 @@ pub fn markdown_diff_listing(
     if worktree {
         if let Some(list) = git_stdout_nul(
             root,
-            &["ls-files", "--others", "--exclude-standard", "-z", "--", "."],
+            &[
+                "ls-files",
+                "--others",
+                "--exclude-standard",
+                "-z",
+                "--",
+                ".",
+            ],
         ) {
             for rel in list {
                 if is_markdown_git_path(&rel) {
@@ -832,7 +877,11 @@ fn parse_raw_diff_entries(raw: &[u8], worktree: bool) -> Vec<MarkdownDiffEntry> 
             old_path,
             status,
             old_blob: blob_or_none(old_sha),
-            new_blob: if worktree { None } else { blob_or_none(new_sha) },
+            new_blob: if worktree {
+                None
+            } else {
+                blob_or_none(new_sha)
+            },
             additions: 0,
             deletions: 0,
         });
@@ -853,13 +902,30 @@ fn markdown_numstat_map(
     // as the `--raw` listing entries, so the per-file diffstat lookup matches.
     let args: Vec<&str> = if worktree {
         vec![
-            "-c", "core.quotepath=false", "diff", "--no-ext-diff", "--find-renames", "--relative",
-            "--numstat", base, "--", ".",
+            "-c",
+            "core.quotepath=false",
+            "diff",
+            "--no-ext-diff",
+            "--find-renames",
+            "--relative",
+            "--numstat",
+            base,
+            "--",
+            ".",
         ]
     } else {
         vec![
-            "-c", "core.quotepath=false", "diff", "--no-ext-diff", "--find-renames", "--relative",
-            "--numstat", base, compare, "--", ".",
+            "-c",
+            "core.quotepath=false",
+            "diff",
+            "--no-ext-diff",
+            "--find-renames",
+            "--relative",
+            "--numstat",
+            base,
+            compare,
+            "--",
+            ".",
         ]
     };
     let mut map = HashMap::new();
@@ -871,8 +937,18 @@ fn markdown_numstat_map(
     }
     for line in String::from_utf8_lossy(&out.stdout).lines() {
         let mut parts = line.splitn(3, '\t');
-        let adds = parts.next().unwrap_or("0").trim().parse::<usize>().unwrap_or(0);
-        let dels = parts.next().unwrap_or("0").trim().parse::<usize>().unwrap_or(0);
+        let adds = parts
+            .next()
+            .unwrap_or("0")
+            .trim()
+            .parse::<usize>()
+            .unwrap_or(0);
+        let dels = parts
+            .next()
+            .unwrap_or("0")
+            .trim()
+            .parse::<usize>()
+            .unwrap_or(0);
         if let Some(path_field) = parts.next() {
             map.insert(numstat_dest_path(path_field), (adds, dels));
         }
@@ -1021,11 +1097,7 @@ pub fn diff_has_markdown_changes(root: &Path, base: &str, compare: &str) -> Resu
 /// For hot loops (e.g. the compare dropdown) where both refs already come from a
 /// trusted enumeration, this is a single `git diff --name-only` instead of ~4
 /// subprocesses. A bad ref just errors, which callers treat as "has changes".
-pub fn diff_has_markdown_changes_unchecked(
-    root: &Path,
-    base: &str,
-    compare: &str,
-) -> Result<bool> {
+pub fn diff_has_markdown_changes_unchecked(root: &Path, base: &str, compare: &str) -> Result<bool> {
     let output = if compare == "worktree" {
         run_git(
             root,
@@ -1199,12 +1271,7 @@ pub fn commit_diff_index(root: &Path, hashes: &[&str]) -> Result<HashMap<String,
             // either side of a rename that ends in `.md` marks the commit.
             if let Some(hash) = current.as_deref() {
                 if let Some(info) = map.get_mut(hash) {
-                    if !info.has_markdown
-                        && line
-                            .split('\t')
-                            .skip(1)
-                            .any(|path| is_markdown_git_path(path))
-                    {
+                    if !info.has_markdown && line.split('\t').skip(1).any(is_markdown_git_path) {
                         info.has_markdown = true;
                     }
                 }

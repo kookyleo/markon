@@ -5,12 +5,19 @@ function makeCard(top: number, height: number, id: string): NoteCardInput {
     const highlightElement = document.createElement('span');
     document.body.appendChild(highlightElement);
     highlightElement.getBoundingClientRect = () =>
-        ({ left: 0, top, right: 0, bottom: top + 10, width: 0, height: 10, x: 0, y: top, toJSON: () => ({}) }) as DOMRect;
+        ({ left: 0, top, right: 0, bottom: top + 10, width: 0, height: 10, x: 0, y: top, toJSON: () => ({}) });
 
     const element = document.createElement('div');
     document.body.appendChild(element);
     Object.defineProperty(element, 'offsetHeight', { configurable: true, value: height });
     return { element, highlightElement, highlightId: id };
+}
+
+function itemAt<T>(items: ArrayLike<T>, index: number): T {
+    const item = items[index];
+    expect(item).toBeDefined();
+    if (item === undefined) throw new Error(`Missing item at index ${index}`);
+    return item;
 }
 
 beforeEach(() => {
@@ -30,10 +37,10 @@ describe('LayoutEngine.calculate', () => {
         const cards = [makeCard(100, 50, 'a'), makeCard(500, 50, 'b')];
         const out = engine.calculate(cards);
         expect(out).toHaveLength(2);
-        expect(out[0].currentTop).toBe(100);
-        expect(out[1].currentTop).toBe(500);
-        expect(out[0].id).toBe('a');
-        expect(out[1].id).toBe('b');
+        expect(itemAt(out, 0).currentTop).toBe(100);
+        expect(itemAt(out, 1).currentTop).toBe(500);
+        expect(itemAt(out, 0).id).toBe('a');
+        expect(itemAt(out, 1).id).toBe('b');
     });
 
     it('clusters near-by notes via union-find and stacks them with min spacing', () => {
@@ -46,9 +53,9 @@ describe('LayoutEngine.calculate', () => {
         ];
         const out = engine.calculate(cards);
         // minIdealTop is 100; spacing is height(40) + NOTE_MIN_SPACING(10) = 50
-        expect(out[0].currentTop).toBe(100);
-        expect(out[1].currentTop).toBe(150);
-        expect(out[2].currentTop).toBe(200);
+        expect(itemAt(out, 0).currentTop).toBe(100);
+        expect(itemAt(out, 1).currentTop).toBe(150);
+        expect(itemAt(out, 2).currentTop).toBe(200);
     });
 
     it('enforces vertical spacing between non-clustered but overlapping notes', () => {
@@ -60,15 +67,15 @@ describe('LayoutEngine.calculate', () => {
             makeCard(200, 50, 'b'),
         ];
         const out = engine.calculate(cards);
-        expect(out[0].currentTop).toBe(100);
+        expect(itemAt(out, 0).currentTop).toBe(100);
         // min allowed = prev.currentTop(100) + prev.height(200) + 10 = 310
-        expect(out[1].currentTop).toBe(310);
+        expect(itemAt(out, 1).currentTop).toBe(310);
     });
 
     it('falls back to height 80 when offsetHeight is 0', () => {
         const engine = new LayoutEngine();
         const cards = [makeCard(100, 0, 'a')];
         const out = engine.calculate(cards);
-        expect(out[0].height).toBe(80);
+        expect(itemAt(out, 0).height).toBe(80);
     });
 });

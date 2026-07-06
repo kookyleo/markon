@@ -17,6 +17,7 @@
  */
 
 import { CONFIG } from '../core/config';
+import { workspaceChatApiUrl, workspaceChatUrl, workspaceFileUrl } from '../core/routes';
 import { debounce, Ids, Logger } from '../core/utils';
 import { Meta } from '../services/dom';
 import { FloatingLayer } from '../components/floating-layer';
@@ -103,7 +104,7 @@ export interface ServerMessage {
     seq?: number;
     role: 'user' | 'assistant';
     content: MessageContentBlock[] | string;
-    mentions?: Array<string | { path?: string }>;
+    mentions?: (string | { path?: string })[];
 }
 
 /** Row returned by /api/chat/{ws}/files for the @-mention popup. */
@@ -192,13 +193,13 @@ export function renderInline(text: string): string {
 
 export function renderMarkdown(src: unknown): string {
     if (!src) return '';
-    const lines = String(src).split('\n');
+    const lines = (typeof src === 'string' ? src : JSON.stringify(src) ?? '').split('\n');
     const out: string[] = [];
     let i = 0;
     while (i < lines.length) {
         const line = lines[i] ?? '';
         // Fenced code block: ```lang? … ```
-        const fence = line.match(/^```(\S*)\s*$/);
+        const fence = /^```(\S*)\s*$/.exec(line);
         if (fence) {
             const buf: string[] = [];
             i++;
@@ -242,7 +243,7 @@ export function renderMarkdown(src: unknown): string {
         while (
             i < lines.length &&
             (lines[i] ?? '').trim() &&
-            !/^```/.test(lines[i] ?? '') &&
+            !(lines[i] ?? '').startsWith("```") &&
             !/^\s*[-*+]\s+/.test(lines[i] ?? '') &&
             !/^\s*\d+\.\s+/.test(lines[i] ?? '')
         ) {
@@ -326,7 +327,7 @@ export function parseCitation(text: string): Citation | null {
         const dotIdx = path.lastIndexOf('.');
         return dotIdx >= 0 && EXTS.test(path.slice(dotIdx));
     };
-    let m = text.match(/^([^\s:#]+):(\d+)(?:-(\d+))?$/);
+    let m = /^([^\s:#]+):(\d+)(?:-(\d+))?$/.exec(text);
     if (m) {
         const path = m[1] ?? '';
         if (!hasKnownExt(path)) return null;
@@ -337,7 +338,7 @@ export function parseCitation(text: string): Citation | null {
             anchor: null,
         };
     }
-    m = text.match(/^([^\s:#]+)#([A-Za-z0-9_\-:.]+)$/);
+    m = /^([^\s:#]+)#([A-Za-z0-9_\-:.]+)$/.exec(text);
     if (m) {
         const path = m[1] ?? '';
         if (!hasKnownExt(path)) return null;
@@ -505,18 +506,17 @@ export class ChatManager {
     // State
     #threads: ChatThread[] = [];
     #currentThreadId: string | null = null;
-    #messagesByThread: Map<string, MessageBlock[]> = new Map();
+    #messagesByThread = new Map<string, MessageBlock[]>();
     #abortController: AbortController | null = null;
     #streaming = false;
     #threadsLoaded = false;     // gates the one-shot threads/restore on first open
     #stickToBottom = true;
     #renderRafId: number | null = null;
     #renderRafTs = 0;
-    #pendingAssistant: MessageBlock | null = null;  // The in-flight assistant message (rendered live)
     #pendingSelection: string | null = null;        // selection text queued by Ask-AI before panel opens
 
     // Mention autocomplete
-    #mentions: Set<string> = new Set();             // paths the user has inserted via the popup
+    #mentions = new Set<string>();             // paths the user has inserted via the popup
     #mentionPopup: HTMLElement | null = null;
     #mentionRows: MentionRow[] = [];
     #mentionActiveIdx = 0;
@@ -535,7 +535,7 @@ export class ChatManager {
     constructor(app: unknown) {
         this.#app = app;
         this.#workspaceId = Meta.get(CONFIG.META_TAGS.WORKSPACE_ID) || '';
-        const tFn = typeof window !== 'undefined' && window.__MARKON_I18N__ && window.__MARKON_I18N__.t;
+        const tFn = typeof window !== 'undefined' && window.__MARKON_I18N__?.t;
         this.#i18n = tFn || ((k: string) => k);
         // Suppress "unused" warning: #app is held for parity with the JS API
         // and may be referenced by future hooks (e.g. dispatching commands).
@@ -620,7 +620,7 @@ export class ChatManager {
         if (this.#popoutMode) return;
         if (!this.#sizeStyleEl) {
             this.#sizeStyleEl = document.createElement('style');
-            this.#sizeStyleEl.dataset.markon = 'chat-size-override';
+            this.#sizeStyleEl.dataset['markon'] = 'chat-size-override';
             document.head.appendChild(this.#sizeStyleEl);
         }
         this.#writeSizeStyle(this.#readSavedSize());
@@ -671,7 +671,7 @@ export class ChatManager {
         }, 200);
         this.#resizeObserver = new ResizeObserver(() => {
             const c = this.#container;
-            if (!c || !c.classList.contains('expanded')) return;
+            if (!c?.classList.contains('expanded')) return;
             const w = c.offsetWidth;
             const h = c.offsetHeight;
             if (w < 240 || h < 320) return;  // mid-morph or just-snapped sphere
@@ -703,7 +703,7 @@ export class ChatManager {
                 this.#popoutWindow = null;
                 if (this.#popoutWatcherId) clearInterval(this.#popoutWatcherId);
                 this.#popoutWatcherId = null;
-                setTimeout(() => this.#layer?.expand(), 0);
+                setTimeout(() => this.#openInPage(), 0);
             }
         };
         this.#popoutInboundHandler = handler;
@@ -759,9 +759,12 @@ export class ChatManager {
 
     // ── Public API ─────────────────────────────────────────────────────────
 
-    open(): void   { this.#layer?.expand(); }
+    open(): void   { this.#openInPage(); }
     close(): void  { this.#layer?.collapse(); }
-    toggle(): void { this.#layer?.toggle(); }
+    toggle(): void {
+        if (this.#layer?.isExpanded) this.close();
+        else this.open();
+    }
 
     /** Open the chat in the user's default surface (or its inverse if
      *  `invert` is set). Used by the TOGGLE_CHAT shortcut and any other
@@ -775,7 +778,9 @@ export class ChatManager {
      *  Selection routing for every (popout-alive / popout-mode / default-mode)
      *  combination is decided in {@link #resolveOpenTarget}. */
     openWithSelection({ text, currentDoc = null, shift = false }: { text?: string; currentDoc?: string | null; shift?: boolean } = {}): void {
-        this.#open({ invert: shift, text, currentDoc });
+        const options: { invert: boolean; text?: string; currentDoc?: string | null } = { invert: shift, currentDoc };
+        if (text !== undefined) options.text = text;
+        this.#open(options);
     }
 
     /** Surface to use for a single open action. Each branch is a leaf the
@@ -822,10 +827,18 @@ export class ChatManager {
                 this.#openPopout();
                 return;
             case 'expand-in-page':
-                setTimeout(() => this.#layer?.expand(), 0);
+                setTimeout(() => this.#openInPage(), 0);
                 this.#prefillSelection(text);
                 return;
         }
+    }
+
+    #openInPage(): void {
+        if (this.#layer?.isExpanded) {
+            this.#focusInputSoon();
+            return;
+        }
+        this.#layer?.expand();
     }
 
     /** Initialize in popout-window mode: skip FloatingLayer entirely (the
@@ -874,9 +887,8 @@ export class ChatManager {
             } else if (d.type === MSG.DRAFT && typeof d.text === 'string') {
                 if (this.#textarea) {
                     this.#textarea.value = d.text;
-                    this.#textarea.focus();
-                    this.#textarea.setSelectionRange(d.text.length, d.text.length);
                     this.#autoGrowTextarea();
+                    this.#focusInputSoon();
                 }
             }
         };
@@ -907,7 +919,7 @@ export class ChatManager {
         // Standalone chat URL — served by `/_/{ws}/chat` (template chat.html),
         // not the markdown page with a query flag. The popout window therefore
         // doesn't pay the cost of rendering markdown, TOC, annotations, etc.
-        const url = `/_/${encodeURIComponent(this.#workspaceId)}/chat`;
+        const url = workspaceChatUrl(this.#workspaceId);
         // No address bar / toolbars: the chat's own header IS the chrome.
         // resizable=yes so the user can grow the window if they want.
         const features = 'popup=yes,width=440,height=640,menubar=no,toolbar=no,location=no,status=no,resizable=yes';
@@ -942,9 +954,8 @@ export class ChatManager {
     prefillInput(text: string): void {
         if (!this.#textarea) return;
         this.#textarea.value = text || '';
-        this.#textarea.focus();
-        this.#textarea.setSelectionRange(this.#textarea.value.length, this.#textarea.value.length);
         this.#autoGrowTextarea();
+        this.#focusInputSoon();
     }
 
     // ── Container (sphere ↔ panel morph) ──────────────────────────────────
@@ -1079,7 +1090,7 @@ export class ChatManager {
             // text-edit surfaces and the open thread listbox are excluded
             // (those would lose focus / selection if drag intercepted).
             nonDragSelector: '[contenteditable="true"], input, textarea, [role="listbox"], [role="listbox"] *',
-            onExpand:   () => this.#onLayerExpand(),
+            onExpand:   () => { void this.#onLayerExpand(); },
             onCollapse: () => { /* keep streams alive — closing only hides UI */ },
         });
         this.#layer.init();
@@ -1089,7 +1100,7 @@ export class ChatManager {
         if (!this.#panel) return;
         // Close lives on the BR sphere/face — clicking it toggles via FloatingLayer.
         this.#panel.querySelector<HTMLButtonElement>('.markon-chat-new')
-            ?.addEventListener('click', () => this.#createNewThread());
+            ?.addEventListener('click', () => { void this.#createNewThread(); });
         this.#panel.querySelector<HTMLButtonElement>('.markon-chat-rename')
             ?.addEventListener('click', (e: MouseEvent) => {
                 // Rename is a low-frequency action moved out of the title text
@@ -1240,7 +1251,7 @@ export class ChatManager {
      *  lazily fetch threads on the very first open. */
     async #onLayerExpand(): Promise<void> {
         if (!this.#panel) return;
-        this.#textarea?.focus();
+        this.#focusInputSoon();
 
         if (this.#threadsLoaded) return;
         this.#threadsLoaded = true;
@@ -1261,7 +1272,7 @@ export class ChatManager {
     // ── Threads list ───────────────────────────────────────────────────────
 
     async #fetchThreads(): Promise<void> {
-        const res = await fetch(`/api/chat/${encodeURIComponent(this.#workspaceId)}/threads`);
+        const res = await fetch(workspaceChatApiUrl(this.#workspaceId, 'threads'));
         if (!res.ok) throw new Error(`threads HTTP ${res.status}`);
         this.#threads = (await res.json()) as ChatThread[];
         this.#renderThreadMenu();
@@ -1298,7 +1309,7 @@ export class ChatManager {
             row.addEventListener('click', (e: MouseEvent) => {
                 const target = e.target as Element | null;
                 if (target?.closest('.markon-chat-thread-row-delete')) return;
-                const id = row.dataset.id;
+                const id = row.dataset['id'];
                 if (this.#threadDropdownMenu) this.#threadDropdownMenu.hidden = true;
                 if (id) void this.#switchThread(id);
             });
@@ -1307,7 +1318,7 @@ export class ChatManager {
             btn.addEventListener('click', (e: MouseEvent) => {
                 e.stopPropagation();
                 const row = btn.closest<HTMLElement>('.markon-chat-thread-row');
-                const id = row?.dataset.id;
+                const id = row?.dataset['id'];
                 if (id) void this.#deleteThread(id);
             });
         });
@@ -1323,7 +1334,7 @@ export class ChatManager {
 
     async #createNewThread(): Promise<void> {
         try {
-            const res = await fetch(`/api/chat/${encodeURIComponent(this.#workspaceId)}/threads`, {
+            const res = await fetch(workspaceChatApiUrl(this.#workspaceId, 'threads'), {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({}),
@@ -1344,7 +1355,7 @@ export class ChatManager {
         if (this.#threads.length <= 1) return;
         try {
             const res = await fetch(
-                `/api/chat/${encodeURIComponent(this.#workspaceId)}/threads/${encodeURIComponent(id)}`,
+                workspaceChatApiUrl(this.#workspaceId, `threads/${encodeURIComponent(id)}`),
                 { method: 'DELETE' },
             );
             if (!res.ok && res.status !== 204) throw new Error(`HTTP ${res.status}`);
@@ -1382,7 +1393,7 @@ export class ChatManager {
         }
         try {
             const res = await fetch(
-                `/api/chat/${encodeURIComponent(this.#workspaceId)}/threads/${encodeURIComponent(id)}`,
+                workspaceChatApiUrl(this.#workspaceId, `threads/${encodeURIComponent(id)}`),
             );
             if (!res.ok) throw new Error(`HTTP ${res.status}`);
             const data = (await res.json()) as { messages?: ServerMessage[] };
@@ -1462,7 +1473,7 @@ export class ChatManager {
     #renderMessageElement(msg: MessageBlock): HTMLElement {
         const el = document.createElement('div');
         el.className = `markon-chat-message markon-chat-message-${msg.role}`;
-        el.dataset.id = msg.id;
+        el.dataset['id'] = msg.id;
         el.appendChild(this.#renderMessageBody(msg));
         return el;
     }
@@ -1531,7 +1542,7 @@ export class ChatManager {
         argsBlock.className = 'markon-chat-tool-args';
         let argsText = '';
         try { argsText = JSON.stringify(block.input ?? {}, null, 2); }
-        catch { argsText = String(block.input ?? ''); }
+        catch { argsText = typeof block.input === 'string' ? block.input : ''; }
         argsBlock.textContent = argsText;
         wrap.appendChild(argsBlock);
 
@@ -1542,7 +1553,8 @@ export class ChatManager {
      *  the body exceeds 10 lines so a giant grep dump doesn't dominate the
      *  scroll; user can expand to see the rest. */
     #renderToolResult(block: Extract<MessageContentBlock, { type: 'tool_result' }>): HTMLDetailsElement {
-        const text = String(block.content ?? block.output ?? '');
+        const rawText = block.content ?? block.output ?? '';
+        const text = typeof rawText === 'string' ? rawText : JSON.stringify(rawText) ?? '';
         const lines = text.split('\n').length;
         const wrap = document.createElement('details');
         wrap.className = 'markon-chat-tool-result';
@@ -1574,9 +1586,9 @@ export class ChatManager {
     ): HTMLElement {
         const card = document.createElement('div');
         card.className = 'markon-chat-edit-pending';
-        card.dataset.editId = block.edit_id;
+        card.dataset['editId'] = block.edit_id;
         const status = block.status ?? 'pending';
-        card.dataset.status = status;
+        card.dataset['status'] = status;
 
         const head = document.createElement('div');
         head.className = 'markon-chat-edit-pending-head';
@@ -1643,7 +1655,7 @@ export class ChatManager {
         if (block.status !== 'applied') return;
         try {
             const res = await fetch(
-                `/api/chat/${encodeURIComponent(this.#workspaceId)}/edits/undo`,
+                workspaceChatApiUrl(this.#workspaceId, 'edits/undo'),
                 {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
@@ -1733,7 +1745,7 @@ export class ChatManager {
         }
         try {
             const res = await fetch(
-                `/api/chat/${encodeURIComponent(this.#workspaceId)}/edits/${encodeURIComponent(headId)}/${action}`,
+                workspaceChatApiUrl(this.#workspaceId, `edits/${encodeURIComponent(headId)}/${action}`),
                 { method: 'POST' },
             );
             if (!res.ok) {
@@ -1811,7 +1823,7 @@ export class ChatManager {
         ta.style.height = 'auto';
         // Cap at ~6 lines (line-height ≈ 20px + 16px padding).
         const max = 6 * 20 + 16;
-        ta.style.height = Math.min(ta.scrollHeight, max) + 'px';
+        ta.style.height = `${Math.min(ta.scrollHeight, max)}px`;
     }
 
     async #submit(): Promise<void> {
@@ -1857,8 +1869,6 @@ export class ChatManager {
         // Selection consumed by this turn — drop the chip. The actual text was
         // already snapshotted into #pendingSelection and is read by #stream.
         this.#clearQuoteChipUI();
-        this.#pendingAssistant = assistantMsg;
-
         await this.#stream(text, assistantMsg, turnMentions);
         // Clear the live set once the request was accepted; the message
         // bubble already keeps a per-message snapshot of mentions for
@@ -1884,7 +1894,7 @@ export class ChatManager {
         };
 
         try {
-            const res = await fetch(`/api/chat/${encodeURIComponent(this.#workspaceId)}`, {
+            const res = await fetch(workspaceChatApiUrl(this.#workspaceId), {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json', 'Accept': 'text/event-stream' },
                 body: JSON.stringify(payload),
@@ -1904,7 +1914,6 @@ export class ChatManager {
         } finally {
             assistantMsg.streaming = false;
             this.#setStreaming(false);
-            this.#pendingAssistant = null;
             this.#abortController = null;
         }
     }
@@ -1980,22 +1989,24 @@ export class ChatManager {
             break;
         }
         case 'tool_start': {
-            assistantMsg.blocks.push({
+            const block: MessageContentBlock = {
                 type: 'tool_use',
-                id: event.id,
                 name: event.name,
                 input: event.input || {},
-            });
+            };
+            if (event.id !== undefined) block.id = event.id;
+            assistantMsg.blocks.push(block);
             this.#rerenderMessage(assistantMsg);
             break;
         }
         case 'tool_end': {
-            assistantMsg.blocks.push({
+            const block: MessageContentBlock = {
                 type: 'tool_result',
-                tool_use_id: event.id,
                 content: event.output ?? '',
                 is_error: !!event.is_error,
-            });
+            };
+            if (event.id !== undefined) block.tool_use_id = event.id;
+            assistantMsg.blocks.push(block);
             this.#rerenderMessage(assistantMsg);
             break;
         }
@@ -2004,16 +2015,17 @@ export class ChatManager {
             // for the bottom-bar accept/reject flow. The card and the bar
             // share state via `event.id` — when the user resolves, we
             // re-render the card with the new status and pop the queue.
-            assistantMsg.blocks.push({
+            const block: MessageContentBlock = {
                 type: 'edit_pending',
                 edit_id: event.id,
-                tool_use_id: event.tool_use_id,
                 path: event.path,
                 line: event.line,
                 old_string: event.old_string,
                 new_string: event.new_string,
                 status: 'pending',
-            });
+            };
+            if (event.tool_use_id !== undefined) block.tool_use_id = event.tool_use_id;
+            assistantMsg.blocks.push(block);
             this.#pendingEditQueue.push(event.id);
             this.#rerenderMessage(assistantMsg);
             this.#updateEditBar();
@@ -2084,10 +2096,20 @@ export class ChatManager {
         if (!text) return;
         this.#pendingSelection = text;
         this.#showQuoteChip(text);
-        if (this.#textarea) {
-            this.#textarea.focus();
-            this.#textarea.setSelectionRange(this.#textarea.value.length, this.#textarea.value.length);
-        }
+        this.#focusInputSoon();
+    }
+
+    #focusInputSoon(): void {
+        setTimeout(() => {
+            const textarea = this.#textarea;
+            if (!textarea) return;
+            if (this.#inputGroup?.hidden) return;
+            if (!this.#popoutMode && !this.#container?.classList.contains('expanded')) return;
+
+            textarea.focus({ preventScroll: true });
+            const pos = textarea.value.length;
+            textarea.setSelectionRange(pos, pos);
+        }, 0);
     }
 
     #showQuoteChip(text: string): void {
@@ -2139,7 +2161,7 @@ export class ChatManager {
         if (this.#mentionAbortCtrl) this.#mentionAbortCtrl.abort();
         this.#mentionAbortCtrl = new AbortController();
         try {
-            const url = `/api/chat/${encodeURIComponent(this.#workspaceId)}/files`
+            const url = workspaceChatApiUrl(this.#workspaceId, 'files')
                 + `?q=${encodeURIComponent(prefix)}&limit=8`;
             const res = await fetch(url, { signal: this.#mentionAbortCtrl.signal });
             if (!res.ok) {
@@ -2160,7 +2182,7 @@ export class ChatManager {
     #ensureMentionPopup(): HTMLElement {
         if (this.#mentionPopup) return this.#mentionPopup;
         const el = document.createElement('div');
-        el.className = 'markon-chat-mention-popup';
+        el.className = 'markon-chat-mention-popup markon-modal-frame';
         el.setAttribute('role', 'listbox');
         el.hidden = true;
         document.body.appendChild(el);
@@ -2201,7 +2223,7 @@ export class ChatManager {
             row.addEventListener('mousedown', (e: MouseEvent) => {
                 // mousedown (not click) so the textarea blur doesn't fire first.
                 e.preventDefault();
-                const idx = Number(row.dataset.idx);
+                const idx = Number(row.dataset['idx']);
                 this.#commitMentionAt(idx);
             });
         });
@@ -2361,10 +2383,7 @@ export class ChatManager {
     }
 
     #citationHref(cite: Citation): string {
-        const ws = encodeURIComponent(this.#workspaceId);
-        // Path components must be encoded segment-by-segment so slashes survive.
-        const path = cite.path.split('/').map(encodeURIComponent).join('/');
-        let url = `/${ws}/${path}`;
+        let url = workspaceFileUrl(this.#workspaceId, cite.path);
         if (cite.anchor)    url += `#${cite.anchor}`;
         else if (cite.line) url += `#L${cite.line}`;
         return url;

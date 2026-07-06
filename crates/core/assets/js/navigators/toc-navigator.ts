@@ -16,20 +16,20 @@ export class TOCNavigator {
     #links: HTMLAnchorElement[] = [];
     #levels: number[] = [];
     #keydownHandler: ((e: KeyboardEvent) => void) | null = null;
-    #collapsedItems: Set<number> = new Set(); // tracks collapsed items by index
+    #collapsedItems = new Set<number>(); // tracks collapsed items by index
 
     /**
      * Activate the navigator.
      */
     activate(): void {
         // Collect every TOC link.
-        const tocContainer = document.querySelector(CONFIG.SELECTORS.TOC_CONTAINER) as HTMLElement | null;
+        const tocContainer = document.querySelector(CONFIG.SELECTORS.TOC_CONTAINER);
         if (!tocContainer) {
             Logger.warn('TOCNavigator', 'TOC container not found');
             return;
         }
 
-        this.#links = Array.from(tocContainer.querySelectorAll('.toc-item a')) as HTMLAnchorElement[];
+        this.#links = Array.from(tocContainer.querySelectorAll('.toc-item a'));
         if (this.#links.length === 0) {
             Logger.warn('TOCNavigator', 'No TOC links found');
             return;
@@ -41,13 +41,13 @@ export class TOCNavigator {
             const li = link.closest('li');
             if (!li) return 0;
             const levelClass = Array.from(li.classList).find((c) => c.startsWith('toc-level-'));
-            return levelClass ? parseInt(levelClass.split('-')[2]) : 0;
+            return levelClass ? Number.parseInt(levelClass.split('-')[2] ?? '0', 10) : 0;
         });
 
         // Restore the previous focus, fall back to the active link, then to the first item.
         if (this.#focusedIndex < 0 || this.#focusedIndex >= this.#links.length) {
-            const activeLink = (tocContainer.querySelector('.toc-item.viewport a')
-                ?? tocContainer.querySelector('.toc-item a.selected')) as HTMLAnchorElement | null;
+            const activeLink = (tocContainer.querySelector<HTMLAnchorElement>('.toc-item.viewport a')
+                ?? tocContainer.querySelector<HTMLAnchorElement>('.toc-item a.selected'));
             this.#focusedIndex = activeLink ? this.#links.indexOf(activeLink) : 0;
         }
 
@@ -65,6 +65,8 @@ export class TOCNavigator {
 
         // Add the active-navigation visual border.
         tocContainer.classList.add('toc-nav-active');
+        tocContainer.classList.add('markon-modal-layer');
+        tocContainer.querySelector('.toc')?.classList.add('markon-modal-frame');
 
         Logger.log('TOCNavigator', 'Activated');
     }
@@ -81,6 +83,13 @@ export class TOCNavigator {
         const tocContainer = document.querySelector(CONFIG.SELECTORS.TOC_CONTAINER);
         if (tocContainer) {
             tocContainer.classList.remove('toc-nav-active');
+            const keepMobileFrame =
+                window.innerWidth <= CONFIG.BREAKPOINTS.WIDE_SCREEN &&
+                tocContainer.classList.contains('active');
+            if (!keepMobileFrame) {
+                tocContainer.classList.remove('markon-modal-layer');
+                tocContainer.querySelector('.toc')?.classList.remove('markon-modal-frame');
+            }
         }
 
         Logger.log('TOCNavigator', 'Deactivated');
@@ -186,6 +195,7 @@ export class TOCNavigator {
         // Apply the new focus indicator.
         this.#focusedIndex = index;
         const link = this.#links[index];
+        if (!link) return;
         link.classList.add('toc-focused');
 
         // Scroll the focused link into view.
@@ -240,7 +250,8 @@ export class TOCNavigator {
             this.#updateCollapseIndicator(this.#focusedIndex);
         } else {
             // Already expanded: jump to the first child.
-            this.#setFocus(children[0]);
+            const firstChild = children[0];
+            if (firstChild !== undefined) this.#setFocus(firstChild);
         }
     }
 
@@ -323,7 +334,7 @@ export class TOCNavigator {
             return 0;
         }
 
-        return this.#levels[index];
+        return this.#levels[index] ?? 0;
     }
 
     /**
@@ -360,6 +371,7 @@ export class TOCNavigator {
         }
 
         const link = this.#links[index];
+        if (!link) return;
         const hasChildren = this.#hasChildren(index);
 
         if (!hasChildren) {
@@ -372,7 +384,7 @@ export class TOCNavigator {
         }
 
         // Add or update the indicator.
-        let indicator = link.querySelector('.toc-collapse-indicator') as HTMLSpanElement | null;
+        let indicator = link.querySelector('.toc-collapse-indicator');
         if (!indicator) {
             indicator = document.createElement('span');
             indicator.className = 'toc-collapse-indicator';
@@ -389,6 +401,7 @@ export class TOCNavigator {
     #navigate(): void {
         if (this.#focusedIndex >= 0 && this.#focusedIndex < this.#links.length) {
             const link = this.#links[this.#focusedIndex];
+            if (!link) return;
             link.click();
             this.#close();
         }
@@ -401,6 +414,8 @@ export class TOCNavigator {
         const tocContainer = document.querySelector(CONFIG.SELECTORS.TOC_CONTAINER);
         if (tocContainer) {
             tocContainer.classList.remove('active');
+            tocContainer.classList.remove('markon-modal-layer');
+            tocContainer.querySelector('.toc')?.classList.remove('markon-modal-frame');
         }
         this.deactivate();
     }

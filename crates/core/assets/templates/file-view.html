@@ -1,0 +1,106 @@
+<!DOCTYPE html>
+<html lang="en" dir="auto" data-theme="{{ theme }}" data-theme-default="{{ theme }}">
+<head>
+    {% include "theme-boot.html" %}
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{ title }}</title>
+    <link rel="icon" type="image/svg+xml" href="/_/favicon.svg">
+    <link rel="alternate icon" href="/_/favicon.ico">
+    <link id="markon-github-markdown-light" rel="stylesheet" href="/_/css/github-markdown-light.css" media="not all">
+    <link id="markon-github-markdown-dark" rel="stylesheet" href="/_/css/github-markdown-dark.css" media="not all">
+    <script>window.MarkonTheme && window.MarkonTheme.applyStylesheetMedia();</script>
+    <link rel="stylesheet" href="/_/css/tokens.css">
+    <link rel="stylesheet" href="/_/css/shortcuts.css">
+    <link rel="stylesheet" href="/_/css/editor.css">
+    {% if styles_css %}<style>{{ styles_css | safe }}</style>{% endif %}
+    <style>
+        body {
+            box-sizing: border-box;
+            max-width: 1100px;
+            margin: 0 auto;
+            padding: 28px 24px 80px;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+            color: var(--markon-fg-default, #1f2328);
+            background: var(--markon-bg-default, #fff);
+        }
+        .fv-back { margin-bottom: 16px; font-size: 15px; }
+        .fv-back a { color: var(--markon-accent-fg, #0969da); text-decoration: none; font-weight: 600; }
+        .fv-back a:hover { text-decoration: underline; }
+
+        .fv-head {
+            display: flex; align-items: center; justify-content: space-between;
+            gap: 12px; flex-wrap: wrap;
+            padding-bottom: 12px; margin-bottom: 16px;
+            border-bottom: 1px solid var(--markon-border-default, #d1d9e0);
+        }
+        .fv-title { display: flex; align-items: baseline; gap: 10px; min-width: 0; }
+        .fv-name { font-size: 15px; font-weight: 650; white-space: nowrap; }
+        .fv-path {
+            font-size: 12.5px; color: var(--markon-fg-muted, #59636e);
+            font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+            overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+        }
+
+        /* ── Code viewer ── */
+        .code-view {
+            display: flex;
+            border: 1px solid var(--markon-border-default, #d1d9e0);
+            border-radius: 8px; overflow: hidden;
+            font-size: 12.75px; line-height: 1.55;
+            font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
+            background: var(--markon-code-bg, var(--markon-canvas-subtle, #f6f8fa));
+        }
+        .code-gutter {
+            flex: none; margin: 0; padding: 16px 14px; text-align: right;
+            color: var(--markon-fg-subtle, #818b98); user-select: none;
+            border-right: 1px solid var(--markon-border-muted, #d8dee4);
+            background: var(--markon-canvas-inset, rgba(0,0,0,.02));
+            font: inherit;
+        }
+        .code-body { flex: 1 1 auto; min-width: 0; margin: 0; padding: 16px; overflow-x: auto; font: inherit; }
+        .code-body code { font: inherit; background: none; padding: 0; color: var(--markon-fg-default, #1f2328); }
+
+        /* Syntax colours — server-side syntect emits `mk-` spans; these mirror
+           the code-block rules in editor.css (which are scoped to
+           `.markdown-body`, absent here) so the palette tracks the theme. */
+        .code-body code.mk-code .mk-comment { color: var(--markon-code-comment); font-style: italic; }
+        .code-body code.mk-code .mk-keyword,
+        .code-body code.mk-code .mk-storage  { color: var(--markon-code-keyword); }
+        .code-body code.mk-code .mk-string   { color: var(--markon-code-string); }
+        .code-body code.mk-code .mk-constant { color: var(--markon-code-constant); }
+        .code-body code.mk-code .mk-entity   { color: var(--markon-code-entity); }
+        .code-body code.mk-code .mk-support  { color: var(--markon-code-support); }
+        .code-body code.mk-code .mk-variable { color: var(--markon-code-variable); }
+    </style>
+</head>
+<body>
+    {% if show_back_link %}
+    <div class="fv-back"><a href="{{ back_link }}"><span data-i18n="web.back">← Back to workspace</span></a></div>
+    {% endif %}
+
+    <div class="fv-head">
+        <div class="fv-title">
+            <span class="fv-name">{{ file_name }}</span>
+            {% if rel_display != file_name %}<span class="fv-path">{{ rel_display }}</span>{% endif %}
+        </div>
+    </div>
+
+    <div class="code-view">
+        <pre class="code-gutter" aria-hidden="true">{{ gutter }}</pre>
+        <pre class="code-body"><code class="mk-code">{{ code_html | safe }}</code></pre>
+    </div>
+
+    {% include "i18n-boot.html" %}
+    {% if shortcuts_json %}<script>window.__MARKON_SHORTCUTS__ = {{ shortcuts_json | safe }};</script>{% endif %}
+    <script>
+        (function () {
+            var t = (window.__MARKON_I18N__ && window.__MARKON_I18N__.t) || function (k) { return k; };
+            document.querySelectorAll('[data-i18n]').forEach(function (el) {
+                el.textContent = t(el.getAttribute('data-i18n'));
+            });
+        })();
+    </script>
+    <script type="module" src="/_/js/page-shortcuts.js"></script>
+</body>
+</html>

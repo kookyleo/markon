@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { lineDiff, wordDiff, visibleBlockItems } from './diff-segments';
+import type { MarkdownDiffBlock } from './diff-segments';
 
 describe('lineDiff (line-level LCS)', () => {
     it('keeps unchanged lines aligned around a single changed line', () => {
@@ -58,8 +59,8 @@ describe('wordDiff (intra-line)', () => {
 
 describe('visibleBlockItems', () => {
     it('collapses unchanged runs beyond the context window into a gap', () => {
-        const blocks = Array.from({ length: 12 }, (_, i) => ({
-            kind: (i === 11 ? 'modified' : 'equal') as 'equal' | 'modified',
+        const blocks: MarkdownDiffBlock[] = Array.from({ length: 12 }, (_, i) => ({
+            kind: (i === 11 ? 'modified' : 'equal'),
         }));
         const items = visibleBlockItems(blocks);
         const gap = items.find((it) => it.kind === 'gap');

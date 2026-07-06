@@ -2,7 +2,9 @@
 // the raw diff views, so the two stay visually and behaviourally identical:
 // chevron · path · copy-path  |  +adds -dels + diffstat bars · Viewed · ⋯ menu.
 
-export type DiffFileHeaderOpts = {
+import { workspaceFileDeleteUrl, workspaceFileUrl } from './core/routes';
+
+export interface DiffFileHeaderOpts {
     path: string;
     oldPath?: string | null;
     status: string;
@@ -20,7 +22,7 @@ export type DiffFileHeaderOpts = {
     onToggleViewed: () => void;
     /** Called after the file is successfully deleted on disk. */
     onDeleted?: () => void;
-};
+}
 
 type MenuEl = HTMLElement & { __cleanup?: (() => void) | undefined };
 
@@ -34,12 +36,13 @@ export const topFileInScroller = (scrollEl: HTMLElement | null): string | null =
     let candidate: string | null = null;
     for (const section of sections) {
         if (section.getBoundingClientRect().top <= viewportTop + 4) {
-            candidate = section.dataset.filePath || candidate;
+            candidate = section.dataset['filePath'] || candidate;
         } else {
             break;
         }
     }
-    if (!candidate && sections.length) candidate = sections[0].dataset.filePath || null;
+    const firstSection = sections[0];
+    if (!candidate && firstSection) candidate = firstSection.dataset['filePath'] || null;
     return candidate;
 };
 
@@ -49,9 +52,9 @@ const stickyOffset = (sectionEl: HTMLElement): number => {
 };
 
 const lineSpan = (el: HTMLElement): { start: number; end: number } | null => {
-    const start = parseInt(el.dataset.line || '', 10);
+    const start = parseInt(el.dataset['line'] || '', 10);
     if (Number.isNaN(start)) return null;
-    const end = parseInt(el.dataset.lineEnd || '', 10);
+    const end = parseInt(el.dataset['lineEnd'] || '', 10);
     return { start, end: Number.isNaN(end) ? start : Math.max(start, end) };
 };
 
@@ -181,7 +184,7 @@ export const persistViewedSet = (dataUrl: string | null | undefined, set: Set<st
 };
 
 /** Whether "Viewed" files are shown (GitHub-style filter). Persisted per diff;
- *  defaults to true. When false, viewed files are hidden from the sidebar list
+ *  defaults to false. When false, viewed files are hidden from the sidebar list
  *  AND their sections are hidden in the content. */
 const showViewedStorageKey = (dataUrl?: string | null): string | null => {
     if (!dataUrl) return null;
@@ -195,11 +198,13 @@ const showViewedStorageKey = (dataUrl?: string | null): string | null => {
 
 export const loadShowViewed = (dataUrl?: string | null): boolean => {
     const key = showViewedStorageKey(dataUrl);
-    if (!key) return true;
+    if (!key) return false;
     try {
-        return window.localStorage.getItem(key) !== '0';
+        const raw = window.localStorage.getItem(key);
+        if (raw === null) return false;
+        return raw !== '0';
     } catch {
-        return true;
+        return false;
     }
 };
 
@@ -238,13 +243,13 @@ const headerDisplay = (path: string, oldPath?: string | null): string =>
     oldPath && oldPath !== path ? `${oldPath} -> ${path}` : path;
 
 const fileUrl = (path: string, edit: boolean, line?: number | null): string => {
-    const encoded = path.split('/').map(encodeURIComponent).join('/');
-    if (!edit) return `/${workspaceId()}/${encoded}`;
+    const base = workspaceFileUrl(workspaceId(), path);
+    if (!edit) return base;
     // `?edit=1` opens the normal file view's editor (main.ts), optionally jumping
     // to a 1-based line so editing a file from the diff lands where the reviewer
     // was looking instead of at the top.
     const lineQuery = line && line > 0 ? `&line=${line}` : '';
-    return `/${workspaceId()}/${encoded}?edit=1${lineQuery}`;
+    return `${base}?edit=1${lineQuery}`;
 };
 
 const openFile = (path: string, edit: boolean, line?: number | null): void => {
@@ -286,7 +291,7 @@ const deleteFile = async (path: string, onDeleted?: () => void): Promise<void> =
         return;
     }
     try {
-        const response = await fetch(`/_/${ws}/files/delete`, {
+        const response = await fetch(workspaceFileDeleteUrl(ws), {
             method: 'POST',
             headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
             body: JSON.stringify({ path }),
@@ -376,7 +381,7 @@ const buildMenu = (opts: DiffFileHeaderOpts): HTMLElement => {
 
     // "View file" now lives next to the copy-path button in the header; the menu
     // keeps the less-frequent Edit / Delete actions.
-    const items: Array<{ label: string; action: () => void; danger?: boolean }> = [
+    const items: { label: string; action: () => void; danger?: boolean }[] = [
         { label: 'Edit file', action: () => openFile(opts.path, true, currentEditLine(menu)) },
         { label: 'Delete file', action: () => void deleteFile(opts.path, opts.onDeleted), danger: true },
     ];

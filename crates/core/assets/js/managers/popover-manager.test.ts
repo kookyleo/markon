@@ -43,8 +43,15 @@ function rangeOver(textNode: Text, length: number): Range {
             toJSON() {
                 return this;
             },
-        }) as DOMRect;
+        });
     return range;
+}
+
+function itemAt<T>(items: ArrayLike<T>, index: number): T {
+    const item = items[index];
+    expect(item).toBeDefined();
+    if (item === undefined) throw new Error(`Missing item at index ${index}`);
+    return item;
 }
 
 describe('PopoverManager', () => {
@@ -87,8 +94,8 @@ describe('PopoverManager', () => {
         expect(popover!.style.left).toMatch(/px$/);
         expect(popover!.style.top).toMatch(/px$/);
         // dataset.originalLeft/Top are seeded for the draggable offset math.
-        expect(popover!.dataset.originalLeft).toBeDefined();
-        expect(popover!.dataset.originalTop).toBeDefined();
+        expect(popover!.dataset['originalLeft']).toBeDefined();
+        expect(popover!.dataset['originalTop']).toBeDefined();
     });
 
     it('hide() removes the popover from view and clears the selection', () => {
@@ -117,7 +124,7 @@ describe('PopoverManager', () => {
         orangeBtn!.click();
 
         expect(cb).toHaveBeenCalledTimes(1);
-        const [action, payload] = cb.mock.calls[0];
+        const [action, payload] = itemAt(cb.mock.calls, 0);
         expect(action).toBe('highlight-orange');
         expect(payload.selection).not.toBeNull();
         expect(payload.highlightedElement).toBeNull();
@@ -149,7 +156,7 @@ describe('PopoverManager', () => {
                 toJSON() {
                     return this;
                 },
-            }) as DOMRect;
+            });
 
         m.handleHighlightClick(span);
         const popover = document.querySelector('.selection-popover');
@@ -176,8 +183,8 @@ describe('PopoverManager', () => {
         m.show(rangeOver(textNode, 5));
 
         const popover = document.querySelector<HTMLElement>('.selection-popover')!;
-        const originalLeft = parseFloat(popover.dataset.originalLeft ?? '0');
-        const originalTop = parseFloat(popover.dataset.originalTop ?? '0');
+        const originalLeft = parseFloat(popover.dataset['originalLeft'] ?? '0');
+        const originalTop = parseFloat(popover.dataset['originalTop'] ?? '0');
         const left = parseFloat(popover.style.left);
         const top = parseFloat(popover.style.top);
         // Final position == original + saved offset (constrainToViewport is a noop here).

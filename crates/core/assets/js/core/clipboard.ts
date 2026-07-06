@@ -1,5 +1,5 @@
 /**
- * Clipboard helpers shared by the annotation export surfaces (toolbar wizard,
+ * Clipboard helpers shared by the notes export surfaces (export editor,
  * note-card quick copy, popover quick copy).
  */
 
@@ -21,6 +21,7 @@ export async function copyText(text: string): Promise<boolean> {
         ta.style.pointerEvents = 'none';
         document.body.appendChild(ta);
         ta.select();
+        // eslint-disable-next-line @typescript-eslint/no-deprecated -- Intentional clipboard fallback for non-secure contexts.
         const ok = document.execCommand('copy');
         ta.remove();
         return ok;
@@ -67,21 +68,21 @@ const CHECK_SVG =
  * resets the timer and always restores the true icon (never the check).
  */
 export function flashCopied(button: HTMLElement, ms = 1100): void {
-    if (button.dataset.copiedOriginal === undefined) {
-        button.dataset.copiedOriginal = button.innerHTML;
+    if (button.dataset['copiedOriginal'] === undefined) {
+        button.dataset['copiedOriginal'] = button.innerHTML;
     }
-    if (button.dataset.copiedTimer) {
-        window.clearTimeout(Number(button.dataset.copiedTimer));
+    if (button.dataset['copiedTimer']) {
+        window.clearTimeout(Number(button.dataset['copiedTimer']));
     }
     button.innerHTML = CHECK_SVG;
     button.classList.add('is-copied');
     const timer = window.setTimeout(() => {
-        button.innerHTML = button.dataset.copiedOriginal ?? '';
+        button.innerHTML = button.dataset['copiedOriginal'] ?? '';
         button.classList.remove('is-copied');
-        delete button.dataset.copiedOriginal;
-        delete button.dataset.copiedTimer;
+        delete button.dataset['copiedOriginal'];
+        delete button.dataset['copiedTimer'];
     }, ms);
-    button.dataset.copiedTimer = String(timer);
+    button.dataset['copiedTimer'] = String(timer);
 }
 
 /**
@@ -90,19 +91,19 @@ export function flashCopied(button: HTMLElement, ms = 1100): void {
  * call before the timer fires restores the true original, not the flashed text.
  */
 export function flashText(el: HTMLElement, message: string, ms = 1500): void {
-    if (el.dataset.flashOriginal === undefined) {
-        el.dataset.flashOriginal = el.textContent ?? '';
+    if (el.dataset['flashOriginal'] === undefined) {
+        el.dataset['flashOriginal'] = el.textContent ?? '';
     }
-    if (el.dataset.flashTimer) {
-        window.clearTimeout(Number(el.dataset.flashTimer));
+    if (el.dataset['flashTimer']) {
+        window.clearTimeout(Number(el.dataset['flashTimer']));
     }
     el.textContent = message;
     el.classList.add('is-flashing');
     const timer = window.setTimeout(() => {
-        el.textContent = el.dataset.flashOriginal ?? '';
+        el.textContent = el.dataset['flashOriginal'] ?? '';
         el.classList.remove('is-flashing');
-        delete el.dataset.flashOriginal;
-        delete el.dataset.flashTimer;
+        delete el.dataset['flashOriginal'];
+        delete el.dataset['flashTimer'];
     }, ms);
-    el.dataset.flashTimer = String(timer);
+    el.dataset['flashTimer'] = String(timer);
 }

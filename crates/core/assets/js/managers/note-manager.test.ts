@@ -32,6 +32,13 @@ function setupBody(html: string): HTMLElement {
     return root;
 }
 
+function itemAt<T>(items: ArrayLike<T>, index: number): T {
+    const item = items[index];
+    expect(item).toBeDefined();
+    if (item === undefined) throw new Error(`Missing item at index ${index}`);
+    return item;
+}
+
 describe('NoteManager', () => {
     let logSpy: ReturnType<typeof vi.spyOn>;
 
@@ -62,7 +69,7 @@ describe('NoteManager', () => {
         const cards = document.querySelectorAll('.note-card-margin');
         expect(cards.length).toBe(2);
         expect(mgr.getNoteCardsData()).toHaveLength(2);
-        expect(cards[0].getAttribute('data-annotation-id')).toBe('anno-1');
+        expect(itemAt(cards, 0).getAttribute('data-annotation-id')).toBe('anno-1');
     });
 
     it('marginCards:false tracks note data but mounts no gutter cards (diff popup mode)', () => {
@@ -187,7 +194,7 @@ describe('NoteManager', () => {
         mgr.showNotePopup(highlight, 'a');
         const popup = document.querySelector<HTMLElement>('.note-popup');
         expect(popup).not.toBeNull();
-        expect(popup!.dataset.annotationId).toBe('a');
+        expect(popup!.dataset['annotationId']).toBe('a');
         expect(popup!.style.position).toBe('absolute');
         expect(popup!.querySelector('.note-content')?.textContent).toBe('popup body');
     });
@@ -205,6 +212,6 @@ describe('NoteManager', () => {
         mgr.render();
         const cards = document.querySelectorAll('.note-card-margin');
         expect(cards.length).toBe(1);
-        expect(cards[0].getAttribute('data-annotation-id')).toBe('a');
+        expect(itemAt(cards, 0).getAttribute('data-annotation-id')).toBe('a');
     });
 });

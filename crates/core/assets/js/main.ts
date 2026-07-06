@@ -19,7 +19,7 @@ import { NoteManager } from './managers/note-manager';
 import { PopoverManager, type PopoverActionPayload } from './managers/popover-manager';
 import { UndoManager, type UndoOperation } from './managers/undo-manager';
 import { KeyboardShortcutsManager } from './managers/keyboard-shortcuts';
-import { SearchManager } from './managers/search-manager';
+import { WorkspaceSpotlight } from './components/workspace-spotlight';
 import { HighlightManager } from './managers/highlight-manager';
 import { EditorManager } from './managers/editor-manager';
 import { ExportManager } from './managers/export-manager';
@@ -54,7 +54,7 @@ export interface ManagerSnapshot {
     visualZoomManager: VisualZoomManager | null;
     undoManager: UndoManager | null;
     shortcutsManager: KeyboardShortcutsManager | null;
-    searchManager: SearchManager | null;
+    workspaceSpotlight: WorkspaceSpotlight | null;
     tocNavigator: TOCNavigator | null;
     annotationNavigator: AnnotationNavigator | null;
 }
@@ -72,7 +72,7 @@ export class MarkonApp {
     #visualZoomManager: VisualZoomManager | null = null;
     #undoManager: UndoManager | null = null;
     #shortcutsManager: KeyboardShortcutsManager | null = null;
-    #searchManager: SearchManager | null = null;
+    #workspaceSpotlight: WorkspaceSpotlight | null = null;
     #editorManager: EditorManager | null = null;
     #exportManager: ExportManager | null = null;
     #collaboration: CollaborationManager | null = null;
@@ -119,8 +119,9 @@ export class MarkonApp {
     /** Initialize application. */
     async init(): Promise<void> {
         // Always initialize search and keyboard shortcuts (they work without markdown body)
-        this.#initSearch();
         this.#initKeyboardShortcuts();
+        this.#initWorkspaceSpotlight();
+        this.#initSearchHighlights();
 
         if (!this.#markdownBody) {
             // Directory mode: setup keyboard event listeners and register shortcuts
@@ -189,7 +190,9 @@ export class MarkonApp {
                 await this.#wsManager.connect();
                 Logger.log('MarkonApp', 'WebSocket connected');
 
-                window.ws = this.#wsManager.getWebSocket() ?? undefined;
+                const ws = this.#wsManager.getWebSocket();
+                if (ws) window.ws = ws;
+                else delete window.ws;
 
                 if (window.viewedManager) {
                     if (this.#isSharedMode && !window.viewedManager.isSharedMode) {
@@ -248,6 +251,11 @@ export class MarkonApp {
         if (!this.#markdownBody || !this.#storage) return;
 
         this.#annotationManager = new AnnotationManager(this.#storage, this.#markdownBody);
+        this.#annotationManager.onChange(() => {
+            document.dispatchEvent(new CustomEvent('markon:notes-count-changed', {
+                detail: { count: this.notesCount() },
+            }));
+        });
 
         this.#noteManager = new NoteManager(this.#annotationManager, this.#markdownBody);
 
@@ -287,6 +295,9 @@ export class MarkonApp {
         if (!this.#annotationManager) return;
         await this.#annotationManager.load();
         Logger.log('MarkonApp', `Loaded ${this.#annotationManager.getAll().length} annotations`);
+        document.dispatchEvent(new CustomEvent('markon:notes-count-changed', {
+            detail: { count: this.notesCount() },
+        }));
     }
 
     /** Apply to DOM. @private */
@@ -375,6 +386,7 @@ export class MarkonApp {
 
                 for (let i = allHeadings.length - 1; i >= 0; i--) {
                     const h = allHeadings[i];
+                    if (!h) continue;
                     const hY = h.getBoundingClientRect().top + window.scrollY;
                     if (hY <= clickY) {
                         heading = h;
@@ -409,32 +421,32 @@ export class MarkonApp {
             shortcuts.showHelp();
         });
 
-        if (this.#searchManager) {
-            shortcuts.register('SEARCH', () => {
-                this.#searchManager?.toggle();
-            });
-        }
+        shortcuts.register('THEME_PANEL', () => {
+            window.MarkonTheme?.togglePanel();
+        });
 
         shortcuts.register('ESCAPE', () => {
             this.#handleEscapeKey();
         });
 
+        if (this.#workspaceSpotlight) {
+            shortcuts.register('SEARCH', () => {
+                this.#workspaceSpotlight?.toggle();
+            });
+            shortcuts.register('WORKSPACE_NAVIGATOR', () => {
+                this.#workspaceSpotlight?.toggle();
+            });
+        }
+
         // Directory / workspace landing page: no markdown body, so none of the
-        // document-view features below exist here. Notably `t` is owned by the
-        // go-to-file finder (its visible `T` keycap, wired in directory.ts) —
-        // registering THEME_PANEL on the same key would double-fire, so it's
-        // deliberately left out. The `?` panel then lists only Help / Escape
-        // (+ Search when enabled): exactly what this page can actually do.
+        // document-view features below exist here. The shared Workspace
+        // Spotlight shortcuts are registered above when a workspace id exists.
         if (!this.#markdownBody) {
             Logger.log('MarkonApp', 'Directory mode: minimal shortcuts registered');
             return;
         }
 
         // ── Document view only, below ────────────────────────────────────────
-        shortcuts.register('THEME_PANEL', () => {
-            window.MarkonTheme?.togglePanel();
-        });
-
         shortcuts.register('TOGGLE_TOC', () => {
             this.#toggleTOC();
         });
@@ -471,6 +483,10 @@ export class MarkonApp {
 
         shortcuts.register('SCROLL_HALF_PAGE_DOWN', () => {
             this.#smoothScrollBy(window.innerHeight / 3, 500);
+        });
+
+        shortcuts.register('EXPORT_NOTES', () => {
+            this.exportNotes();
         });
 
         if (Meta.flag(CONFIG.META_TAGS.ENABLE_VIEWED)) {
@@ -526,7 +542,7 @@ export class MarkonApp {
 
         if (action === 'unhighlight') {
             if (highlightedElement instanceof HTMLElement) {
-                const annotationId = highlightedElement.dataset.annotationId;
+                const annotationId = highlightedElement.dataset['annotationId'];
                 if (annotationId) {
                     await this.#applyDelete(annotationId, { pushUndo: true });
                 }
@@ -606,7 +622,7 @@ export class MarkonApp {
         if (options.pushUndo) {
             this.#undoManager?.push({
                 type: 'delete_annotation',
-                annotation: { id: annotationId } as Annotation,
+                annotation: { id: annotationId },
             });
         }
     }
@@ -624,6 +640,7 @@ export class MarkonApp {
 
             for (let i = 0; i < rects.length; i++) {
                 const rect = rects[i];
+                if (!rect) continue;
                 const overlay = document.createElement('div');
                 overlay.className = 'temp-selection-overlay';
                 overlay.style.position = 'absolute';
@@ -654,33 +671,35 @@ export class MarkonApp {
         ModalManager.showNoteInput({
             anchorElement,
             initialValue: annotation ? annotation.note ?? '' : '',
-            onSave: async (noteText: string) => {
-                const annotationManager = this.#annotationManager;
-                const noteManager = this.#noteManager;
-                const undoManager = this.#undoManager;
-                if (!annotationManager || !noteManager || !undoManager) return;
+            onSave: (noteText: string) => {
+                void (async () => {
+                    const annotationManager = this.#annotationManager;
+                    const noteManager = this.#noteManager;
+                    const undoManager = this.#undoManager;
+                    if (!annotationManager || !noteManager || !undoManager) return;
 
-                if (noteText) {
-                    if (annotation) {
-                        annotation.note = noteText;
-                        await annotationManager.add(annotation);
-                    } else {
-                        const newAnnotation = annotationManager.createAnnotation(
-                            selection,
-                            CONFIG.ANNOTATION_TYPES.HAS_NOTE as Annotation['type'],
-                            CONFIG.HTML_TAGS.HIGHLIGHT as Annotation['tagName'],
-                            noteText,
-                        );
-                        await this.#applyAdd(newAnnotation, { pushUndo: true });
+                    if (noteText) {
+                        if (annotation) {
+                            annotation.note = noteText;
+                            await annotationManager.add(annotation);
+                        } else {
+                            const newAnnotation = annotationManager.createAnnotation(
+                                selection,
+                                CONFIG.ANNOTATION_TYPES.HAS_NOTE as Annotation['type'],
+                                CONFIG.HTML_TAGS.HIGHLIGHT as Annotation['tagName'],
+                                noteText,
+                            );
+                            await this.#applyAdd(newAnnotation, { pushUndo: true });
+                        }
+
+                        noteManager.render();
+                    } else if (annotation) {
+                        await this.#applyDelete(annotation.id);
                     }
 
-                    noteManager.render();
-                } else if (annotation) {
-                    await this.#applyDelete(annotation.id);
-                }
-
-                cleanupOverlays();
-                window.getSelection()?.removeAllRanges();
+                    cleanupOverlays();
+                    window.getSelection()?.removeAllRanges();
+                })();
             },
             onCancel: () => {
                 cleanupOverlays();
@@ -774,7 +793,8 @@ export class MarkonApp {
 
     /** Setup note click handlers. @private */
     #setupNoteClickHandlers(): void {
-        document.body.addEventListener('click', async (e) => {
+        document.body.addEventListener('click', (e) => {
+            void (async () => {
             const target = e.target as HTMLElement | null;
             if (!target || !this.#annotationManager || !this.#noteManager || !this.#undoManager) return;
 
@@ -788,7 +808,7 @@ export class MarkonApp {
 
             // Quick-copy button (quote + note → clipboard)
             if (copyBtn) {
-                const annotationId = copyBtn.dataset.annotationId;
+                const annotationId = copyBtn.dataset['annotationId'];
                 if (annotationId) void this.copyAnnotation(annotationId, copyBtn);
                 e.stopPropagation();
                 return;
@@ -796,7 +816,7 @@ export class MarkonApp {
 
             // Edit button
             if (editBtn) {
-                const annotationId = editBtn.dataset.annotationId;
+                const annotationId = editBtn.dataset['annotationId'];
                 if (!annotationId) return;
                 const annotation = this.#annotationManager.getById(annotationId);
                 if (annotation) {
@@ -817,7 +837,7 @@ export class MarkonApp {
 
             // Delete button
             if (deleteBtn) {
-                const annotationId = deleteBtn.dataset.annotationId;
+                const annotationId = deleteBtn.dataset['annotationId'];
                 if (!annotationId) return;
                 showConfirmDialog(
                     'Delete this note?',
@@ -837,7 +857,7 @@ export class MarkonApp {
             // (bold/code/…), so resolve the owning .has-note via closest().
             const noteEl = target.closest<HTMLElement>('.has-note');
             if (noteEl) {
-                const annotationId = noteEl.dataset.annotationId;
+                const annotationId = noteEl.dataset['annotationId'];
                 if (!annotationId) return;
 
                 if (window.innerWidth > CONFIG.BREAKPOINTS.WIDE_SCREEN) {
@@ -864,12 +884,13 @@ export class MarkonApp {
             // the connector + source highlight light up too.
             const card = target.closest<HTMLElement>('.note-card-margin');
             if (card) {
-                const annotationId = card.dataset.annotationId;
+                const annotationId = card.dataset['annotationId'];
                 if (annotationId && window.innerWidth > CONFIG.BREAKPOINTS.WIDE_SCREEN) {
                     this.#noteManager.setActive(annotationId);
                 }
                 e.stopPropagation();
             }
+            })();
         });
     }
 
@@ -880,6 +901,16 @@ export class MarkonApp {
 
         if (!tocIcon || !tocContainer) return;
 
+        const tocPanel = tocContainer.querySelector<HTMLElement>('.toc');
+        const syncTocFrame = (): void => {
+            const isNarrowScreen = window.innerWidth <= CONFIG.BREAKPOINTS.WIDE_SCREEN;
+            const shouldUseFrame =
+                tocContainer.classList.contains('toc-nav-active') ||
+                (isNarrowScreen && tocContainer.classList.contains('active'));
+            tocContainer.classList.toggle('markon-modal-layer', shouldUseFrame);
+            tocPanel?.classList.toggle('markon-modal-frame', shouldUseFrame);
+        };
+
         // Mutual exclusion: collapse other floating layers before opening ToC.
         const toggleToc = (e: Event): void => {
             const willOpen = !tocContainer.classList.contains('active');
@@ -889,10 +920,13 @@ export class MarkonApp {
                 }
             }
             tocContainer.classList.toggle('active');
+            syncTocFrame();
             e.stopPropagation();
             e.preventDefault();
         };
 
+        syncTocFrame();
+        window.addEventListener('resize', syncTocFrame);
         tocIcon.addEventListener('click', toggleToc);
         tocIcon.addEventListener('touchend', toggleToc);
 
@@ -901,6 +935,7 @@ export class MarkonApp {
             const target = e.target as Node | null;
             if (tocContainer.classList.contains('active') && target && !tocContainer.contains(target)) {
                 tocContainer.classList.remove('active');
+                syncTocFrame();
             }
         };
 
@@ -922,7 +957,10 @@ export class MarkonApp {
                 const r = (target as HTMLElement).getBoundingClientRect();
                 return r.width === 0 || r.height === 0 ? null : r;
             },
-            collapseExpanded: () => tocContainer.classList.remove('active'),
+            collapseExpanded: () => {
+                tocContainer.classList.remove('active');
+                syncTocFrame();
+            },
         });
         tocLayer.init();
     }
@@ -992,7 +1030,7 @@ export class MarkonApp {
      * Cancellable smooth scroll.
      * @private
      */
-    #smoothScrollBy(distance: number, duration: number = 800): void {
+    #smoothScrollBy(distance: number, duration = 800): void {
         if (this.#scrollAnimationId) {
             cancelAnimationFrame(this.#scrollAnimationId);
             this.#scrollAnimationId = null;
@@ -1051,6 +1089,11 @@ export class MarkonApp {
             return;
         }
 
+        if (this.#workspaceSpotlight?.isOpen()) {
+            this.#workspaceSpotlight.close();
+            return;
+        }
+
         // Close the expanded Live panel if it's open.
         const liveContainer = document.getElementById('markon-live-container');
         if (liveContainer && liveContainer.classList.contains('expanded')) {
@@ -1062,6 +1105,8 @@ export class MarkonApp {
         const tocContainer = document.querySelector(CONFIG.SELECTORS.TOC_CONTAINER);
         if (tocContainer && tocContainer.classList.contains('active')) {
             tocContainer.classList.remove('active');
+            tocContainer.classList.remove('markon-modal-layer');
+            tocContainer.querySelector('.toc')?.classList.remove('markon-modal-frame');
             return;
         }
 
@@ -1087,6 +1132,8 @@ export class MarkonApp {
             this.#tocNavigator?.deactivate();
             if (isNarrowScreen) {
                 tocContainer.classList.remove('active');
+                tocContainer.classList.remove('markon-modal-layer');
+                tocContainer.querySelector('.toc')?.classList.remove('markon-modal-frame');
             }
         } else {
             if (isNarrowScreen && !tocVisible) {
@@ -1115,7 +1162,7 @@ export class MarkonApp {
      * @private
      */
     async #replayOperation(operation: UndoOperation, invert: boolean): Promise<void> {
-        const annotation = operation.annotation as Annotation;
+        const annotation = operation['annotation'] as Annotation;
 
         switch (operation.type) {
             case 'add_annotation':
@@ -1138,6 +1185,7 @@ export class MarkonApp {
 
         for (let i = headingIndex - 1; i >= 0; i--) {
             const prevHeading = allHeadings[i];
+            if (!prevHeading) continue;
             const prevLevel = parseInt(prevHeading.tagName.substring(1));
 
             if (prevLevel < currentLevel) {
@@ -1206,14 +1254,14 @@ export class MarkonApp {
     /** Toggle current section's collapse state. @private */
     #toggleCurrentSectionCollapse(): void {
         const focusedHeading = document.querySelector<HTMLElement>('.heading-focused');
-        if (!focusedHeading || !focusedHeading.id) return;
+        if (!focusedHeading?.id) return;
 
         this.#toggleSectionCollapse(focusedHeading);
     }
 
     /** Toggle the given heading's section collapse state. @private */
     #toggleSectionCollapse(heading: HTMLElement | null): void {
-        if (!heading || !heading.id) return;
+        if (!heading?.id) return;
 
         if (!window.viewedManager) return;
 
@@ -1291,15 +1339,10 @@ export class MarkonApp {
     }
 
     /**
-     * Copy every annotation on the current page to the clipboard as Markdown
-     * suitable for pasting into an AI tool. Briefly flips the trigger link's
-     * label to confirm the action.
+     * Open the notes export editor. When the page has no notes, flash an inline
+     * hint on the toolbar link instead.
      */
-    /**
-     * Open the annotation export wizard (selection → Markdown editor). When the
-     * page has no annotations, flash an inline hint on the toolbar link instead.
-     */
-    exportAnnotations(anchor?: HTMLElement | null): void {
+    exportNotes(anchor?: HTMLElement | null): void {
         const annotationManager = this.#annotationManager;
         if (!annotationManager) return;
         if (!this.#exportManager) {
@@ -1321,6 +1364,12 @@ export class MarkonApp {
         }
     }
 
+    notesCount(): number {
+        return this.#annotationManager?.getAll()
+            .filter(a => !!a.note && a.note.trim() !== '')
+            .length ?? 0;
+    }
+
     /**
      * Copy a single annotation (quote + note) to the clipboard as Markdown.
      * Backs the per-annotation quick-copy buttons on note cards and the
@@ -1339,14 +1388,27 @@ export class MarkonApp {
         }
     }
 
-    /** Initialize search. @private */
-    #initSearch(): void {
-        if (this.#enableSearch) {
-            this.#searchManager = new SearchManager();
-            window.searchManager = this.#searchManager;
-            Logger.log('MarkonApp', 'SearchManager initialized');
+    /** Initialize workspace-wide Spotlight search/navigation. @private */
+    #initWorkspaceSpotlight(): void {
+        const workspaceId = Meta.get(CONFIG.META_TAGS.WORKSPACE_ID);
+        if (!workspaceId) {
+            document.querySelectorAll<HTMLElement>('[data-workspace-spotlight-trigger]').forEach((trigger) => {
+                trigger.hidden = true;
+            });
+            return;
         }
+        this.#workspaceSpotlight = new WorkspaceSpotlight({
+            workspaceId,
+            currentPath: this.#filePath,
+            enableContentSearch: this.#enableSearch,
+        });
+        this.#workspaceSpotlight.bindTriggers();
+        window.workspaceSpotlight = this.#workspaceSpotlight;
+        Logger.log('MarkonApp', 'WorkspaceSpotlight initialized');
+    }
 
+    /** Initialize URL highlight handling for document pages. @private */
+    #initSearchHighlights(): void {
         if (this.#markdownBody) {
             new HighlightManager();
             Logger.log('MarkonApp', 'HighlightManager initialized');
@@ -1400,7 +1462,7 @@ export class MarkonApp {
             visualZoomManager: this.#visualZoomManager,
             undoManager: this.#undoManager,
             shortcutsManager: this.#shortcutsManager,
-            searchManager: this.#searchManager,
+            workspaceSpotlight: this.#workspaceSpotlight,
             tocNavigator: this.#tocNavigator,
             annotationNavigator: this.#annotationNavigator,
         };
@@ -1420,10 +1482,14 @@ window.clearPageAnnotations = function (event?: Event): void {
     }
 };
 
-window.markonExportAnnotations = function (anchor?: HTMLElement | null): void {
+window.markonExportNotes = function (anchor?: HTMLElement | null): void {
     if (window.markonApp) {
-        void window.markonApp.exportAnnotations(anchor ?? null);
+        window.markonApp.exportNotes(anchor ?? null);
     }
+};
+
+window.markonNotesCount = function (): number {
+    return window.markonApp?.notesCount() ?? 0;
 };
 
 // Dev-only auto-reload: esbuild watcher pings /_/dev/reload-trigger after each
@@ -1492,10 +1558,14 @@ document.addEventListener('DOMContentLoaded', () => {
     // miss them.
     void app.init().then(() => {
         const managers = app.getManagers();
-        window.undoManager = managers.undoManager ?? undefined;
-        window.tocNavigator = managers.tocNavigator ?? undefined;
-        window.annotationNavigator = managers.annotationNavigator ?? undefined;
-        window.shortcutsManager = managers.shortcutsManager ?? undefined;
+        if (managers.undoManager) window.undoManager = managers.undoManager;
+        else delete window.undoManager;
+        if (managers.tocNavigator) window.tocNavigator = managers.tocNavigator;
+        else delete window.tocNavigator;
+        if (managers.annotationNavigator) window.annotationNavigator = managers.annotationNavigator;
+        else delete window.annotationNavigator;
+        if (managers.shortcutsManager) window.shortcutsManager = managers.shortcutsManager;
+        else delete window.shortcutsManager;
         Logger.log('MarkonApp', 'Application started successfully');
         // Deep-link into edit mode (e.g. from the diff file menu's "Edit file"),
         // optionally jumping to a 1-based line so editing from the diff lands

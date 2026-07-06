@@ -14,7 +14,7 @@ export type Debounced<F extends AnyFn> = ((...args: Parameters<F>) => void) & {
 // Platform detection
 export class PlatformUtils {
     static isMac(): boolean {
-        return navigator.platform.toUpperCase().indexOf('MAC') >= 0;
+        return navigator.platform.toUpperCase().includes('MAC');
     }
 
     static isNarrowScreen(): boolean {

@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import {
     ChatManager,
     escapeHtml,
@@ -12,6 +12,13 @@ import {
     type ServerMessage,
 } from './chat-manager';
 import { FloatingLayer } from '../components/floating-layer';
+
+function itemAt<T>(items: ArrayLike<T>, index: number): T {
+    const item = items[index];
+    expect(item).toBeDefined();
+    if (item === undefined) throw new Error(`Missing item at index ${index}`);
+    return item;
+}
 
 // ────────────────────────────────────────────────────────────────────────────
 // Pure helper functions — bulk of the coverage. No DOM needed.
@@ -226,7 +233,7 @@ describe('ChatManager — pure helpers', () => {
             const m: ServerMessage = {
                 seq: 1,
                 role: 'assistant',
-                content: 'plain reply' as unknown as MessageBlock['blocks'],
+                content: 'plain reply',
             };
             const out = hydrateMessage(m);
             expect(out.blocks).toEqual([{ type: 'text', text: 'plain reply' }]);
@@ -334,13 +341,13 @@ describe('ChatManager — SSE event handling', () => {
         // The original empty-text block stays at index 0; tool_use at 1; tool_result at 2.
         expect(msg.blocks).toHaveLength(3);
         const tool = msg.blocks[1];
-        expect(tool && tool.type).toBe('tool_use');
+        expect(tool?.type).toBe('tool_use');
         if (tool && tool.type === 'tool_use') {
             expect(tool.name).toBe('read_file');
             expect(tool.input).toEqual({ path: 'a.md' });
         }
         const result = msg.blocks[2];
-        expect(result && result.type).toBe('tool_result');
+        expect(result?.type).toBe('tool_result');
         if (result && result.type === 'tool_result') {
             expect(result.content).toBe('file contents');
             expect(result.is_error).toBe(false);
@@ -537,6 +544,71 @@ describe('ChatManager — header markup invariants', () => {
     });
 });
 
+describe('ChatManager — input focus on open', () => {
+    let animateDescriptor: PropertyDescriptor | undefined;
+
+    const tick = (): Promise<void> => new Promise((resolve) => setTimeout(resolve, 0));
+
+    beforeEach(() => {
+        FloatingLayer.get('chat')?.destroy();
+        animateDescriptor = Object.getOwnPropertyDescriptor(HTMLElement.prototype, 'animate');
+        Object.defineProperty(HTMLElement.prototype, 'animate', {
+            configurable: true,
+            writable: true,
+            value: vi.fn(() => {
+                const animation = {
+                    cancel: vi.fn(),
+                    commitStyles: vi.fn(),
+                    onfinish: null as ((event: Event) => void) | null,
+                };
+                setTimeout(() => animation.onfinish?.(new Event('finish')), 0);
+                return animation;
+            }),
+        });
+        if (typeof globalThis.ResizeObserver === 'undefined') {
+            vi.stubGlobal('ResizeObserver', class {
+                observe(): void { /* noop */ }
+                unobserve(): void { /* noop */ }
+                disconnect(): void { /* noop */ }
+            });
+        }
+        vi.stubGlobal('fetch', vi.fn(async () => ({
+            ok: true,
+            json: async () => [],
+        })));
+        document.head.innerHTML = `
+            <meta name="workspace-id" content="ws-test">
+            <meta name="enable-chat" content="true">
+        `;
+        document.body.innerHTML = '';
+        localStorage.clear();
+    });
+
+    afterEach(() => {
+        FloatingLayer.get('chat')?.destroy();
+        if (animateDescriptor) {
+            Object.defineProperty(HTMLElement.prototype, 'animate', animateDescriptor);
+        } else {
+            delete (HTMLElement.prototype as unknown as { animate?: unknown }).animate;
+        }
+        vi.unstubAllGlobals();
+        vi.restoreAllMocks();
+    });
+
+    it('focuses the textarea after the sphere expands the panel', async () => {
+        const mgr = new ChatManager(null);
+        mgr.init();
+
+        document.querySelector<HTMLElement>('.markon-chat-face')?.click();
+        await tick();
+        await tick();
+        await tick();
+
+        const textarea = document.querySelector<HTMLTextAreaElement>('.markon-chat-input');
+        expect(document.activeElement).toBe(textarea);
+    });
+});
+
 describe('ChatManager — destroy()', () => {
     beforeEach(() => {
         // Earlier `describe` blocks may have left a 'chat' FloatingLayer in
@@ -644,8 +716,8 @@ describe('ChatManager — edit_pending pending-edit flow', () => {
         expect(msg.blocks).toHaveLength(3);
         const first = msg.blocks[1];
         const second = msg.blocks[2];
-        expect(first && first.type).toBe('edit_pending');
-        expect(second && second.type).toBe('edit_pending');
+        expect(first?.type).toBe('edit_pending');
+        expect(second?.type).toBe('edit_pending');
         if (first && first.type === 'edit_pending') {
             expect(first.edit_id).toBe('edit-aaa');
             expect(first.status).toBe('pending');
@@ -679,7 +751,7 @@ describe('ChatManager — edit_pending pending-edit flow', () => {
         await mgr._testResolveHeadEdit('apply');
 
         expect(fetchSpy).toHaveBeenCalledOnce();
-        const [url, init] = fetchSpy.mock.calls[0];
+        const [url, init] = itemAt(fetchSpy.mock.calls, 0);
         expect(String(url)).toBe('/api/chat/ws-test/edits/edit-aaa/apply');
         expect(init?.method).toBe('POST');
         const card = msg.blocks[1];
@@ -752,7 +824,7 @@ describe('ChatManager — edit_pending pending-edit flow', () => {
             .mockResolvedValue(new Response(JSON.stringify({ status: 'reverted' }), { status: 200 }));
         await mgr._testUndoAppliedEdit('edit-aaa');
         expect(undoSpy).toHaveBeenCalledOnce();
-        const [url, init] = undoSpy.mock.calls[0];
+        const [url, init] = itemAt(undoSpy.mock.calls, 0);
         expect(String(url)).toBe('/api/chat/ws-test/edits/undo');
         expect(init?.method).toBe('POST');
         const body = JSON.parse(String(init?.body));

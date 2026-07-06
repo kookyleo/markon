@@ -331,6 +331,18 @@ fn highlight_code_to_classed_html(syntax: &SyntaxReference, ss: &SyntaxSet, code
     generator.finalize()
 }
 
+/// Highlight a whole source file to class-based HTML — the same `mk-` classes
+/// and `--markon-code-*` design tokens used for fenced code blocks, so a file
+/// preview inherits the identical (theme-switchable) palette. `token` is a
+/// language hint (typically the file extension, e.g. `"rs"`, or the file name
+/// for extension-less files like `"Dockerfile"`); unknown tokens fall back to
+/// escaped plain text.
+pub(crate) fn highlight_source_file(token: &str, code: &str) -> String {
+    let ss: &SyntaxSet = &SYNTAX_SET;
+    let syntax = resolve_syntax(ss, token);
+    highlight_code_to_classed_html(syntax, ss, code)
+}
+
 pub(crate) struct MarkdownRenderer;
 
 impl MarkdownRenderer {
@@ -766,6 +778,11 @@ impl MarkdownRenderer {
                 out.push_str("</del>");
             }
             SupramarkNode::Code { value, lang, .. } => {
+                if let Some(engine) = code_fence_diagram_engine(lang.as_deref()) {
+                    self.render_diagram(engine, value, out);
+                    return;
+                }
+
                 let syntax = resolve_syntax(&SYNTAX_SET, lang.as_deref().unwrap_or(""));
                 let inner = highlight_code_to_classed_html(syntax, &SYNTAX_SET, value);
                 out.push_str("<pre><code class=\"mk-code\">");
@@ -1212,6 +1229,30 @@ fn diagram_engine_class_suffix(engine: &str) -> String {
         "unknown".to_string()
     } else {
         trimmed.to_string()
+    }
+}
+
+fn code_fence_diagram_engine(lang: Option<&str>) -> Option<&'static str> {
+    let token = lang?
+        .trim()
+        .split(char::is_whitespace)
+        .find(|part| !part.is_empty())?
+        .to_ascii_lowercase();
+
+    match token.as_str() {
+        "mermaid" | "mmd" => Some("mermaid"),
+        "plantuml" | "puml" => Some("plantuml"),
+        "d2" => Some("d2"),
+        "dot" => Some("dot"),
+        "graphviz" => Some("graphviz"),
+        "vega-lite" | "vegalite" => Some("vega-lite"),
+        "vega" => Some("vega"),
+        "echarts" => Some("echarts"),
+        "chart" => Some("chart"),
+        "chartjs" => Some("chartjs"),
+        "chart.js" => Some("chart.js"),
+        "plotly" => Some("plotly"),
+        _ => None,
     }
 }
 
@@ -1859,6 +1900,11 @@ mod assets_tests {
             "html: {}",
             output.html
         );
+        assert!(
+            output.html.contains("data-diagram-engine=\"vega-lite\""),
+            "html: {}",
+            output.html
+        );
         assert!(output.html.contains("<svg"), "html: {}", output.html);
         assert!(
             !output.html.contains("Unsupported diagram engine"),
@@ -1887,6 +1933,11 @@ mod assets_tests {
             output
                 .html
                 .contains("class=\"markon-diagram markon-diagram-echarts\""),
+            "html: {}",
+            output.html
+        );
+        assert!(
+            output.html.contains("data-diagram-engine=\"echarts\""),
             "html: {}",
             output.html
         );
@@ -1923,6 +1974,11 @@ mod assets_tests {
             "html: {}",
             output.html
         );
+        assert!(
+            output.html.contains("data-diagram-engine=\"chartjs\""),
+            "html: {}",
+            output.html
+        );
         assert!(output.html.contains("<svg"), "html: {}", output.html);
         assert!(
             !output.html.contains("Unsupported diagram engine"),
@@ -1939,6 +1995,35 @@ mod assets_tests {
                 "graphviz",
                 "```graphviz\ndigraph Alias { A -> B; }\n```\n".to_string(),
             ),
+            (
+                "dot",
+                "```dot\ndigraph Alias { A -> B; }\n```\n".to_string(),
+            ),
+        ];
+
+        for (engine, source) in cases {
+            let output = super::MarkdownEngine::render(&renderer, &source);
+            assert!(!output.has_mermaid);
+            assert!(
+                output
+                    .html
+                    .contains(&format!("data-diagram-engine=\"{engine}\"")),
+                "engine {engine} html: {}",
+                output.html
+            );
+            assert!(output.html.contains("<svg"), "html: {}", output.html);
+            assert!(
+                !output.html.contains("Unsupported diagram engine"),
+                "engine {engine} html: {}",
+                output.html
+            );
+        }
+    }
+
+    #[test]
+    fn supramark_renderer_renders_chart_aliases() {
+        let renderer = MarkdownRenderer::new("light");
+        let cases = [
             (
                 "vega",
                 r#"```vega
@@ -1963,6 +2048,20 @@ mod assets_tests {
   "encoding": {
     "x": {"field": "item", "type": "nominal"},
     "y": {"field": "score", "type": "quantitative"}
+  }
+}
+```
+"#
+                .to_string(),
+            ),
+            (
+                "chartjs",
+                r#"```chartjs
+{
+  "type": "line",
+  "data": {
+    "labels": ["Draft", "Review"],
+    "datasets": [{"label": "Readiness", "data": [72, 91]}]
   }
 }
 ```
@@ -1995,7 +2094,11 @@ mod assets_tests {
                 "engine {engine} html: {}",
                 output.html
             );
-            assert!(output.html.contains("<svg"), "html: {}", output.html);
+            assert!(
+                output.html.contains("<svg"),
+                "engine {engine} html: {}",
+                output.html
+            );
             assert!(
                 !output.html.contains("Unsupported diagram engine"),
                 "engine {engine} html: {}",
@@ -2007,7 +2110,33 @@ mod assets_tests {
     #[test]
     fn supramark_renderer_labels_unsupported_diagram_fallback() {
         let renderer = MarkdownRenderer::new("light");
-        let output = super::MarkdownEngine::render(&renderer, "```plotly\n{}\n```\n");
+        let output = super::MarkdownEngine::render(&renderer, "```echarts\n{}\n```\n");
+
+        assert!(!output.has_mermaid);
+        assert!(
+            output.html.contains("class=\"markon-source-fallback\""),
+            "html: {}",
+            output.html
+        );
+        assert!(
+            output.html.contains("Diagram render failed"),
+            "html: {}",
+            output.html
+        );
+        assert!(
+            output.html.contains("data-fallback-name=\"echarts\""),
+            "html: {}",
+            output.html
+        );
+    }
+
+    #[test]
+    fn supramark_renderer_labels_unsupported_diagram_code_fence() {
+        let renderer = MarkdownRenderer::new("light");
+        let output = super::MarkdownEngine::render(
+            &renderer,
+            "```plotly\n{\"data\":[{\"type\":\"bar\",\"x\":[\"A\"],\"y\":[1]}]}\n```\n",
+        );
 
         assert!(!output.has_mermaid);
         assert!(
@@ -2022,6 +2151,30 @@ mod assets_tests {
         );
         assert!(
             output.html.contains("data-fallback-name=\"plotly\""),
+            "html: {}",
+            output.html
+        );
+        assert!(
+            output.html.contains("Showing source"),
+            "html: {}",
+            output.html
+        );
+    }
+
+    #[test]
+    fn supramark_renderer_keeps_plain_code_fences_as_code() {
+        let renderer = MarkdownRenderer::new("light");
+        let output = super::MarkdownEngine::render(&renderer, "```json\n{\"ok\":true}\n```\n");
+
+        assert!(!output.has_mermaid);
+        assert!(output.html.contains("<pre><code"), "html: {}", output.html);
+        assert!(
+            !output.html.contains("markon-source-fallback"),
+            "html: {}",
+            output.html
+        );
+        assert!(
+            !output.html.contains("data-diagram-engine"),
             "html: {}",
             output.html
         );

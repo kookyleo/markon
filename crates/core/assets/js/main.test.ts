@@ -25,6 +25,13 @@ function seedMarkdownBody(): HTMLElement {
     return body;
 }
 
+async function flush(): Promise<void> {
+    await Promise.resolve();
+    await Promise.resolve();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    await Promise.resolve();
+}
+
 function silenceLogs(): { restore: () => void } {
     const log = vi.spyOn(console, 'log').mockImplementation(() => {});
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
@@ -36,6 +43,13 @@ function silenceLogs(): { restore: () => void } {
             error.mockRestore();
         },
     };
+}
+
+function itemAt<T>(items: ArrayLike<T>, index: number): T {
+    const item = items[index];
+    expect(item).toBeDefined();
+    if (item === undefined) throw new Error(`Missing item at index ${index}`);
+    return item;
 }
 
 class MockWS {
@@ -81,10 +95,11 @@ describe('MarkonApp', () => {
         ({ restore } = silenceLogs());
         // Wipe globals between tests.
         delete (window as { markonApp?: unknown }).markonApp;
-        delete (window as { searchManager?: unknown }).searchManager;
+        delete (window as { workspaceSpotlight?: unknown }).workspaceSpotlight;
         delete (window as { editorManager?: unknown }).editorManager;
         delete (window as { chatManager?: unknown }).chatManager;
         delete (window as { visualZoomManager?: unknown }).visualZoomManager;
+        delete (window as { MarkonTheme?: unknown }).MarkonTheme;
         delete (window as { __MARKON_I18N__?: unknown }).__MARKON_I18N__;
     });
 
@@ -108,6 +123,17 @@ describe('MarkonApp', () => {
         expect(m.tocNavigator).toBeNull();
         expect(m.annotationNavigator).toBeNull();
         expect(m.storage).toBeNull();
+    });
+
+    it('directory mode keeps truly global shortcuts such as Theme available', async () => {
+        const togglePanel = vi.fn();
+        (window as { MarkonTheme?: { togglePanel: () => void } }).MarkonTheme = { togglePanel };
+
+        const app = new MarkonApp({ filePath: 'docs/' });
+        await app.init();
+
+        expect(app.getManagers().shortcutsManager?.run('THEME_PANEL')).toBe(true);
+        expect(togglePanel).toHaveBeenCalledTimes(1);
     });
 
     it('document mode produces a populated manager snapshot', async () => {
@@ -145,22 +171,51 @@ describe('MarkonApp', () => {
         expect(m.visualZoomManager).toBeNull();
     });
 
-    it('enableSearch=false leaves searchManager null and skips window mount', async () => {
+    it('missing workspace id leaves WorkspaceSpotlight null and hides its triggers', async () => {
         seedMarkdownBody();
-        const app = new MarkonApp({ filePath: 'docs/x.md', enableSearch: false });
+        const trigger = document.createElement('button');
+        trigger.setAttribute('data-workspace-spotlight-trigger', '');
+        document.body.appendChild(trigger);
+        const app = new MarkonApp({ filePath: 'docs/x.md', enableSearch: true });
         await app.init();
 
-        expect(app.getManagers().searchManager).toBeNull();
-        expect(window.searchManager).toBeUndefined();
+        expect(app.getManagers().workspaceSpotlight).toBeNull();
+        expect(window.workspaceSpotlight).toBeUndefined();
+        expect(trigger.hidden).toBe(true);
     });
 
-    it('enableSearch=true creates SearchManager and mounts on window', async () => {
+    it('workspace id creates WorkspaceSpotlight and mounts it on window', async () => {
+        seedMeta('workspace-id', 'ws1');
         seedMarkdownBody();
         const app = new MarkonApp({ filePath: 'docs/x.md', enableSearch: true });
         await app.init();
 
-        expect(app.getManagers().searchManager).not.toBeNull();
-        expect(window.searchManager).toBeDefined();
+        expect(app.getManagers().workspaceSpotlight).not.toBeNull();
+        expect(window.workspaceSpotlight).toBeDefined();
+    });
+
+    it('workspace document navigator opens from the document-page trigger', async () => {
+        seedMeta('workspace-id', 'ws1');
+        seedMarkdownBody();
+        const trigger = document.createElement('button');
+        trigger.type = 'button';
+        trigger.setAttribute('data-workspace-spotlight-trigger', '');
+        document.body.appendChild(trigger);
+        vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
+            ok: true,
+            json: () => Promise.resolve([
+                { path: 'README.md', name: 'README.md', url: '/ws1/README.md', is_markdown: true },
+            ]),
+        }));
+
+        const app = new MarkonApp({ filePath: 'README.md' });
+        await app.init();
+        trigger.click();
+        await flush();
+
+        expect(fetch).toHaveBeenCalledWith('/_/ws1/files/data', { credentials: 'same-origin' });
+        expect(document.querySelector('.workspace-spotlight-overlay.is-open')).not.toBeNull();
+        expect(document.body.textContent).toContain('README.md');
     });
 
     it('public mirrors expose enableLive and ws', () => {
@@ -191,7 +246,7 @@ describe('MarkonApp', () => {
             enableLive: true,
         });
         await app.init();
-        const ws = MockWS.instances[0];
+        const ws = itemAt(MockWS.instances, 0);
 
         ws.dispatchMessage({ type: 'file_changed', workspace_id: 'other', path: 'spec.md' });
         expect(reload).not.toHaveBeenCalled();

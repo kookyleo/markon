@@ -25,8 +25,9 @@
  *                                       shortcuts help, editor modal.
  *   --markon-z-chrome-toolbar   (10001) One tier above chrome — the floating
  *                                       selection toolbar so it clears spheres.
- *   --markon-z-chrome-top       (10010) Topmost: autocomplete popups, drag
- *                                       previews — must never be obscured.
+ *   --markon-z-chrome-top       (10010) Autocomplete popups and drag previews.
+ *   --markon-z-modal-layer      (10020) Topmost modal layers; business chrome
+ *                                       must not cover these.
  *
  * Note: values 2 and 1 are reused for different *semantic* tiers in some
  * inline contexts (e.g. layout.html stacks article / toc / footer inside the
@@ -45,6 +46,7 @@
     --markon-z-chrome: 10000;
     --markon-z-chrome-toolbar: 10001;
     --markon-z-chrome-top: 10010;
+    --markon-z-modal-layer: 10020;
 }
 
 /* ============================================================
@@ -83,7 +85,6 @@
     --markon-success-emphasis-hover: #2ea043;
     --markon-warning:       #bf8700; /* attention/pending fg */
     --markon-warning-hover: #9a6700;
-    --markon-scrim:         rgba(0, 0, 0, 0.5); /* dim backdrop behind a modal */
 
     /* ── Chat edit-flow (chat.css pending-edit card / bar) ───
        --markon-{mono,chat-bg,chat-text-muted} used to be undefined and
@@ -158,7 +159,7 @@
 
     /* ── Overlay top bars ──────────────────────────────────── */
     /* One fixed height + horizontal inset for every full-screen overlay's top
-       bar (export wizard, source editor, search …) so they all match and their
+       bar (export editor, source editor, search …) so they all match and their
        controls sit vertically centred. The skirt is breathing room applied to
        the *content region's* top — never to the bar's own padding, which would
        push the bar controls off-centre. */
@@ -169,6 +170,18 @@
     /* ── Elevation (floating surfaces) ─────────────────────── */
     --markon-shadow-pop:   0 2px 8px rgba(0, 0, 0, 0.12);   /* popovers, dialogs, mobile note */
     --markon-shadow-modal: 0 8px 24px rgba(0, 0, 0, 0.14);  /* full modals */
+
+    /* ── Modal frame component ───────────────────────────────
+       Shared shell for floating popups. The outer rim is translucent; the
+       inner surface is opaque. Component-specific accent colors belong on
+       --markon-modal-surface-border, not the outer rim. */
+    --markon-modal-frame-inset: 6px;
+    --markon-modal-frame-radius: calc(var(--markon-radius-lg) + var(--markon-modal-frame-inset));
+    --markon-modal-border-neutral: color-mix(in srgb, var(--markon-border-emphasis) 86%, var(--markon-bg-overlay));
+    --markon-modal-border-accent: color-mix(in srgb, var(--markon-accent) 18%, var(--markon-modal-border-neutral));
+    --markon-modal-border-success: color-mix(in srgb, var(--markon-success) 22%, var(--markon-modal-border-neutral));
+    --markon-modal-border-danger: color-mix(in srgb, var(--markon-danger) 22%, var(--markon-modal-border-neutral));
+    --markon-modal-surface-border: var(--markon-modal-border-neutral);
 
     /* ── On the dark overlay surface (--markon-overlay-dark, dark in both
           themes): chrome grays that must read against a dark fill. ──────── */
@@ -223,6 +236,104 @@
     --mk-editor-syn-quote:        #1a7f37;
     --mk-editor-syn-list:         #8250df;
     --mk-editor-syn-hr:           #57606a;
+}
+
+/* ── Shared modal frame component ─────────────────────────────
+   Use `.markon-modal-frame` on popups that can use the pseudo-element inner
+   surface. Use `.markon-modal-frame-shell` with `.markon-modal-surface` when
+   the popup already owns a dedicated content/body element. */
+.markon-modal-backdrop {
+    background: transparent;
+}
+
+.markon-modal-layer.markon-modal-layer,
+.markon-modal-frame.markon-modal-frame,
+.markon-modal-frame-shell.markon-modal-frame-shell,
+.markon-chat-container.expanded.markon-chat-container.expanded,
+.markon-live-container.expanded.markon-live-container.expanded {
+    z-index: var(--markon-z-modal-layer);
+}
+
+:where(.markon-modal-frame, .markon-modal-frame-shell),
+.toc.markon-modal-frame,
+.markon-chat-container.expanded,
+.markon-live-container.expanded {
+    position: relative;
+    padding: var(--markon-modal-frame-inset);
+    border: 1px solid color-mix(in srgb, var(--markon-fg-on-emphasis) 52%, transparent);
+    border-radius: var(--markon-modal-frame-radius);
+    background:
+        linear-gradient(
+            135deg,
+            color-mix(in srgb, var(--markon-fg-on-emphasis) 58%, transparent),
+            color-mix(in srgb, var(--markon-fg-on-emphasis) 24%, transparent)
+        );
+    background-clip: padding-box;
+    box-shadow:
+        inset 0 1px 0 color-mix(in srgb, var(--markon-fg-on-emphasis) 76%, transparent),
+        inset 0 0 18px color-mix(in srgb, var(--markon-fg-on-emphasis) 34%, transparent),
+        var(--markon-shadow-modal);
+    box-sizing: border-box;
+    color: var(--markon-fg-default);
+    isolation: isolate;
+    opacity: 1;
+    overflow: hidden;
+}
+
+.markon-modal-frame::before,
+.markon-modal-frame::after {
+    content: "";
+    position: absolute;
+    inset: var(--markon-modal-frame-inset);
+    border-radius: var(--markon-radius-lg);
+    pointer-events: none;
+}
+
+.markon-modal-frame::before {
+    z-index: 0;
+    background: var(--markon-bg-overlay);
+}
+
+.markon-modal-frame::after {
+    z-index: var(--markon-z-popover-inline);
+    border: 1px solid var(--markon-modal-surface-border);
+    box-shadow: 0 0 0 1px color-mix(in srgb, var(--markon-fg-on-emphasis) 30%, transparent);
+}
+
+.markon-modal-frame > * {
+    position: relative;
+    z-index: 1;
+}
+
+.markon-modal-drag-handle {
+    cursor: grab;
+    touch-action: none;
+    user-select: none;
+}
+
+.markon-modal-drag-handle.is-dragging {
+    cursor: grabbing;
+}
+
+.markon-modal-surface,
+.markon-chat-container.expanded .markon-chat-body,
+.markon-live-container.expanded .markon-live-body {
+    border: 1px solid var(--markon-modal-surface-border);
+    border-radius: var(--markon-radius-lg);
+    background: var(--markon-bg-overlay);
+    box-shadow: 0 0 0 1px color-mix(in srgb, var(--markon-fg-on-emphasis) 30%, transparent);
+}
+
+@media (max-width: 1400px) {
+    #toc-container .toc.markon-modal-frame {
+        padding: calc(15px + var(--markon-modal-frame-inset));
+    }
+}
+
+@media (min-width: 1401px) {
+    #toc-container.toc-nav-active .toc.markon-modal-frame {
+        padding: calc(15px + var(--markon-modal-frame-inset));
+    }
 }
 
 html[data-theme="dark"] {

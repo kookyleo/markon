@@ -70,7 +70,7 @@ function initTocTracking(): void {
             li: s.li,
             link: s.link,
             top: s.top,
-            bottom: i + 1 < visible.length ? visible[i + 1].top : docBottom,
+            bottom: visible[i + 1]?.top ?? docBottom,
         }));
     }
 
@@ -113,7 +113,8 @@ function initTocTracking(): void {
         let start = 0;
         while (lo <= hi) {
             const mid = (lo + hi) >> 1;
-            if (sectionCache[mid].top <= vpTop) {
+            const section = sectionCache[mid];
+            if (section && section.top <= vpTop) {
                 start = mid;
                 lo = mid + 1;
             } else {
@@ -123,6 +124,7 @@ function initTocTracking(): void {
         start = Math.max(0, start - 1);
         for (let i = start; i < sectionCache.length; i++) {
             const s = sectionCache[i];
+            if (!s) continue;
             if (s.top > vpBottom) break;
             const overlap = Math.min(s.bottom, vpBottom) - Math.max(s.top, vpTop);
             if (overlap > 30) {
@@ -137,22 +139,22 @@ function initTocTracking(): void {
             const lastRect = (lastVp || firstVp).getBoundingClientRect();
             const top = firstRect.top - listRect.top + tocList.scrollTop;
             const height = lastRect.bottom - firstRect.top;
-            vpHighlight.style.top = top + 'px';
-            vpHighlight.style.height = height + 'px';
+            vpHighlight.style.top = `${top}px`;
+            vpHighlight.style.height = `${height}px`;
         } else {
             vpHighlight.style.height = '0px';
         }
         // Keep viewport range visible in the TOC panel.
-        if (firstVp) {
-            const tocRect = toc!.getBoundingClientRect();
+        if (firstVp && toc) {
+            const tocRect = toc.getBoundingClientRect();
             const lineH = firstVp.offsetHeight || 24;
             const lastR = (lastVp || firstVp).getBoundingClientRect();
             if (lastR.bottom > tocRect.bottom - lineH * 4) {
-                toc!.scrollTop += lastR.bottom - tocRect.bottom + lineH * 4;
+                toc.scrollTop += lastR.bottom - tocRect.bottom + lineH * 4;
             }
             const firstR = firstVp.getBoundingClientRect();
             if (firstR.top < tocRect.top + lineH * 3) {
-                toc!.scrollTop -= tocRect.top + lineH * 3 - firstR.top;
+                toc.scrollTop -= tocRect.top + lineH * 3 - firstR.top;
             }
         }
     }
@@ -213,6 +215,8 @@ function initTocTracking(): void {
                     history.pushState(null, '', href);
                     if (tocContainer && window.innerWidth <= 1400) {
                         tocContainer.classList.remove('active');
+                        tocContainer.classList.remove('markon-modal-layer');
+                        tocContainer.querySelector('.toc')?.classList.remove('markon-modal-frame');
                     }
                 }
             }
@@ -249,23 +253,23 @@ function initTocTracking(): void {
 
 // ── 2. Static i18n labels ───────────────────────────────────────────────────
 function initLayoutI18n(): void {
-    const t: I18nFn = (window.__MARKON_I18N__ && window.__MARKON_I18N__.t) || ((k: string) => k);
+    const t: I18nFn = (window.__MARKON_I18N__?.t) || ((k: string) => k);
     const labelMap: Record<string, string> = {
         'toc-title': 'web.toc.title',
-        'back-link-text': 'web.back',
         'footer-text': 'web.footer',
         'clear-annot-text': 'web.annot.clear',
         'feedback-link-text': 'web.footer.feedback',
         'kbd-link-text': 'web.kbd.link',
+        'workspace-spotlight-trigger-text': 'web.wsnav.trigger',
     };
-    for (const id in labelMap) {
+    for (const [id, key] of Object.entries(labelMap)) {
         const el = document.getElementById(id);
-        if (el) el.textContent = t(labelMap[id]);
+        if (el) el.textContent = t(key);
     }
-    const si = document.getElementById('search-input') as HTMLInputElement | null;
-    if (si) si.placeholder = t('web.search.placeholder');
-    const se = document.getElementById('search-esc-text');
-    if (se) se.textContent = t('web.search.esc');
+    document.querySelectorAll<HTMLElement>('[data-workspace-spotlight-trigger]').forEach((trigger) => {
+        trigger.setAttribute('aria-label', t('web.wsnav.open'));
+        trigger.setAttribute('title', t('web.wsnav.open'));
+    });
 }
 
 initTocTracking();

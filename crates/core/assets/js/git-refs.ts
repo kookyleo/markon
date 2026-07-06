@@ -6,7 +6,7 @@
  * non-module `<script>` after i18n-boot.
  */
 
-const t: (key: string) => string = (window.__MARKON_I18N__ && window.__MARKON_I18N__.t) || ((k: string) => k);
+const t: (key: string) => string = (window.__MARKON_I18N__?.t) || ((k: string) => k);
 
 // Visible text.
 document.querySelectorAll<HTMLElement>('[data-i18n]').forEach((el) => {
@@ -38,7 +38,7 @@ if (search) {
         const q = search.value.trim().toLowerCase();
         rows.forEach((row) => {
             const name = (row.getAttribute('data-branch-name') || '').toLowerCase();
-            row.style.display = !q || name.indexOf(q) !== -1 ? '' : 'none';
+            row.style.display = !q || name.includes(q) ? '' : 'none';
         });
         // A group with no visible rows (its box-head is not a row) collapses.
         groups.forEach((group) => {
@@ -71,9 +71,10 @@ document.querySelectorAll<HTMLElement>('[data-copy]').forEach((button) => {
             document.body.appendChild(ta);
             ta.select();
             try {
+                // eslint-disable-next-line @typescript-eslint/no-deprecated -- Intentional clipboard fallback for non-secure contexts.
                 document.execCommand('copy');
                 flash(button);
-            } catch (e) {
+            } catch {
                 /* clipboard unavailable — leave silently */
             }
             document.body.removeChild(ta);

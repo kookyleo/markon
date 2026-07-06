@@ -27,7 +27,7 @@ export type EditorTab = 'edit' | 'preview';
 /**
  * Editor mode:
  *  - `edit`   — bound to the source file; Save writes back to the server.
- *  - `export` — ephemeral buffer seeded from a string (annotation export);
+ *  - `export` — ephemeral buffer seeded from a string (notes export);
  *               Save downloads a local `.md`, plus a Copy button, and closing
  *               does not reload the page or write to the server.
  */
@@ -45,7 +45,7 @@ export interface EditorOpenOptions {
     content?: string;
     /** Display name + default download filename for `export` mode. */
     exportFileName?: string;
-    /** Callback for the "Back" button in `export` mode (re-open the wizard). */
+    /** Optional callback for a caller-owned "Back" action in `export` mode. */
     onBack?: () => void;
 }
 
@@ -91,11 +91,16 @@ export class EditorManager {
     /** Current mode — `export` repurposes Save as a local download. */
     #mode: EditorMode = 'edit';
     /** Display name / default download filename in export mode. */
-    #exportFileName = 'annotations.md';
-    /** Back-to-wizard callback in export mode. */
+    #exportFileName = 'notes.md';
+    /** Optional back callback in export mode. */
     #onBack: (() => void) | null = null;
     /** Aborts the document/window listeners installed while the modal is open. */
     #listenerAbort: AbortController | null = null;
+
+    #listenerOptions(extra: AddEventListenerOptions = {}): AddEventListenerOptions {
+        const signal = this.#listenerAbort?.signal;
+        return signal ? { ...extra, signal } : extra;
+    }
 
     constructor(filePath: string) {
         this.#filePath = filePath;
@@ -142,13 +147,13 @@ export class EditorManager {
         this.#setupEventListeners();
         this.#updateLineNumbers();
         // Lock the background page so the wheel can't scroll it behind the
-        // full-screen editor (same guard as the export wizard).
+        // full-screen editor.
         document.documentElement.classList.add('markon-scroll-lock');
 
         // If line number provided, jump to that line
         if (options.line && options.line > 0) {
             this.#gotoLine(options.line);
-        } else if (options.selectedText && options.selectedText.trim()) {
+        } else if (options.selectedText?.trim()) {
             this.#selectText(options.selectedText.trim());
         } else {
             this.#focusEditor();
@@ -318,7 +323,7 @@ export class EditorManager {
         const isExport = this.#mode === 'export';
         const fileName = isExport ? this.#exportFileName : this.#filePath;
         // Export mode swaps the file-bound Save for a Copy + Download pair and
-        // (when the wizard supplied one) a Back button that re-opens step 1.
+        // can show a Back button when a caller supplies one.
         const backBtn = isExport && this.#onBack
             ? `<button class="editor-back-btn">${_t('web.export.back')}</button>`
             : '';
@@ -453,7 +458,7 @@ export class EditorManager {
         });
         refreshCopyLabel();
 
-        // Export-mode Back button: close this overlay and re-open the wizard.
+        // Export-mode Back button: close this overlay and return to the caller.
         this.#editorModal
             ?.querySelector<HTMLButtonElement>('.editor-back-btn')
             ?.addEventListener('click', () => {
@@ -576,7 +581,7 @@ export class EditorManager {
         const lines = this.#textarea.value.split('\n').length;
         const container = this.#lineNumbers;
         while (container.childElementCount > lines) {
-            container.lastElementChild!.remove();
+            container.lastElementChild?.remove();
         }
         for (let num = container.childElementCount + 1; num <= lines; num++) {
             const div = document.createElement('div');
@@ -774,7 +779,7 @@ export class EditorManager {
             }
 
             // Add character to rendered version
-            rendered += char;
+            rendered += char ?? '';
             sourceLength++;
 
             // Check if we've matched the original text
@@ -853,7 +858,7 @@ export class EditorManager {
         this.#ensureStylesheet('/_/js/katex/katex.min.css');
         this.#mathRendererPromise = this.#loadScript('/_/js/katex/katex.min.js')
             .then(() => this.#loadScript('/_/js/math-render.js'))
-            .catch((err) => {
+            .catch((err: unknown) => {
                 this.#mathRendererPromise = null;
                 Logger.warn('EditorManager', 'Math renderer failed to load:', err);
             });
@@ -917,15 +922,14 @@ export class EditorManager {
             e.preventDefault();
         });
 
-        const signal = this.#listenerAbort?.signal;
-        document.addEventListener('mousemove', (e: MouseEvent) => onMove(e.clientX), { signal });
+        document.addEventListener('mousemove', (e: MouseEvent) => onMove(e.clientX), this.#listenerOptions());
         document.addEventListener('mouseup', () => {
             if (dragging) {
                 dragging = false;
                 document.body.style.cursor = '';
                 document.body.style.userSelect = '';
             }
-        }, { signal });
+        }, this.#listenerOptions());
 
         // Touch support
         divider.addEventListener('touchstart', (e: TouchEvent) => {
@@ -933,9 +937,10 @@ export class EditorManager {
             e.preventDefault();
         }, { passive: false });
         document.addEventListener('touchmove', (e: TouchEvent) => {
-            if (dragging && e.touches.length > 0) onMove(e.touches[0].clientX);
-        }, { passive: true, signal });
-        document.addEventListener('touchend', () => { dragging = false; }, { signal });
+            const touch = e.touches[0];
+            if (dragging && touch) onMove(touch.clientX);
+        }, this.#listenerOptions({ passive: true }));
+        document.addEventListener('touchend', () => { dragging = false; }, this.#listenerOptions());
     }
 
     /**
@@ -965,14 +970,14 @@ export class EditorManager {
                 sourcePane.style.display = 'none';
                 previewPane.style.display = 'flex';
             }
-        }, { signal: this.#listenerAbort?.signal });
+        }, this.#listenerOptions());
 
         tabs.forEach(tab => {
             tab.addEventListener('click', () => {
-                const nextTab = tab.dataset.tab as EditorTab | undefined;
+                const nextTab = tab.dataset['tab'] as EditorTab | undefined;
                 if (nextTab !== 'edit' && nextTab !== 'preview') return;
                 this.#activeTab = nextTab;
-                tabs.forEach(t => t.classList.toggle('active', t.dataset.tab === this.#activeTab));
+                tabs.forEach(t => t.classList.toggle('active', t.dataset['tab'] === this.#activeTab));
                 if (window.innerWidth <= 768) {
                     if (this.#activeTab === 'edit') {
                         sourcePane.style.display = 'flex';
@@ -1025,7 +1030,7 @@ export class EditorManager {
 
         // Sync toggle button active state
         this.#editorModal.querySelectorAll<HTMLElement>('.editor-layout-btn').forEach(btn => {
-            btn.classList.toggle('active', btn.dataset.layout === mode);
+            btn.classList.toggle('active', btn.dataset['layout'] === mode);
         });
     }
 
@@ -1037,7 +1042,7 @@ export class EditorManager {
         if (!btns) return;
         btns.forEach(btn => {
             btn.addEventListener('click', () => {
-                const mode = btn.dataset.layout as EditorLayout | undefined;
+                const mode = btn.dataset['layout'] as EditorLayout | undefined;
                 if (mode !== 'split' && mode !== 'full') return;
                 if (mode === this.#layout) return;
                 this.#layout = mode;
@@ -1057,7 +1062,7 @@ export class EditorManager {
             this.#applyLayout(this.#layout);
             // Re-attach/remove scroll sync when crossing the breakpoint
             this.#setupScrollSync();
-        }, { signal: this.#listenerAbort?.signal });
+        }, this.#listenerOptions());
     }
 
     /**
@@ -1136,9 +1141,9 @@ export class EditorManager {
             // Inline code `code`
             .replace(/`([^`]+)`/g, '<span class="md-code">`$1`</span>')
             // Links [text](url)
-            .replace(/\[([^\]]+)\]\(([^\)]+)\)/g, '<span class="md-link">[$1]($2)</span>')
+            .replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<span class="md-link">[$1]($2)</span>')
             // Images ![alt](url)
-            .replace(/!\[([^\]]*)\]\(([^\)]+)\)/g, '<span class="md-image">![$1]($2)</span>')
+            .replace(/!\[([^\]]*)\]\(([^)]+)\)/g, '<span class="md-image">![$1]($2)</span>')
             // Blockquotes
             .replace(/^(&gt;+)\s+(.+)$/gm, '<span class="md-quote">$1 $2</span>')
             // Unordered lists

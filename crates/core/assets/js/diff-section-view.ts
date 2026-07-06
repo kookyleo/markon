@@ -31,16 +31,20 @@ import {
     isMarkdownDiffData,
     visibleBlockItems,
 } from './diff-segments';
+import { i18n } from './core/config';
 
 export type { DiffAnchor };
 
-type SectionEntry = {
+const _t = (key: string, ...args: unknown[]): string => i18n.t(key, ...args);
+const exportNotesLabel = (count: number): string => `${_t('web.export.label')} (${count})`;
+
+interface SectionEntry {
     file: MarkdownDiffFile;
     section: HTMLElement;
     body: HTMLElement;
     rendered: boolean;
     estHeight: number;
-};
+}
 
 const selectedPathFromLocation = (): string | null => {
     // The selected file is a URL hash anchor (#path), not a server-side filter.
@@ -89,11 +93,17 @@ export abstract class DiffSectionView {
         // The sidebar funnel's "Viewed files" toggle broadcasts here; hide/show
         // viewed files' sections to match.
         document.addEventListener(SHOW_VIEWED_EVENT, (e) => {
-            const detail = (e as CustomEvent).detail;
+            const detail = (e as CustomEvent<{ showViewed?: unknown }>).detail;
             if (detail && typeof detail.showViewed === 'boolean') {
                 this.#showViewed = detail.showViewed;
                 this.#applyViewedVisibility();
             }
+        });
+        document.addEventListener('markon:diff-annotations-ready', () => {
+            this.#syncExportNotesButtons();
+        });
+        document.addEventListener('markon:diff-notes-count-changed', () => {
+            this.#syncExportNotesButtons();
         });
     }
 
@@ -124,31 +134,31 @@ export abstract class DiffSectionView {
 
     // ── Public API ──────────────────────────────────────────────────────────────
     async load(): Promise<void> {
-        const url = this.root.dataset.diffDataUrl ? fullDataUrl(this.root.dataset.diffDataUrl) : undefined;
+        const url = this.root.dataset['diffDataUrl'] ? fullDataUrl(this.root.dataset['diffDataUrl']) : undefined;
         if (!url) return;
         if (this.#selectedPath === null) this.#selectedPath = selectedPathFromLocation();
-        if (this.root.dataset.diffLoadedUrl === url) {
+        if (this.root.dataset['diffLoadedUrl'] === url) {
             this.#render();
             return;
         }
-        if (this.root.dataset.diffLoadingUrl === url) return;
-        this.root.dataset.diffLoadingUrl = url;
+        if (this.root.dataset['diffLoadingUrl'] === url) return;
+        this.root.dataset['diffLoadingUrl'] = url;
         try {
             const response = await fetch(url, { headers: { Accept: 'application/json' } });
             if (!response.ok) throw new Error(await response.text());
             const payload: unknown = await response.json();
             if (!isMarkdownDiffData(payload)) throw new Error('Invalid Markdown diff payload');
             this.#data = payload;
-            this.root.dataset.diffLoadedUrl = url;
+            this.root.dataset['diffLoadedUrl'] = url;
             this.#render();
         } catch (error) {
-            delete this.root.dataset.diffLoadedUrl;
+            delete this.root.dataset['diffLoadedUrl'];
             this.#setMessage(
                 `Failed to load diff: ${error instanceof Error ? error.message : String(error)}`,
                 true,
             );
         } finally {
-            delete this.root.dataset.diffLoadingUrl;
+            delete this.root.dataset['diffLoadingUrl'];
         }
     }
 
@@ -212,10 +222,10 @@ export abstract class DiffSectionView {
         pane.classList.add(this.virtualizedClass);
 
         this.#files = files;
-        this.#collapsed = loadCollapsedSet(this.root.dataset.diffDataUrl);
-        this.#viewed = loadViewedSet(this.root.dataset.diffDataUrl);
-        this.#showViewed = loadShowViewed(this.root.dataset.diffDataUrl);
-        this.#expansion = expansionStore(this.root.dataset.diffDataUrl);
+        this.#collapsed = loadCollapsedSet(this.root.dataset['diffDataUrl']);
+        this.#viewed = loadViewedSet(this.root.dataset['diffDataUrl']);
+        this.#showViewed = loadShowViewed(this.root.dataset['diffDataUrl']);
+        this.#expansion = expansionStore(this.root.dataset['diffDataUrl']);
         this.#sections = new Map();
 
         const scrollElement = (this.scrollSelector
@@ -237,7 +247,7 @@ export abstract class DiffSectionView {
             const observer = new IntersectionObserver(
                 (records) => {
                     for (const record of records) {
-                        const path = (record.target as HTMLElement).dataset.filePath;
+                        const path = (record.target as HTMLElement).dataset['filePath'];
                         const entry = path ? this.#sections.get(path) : undefined;
                         if (!entry) continue;
                         if (record.isIntersecting) this.#renderBody(entry);
@@ -281,12 +291,12 @@ export abstract class DiffSectionView {
     #buildSection(file: MarkdownDiffFile): SectionEntry {
         const section = document.createElement('section');
         section.className = 'md-diff-file-section';
-        section.dataset.filePath = file.path;
+        section.dataset['filePath'] = file.path;
         // The real per-file annotation key (canonical absolute path of the new
         // side). Present only for worktree diffs where the new side is a live
         // file; `diff-new-side-filter.sectionForNode` keys off this attribute, so
         // a section without it is simply not annotatable (commit…commit diffs).
-        if (file.abs_path) section.dataset.absPath = file.abs_path;
+        if (file.abs_path) section.dataset['absPath'] = file.abs_path;
         // A pure rename (no content change) is just a one-line fold; flag it so the
         // big inter-file gap collapses around it (otherwise the short body looks
         // wildly unbalanced — tiny above the fold, the 108px gap below).
@@ -306,9 +316,8 @@ export abstract class DiffSectionView {
     }
 
     #createFileHeader(file: MarkdownDiffFile): HTMLElement {
-        return createDiffFileHeader({
+        const opts = {
             path: file.path,
-            oldPath: file.old_path,
             status: file.status,
             additions: file.additions || 0,
             deletions: file.deletions || 0,
@@ -322,7 +331,14 @@ export abstract class DiffSectionView {
                 this.#sections.delete(file.path);
                 this.#files = this.#files.filter((f) => f.path !== file.path);
             },
-        });
+        };
+        return createDiffFileHeader(file.old_path === undefined ? opts : { ...opts, oldPath: file.old_path });
+    }
+
+    #blockAt(file: MarkdownDiffFile, index: number): MarkdownDiffBlock {
+        const block = file.blocks[index];
+        if (!block) throw new RangeError(`Diff block index ${index} is outside ${file.path}`);
+        return block;
     }
 
     #renderBody(entry: SectionEntry): void {
@@ -340,7 +356,7 @@ export abstract class DiffSectionView {
                     fragment.appendChild(this.renderBlock(file, item.block, item.index));
                 } else if (expanded?.has(file.path, item.start)) {
                     for (let i = item.start; i < item.start + item.count; i += 1) {
-                        fragment.appendChild(this.renderBlock(file, file.blocks[i], i));
+                        fragment.appendChild(this.renderBlock(file, this.#blockAt(file, i), i));
                     }
                 } else {
                     fragment.appendChild(this.#createGap(file, item.start, item.count));
@@ -374,7 +390,7 @@ export abstract class DiffSectionView {
 
             const blocks = document.createDocumentFragment();
             for (let i = start; i < start + count; i += 1) {
-                blocks.appendChild(this.renderBlock(file, file.blocks[i], i));
+                blocks.appendChild(this.renderBlock(file, this.#blockAt(file, i), i));
             }
 
             const scrollEl = this.scrollElement;
@@ -448,7 +464,7 @@ export abstract class DiffSectionView {
             if (item.kind === 'block') {
                 total += this.estimateBlock(item.block);
             } else if (expanded?.has(file.path, item.start)) {
-                for (let i = item.start; i < item.start + item.count; i += 1) total += this.estimateBlock(file.blocks[i]);
+                for (let i = item.start; i < item.start + item.count; i += 1) total += this.estimateBlock(this.#blockAt(file, i));
             } else {
                 total += 30;
             }
@@ -461,7 +477,7 @@ export abstract class DiffSectionView {
         const collapse = !this.#collapsed.has(path);
         if (collapse) this.#collapsed.add(path);
         else this.#collapsed.delete(path);
-        persistCollapsedSet(this.root.dataset.diffDataUrl, this.#collapsed);
+        persistCollapsedSet(this.root.dataset['diffDataUrl'], this.#collapsed);
         if (!entry) return;
 
         const scrollEl = this.scrollElement;
@@ -491,7 +507,7 @@ export abstract class DiffSectionView {
         const nowViewed = !this.#viewed.has(path);
         if (nowViewed) this.#viewed.add(path);
         else this.#viewed.delete(path);
-        persistViewedSet(this.root.dataset.diffDataUrl, this.#viewed);
+        persistViewedSet(this.root.dataset['diffDataUrl'], this.#viewed);
 
         if (nowViewed !== this.#collapsed.has(path)) {
             // Fold state needs to follow the new viewed state; #toggleCollapsed
@@ -522,30 +538,79 @@ export abstract class DiffSectionView {
             entry.section.hidden = hidden;
             if (!hidden) anyVisible = true;
         }
-        if (!this.#showViewed && this.#sections.size > 0 && !anyVisible) this.#showViewedEmpty();
-        else this.#contentPane()?.querySelector('.md-diff-viewed-empty')?.remove();
+        const allViewed = this.#sections.size > 0 && [...this.#sections.keys()].every(path => this.#viewed.has(path));
+        const pane = this.#contentPane();
+        if (!pane) return;
+        if (!this.#showViewed && this.#sections.size > 0 && !anyVisible) {
+            pane.querySelector('.md-diff-viewed-done')?.remove();
+            this.#showViewedCompletion('empty');
+        } else {
+            pane.querySelector('.md-diff-viewed-empty')?.remove();
+            if (this.#showViewed && allViewed) this.#showViewedCompletion('done');
+            else pane.querySelector('.md-diff-viewed-done')?.remove();
+        }
     }
 
-    #showViewedEmpty(): void {
+    #showViewedCompletion(kind: 'empty' | 'done'): void {
         const pane = this.#contentPane();
-        if (!pane || pane.querySelector('.md-diff-viewed-empty')) return;
+        const className = kind === 'empty' ? 'md-diff-viewed-empty' : 'md-diff-viewed-done';
+        if (!pane) return;
+        const existing = pane.querySelector<HTMLElement>(`.${className}`);
+        if (existing) {
+            this.#syncExportNotesButtons();
+            return;
+        }
         const el = document.createElement('div');
-        el.className = 'md-diff-viewed-empty';
+        el.className = className;
         el.innerHTML =
             '<div class="md-diff-viewed-empty-emoji">🎉</div>' +
             '<div class="md-diff-viewed-empty-title">All done — every changed file is marked Viewed.</div>';
+        const actions = document.createElement('div');
+        actions.className = 'md-diff-viewed-empty-actions';
         const link = document.createElement('button');
         link.type = 'button';
         link.className = 'md-diff-viewed-empty-link';
-        link.textContent = 'Show all files';
+        link.textContent = kind === 'empty' ? 'Show all files' : 'Hide all Viewed files';
         link.addEventListener('click', () => {
-            // Un-check the funnel's "Hide Viewed files" box (its change handler
-            // persists the choice, re-filters the sidebar, and broadcasts here).
+            // The funnel checkbox is phrased as the inverse of showViewed:
+            // checked = hide viewed, unchecked = show viewed.
             const cb = document.querySelector<HTMLInputElement>('[data-diff-show-viewed]');
-            if (cb) { cb.checked = false; cb.dispatchEvent(new Event('change', { bubbles: true })); }
+            if (cb) {
+                cb.checked = kind === 'done';
+                cb.dispatchEvent(new Event('change', { bubbles: true }));
+            }
         });
-        el.appendChild(link);
+        const exportLink = document.createElement('button');
+        exportLink.type = 'button';
+        exportLink.className = 'md-diff-viewed-empty-link md-diff-viewed-export-notes';
+        exportLink.textContent = exportNotesLabel(0);
+        exportLink.addEventListener('click', () => {
+            if (exportLink.disabled || exportLink.getAttribute('aria-disabled') === 'true') return;
+            const exporter = window.markonDiffAnnotations?.exportNotes;
+            if (exporter) void exporter(exportLink);
+        });
+        actions.append(link, exportLink);
+        el.appendChild(actions);
         pane.appendChild(el);
+        void this.#syncExportNotesButton(exportLink);
+    }
+
+    #syncExportNotesButtons(): void {
+        this.root
+            .querySelectorAll<HTMLButtonElement>('.md-diff-viewed-export-notes')
+            .forEach(button => {
+                void this.#syncExportNotesButton(button);
+            });
+    }
+
+    async #syncExportNotesButton(button: HTMLButtonElement): Promise<void> {
+        const count = Math.max(0, await (window.markonDiffAnnotations?.notesCount?.() ?? Promise.resolve(0)));
+        if (!button.isConnected) return;
+        button.textContent = exportNotesLabel(count);
+        const disabled = count === 0;
+        button.disabled = disabled;
+        button.classList.toggle('is-disabled', disabled);
+        button.setAttribute('aria-disabled', disabled ? 'true' : 'false');
     }
 
     #destroyVirtualizer(): void {

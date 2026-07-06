@@ -59,7 +59,7 @@ afterEach(() => {
 });
 
 describe('NEW_SIDE_REJECT truth table', () => {
-    const cases: Array<[string, boolean]> = [
+    const cases: [string, boolean][] = [
         ['<section class="md-diff-change-card-old"><p>x</p></section>', true],
         ['<section class="md-diff-change-card md-diff-change-card-new"><p>x</p></section>', false],
         ['<article class="md-diff-block is-deleted"><p>x</p></article>', true],
@@ -110,7 +110,7 @@ describe('newSideRootFor / sectionForNode', () => {
         );
         const inside = textNode(root, 'inside');
         const unkeyed = textNode(root, 'unkeyed');
-        expect(sectionForNode(inside)?.dataset.absPath).toBe('/a.md');
+        expect(sectionForNode(inside)?.dataset['absPath']).toBe('/a.md');
         expect(sectionForNode(unkeyed)).toBeNull();
     });
 });

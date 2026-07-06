@@ -39,8 +39,9 @@ import {
     type Scene,
     type Shape,
 } from './layout-engine';
+import { isDragBlockedTarget } from './draggable';
 
-const REGISTRY: Map<string, FloatingLayer> = new Map();
+const REGISTRY = new Map<string, FloatingLayer>();
 
 const MIN_VISIBLE = 20;
 const PANEL_INSET = 8;
@@ -193,7 +194,7 @@ export class FloatingLayer {
     private _resizeHandler: (() => void) | null = null;
 
     constructor(opts: FloatingLayerOpts) {
-        if (!opts || !opts.name) throw new Error('FloatingLayer: name required');
+        if (!opts?.name) throw new Error('FloatingLayer: name required');
         if (!opts.container) throw new Error('FloatingLayer: container required');
         if (REGISTRY.has(opts.name)) throw new Error(`FloatingLayer: duplicate name "${opts.name}"`);
 
@@ -339,7 +340,6 @@ export class FloatingLayer {
             startPhase2();
         }
 
-        if (this._opts.onExpand) this._opts.onExpand();
         FloatingLayer._relayout();
     }
 
@@ -356,6 +356,7 @@ export class FloatingLayer {
         // _applyDisplayed re-anchors to TL so growth is down-right.
         c.classList.add(this._expandedClass);
         this._applyDisplayed();
+        if (this._opts.onExpand) this._opts.onExpand();
 
         // Read the natural panel size after the class has applied so we
         // pick up Live's `height: auto` resolved value, not opts.panelSize.
@@ -555,7 +556,7 @@ export class FloatingLayer {
             // Mid-morph (or before first layout): report the layer's *eventual*
             // panel rect rather than its current sphere-sized bbox, so a peer
             // yields once upfront instead of chasing the growth.
-            return rectAt(this._toLayoutItem(true), this._home as Point);
+            return rectAt(this._toLayoutItem(true), this._home);
         }
 
         const r = this._opts.container.getBoundingClientRect();
@@ -612,12 +613,7 @@ export class FloatingLayer {
                 dragArea.addEventListener('mousedown', (e: MouseEvent) => {
                     if (!this.isExpanded) return;
                     if (e.button !== 0) return;
-                    const target = e.target;
-                    if (
-                        this._opts.nonDragSelector
-                        && target instanceof Element
-                        && target.closest(this._opts.nonDragSelector)
-                    ) return;
+                    if (isDragBlockedTarget(e.target, this._opts.nonDragSelector ?? null)) return;
                     this._beginDrag(e);
                 });
             }
@@ -768,12 +764,12 @@ export class FloatingLayer {
                 if (raw && typeof raw === 'object') {
                     const obj = raw as Record<string, unknown>;
                     // New format: { x, y } screen coords.
-                    if (typeof obj.x === 'number' && typeof obj.y === 'number') {
-                        return this._clampSelf(false, { x: obj.x, y: obj.y });
+                    if (typeof obj['x'] === 'number' && typeof obj['y'] === 'number') {
+                        return this._clampSelf(false, { x: obj['x'], y: obj['y'] });
                     }
                     // Legacy format (Live pre-refactor): { right, bottom }.
-                    if (typeof obj.right === 'number' || typeof obj.bottom === 'number') {
-                        return this._clampSelf(false, this._offsetToScreen(obj as InitialOffset));
+                    if (typeof obj['right'] === 'number' || typeof obj['bottom'] === 'number') {
+                        return this._clampSelf(false, this._offsetToScreen(obj));
                     }
                 }
             } catch { /* fall through to default */ }
@@ -835,7 +831,7 @@ export class FloatingLayer {
             rolePriority: this._rolePriority,
             active,
             passive: this._passive,
-            home: (this._home ?? this._intentionalHome ?? { x: 0, y: 0 }) as Point,
+            home: (this._home ?? this._intentionalHome ?? { x: 0, y: 0 }),
             homeAnchor: this._homeAnchor,
             panelAnchor: this._panelAnchor,
             box,

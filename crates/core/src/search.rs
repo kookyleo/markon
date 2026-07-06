@@ -15,13 +15,13 @@ use tantivy::{
 use tantivy_jieba::JiebaTokenizer;
 use walkdir::WalkDir;
 
-/// Query string for `GET /search?q=…`.
+/// Query string for `GET /_/{workspace_id}/search?q=…`.
 #[derive(Deserialize)]
 pub struct SearchQuery {
     pub q: String,
 }
 
-/// One hit returned by `GET /search`.
+/// One hit returned by the workspace search endpoint.
 #[derive(Serialize, Debug)]
 pub struct SearchResult {
     pub file_path: String,

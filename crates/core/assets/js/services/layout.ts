@@ -58,6 +58,7 @@ export class LayoutEngine {
         for (let i = 0; i < sorted.length - 1; i++) {
             const curr = sorted[i];
             const next = sorted[i + 1];
+            if (!curr || !next) continue;
             if (Math.abs(next.idealTop - curr.idealTop) <= CONFIG.THRESHOLDS.NOTE_CLUSTER) {
                 uf.union(curr.idx, next.idx);
             }
@@ -66,31 +67,42 @@ export class LayoutEngine {
         const clusters = new Map<number, number[]>();
         notes.forEach((_note, idx) => {
             const root = uf.find(idx);
-            if (!clusters.has(root)) clusters.set(root, []);
-            clusters.get(root)!.push(idx);
+            let cluster = clusters.get(root);
+            if (!cluster) {
+                cluster = [];
+                clusters.set(root, cluster);
+            }
+            cluster.push(idx);
         });
         return clusters;
+    }
+
+    #noteAt(notes: LaidOutNote[], index: number): LaidOutNote {
+        const note = notes[index];
+        if (!note) throw new RangeError(`Note index ${index} is outside layout input`);
+        return note;
     }
 
     #stack(notes: LaidOutNote[], clusters: Map<number, number[]>): void {
         clusters.forEach((indices) => {
             if (indices.length > 1) {
-                const minIdealTop = Math.min(...indices.map(idx => notes[idx].idealTop));
+                const minIdealTop = Math.min(...indices.map(idx => this.#noteAt(notes, idx).idealTop));
                 let currentTop = minIdealTop;
                 indices.sort((a, b) => a - b);
                 indices.forEach(noteIndex => {
-                    notes[noteIndex].currentTop = currentTop;
-                    currentTop += notes[noteIndex].height + CONFIG.THRESHOLDS.NOTE_MIN_SPACING;
+                    const note = this.#noteAt(notes, noteIndex);
+                    note.currentTop = currentTop;
+                    currentTop += note.height + CONFIG.THRESHOLDS.NOTE_MIN_SPACING;
                 });
             }
         });
     }
 
     #enforceSpacing(notes: LaidOutNote[]): void {
-        const threshold = CONFIG.THRESHOLDS.NOTE_CLUSTER;
         for (let i = 1; i < notes.length; i++) {
             const prev = notes[i - 1];
             const curr = notes[i];
+            if (!prev || !curr) continue;
             const minAllowedTop = prev.currentTop + prev.height + CONFIG.THRESHOLDS.NOTE_MIN_SPACING;
             if (curr.currentTop < minAllowedTop) {
                 curr.currentTop = minAllowedTop;

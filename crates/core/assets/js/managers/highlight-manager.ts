@@ -81,6 +81,7 @@ export class HighlightManager {
         if (highlightedElements.length > 0) {
             // Scroll to first match
             const firstElement = highlightedElements[0];
+            if (!firstElement) return;
             firstElement.classList.add(this.#activeClass);
 
             setTimeout(() => {

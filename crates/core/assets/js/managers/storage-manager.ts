@@ -50,7 +50,7 @@ export class LocalStorageStrategy<T = unknown> extends StorageStrategy<T> {
 }
 
 /** WebSocket-backed strategy. Maintains a local cache of pushed values. */
-export class SharedStorageStrategy extends StorageStrategy<unknown> {
+export class SharedStorageStrategy extends StorageStrategy {
     #wsManager: WebSocketManager | null;
     #cache = new Map<string, unknown>();
 
@@ -59,7 +59,7 @@ export class SharedStorageStrategy extends StorageStrategy<unknown> {
         this.#wsManager = wsManager;
     }
 
-    async load(key: string): Promise<unknown | null> {
+    async load(key: string): Promise<unknown> {
         // In shared mode, data is delivered via WebSocket. Return whatever
         // the cache has been populated with so far.
         return this.#cache.get(key) ?? null;
@@ -167,7 +167,7 @@ export class SharedStorageStrategy extends StorageStrategy<unknown> {
 
 /** Storage facade. Picks a strategy based on shared-vs-local mode. */
 export class StorageManager {
-    #strategy: LocalStorageStrategy<unknown> | SharedStorageStrategy;
+    #strategy: LocalStorageStrategy | SharedStorageStrategy;
     #filePath: string;
     #isSharedMode: boolean;
 
@@ -183,7 +183,7 @@ export class StorageManager {
             this.#strategy = new SharedStorageStrategy(wsManager);
             Logger.log('StorageManager', 'Using shared storage strategy');
         } else {
-            this.#strategy = new LocalStorageStrategy<unknown>();
+            this.#strategy = new LocalStorageStrategy();
             Logger.log('StorageManager', 'Using local storage strategy');
         }
     }

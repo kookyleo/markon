@@ -350,32 +350,26 @@ impl AppSettings {
     /// on first run. Used by tests to inject a controlled home directory.
     pub(crate) fn load_at(home: &Path) -> Self {
         let p = Self::settings_path_at(home);
-        let mut should_persist_missing_salt = false;
-        let mut s = match std::fs::read_to_string(&p) {
-            Ok(c) => {
-                should_persist_missing_salt = true;
-                serde_json::from_str::<Self>(&c).unwrap_or_else(|err| {
+        let (mut s, should_persist_missing_salt) = match std::fs::read_to_string(&p) {
+            Ok(c) => match serde_json::from_str::<Self>(&c) {
+                Ok(settings) => (settings, true),
+                Err(err) => {
                     tracing::warn!(
                         path = %p.display(),
                         error = %err,
                         "failed to parse settings.json; recovering identity fields without overwriting the file"
                     );
-                    should_persist_missing_salt = false;
-                    Self::recover_from_json_value(&c).unwrap_or_default()
-                })
-            }
-            Err(err) if err.kind() == std::io::ErrorKind::NotFound => {
-                should_persist_missing_salt = true;
-                Self::default()
-            }
+                    (Self::recover_from_json_value(&c).unwrap_or_default(), false)
+                }
+            },
+            Err(err) if err.kind() == std::io::ErrorKind::NotFound => (Self::default(), true),
             Err(err) => {
                 tracing::warn!(
                     path = %p.display(),
                     error = %err,
                     "failed to read settings.json; using the device-derived salt without overwriting the file"
                 );
-                should_persist_missing_salt = false;
-                Self::default()
+                (Self::default(), false)
             }
         };
         s.normalize();
@@ -472,7 +466,6 @@ impl AppSettings {
             .unwrap_or_else(|_| recover_workspace_flags(object));
         Some(workspace)
     }
-
 
     pub fn load() -> Self {
         let home = dirs::home_dir().expect("HOME directory required");

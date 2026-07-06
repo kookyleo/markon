@@ -114,7 +114,7 @@ export class AnnotationManager {
     /** Optional text-node predicate scoping anchoring to a subset of the root
      *  (the new side of a rendered diff). When set it is threaded through every
      *  describe/anchor and into the wrap walker; absent → whole-root behavior. */
-    #reject?: RejectFn;
+    #reject: RejectFn | undefined;
 
     /**
      * @param storage      annotation persistence strategy
@@ -162,13 +162,16 @@ export class AnnotationManager {
         this.#markdownBody
             .querySelectorAll<HTMLElement>('[data-annotation-id]')
             .forEach((el) => {
-                const id = el.dataset.annotationId;
+                const id = el.dataset['annotationId'];
                 if (id && !positions.has(id)) positions.set(id, i++);
             });
         return [...this.#annotations].sort((a, b) => {
             const ai = positions.get(a.id) ?? Number.POSITIVE_INFINITY;
             const bi = positions.get(b.id) ?? Number.POSITIVE_INFINITY;
             if (ai !== bi) return ai - bi;
+            const ap = typeof a.anchor.position === 'number' ? a.anchor.position : Number.POSITIVE_INFINITY;
+            const bp = typeof b.anchor.position === 'number' ? b.anchor.position : Number.POSITIVE_INFINITY;
+            if (ap !== bp) return ap - bp;
             return a.createdAt - b.createdAt;
         });
     }
@@ -230,7 +233,8 @@ export class AnnotationManager {
                 groups.push({ heading, items: [] });
                 lastKey = key;
             }
-            groups[groups.length - 1].items.push(a);
+            const group = groups[groups.length - 1];
+            if (group) group.items.push(a);
         });
         return groups;
     }
@@ -252,7 +256,7 @@ export class AnnotationManager {
      * Format annotations on the page as Markdown suitable for pasting into an
      * AI tool. Annotations are listed in document order and grouped by their
      * containing heading. When `ids` is given, only those annotations are
-     * exported (used by the selection wizard); otherwise the whole page is.
+     * exported (used by notes export); otherwise the whole page is.
      */
     formatAsMarkdown(opts: { ids?: Iterable<string> } = {}): string {
         const filter = opts.ids ? new Set(opts.ids) : null;
@@ -283,7 +287,7 @@ export class AnnotationManager {
      * WebSocket frame (when in shared mode), or `null` in local-only mode
      * and for remote-originating updates (`skipSave === true`).
      */
-    async add(annotation: Annotation, skipSave: boolean = false): Promise<string | null> {
+    async add(annotation: Annotation, skipSave = false): Promise<string | null> {
         // Check whether the annotation already exists locally.
         const existingIndex = this.#annotations.findIndex(a => a.id === annotation.id);
 
@@ -308,7 +312,7 @@ export class AnnotationManager {
         return opId;
     }
 
-    async delete(id: string, skipSave: boolean = false): Promise<Annotation | null> {
+    async delete(id: string, skipSave = false): Promise<Annotation | null> {
         const index = this.#annotations.findIndex(a => a.id === id);
         if (index < 0) {
             Logger.warn('AnnotationManager', `Annotation not found: ${id}`);
@@ -316,6 +320,7 @@ export class AnnotationManager {
         }
 
         const deleted = this.#annotations[index];
+        if (!deleted) return null;
         this.#annotations.splice(index, 1);
 
         // Remove from storage (skipped when applying a remote echo).
@@ -330,7 +335,7 @@ export class AnnotationManager {
         return deleted;
     }
 
-    async clear(skipSave: boolean = false): Promise<void> {
+    async clear(skipSave = false): Promise<void> {
         const oldAnnotations = [...this.#annotations];
         this.#annotations = [];
 
@@ -482,7 +487,7 @@ export class AnnotationManager {
         // the highlight and corrupt the tree on unwrap. Skipping it here keeps
         // the wrap confined to the new side.
         const reject = this.#reject;
-        const targets: Array<{ node: Text; start: number; end: number }> = [];
+        const targets: { node: Text; start: number; end: number }[] = [];
         const walker = document.createTreeWalker(
             root,
             NodeFilter.SHOW_TEXT,
@@ -519,7 +524,7 @@ export class AnnotationManager {
 
             const wrapper = document.createElement(anno.tagName);
             wrapper.className = anno.type;
-            wrapper.dataset.annotationId = anno.id;
+            wrapper.dataset['annotationId'] = anno.id;
             // Author colour drives the left identity line / strikethrough colour
             // in CSS; absent (anonymous) falls back to a neutral token. Name +
             // time are mirrored onto data attrs so the selection popover can show
@@ -528,11 +533,11 @@ export class AnnotationManager {
                 wrapper.style.setProperty('--anno-author', anno.author.color);
             }
             if (anno.author?.name) {
-                wrapper.dataset.authorName = anno.author.name;
+                wrapper.dataset['authorName'] = anno.author.name;
             }
-            wrapper.dataset.authorTime = String(anno.createdAt);
+            wrapper.dataset['authorTime'] = String(anno.createdAt);
             if (anno.note) {
-                wrapper.dataset.note = anno.note;
+                wrapper.dataset['note'] = anno.note;
                 wrapper.classList.add('has-note');
             }
 

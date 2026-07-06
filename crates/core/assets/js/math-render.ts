@@ -1,13 +1,13 @@
-type KatexOptions = {
+interface KatexOptions {
     displayMode: boolean;
     throwOnError: boolean;
     strict: 'ignore' | 'warn' | 'error';
     trust: boolean;
-};
+}
 
-type KatexGlobal = {
+interface KatexGlobal {
     render: (tex: string, element: Element, options: KatexOptions) => void;
-};
+}
 
 declare global {
     interface Window {
@@ -27,8 +27,8 @@ export function renderMathIn(root: ParentNode = document): void {
     root.querySelectorAll<HTMLElement>('.math:not([data-math-rendered="true"])').forEach((element) => {
         const tex = sourceFor(element);
         if (!tex) return;
-        const displayMode = element.dataset.mathDisplay === 'true';
-        element.dataset.mathSource = tex;
+        const displayMode = element.dataset['mathDisplay'] === 'true';
+        element.dataset['mathSource'] = tex;
         try {
             katex.render(tex, element, {
                 displayMode,
@@ -36,7 +36,7 @@ export function renderMathIn(root: ParentNode = document): void {
                 strict: 'ignore',
                 trust: false,
             });
-            element.dataset.mathRendered = 'true';
+            element.dataset['mathRendered'] = 'true';
         } catch {
             element.classList.add('math-error');
         }

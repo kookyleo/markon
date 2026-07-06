@@ -16,7 +16,7 @@ describe('Position.getAbsolute', () => {
         Object.defineProperty(window, 'scrollX', { configurable: true, value: 50 });
         Object.defineProperty(window, 'scrollY', { configurable: true, value: 100 });
         el.getBoundingClientRect = () =>
-            ({ left: 10, top: 20, right: 30, bottom: 40, width: 20, height: 20, x: 10, y: 20, toJSON: () => ({}) }) as DOMRect;
+            ({ left: 10, top: 20, right: 30, bottom: 40, width: 20, height: 20, x: 10, y: 20, toJSON: () => ({}) });
         expect(Position.getAbsolute(el)).toEqual({ left: 60, top: 120, right: 80, bottom: 140 });
     });
 });
@@ -60,9 +60,9 @@ describe('Position.smartScrollToHeading', () => {
         document.body.appendChild(heading);
         Object.defineProperty(heading, 'offsetHeight', { configurable: true, value: 100 });
         heading.getBoundingClientRect = () =>
-            ({ left: 0, top: 200, right: 0, bottom: 0, width: 0, height: 0, x: 0, y: 0, toJSON: () => ({}) }) as DOMRect;
-        const calls: Array<ScrollToOptions | undefined> = [];
-        window.scrollTo = ((opts?: ScrollToOptions) => { calls.push(opts); }) as typeof window.scrollTo;
+            ({ left: 0, top: 200, right: 0, bottom: 0, width: 0, height: 0, x: 0, y: 0, toJSON: () => ({}) });
+        const calls: (ScrollToOptions | undefined)[] = [];
+        window.scrollTo = ((opts?: ScrollToOptions) => { calls.push(opts); });
 
         Position.smartScrollToHeading(heading);
         expect(calls.length).toBe(1);
@@ -77,9 +77,9 @@ describe('Position.smartScrollToHeading', () => {
         document.body.appendChild(heading);
         Object.defineProperty(heading, 'offsetHeight', { configurable: true, value: 5000 });
         heading.getBoundingClientRect = () =>
-            ({ left: 0, top: 300, right: 0, bottom: 0, width: 0, height: 0, x: 0, y: 0, toJSON: () => ({}) }) as DOMRect;
-        const calls: Array<ScrollToOptions | undefined> = [];
-        window.scrollTo = ((opts?: ScrollToOptions) => { calls.push(opts); }) as typeof window.scrollTo;
+            ({ left: 0, top: 300, right: 0, bottom: 0, width: 0, height: 0, x: 0, y: 0, toJSON: () => ({}) });
+        const calls: (ScrollToOptions | undefined)[] = [];
+        window.scrollTo = ((opts?: ScrollToOptions) => { calls.push(opts); });
 
         Position.smartScrollToHeading(heading);
         // top = 300 + 0 - HEADING_TOP_MARGIN_TIGHT(5)

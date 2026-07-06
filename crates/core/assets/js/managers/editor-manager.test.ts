@@ -20,6 +20,13 @@ function seedMeta(name: string, value: string): void {
     document.head.appendChild(meta);
 }
 
+function itemAt<T>(items: ArrayLike<T>, index: number): T {
+    const item = items[index];
+    expect(item).toBeDefined();
+    if (item === undefined) throw new Error(`Missing item at index ${index}`);
+    return item;
+}
+
 /** Stub jsdom-missing APIs the EditorManager touches. */
 function stubGlobals(): void {
     if (!('confirm' in window)) {
@@ -79,7 +86,7 @@ describe('EditorManager', () => {
         seedMeta('workspace-id', 'ws-42');
         seedMeta('mgmt-token', 'tok-abc');
 
-        const fetchMock = vi.fn(async (_url: string, init?: RequestInit) => ({
+        const fetchMock = vi.fn(async (_url: string, _init?: RequestInit) => ({
             ok: true,
             status: 200,
             text: async () => '',
@@ -100,7 +107,7 @@ describe('EditorManager', () => {
             (c: unknown[]) => c[0] === '/api/save',
         );
         expect(calls.length).toBe(1);
-        const init = calls[0][1] as RequestInit;
+        const init = itemAt(calls, 0)[1] as RequestInit;
         expect(init.method).toBe('POST');
         const headers = init.headers as Record<string, string>;
         expect(headers['Content-Type']).toBe('application/json');

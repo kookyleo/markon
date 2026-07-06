@@ -35,11 +35,20 @@ function setPlatform(name: string): void {
     Object.defineProperty(navigator, 'platform', { value: name, configurable: true });
 }
 
+function itemAt<T>(items: ArrayLike<T>, index: number): T {
+    const item = items[index];
+    expect(item).toBeDefined();
+    if (item === undefined) throw new Error(`Missing item at index ${index}`);
+    return item;
+}
+
 describe('KeyboardShortcutsManager', () => {
     let logSpy: ReturnType<typeof vi.spyOn>;
+    let warnSpy: ReturnType<typeof vi.spyOn>;
 
     beforeEach(() => {
         logSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
+        warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
         document.body.innerHTML = '';
         // Default to mac so meta-key tests are deterministic.
         setPlatform('MacIntel');
@@ -47,6 +56,7 @@ describe('KeyboardShortcutsManager', () => {
 
     afterEach(() => {
         logSpy.mockRestore();
+        warnSpy.mockRestore();
         delete (window as { tocNavigator?: unknown }).tocNavigator;
     });
 
@@ -176,5 +186,110 @@ describe('KeyboardShortcutsManager', () => {
         // Global category renders first.
         const cats = [...panel.querySelectorAll('.shortcuts-category h3')].map((h) => h.textContent);
         expect(cats[0]).toBe('web.kbd.cat.global');
+    });
+
+    it('showHelp() lets feature titles invoke their registered handlers', () => {
+        const m = new KeyboardShortcutsManager();
+        const theme = vi.fn();
+        m.register('HELP', () => m.showHelp());
+        m.register('THEME_PANEL', theme);
+
+        m.showHelp();
+        const button = document.querySelector<HTMLButtonElement>('.shortcut-action[data-shortcut-name="THEME_PANEL"]')!;
+        button.click();
+
+        expect(theme).toHaveBeenCalledTimes(1);
+        expect(document.querySelector('.shortcuts-help-panel')).toBeNull();
+    });
+
+    it('showHelp() lets the whole feature row invoke its registered handler', () => {
+        const m = new KeyboardShortcutsManager();
+        const theme = vi.fn();
+        m.register('HELP', () => m.showHelp());
+        m.register('THEME_PANEL', theme);
+
+        m.showHelp();
+        const row = document.querySelector<HTMLElement>('.shortcut-item[data-shortcut-name="THEME_PANEL"]')!;
+        row.click();
+
+        expect(theme).toHaveBeenCalledTimes(1);
+        expect(document.querySelector('.shortcuts-help-panel')).toBeNull();
+    });
+
+    it('showHelp() groups shortcut aliases for the same feature into one row', () => {
+        const m = new KeyboardShortcutsManager();
+        m.register('HELP', () => m.showHelp());
+        m.register('SEARCH', () => {});
+        m.register('WORKSPACE_NAVIGATOR', () => {});
+
+        m.showHelp();
+
+        const rows = document.querySelectorAll('.shortcut-item[data-shortcut-name="SEARCH"]');
+        expect(rows.length).toBe(1);
+        const row = itemAt(rows, 0);
+        expect(row.querySelectorAll('kbd').length).toBe(2);
+        expect(row.textContent).toContain('/');
+        expect(row.textContent).toContain('g');
+        expect(document.querySelector('.shortcut-item[data-shortcut-name="WORKSPACE_NAVIGATOR"]')).toBeNull();
+    });
+
+    it('showHelp() switches long shortcut lists to a two-column panel', () => {
+        const m = new KeyboardShortcutsManager();
+        [
+            'HELP',
+            'THEME_PANEL',
+            'UNDO',
+            'REDO',
+            'REDO_ALT',
+            'ESCAPE',
+            'TOGGLE_TOC',
+            'EXPORT_NOTES',
+            'PREV_HEADING',
+            'NEXT_HEADING',
+            'PREV_ANNOTATION',
+            'NEXT_ANNOTATION',
+        ].forEach((name) => m.register(name as keyof typeof CONFIG.SHORTCUTS, () => {}));
+
+        m.showHelp();
+
+        const modal = document.querySelector<HTMLElement>('.shortcuts-help-modal')!;
+        expect(modal.classList.contains('is-two-column')).toBe(true);
+        expect(modal.querySelectorAll('.shortcuts-column').length).toBe(2);
+    });
+
+    it('skips later registrations whose effective shortcut conflicts with another feature', () => {
+        const original = { ...CONFIG.SHORTCUTS.SEARCH };
+        try {
+            CONFIG.SHORTCUTS.SEARCH.key = 't';
+            const m = new KeyboardShortcutsManager();
+            const theme = vi.fn();
+            const search = vi.fn();
+            m.register('THEME_PANEL', theme);
+            m.register('SEARCH', search);
+
+            expect(m.handle(kbd('t', { target: document.body }))).toBe(true);
+            expect(theme).toHaveBeenCalledTimes(1);
+            expect(search).not.toHaveBeenCalled();
+
+            m.showHelp();
+            expect(document.querySelector('.shortcut-item[data-shortcut-name="THEME_PANEL"]')).not.toBeNull();
+            expect(document.querySelector('.shortcut-item[data-shortcut-name="SEARCH"]')).toBeNull();
+        } finally {
+            Object.assign(CONFIG.SHORTCUTS.SEARCH, original);
+        }
+    });
+
+    it('handle() closes the feature panel before running another shortcut', () => {
+        const m = new KeyboardShortcutsManager();
+        const theme = vi.fn();
+        m.register('HELP', () => m.showHelp());
+        m.register('THEME_PANEL', theme);
+
+        m.showHelp();
+        expect(document.querySelector('.shortcuts-help-panel')).not.toBeNull();
+
+        expect(m.handle(kbd('t', { target: document.body }))).toBe(true);
+        expect(theme).toHaveBeenCalledTimes(1);
+        expect(document.querySelector('.shortcuts-help-panel')).toBeNull();
     });
 });

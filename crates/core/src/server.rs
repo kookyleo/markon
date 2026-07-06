@@ -16,7 +16,7 @@ use rusqlite::Connection;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use similar::{ChangeTag, TextDiff};
-use std::collections::{HashMap, VecDeque};
+use std::collections::{HashMap, HashSet, VecDeque};
 use std::fs;
 use std::path::{Path as FsPath, PathBuf};
 use std::sync::{Arc, Mutex};
@@ -207,9 +207,71 @@ fn js_json_safe(json: String) -> String {
 
 pub fn workspace_url_path(workspace_id: &str, initial_path: Option<&str>) -> String {
     match initial_path {
-        Some(path) => format!("/{workspace_id}/{}", path.trim_start_matches('/')),
-        None => format!("/{workspace_id}/"),
+        Some(path) => workspace_file_url(workspace_id, path),
+        None => workspace_root_url(workspace_id),
     }
+}
+
+fn workspace_root_url(workspace_id: &str) -> String {
+    format!("/{workspace_id}/")
+}
+
+fn workspace_file_url(workspace_id: &str, path: &str) -> String {
+    let rel = path.trim_start_matches('/');
+    if rel.is_empty() {
+        workspace_root_url(workspace_id)
+    } else {
+        format!("/{workspace_id}/{}", encode_route_path(rel))
+    }
+}
+
+fn workspace_internal_url(workspace_id: &str, path: &str) -> String {
+    let rel = path.trim_start_matches('/');
+    format!("/_/{workspace_id}/{rel}")
+}
+
+fn workspace_git_history_url(workspace_id: &str) -> String {
+    workspace_internal_url(workspace_id, "git/history")
+}
+
+fn workspace_git_branches_url(workspace_id: &str) -> String {
+    workspace_internal_url(workspace_id, "git/branches")
+}
+
+fn workspace_git_tags_url(workspace_id: &str) -> String {
+    workspace_internal_url(workspace_id, "git/tags")
+}
+
+fn workspace_git_checkout_url(workspace_id: &str) -> String {
+    workspace_internal_url(workspace_id, "git/checkout")
+}
+
+fn workspace_files_data_url(workspace_id: &str) -> String {
+    workspace_internal_url(workspace_id, "files/data")
+}
+
+fn workspace_files_dir_url(workspace_id: &str) -> String {
+    workspace_internal_url(workspace_id, "files/dir")
+}
+
+fn workspace_file_create_url(workspace_id: &str) -> String {
+    workspace_internal_url(workspace_id, "files/create")
+}
+
+fn workspace_folder_create_url(workspace_id: &str) -> String {
+    workspace_internal_url(workspace_id, "files/folder")
+}
+
+fn workspace_settings_features_url(workspace_id: &str) -> String {
+    workspace_internal_url(workspace_id, "settings/features")
+}
+
+fn workspace_compare_base_url(workspace_id: &str) -> String {
+    workspace_internal_url(workspace_id, "compare")
+}
+
+fn workspace_compare_options_url(workspace_id: &str) -> String {
+    workspace_internal_url(workspace_id, "compare/options")
 }
 
 /// One reachable base URL with a human-facing label (network interface name,
@@ -367,6 +429,63 @@ fn is_inside_workspace(path: &FsPath, root: &FsPath) -> bool {
 
 fn path_to_route(path: &FsPath) -> String {
     path.to_string_lossy().replace('\\', "/")
+}
+
+fn workspace_display_name(ws: &WorkspaceEntry, root: &FsPath) -> String {
+    let alias = ws.alias();
+    if alias.is_empty() {
+        root.file_name()
+            .map(|n| n.to_string_lossy().to_string())
+            .unwrap_or_default()
+    } else {
+        alias
+    }
+}
+
+fn workspace_display_path(root: &FsPath) -> String {
+    if let Some(home) = dirs::home_dir() {
+        if let Ok(rel) = root.strip_prefix(&home) {
+            return if rel.as_os_str().is_empty() {
+                "~".to_string()
+            } else {
+                format!("~/{}", path_to_route(rel))
+            };
+        }
+    }
+    root.display().to_string()
+}
+
+fn insert_workspace_header_context(
+    context: &mut tera::Context,
+    ws: &WorkspaceEntry,
+    root: &FsPath,
+) {
+    context.insert("workspace_display_name", &workspace_display_name(ws, root));
+    context.insert("workspace_display_path", &workspace_display_path(root));
+}
+
+fn encode_route_path(path: &str) -> String {
+    path.split('/')
+        .map(|segment| urlencoding::encode(segment).into_owned())
+        .collect::<Vec<_>>()
+        .join("/")
+}
+
+fn path_to_hash(path: &FsPath) -> String {
+    encode_route_path(&path_to_route(path))
+}
+
+fn workspace_file_back_link(workspace_id: &str, path: &FsPath, root: &FsPath) -> String {
+    workspace_relative_path(path, root)
+        .map(|rel| {
+            let hash_path = path_to_hash(&rel);
+            if hash_path.is_empty() {
+                workspace_root_url(workspace_id)
+            } else {
+                format!("/{workspace_id}/#{hash_path}")
+            }
+        })
+        .unwrap_or_else(|| workspace_root_url(workspace_id))
 }
 
 fn sanitize_new_file_path(path: &str) -> Option<PathBuf> {
@@ -651,7 +770,7 @@ pub async fn start(config: ServerConfig) -> Result<(), String> {
         .route("/_/js/{*path}", get(serve_js))
         .route("/_/ws/{workspace_id}", get(config_ws_handler))
         // Read-only public APIs
-        .route("/search", get(search_handler))
+        .route("/_/{workspace_id}/search", get(workspace_search_handler))
         .route("/api/preview", post(preview_handler))
         // Access-code gate: unlock endpoint (not itself gated).
         .route("/_/unlock", post(unlock_handler))
@@ -741,71 +860,6 @@ pub async fn start(config: ServerConfig) -> Result<(), String> {
                 .route_layer(axum::middleware::from_fn(require_same_origin)),
         )
         .route("/_/{workspace_id}/chat", get(handle_chat_popout))
-        // Legacy workspace-internal routes. Keep these so links emitted by
-        // older builds keep working, but new links use /_/{workspace_id}/...
-        // and therefore no longer occupy the user's file namespace.
-        .route(
-            "/{workspace_id}/_/git/data/history",
-            get(handle_git_history_data),
-        )
-        .route(
-            "/{workspace_id}/_/git/data/diff/work",
-            get(handle_git_working_diff_data),
-        )
-        .route(
-            "/{workspace_id}/_/git/data/show/{commit}",
-            get(handle_git_commit_diff_data),
-        )
-        .route("/{workspace_id}/_/git/history", get(handle_git_history))
-        .route("/{workspace_id}/_/git/branches", get(handle_git_branches))
-        .route("/{workspace_id}/_/git/tags", get(handle_git_tags))
-        .route(
-            "/{workspace_id}/_/git/diff/work",
-            get(handle_git_working_diff),
-        )
-        .route(
-            "/{workspace_id}/_/git/show/{commit}",
-            get(handle_git_commit_diff),
-        )
-        .route(
-            "/{workspace_id}/_/git/commit",
-            post(handle_git_commit)
-                .route_layer(axum::middleware::from_fn(require_loopback))
-                .route_layer(axum::middleware::from_fn(require_same_origin)),
-        )
-        .route(
-            "/{workspace_id}/_/git/checkout",
-            post(handle_git_checkout)
-                .route_layer(axum::middleware::from_fn(require_loopback))
-                .route_layer(axum::middleware::from_fn(require_same_origin)),
-        )
-        .route(
-            "/{workspace_id}/_/files/data",
-            get(handle_workspace_files_data),
-        )
-        .route(
-            "/{workspace_id}/_/files/dir",
-            get(handle_workspace_dir_data),
-        )
-        .route(
-            "/{workspace_id}/_/files/create",
-            post(handle_workspace_create_file)
-                .route_layer(axum::middleware::from_fn(require_loopback))
-                .route_layer(axum::middleware::from_fn(require_same_origin)),
-        )
-        .route(
-            "/{workspace_id}/_/files/folder",
-            post(handle_workspace_create_folder)
-                .route_layer(axum::middleware::from_fn(require_loopback))
-                .route_layer(axum::middleware::from_fn(require_same_origin)),
-        )
-        .route(
-            "/{workspace_id}/_/settings/features",
-            post(handle_workspace_update_features)
-                .route_layer(axum::middleware::from_fn(require_loopback))
-                .route_layer(axum::middleware::from_fn(require_same_origin)),
-        )
-        .route("/{workspace_id}/_/chat", get(handle_chat_popout))
         .route("/_/ws", get(ws_handler))
         .route("/{workspace_id}/", get(handle_workspace_root))
         .route("/{workspace_id}/{*path}", get(handle_workspace_path))
@@ -831,8 +885,7 @@ pub async fn start(config: ServerConfig) -> Result<(), String> {
     // collaborators may use it when it's enabled. Only the same-origin guard is
     // needed here to block cross-site / CSRF / DNS-rebinding fetches.
     let app = app.merge(
-        crate::chat::routes::router()
-            .route_layer(axum::middleware::from_fn(require_same_origin)),
+        crate::chat::routes::router().route_layer(axum::middleware::from_fn(require_same_origin)),
     );
     // Access-code gate over every workspace-scoped route (no-op when unset).
     let app = app.layer(axum::middleware::from_fn_with_state(
@@ -1317,18 +1370,7 @@ async fn require_access_code(
     next: axum::middleware::Next,
 ) -> Response {
     let path = req.uri().path().to_string();
-    // `/search` carries its workspace id in the `?ws=` query param rather than
-    // the path, so it has to be resolved here for the gate to cover it like the
-    // path-based routes (ids are 8 hex chars — never percent-encoded).
-    let ws_id = access_gated_workspace(&path).or_else(|| {
-        if path != "/search" {
-            return None;
-        }
-        req.uri()
-            .query()
-            .and_then(|q| q.split('&').find_map(|kv| kv.strip_prefix("ws=")))
-            .map(str::to_string)
-    });
+    let ws_id = access_gated_workspace(&path);
     let Some(ws_id) = ws_id else {
         return next.run(req).await;
     };
@@ -1898,7 +1940,7 @@ async fn handle_workspace_root(
     // Single-file workspace: there's no listing, just the one document.
     // 302 to the file URL so the user lands directly on the rendered .md.
     if let Some(only) = &ws.single_file {
-        return Redirect::to(&format!("/{workspace_id}/{only}")).into_response();
+        return Redirect::to(&workspace_file_url(&workspace_id, only)).into_response();
     }
     let root = canonical_workspace_root(&ws);
     let is_local = addr.ip().is_loopback();
@@ -1948,7 +1990,23 @@ async fn handle_workspace_path(
                 is_local,
             )
         } else {
-            serve_file(&canonical)
+            // Small UTF-8 text/code files get an elegant read-only, syntax-
+            // highlighted preview page. Everything else — images, media, PDFs,
+            // binaries, oversized text — is served as raw bytes (the browser
+            // displays what it can inline and downloads the rest); this also
+            // keeps embedded resources like markdown images working verbatim.
+            match read_text_for_preview(&canonical) {
+                Some((content, token)) => render_file_view(
+                    &canonical,
+                    content,
+                    token,
+                    &workspace_id,
+                    &ws,
+                    &root,
+                    &state,
+                ),
+                None => serve_file(&canonical),
+            }
         }
     } else if canonical.is_dir() {
         if ws.is_ephemeral() {
@@ -1957,7 +2015,21 @@ async fn handle_workspace_path(
             // expose a sibling listing.
             return (StatusCode::NOT_FOUND, "Path not found").into_response();
         }
-        render_directory_listing(&workspace_id, &ws, &root, Some(&decoded), &state, is_local)
+        // Subdirectories are browsed in place on the workspace root via a URL
+        // hash (e.g. "/{id}/#docs/") which the frontend expands as an inline
+        // tree — there is no standalone subdirectory listing page anymore.
+        // Redirect any direct/legacy subdirectory URL to that anchor form.
+        match workspace_relative_path(&canonical, &root).map(|rel| path_to_route(&rel)) {
+            Some(rel_str) if !rel_str.is_empty() => Redirect::to(&format!(
+                "{}#{}/",
+                workspace_root_url(&workspace_id),
+                rel_str
+            ))
+            .into_response(),
+            // The workspace root itself is served by `handle_workspace_root`;
+            // this arm is just a safe fallback.
+            _ => render_directory_listing(&workspace_id, &ws, &root, None, &state, is_local),
+        }
     } else {
         (StatusCode::NOT_FOUND, "Path not found").into_response()
     }
@@ -2449,7 +2521,7 @@ async fn handle_workspace_files_data(
                 .map(|name| name.to_string_lossy().to_string())
                 .unwrap_or_else(|| route.clone()),
             is_markdown: is_markdown_path(path),
-            url: format!("/{workspace_id}/{route}"),
+            url: workspace_file_url(&workspace_id, &route),
             path: route,
         });
     }
@@ -2545,7 +2617,7 @@ async fn handle_workspace_create_file(
     Json(CreateFileResponse {
         success: true,
         message: "File created".to_string(),
-        url: Some(format!("/{workspace_id}/{route}")),
+        url: Some(workspace_file_url(&workspace_id, &route)),
     })
     .into_response()
 }
@@ -2824,21 +2896,23 @@ async fn list_workspaces_handler(State(state): State<AppState>) -> impl IntoResp
 
 // ── Search handler ────────────────────────────────────────────────────────────
 
-#[derive(Deserialize)]
-struct WorkspaceSearchQuery {
-    ws: String,
-    #[serde(flatten)]
-    q: SearchQuery,
+async fn workspace_search_handler(
+    State(state): State<AppState>,
+    AxumPath(workspace_id): AxumPath<String>,
+    axum::extract::Query(query): axum::extract::Query<SearchQuery>,
+) -> impl IntoResponse {
+    workspace_search_results(&state, &workspace_id, &query.q)
 }
 
-async fn search_handler(
-    State(state): State<AppState>,
-    axum::extract::Query(query): axum::extract::Query<WorkspaceSearchQuery>,
-) -> impl IntoResponse {
-    if query.q.q.is_empty() {
+fn workspace_search_results(
+    state: &AppState,
+    workspace_id: &str,
+    query: &str,
+) -> Json<Vec<SearchResult>> {
+    if query.is_empty() {
         return Json(Vec::<SearchResult>::new());
     }
-    let Some(ws) = state.workspace_registry.get(&query.ws) else {
+    let Some(ws) = state.workspace_registry.get(workspace_id) else {
         return Json(Vec::new());
     };
     if !ws.enable_search.load(std::sync::atomic::Ordering::Relaxed) {
@@ -2847,7 +2921,7 @@ async fn search_handler(
     let Some(idx) = ws.search_index.load_full() else {
         return Json(Vec::new()); // still indexing
     };
-    let results = idx.search(&query.q.q, 20).unwrap_or_else(|e| {
+    let results = idx.search(query, 20).unwrap_or_else(|e| {
         tracing::warn!("search error: {e}");
         Vec::new()
     });
@@ -2921,6 +2995,9 @@ struct GitDiffNavEntry<'a> {
 struct GitCompareOption {
     value: String,
     label: String,
+    /// Lightweight display alias for special refs/commits, e.g. the newest
+    /// concrete commit that is also reachable as HEAD.
+    alias: String,
     /// Option family for the rich picker UI: worktree | head | branch | tag | commit.
     kind: String,
     /// Commit subject (commits only; "" otherwise).
@@ -3908,6 +3985,7 @@ fn git_compare_options(
     struct Cand {
         value: String,
         label: String,
+        alias: String,
         kind: String,
         subject: String,
         detail: String,
@@ -3925,6 +4003,7 @@ fn git_compare_options(
     add(Cand {
         value: "HEAD".to_string(),
         label: "HEAD".to_string(),
+        alias: String::new(),
         kind: "head".to_string(),
         subject: "Latest commit".to_string(),
         detail: String::new(),
@@ -3940,17 +4019,31 @@ fn git_compare_options(
         add(Cand {
             value: branch.name,
             label,
+            alias: String::new(),
             kind: "branch".to_string(),
             subject: String::new(),
-            detail: if branch.current { "current".to_string() } else { String::new() },
+            detail: if branch.current {
+                "current".to_string()
+            } else {
+                String::new()
+            },
             date: String::new(),
             check: false,
         });
     }
-    for commit in git::history(root, 50).unwrap_or_default() {
+    for (idx, commit) in git::history(root, 50)
+        .unwrap_or_default()
+        .into_iter()
+        .enumerate()
+    {
         add(Cand {
             value: commit.hash,
             label: format!("{} {}", commit.short_hash, commit.subject),
+            alias: if idx == 0 {
+                "Latest".to_string()
+            } else {
+                String::new()
+            },
             kind: "commit".to_string(),
             subject: commit.subject,
             detail: commit.short_hash,
@@ -3962,6 +4055,7 @@ fn git_compare_options(
         add(Cand {
             value: tag.name.clone(),
             label: format!("{} (tag)", tag.name),
+            alias: String::new(),
             kind: "tag".to_string(),
             subject: String::new(),
             detail: tag.short_hash,
@@ -3973,6 +4067,7 @@ fn git_compare_options(
         add(Cand {
             value: "worktree".to_string(),
             label: "Worktree".to_string(),
+            alias: String::new(),
             kind: "worktree".to_string(),
             subject: "Uncommitted working-tree files".to_string(),
             detail: String::new(),
@@ -3996,6 +4091,7 @@ fn git_compare_options(
                 selected: c.value == selected,
                 value: c.value.clone(),
                 label: c.label.clone(),
+                alias: c.alias.clone(),
                 kind: c.kind.clone(),
                 subject: c.subject.clone(),
                 detail: c.detail.clone(),
@@ -4011,6 +4107,7 @@ fn git_compare_options(
             GitCompareOption {
                 value: selected.to_string(),
                 label: short_git_ref(selected),
+                alias: String::new(),
                 kind: "commit".to_string(),
                 subject: String::new(),
                 detail: short_git_ref(selected),
@@ -4099,7 +4196,8 @@ fn markdown_diff_page_url(
 
 fn pretty_compare_page_url(workspace_id: &str, base: &str, compare: &str, view: &str) -> String {
     format!(
-        "/_/{workspace_id}/compare/{}...{}?view={}",
+        "{}/{}...{}?view={}",
+        workspace_compare_base_url(workspace_id),
         encode_compare_ref_for_path(base),
         encode_compare_ref_for_path(compare),
         view
@@ -4156,19 +4254,10 @@ fn render_git_diff_page(
     context.insert("is_local", &is_local);
     context.insert("shared_annotation", &flags.shared_annotation);
     context.insert("enable_live", &flags.enable_live);
-    context.insert("history_url", &format!("/_/{workspace_id}/git/history"));
-    context.insert("files_url", &format!("/{workspace_id}/"));
+    context.insert("history_url", &workspace_git_history_url(workspace_id));
+    context.insert("files_url", &workspace_root_url(workspace_id));
     // Home-collapsed workspace path shown beside the title (links to the home).
-    let ws_display_path = {
-        let p = ws.root.to_string_lossy().to_string();
-        match dirs::home_dir() {
-            Some(home) => match p.strip_prefix(home.to_string_lossy().as_ref()) {
-                Some(rest) => format!("~{rest}"),
-                None => p,
-            },
-            None => p,
-        }
-    };
+    let ws_display_path = workspace_display_path(&ws.root);
     context.insert("workspace_display_path", &ws_display_path);
     context.insert("workspace_alias", &ws.alias());
     context.insert("work_diff_url", &markdown_work_diff_page_url(workspace_id));
@@ -4184,10 +4273,13 @@ fn render_git_diff_page(
         "compare_url",
         &pretty_compare_page_url(workspace_id, &base_value, &compare_value, initial_view),
     );
-    context.insert("compare_path_base", &format!("/_/{workspace_id}/compare"));
+    context.insert(
+        "compare_path_base",
+        &workspace_compare_base_url(workspace_id),
+    );
     context.insert(
         "compare_options_status_url",
-        &format!("/_/{workspace_id}/compare/options"),
+        &workspace_compare_options_url(workspace_id),
     );
     context.insert("initial_diff_view", initial_view);
     context.insert("default_diff_path", &default_diff_path);
@@ -4215,8 +4307,8 @@ fn render_git_diff_page(
         "compare": compare_options,
         "baseValue": base_value,
         "compareValue": compare_value,
-        "pathBase": format!("/_/{workspace_id}/compare"),
-        "statusUrl": format!("/_/{workspace_id}/compare/options"),
+        "pathBase": workspace_compare_base_url(workspace_id),
+        "statusUrl": workspace_compare_options_url(workspace_id),
     })
     .to_string();
     context.insert("compare_picker_json", &picker_json);
@@ -4232,8 +4324,11 @@ fn render_git_diff_page(
     let diff_editable =
         is_worktree_diff && ws.enable_edit.load(std::sync::atomic::Ordering::Relaxed);
     context.insert("diff_editable", &diff_editable);
-    context.insert("create_file_url", &format!("/_/{workspace_id}/files/create"));
-    context.insert("create_folder_url", &format!("/_/{workspace_id}/files/folder"));
+    context.insert("create_file_url", &workspace_file_create_url(workspace_id));
+    context.insert(
+        "create_folder_url",
+        &workspace_folder_create_url(workspace_id),
+    );
     // Both views (rendered + raw source) now consume one unified Markdown block
     // payload, so a single data URL drives the whole page.
     let markdown_diff_data_url = markdown_diff_data_url(workspace_id, &base_value, &compare_value);
@@ -4433,7 +4528,7 @@ fn render_git_history_page(
     context.insert("ranges", &range_options);
     context.insert("current_range", &range_key);
     context.insert("current_range_label", &current_range_label);
-    context.insert("files_url", &format!("/{workspace_id}/"));
+    context.insert("files_url", &workspace_root_url(workspace_id));
     context.insert("has_commits", &!groups.is_empty());
     let filters_active = selected_author.is_some() || (!range_key.is_empty() && range_key != "all");
     context.insert("filters_active", &filters_active);
@@ -4449,8 +4544,8 @@ fn render_git_branches_page(
     let mut context = base_context(state);
     context.insert("title", "markon git branches");
     context.insert("workspace_id", workspace_id);
-    context.insert("files_url", &format!("/{workspace_id}/"));
-    context.insert("history_url", &format!("/_/{workspace_id}/git/history"));
+    context.insert("files_url", &workspace_root_url(workspace_id));
+    context.insert("history_url", &workspace_git_history_url(workspace_id));
     context.insert("page_title", "Branches");
     context.insert("page_title_key", "web.ws.git.branches");
     context.insert("empty_key", "web.ws.git.no_branches");
@@ -4503,8 +4598,8 @@ fn render_git_tags_page(state: &AppState, workspace_id: &str, tags: &[git::GitTa
     let mut context = base_context(state);
     context.insert("title", "markon git tags");
     context.insert("workspace_id", workspace_id);
-    context.insert("files_url", &format!("/{workspace_id}/"));
-    context.insert("history_url", &format!("/_/{workspace_id}/git/history"));
+    context.insert("files_url", &workspace_root_url(workspace_id));
+    context.insert("history_url", &workspace_git_history_url(workspace_id));
     context.insert("page_title", "Tags");
     context.insert("page_title_key", "web.ws.git.tags");
     context.insert("empty_key", "web.ws.git.no_tags");
@@ -4552,12 +4647,12 @@ fn markdown_compare_diff_data(
     let entries: Vec<&git::MarkdownDiffEntry> = listing
         .entries
         .iter()
-        .filter(|e| filter.map_or(true, |f| e.path == f || e.old_path.as_deref() == Some(f)))
+        .filter(|e| filter.is_none_or(|f| e.path == f || e.old_path.as_deref() == Some(f)))
         .collect();
 
     enum Slot<'a> {
         Cached(Arc<MarkdownDiffFile>),
-        Build(MarkdownBuildItem<'a>),
+        Build(Box<MarkdownBuildItem<'a>>),
     }
 
     // ---- Pass 1: resolve content identity; serve file-cache hits without I/O ----
@@ -4632,14 +4727,14 @@ fn markdown_compare_diff_data(
                 needed_blobs.push(oid.clone());
             }
         }
-        slots.push(Slot::Build(MarkdownBuildItem {
+        slots.push(Slot::Build(Box::new(MarkdownBuildItem {
             entry,
             old_id,
             new_id,
             new_worktree,
             read_diagnostics,
             file_key,
-        }));
+        })));
     }
 
     // ---- Pass 2: one batched `git cat-file` for every missing blob ----
@@ -4652,7 +4747,7 @@ fn markdown_compare_diff_data(
         .iter()
         .enumerate()
         .filter_map(|(i, slot)| match slot {
-            Slot::Build(item) => Some((i, item)),
+            Slot::Build(item) => Some((i, item.as_ref())),
             Slot::Cached(_) => None,
         })
         .collect();
@@ -4720,8 +4815,9 @@ fn build_markdown_diff_file(
     let renderer = default_markdown_engine(state.theme.as_str());
     let mut diagnostics = item.read_diagnostics.clone();
 
-    let blob_text = |id: &str, side: &'static str, diags: &mut Vec<MarkdownDiffDiagnostic>| {
-        match blobs.get(id) {
+    let blob_text =
+        |id: &str, side: &'static str, diags: &mut Vec<MarkdownDiffDiagnostic>| match blobs.get(id)
+        {
             Some(bytes) => Some(String::from_utf8_lossy(bytes).into_owned()),
             None => {
                 diags.push(markdown_diff_diagnostic(
@@ -4732,8 +4828,7 @@ fn build_markdown_diff_file(
                 ));
                 None
             }
-        }
-    };
+        };
 
     let old_content = item
         .old_id
@@ -4749,9 +4844,21 @@ fn build_markdown_diff_file(
             .and_then(|id| blob_text(id, "new", &mut diagnostics))
     };
 
-    let old = summarize_side_cached(state, "old", old_content.as_deref(), item.old_id.as_deref(), &renderer);
+    let old = summarize_side_cached(
+        state,
+        "old",
+        old_content.as_deref(),
+        item.old_id.as_deref(),
+        &renderer,
+    );
     diagnostics.extend(markdown_side_diagnostics("old", old.as_ref()));
-    let new = summarize_side_cached(state, "new", new_content.as_deref(), item.new_id.as_deref(), &renderer);
+    let new = summarize_side_cached(
+        state,
+        "new",
+        new_content.as_deref(),
+        item.new_id.as_deref(),
+        &renderer,
+    );
     diagnostics.extend(markdown_side_diagnostics("new", new.as_ref()));
 
     let blocks = diff_markdown_blocks(
@@ -5059,6 +5166,88 @@ fn coalesce_markdown_block_ops(ops: Vec<MarkdownBlockOp>) -> Vec<MarkdownDiffBlo
     out
 }
 
+/// Text/code files above this size skip the (relatively expensive) syntax-
+/// highlight preview and fall back to raw bytes (the browser shows plain text).
+const MAX_TEXT_PREVIEW_BYTES: u64 = 2 * 1024 * 1024;
+
+/// If `path` is a small UTF-8 text/code file, return its contents plus a
+/// language hint (extension, or file name for extension-less files) for the
+/// highlighted preview. Returns `None` for images, media, binaries and
+/// oversized files — the caller serves those as raw bytes.
+fn read_text_for_preview(path: &FsPath) -> Option<(String, String)> {
+    let mime = mime_guess::from_path(path).first_or_octet_stream();
+    if matches!(mime.type_().as_str(), "image" | "video" | "audio")
+        || mime.essence_str() == "application/pdf"
+    {
+        return None;
+    }
+    if fs::metadata(path).map(|m| m.len()).unwrap_or(0) > MAX_TEXT_PREVIEW_BYTES {
+        return None;
+    }
+    let bytes = fs::read(path).ok()?;
+    // A NUL byte or invalid UTF-8 means it isn't text we can render.
+    if bytes.contains(&0) {
+        return None;
+    }
+    let content = String::from_utf8(bytes).ok()?;
+    let token = path
+        .extension()
+        .and_then(|e| e.to_str())
+        .filter(|s| !s.is_empty())
+        .or_else(|| path.file_name().and_then(|n| n.to_str()))
+        .unwrap_or_default()
+        .to_string();
+    Some((content, token))
+}
+
+/// Read-only, syntax-highlighted preview page for a non-markdown text/code file.
+/// No collaboration chrome — just the file, line numbers and a back link.
+fn render_file_view(
+    path: &FsPath,
+    content: String,
+    token: String,
+    workspace_id: &str,
+    ws: &WorkspaceEntry,
+    root: &FsPath,
+    state: &AppState,
+) -> Response {
+    let file_name = path
+        .file_name()
+        .map(|n| n.to_string_lossy().to_string())
+        .unwrap_or_default();
+    // Back link: workspace root with this exact file highlighted; the directory
+    // tree expands the parent folders from the hash path.
+    let back_link = workspace_file_back_link(workspace_id, path, root);
+    let rel_display = workspace_relative_path(path, root)
+        .map(|rel| rel.to_string_lossy().replace('\\', "/"))
+        .unwrap_or_else(|| file_name.clone());
+
+    // Strip one trailing newline so the highlighted <pre> and the line-number
+    // gutter agree on the visual line count.
+    let normalized = content.strip_suffix('\n').unwrap_or(content.as_str());
+    let code_html = crate::markdown::highlight_source_file(&token, normalized);
+    let line_count = normalized.split('\n').count().max(1);
+    let gutter = (1..=line_count)
+        .map(|n| n.to_string())
+        .collect::<Vec<_>>()
+        .join("\n");
+
+    let mut context = base_context(state);
+    context.insert("title", &format!("markon - {file_name}"));
+    context.insert("workspace_id", workspace_id);
+    insert_workspace_header_context(&mut context, ws, root);
+    context.insert("version", env!("CARGO_PKG_VERSION"));
+    context.insert("file_name", &file_name);
+    context.insert("rel_display", &rel_display);
+    context.insert("back_link", &back_link);
+    context.insert("show_back_link", &!ws.is_ephemeral());
+    context.insert("code_html", &code_html);
+    context.insert("gutter", &gutter);
+    context.insert("line_count", &line_count);
+
+    render_template(state, "file-view.html", &context)
+}
+
 fn render_markdown_file(
     file_path: &str,
     workspace_id: &str,
@@ -5081,25 +5270,17 @@ fn render_markdown_file(
             context.insert("title", &format!("markon - {title}"));
             context.insert("file_path", file_path);
             context.insert("workspace_id", workspace_id);
+            insert_workspace_header_context(&mut context, ws, root);
             context.insert("version", env!("CARGO_PKG_VERSION"));
             context.insert("content", &rendered.html);
-            context.insert("history_url", &format!("/_/{workspace_id}/git/history"));
-            // Back link: parent dir of this file within the workspace.
+            context.insert("history_url", &workspace_git_history_url(workspace_id));
+            // Back link: the workspace root with this exact file highlighted;
+            // the directory tree expands the parent folders from the hash path.
             // Suppressed for single-file workspaces — `/{id}/` 303-redirects
             // back to this same file (see `handle_workspace_root`), so a
-            // "Back to file list" link would be a no-op trap.
-            let back_link = std::path::Path::new(file_path)
-                .parent()
-                .and_then(|p| workspace_relative_path(p, root))
-                .map(|rel| {
-                    let rel_str = path_to_route(&rel);
-                    if rel_str.is_empty() {
-                        format!("/{workspace_id}/")
-                    } else {
-                        format!("/{workspace_id}/{}/", rel_str)
-                    }
-                })
-                .unwrap_or_else(|| format!("/{workspace_id}/"));
+            // "Back" link would be a no-op trap.
+            let back_link =
+                workspace_file_back_link(workspace_id, std::path::Path::new(file_path), root);
             context.insert("back_link", &back_link);
             context.insert("show_back_link", &!ws.is_ephemeral());
             context.insert("has_mermaid", &rendered.has_mermaid);
@@ -5187,21 +5368,20 @@ fn collect_directory_entries(
             let file_type = entry.file_type().ok()?;
             let is_dir = file_type.is_dir();
             let is_markdown = !is_dir && is_markdown_path(&path);
-            let show_in_markdown = !is_hidden && (is_dir || is_markdown);
             let rel = path.strip_prefix(root).unwrap_or(&path).to_path_buf();
             let rel_git_path = rel.to_string_lossy().replace('\\', "/");
             let rel_url = path_to_route(&rel);
             let link = if is_dir {
-                format!("/{workspace_id}/{rel_url}/")
+                workspace_file_url(workspace_id, &format!("{rel_url}/"))
             } else {
-                format!("/{workspace_id}/{rel_url}")
+                workspace_file_url(workspace_id, &rel_url)
             };
             Some(DirListingEntry {
                 name,
                 is_dir,
                 is_markdown,
                 is_hidden,
-                show_in_markdown,
+                show_in_markdown: !is_hidden && is_markdown,
                 link,
                 rel_git_path,
                 last_commit_subject: None,
@@ -5209,6 +5389,14 @@ fn collect_directory_entries(
             })
         })
         .collect();
+
+    if entries.iter().any(|entry| entry.is_dir && !entry.is_hidden) {
+        let dirs_with_markdown = direct_child_dirs_with_markdown_descendants(root, current_dir);
+        for entry in entries.iter_mut().filter(|entry| entry.is_dir) {
+            entry.show_in_markdown =
+                !entry.is_hidden && dirs_with_markdown.contains(&entry.rel_git_path);
+        }
+    }
 
     entries.sort_by(|a, b| match (a.is_dir, b.is_dir) {
         (true, false) => std::cmp::Ordering::Less,
@@ -5234,6 +5422,35 @@ fn collect_directory_entries(
     }
 
     Ok(entries)
+}
+
+fn direct_child_dirs_with_markdown_descendants(
+    root: &FsPath,
+    current_dir: &FsPath,
+) -> HashSet<String> {
+    let mut dirs = HashSet::new();
+    let walker = crate::fswalk::default_walker(current_dir).build();
+    for entry in walker.filter_map(|entry| entry.ok()) {
+        let path = entry.path();
+        if path == current_dir || !path.is_file() || !is_markdown_path(path) {
+            continue;
+        }
+        let Ok(rel_to_current) = path.strip_prefix(current_dir) else {
+            continue;
+        };
+        let Some(std::path::Component::Normal(first_component)) =
+            rel_to_current.components().next()
+        else {
+            continue;
+        };
+        let direct_child = current_dir.join(first_component);
+        if direct_child == path {
+            continue;
+        }
+        let rel_to_root = direct_child.strip_prefix(root).unwrap_or(&direct_child);
+        dirs.insert(path_to_route(rel_to_root));
+    }
+    dirs
 }
 
 /// JSON: the direct children of a directory (relative to the workspace root),
@@ -5326,9 +5543,9 @@ fn render_directory_listing(
                 .map(path_to_route)
                 .unwrap_or_default();
             if rel.is_empty() {
-                format!("/{workspace_id}/")
+                workspace_root_url(workspace_id)
             } else {
-                format!("/{workspace_id}/{rel}/")
+                workspace_file_url(workspace_id, &format!("{rel}/"))
             }
         })
     } else {
@@ -5347,23 +5564,14 @@ fn render_directory_listing(
         link: String,
         is_current: bool,
     }
-    let alias = ws.alias();
-    let workspace_display_name = if alias.is_empty() {
-        root.file_name()
-            .map(|n| n.to_string_lossy().to_string())
-            .unwrap_or_default()
-    } else {
-        alias
-    };
+    let workspace_display_name = workspace_display_name(ws, root);
     let rel_components: Vec<String> = current_dir
         .strip_prefix(root)
         .ok()
         .map(|rel| {
             rel.components()
                 .filter_map(|c| match c {
-                    std::path::Component::Normal(part) => {
-                        Some(part.to_string_lossy().to_string())
-                    }
+                    std::path::Component::Normal(part) => Some(part.to_string_lossy().to_string()),
                     _ => None,
                 })
                 .collect()
@@ -5373,7 +5581,7 @@ fn render_directory_listing(
     let depth = rel_components.len();
     breadcrumb.push(BreadcrumbSegment {
         name: workspace_display_name,
-        link: format!("/{workspace_id}/"),
+        link: workspace_root_url(workspace_id),
         is_current: depth == 0,
     });
     let mut acc = String::new();
@@ -5385,7 +5593,7 @@ fn render_directory_listing(
         }
         breadcrumb.push(BreadcrumbSegment {
             name: comp.clone(),
-            link: format!("/{workspace_id}/{acc}/"),
+            link: workspace_file_url(workspace_id, &format!("{acc}/")),
             is_current: i + 1 == depth,
         });
     }
@@ -5484,7 +5692,7 @@ fn render_directory_listing(
     );
     context.insert("is_local", &is_local);
     context.insert("current_dir", &current_dir.display().to_string());
-    context.insert("history_url", &format!("/_/{workspace_id}/git/history"));
+    context.insert("history_url", &workspace_git_history_url(workspace_id));
     context.insert("work_diff_url", &work_diff_url);
     context.insert("latest_commit", &latest_commit);
     context.insert("latest_commit_diff_url", &latest_commit_diff_url);
@@ -5499,22 +5707,19 @@ fn render_directory_listing(
     context.insert("is_workspace_root", &is_workspace_root);
     context.insert("can_add_file", &can_add_file);
     context.insert("version", env!("CARGO_PKG_VERSION"));
-    context.insert("branches_url", &format!("/_/{workspace_id}/git/branches"));
-    context.insert("tags_url", &format!("/_/{workspace_id}/git/tags"));
-    context.insert("checkout_url", &format!("/_/{workspace_id}/git/checkout"));
-    context.insert("files_data_url", &format!("/_/{workspace_id}/files/data"));
-    context.insert("files_dir_url", &format!("/_/{workspace_id}/files/dir"));
+    context.insert("branches_url", &workspace_git_branches_url(workspace_id));
+    context.insert("tags_url", &workspace_git_tags_url(workspace_id));
+    context.insert("checkout_url", &workspace_git_checkout_url(workspace_id));
+    context.insert("files_data_url", &workspace_files_data_url(workspace_id));
+    context.insert("files_dir_url", &workspace_files_dir_url(workspace_id));
     context.insert(
         "settings_features_url",
-        &format!("/_/{workspace_id}/settings/features"),
+        &workspace_settings_features_url(workspace_id),
     );
-    context.insert(
-        "create_file_url",
-        &format!("/_/{workspace_id}/files/create"),
-    );
+    context.insert("create_file_url", &workspace_file_create_url(workspace_id));
     context.insert(
         "create_folder_url",
-        &format!("/_/{workspace_id}/files/folder"),
+        &workspace_folder_create_url(workspace_id),
     );
     context.insert("entries", &entries);
     context.insert("show_parent", &show_parent);
@@ -6357,10 +6562,35 @@ mod tests {
             access_gated_workspace("/_/abcd1234/git/diff/work").as_deref(),
             Some("abcd1234")
         );
+        assert_eq!(
+            access_gated_workspace("/_/abcd1234/search").as_deref(),
+            Some("abcd1234")
+        );
         assert!(access_gated_workspace("/_/css/tokens.css").is_none());
         assert!(access_gated_workspace("/_/unlock").is_none());
         assert!(access_gated_workspace("/api/preview").is_none());
         assert!(access_gated_workspace("/favicon.ico").is_none());
+    }
+
+    #[test]
+    fn canonical_route_helpers_keep_file_and_tool_spaces_separate() {
+        assert_eq!(workspace_root_url("abcd1234"), "/abcd1234/");
+        assert_eq!(
+            workspace_file_url("abcd1234", "docs/readme.md"),
+            "/abcd1234/docs/readme.md"
+        );
+        assert_eq!(
+            workspace_file_url("abcd1234", "docs/a b#c?.md"),
+            "/abcd1234/docs/a%20b%23c%3F.md"
+        );
+        assert_eq!(
+            workspace_internal_url("abcd1234", "git/history"),
+            "/_/abcd1234/git/history"
+        );
+        assert_eq!(
+            workspace_compare_base_url("abcd1234"),
+            "/_/abcd1234/compare"
+        );
     }
 
     #[test]
@@ -6400,7 +6630,9 @@ mod tests {
     #[tokio::test]
     async fn workspace_path_handler_renders_markdown_inside_workspace() {
         let dir = tempfile::tempdir().unwrap();
-        let file = dir.path().join("README.md");
+        let docs = dir.path().join("docs");
+        fs::create_dir(&docs).unwrap();
+        let file = docs.join("EVDI_IMPLEMENTATION_PLAN.md");
         fs::write(&file, "# Windows route check\n\nalpha beta gamma").unwrap();
 
         let registry = Arc::new(WorkspaceRegistry::new("route-test".into()));
@@ -6409,7 +6641,7 @@ mod tests {
 
         let response = handle_workspace_path(
             State(state),
-            AxumPath((id.clone(), "README.md".to_string())),
+            AxumPath((id.clone(), "docs/EVDI_IMPLEMENTATION_PLAN.md".to_string())),
             axum::extract::ConnectInfo(loopback()),
         )
         .await
@@ -6420,7 +6652,21 @@ mod tests {
         assert!(body.contains("alpha beta gamma"));
         assert!(body.contains("enable-edit"));
         assert!(body.contains("enable-search"));
-        assert!(body.contains("id=\"theme-link-text\""));
+        assert!(body.contains("window.MarkonTheme"));
+        assert!(body.contains(&format!("href=\"/{id}/#docs/EVDI_IMPLEMENTATION_PLAN.md\"")));
+        let root = canonicalize_route_path(dir.path()).unwrap();
+        let workspace_name = root
+            .file_name()
+            .map(|name| name.to_string_lossy().to_string())
+            .unwrap_or_default();
+        let workspace_path = workspace_display_path(&root);
+        assert!(body.contains(&format!(
+            "class=\"workspace-back-name\">{workspace_name}</span>"
+        )));
+        assert!(body.contains(&format!(
+            "class=\"workspace-back-path\">{workspace_path}</span>"
+        )));
+        assert!(!body.contains("id=\"back-link-text\""));
         assert!(!body.contains(&format!("/_/{id}/git/history")));
     }
 
@@ -6434,10 +6680,13 @@ mod tests {
         let id = add_test_workspace(&registry, dir.path().to_path_buf(), all_flags());
         let state = test_state(registry);
 
-        let response =
-            handle_workspace_path(State(state), AxumPath((id, "README.md".to_string())), axum::extract::ConnectInfo(loopback()))
-                .await
-                .into_response();
+        let response = handle_workspace_path(
+            State(state),
+            AxumPath((id, "README.md".to_string())),
+            axum::extract::ConnectInfo(loopback()),
+        )
+        .await
+        .into_response();
         assert_eq!(response.status(), StatusCode::OK);
         let body = response_text(response).await;
         assert!(body.contains("/_/js/katex/katex.min.css"), "{body}");
@@ -6555,7 +6804,11 @@ mod tests {
 
         // both OFF → no save token and no chat for the same remote peer.
         let reg_off = Arc::new(WorkspaceRegistry::new("remote-flags-off".into()));
-        let id_off = add_test_workspace(&reg_off, dir.path().to_path_buf(), WorkspaceFlags::default());
+        let id_off = add_test_workspace(
+            &reg_off,
+            dir.path().to_path_buf(),
+            WorkspaceFlags::default(),
+        );
         let off = response_text(
             handle_workspace_path(
                 State(test_state(reg_off)),
@@ -6659,9 +6912,13 @@ mod tests {
         let id = add_test_workspace(&registry, dir.path().to_path_buf(), all_flags());
         let state = test_state(registry);
 
-        let response = handle_workspace_root(State(state), AxumPath(id.clone()), axum::extract::ConnectInfo(loopback()))
-            .await
-            .into_response();
+        let response = handle_workspace_root(
+            State(state),
+            AxumPath(id.clone()),
+            axum::extract::ConnectInfo(loopback()),
+        )
+        .await
+        .into_response();
         assert_eq!(response.status(), StatusCode::OK);
         let body = html_escape::decode_html_entities(&response_text(response).await).to_string();
         assert!(body.contains("txt only"));
@@ -6714,22 +6971,24 @@ mod tests {
         let id = add_test_workspace(&registry, dir.path().to_path_buf(), all_flags());
         let state = test_state(registry);
 
-        let root = handle_workspace_root(State(state.clone()), AxumPath(id.clone()), axum::extract::ConnectInfo(loopback()))
-            .await
-            .into_response();
+        let root = handle_workspace_root(
+            State(state.clone()),
+            AxumPath(id.clone()),
+            axum::extract::ConnectInfo(loopback()),
+        )
+        .await
+        .into_response();
         assert_eq!(root.status(), StatusCode::OK);
         let body = html_escape::decode_html_entities(&response_text(root).await).to_string();
         assert!(body.contains("workspace-shell"));
         assert!(body.contains("workspace-meta-panel"));
         assert!(body.contains("workspace-side-section"));
         assert!(body.contains("workspace-repo-toolbar"));
-        assert!(body.contains("data-go-to-file"));
+        assert!(body.contains("data-workspace-spotlight-trigger"));
         assert!(body.contains("data-open-add-file"));
         assert!(body.contains("data-checkout-url"));
         assert!(body.contains(&format!("/_/{id}/git/branches")));
         assert!(body.contains(&format!("/_/{id}/git/tags")));
-        assert!(body.contains(&format!("/_/{id}/files/data")));
-        assert!(body.contains(&format!("/_/{id}/files/create")));
         assert!(body.contains("workspace-commit-header"));
         assert!(body.contains("workspace-commits-link"));
         assert!(body.contains("workspace-entry-commit"));
@@ -6814,6 +7073,7 @@ mod tests {
         assert!(body.contains("data-compare-trigger"));
         assert!(body.contains("data-compare-picker"));
         assert!(body.contains("Worktree"));
+        assert!(body.contains("\"alias\":\"Latest\""));
 
         let compare_data = handle_pretty_compare_diff(
             State(state.clone()),
@@ -7007,7 +7267,8 @@ mod tests {
         .into_response();
         assert_eq!(history.status(), StatusCode::OK);
         let body = html_escape::decode_html_entities(&response_text(history).await).to_string();
-        assert!(body.contains("Git History"));
+        assert!(body.contains("markon git history"));
+        assert!(body.contains("web.ws.git.commits"));
         assert!(body.contains("initial"));
         assert!(body.contains(&format!("/_/{id}/compare/")));
         assert!(body.contains(&format!("/_/{id}/compare/HEAD...worktree?view=rendered")));
@@ -7161,8 +7422,7 @@ mod tests {
         let state = test_state(registry);
 
         // Pass the SUBDIRECTORY as the workspace root, exactly as the route would.
-        let data =
-            markdown_compare_diff_data(&state, &ws_root, "HEAD", "worktree", None).unwrap();
+        let data = markdown_compare_diff_data(&state, &ws_root, "HEAD", "worktree", None).unwrap();
         assert_eq!(data.files.len(), 2, "expected tracked + untracked file");
 
         for rel in ["tracked.md", "untracked.md"] {
@@ -7170,8 +7430,15 @@ mod tests {
                 .files
                 .iter()
                 .find(|f| f.path == rel)
-                .unwrap_or_else(|| panic!("missing diff entry for {rel}; got {:?}",
-                    data.files.iter().map(|f| f.path.clone()).collect::<Vec<_>>()));
+                .unwrap_or_else(|| {
+                    panic!(
+                        "missing diff entry for {rel}; got {:?}",
+                        data.files
+                            .iter()
+                            .map(|f| f.path.clone())
+                            .collect::<Vec<_>>()
+                    )
+                });
             // The normal file-view annotation key: canonicalize(ws_root.join(rel)).
             let expected = canonicalize_route_path(&ws_root.join(rel))
                 .unwrap()
@@ -7187,7 +7454,10 @@ mod tests {
         // subdir workspace the old code read `root.join(repo_relative_path)` and
         // failed, yielding an empty new side. Assert the new content is present.
         let json = serde_json::to_string(&data).unwrap();
-        assert!(json.contains("New body"), "tracked new side must load in a subdir workspace");
+        assert!(
+            json.contains("New body"),
+            "tracked new side must load in a subdir workspace"
+        );
         assert!(json.contains("Brand new"), "untracked new side must load");
     }
 
@@ -7207,9 +7477,13 @@ mod tests {
         let outside_name = outside.path().file_name().unwrap().to_string_lossy();
         let route = format!("../{outside_name}");
 
-        let response = handle_workspace_path(State(state), AxumPath((id, route)), axum::extract::ConnectInfo(loopback()))
-            .await
-            .into_response();
+        let response = handle_workspace_path(
+            State(state),
+            AxumPath((id, route)),
+            axum::extract::ConnectInfo(loopback()),
+        )
+        .await
+        .into_response();
         assert_eq!(response.status(), StatusCode::FORBIDDEN);
     }
 
@@ -7230,19 +7504,70 @@ mod tests {
         );
         let state = test_state(registry);
 
-        let response =
-            handle_workspace_path(State(state), AxumPath((id.clone(), "sub/".into())), axum::extract::ConnectInfo(loopback()))
-                .await
-                .into_response();
+        let response = handle_workspace_path(
+            State(state.clone()),
+            AxumPath((id.clone(), "sub/".into())),
+            axum::extract::ConnectInfo(loopback()),
+        )
+        .await
+        .into_response();
+        assert_eq!(response.status(), StatusCode::SEE_OTHER);
+        let location = response
+            .headers()
+            .get(axum::http::header::LOCATION)
+            .and_then(|value| value.to_str().ok())
+            .unwrap_or_default()
+            .to_string();
+        assert_eq!(location, format!("/{id}/#sub/"));
+
+        let response = handle_workspace_root(
+            State(state),
+            AxumPath(id.clone()),
+            axum::extract::ConnectInfo(loopback()),
+        )
+        .await
+        .into_response();
         assert_eq!(response.status(), StatusCode::OK);
         let body = html_escape::decode_html_entities(&response_text(response).await).to_string();
-        assert!(body.contains(&format!("/{id}/sub/README.md")));
-        assert!(body.contains(&format!("/{id}/sub/notes.txt")));
-        assert!(body.contains(&format!("/{id}/sub/.env")));
         assert!(body.contains("data-file-filter=\"markdown\""));
-        assert!(body.contains("data-filter-visible-markdown=\"false\""));
-        assert!(body.contains(&format!("/{id}/")));
+        assert!(body.contains("data-entry-kind=\"dir\""));
+        assert!(body.contains("data-entry-path=\"sub\""));
+        assert!(body.contains("data-dir-link=\"/"));
+        assert!(body.contains(&format!("/{id}/sub/")));
+        assert!(body.contains("data-filter-visible-markdown=\"true\""));
         assert!(!body.contains(&format!("/_/{id}/git/history")));
+    }
+
+    #[test]
+    fn directory_markdown_filter_keeps_only_markdown_files_and_parent_dirs() {
+        let dir = tempfile::tempdir().unwrap();
+        let docs_nested = dir.path().join("docs").join("guides");
+        let src = dir.path().join("src");
+        let empty = dir.path().join("empty");
+        fs::create_dir_all(&docs_nested).unwrap();
+        fs::create_dir(&src).unwrap();
+        fs::create_dir(&empty).unwrap();
+        fs::write(docs_nested.join("intro.md"), "# nested").unwrap();
+        fs::write(src.join("main.rs"), "fn main() {}\n").unwrap();
+        fs::write(empty.join("notes.txt"), "not markdown").unwrap();
+        fs::write(dir.path().join("README.md"), "# root").unwrap();
+        fs::write(dir.path().join("Cargo.toml"), "[package]\n").unwrap();
+
+        let root = dunce::canonicalize(dir.path()).unwrap();
+        let entries = collect_directory_entries("ws", &root, &root).unwrap();
+        let shown = |name: &str| -> bool {
+            entries
+                .iter()
+                .find(|entry| entry.name == name)
+                .unwrap_or_else(|| panic!("missing directory entry {name}"))
+                .show_in_markdown
+        };
+
+        assert!(shown("docs"));
+        assert!(shown("README.md"));
+        assert!(!shown("src"));
+        assert!(!shown("empty"));
+        assert!(!shown("Cargo.toml"));
     }
 
     #[tokio::test]
@@ -7442,9 +7767,13 @@ mod tests {
         });
         let state = test_state(registry);
 
-        let root = handle_workspace_root(State(state.clone()), AxumPath(id.clone()), axum::extract::ConnectInfo(loopback()))
-            .await
-            .into_response();
+        let root = handle_workspace_root(
+            State(state.clone()),
+            AxumPath(id.clone()),
+            axum::extract::ConnectInfo(loopback()),
+        )
+        .await
+        .into_response();
         assert_eq!(root.status(), StatusCode::SEE_OTHER);
         assert_eq!(
             root.headers().get(header::LOCATION).unwrap(),
@@ -7469,10 +7798,13 @@ mod tests {
         .into_response();
         assert_eq!(asset.status(), StatusCode::OK);
 
-        let sibling =
-            handle_workspace_path(State(state), AxumPath((id, "sibling.md".into())), axum::extract::ConnectInfo(loopback()))
-                .await
-                .into_response();
+        let sibling = handle_workspace_path(
+            State(state),
+            AxumPath((id, "sibling.md".into())),
+            axum::extract::ConnectInfo(loopback()),
+        )
+        .await
+        .into_response();
         assert_eq!(sibling.status(), StatusCode::NOT_FOUND);
     }
 }

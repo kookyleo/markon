@@ -5,6 +5,27 @@
 import { Logger } from '../core/utils';
 import { Position } from '../services/position';
 
+export const DEFAULT_NON_DRAG_SELECTOR = [
+    'button',
+    'input',
+    'textarea',
+    'select',
+    'option',
+    'a[href]',
+    '[contenteditable="true"]',
+    '[data-no-drag]',
+].join(', ');
+
+export const isDragBlockedTarget = (
+    target: EventTarget | null,
+    selector: string | null = DEFAULT_NON_DRAG_SELECTOR,
+): boolean => {
+    if (!selector) return false;
+    if (!(target instanceof Node)) return false;
+    const element = target instanceof Element ? target : target.parentElement;
+    return Boolean(element?.closest(selector));
+};
+
 /**
  * Callback fired when a drag ends, with the element's final left/top.
  */
@@ -17,11 +38,23 @@ export interface DraggableOptions {
     /** localStorage key used to persist drag offset (only when {@link saveOffset} is true). */
     storageKey?: string | null;
     /** CSS selector for an inner drag handle (defaults to the whole element). */
-    handle?: string | null;
+    handle?: string | HTMLElement | null;
     /** Called when the drag ends with final left/top. */
     onDragEnd?: DragEndCallback | null;
     /** When true, persists offset relative to `data-original-left/top` to `storageKey`. */
     saveOffset?: boolean;
+    /** When true, persists the element's absolute left/top to `storageKey`. */
+    savePosition?: boolean;
+    /** When true, restores the element's absolute left/top from `storageKey` during init. */
+    restorePosition?: boolean;
+    /** Use fixed viewport coordinates instead of document coordinates. */
+    fixed?: boolean;
+    /** Minimum gap from viewport edges while dragging. */
+    margin?: number;
+    /** CSS selector for descendants that should not initiate a drag. */
+    nonDragSelector?: string | null;
+    /** CSS class applied to the resolved handle while this manager is alive. */
+    handleClassName?: string | null;
 }
 
 interface InternalHandlers {
@@ -46,6 +79,8 @@ export class DraggableManager {
     #initialLeft = 0;
     #initialTop = 0;
     #handlers: InternalHandlers = {};
+    #previousUserSelect = '';
+    #hasUserSelectOverride = false;
 
     /**
      * @param element - the element to make draggable
@@ -58,6 +93,12 @@ export class DraggableManager {
             handle: null,
             onDragEnd: null,
             saveOffset: false,
+            savePosition: false,
+            restorePosition: false,
+            fixed: false,
+            margin: 10,
+            nonDragSelector: DEFAULT_NON_DRAG_SELECTOR,
+            handleClassName: null,
             ...options,
         };
 
@@ -68,16 +109,24 @@ export class DraggableManager {
      * Initialize the drag behavior.
      */
     #init(): void {
-        this.#handle = this.#options.handle
-            ? (this.#element.querySelector(this.#options.handle) as HTMLElement | null)
-            : this.#element;
+        if (typeof this.#options.handle === 'string') {
+            this.#handle = this.#element.querySelector(this.#options.handle);
+        } else {
+            this.#handle = this.#options.handle ?? this.#element;
+        }
 
         if (!this.#handle) {
             Logger.warn('Draggable', 'Handle element not found');
             return;
         }
 
-        // Do not set cursor here; rely on the CSS default (grab).
+        if (this.#options.handleClassName) {
+            this.#handle.classList.add(this.#options.handleClassName);
+        }
+
+        if (this.#options.restorePosition) {
+            this.#restorePosition();
+        }
 
         // Mouse events
         this.#handlers.mousedown = (e: MouseEvent) => this.#onDragStart(e);
@@ -97,23 +146,23 @@ export class DraggableManager {
      * Begin a drag.
      */
     #onDragStart(e: MouseEvent | TouchEvent): void {
-        // Skip when the press target is a button/input control.
-        const target = e.target as Element | null;
-        if (target && (target.tagName === 'BUTTON' || target.tagName === 'INPUT')) {
-            return;
-        }
+        if (e instanceof MouseEvent && e.button !== 0) return;
+        if (isDragBlockedTarget(e.target, this.#options.nonDragSelector)) return;
 
         this.#isDragging = true;
 
         const point = this.#extractPoint(e);
-        this.#startX = point.pageX;
-        this.#startY = point.pageY;
+        this.#startX = point.x;
+        this.#startY = point.y;
 
-        // Read the initial position from style.left/top because we use absolute positioning.
-        this.#initialLeft = parseFloat(this.#element.style.left) || 0;
-        this.#initialTop = parseFloat(this.#element.style.top) || 0;
+        const initial = this.#materializePosition();
+        this.#initialLeft = initial.left;
+        this.#initialTop = initial.top;
 
         this.#element.style.cursor = 'grabbing';
+        this.#handle?.classList.add('is-dragging');
+        this.#previousUserSelect = document.body.style.userSelect;
+        this.#hasUserSelectOverride = true;
         document.body.style.userSelect = 'none';
 
         // Attach global listeners
@@ -132,8 +181,8 @@ export class DraggableManager {
         if (!this.#isDragging) return;
 
         const point = this.#extractPoint(e);
-        const dx = point.pageX - this.#startX;
-        const dy = point.pageY - this.#startY;
+        const dx = point.x - this.#startX;
+        const dy = point.y - this.#startY;
 
         // Compute the new position
         let newLeft = this.#initialLeft + dx;
@@ -144,10 +193,10 @@ export class DraggableManager {
             newTop,
             this.#element.offsetWidth,
             this.#element.offsetHeight,
+            { fixed: this.#options.fixed, margin: this.#options.margin },
         ));
 
-        this.#element.style.left = `${newLeft}px`;
-        this.#element.style.top = `${newTop}px`;
+        this.#writePosition(newLeft, newTop);
     }
 
     /**
@@ -158,7 +207,11 @@ export class DraggableManager {
 
         this.#isDragging = false;
         this.#element.style.cursor = ''; // restore the CSS default cursor
-        document.body.style.userSelect = '';
+        this.#handle?.classList.remove('is-dragging');
+        if (this.#hasUserSelectOverride) {
+            document.body.style.userSelect = this.#previousUserSelect;
+            this.#hasUserSelectOverride = false;
+        }
 
         // Detach global listeners
         if (this.#handlers.mousemove) document.removeEventListener('mousemove', this.#handlers.mousemove);
@@ -169,6 +222,10 @@ export class DraggableManager {
         // Persist the offset
         if (this.#options.saveOffset && this.#options.storageKey) {
             this.#saveOffset();
+        }
+
+        if (this.#options.savePosition && this.#options.storageKey) {
+            this.#savePosition();
         }
 
         // Fire callback
@@ -186,8 +243,8 @@ export class DraggableManager {
         // Use style.left/top rather than offsetLeft/Top because the element is absolutely positioned.
         const finalLeft = parseFloat(this.#element.style.left) || 0;
         const finalTop = parseFloat(this.#element.style.top) || 0;
-        const originalLeft = parseFloat(this.#element.dataset.originalLeft ?? '');
-        const originalTop = parseFloat(this.#element.dataset.originalTop ?? '');
+        const originalLeft = parseFloat(this.#element.dataset['originalLeft'] ?? '');
+        const originalTop = parseFloat(this.#element.dataset['originalTop'] ?? '');
 
         if (!isNaN(originalLeft) && !isNaN(originalTop) && this.#options.storageKey) {
             const offset = {
@@ -200,15 +257,87 @@ export class DraggableManager {
     }
 
     /**
+     * Persist the element's current viewport/document position to localStorage.
+     */
+    #savePosition(): void {
+        if (!this.#options.storageKey) return;
+        const finalLeft = parseFloat(this.#element.style.left);
+        const finalTop = parseFloat(this.#element.style.top);
+        if (!Number.isFinite(finalLeft) || !Number.isFinite(finalTop)) return;
+        localStorage.setItem(this.#options.storageKey, JSON.stringify({ left: finalLeft, top: finalTop }));
+        Logger.log('Draggable', `Saved position to ${this.#options.storageKey}`);
+    }
+
+    /**
+     * Restore a previously saved left/top position.
+     */
+    #restorePosition(): void {
+        if (!this.#options.storageKey) return;
+        try {
+            const raw: unknown = JSON.parse(localStorage.getItem(this.#options.storageKey) || 'null');
+            if (!raw || typeof raw !== 'object') return;
+            const obj = raw as Record<string, unknown>;
+            const left = typeof obj['left'] === 'number' ? obj['left'] : obj['x'];
+            const top = typeof obj['top'] === 'number' ? obj['top'] : obj['y'];
+            if (typeof left !== 'number' || typeof top !== 'number') return;
+
+            const constrained = Position.constrainToViewport(
+                left,
+                top,
+                this.#element.offsetWidth,
+                this.#element.offsetHeight,
+                { fixed: this.#options.fixed, margin: this.#options.margin },
+            );
+            this.#writePosition(constrained.left, constrained.top);
+        } catch {
+            // Ignore bad localStorage values and fall back to CSS placement.
+        }
+    }
+
+    /**
+     * Convert the element's current rendered rect into explicit left/top CSS.
+     */
+    #materializePosition(): { left: number; top: number } {
+        const rect = this.#element.getBoundingClientRect();
+        const scrollX = this.#options.fixed ? 0 : (window.scrollX || window.pageXOffset);
+        const scrollY = this.#options.fixed ? 0 : (window.scrollY || window.pageYOffset);
+        const styledLeft = parseFloat(this.#element.style.left);
+        const styledTop = parseFloat(this.#element.style.top);
+        const left = Number.isFinite(styledLeft) ? styledLeft : rect.left + scrollX;
+        const top = Number.isFinite(styledTop) ? styledTop : rect.top + scrollY;
+        this.#writePosition(left, top);
+        return { left, top };
+    }
+
+    #writePosition(left: number, top: number): void {
+        this.#element.style.position = this.#options.fixed ? 'fixed' : 'absolute';
+        this.#element.style.left = `${left}px`;
+        this.#element.style.top = `${top}px`;
+        this.#element.style.right = 'auto';
+        this.#element.style.bottom = 'auto';
+        this.#element.style.margin = '0';
+        this.#element.style.transform = 'none';
+    }
+
+    /**
      * Extract page coordinates from a mouse or touch event.
      */
-    #extractPoint(e: MouseEvent | TouchEvent): { pageX: number; pageY: number } {
+    #extractPoint(e: MouseEvent | TouchEvent): { x: number; y: number } {
         if (e.type === 'touchstart' || e.type === 'touchmove') {
-            const touch = (e as TouchEvent).touches[0];
-            return { pageX: touch.pageX, pageY: touch.pageY };
+            const touchEvent = e as TouchEvent;
+            const touch = touchEvent.touches[0] ?? touchEvent.changedTouches[0];
+            if (!touch) {
+                const pos = this.#materializePosition();
+                return { x: pos.left, y: pos.top };
+            }
+            return this.#options.fixed
+                ? { x: touch.clientX, y: touch.clientY }
+                : { x: touch.pageX, y: touch.pageY };
         }
         const mouse = e as MouseEvent;
-        return { pageX: mouse.pageX, pageY: mouse.pageY };
+        return this.#options.fixed
+            ? { x: mouse.clientX, y: mouse.clientY }
+            : { x: mouse.pageX, y: mouse.pageY };
     }
 
     /**
@@ -218,6 +347,8 @@ export class DraggableManager {
         if (this.#handle) {
             if (this.#handlers.mousedown) this.#handle.removeEventListener('mousedown', this.#handlers.mousedown);
             if (this.#handlers.touchstart) this.#handle.removeEventListener('touchstart', this.#handlers.touchstart);
+            if (this.#options.handleClassName) this.#handle.classList.remove(this.#options.handleClassName);
+            this.#handle.classList.remove('is-dragging');
         }
 
         // Detach global listeners if a drag is still active.
@@ -229,6 +360,10 @@ export class DraggableManager {
         }
 
         this.#element.style.cursor = '';
+        if (this.#hasUserSelectOverride) {
+            document.body.style.userSelect = this.#previousUserSelect;
+            this.#hasUserSelectOverride = false;
+        }
         Logger.log('Draggable', 'Destroyed');
     }
 }

@@ -19,7 +19,7 @@ describe('UndoManager', () => {
         const last = m.undo();
         expect(last).not.toBeNull();
         expect(last?.type).toBe('delete');
-        expect(last?.payload).toBe(2);
+        expect(last?.['payload']).toBe(2);
         expect(typeof last?.timestamp).toBe('number');
 
         const first = m.undo();
@@ -35,7 +35,7 @@ describe('UndoManager', () => {
         expect(m.canRedo()).toBe(true);
         const redone = m.redo();
         expect(redone?.type).toBe('edit');
-        expect(redone?.value).toBe('a');
+        expect(redone?.['value']).toBe('a');
         expect(m.canRedo()).toBe(false);
         expect(m.canUndo()).toBe(true);
     });
@@ -59,11 +59,11 @@ describe('UndoManager', () => {
 
         // Oldest (n=1) should be gone; newest (n=4) at the top.
         const top = m.undo();
-        expect(top?.n).toBe(4);
+        expect(top?.['n']).toBe(4);
         const next = m.undo();
-        expect(next?.n).toBe(3);
+        expect(next?.['n']).toBe(3);
         const last = m.undo();
-        expect(last?.n).toBe(2);
+        expect(last?.['n']).toBe(2);
         expect(m.undo()).toBeNull();
     });
 

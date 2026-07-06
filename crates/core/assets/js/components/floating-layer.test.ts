@@ -20,7 +20,7 @@ function installAnimateStub(): { lastAnim: FakeAnimation | null; calls: number }
         } as unknown as FakeAnimation;
         state.lastAnim = anim;
         return anim;
-    }) as unknown as HTMLElement['animate'];
+    });
     return state;
 }
 
@@ -97,7 +97,7 @@ describe('FloatingLayer / construction', () => {
 // a scene, and applies the engine's result to its peers.
 
 describe('FloatingLayer / rolePriority', () => {
-    type Internal = { _rolePriority: number };
+    interface Internal { _rolePriority: number }
 
     it('falls back by name when rolePriority is omitted (toc/chat/live)', () => {
         const toc = freshLayer('toc', { passive: true });
@@ -122,7 +122,7 @@ describe('FloatingLayer / rolePriority', () => {
 // ── _toLayoutItem snapshot ──────────────────────────────────────────────────
 
 describe('FloatingLayer / _toLayoutItem', () => {
-    type WithItem = {
+    interface WithItem {
         _home: { x: number; y: number } | null;
         _intentionalHome: { x: number; y: number } | null;
         _toLayoutItem(active?: boolean): {
@@ -130,7 +130,7 @@ describe('FloatingLayer / _toLayoutItem', () => {
             box: { width: number; height: number }; shape: 'circle' | 'rect';
             home: { x: number; y: number }; gap: number;
         };
-    };
+    }
 
     it('collapsed movable snapshots a 40×40 circle at its working home', () => {
         const layer = freshLayer('chat', { gap: 10 });
@@ -164,8 +164,8 @@ describe('FloatingLayer / _toLayoutItem', () => {
 // ── Global solve applied to all peers ───────────────────────────────────────
 
 describe('FloatingLayer / global relayout', () => {
-    type Relayout = { _relayout(): void };
-    type WithHome = { _home: { x: number; y: number }; _intentionalHome: { x: number; y: number } };
+    interface Relayout { _relayout(): void }
+    interface WithHome { _home: { x: number; y: number }; _intentionalHome: { x: number; y: number } }
 
     /** Build an idle movable sphere whose working home is at `home`. */
     function idleAt(name: string, home: { x: number; y: number }, override: Partial<FloatingLayerOpts> = {}): FloatingLayer {
@@ -285,10 +285,10 @@ describe('FloatingLayer / drag', () => {
         // Three movable spheres. Give B and C fixed obstacle rects so the
         // dragged A sees them as immovable walls; A reports its own rect from
         // its live container (0×0 in jsdom → not an obstacle to itself anyway).
-        type WithHome = {
+        interface WithHome {
             _home: { x: number; y: number };
             _intentionalHome: { x: number; y: number };
-        };
+        }
         const rectB = { left: 400, top: 300, right: 440, bottom: 340, width: 40, height: 40 };
         const rectC = { left: 600, top: 500, right: 640, bottom: 540, width: 40, height: 40 };
 
@@ -496,9 +496,9 @@ describe('FloatingLayer / expand+collapse state', () => {
 // its *live* measured box into the scene, and that a relayout() catches up.
 
 describe('FloatingLayer / live panel box', () => {
-    type WithHome = { _home: { x: number; y: number }; _intentionalHome: { x: number; y: number } };
-    type WithItem = { _toLayoutItem(active?: boolean): { box: { width: number; height: number } } };
-    type Relayout = { _relayout(): void };
+    interface WithHome { _home: { x: number; y: number }; _intentionalHome: { x: number; y: number } }
+    interface WithItem { _toLayoutItem(active?: boolean): { box: { width: number; height: number } } }
+    interface Relayout { _relayout(): void }
 
     it('an expanded panel advertises its live measured box, not the declared panelSize', () => {
         installAnimateStub();

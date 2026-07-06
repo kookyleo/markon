@@ -4,7 +4,7 @@
  */
 
 const _t: (key: string, ...args: unknown[]) => string =
-    (typeof window !== 'undefined' && window.__MARKON_I18N__ && window.__MARKON_I18N__.t) ||
+    (typeof window !== 'undefined' && window.__MARKON_I18N__?.t) ||
     ((k: string) => k);
 
 /**
@@ -22,6 +22,9 @@ export interface ShortcutDef {
      *  that are actually registered, grouped by this category; `'global'` marks
      *  the ones available on every page (Help, Theme). */
     cat: string;
+    /** Optional stable feature id used to display multiple shortcut aliases as
+     *  one row in the features panel. */
+    feature?: string;
 }
 
 /**
@@ -31,7 +34,7 @@ export interface ShortcutDef {
  */
 export const i18n = {
     t(key: string, ...args: unknown[]): string {
-        const fn = (typeof window !== 'undefined' && window.__MARKON_I18N__ && window.__MARKON_I18N__.t) || null;
+        const fn = (typeof window !== 'undefined' && window.__MARKON_I18N__?.t) || null;
         return fn ? fn(key, ...args) : key;
     },
 } as const;
@@ -92,7 +95,9 @@ export const CONFIG = {
         REDO_ALT: { key: 'y', ctrl: true, shift: false, desc: _t('web.kbd.redo.alt'), cat: 'core' },
         ESCAPE: { key: 'Escape', ctrl: false, shift: false, desc: _t('web.kbd.escape'), cat: 'core' },
         TOGGLE_TOC: { key: '\\', ctrl: true, shift: false, desc: _t('web.kbd.toc'), cat: 'core' },
-        SEARCH: { key: '/', ctrl: false, shift: false, desc: _t('web.kbd.search'), cat: 'search' },
+        SEARCH: { key: '/', ctrl: false, shift: false, desc: _t('web.kbd.search'), cat: 'search', feature: 'workspace_spotlight' },
+        EXPORT_NOTES: { key: 'x', ctrl: false, shift: false, desc: _t('web.kbd.exportnotes'), cat: 'core' },
+        WORKSPACE_NAVIGATOR: { key: 'g', ctrl: false, shift: false, desc: _t('web.kbd.workspace_nav'), cat: 'search', feature: 'workspace_spotlight' },
 
         // Navigation
         PREV_HEADING: { key: 'k', ctrl: false, shift: false, desc: _t('web.kbd.prevheading'), cat: 'nav' },
@@ -125,9 +130,21 @@ export const CONFIG = {
         TOGGLE_CHAT_ALT: { key: 'c', ctrl: false, shift: true,  desc: _t('web.kbd.chat.alt'), cat: 'chat' },
 
         // Compare / diff view (rendered ⇄ raw). Registered only on the diff page.
-        DIFF_TOGGLE_VIEW: { key: 'v', ctrl: false, shift: false, desc: _t('web.kbd.diff.view'), cat: 'diff' },
-        DIFF_NEXT_FILE:   { key: 'j', ctrl: false, shift: false, desc: _t('web.kbd.diff.nextfile'), cat: 'diff' },
-        DIFF_PREV_FILE:   { key: 'k', ctrl: false, shift: false, desc: _t('web.kbd.diff.prevfile'), cat: 'diff' },
+        DIFF_TOGGLE_VIEW: { key: 'm', ctrl: false, shift: false, desc: _t('web.kbd.diff.view'), cat: 'diff' },
+        DIFF_NEXT_FILE:   { key: 'n', ctrl: false, shift: false, desc: _t('web.kbd.diff.nextfile'), cat: 'diff' },
+        DIFF_PREV_FILE:   { key: 'p', ctrl: false, shift: false, desc: _t('web.kbd.diff.prevfile'), cat: 'diff' },
+
+        // Visual fullscreen viewer. Registered only while the viewer is open.
+        VISUAL_ZOOM_IN: { key: '+', ctrl: false, shift: false, desc: _t('web.kbd.visual.zoom_in'), cat: 'visual', feature: 'visual_zoom_in' },
+        VISUAL_ZOOM_IN_ALT: { key: '=', ctrl: false, shift: false, desc: _t('web.kbd.visual.zoom_in'), cat: 'visual', feature: 'visual_zoom_in' },
+        VISUAL_ZOOM_OUT: { key: '-', ctrl: false, shift: false, desc: _t('web.kbd.visual.zoom_out'), cat: 'visual' },
+        VISUAL_ZOOM_RESET: { key: '0', ctrl: false, shift: false, desc: _t('web.kbd.visual.reset'), cat: 'visual', feature: 'visual_reset' },
+        VISUAL_ZOOM_RESET_ALT: { key: 'r', ctrl: false, shift: false, desc: _t('web.kbd.visual.reset'), cat: 'visual', feature: 'visual_reset' },
+        VISUAL_ZOOM_FIT: { key: 'f', ctrl: false, shift: false, desc: _t('web.kbd.visual.fit'), cat: 'visual', feature: 'visual_fit' },
+        VISUAL_ZOOM_FIT_CMD: { key: '0', ctrl: true, shift: false, desc: _t('web.kbd.visual.fit'), cat: 'visual', feature: 'visual_fit' },
+        VISUAL_ZOOM_TOOL: { key: 'z', ctrl: false, shift: false, desc: _t('web.kbd.visual.tool'), cat: 'visual' },
+        VISUAL_ZOOM_TOOL_OUT: { key: 'z', ctrl: false, shift: true, desc: _t('web.kbd.visual.tool_out'), cat: 'visual' },
+        VISUAL_ZOOM_CLOSE: { key: 'Escape', ctrl: false, shift: false, desc: _t('web.kbd.visual.close'), cat: 'visual', feature: 'ESCAPE' },
     } satisfies Record<string, ShortcutDef>,
 
     // Storage keys
@@ -142,6 +159,7 @@ export const CONFIG = {
         CHAT_POS: 'markon-chat-pos',
         CHAT_SIZE: 'markon-chat-size',
         POPOVER_OFFSET: 'markon-popover-offset',
+        SHORTCUTS_HELP_POS: 'markon-shortcuts-help-pos',
     },
 
     // DOM Selectors
@@ -228,9 +246,7 @@ export type WsMessageType = (typeof CONFIG.WS_MESSAGE_TYPES)[keyof typeof CONFIG
 
 // Apply user shortcut overrides from Settings (injected as window.__MARKON_SHORTCUTS__).
 if (typeof window !== 'undefined' && window.__MARKON_SHORTCUTS__) {
-    const entries = Object.entries(window.__MARKON_SHORTCUTS__) as Array<
-        [ShortcutName, Partial<ShortcutDef>]
-    >;
+    const entries = Object.entries(window.__MARKON_SHORTCUTS__) as [ShortcutName, Partial<ShortcutDef>][];
     for (const [name, override] of entries) {
         if (CONFIG.SHORTCUTS[name]) {
             Object.assign(CONFIG.SHORTCUTS[name], override);

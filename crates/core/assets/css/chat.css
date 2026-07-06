@@ -9,7 +9,12 @@
 
 :root {
     --markon-chat-accent: #8B5CF6;       /* Tailwind violet-500 */
-    --markon-chat-accent-soft: rgba(139, 92, 246, 0.18);
+    --markon-chat-accent-fg: color-mix(in srgb, var(--markon-chat-accent) 68%, var(--markon-fg-muted));
+    --markon-chat-accent-border: color-mix(in srgb, var(--markon-chat-accent) 34%, var(--markon-border-emphasis));
+    --markon-chat-accent-ring: color-mix(in srgb, var(--markon-chat-accent) 12%, transparent);
+    --markon-chat-accent-soft: color-mix(in srgb, var(--markon-chat-accent) 12%, transparent);
+    --markon-chat-resizer-arc-radius: var(--markon-radius-lg);
+    --markon-chat-resizer-arc-width: 1.5px;
     /* The resting resize handle reuses the panel's border-strong token so it
        stays visually stitched to the panel chrome under both themes. The hover
        color stays theme-specific (no matching neutral mid-tone in our token
@@ -65,7 +70,6 @@ html[data-theme="dark"] {
     min-height: 400px;
     max-width: calc(100vw - 16px);
     max-height: calc(100vh - 16px);
-    border-radius: 20px;
     /* `resize: both` only takes effect when overflow != visible. Switching to
        hidden gives the user a native BR-corner drag handle for resizing the
        panel. The thread-menu dropdown lives inside .markon-chat-body which
@@ -73,35 +77,27 @@ html[data-theme="dark"] {
        on document.body — so neither is clipped by this. */
     overflow: hidden;
     resize: both;
-    background: var(--markon-bg-elevated);
 }
 
-/* Webkit-only restyle of the BR resize handle. A single 1.5px arc traced
-   just inside the panel border, in the same neutral border color, so the
-   resize affordance reads as part of the chrome rather than a foreign
-   glyph. The resizer is a 16×16 box rendered inside the panel's
-   padding-box (i.e. inside the 2.5px border). The padding-box's BR
-   rounded corner has radius 17.5 (= 20 − 2.5), and its centre sits at
-   (-1.5px, -1.5px) relative to the resizer's local origin (= 16 − 17.5).
-   We anchor the radial-gradient there so the arc is concentric with —
-   and just inside — the panel's inner border edge. Firefox has no
-   equivalent pseudo-element and keeps its native handle. */
+/* Webkit-only restyle of the BR resize handle. Draw a short 1/4-circle handle
+   around the panel corner; longer arcs start looking like an extra panel
+   border turning inward. */
 .markon-chat-container.expanded::-webkit-resizer {
     background-color: transparent;
     background-image: radial-gradient(
-        circle at -3px -3px,
-        transparent 0 15.5px,
-        var(--markon-chat-resizer-color) 15.5px 17px,
-        transparent 17px
+        circle at 0 0,
+        transparent 0 calc(var(--markon-chat-resizer-arc-radius) - var(--markon-chat-resizer-arc-width)),
+        var(--markon-chat-resizer-color) calc(var(--markon-chat-resizer-arc-radius) - var(--markon-chat-resizer-arc-width)) var(--markon-chat-resizer-arc-radius),
+        transparent var(--markon-chat-resizer-arc-radius)
     );
 }
 
 .markon-chat-container.expanded::-webkit-resizer:hover {
     background-image: radial-gradient(
-        circle at -3px -3px,
-        transparent 0 15.5px,
-        var(--markon-chat-resizer-color-hover) 15.5px 17px,
-        transparent 17px
+        circle at 0 0,
+        transparent 0 calc(var(--markon-chat-resizer-arc-radius) - var(--markon-chat-resizer-arc-width)),
+        var(--markon-chat-resizer-color-hover) calc(var(--markon-chat-resizer-arc-radius) - var(--markon-chat-resizer-arc-width)) var(--markon-chat-resizer-arc-radius),
+        transparent var(--markon-chat-resizer-arc-radius)
     );
 }
 
@@ -161,12 +157,12 @@ html[data-theme="dark"] .markon-chat-container.expanded {
    so it visually continues the panel's TL rounded corner. */
 .markon-chat-container.expanded .markon-chat-face {
     position: absolute;
-    top: 0;
-    left: 0;
+    top: var(--markon-modal-frame-inset);
+    left: var(--markon-modal-frame-inset);
     width: 40px;
     height: 40px;
     z-index: var(--markon-z-content-overlay);
-    border-radius: 20px 0 0 0;
+    border-radius: var(--markon-radius-lg) 0 0 0;
 }
 
 /* Hover spin on the X — same playful affordance as TOC and Live use. */
@@ -187,9 +183,8 @@ html[data-theme="dark"] .markon-chat-container.expanded {
     display: none;
     width: 100%;
     height: 100%;
+    box-sizing: border-box;
     flex-direction: column;
-    border-radius: 20px;
-    background: inherit;
     color: inherit;
     overflow: hidden;
 }
@@ -280,6 +275,7 @@ html[data-theme="dark"] .markon-chat-container.expanded {
     font-size: 13px;
     font-weight: 600;
     outline: none;
+    user-select: none;
 }
 
 .markon-chat-thread-title:empty::before {
@@ -292,6 +288,7 @@ html[data-theme="dark"] .markon-chat-container.expanded {
    soft accent background and a text cursor. */
 .markon-chat-thread-title[contenteditable="true"] {
     cursor: text;
+    user-select: text;
     background: rgba(139, 92, 246, 0.1);
     border-radius: 4px;
     padding: 2px 4px;
@@ -715,7 +712,7 @@ html[data-theme="dark"] .markon-chat-error {
 .markon-chat-input-group {
     position: relative;
     border: 1px solid var(--markon-border-emphasis);
-    border-radius: 14px;
+    border-radius: var(--markon-radius-lg);
     background: var(--markon-bg-default);
     color: inherit;
     overflow: hidden;       /* clips chip's tinted bg into the rounded corner */
@@ -726,8 +723,8 @@ html[data-theme="dark"] .markon-chat-error {
    highlights together when the textarea has focus, instead of just the
    textarea — that keeps the "single control" reading intact. */
 .markon-chat-input-group:focus-within {
-    border-color: var(--markon-chat-accent);
-    box-shadow: 0 0 0 3px var(--markon-chat-accent-soft);
+    border-color: var(--markon-chat-accent-border);
+    box-shadow: 0 0 0 3px var(--markon-chat-accent-ring);
 }
 
 html[data-theme="dark"] .markon-chat-input-group {
@@ -766,6 +763,8 @@ html[data-theme="dark"] .markon-chat-quote-chip {
 }
 
 .markon-chat-quote-icon {
+    position: relative;
+    top: -1px;
     flex-shrink: 0;
     display: inline-flex;
     align-items: center;
@@ -864,7 +863,7 @@ html[data-theme="dark"] .markon-chat-quote-dismiss:hover {
     box-sizing: border-box;
     border-radius: 50%;
     background: transparent;
-    color: var(--markon-chat-accent);
+    color: var(--markon-chat-accent-fg);
     cursor: pointer;
     display: grid;
     place-items: center;
@@ -923,33 +922,16 @@ html[data-theme="dark"] .markon-chat-mention-pill {
    so the popup never gets clipped against the panel footer). */
 .markon-chat-mention-popup {
     position: fixed;
-    z-index: var(--markon-z-chrome-top);
-    background: var(--markon-bg-overlay);
-    color: var(--markon-fg-default);
-    border: 1px solid var(--markon-border-emphasis);
-    border-radius: 8px;
-    box-shadow: 0 6px 18px rgba(0, 0, 0, 0.15);
-    padding: 4px;
     /* Width is set inline to match the input-group's rendered width (see
        #positionMentionPopup). No min/max here — clamping with CSS would
        fight the inline value and break the alignment in popout mode. */
     max-height: 280px;
     overflow-y: auto;
     box-sizing: border-box;
-    /* Floats over the document like the chat panel — track the same
-       panel-opacity so all overlay surfaces fade together. */
-    opacity: var(--markon-panel-opacity, 0.9);
 }
 
 .markon-chat-mention-popup[hidden] {
     display: none;
-}
-
-html[data-theme="dark"] .markon-chat-mention-popup {
-    /* Border drops to `--markon-border-default` to keep the chrome quiet against
-       the deeper overlay fill (same softening as .markon-chat-thread-menu). */
-    border-color: var(--markon-border-default);
-    box-shadow: 0 6px 18px rgba(0, 0, 0, 0.55);
 }
 
 .markon-chat-mention-row {
@@ -957,12 +939,21 @@ html[data-theme="dark"] .markon-chat-mention-popup {
     align-items: baseline;
     gap: 8px;
     padding: 6px 8px;
+    margin: 0 4px;
     border-radius: 6px;
     cursor: pointer;
     font-size: 13px;
     line-height: 1.3;
     /* Left-align name; right-align dir. The dir column truncates from the
        left so the most-specific (rightmost) directory stays visible. */
+}
+
+.markon-chat-mention-row:first-child {
+    margin-top: 4px;
+}
+
+.markon-chat-mention-row:last-child {
+    margin-bottom: 4px;
 }
 
 .markon-chat-mention-row:hover {
@@ -1065,6 +1056,9 @@ body.markon-chat-popout-mode .markon-chat-container.expanded {
     max-height: none !important;
     border: none !important;
     border-radius: 0 !important;
+    padding: 0 !important;
+    background: var(--markon-bg-elevated) !important;
+    box-shadow: none !important;
     /* Panel IS the window — resize the OS window, not the panel inside. */
     resize: none !important;
     /* In popout mode the container fills the OS window, so the panel-opacity
@@ -1089,6 +1083,9 @@ body.markon-chat-popout-mode .markon-chat-face {
    (0,2,0) without !important. */
 body.markon-chat-popout-mode .markon-chat-body {
     display: flex;
+    border: 0;
+    border-radius: 0;
+    box-shadow: none;
 }
 
 /* Header has no X face to clear in popout mode — pull the left actions group

@@ -12,6 +12,7 @@
  */
 
 import { Meta } from './services/dom';
+import { workspaceFileUrl } from './core/routes';
 
 type Kind = 'file' | 'folder';
 interface CreateUrls { file: string; folder: string; }
@@ -44,7 +45,7 @@ const workspaceId = (): string =>
     document.querySelector('meta[name="workspace-id"]')?.getAttribute('content') || '';
 
 const fileRoute = (path: string): string =>
-    `/${workspaceId()}/${path.split('/').map(encodeURIComponent).join('/')}`;
+    workspaceFileUrl(workspaceId(), path);
 
 function closeMenus(): void {
     document.querySelectorAll('.git-nav-add-menu').forEach((m) => m.remove());
@@ -61,12 +62,12 @@ async function create(kind: Kind, path: string, urls: CreateUrls): Promise<{ ok:
         });
         const text = await resp.text();
         let data: { success?: boolean; message?: string; url?: string } = {};
-        try { data = text ? JSON.parse(text) : {}; } catch { /* ignore */ }
+        try { data = text ? JSON.parse(text) as { success?: boolean; message?: string; url?: string } : {}; } catch { /* ignore */ }
         if (!resp.ok || data.success === false) {
             window.alert(data.message || text || resp.statusText);
             return { ok: false };
         }
-        return { ok: true, url: data.url || undefined };
+        return data.url ? { ok: true, url: data.url } : { ok: true };
     } catch (err) {
         window.alert(err instanceof Error ? err.message : String(err));
         return { ok: false };
@@ -88,7 +89,8 @@ function buildFolderRow(path: string, depth: number, urls: CreateUrls): HTMLLIEl
     row.style.setProperty('--depth', String(depth));
     const name = path.split('/').pop() || path;
     row.innerHTML = folderRowInner();
-    row.querySelector('.git-nav-name')!.textContent = name;
+    const nameEl = row.querySelector<HTMLElement>('.git-nav-name');
+    if (nameEl) nameEl.textContent = name;
     li.appendChild(row);
     mountFolderAffordance(row, path, urls);
     return li;
@@ -230,9 +232,9 @@ const init = (): void => {
     rootRow.className = 'git-nav-entry is-dir is-root';
     rootRow.style.setProperty('--depth', '0');
     rootRow.innerHTML = rootRowInner();
-    // Trailing "/" marks it as the workspace scope/root (thin space before the
-    // slash so it isn't cramped against the name).
-    rootRow.querySelector('.git-nav-name')!.textContent = `${projectName()} /`;
+    // Trailing "/" marks it as the workspace scope/root.
+    const nameEl = rootRow.querySelector<HTMLElement>('.git-nav-name');
+    if (nameEl) nameEl.textContent = `${projectName()} /`;
     rootRow.title = 'Workspace root';
     rootLi.appendChild(rootRow);
     list.prepend(rootLi);

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { CONFIG, i18n } from './config.js';
+import { CONFIG, i18n, type ShortcutDef } from './config.js';
 
 describe('CONFIG.STORAGE_KEYS', () => {
     it('builds the per-file annotations storage key', () => {
@@ -17,6 +17,7 @@ describe('CONFIG.STORAGE_KEYS', () => {
         expect(CONFIG.STORAGE_KEYS.LIVE_MODE).toBe('markon-live-mode');
         expect(CONFIG.STORAGE_KEYS.CLIENT_ID).toBe('markon-client-id');
         expect(CONFIG.STORAGE_KEYS.CHAT_POS).toBe('markon-chat-pos');
+        expect(CONFIG.STORAGE_KEYS.SHORTCUTS_HELP_POS).toBe('markon-shortcuts-help-pos');
     });
 });
 
@@ -27,8 +28,34 @@ describe('CONFIG.SHORTCUTS', () => {
         expect(CONFIG.SHORTCUTS.REDO_ALT).toMatchObject({ key: 'y', ctrl: true, shift: false });
         expect(CONFIG.SHORTCUTS.ESCAPE).toMatchObject({ key: 'Escape', ctrl: false, shift: false });
         expect(CONFIG.SHORTCUTS.SEARCH).toMatchObject({ key: '/', ctrl: false, shift: false });
+        expect(CONFIG.SHORTCUTS.EXPORT_NOTES).toMatchObject({ key: 'x', ctrl: false, shift: false });
+        expect(CONFIG.SHORTCUTS.WORKSPACE_NAVIGATOR).toMatchObject({ key: 'g', ctrl: false, shift: false });
         expect(CONFIG.SHORTCUTS.HELP).toMatchObject({ key: '?', ctrl: false, shift: false });
         expect(CONFIG.SHORTCUTS.THEME_PANEL).toMatchObject({ key: 't', ctrl: false, shift: false });
+        expect(CONFIG.SHORTCUTS.DIFF_TOGGLE_VIEW).toMatchObject({ key: 'm', ctrl: false, shift: false });
+        expect(CONFIG.SHORTCUTS.DIFF_NEXT_FILE).toMatchObject({ key: 'n', ctrl: false, shift: false });
+        expect(CONFIG.SHORTCUTS.DIFF_PREV_FILE).toMatchObject({ key: 'p', ctrl: false, shift: false });
+        expect(CONFIG.SHORTCUTS.VISUAL_ZOOM_TOOL).toMatchObject({ key: 'z', ctrl: false, shift: false });
+        expect(CONFIG.SHORTCUTS.VISUAL_ZOOM_TOOL_OUT).toMatchObject({ key: 'z', ctrl: false, shift: true });
+        expect(CONFIG.SHORTCUTS.VISUAL_ZOOM_FIT_CMD).toMatchObject({ key: '0', ctrl: true, shift: false });
+    });
+
+    it('does not assign the same default chord to different features', () => {
+        const seen = new Map<string, string>();
+        for (const [name, rawShortcut] of Object.entries(CONFIG.SHORTCUTS)) {
+            const shortcut = rawShortcut as ShortcutDef;
+            const combo = [
+                shortcut.ctrl ? 'ctrl' : '',
+                shortcut.shift ? 'shift' : '',
+                shortcut.key.length === 1 ? shortcut.key.toLowerCase() : shortcut.key,
+            ].filter(Boolean).join('+');
+            const feature = shortcut.feature || name;
+            const previous = seen.get(combo);
+            if (previous && previous !== feature) {
+                throw new Error(`Shortcut ${combo} is shared by ${previous} and ${feature}`);
+            }
+            seen.set(combo, feature);
+        }
     });
 
     it('includes the expected navigation shortcuts', () => {
@@ -57,6 +84,7 @@ describe('CONFIG.SHORTCUTS', () => {
             "DIFF_TOGGLE_VIEW",
             "EDIT",
             "ESCAPE",
+            "EXPORT_NOTES",
             "HELP",
             "NEXT_ANNOTATION",
             "NEXT_HEADING",
@@ -75,6 +103,17 @@ describe('CONFIG.SHORTCUTS', () => {
             "TOGGLE_TOC",
             "TOGGLE_VIEWED",
             "UNDO",
+            "VISUAL_ZOOM_CLOSE",
+            "VISUAL_ZOOM_FIT",
+            "VISUAL_ZOOM_FIT_CMD",
+            "VISUAL_ZOOM_IN",
+            "VISUAL_ZOOM_IN_ALT",
+            "VISUAL_ZOOM_OUT",
+            "VISUAL_ZOOM_RESET",
+            "VISUAL_ZOOM_RESET_ALT",
+            "VISUAL_ZOOM_TOOL",
+            "VISUAL_ZOOM_TOOL_OUT",
+            "WORKSPACE_NAVIGATOR",
           ]
         `);
     });

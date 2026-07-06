@@ -92,7 +92,12 @@ function rectFor(item: LayoutItem, pos: Point) {
  *  permutation is reproducible across runs. Rotates by `offset`. */
 function rotate<T>(arr: T[], offset: number): T[] {
     const n = arr.length;
-    return arr.map((_, i) => arr[(i + offset) % n]);
+    if (n === 0) return [];
+    return arr.map((_, i) => {
+        const item = arr[(i + offset) % n];
+        if (item === undefined) throw new RangeError('rotate index escaped input array');
+        return item;
+    });
 }
 
 // ── 1. Determinism ──────────────────────────────────────────────────────────
@@ -306,6 +311,7 @@ describe('layout-engine / properties', () => {
                 for (let j = i + 1; j < placedRects.length; j++) {
                     const A = placedRects[i];
                     const B = placedRects[j];
+                    if (!A || !B) throw new Error('missing placed rect');
                     const gap = Math.min(A.it.gap, B.it.gap);
                     // Allow a 1px tolerance for the tight-scene fallback that
                     // returns the least-overlap on-screen point.

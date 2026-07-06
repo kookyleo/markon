@@ -56,11 +56,11 @@
    pure geometric transform, not a skin swap. Border-radius = sphere radius
    (20px) so the anchor corner visually continues the sphere's curvature. */
 .markon-live-container.expanded {
+    --markon-modal-surface-border: var(--markon-live-user, var(--markon-border-emphasis));
     width: 260px;
     height: auto;
     max-width: calc(100vw - 16px);
     max-height: calc(100vh - 16px);
-    border-radius: 20px;
     cursor: default;
     display: block;
 }
@@ -134,12 +134,12 @@
    top-left corner — the exact position the sphere occupied before expand. */
 .markon-live-container.expanded .markon-live-face {
     position: absolute;
-    top: 0;
-    left: 0;
+    top: var(--markon-modal-frame-inset);
+    left: var(--markon-modal-frame-inset);
     width: 40px;
     height: 40px;
     z-index: var(--markon-z-content-overlay);
-    border-radius: 20px 0 0 0;
+    border-radius: var(--markon-radius-lg) 0 0 0;
 }
 
 /* Hover spin on the X close button — playful affordance confirming the
@@ -156,7 +156,6 @@
    collapses to a small corner button inside the expanded panel. */
 .markon-live-container.expanded.broadcasting {
     animation: none;
-    box-shadow: none;
 }
 
 /* Leader indicator — a colored dot above the sphere when following. Identity
@@ -190,10 +189,12 @@ html[data-theme="dark"] .markon-live-face .leader-info {
    rows don't carry their own padding so the spacing stays uniform. */
 .markon-live-body {
     display: none;
-    padding: 6px 16px 14px;
+    position: relative;
+    z-index: 1;
+    padding: 8px 16px 16px;
     box-sizing: border-box;
     flex-direction: column;
-    gap: 14px;
+    gap: 0;
 }
 
 .markon-live-container.expanded .markon-live-body {
@@ -205,10 +206,11 @@ html[data-theme="dark"] .markon-live-face .leader-info {
 .markon-live-body .panel-header {
     font-weight: bold;
     font-size: 14px;
-    height: 30px;
-    line-height: 30px;
+    height: 32px;
+    line-height: 32px;
     text-align: center;
-    margin: 0;
+    margin: 0 32px 12px;
+    user-select: none;
 }
 
 .markon-live-body .panel-row {
@@ -228,13 +230,30 @@ html[data-theme="dark"] .markon-live-face .leader-info {
     align-items: center;
 }
 
-/* Section label — small caption above the identity / Live groups. */
+/* Section marker — compact icon above the identity / Live groups. */
 .markon-live-body .panel-section-label {
-    font-size: 10px;
-    text-transform: uppercase;
-    letter-spacing: 0.04em;
-    opacity: 0.5;
-    margin: -6px 0 -8px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 100%;
+    height: 18px;
+    color: color-mix(in srgb, var(--markon-fg-muted) 78%, var(--markon-fg-default));
+    gap: 10px;
+    line-height: 1;
+    margin: 0 0 8px;
+}
+
+.markon-live-body .panel-section-label::before,
+.markon-live-body .panel-section-label::after {
+    content: "";
+    height: 1px;
+    flex: 1 1 0;
+    background: color-mix(in srgb, var(--markon-border-default) 72%, transparent);
+}
+
+.markon-live-body .panel-section-label svg {
+    display: block;
+    flex: 0 0 auto;
 }
 
 /* Identity row: colour picker + nickname input. Always interactive — your
@@ -244,13 +263,15 @@ html[data-theme="dark"] .markon-live-face .leader-info {
     display: flex;
     flex-direction: column;
     align-items: stretch;
-    gap: 8px;
+    gap: 10px;
+    margin-bottom: 16px;
 }
 
 .markon-live-body .identity-name {
     width: 100%;
+    height: 26px;
     box-sizing: border-box;
-    padding: 5px 8px;
+    padding: 4px 8px;
     font: inherit;
     font-size: 12px;
     border: 1px solid var(--markon-border-default);
@@ -260,13 +281,20 @@ html[data-theme="dark"] .markon-live-face .leader-info {
     text-align: center;
 }
 
+.markon-live-body .identity-name::placeholder {
+    color: var(--markon-fg-muted);
+    opacity: 0.85;
+}
+
 /* Picker centers on the panel center ⇒ same center as the Broadcast button
    above. Fixed gap (instead of space-between) so the active dot can steal
    a couple of pixels from its neighbors to pay for its outline ring. */
 .markon-live-body .color-picker {
     display: flex;
+    align-items: center;
     justify-content: center;
-    gap: 6px;
+    min-height: 25px;
+    gap: 7px;
     flex-wrap: nowrap;
 }
 
@@ -308,7 +336,8 @@ html[data-theme="dark"] .markon-live-face .leader-info {
    group's center — and thus the panel's center. */
 .markon-live-body .mode-group {
     display: flex;
-    width: 220px;
+    width: 100%;
+    max-width: 220px;
     border-radius: 999px;
     overflow: hidden;
     background: rgba(0, 0, 0, 0.06);

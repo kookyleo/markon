@@ -4,9 +4,9 @@
 // and share one expansion store — so the two views show the same regions and
 // stay aligned line-for-line when you switch between them.
 
-export type DiffAnchor = { path: string; line: number | null };
+export interface DiffAnchor { path: string; line: number | null }
 
-export type MarkdownBlockOutline = { index: number; kind: string; label: string };
+export interface MarkdownBlockOutline { index: number; kind: string; label: string }
 
 export type MarkdownBlockSummary = MarkdownBlockOutline & {
     text: string;
@@ -17,24 +17,24 @@ export type MarkdownBlockSummary = MarkdownBlockOutline & {
     digest: string;
 };
 
-export type MarkdownDocumentSummary = { block_count: number; blocks: MarkdownBlockOutline[] };
+export interface MarkdownDocumentSummary { block_count: number; blocks: MarkdownBlockOutline[] }
 
-export type MarkdownDiffBlock = {
+export interface MarkdownDiffBlock {
     kind: 'equal' | 'modified' | 'added' | 'deleted';
     old?: MarkdownBlockSummary | null;
     new?: MarkdownBlockSummary | null;
-};
+}
 
-export type MarkdownDiffDiagnostic = {
+export interface MarkdownDiffDiagnostic {
     side: 'old' | 'new';
     code: string;
     severity: string;
     message: string;
     start_line?: number | null;
     end_line?: number | null;
-};
+}
 
-export type MarkdownDiffFile = {
+export interface MarkdownDiffFile {
     path: string;
     /** Canonical absolute path of the NEW side (worktree file). Byte-identical
      *  to the normal file view's annotation key, so diff annotations bind to the
@@ -52,13 +52,19 @@ export type MarkdownDiffFile = {
     deletions: number;
     blocks: MarkdownDiffBlock[];
     diagnostics: MarkdownDiffDiagnostic[];
-};
+}
 
-export type MarkdownDiffData = {
+export interface MarkdownDiffData {
     title: string;
     subtitle?: string | null;
     engine: { name: string; enabled: boolean; message?: string | null };
     files: MarkdownDiffFile[];
+}
+
+const arrayAt = <T>(items: readonly T[], index: number): T => {
+    const value = items[index];
+    if (value === undefined) throw new RangeError(`Index ${index} is outside array bounds`);
+    return value;
 };
 
 export const isMarkdownDiffData = (value: unknown): value is MarkdownDiffData => {
@@ -81,7 +87,7 @@ export function visibleBlockItems(blocks: MarkdownDiffBlock[], context = CONTEXT
     const n = blocks.length;
     const show = new Array<boolean>(n).fill(false);
     for (let i = 0; i < n; i += 1) {
-        if (blocks[i].kind !== 'equal') {
+        if (arrayAt(blocks, i).kind !== 'equal') {
             for (let j = Math.max(0, i - context); j <= Math.min(n - 1, i + context); j += 1) show[j] = true;
         }
     }
@@ -89,7 +95,7 @@ export function visibleBlockItems(blocks: MarkdownDiffBlock[], context = CONTEXT
     let i = 0;
     while (i < n) {
         if (show[i]) {
-            items.push({ kind: 'block', block: blocks[i], index: i });
+            items.push({ kind: 'block', block: arrayAt(blocks, i), index: i });
             i += 1;
         } else {
             const start = i;
@@ -180,7 +186,7 @@ export function createGap(
 
 // ── Word-level intra-line diff (client-side, for modified blocks) ───────────────
 
-export type WordSeg = { text: string; cls: 'add' | 'del' | null };
+export interface WordSeg { text: string; cls: 'add' | 'del' | null }
 
 // Whitespace runs and ASCII identifier runs stay whole; every other character
 // (CJK, punctuation, symbols) is its own token. Splitting CJK per-character is
@@ -199,7 +205,11 @@ export function wordDiff(oldText: string, newText: string): { old: WordSeg[]; ne
     const dp: number[][] = Array.from({ length: m + 1 }, () => new Array<number>(n + 1).fill(0));
     for (let i = m - 1; i >= 0; i -= 1) {
         for (let j = n - 1; j >= 0; j -= 1) {
-            dp[i][j] = a[i] === b[j] ? dp[i + 1][j + 1] + 1 : Math.max(dp[i + 1][j], dp[i][j + 1]);
+            const row = arrayAt(dp, i);
+            const nextRow = arrayAt(dp, i + 1);
+            row[j] = arrayAt(a, i) === arrayAt(b, j)
+                ? arrayAt(nextRow, j + 1) + 1
+                : Math.max(arrayAt(nextRow, j), arrayAt(row, j + 1));
         }
     }
     const oldSeg: WordSeg[] = [];
@@ -212,20 +222,22 @@ export function wordDiff(oldText: string, newText: string): { old: WordSeg[]; ne
     let i = 0;
     let j = 0;
     while (i < m && j < n) {
-        if (a[i] === b[j]) {
-            push(oldSeg, a[i], null);
-            push(newSeg, b[j], null);
+        const oldToken = arrayAt(a, i);
+        const newToken = arrayAt(b, j);
+        if (oldToken === newToken) {
+            push(oldSeg, oldToken, null);
+            push(newSeg, newToken, null);
             i += 1; j += 1;
-        } else if (dp[i + 1][j] >= dp[i][j + 1]) {
-            push(oldSeg, a[i], 'del');
+        } else if (arrayAt(arrayAt(dp, i + 1), j) >= arrayAt(arrayAt(dp, i), j + 1)) {
+            push(oldSeg, oldToken, 'del');
             i += 1;
         } else {
-            push(newSeg, b[j], 'add');
+            push(newSeg, newToken, 'add');
             j += 1;
         }
     }
-    while (i < m) { push(oldSeg, a[i], 'del'); i += 1; }
-    while (j < n) { push(newSeg, b[j], 'add'); j += 1; }
+    while (i < m) { push(oldSeg, arrayAt(a, i), 'del'); i += 1; }
+    while (j < n) { push(newSeg, arrayAt(b, j), 'add'); j += 1; }
     return { old: oldSeg, new: newSeg };
 }
 
@@ -245,7 +257,11 @@ export function lineDiff(oldLines: string[], newLines: string[]): LineOp[] {
     const dp: number[][] = Array.from({ length: m + 1 }, () => new Array<number>(n + 1).fill(0));
     for (let i = m - 1; i >= 0; i -= 1) {
         for (let j = n - 1; j >= 0; j -= 1) {
-            dp[i][j] = oldLines[i] === newLines[j] ? dp[i + 1][j + 1] + 1 : Math.max(dp[i + 1][j], dp[i][j + 1]);
+            const row = arrayAt(dp, i);
+            const nextRow = arrayAt(dp, i + 1);
+            row[j] = arrayAt(oldLines, i) === arrayAt(newLines, j)
+                ? arrayAt(nextRow, j + 1) + 1
+                : Math.max(arrayAt(nextRow, j), arrayAt(row, j + 1));
         }
     }
     const ops: LineOp[] = [];
@@ -254,18 +270,18 @@ export function lineDiff(oldLines: string[], newLines: string[]): LineOp[] {
     const flush = (dels: number[], adds: number[]) => {
         // Pair removed+added lines as `replace` (word-diffed), surplus as pure del/add.
         const pairs = Math.min(dels.length, adds.length);
-        for (let p = 0; p < pairs; p += 1) ops.push({ type: 'replace', oldIndex: dels[p], newIndex: adds[p] });
-        for (let p = pairs; p < dels.length; p += 1) ops.push({ type: 'del', oldIndex: dels[p] });
-        for (let p = pairs; p < adds.length; p += 1) ops.push({ type: 'add', newIndex: adds[p] });
+        for (let p = 0; p < pairs; p += 1) ops.push({ type: 'replace', oldIndex: arrayAt(dels, p), newIndex: arrayAt(adds, p) });
+        for (let p = pairs; p < dels.length; p += 1) ops.push({ type: 'del', oldIndex: arrayAt(dels, p) });
+        for (let p = pairs; p < adds.length; p += 1) ops.push({ type: 'add', newIndex: arrayAt(adds, p) });
     };
     let dels: number[] = [];
     let adds: number[] = [];
     while (i < m && j < n) {
-        if (oldLines[i] === newLines[j]) {
+        if (arrayAt(oldLines, i) === arrayAt(newLines, j)) {
             flush(dels, adds); dels = []; adds = [];
             ops.push({ type: 'equal', oldIndex: i, newIndex: j });
             i += 1; j += 1;
-        } else if (dp[i + 1][j] >= dp[i][j + 1]) {
+        } else if (arrayAt(arrayAt(dp, i + 1), j) >= arrayAt(arrayAt(dp, i), j + 1)) {
             dels.push(i); i += 1;
         } else {
             adds.push(j); j += 1;
@@ -290,9 +306,9 @@ export function applyWordHighlights(el: HTMLElement, segs: WordSeg[], markClass:
     let soff = 0;
     for (const tn of textNodes) {
         let rest = tn.textContent ?? '';
-        const parts: Array<{ text: string; marked: boolean }> = [];
+        const parts: { text: string; marked: boolean }[] = [];
         while (rest.length && si < segs.length) {
-            const seg = segs[si];
+            const seg = arrayAt(segs, si);
             const take = Math.min(seg.text.length - soff, rest.length);
             parts.push({ text: rest.slice(0, take), marked: seg.cls != null });
             rest = rest.slice(take);

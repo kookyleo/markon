@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { MarkdownDiffPage } from './markdown-diff';
 
-type TestBlock = {
+interface TestBlock {
     index: number;
     kind: string;
     label: string;
@@ -11,7 +11,14 @@ type TestBlock = {
     start_line: number;
     end_line: number;
     digest: string;
-};
+}
+
+function itemAt<T>(items: ArrayLike<T>, index: number): T {
+    const item = items[index];
+    expect(item).toBeDefined();
+    if (item === undefined) throw new Error(`Missing item at index ${index}`);
+    return item;
+}
 
 const heading = (index: number, text: string, level = 2): TestBlock => ({
     index,
@@ -84,6 +91,11 @@ function keydown(key: string, target: Element = document.body): KeyboardEvent {
     return event;
 }
 
+async function flushMicrotasks(): Promise<void> {
+    await Promise.resolve();
+    await Promise.resolve();
+}
+
 describe('MarkdownDiffPage rendered diff', () => {
     let fetchSpy: ReturnType<typeof vi.spyOn>;
     let logSpy: ReturnType<typeof vi.spyOn>;
@@ -94,6 +106,8 @@ describe('MarkdownDiffPage rendered diff', () => {
         document.head.innerHTML = '';
         localStorage.clear();
         logSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
+        delete (window as { markonDiffAnnotations?: unknown }).markonDiffAnnotations;
+        delete (window as { __MARKON_I18N__?: unknown }).__MARKON_I18N__;
         fetchSpy = vi.spyOn(globalThis, 'fetch').mockResolvedValue({
             ok: true,
             json: async () => diffPayload(),
@@ -198,6 +212,7 @@ describe('MarkdownDiffPage rendered diff', () => {
     it('restores the Viewed mark from its own localStorage set (independent of fold)', async () => {
         localStorage.clear();
         localStorage.setItem('markon:diff:viewed:/diff.json', JSON.stringify(['doc.md']));
+        localStorage.setItem('markon:diff:showviewed:/diff.json', '1');
         const root = mountRoot();
         await new MarkdownDiffPage(root).load();
 
@@ -209,6 +224,69 @@ describe('MarkdownDiffPage rendered diff', () => {
         // is NOT collapsed (a viewed file can stay open for re-reading).
         expect(checkbox.checked).toBe(true);
         expect(content.querySelectorAll('.md-diff-block').length).toBeGreaterThan(0);
+    });
+
+    it('offers Export notes in the all-done empty state', async () => {
+        localStorage.clear();
+        localStorage.setItem('markon:diff:viewed:/diff.json', JSON.stringify(['doc.md']));
+        window.__MARKON_I18N__ = {
+            t: (key: string) => key === 'web.export.label' ? 'Export notes' : key,
+        };
+        const exportNotes = vi.fn().mockResolvedValue(true);
+        window.markonDiffAnnotations = {
+            onBodyRendered: vi.fn(),
+            onContentRendered: vi.fn(),
+            exportNotes,
+            notesCount: vi.fn().mockResolvedValue(4),
+        };
+
+        const root = mountRoot();
+        await new MarkdownDiffPage(root).load();
+        await flushMicrotasks();
+
+        const empty = root.querySelector<HTMLElement>('.md-diff-viewed-empty')!;
+        expect(empty).toBeTruthy();
+        const buttons = [...empty.querySelectorAll<HTMLButtonElement>('.md-diff-viewed-empty-link')];
+        expect(buttons.map(button => button.textContent)).toEqual(['Show all files', 'Export notes (4)']);
+        const exportButton = itemAt(buttons, 1);
+        expect(exportButton.disabled).toBe(false);
+
+        exportButton.click();
+        expect(exportNotes).toHaveBeenCalledWith(exportButton);
+    });
+
+    it('adds an all-done tail when viewed files remain visible', async () => {
+        localStorage.clear();
+        localStorage.setItem('markon:diff:viewed:/diff.json', JSON.stringify(['doc.md']));
+        localStorage.setItem('markon:diff:showviewed:/diff.json', '1');
+        window.__MARKON_I18N__ = {
+            t: (key: string) => key === 'web.export.label' ? 'Export notes' : key,
+        };
+        const exportNotes = vi.fn().mockResolvedValue(false);
+        window.markonDiffAnnotations = {
+            onBodyRendered: vi.fn(),
+            onContentRendered: vi.fn(),
+            exportNotes,
+            notesCount: vi.fn().mockResolvedValue(0),
+        };
+
+        const root = mountRoot();
+        await new MarkdownDiffPage(root).load();
+        await flushMicrotasks();
+
+        const content = root.querySelector<HTMLElement>('[data-md-diff-content]')!;
+        expect(content.querySelector('.md-diff-viewed-empty')).toBeNull();
+        expect(content.querySelectorAll('.md-diff-file-section')).toHaveLength(1);
+
+        const done = content.querySelector<HTMLElement>('.md-diff-viewed-done')!;
+        expect(done).toBeTruthy();
+        expect(done.compareDocumentPosition(content.querySelector('.md-diff-file-section')!) & Node.DOCUMENT_POSITION_PRECEDING).toBeTruthy();
+        const buttons = [...done.querySelectorAll<HTMLButtonElement>('.md-diff-viewed-empty-link')];
+        expect(buttons.map(button => button.textContent)).toEqual(['Hide all Viewed files', 'Export notes (0)']);
+        const exportButton = itemAt(buttons, 1);
+        expect(exportButton.disabled).toBe(true);
+        exportButton.click();
+        expect(exportNotes).not.toHaveBeenCalled();
     });
 
     it('chevron folds without marking Viewed; double-click on the bar folds too', async () => {
@@ -250,8 +328,8 @@ describe('MarkdownDiffPage rendered diff', () => {
         expect(modified?.querySelector('.md-diff-change-body')).toBeNull();
         expect(modified?.textContent).not.toContain('Before');
         expect(modified?.textContent).not.toContain('After');
-        expect(oldCard?.dataset.diffMarker).toBe('-');
-        expect(newCard?.dataset.diffMarker).toBe('+');
+        expect(oldCard?.dataset['diffMarker']).toBe('-');
+        expect(newCard?.dataset['diffMarker']).toBe('+');
         expect(oldCard?.firstElementChild?.classList.contains('md-diff-rendered')).toBe(true);
         expect(newCard?.firstElementChild?.classList.contains('md-diff-rendered')).toBe(true);
         expect(oldCard?.querySelector('h2')?.textContent).toBe('Details old');
@@ -266,11 +344,11 @@ describe('MarkdownDiffPage rendered diff', () => {
         const intro = renderedEqual[0];
         const body = renderedEqual[1];
 
-        expect(intro?.dataset.mdBlockKind).toBe('heading');
-        expect(intro?.dataset.mdSectionDepth).toBe('0');
+        expect(intro?.dataset['mdBlockKind']).toBe('heading');
+        expect(intro?.dataset['mdSectionDepth']).toBe('0');
         expect(intro?.classList.contains('md-diff-rendered-sectioned')).toBe(false);
-        expect(body?.dataset.mdBlockKind).toBe('paragraph');
-        expect(body?.dataset.mdSectionDepth).toBe('1');
+        expect(body?.dataset['mdBlockKind']).toBe('paragraph');
+        expect(body?.dataset['mdSectionDepth']).toBe('1');
         expect(body?.classList.contains('md-diff-rendered-sectioned')).toBe(true);
         expect(body?.style.getPropertyValue('--md-diff-section-indent')).toBe('10px');
         expect(body?.style.getPropertyValue('--md-diff-section-indent-wide')).toBe('14px');
@@ -307,7 +385,7 @@ describe('MarkdownDiffPage rendered diff', () => {
                 ],
             }),
             text: async () => '',
-        } as unknown as Response);
+        });
 
         const root = mountRoot();
         await new MarkdownDiffPage(root).load();
@@ -321,10 +399,10 @@ describe('MarkdownDiffPage rendered diff', () => {
         const h3Rendered = rendered[2];
         const bodyRendered = rendered[3];
 
-        expect(h1Rendered?.dataset.mdSectionDepth).toBe('0');
-        expect(h2Rendered?.dataset.mdSectionDepth).toBe('1');
-        expect(h3Rendered?.dataset.mdSectionDepth).toBe('2');
-        expect(bodyRendered?.dataset.mdSectionDepth).toBe('3');
+        expect(h1Rendered?.dataset['mdSectionDepth']).toBe('0');
+        expect(h2Rendered?.dataset['mdSectionDepth']).toBe('1');
+        expect(h3Rendered?.dataset['mdSectionDepth']).toBe('2');
+        expect(bodyRendered?.dataset['mdSectionDepth']).toBe('3');
         expect(bodyRendered?.style.getPropertyValue('--md-diff-section-indent')).toBe('30px');
         expect(bodyRendered?.style.getPropertyValue('--md-diff-section-indent-wide')).toBe('42px');
     });
@@ -356,7 +434,7 @@ describe('MarkdownDiffPage rendered diff', () => {
                 ],
             }),
             text: async () => '',
-        } as unknown as Response);
+        });
 
         const root = mountRoot();
         await new MarkdownDiffPage(root).load();

@@ -35,7 +35,7 @@ function makeFakeWs(connected: boolean) {
 /** Strip op_id from outbound payloads to keep existing expectations stable. */
 function withoutOpId(msg: WsOutbound): WsOutbound {
     const copy = { ...msg } as Record<string, unknown>;
-    delete copy.op_id;
+    delete copy['op_id'];
     return copy as WsOutbound;
 }
 

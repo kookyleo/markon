@@ -101,11 +101,11 @@ export class NoteManager {
 
         // Build note cards.
         outermostElements.forEach(highlightElement => {
-            const annoId = highlightElement.dataset.annotationId;
+            const annoId = highlightElement.dataset['annotationId'];
             if (!annoId) return;
             const anno = annotationsMap.get(annoId);
 
-            if (!anno || !anno.note) {
+            if (!anno?.note) {
                 return;
             }
 
@@ -177,8 +177,8 @@ export class NoteManager {
             this.#resizeObserver.observe(this.#markdownBody);
         }
 
-        if (typeof document !== 'undefined' && document.fonts && document.fonts.ready) {
-            document.fonts.ready.then(() => {
+        if (typeof document !== 'undefined' && document.fonts) {
+            void document.fonts.ready.then(() => {
                 this.#layout();
                 this.#drawConnector();
             }).catch(() => { /* font load failures are non-fatal */ });
@@ -211,7 +211,7 @@ export class NoteManager {
         const outermostMap = new Map<string, HTMLElement>();
 
         elements.forEach(element => {
-            const annoId = element.dataset.annotationId;
+            const annoId = element.dataset['annotationId'];
             if (!annoId) return;
 
             // Detect whether this highlight is nested inside another .has-note element.
@@ -255,7 +255,7 @@ export class NoteManager {
     #createNoteCard(annotation: Annotation): HTMLDivElement {
         const noteCard = document.createElement('div');
         noteCard.className = 'note-card-margin';
-        noteCard.dataset.annotationId = annotation.id;
+        noteCard.dataset['annotationId'] = annotation.id;
 
         noteCard.innerHTML = `
             ${this.#noteActionsHtml(annotation.id)}
@@ -430,6 +430,7 @@ export class NoteManager {
             const rects = frag.getClientRects();
             if (rects.length === 0) return;
             const last = rects[rects.length - 1];
+            if (!last) return;
             if (!sourceRect || last.bottom > sourceRect.bottom) {
                 sourceRect = last;
             }
@@ -494,8 +495,8 @@ export class NoteManager {
 
         // Build the popup DOM.
         const popup = document.createElement('div');
-        popup.className = 'note-popup';
-        popup.dataset.annotationId = annotationId;
+        popup.className = 'note-popup markon-modal-frame';
+        popup.dataset['annotationId'] = annotationId;
         popup.innerHTML = `
             ${this.#noteActionsHtml(annotationId)}
             <div class="note-content">${Text.escape(noteData.note)}</div>

@@ -28,17 +28,19 @@ export const XPath = {
 
     // Resolve an XPath string back to a DOM node
     resolve(path: string): Node | null {
-        const match = path.match(/^\/\/article\[1\](?:\/(.+))?$/);
+        const match = /^\/\/article\[1\](?:\/(.+))?$/.exec(path);
         if (!match) return null;
 
         let current: Node | null = document.querySelector('article.markdown-body');
         if (!current || !match[1]) return current;
 
         for (const segment of match[1].split('/')) {
-            const tagMatch = segment.match(/^([A-Z0-9]+)\[(\d+)\]$/);
+            const tagMatch = /^([A-Z0-9]+)\[(\d+)\]$/.exec(segment);
             if (!tagMatch) return null;
 
-            const [, tagName, targetIndex] = tagMatch;
+            const tagName = tagMatch[1];
+            const targetIndex = tagMatch[2];
+            if (!tagName || !targetIndex) return null;
             let count = 0;
             let found: Node | null = null;
 
@@ -71,7 +73,8 @@ export const XPath = {
             }
         } else {
             for (let i = 0; i < offset && i < container.childNodes.length; i++) {
-                absoluteOffset += (container.childNodes[i].textContent ?? '').length;
+                const child = container.childNodes[i];
+                if (child) absoluteOffset += (child.textContent ?? '').length;
             }
         }
         return absoluteOffset;

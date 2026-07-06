@@ -15,26 +15,32 @@ import type {
     MarkdownDocumentSummary,
 } from './diff-segments';
 
+const elementAt = <T extends HTMLElement>(items: readonly T[], index: number): T => {
+    const element = items[index];
+    if (!element) throw new RangeError(`Element index ${index} is outside array bounds`);
+    return element;
+};
+
 export class MarkdownDiffPage extends DiffSectionView {
     #sectionDepthCache = new WeakMap<MarkdownDiffFile, { old: Map<number, number>; new: Map<number, number> }>();
 
-    protected get scrollSelector(): string | null { return '[data-diff-view-panel="rendered"]'; }
-    protected get paneSelector(): string { return '[data-md-diff-content]'; }
-    protected get virtualizedClass(): string { return 'is-virtualized-md-diff'; }
-    protected get emptyBlocksMessage(): string { return 'No Markdown blocks to preview.'; }
+    protected override get scrollSelector(): string | null { return '[data-diff-view-panel="rendered"]'; }
+    protected override get paneSelector(): string { return '[data-md-diff-content]'; }
+    protected override get virtualizedClass(): string { return 'is-virtualized-md-diff'; }
+    protected override get emptyBlocksMessage(): string { return 'No Markdown blocks to preview.'; }
 
-    protected onRender(data: MarkdownDiffData): void {
+    protected override onRender(data: MarkdownDiffData): void {
         const engineText = data.engine.enabled
             ? `${data.engine.name} enabled`
             : `${data.engine.name} unavailable`;
         this.text('[data-md-engine-status]', data.engine.message ? `${engineText} · ${data.engine.message}` : engineText);
     }
 
-    protected onFiles(_files: MarkdownDiffFile[]): void {
+    protected override onFiles(_files: MarkdownDiffFile[]): void {
         this.#sectionDepthCache = new WeakMap();
     }
 
-    protected fileLead(file: MarkdownDiffFile): Node | null {
+    protected override fileLead(file: MarkdownDiffFile): Node | null {
         const diagnostics = [
             ...file.diagnostics.filter((d) => d.side === 'old'),
             ...file.diagnostics.filter((d) => d.side === 'new'),
@@ -46,7 +52,7 @@ export class MarkdownDiffPage extends DiffSectionView {
     // overlay per changed item — content-width tint + gutter rail + +/- marker,
     // exactly like the change cards. It is measured against the block (not the
     // indented <li>), so the shading never follows the list's own indentation.
-    protected afterBodyRendered(body: HTMLElement): void {
+    protected override afterBodyRendered(body: HTMLElement): void {
         body.querySelectorAll<HTMLElement>('.md-diff-rendered-structural').forEach((block) => this.#drawItemBands(block));
         // A file body was (re)built — its annotation wrappers were discarded with
         // the old DOM, so let the diff annotation coordinator re-anchor against
@@ -63,19 +69,19 @@ export class MarkdownDiffPage extends DiffSectionView {
             const isOld = item.classList.contains('md-diff-item-old');
             const band = document.createElement('div');
             band.className = `md-diff-item-band ${isOld ? 'md-diff-item-band-old' : 'md-diff-item-band-new'}`;
-            band.dataset.diffMarker = isOld ? '-' : '+';
+            band.dataset['diffMarker'] = isOld ? '-' : '+';
             band.style.top = `${r.top - top}px`;
             band.style.height = `${r.height}px`;
             block.appendChild(band);
         }
     }
 
-    syncLayout(): void {
+    override syncLayout(): void {
         // Text rewraps on resize → item heights change → re-measure the bands.
         this.root.querySelectorAll<HTMLElement>('.md-diff-rendered-structural').forEach((block) => this.#drawItemBands(block));
     }
 
-    protected afterContentRendered(): void {
+    protected override afterContentRendered(): void {
         // The whole file set was rebuilt (initial load / view switch). Per-body
         // re-anchoring already happens in afterBodyRendered as each section's body
         // renders; this signals the coordinator that the pass is complete (note
@@ -86,7 +92,7 @@ export class MarkdownDiffPage extends DiffSectionView {
         });
     }
 
-    protected estimateBlock(block: MarkdownDiffBlock): number {
+    protected override estimateBlock(block: MarkdownDiffBlock): number {
         const oldBlock = block.old || null;
         const newBlock = block.new || null;
         const lineCount = block.kind === 'modified'
@@ -101,19 +107,19 @@ export class MarkdownDiffPage extends DiffSectionView {
         return Math.max(base, 42 + estimatedLines * 21);
     }
 
-    protected renderBlock(file: MarkdownDiffFile, block: MarkdownDiffBlock, rowIndex: number): HTMLElement {
+    protected override renderBlock(file: MarkdownDiffFile, block: MarkdownDiffBlock, rowIndex: number): HTMLElement {
         const row = document.createElement('article');
         // `diff-change-block` is the SHARED marker both views' blocks carry, so the
         // j/k stepping (diff-shortcuts.ts) and the focus rail target one selector
         // regardless of view.
         row.className = `diff-change-block md-diff-block is-${block.kind}`;
-        row.dataset.mdDiffPair = String(rowIndex);
+        row.dataset['mdDiffPair'] = String(rowIndex);
         // Source line span, so the cross-mode anchor can interpolate a precise
         // line WITHIN a tall block (the AST is block-level, not line-level).
         const side = block.new ?? block.old;
         if (side?.start_line != null) {
-            row.dataset.line = String(side.start_line);
-            row.dataset.lineEnd = String(side.end_line ?? side.start_line);
+            row.dataset['line'] = String(side.start_line);
+            row.dataset['lineEnd'] = String(side.end_line ?? side.start_line);
         }
 
         if (block.kind === 'equal') {
@@ -183,7 +189,7 @@ export class MarkdownDiffPage extends DiffSectionView {
         const rendered = document.createElement('div');
         rendered.className = 'md-diff-rendered md-diff-rendered-structural';
         const depth = this.#blockSectionDepth(file, 'new', block.new || null);
-        rendered.dataset.mdSectionDepth = String(depth);
+        rendered.dataset['mdSectionDepth'] = String(depth);
         if (depth > 0) {
             rendered.classList.add('md-diff-rendered-sectioned');
             rendered.style.setProperty('--md-diff-section-indent', `${depth * 10}px`);
@@ -236,15 +242,17 @@ export class MarkdownDiffPage extends DiffSectionView {
         for (const op of ops) {
             if (op.type === 'equal') {
                 num += 1;
-                place(clone(newItems[op.newIndex]), num);
+                place(clone(elementAt(newItems, op.newIndex)), num);
             } else if (op.type === 'replace') {
                 num += 1;
-                const recursed = this.#mergeItem(oldItems[op.oldIndex], newItems[op.newIndex]);
+                const oldSourceItem = elementAt(oldItems, op.oldIndex);
+                const newSourceItem = elementAt(newItems, op.newIndex);
+                const recursed = this.#mergeItem(oldSourceItem, newSourceItem);
                 if (recursed) {
                     place(recursed, num);
                 } else {
-                    const oldItem = clone(oldItems[op.oldIndex]);
-                    const newItem = clone(newItems[op.newIndex]);
+                    const oldItem = clone(oldSourceItem);
+                    const newItem = clone(newSourceItem);
                     oldItem.classList.add('md-diff-item-old');
                     newItem.classList.add('md-diff-item-new');
                     const { old, new: nw } = wordDiff(oldItem.textContent ?? '', newItem.textContent ?? '');
@@ -254,12 +262,12 @@ export class MarkdownDiffPage extends DiffSectionView {
                     place(newItem, num);
                 }
             } else if (op.type === 'del') {
-                const oldItem = clone(oldItems[op.oldIndex]);
+                const oldItem = clone(elementAt(oldItems, op.oldIndex));
                 oldItem.classList.add('md-diff-item-old');
                 place(oldItem, isOl ? num + 1 : undefined);
             } else {
                 num += 1;
-                const newItem = clone(newItems[op.newIndex]);
+                const newItem = clone(elementAt(newItems, op.newIndex));
                 newItem.classList.add('md-diff-item-new');
                 place(newItem, num);
             }
@@ -298,7 +306,7 @@ export class MarkdownDiffPage extends DiffSectionView {
     ): HTMLElement {
         const card = document.createElement('section');
         card.className = `md-diff-change-card md-diff-change-card-${side}`;
-        card.dataset.diffMarker = marker;
+        card.dataset['diffMarker'] = marker;
         if (block) {
             card.title = `${block.kind} · ${this.#formatBlockMeta(block, side)}`;
             card.setAttribute('aria-label', this.#formatBlockMeta(block, side));
@@ -317,8 +325,8 @@ export class MarkdownDiffPage extends DiffSectionView {
             rendered.appendChild(placeholder);
             return rendered;
         }
-        rendered.dataset.mdBlockKind = block.kind;
-        rendered.dataset.mdSectionDepth = String(sectionDepth);
+        rendered.dataset['mdBlockKind'] = block.kind;
+        rendered.dataset['mdSectionDepth'] = String(sectionDepth);
         if (sectionDepth > 0) {
             rendered.classList.add('md-diff-rendered-sectioned');
             rendered.style.setProperty('--md-diff-section-indent', `${sectionDepth * 10}px`);
@@ -412,7 +420,7 @@ const selectMarkdownPath = (
 const init = (): void => {
     document.querySelectorAll<HTMLElement>('[data-markdown-diff]').forEach((root) => {
         getPage(root);
-        if (root.dataset.diffAutoload !== 'false') loadMarkdownDiff(root);
+        if (root.dataset['diffAutoload'] !== 'false') loadMarkdownDiff(root);
     });
     window.markonMarkdownDiff = {
         load: () => loadMarkdownDiff(),

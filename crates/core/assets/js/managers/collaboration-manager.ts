@@ -35,8 +35,23 @@ export const LiveMode = Object.freeze({
 
 export type LiveModeValue = (typeof LiveMode)[keyof typeof LiveMode];
 
-const ACTIVE_MODES: ReadonlyArray<LiveModeValue> = [LiveMode.BROADCAST, LiveMode.FOLLOW];
-const MODE_ORDER: ReadonlyArray<LiveModeValue> = [LiveMode.OFF, ...ACTIVE_MODES];
+const ACTIVE_MODES: readonly LiveModeValue[] = [LiveMode.BROADCAST, LiveMode.FOLLOW];
+const MODE_ORDER: readonly LiveModeValue[] = [LiveMode.OFF, ...ACTIVE_MODES];
+
+const ICON_IDENTITY = `
+<svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+    <circle cx="12" cy="8" r="3.2"/>
+    <path d="M5.5 19a6.6 6.6 0 0 1 13 0"/>
+</svg>`;
+
+const ICON_LIVE = `
+<svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+    <circle cx="12" cy="12" r="1.7" fill="currentColor" stroke="none"/>
+    <path d="M8.5 15.5a5 5 0 0 1 0-7"/>
+    <path d="M15.5 8.5a5 5 0 0 1 0 7"/>
+    <path d="M5.5 18.5a9.2 9.2 0 0 1 0-13"/>
+    <path d="M18.5 5.5a9.2 9.2 0 0 1 0 13"/>
+</svg>`;
 
 // ── Live payload discriminated union ───────────────────────────────────────
 //
@@ -196,7 +211,7 @@ export class CollaborationManager {
 
     _loadSavedMode(): LiveModeValue {
         const saved = localStorage.getItem(CONFIG.STORAGE_KEYS.LIVE_MODE);
-        return (MODE_ORDER as ReadonlyArray<string>).includes(saved ?? '')
+        return (MODE_ORDER as readonly string[]).includes(saved ?? '')
             ? (saved as LiveModeValue)
             : LiveMode.OFF;
     }
@@ -267,7 +282,7 @@ export class CollaborationManager {
             // Breathing pulse starts in the speaker's color and fades to the
             // steady focus border color supplied by the base stylesheet.
             const section =
-                (el.closest('.heading-section') as HTMLElement | null) ?? el;
+                (el.closest<HTMLElement>('.heading-section')) ?? el;
             if (speakerColor) {
                 section.style.setProperty('--live-pulse-color', speakerColor);
             }
@@ -316,7 +331,7 @@ export class CollaborationManager {
             }
             // The only "remote" signal is this data attribute, checked by
             // PopoverManager to skip the annotation toolbar on the follower.
-            document.body.dataset.markonLiveRemote = '1';
+            document.body.dataset['markonLiveRemote'] = '1';
 
             // If the remote selection is entirely outside the viewport,
             // scroll the follower so it's visible. Partial overlap is left
@@ -337,7 +352,7 @@ export class CollaborationManager {
 
     broadcastAction(action: string, extraData: Record<string, unknown> = {}): void {
         if (!this.isBroadcasting || !this.app.ws) return;
-        this.app.ws.send({
+        void this.app.ws.send({
             type: 'live_action',
             data: {
                 clientId: this.clientId,
@@ -395,8 +410,8 @@ export class CollaborationManager {
         document.addEventListener('change', (e) => {
             if (this._applyingRemote) return;
             const cb = e.target as HTMLInputElement | null;
-            if (!cb || !cb.classList || !cb.classList.contains('viewed-checkbox')) return;
-            const id = cb.dataset && cb.dataset.headingId;
+            if (!cb?.classList?.contains('viewed-checkbox')) return;
+            const id = cb.dataset?.['headingId'];
             if (!id) return;
             this.broadcastAction('viewed', { headingId: id, checked: cb.checked });
         });
@@ -417,11 +432,11 @@ export class CollaborationManager {
         if (!article.contains(range.commonAncestorContainer)) return;
         const startParent: Node | null =
             range.startContainer.nodeType === 3
-                ? (range.startContainer.parentElement as Node | null)
+                ? (range.startContainer.parentElement)
                 : range.startContainer;
         const endParent: Node | null =
             range.endContainer.nodeType === 3
-                ? (range.endContainer.parentElement as Node | null)
+                ? (range.endContainer.parentElement)
                 : range.endContainer;
         if (!startParent || !endParent) return;
         const payload = {
@@ -456,7 +471,7 @@ export class CollaborationManager {
             .join('');
         const liveSection = this.liveEnabled
             ? `
-                    <div class="panel-section-label">${_t('web.collab.live')}</div>
+                    <div class="panel-section-label" role="img" aria-label="${_t('web.collab.live')}" title="${_t('web.collab.live')}">${ICON_LIVE}</div>
                     <div class="panel-row panel-row-mode">
                         <div class="mode-group">${modeButtons}</div>
                     </div>`
@@ -482,7 +497,7 @@ export class CollaborationManager {
                 </div>
                 <div class="markon-live-body">
                     <div class="panel-header">${_t('web.collab.title')}</div>
-                    <div class="panel-section-label">${_t('web.collab.you')}</div>
+                    <div class="panel-section-label" role="img" aria-label="${_t('web.collab.you')}" title="${_t('web.collab.you')}">${ICON_IDENTITY}</div>
                     <div class="panel-row-color">
                         <div class="color-picker">${colorDots}</div>
                         <input type="text" class="identity-name" maxlength="24" placeholder="${_t('web.collab.nickname')}">
@@ -501,7 +516,7 @@ export class CollaborationManager {
         document.body.insertBefore(this.container, tocContainer || document.body.firstChild);
 
         this.sphere = this.container; // the container itself is now the sphere
-        this.panel = this.container.querySelector('.markon-live-body') as HTMLElement;
+        this.panel = this.container.querySelector('.markon-live-body');
     }
 
     /** Hand position/drag/morph/collision off to FloatingLayer. The sphere
@@ -533,14 +548,14 @@ export class CollaborationManager {
         if (!this.panel) return;
         this.panel.querySelectorAll<HTMLButtonElement>('.mode-btn').forEach((btn) => {
             btn.addEventListener('click', () => {
-                const next = btn.dataset.mode;
+                const next = btn.dataset['mode'];
                 if (next) this.setMode(next as LiveModeValue);
             });
         });
 
         this.panel.querySelectorAll<HTMLElement>('.color-dot').forEach((dot) => {
             dot.addEventListener('click', () => {
-                const c = dot.dataset.color;
+                const c = dot.dataset['color'];
                 if (!c) return;
                 this.userColor = c;
                 Identity.setColor(c); // single identity source (shared w/ annotations)
@@ -571,7 +586,7 @@ export class CollaborationManager {
         // represents what the leader sent.
         const clearRemoteMark = (): void => {
             if (this._applyingRemote) return;
-            delete document.body.dataset.markonLiveRemote;
+            delete document.body.dataset['markonLiveRemote'];
         };
         document.addEventListener('mousedown', clearRemoteMark, true);
         document.addEventListener('touchstart', clearRemoteMark, true);
@@ -592,17 +607,17 @@ export class CollaborationManager {
         this.container.style.setProperty('--markon-live-user', this.userColor);
 
         this.panel.querySelectorAll<HTMLButtonElement>('.mode-btn').forEach((btn) => {
-            btn.classList.toggle('active', btn.dataset.mode === this.mode);
+            btn.classList.toggle('active', btn.dataset['mode'] === this.mode);
         });
 
         this.panel.querySelectorAll<HTMLElement>('.color-dot').forEach((dot) => {
-            dot.classList.toggle('active', dot.dataset.color === this.userColor);
+            dot.classList.toggle('active', dot.dataset['color'] === this.userColor);
         });
 
         // Following state: a colored dot + "following" hint above the sphere
         // (identity = color, no names). Dot is tinted by the leader's color
         // via inline style; text stays neutral.
-        const leaderInfo = this.sphere.querySelector('.leader-info') as HTMLElement | null;
+        const leaderInfo = this.sphere.querySelector<HTMLElement>('.leader-info');
         if (!leaderInfo) return;
         if (this.activeLeader && this.isFollowing) {
             leaderInfo.style.setProperty(

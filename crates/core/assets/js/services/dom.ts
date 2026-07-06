@@ -14,7 +14,7 @@ export const DOM = {
     // Get block-level parent element
     getBlockParent(node: Node, container: Node): HTMLElement | null {
         let current: HTMLElement | null =
-            node.nodeType === 3 ? (node.parentElement as HTMLElement | null) : (node as HTMLElement);
+            node.nodeType === 3 ? (node.parentElement) : (node as HTMLElement);
         while (current && current !== container) {
             if (CONFIG.BLOCK_TAGS.includes(current.tagName)) return current;
             current = current.parentElement;
@@ -48,7 +48,7 @@ export const DOM = {
     },
 
     // Get element height with fallback
-    getHeight(element: HTMLElement, fallback: number = 80): number {
+    getHeight(element: HTMLElement, fallback = 80): number {
         const height = element.offsetHeight;
         return height > 0 ? height : fallback;
     },
@@ -61,7 +61,7 @@ export const DOM = {
     ): Disposer {
         const handler = (e: MouseEvent): void => {
             if (element.contains(e.target as Node | null)) return;
-            if (ignore && ignore(e.target)) return;
+            if (ignore?.(e.target)) return;
             callback(e);
         };
         const dispose: Disposer = () => document.removeEventListener('click', handler, true);

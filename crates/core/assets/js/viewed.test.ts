@@ -47,6 +47,13 @@ function seedMeta(name: string, value: string): void {
     document.head.appendChild(meta);
 }
 
+function itemAt<T>(items: ArrayLike<T>, index: number): T {
+    const item = items[index];
+    expect(item).toBeDefined();
+    if (item === undefined) throw new Error(`Missing item at index ${index}`);
+    return item;
+}
+
 describe('SectionViewedManager', () => {
     let logSpy: ReturnType<typeof vi.spyOn>;
     let warnSpy: ReturnType<typeof vi.spyOn>;
@@ -244,7 +251,7 @@ describe('SectionViewedManager', () => {
         mgr.saveState();
 
         expect(send).toHaveBeenCalledTimes(1);
-        const payload = JSON.parse(send.mock.calls[0][0] as string);
+        const payload = JSON.parse(itemAt(send.mock.calls, 0)[0] as string);
         expect(payload).toEqual({ type: 'update_viewed_state', state: { 'h2-a': true } });
     });
 
@@ -285,7 +292,7 @@ describe('SectionViewedManager', () => {
         mgr.updateTocHighlights();
 
         const items = document.querySelectorAll<HTMLElement>('.toc-item');
-        expect(items[0].classList.contains('viewed')).toBe(true);
-        expect(items[1].classList.contains('viewed')).toBe(false);
+        expect(itemAt(items, 0).classList.contains('viewed')).toBe(true);
+        expect(itemAt(items, 1).classList.contains('viewed')).toBe(false);
     });
 });

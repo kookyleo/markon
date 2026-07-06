@@ -4,7 +4,7 @@
  * The diff page does NOT boot MarkonApp, so it wires its own
  * {@link KeyboardShortcutsManager}: the GLOBAL shortcuts every page shares
  * (Help `?`, Theme `t`) plus the diff-specific ones (toggle Raw⇄Rendered,
- * next/previous file). Because the help panel renders from the manager's live
+ * next/previous change). Because the help panel renders from the manager's live
  * registered set, pressing `?` here shows exactly this page's shortcuts.
  */
 
@@ -50,7 +50,7 @@ const stepBlock = (shell: HTMLElement, dir: 1 | -1): void => {
     );
     if (!blocks.length) return;
 
-    let index = blocks.findIndex((b) => b.classList.contains('is-focused'));
+    const index = blocks.findIndex((b) => b.classList.contains('is-focused'));
     let next: HTMLElement | undefined;
     if (index >= 0) {
         next = blocks[index + dir];
@@ -105,7 +105,7 @@ const init = (): void => {
         }
         clearFocus();
     });
-    // Diff-specific. j/k step through individual changed blocks in BOTH views
+    // Diff-specific. n/p step through individual changed blocks in BOTH views
     // (the same stepper; only the underlying DOM differs).
     km.register('DIFF_TOGGLE_VIEW', () => toggleView(shell));
     km.register('DIFF_NEXT_FILE', () => stepBlock(shell, 1));
@@ -119,7 +119,7 @@ const init = (): void => {
         const block = target.closest<HTMLElement>(CHANGE_SELECTOR);
         if (!block) return;
         const ctx = activeScroller(shell);
-        if (!ctx || !ctx.panel.contains(block)) return;
+        if (!ctx?.panel.contains(block)) return;
         ctx.panel.querySelectorAll<HTMLElement>('.diff-change-block.is-focused')
             .forEach((b) => b.classList.remove('is-focused'));
         block.classList.add('is-focused');

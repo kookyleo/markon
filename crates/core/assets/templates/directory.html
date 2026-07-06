@@ -11,6 +11,7 @@
     <link id="markon-github-markdown-dark" rel="stylesheet" href="/_/css/github-markdown-dark.css" media="not all">
     <script>window.MarkonTheme && window.MarkonTheme.applyStylesheetMedia();</script>
     <link rel="stylesheet" href="/_/css/tokens.css">
+    <link rel="stylesheet" href="/_/css/shortcuts.css">
     <link rel="stylesheet" href="/_/css/editor.css">
     <style>
         body {
@@ -74,11 +75,17 @@
         .dir-icon-folder {
             background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23586069' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'><path d='M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z'/></svg>");
         }
+        [aria-expanded="true"] .dir-icon-folder {
+            background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23586069' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'><path d='M6 14l1.5-4h13.2a1 1 0 0 1 .95 1.32l-2.25 6A2.5 2.5 0 0 1 17.06 19H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h7a2 2 0 0 1 2 2v2'/></svg>");
+        }
         .dir-icon-file {
             background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='%23586069'><path d='M3.75 1.5a.25.25 0 00-.25.25v11.5c0 .138.112.25.25.25h8.5a.25.25 0 00.25-.25V6h-2.75A1.75 1.75 0 018 4.25V1.5H3.75zm5.75.56v2.19c0 .138.112.25.25.25h2.19L9.5 2.06zM2 1.75C2 .784 2.784 0 3.75 0h5.086a1.75 1.75 0 011.237.513l3.414 3.414c.329.328.513.773.513 1.237v8.086A1.75 1.75 0 0112.25 15h-8.5A1.75 1.75 0 012 13.25V1.75z'/></svg>");
         }
         html[data-theme="dark"] .dir-icon-folder {
             background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%238b949e' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'><path d='M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z'/></svg>");
+        }
+        html[data-theme="dark"] [aria-expanded="true"] .dir-icon-folder {
+            background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%238b949e' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'><path d='M6 14l1.5-4h13.2a1 1 0 0 1 .95 1.32l-2.25 6A2.5 2.5 0 0 1 17.06 19H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h7a2 2 0 0 1 2 2v2'/></svg>");
         }
         html[data-theme="dark"] .dir-icon-file {
             background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='%238b949e'><path d='M3.75 1.5a.25.25 0 00-.25.25v11.5c0 .138.112.25.25.25h8.5a.25.25 0 00.25-.25V6h-2.75A1.75 1.75 0 018 4.25V1.5H3.75zm5.75.56v2.19c0 .138.112.25.25.25h2.19L9.5 2.06zM2 1.75C2 .784 2.784 0 3.75 0h5.086a1.75 1.75 0 011.237.513l3.414 3.414c.329.328.513.773.513 1.237v8.086A1.75 1.75 0 0112.25 15h-8.5A1.75 1.75 0 012 13.25V1.75z'/></svg>");
@@ -240,7 +247,9 @@
             overflow: hidden;
             text-overflow: ellipsis;
             white-space: nowrap;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
             font-size: 20px;
+            font-weight: 700;
             line-height: 1.25;
         }
         .workspace-sidebar,
@@ -329,6 +338,7 @@
             border-bottom: 1px solid var(--markon-border-default);
         }
         .workspace-files-panel {
+            container-type: inline-size;
             padding-top: 15px;
         }
         .workspace-repo-toolbar {
@@ -347,10 +357,23 @@
         .workspace-repo-toolbar-right {
             justify-content: flex-end;
         }
+        .workspace-repo-toolbar .workspace-spotlight-trigger {
+            width: auto;
+            min-width: 0;
+            border-radius: var(--markon-radius-sm);
+        }
+        .workspace-menu-secondary-links {
+            display: none;
+        }
         .workspace-ref-menu,
         .workspace-dropdown {
             position: relative;
             display: inline-flex;
+            min-width: 0;
+        }
+        .workspace-ref-menu {
+            flex: 0 0 auto;
+            max-width: 180px;
         }
         .workspace-tool-button,
         .workspace-ref-link,
@@ -415,15 +438,9 @@
             overflow: hidden;
             text-overflow: ellipsis;
         }
-        .workspace-keycap {
-            margin-left: auto;
-            min-width: 22px;
-            border: 1px solid var(--markon-border-default);
-            border-radius: var(--markon-radius-sm);
-            padding: 1px 5px;
-            color: var(--markon-fg-muted);
-            font: 11px/1.2 var(--markon-ui-font);
-            text-align: center;
+        .workspace-ref-menu > .workspace-tool-button {
+            width: auto;
+            max-width: 100%;
         }
         .workspace-dropdown-menu {
             position: absolute;
@@ -484,6 +501,26 @@
             color: var(--markon-fg-muted);
             font: 11px/1.2 var(--markon-ui-font);
         }
+        .workspace-menu-git-links {
+            display: flex;
+            align-items: center;
+            justify-content: flex-start;
+            gap: 8px;
+            padding: 6px 7px;
+            font: 600 13px/1.25 var(--markon-ui-font);
+        }
+        .workspace-menu-git-links a,
+        .workspace-menu-git-links a:visited {
+            color: var(--markon-accent) !important;
+            text-decoration: none;
+        }
+        .workspace-menu-git-links a:hover {
+            text-decoration: underline;
+        }
+        .workspace-menu-git-divider {
+            color: var(--markon-fg-muted);
+            font-weight: 400;
+        }
         .workspace-menu-separator {
             height: 1px;
             margin: 6px 4px;
@@ -513,61 +550,6 @@
         .file-filter-switch-menu button.is-active {
             color: var(--markon-accent);
             font-weight: 650;
-        }
-        /* Go-to-file inline finder (GitHub-style search box) */
-        .workspace-file-finder {
-            position: relative;
-            display: inline-flex;
-            align-items: center;
-            gap: 8px;
-            width: 260px;
-            max-width: 42vw;
-            height: 32px;
-            padding: 0 8px;
-            border: 1px solid var(--markon-border-default);
-            border-radius: 6px;
-            background: var(--markon-bg-default);
-        }
-        .workspace-file-finder:focus-within {
-            border-color: var(--markon-accent);
-        }
-        .workspace-file-finder-icon {
-            flex: none;
-            width: 15px;
-            height: 15px;
-            color: var(--markon-fg-muted);
-        }
-        .workspace-file-finder-input {
-            flex: 1 1 auto;
-            min-width: 0;
-            border: 0;
-            padding: 0;
-            background: transparent;
-            color: var(--markon-fg-default);
-            font: 13px/1.2 var(--markon-ui-font);
-            outline: none;
-        }
-        .workspace-file-finder-input::-webkit-search-cancel-button {
-            display: none;
-        }
-        .workspace-file-finder-pop {
-            position: absolute;
-            z-index: var(--markon-z-modal-inline);
-            top: calc(100% + 6px);
-            left: 0;
-            display: none;
-            width: max(320px, 100%);
-            max-width: min(480px, calc(100vw - 32px));
-            max-height: 60vh;
-            overflow-y: auto;
-            padding: 6px;
-            border: 1px solid var(--markon-border-default);
-            border-radius: var(--markon-radius-lg);
-            background: var(--markon-bg-overlay);
-            box-shadow: var(--markon-shadow-pop);
-        }
-        .workspace-file-finder.is-open .workspace-file-finder-pop {
-            display: block;
         }
         /* Switch branches/tags panel (GitHub-style) */
         .workspace-branch-panel {
@@ -726,25 +708,20 @@
         .workspace-modal {
             position: fixed;
             inset: 0;
-            z-index: var(--markon-z-modal);
             display: none;
             place-items: start center;
             padding: 12vh 18px 24px;
-            background: color-mix(in srgb, var(--markon-bg-default) 58%, transparent);
         }
         .workspace-modal.is-open {
             display: grid;
         }
         .workspace-modal-panel {
+            --markon-modal-surface-border: var(--markon-modal-border-success);
+            position: relative;
             width: min(680px, 100%);
             max-height: 72vh;
             display: flex;
             flex-direction: column;
-            overflow: hidden;
-            border: 1px solid var(--markon-border-default);
-            border-radius: var(--markon-radius-lg);
-            background: var(--markon-bg-overlay);
-            box-shadow: var(--markon-shadow-pop);
         }
         .workspace-modal-header {
             display: flex;
@@ -758,6 +735,7 @@
             margin: 0;
             font-size: 14px;
             font-weight: 650;
+            user-select: none;
         }
         .workspace-modal-close {
             border: 0;
@@ -789,53 +767,6 @@
             margin-top: 10px;
             padding: 9px;
             font-family: 'SF Mono', Monaco, 'Cascadia Code', 'Roboto Mono', Consolas, monospace;
-        }
-        .workspace-file-results {
-            margin: 0;
-            padding: 0;
-            list-style: none;
-        }
-        .workspace-file-results li {
-            border-bottom: 0;
-        }
-        .workspace-file-results a {
-            display: flex;
-            align-items: center;
-            gap: 8px;
-            min-height: 32px;
-            padding: 4px 8px;
-            border-radius: var(--markon-radius-sm);
-            color: var(--markon-fg-default) !important;
-            font-size: 13px;
-        }
-        .workspace-file-results a:hover {
-            background: var(--markon-bg-muted);
-            text-decoration: none;
-        }
-        .workspace-file-results a.is-active {
-            background: color-mix(in srgb, var(--markon-accent) 12%, transparent);
-            box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--markon-accent) 45%, transparent);
-        }
-        .workspace-file-results .dir-icon {
-            flex: 0 0 16px;
-            margin-right: 0;
-            vertical-align: 0;
-        }
-        .workspace-file-result-path {
-            flex: 1 1 auto;
-            min-width: 0;
-            overflow: hidden;
-            text-overflow: ellipsis;
-            white-space: nowrap;
-        }
-        .workspace-file-result-path strong {
-            font-weight: 700;
-            color: var(--markon-fg-default);
-        }
-        .workspace-file-result-badge {
-            flex: 0 0 auto;
-            color: var(--markon-fg-muted);
-            font-size: 11px;
         }
         .workspace-modal-actions {
             display: flex;
@@ -912,6 +843,9 @@
             font-size: 14px;
             text-align: left;
         }
+        .workspace-commit-subject {
+            flex: 1 1 auto;
+        }
         .workspace-commit-ok {
             flex: 0 0 auto;
             color: var(--markon-success);
@@ -933,6 +867,37 @@
             color: var(--markon-fg-default) !important;
             font-weight: 650;
         }
+        @container (max-width: 760px) {
+            .workspace-secondary-link {
+                display: none;
+            }
+            .workspace-menu-secondary-links {
+                display: block;
+            }
+        }
+        @container (max-width: 560px) {
+            .workspace-ref-menu {
+                max-width: 160px;
+            }
+            .workspace-dropdown {
+                flex: 0 0 auto;
+            }
+        }
+        @container (max-width: 440px) {
+            .workspace-ref-menu {
+                max-width: 140px;
+            }
+            .workspace-repo-toolbar {
+                gap: 8px;
+            }
+            .workspace-repo-toolbar-left,
+            .workspace-repo-toolbar-right {
+                gap: 8px;
+            }
+            .workspace-commit-subject {
+                display: none;
+            }
+        }
         .workspace-repo-file-list {
             margin: 0;
             padding-bottom: 24px;
@@ -944,14 +909,20 @@
             position: relative;
             --ws-col-name: 320px;
             --ws-col-commit: 420px;
+            --ws-row-left-inset: 5px;
+            --ws-row-right-inset: 5px;
         }
         .workspace-repo-file-list li {
             display: grid;
-            grid-template-columns: minmax(0, var(--ws-col-name, 320px)) minmax(0, var(--ws-col-commit, 420px)) minmax(0, 1fr);
+            /* The name/tree takes the flexible space so the directory structure
+               gets the most room; the commit subject sizes to its own content
+               (capped) and therefore hugs the time column on the right; the
+               relative time shrinks to its own content at the far right. */
+            grid-template-columns: minmax(0, 1fr) fit-content(52ch) max-content;
             align-items: center;
             column-gap: 18px;
             min-width: 0;
-            padding: 10px 0;
+            padding: 10px var(--ws-row-right-inset) 10px 0;
             border-bottom: 0;
         }
         .ws-col-handle {
@@ -985,6 +956,11 @@
             align-items: center;
             gap: 8px;
             min-width: 0;
+            padding-left: var(--ws-row-left-inset);
+        }
+        .workspace-entry-name > .dir-icon {
+            margin-right: 0;
+            flex: 0 0 auto;
         }
         .workspace-repo-file-list li:hover {
             background: transparent;
@@ -1038,29 +1014,6 @@
             color: var(--markon-accent);
             text-decoration: underline;
         }
-        .workspace-tree-chevron {
-            flex: 0 0 auto;
-            display: inline-block;
-            width: 12px;
-            height: 12px;
-            background-repeat: no-repeat;
-            background-position: center;
-            background-size: contain;
-            background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none' stroke='%23586069' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'><path d='M6 4l4 4-4 4'/></svg>");
-            transition: transform 0.12s ease;
-        }
-        html[data-theme="dark"] .workspace-tree-chevron {
-            background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none' stroke='%238b949e' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'><path d='M6 4l4 4-4 4'/></svg>");
-        }
-        [aria-expanded="true"] > .workspace-tree-chevron {
-            transform: rotate(90deg);
-        }
-        .workspace-tree-spacer {
-            flex: 0 0 auto;
-            display: inline-block;
-            width: 12px;
-            height: 12px;
-        }
         /* Children container spans the full grid row (overrides the 3-col grid
            applied to every `.workspace-repo-file-list li`). The tree rows inside
            re-establish the same 3 columns so name/commit/time stay aligned with
@@ -1086,6 +1039,11 @@
             display: block;
             padding: 0;
         }
+        .workspace-repo-file-list > li.is-workspace-target:not(.workspace-entry-children),
+        .workspace-tree-item.is-workspace-target > .workspace-tree-row {
+            border-radius: 6px;
+            background: var(--markon-accent-muted);
+        }
         /* Markdown filter linkage: the `data-file-filter` attribute lives on the
            `.dir-list` ancestor, so the same mechanism that hides top-level rows
            also hides tree rows whose entry isn't shown in markdown mode. */
@@ -1094,11 +1052,11 @@
         }
         .workspace-tree-row {
             display: grid;
-            grid-template-columns: minmax(0, var(--ws-col-name, 320px)) minmax(0, var(--ws-col-commit, 420px)) minmax(0, 1fr);
+            grid-template-columns: minmax(0, 1fr) fit-content(52ch) max-content;
             align-items: center;
             column-gap: 18px;
             min-width: 0;
-            padding: 8px 0;
+            padding: 8px var(--ws-row-right-inset) 8px 0;
             border-radius: 4px;
         }
         .workspace-tree-row[role="button"] {
@@ -1205,6 +1163,53 @@
         }
         .workspace-section-main {
             min-width: 0;
+        }
+        .workspace-section-main--features {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+        .workspace-section-info {
+            position: relative;
+            display: inline-flex;
+            align-items: center;
+            flex: none;
+            color: var(--markon-fg-muted);
+            cursor: default;
+            border-radius: 50%;
+        }
+        .workspace-section-info:hover,
+        .workspace-section-info:focus-visible {
+            color: var(--markon-fg-default);
+            outline: none;
+        }
+        .workspace-section-tip {
+            position: absolute;
+            top: calc(100% + 6px);
+            left: 0;
+            z-index: 30;
+            width: max-content;
+            max-width: 230px;
+            padding: 6px 9px;
+            border-radius: 6px;
+            background: var(--markon-fg-default);
+            color: var(--markon-bg-default);
+            box-shadow: 0 6px 18px rgba(0, 0, 0, 0.28);
+            font-size: 12px;
+            font-weight: 400;
+            line-height: 1.45;
+            white-space: normal;
+            text-align: left;
+            opacity: 0;
+            visibility: hidden;
+            pointer-events: none;
+            transition: opacity 0.12s ease, visibility 0.12s ease;
+            transition-delay: 0.22s;
+        }
+        .workspace-section-info:hover .workspace-section-tip,
+        .workspace-section-info:focus-visible .workspace-section-tip {
+            opacity: 1;
+            visibility: visible;
         }
         .workspace-section-title,
         .workspace-change-title {
@@ -1510,18 +1515,25 @@
             .file-filter-switch button {
                 flex: 1;
             }
-            .workspace-commit-header,
+            /* Narrow screens: prioritise the directory structure. Each entry
+               collapses to a single line — name on the left, relative time on
+               the right — and the last-commit subject (the long text that
+               otherwise wrapped onto its own lines and made the list unusably
+               tall) is hidden. */
             .workspace-repo-file-list li,
             .workspace-repo-file-list .workspace-tree-row {
-                grid-template-columns: minmax(0, 1fr);
-                gap: 4px;
+                grid-template-columns: minmax(0, 1fr) auto;
+                column-gap: 12px;
+                row-gap: 0;
+                align-items: center;
+                padding: 8px var(--ws-row-right-inset) 8px 0;
             }
-            .workspace-commit-meta {
-                flex-wrap: wrap;
+            .workspace-entry-commit {
+                display: none;
             }
-            .workspace-entry-commit,
             .workspace-entry-time {
-                white-space: normal;
+                white-space: nowrap;
+                text-align: right;
             }
             /* Single-column layout: no resizable boundaries. */
             .ws-col-handle {
@@ -1529,164 +1541,6 @@
             }
         }
 
-        /* ========================================
-           SEARCH MODAL
-           ======================================== */
-        .search-modal {
-            display: none;
-            position: fixed;
-            z-index: var(--markon-z-chrome);
-            left: 0;
-            top: 0;
-            width: 100%;
-            height: 100%;
-            overflow: hidden;
-        }
-
-        .search-modal-content {
-            width: 100%;
-            height: 100%;
-            display: flex;
-            flex-direction: column;
-            padding: 0;
-            margin: 0;
-        }
-
-        .search-input-container {
-            width: 100%;
-            display: flex;
-            justify-content: center;
-            flex-shrink: 0;
-        }
-
-        #search-input {
-            width: 100%;
-            max-width: 980px;
-            padding: 16px 45px;
-            font-size: 1.1em;
-            border: none;
-            outline: none;
-            box-sizing: border-box;
-        }
-
-        .search-results-container {
-            width: 100%;
-            flex: 1;
-            overflow-y: auto;
-            display: flex;
-            justify-content: center;
-        }
-
-        #search-results {
-            list-style: none;
-            padding: 0;
-            margin: 0;
-            width: 100%;
-            max-width: 980px;
-            box-sizing: border-box;
-        }
-
-        @media (max-width: 768px) {
-            #search-input {
-                padding: 16px 20px;
-            }
-        }
-
-        .search-result-item {
-            transition: all 0.15s ease;
-        }
-
-        .search-result-item.no-results {
-            padding: 40px 45px;
-            text-align: center;
-            opacity: 0.5;
-            font-size: 0.95em;
-        }
-
-        .search-result-item a {
-            display: block;
-            padding: 12px 45px;
-            text-decoration: none;
-            transition: all 0.15s ease;
-            border-left: 3px solid transparent;
-        }
-
-        @media (max-width: 768px) {
-            .search-result-item.no-results {
-                padding: 40px 20px;
-            }
-
-            .search-result-item a {
-                padding: 12px 20px;
-            }
-        }
-
-        .search-result-item.selected a {
-            border-left-width: 3px;
-        }
-
-        .search-result-title {
-            font-size: 0.95em;
-            font-weight: 600;
-            margin-bottom: 4px;
-        }
-
-        .search-result-path {
-            font-size: 0.8em;
-            opacity: 0.6;
-            margin-bottom: 6px;
-            font-family: 'SF Mono', Monaco, 'Cascadia Code', 'Roboto Mono', Consolas, 'Courier New', monospace;
-        }
-
-        .search-result-snippet {
-            font-size: 0.85em;
-            opacity: 0.75;
-            line-height: 1.5;
-            margin-top: 4px;
-        }
-
-        .search-result-snippet b {
-            font-weight: 600;
-            opacity: 1;
-        }
-
-        .search-modal,
-        .search-modal-content,
-        .search-results-container {
-            background-color: var(--markon-bg-default);
-        }
-
-        .search-input-container {
-            background: var(--markon-bg-muted);
-            border-bottom: 2px solid var(--markon-border-default);
-        }
-
-        #search-input {
-            background: transparent;
-            color: var(--markon-fg-default);
-        }
-
-        #search-input::placeholder {
-            color: var(--markon-fg-muted);
-        }
-
-        .search-result-item a {
-            color: var(--markon-fg-default);
-            border-bottom: 1px solid var(--markon-bg-muted);
-        }
-
-        .search-result-item a:hover,
-        .search-result-item.selected a {
-            background-color: var(--markon-bg-muted);
-        }
-
-        .search-result-item.selected a {
-            border-left-color: var(--markon-accent);
-        }
-
-        .search-result-snippet b {
-            color: var(--markon-accent);
-        }
     </style>
     {% if styles_css %}<style>{{ styles_css | safe }}</style>{% endif %}
     {% if shortcuts_json %}<script>window.__MARKON_SHORTCUTS__ = {{ shortcuts_json | safe }};</script>{% endif %}
@@ -1772,25 +1626,23 @@
                             </div>
                             {% endif %}
                         </div>
-                        <a class="workspace-ref-link" href="{{ branches_url }}">
+                        <a class="workspace-ref-link workspace-secondary-link" href="{{ branches_url }}">
                             <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 3a2 2 0 1 1-2-2 2 2 0 0 1 2 2Zm0 10a2 2 0 1 1-2-2 2 2 0 0 1 2 2Zm8-10a2 2 0 1 1-2-2 2 2 0 0 1 2 2Z"/><path d="M3 5v6m2-8h2.5A3.5 3.5 0 0 1 11 6.5V11"/></svg>
-                            <span>{{ git_branch_count }} {% if git_branch_count == 1 %}<span data-i18n="web.ws.git.branch">Branch</span>{% else %}<span data-i18n="web.ws.git.branches">Branches</span>{% endif %}</span>
+                            <span data-i18n="web.ws.git.branch">Branch</span>
                         </a>
-                        <a class="workspace-ref-link" href="{{ tags_url }}">
+                        <a class="workspace-ref-link workspace-secondary-link" href="{{ tags_url }}">
                             <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2 2h5l7 7-5 5-7-7V2Z"/><path d="M5 5h.01"/></svg>
-                            <span>{{ git_tag_count }} {% if git_tag_count == 1 %}<span data-i18n="web.ws.git.tag">Tag</span>{% else %}<span data-i18n="web.ws.git.tags">Tags</span>{% endif %}</span>
+                            <span data-i18n="web.ws.git.tags">Tags</span>
                         </a>
                     </div>
                     <div class="workspace-repo-toolbar-right">
-                        <div class="workspace-file-finder" data-file-finder data-files-data-url="{{ files_data_url }}">
-                            <svg class="workspace-file-finder-icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="7" cy="7" r="4.5"/><path d="m10.5 10.5 3 3"/></svg>
-                            <input class="workspace-file-finder-input" type="search" data-go-to-file-input placeholder="Go to file" autocomplete="off" spellcheck="false" aria-label="Go to file">
-                            <span class="workspace-keycap">T</span>
-                            <div class="workspace-file-finder-pop" data-file-finder-pop>
-                                <ul class="workspace-file-results" data-go-to-file-results></ul>
-                                <div class="workspace-empty" data-go-to-file-empty data-i18n="web.ws.go_to_file.empty">No files found.</div>
-                            </div>
-                        </div>
+                        <button type="button" class="workspace-spotlight-trigger workspace-spotlight-trigger--toolbar" data-workspace-spotlight-trigger aria-label="Open Workspace Spotlight" title="Open Workspace Spotlight">
+                            <svg class="workspace-spotlight-trigger-icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 6.35 6.35" aria-hidden="true" focusable="false">
+                                <path d="M2.894.511a2.384 2.384 0 0 0-2.38 2.38 2.386 2.386 0 0 0 2.38 2.384c.56 0 1.076-.197 1.484-.523l.991.991a.265.265 0 0 0 .375-.374l-.991-.992a2.37 2.37 0 0 0 .523-1.485C5.276 1.58 4.206.51 2.894.51zm0 .53c1.026 0 1.852.825 1.852 1.85S3.92 4.746 2.894 4.746s-1.851-.827-1.851-1.853.825-1.852 1.851-1.852z" fill="currentColor"></path>
+                            </svg>
+                            <span class="workspace-spotlight-trigger-label" data-i18n="web.wsnav.trigger">Search</span>
+                            <span class="workspace-spotlight-trigger-kbd" aria-hidden="true">/</span>
+                        </button>
                         <div class="workspace-dropdown" data-workspace-dropdown>
                             <button class="workspace-tool-button workspace-tool-icon" type="button" aria-label="More" title="More">
                                 <svg viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><circle cx="3" cy="8" r="1.35"/><circle cx="8" cy="8" r="1.35"/><circle cx="13" cy="8" r="1.35"/></svg>
@@ -1801,6 +1653,15 @@
                                 <button class="workspace-menu-item" type="button" data-open-add-file><span data-i18n="web.ws.new_markdown_file">New Markdown file</span></button>
                                 <div class="workspace-menu-separator"></div>
                                 {% endif %}
+                                <div class="workspace-menu-secondary-links">
+                                    <div class="workspace-menu-label" data-i18n="web.ws.git">Git</div>
+                                    <div class="workspace-menu-git-links">
+                                        <a href="{{ branches_url }}" data-i18n="web.ws.git.branch">Branch</a>
+                                        <span class="workspace-menu-git-divider" aria-hidden="true">|</span>
+                                        <a href="{{ tags_url }}" data-i18n="web.ws.git.tags">Tags</a>
+                                    </div>
+                                    <div class="workspace-menu-separator"></div>
+                                </div>
                                 <button class="workspace-menu-item" type="button" data-copy-current-url><span data-i18n="web.ws.copy_url">Copy workspace URL</span></button>
                                 <button class="workspace-menu-item" type="button" data-copy-text="{{ current_dir }}"><span data-i18n="web.ws.copy_path">Copy repo path</span></button>
                                 {% if work_diff_url %}<a class="workspace-menu-item" href="{{ work_diff_url }}" data-i18n="web.ws.git.working_diff">Working diff</a>{% endif %}
@@ -1843,12 +1704,13 @@
                     {% endif %}
                     {% for entry in entries %}
                     <li data-entry-kind="{% if entry.is_dir %}dir{% else %}file{% endif %}"
+                        data-entry-path="{{ entry.rel_git_path }}"
                         data-entry-markdown="{{ entry.is_markdown }}"
                         data-entry-hidden="{{ entry.is_hidden }}"
                         data-filter-visible-markdown="{{ entry.show_in_markdown }}">
                         <div class="workspace-entry-name">
                             {% if entry.is_dir %}
-                            <button type="button" class="workspace-entry-toggle" data-dir-toggle data-dir-path="{{ entry.rel_git_path }}" data-dir-link="{{ entry.link }}" aria-expanded="false" data-i18n-aria="web.ws.tree.toggle" aria-label="Expand folder"><span class="workspace-tree-chevron" aria-hidden="true"></span><span class="dir-icon dir-icon-folder" aria-hidden="true"></span><strong>{{ entry.name }}/</strong></button>
+                            <button type="button" class="workspace-entry-toggle" data-dir-toggle data-dir-path="{{ entry.rel_git_path }}" data-dir-link="{{ entry.link }}" aria-expanded="false" data-i18n-aria="web.ws.tree.toggle" aria-label="Expand folder"><span class="dir-icon dir-icon-folder" aria-hidden="true"></span><strong>{{ entry.name }}/</strong></button>
                             {% else %}
                             <span class="dir-icon dir-icon-file" aria-hidden="true"></span><a href="{{ entry.link }}">{{ entry.name }}</a>
                             {% endif %}
@@ -1867,8 +1729,19 @@
         {% if is_workspace_root %}
         <aside class="workspace-detail">
             <section class="workspace-side-section">
-                <div class="workspace-section-main">
+                <div class="workspace-section-main workspace-section-main--features">
                     <h2 class="workspace-section-title" data-i18n="web.ws.features">Features</h2>
+                    {% if not is_local %}
+                    <span class="workspace-section-info" tabindex="0"
+                          data-i18n-aria="web.ws.features.local_only">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                            <circle cx="12" cy="12" r="10"/>
+                            <line x1="12" y1="16" x2="12" y2="12"/>
+                            <line x1="12" y1="8" x2="12.01" y2="8"/>
+                        </svg>
+                        <span class="workspace-section-tip" role="tooltip" data-i18n="web.ws.features.local_only">Editable only when opened from this machine (the local loopback address). Remote visitors see these read-only.</span>
+                    </span>
+                    {% endif %}
                 </div>
                 <div class="workspace-section-body">
                     <div class="workspace-feature-list"
@@ -1941,7 +1814,7 @@
             <section class="workspace-side-section workspace-side-footer">
                 <a id="dir-footer" href="https://kookyleo.github.io/markon/">Powered by markon</a>
                 <a id="dir-feedback-link" href="https://github.com/kookyleo/markon/issues/new?title=%5BFeedback%5D%20&body=One-line%20summary%3A%0A%0A%23%23%20Environment%0A-%20markon%20version%3A%0A-%20OS%3A%0A-%20Browser%3A%0A%0A%23%23%20Steps%20to%20reproduce%0A1.%0A%0A%23%23%20Expected%0A%0A%23%23%20Actual%0A" target="_blank" rel="noopener noreferrer">Feedback</a>
-                <a id="dir-kbd-link" href="#" onclick="window.shortcutsManager.showHelp(); return false;">Keyboard Shortcuts (?)</a>
+                <a id="dir-kbd-link" href="#" onclick="window.shortcutsManager.showHelp(); return false;">Features & Shortcuts (?)</a>
                 <a id="theme-link-text" href="#">Theme: Auto</a>
                 <a id="footer-version" href="https://github.com/kookyleo/markon/releases" target="_blank" rel="noopener noreferrer" title="markon version">v{{ version }}</a>
             </section>
@@ -1949,8 +1822,8 @@
         {% endif %}
 
         {% if can_add_file %}
-        <div class="workspace-modal" data-add-file-modal data-create-file-url="{{ create_file_url }}" aria-hidden="true">
-            <div class="workspace-modal-panel" role="dialog" aria-modal="true" aria-labelledby="add-file-title">
+        <div class="workspace-modal markon-modal-backdrop markon-modal-layer" data-add-file-modal data-create-file-url="{{ create_file_url }}" aria-hidden="true">
+            <div class="workspace-modal-panel markon-modal-frame" role="dialog" aria-modal="true" aria-labelledby="add-file-title">
                 <div class="workspace-modal-header">
                     <h2 id="add-file-title" class="workspace-modal-title" data-i18n="web.ws.new_markdown_file">New Markdown file</h2>
                     <button class="workspace-modal-close" type="button" data-close-workspace-modal aria-label="Close">×</button>
@@ -1967,8 +1840,8 @@
                 </form>
             </div>
         </div>
-        <div class="workspace-modal" data-add-folder-modal data-create-folder-url="{{ create_folder_url }}" aria-hidden="true">
-            <div class="workspace-modal-panel" role="dialog" aria-modal="true" aria-labelledby="add-folder-title">
+        <div class="workspace-modal markon-modal-backdrop markon-modal-layer" data-add-folder-modal data-create-folder-url="{{ create_folder_url }}" aria-hidden="true">
+            <div class="workspace-modal-panel markon-modal-frame" role="dialog" aria-modal="true" aria-labelledby="add-folder-title">
                 <div class="workspace-modal-header">
                     <h2 id="add-folder-title" class="workspace-modal-title" data-i18n="web.ws.new_folder">New folder</h2>
                     <button class="workspace-modal-close" type="button" data-close-workspace-modal aria-label="Close">×</button>
@@ -1986,20 +1859,6 @@
         {% endif %}
     </main>
 
-    {% if enable_search %}
-    <div id="search-modal" class="search-modal">
-        <div class="search-modal-content">
-            <div class="search-input-container">
-                <input type="text" id="search-input" placeholder="Search..."
-                       autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false">
-            </div>
-            <div id="search-esc-hint" style="text-align:center;padding:8px 0 4px;font-size:12px;color:var(--markon-fg-muted)"><kbd style="padding:1px 5px;border:1px solid var(--markon-border-default);border-radius:3px;font-size:11px;font-family:monospace;background:var(--markon-bg-muted)">ESC</kbd> <span id="search-esc-text">to close</span></div>
-            <div class="search-results-container">
-                <ul id="search-results"></ul>
-            </div>
-        </div>
-    </div>
-    {% endif %}
     <!-- Directory/workspace page controls (classic IIFE, runs during parse). -->
     <script>
     (function () {

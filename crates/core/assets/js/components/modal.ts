@@ -5,9 +5,10 @@
 
 import { Logger } from '../core/utils';
 import { Position } from '../services/position';
+import { DraggableManager, DEFAULT_NON_DRAG_SELECTOR } from './draggable';
 
 const _t: (k: string, ...args: unknown[]) => string =
-    (window.__MARKON_I18N__ && window.__MARKON_I18N__.t) || ((k: string) => k);
+    (window.__MARKON_I18N__?.t) || ((k: string) => k);
 
 /**
  * Shared options accepted by every modal.
@@ -19,6 +20,10 @@ export interface BaseModalOptions {
     closeOnOutsideClick?: boolean;
     /** Close the modal when pressing Escape. Defaults to true. */
     closeOnEscape?: boolean;
+    /** CSS selector or element that drags the modal frame. Disabled by default. */
+    dragHandle?: string | HTMLElement | null;
+    /** localStorage key used to remember this modal's last dragged position. */
+    dragStorageKey?: string | null;
 }
 
 interface BaseModalHandlers {
@@ -28,6 +33,31 @@ interface BaseModalHandlers {
 
 type RequiredBaseOptions = Required<BaseModalOptions>;
 
+export interface ModalDragOptions {
+    /** CSS selector or element that should initiate dragging. */
+    handle: string | HTMLElement;
+    /** localStorage key used to remember the last position. */
+    storageKey?: string | null;
+    /** Descendant selector that should not initiate a drag. */
+    nonDragSelector?: string | null;
+    /** Minimum viewport gap while dragging. Defaults to 10px. */
+    margin?: number;
+}
+
+export const MODAL_DRAG_HANDLE_CLASS = 'markon-modal-drag-handle';
+
+export const makeModalDraggable = (element: HTMLElement, options: ModalDragOptions): DraggableManager =>
+    new DraggableManager(element, {
+        handle: options.handle,
+        storageKey: options.storageKey ?? null,
+        savePosition: Boolean(options.storageKey),
+        restorePosition: Boolean(options.storageKey),
+        fixed: true,
+        margin: options.margin ?? 10,
+        nonDragSelector: options.nonDragSelector ?? DEFAULT_NON_DRAG_SELECTOR,
+        handleClassName: MODAL_DRAG_HANDLE_CLASS,
+    });
+
 /**
  * Base modal class.
  */
@@ -35,12 +65,15 @@ export abstract class BaseModal {
     #element: HTMLElement | null = null;
     #options: RequiredBaseOptions;
     #handlers: BaseModalHandlers = {};
+    #draggable: DraggableManager | null = null;
 
     constructor(options: BaseModalOptions) {
         this.#options = {
             className: '',
             closeOnOutsideClick: true,
             closeOnEscape: true,
+            dragHandle: null,
+            dragStorageKey: null,
             ...options,
         };
     }
@@ -75,6 +108,13 @@ export abstract class BaseModal {
             this.#positionNear(anchorElement);
         }
 
+        if (this.#options.dragHandle) {
+            this.#draggable = makeModalDraggable(this.#element, {
+                handle: this.#options.dragHandle,
+                storageKey: this.#options.dragStorageKey,
+            });
+        }
+
         this.#setupEventListeners();
 
         // Move focus into the modal on the next tick.
@@ -88,6 +128,8 @@ export abstract class BaseModal {
      */
     close(): void {
         if (this.#element) {
+            this.#draggable?.destroy();
+            this.#draggable = null;
             this.#element.remove();
             this.#element = null;
         }
@@ -104,7 +146,7 @@ export abstract class BaseModal {
     }
 
     /**
-     * Optional cancel hook, used by ESC / outside-click when subclass defines it.
+     * Optional cancel hook, used by Esc / outside-click when subclass defines it.
      * Default falls back to {@link close}.
      */
     cancel?(): void;
@@ -148,7 +190,7 @@ export abstract class BaseModal {
      * Install the keydown / outside-click event listeners.
      */
     #setupEventListeners(): void {
-        // ESC closes the modal.
+        // Esc closes the modal.
         if (this.#options.closeOnEscape) {
             this.#handlers.keydown = (e: KeyboardEvent) => {
                 if (e.key === 'Escape') {
@@ -203,7 +245,7 @@ export abstract class BaseModal {
     #focusFirst(): void {
         if (!this.#element) return;
 
-        const focusable = this.#element.querySelector('input, textarea, button') as HTMLElement | null;
+        const focusable = this.#element.querySelector<HTMLElement>('input, textarea, button');
         if (focusable) {
             // preventScroll keeps the page in place while we move focus in.
             focusable.focus({ preventScroll: true });
@@ -241,7 +283,7 @@ export class NoteInputModal extends BaseModal {
 
     create(): HTMLElement {
         const modal = document.createElement('div');
-        modal.className = 'note-input-modal';
+        modal.className = 'note-input-modal markon-modal-frame';
 
         modal.innerHTML = `
             <textarea class="note-textarea" placeholder="${_t('web.modal.note.placeholder')}"></textarea>
@@ -307,7 +349,7 @@ export class NoteInputModal extends BaseModal {
     /**
      * Handle cancel action
      */
-    cancel(): void {
+    override cancel(): void {
         this.#onCancel();
         this.close();
     }
@@ -349,7 +391,7 @@ export class ConfirmModal extends BaseModal {
 
     create(): HTMLElement {
         const modal = document.createElement('div');
-        modal.className = 'confirm-dialog';
+        modal.className = 'confirm-dialog markon-modal-frame';
 
         modal.innerHTML = `
             <p class="confirm-message"></p>
@@ -369,15 +411,17 @@ export class ConfirmModal extends BaseModal {
             this.close();
         });
 
-        okBtn.addEventListener('click', async () => {
+        okBtn.addEventListener('click', () => {
             Logger.log('ConfirmModal', 'OK button clicked, executing callback');
-            try {
-                await this.#onConfirm();
-                Logger.log('ConfirmModal', 'Callback completed successfully');
-            } catch (error) {
-                Logger.error('ConfirmModal', 'Callback failed:', error);
-            }
-            this.close();
+            void (async () => {
+                try {
+                    await this.#onConfirm();
+                    Logger.log('ConfirmModal', 'Callback completed successfully');
+                } catch (error) {
+                    Logger.error('ConfirmModal', 'Callback failed:', error);
+                }
+                this.close();
+            })();
         });
 
         return modal;

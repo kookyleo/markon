@@ -20,6 +20,7 @@
     <link id="markon-github-markdown-dark" rel="stylesheet" href="/_/css/github-markdown-dark.css" media="not all">
     <script>window.MarkonTheme && window.MarkonTheme.applyStylesheetMedia();</script>
     <link rel="stylesheet" href="/_/css/tokens.css">
+    <link rel="stylesheet" href="/_/css/shortcuts.css">
     <link rel="stylesheet" href="/_/css/editor.css">
     <link rel="stylesheet" href="/_/css/collaboration.css">
     <style>
@@ -140,7 +141,11 @@
             color: var(--markon-fg-muted);
         }
         .git-diff-ws-full:visited { color: var(--markon-fg-muted); }
-        .git-diff-ws-full:hover { text-decoration: underline; }
+        .git-diff-ws-full:hover,
+        .git-diff-ws-full:focus-visible {
+            text-decoration: underline;
+            text-underline-offset: 2px;
+        }
         .git-diff-summary {
             min-width: 0;
             margin-bottom: 14px;
@@ -405,12 +410,28 @@
             gap: 1px;
         }
         .git-compare-row-name {
+            display: flex;
+            align-items: center;
+            gap: 6px;
             overflow: hidden;
-            text-overflow: ellipsis;
-            white-space: nowrap;
             font-size: 13px;
             font-weight: 600;
             font-family: ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, 'Liberation Mono', monospace;
+        }
+        .git-compare-row-name-text {
+            min-width: 0;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+        .git-compare-row-alias {
+            flex: none;
+            padding: 1px 5px;
+            border-radius: 999px;
+            background: color-mix(in srgb, var(--markon-accent) 12%, transparent);
+            color: var(--markon-accent);
+            font: 700 9px/1.35 var(--markon-ui-font);
+            letter-spacing: 0.02em;
         }
         .git-compare-row-sub {
             overflow: hidden;
@@ -1547,9 +1568,10 @@
         .md-diff-empty:empty {
             display: none;
         }
-        /* Centered "all done" state when the Viewed-files filter hides every
-           changed file (all are marked viewed). */
-        .md-diff-viewed-empty {
+        /* Centered "all done" states: empty when Hide Viewed filters every file,
+           and tail when viewed files remain visible. */
+        .md-diff-viewed-empty,
+        .md-diff-viewed-done {
             display: flex;
             flex-direction: column;
             align-items: center;
@@ -1558,6 +1580,10 @@
             min-height: 60vh;
             padding: 24px;
             text-align: center;
+        }
+        .md-diff-viewed-done {
+            min-height: 42vh;
+            margin-top: 24px;
         }
         .md-diff-viewed-empty-emoji {
             font-size: 40px;
@@ -1568,6 +1594,12 @@
             font-size: 15px;
             font-weight: 600;
         }
+        .md-diff-viewed-empty-actions {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 10px;
+        }
         .md-diff-viewed-empty-link {
             border: 0;
             background: none;
@@ -1577,6 +1609,14 @@
             cursor: pointer;
         }
         .md-diff-viewed-empty-link:hover { text-decoration: underline; }
+        .md-diff-viewed-empty-link:disabled,
+        .md-diff-viewed-empty-link.is-disabled,
+        .md-diff-viewed-empty-link:disabled:hover,
+        .md-diff-viewed-empty-link.is-disabled:hover {
+            color: var(--markon-fg-muted);
+            cursor: default;
+            text-decoration: none;
+        }
         @media (max-width: 920px) {
             .git-diff-page {
                 height: auto;

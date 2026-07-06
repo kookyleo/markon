@@ -12,7 +12,7 @@ function addHighlight(body: HTMLElement, label: string, top: number): HTMLElemen
     const el = document.createElement('span');
     el.className = 'highlight-yellow';
     el.textContent = label;
-    el.dataset.testLabel = label;
+    el.dataset['testLabel'] = label;
     body.appendChild(el);
     // jsdom returns 0-rects; stub getBoundingClientRect for ordering tests.
     el.getBoundingClientRect = () => ({
@@ -24,8 +24,8 @@ function addHighlight(body: HTMLElement, label: string, top: number): HTMLElemen
 function addNote(body: HTMLElement, label: string, top: number, id: string): HTMLElement {
     const el = document.createElement('span');
     el.className = 'has-note';
-    el.dataset.annotationId = id;
-    el.dataset.testLabel = label;
+    el.dataset['annotationId'] = id;
+    el.dataset['testLabel'] = label;
     el.textContent = label;
     body.appendChild(el);
     el.getBoundingClientRect = () => ({
@@ -94,7 +94,7 @@ describe('AnnotationNavigator', () => {
         const note = addNote(body, 'N', 100, 'aid-7');
         const card = document.createElement('div');
         card.className = 'note-card-margin';
-        card.dataset.annotationId = 'aid-7';
+        card.dataset['annotationId'] = 'aid-7';
         card.getBoundingClientRect = () => ({
             top: 100, bottom: 200, left: 0, right: 200, width: 200, height: 100, x: 0, y: 100, toJSON: () => ({}),
         });

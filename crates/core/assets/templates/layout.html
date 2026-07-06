@@ -23,6 +23,7 @@
     <script>window.MarkonTheme && window.MarkonTheme.applyStylesheetMedia();</script>
     <link rel="stylesheet" href="/_/css/github-print.css" media="print">
     <link rel="stylesheet" href="/_/css/tokens.css">
+    <link rel="stylesheet" href="/_/css/shortcuts.css">
     <link rel="stylesheet" href="/_/css/editor.css">
     <link rel="stylesheet" href="/_/css/collaboration.css">
     <link rel="stylesheet" href="/_/css/chat.css">
@@ -98,16 +99,95 @@
         /* Back Link */
         .back-link {
             margin-bottom: 20px;
-            display: block;
+            display: flex;
+            align-items: center;
+            justify-content: flex-start;
+            column-gap: 47px;
+            row-gap: 12px;
+            flex-wrap: wrap;
         }
 
         .back-link a {
-            color: var(--markon-accent);
+            color: var(--markon-fg-muted);
             text-decoration: none;
         }
 
         .back-link a:hover {
+            text-decoration: none;
+        }
+
+        .workspace-back-link {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            min-width: 0;
+            max-width: min(680px, 100%);
+            margin-left: 5px;
+            color: var(--markon-fg-muted) !important;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+            font-size: 12px;
+            line-height: 1.35;
+        }
+
+        .workspace-back-meta {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            min-width: 0;
+            max-width: 100%;
+        }
+
+        .workspace-back-name {
+            display: inline-flex;
+            align-items: center;
+            flex: 0 1 auto;
+            max-width: 180px;
+            padding: 2px 10px;
+            border-radius: 999px;
+            background: var(--markon-bg-muted);
+            color: var(--markon-fg-muted);
+            font-size: 11px;
+            line-height: 1.55;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+
+        .workspace-back-path {
+            flex: 1 1 auto;
+            min-width: 0;
+            overflow: hidden;
+            color: var(--markon-fg-muted);
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+
+        .markdown-body .workspace-back-link,
+        .markdown-body .workspace-back-link:link,
+        .markdown-body .workspace-back-link:visited,
+        .markdown-body .workspace-back-link:hover,
+        .markdown-body .workspace-back-link:active,
+        .markdown-body .workspace-back-link:focus {
+            color: var(--markon-fg-muted) !important;
+            text-decoration: none !important;
+        }
+
+        .markdown-body .workspace-back-link:hover,
+        .markdown-body .workspace-back-link:focus-visible {
+            color: var(--markon-fg-default) !important;
+        }
+
+        .workspace-back-link:hover .workspace-back-path,
+        .workspace-back-link:focus-visible .workspace-back-path {
+            color: var(--markon-fg-default);
             text-decoration: underline;
+            text-underline-offset: 2px;
+        }
+
+        .workspace-back-icon {
+            width: 24px;
+            height: 24px;
+            flex: 0 0 auto;
         }
 
         /* Footer */
@@ -177,6 +257,8 @@
         }
 
         .toc-title {
+            position: relative;
+            z-index: 1;
             font-weight: 600;
             margin-bottom: 10px;
             font-size: 0.9rem;
@@ -185,6 +267,8 @@
         }
 
         .toc-list {
+            position: relative;
+            z-index: 1;
             list-style: none;
             padding: 0 0 40vh 0;
             margin: 0;
@@ -206,9 +290,6 @@
         }
 
         /* Viewport highlight: rendered as an absolute overlay that slides smoothly */
-        .toc-list {
-            position: relative;
-        }
         .toc-viewport-highlight {
             position: absolute;
             /* Extend past the text on both sides (into the .toc 15px padding) so
@@ -310,8 +391,7 @@
         /* Floating TOC menu on narrow screens — same surface + border as icon */
         @media (max-width: 1400px) {
             .toc {
-                background-color: var(--markon-bg-elevated);
-                border-color: var(--markon-border-emphasis);
+                position: relative;
             }
         }
         /* TOC background on wide screens (matches body, ensures overlap is clean) */
@@ -320,9 +400,7 @@
                 background-color: var(--markon-bg-default);
             }
             #toc-container.toc-nav-active .toc {
-                background-color: var(--markon-bg-elevated);
-                border: 2.5px solid var(--markon-border-emphasis);
-                border-radius: 20px;
+                position: fixed;
             }
         }
 
@@ -333,13 +411,6 @@
            it lives entirely in editor.css — do not override here.
            ======================================== */
 
-        /* Note input modal */
-        .note-input-modal {
-            background: var(--markon-bg-muted);
-            border: 1px solid var(--markon-border-default);
-            box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
-            opacity: var(--markon-panel-opacity, 0.9);
-        }
         .note-textarea {
             background: var(--markon-bg-default);
             border: 1px solid var(--markon-border-default);
@@ -370,13 +441,6 @@
             color: var(--markon-fg-default);
         }
 
-        /* Confirm dialog */
-        .confirm-dialog {
-            background: var(--markon-bg-muted);
-            border: 1px solid var(--markon-border-default);
-            box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
-            opacity: var(--markon-panel-opacity, 0.9);
-        }
         .confirm-message {
             color: var(--markon-fg-default);
         }
@@ -387,14 +451,6 @@
         }
         .confirm-actions button:hover {
             background: var(--markon-border-default);
-        }
-
-        /* Note popup */
-        .note-popup {
-            background: var(--markon-bg-muted);
-            border: 1px solid var(--markon-accent);
-            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
-            opacity: var(--markon-panel-opacity, 0.9);
         }
 
         /* Note markers + colour-pick highlights live in editor.css, driven by
@@ -430,52 +486,52 @@
 
         .markon-visual-zoom-trigger {
             position: absolute;
-            top: 8px;
-            right: 8px;
+            top: 0;
+            right: 0;
             z-index: var(--markon-z-content-overlay);
             display: inline-flex;
             align-items: center;
             justify-content: center;
-            width: 28px;
-            height: 28px;
+            width: 30px;
+            height: 30px;
             padding: 0;
-            border: 1px solid var(--markon-border-default);
-            border-radius: var(--markon-radius-sm);
-            background: var(--markon-bg-overlay);
+            box-sizing: border-box;
+            border: 1px solid transparent;
+            border-radius: 0;
+            background: transparent;
             color: var(--markon-fg-muted);
-            box-shadow: var(--markon-shadow-pop);
-            cursor: zoom-in;
-            opacity: 0.72;
+            box-shadow: none;
+            cursor: default;
+            opacity: 0;
+            pointer-events: none;
             transition:
-                background-color var(--markon-transition-fast),
-                border-color var(--markon-transition-fast),
                 color var(--markon-transition-fast),
                 opacity var(--markon-transition-fast);
         }
 
         .markon-visual-zoom-trigger svg {
-            width: 16px;
-            height: 16px;
+            width: 18px;
+            height: 18px;
             fill: none;
             stroke: currentColor;
             stroke-linecap: round;
             stroke-linejoin: round;
-            stroke-width: 2;
+            stroke-width: 2.2;
         }
 
         .markon-visual-zoom-host:hover > .markon-visual-zoom-trigger,
+        .markon-visual-zoom-host:focus-within > .markon-visual-zoom-trigger,
         .markon-visual-zoom-trigger:hover,
         .markon-visual-zoom-trigger:focus-visible {
             opacity: 1;
+            pointer-events: auto;
         }
 
         .markon-visual-zoom-trigger:hover,
         .markon-visual-zoom-trigger:focus-visible {
-            border-color: color-mix(in srgb, var(--markon-accent) 60%, var(--markon-border-default));
-            background: color-mix(in srgb, var(--markon-accent) 12%, var(--markon-bg-overlay));
-            color: var(--markon-accent);
-            outline: 2px solid color-mix(in srgb, var(--markon-accent) 45%, transparent);
-            outline-offset: 2px;
+            color: var(--markon-fg-default);
+            border-color: color-mix(in srgb, var(--markon-fg-muted) 55%, transparent);
+            outline: none;
         }
 
         body.markon-visual-zoom-open {
@@ -486,69 +542,169 @@
             position: fixed;
             inset: 0;
             z-index: var(--markon-z-chrome);
-            display: grid;
-            grid-template-rows: auto 1fr;
-            background: color-mix(in srgb, var(--markon-bg-default) 78%, transparent);
+            background: var(--markon-bg-default);
             color: var(--markon-fg-default);
             touch-action: none;
+            overscroll-behavior: contain;
         }
 
-        .markon-visual-zoom-toolbar {
+        .markon-visual-zoom-corner-button {
+            position: absolute;
+            top: 6px;
+            right: 6px;
             z-index: var(--markon-z-chrome-toolbar);
-            display: flex;
+            display: inline-flex;
             align-items: center;
-            gap: 8px;
-            min-width: 0;
+            justify-content: center;
+            width: 30px;
+            height: 30px;
+            padding: 0;
             box-sizing: border-box;
-            padding: 12px 14px;
-            border-bottom: 1px solid var(--markon-border-default);
-            background: var(--markon-bg-overlay);
-            box-shadow: var(--markon-shadow-pop);
-            font: 14px/1.2 var(--markon-ui-font);
+            border: 1px solid transparent;
+            border-radius: 0;
+            background: transparent;
+            color: var(--markon-fg-muted);
+            box-shadow: none;
+            cursor: default;
+            font: 700 18px/1 var(--markon-ui-font);
+            opacity: 0.72;
+            transition:
+                color var(--markon-transition-fast),
+                opacity var(--markon-transition-fast);
         }
 
-        .markon-visual-zoom-title {
-            flex: 1 1 auto;
-            min-width: 0;
-            overflow: hidden;
-            text-overflow: ellipsis;
-            white-space: nowrap;
+        .markon-visual-zoom-corner-button svg {
+            width: 18px;
+            height: 18px;
+            fill: currentColor;
+        }
+
+        .markon-visual-zoom-corner-button:hover,
+        .markon-visual-zoom-corner-button:focus-visible {
             color: var(--markon-fg-default);
-            font-weight: 600;
+            opacity: 1;
+            border-color: color-mix(in srgb, var(--markon-fg-muted) 55%, transparent);
+            outline: none;
+        }
+
+        .markon-visual-zoom-controls {
+            position: absolute;
+            left: 50%;
+            bottom: 34px;
+            z-index: var(--markon-z-chrome-toolbar);
+            display: inline-flex;
+            align-items: center;
+            gap: 10px;
+            transform: translateX(-50%);
+            color: var(--markon-fg-default);
+            font: 14px/1.2 var(--markon-ui-font);
+            -webkit-user-select: none;
+            user-select: none;
         }
 
         .markon-visual-zoom-scale {
-            min-width: 48px;
+            min-width: 44px;
             color: var(--markon-fg-muted);
             font-variant-numeric: tabular-nums;
-            text-align: center;
+            text-align: right;
         }
 
-        .markon-visual-zoom-toolbar button {
-            min-width: 36px;
-            min-height: 34px;
-            border: 1px solid var(--markon-border-default);
-            border-radius: var(--markon-radius-sm);
-            background: var(--markon-bg-default);
+        .markon-visual-zoom-slider {
+            width: min(28vw, 220px);
+            min-width: 120px;
+            height: 18px;
+            padding: 0;
+            appearance: none;
+            -webkit-appearance: none;
+            background: transparent;
+            accent-color: var(--markon-fg-muted);
+            cursor: default;
+        }
+
+        .markon-visual-zoom-slider::-webkit-slider-runnable-track {
+            height: 1px;
+            border: 0;
+            background: var(--markon-border-emphasis);
+        }
+
+        .markon-visual-zoom-slider::-webkit-slider-thumb {
+            width: 14px;
+            height: 14px;
+            margin-top: -6.5px;
+            border: 0;
+            border-radius: 50%;
+            background: var(--markon-fg-muted);
+            -webkit-appearance: none;
+        }
+
+        .markon-visual-zoom-slider::-moz-range-track {
+            height: 1px;
+            border: 0;
+            background: var(--markon-border-emphasis);
+        }
+
+        .markon-visual-zoom-slider::-moz-range-thumb {
+            width: 14px;
+            height: 14px;
+            border: 0;
+            border-radius: 50%;
+            background: var(--markon-fg-muted);
+        }
+
+        .markon-visual-zoom-icon-action {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            width: 28px;
+            height: 28px;
+            padding: 0;
+            border: 0;
+            border-radius: 0;
+            background: transparent;
+            color: var(--markon-fg-muted);
+            cursor: default;
+            opacity: 0.78;
+        }
+
+        .markon-visual-zoom-icon-action svg {
+            width: 18px;
+            height: 18px;
+            fill: none;
+            stroke: currentColor;
+            stroke-linecap: round;
+            stroke-linejoin: round;
+            stroke-width: 2;
+        }
+
+        .markon-visual-zoom-icon-action:hover,
+        .markon-visual-zoom-icon-action:focus-visible {
             color: var(--markon-fg-default);
-            font: inherit;
-            cursor: pointer;
-        }
-
-        .markon-visual-zoom-toolbar button:hover {
-            background: var(--markon-bg-hover);
+            opacity: 1;
+            outline: none;
         }
 
         .markon-visual-zoom-stage {
-            position: relative;
+            position: absolute;
+            inset: 0;
             overflow: hidden;
             cursor: grab;
             touch-action: none;
             user-select: none;
+            overscroll-behavior: contain;
         }
 
         .markon-visual-zoom-stage:active {
             cursor: grabbing;
+        }
+
+        .markon-visual-zoom-overlay.is-zoom-tool-active .markon-visual-zoom-stage,
+        .markon-visual-zoom-overlay.is-zoom-tool-active .markon-visual-zoom-stage:active {
+            cursor: zoom-in;
+        }
+
+        .markon-visual-zoom-overlay.is-zoom-tool-active.is-zoom-out-tool-active .markon-visual-zoom-stage,
+        .markon-visual-zoom-overlay.is-zoom-tool-active.is-zoom-out-tool-active .markon-visual-zoom-stage:active {
+            cursor: zoom-out;
         }
 
         .markon-visual-zoom-frame {
@@ -579,12 +735,30 @@
             padding: 16px;
         }
 
-        @media (max-width: 700px) {
-            .markon-visual-zoom-toolbar {
-                flex-wrap: wrap;
+        .markon-visual-zoom-marquee {
+            position: absolute;
+            z-index: var(--markon-z-content-overlay);
+            box-sizing: border-box;
+            border: 1px solid var(--markon-accent);
+            background: color-mix(in srgb, var(--markon-accent) 14%, transparent);
+            pointer-events: none;
+        }
+
+        @media (max-width: 520px) {
+            .markon-visual-zoom-corner-button {
+                top: 6px;
+                right: 6px;
             }
-            .markon-visual-zoom-title {
-                flex-basis: 100%;
+
+            .markon-visual-zoom-controls {
+                width: calc(100vw - 32px);
+                justify-content: center;
+                gap: 8px;
+            }
+
+            .markon-visual-zoom-slider {
+                min-width: 0;
+                width: min(36vw, 180px);
             }
         }
 
@@ -596,6 +770,14 @@
         .viewed-toolbar a {
             color: var(--markon-accent);
         }
+        .viewed-toolbar a.is-disabled,
+        .viewed-toolbar a[aria-disabled="true"],
+        .viewed-toolbar a.is-disabled:hover,
+        .viewed-toolbar a[aria-disabled="true"]:hover {
+            color: var(--markon-fg-muted);
+            cursor: default;
+            text-decoration: none;
+        }
 
         /* Remove H1 bottom margin when followed by viewed toolbar */
         .markdown-body h1:has(+ .viewed-toolbar) {
@@ -605,185 +787,6 @@
         /* Editor modal chrome is owned by editor.css via the --mk-editor-*
            preset layer (default "follow page"); no inline overrides here so
            the data-editor-theme presets can take effect. */
-
-        /* ========================================
-           SEARCH MODAL
-           ======================================== */
-        .search-modal {
-            display: none;
-            position: fixed;
-            z-index: var(--markon-z-chrome);
-            left: 0;
-            top: 0;
-            width: 100%;
-            height: 100%;
-            overflow: hidden;
-        }
-
-        .search-modal-content {
-            width: 100%;
-            height: 100%;
-            display: flex;
-            flex-direction: column;
-            padding: 0;
-            margin: 0;
-        }
-
-        .search-input-container {
-            width: 100%;
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            /* Shared overlay-bar fixed height (see --markon-bar-* tokens);
-               border-box so the 1px divider is counted in, matching the export
-               and editor bars exactly. */
-            height: var(--markon-bar-height);
-            box-sizing: border-box;
-            flex-shrink: 0;
-        }
-
-        #search-input {
-            width: 100%;
-            max-width: 980px;
-            height: 100%;
-            /* Full-height field, text vertically centred by the input itself;
-               wider horizontal inset keeps the query text off the edges. */
-            padding: 0 45px;
-            font-size: 1.1em;
-            border: none;
-            outline: none;
-            box-sizing: border-box;
-        }
-
-        .search-results-container {
-            width: 100%;
-            flex: 1;
-            overflow-y: auto;
-            display: flex;
-            justify-content: center;
-            /* Top skirt: breathing room below the bar (on the content, so the
-               bar stays vertically centred). */
-            padding-top: var(--markon-bar-skirt);
-        }
-
-        #search-results {
-            list-style: none;
-            padding: 0;
-            margin: 0;
-            width: 100%;
-            max-width: 980px;
-            box-sizing: border-box;
-        }
-
-        @media (max-width: 768px) {
-            #search-input {
-                padding: 0 20px;
-            }
-        }
-
-        .search-result-item {
-            transition: all 0.15s ease;
-        }
-
-        .search-result-item.no-results {
-            padding: 40px 45px;
-            text-align: center;
-            opacity: 0.5;
-            font-size: 0.95em;
-        }
-
-        .search-result-item a {
-            display: block;
-            padding: 12px 45px;
-            text-decoration: none;
-            transition: all 0.15s ease;
-            border-left: 3px solid transparent;
-        }
-
-        @media (max-width: 768px) {
-            .search-result-item.no-results {
-                padding: 40px 20px;
-            }
-
-            .search-result-item a {
-                padding: 12px 20px;
-            }
-        }
-
-        .search-result-item.selected a {
-            border-left-width: 3px;
-        }
-
-        .search-result-title {
-            font-size: 0.95em;
-            font-weight: 600;
-            margin-bottom: 4px;
-        }
-
-        .search-result-path {
-            font-size: 0.8em;
-            opacity: 0.6;
-            margin-bottom: 6px;
-            font-family: 'SF Mono', Monaco, 'Cascadia Code', 'Roboto Mono', Consolas, 'Courier New', monospace;
-        }
-
-        .search-result-snippet {
-            font-size: 0.85em;
-            opacity: 0.75;
-            line-height: 1.5;
-            margin-top: 4px;
-        }
-
-        .search-result-snippet b {
-            font-weight: 600;
-            opacity: 1;
-        }
-
-        /* Search modal */
-        .search-modal {
-            background-color: var(--markon-bg-default);
-        }
-
-        .search-modal-content {
-            background-color: var(--markon-bg-default);
-        }
-
-        .search-input-container {
-            background: var(--markon-bg-muted);
-            /* Same bar treatment as export / editor: a 1px divider. */
-            border-bottom: 1px solid var(--markon-border-default);
-        }
-
-        #search-input {
-            background: transparent;
-            color: var(--markon-fg-default);
-        }
-
-        #search-input::placeholder {
-            color: var(--markon-fg-muted);
-        }
-
-        .search-results-container {
-            background: var(--markon-bg-default);
-        }
-
-        .search-result-item a {
-            color: var(--markon-fg-default);
-            border-bottom: 1px solid var(--markon-bg-muted);
-        }
-
-        .search-result-item a:hover,
-        .search-result-item.selected a {
-            background-color: var(--markon-bg-muted);
-        }
-
-        .search-result-item.selected a {
-            border-left-color: var(--markon-accent);
-        }
-
-        .search-result-snippet b {
-            color: var(--markon-accent);
-        }
 
         /* ========================================
            SEARCH HIGHLIGHTING
@@ -860,7 +863,22 @@
     <article class="markdown-body" data-markon-interactive-body>
         {% if show_back_link %}
         <div class="back-link">
-            <a href="{{ back_link }}"><span id="back-link-text">← Back to file list</span></a>
+            <a href="{{ back_link }}" class="workspace-back-link">
+                <svg class="workspace-back-icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" fill-rule="evenodd" aria-hidden="true" focusable="false">
+                    <path d="M28 13.172A2.996 2.996 0 0 1 30 16v10a3 3 0 0 1-3 3H5a2.996 2.996 0 0 1-2.121-.879A2.996 2.996 0 0 1 2 26V12a2.996 2.996 0 0 1 2-2.828V8c0-.796.316-1.559.879-2.121A2.996 2.996 0 0 1 7 5h1V4c0-.796.316-1.559.879-2.121A2.996 2.996 0 0 1 11 1h14c.796 0 1.559.316 2.121.879C27.684 2.441 28 3.204 28 4zM4 12v14a.997.997 0 0 0 1 1h22a1 1 0 0 0 1-1V16a.997.997 0 0 0-1-1h-9.74c-.734 0-1.444-.27-1.993-.758l-3.363-2.989A.998.998 0 0 0 11.24 11H5a.997.997 0 0 0-1 1zm22 1V4a.997.997 0 0 0-1-1H11a.997.997 0 0 0-1 1v1h11c.796 0 1.559.316 2.121.879C23.684 6.441 24 7.204 24 8v5zm-4 0V8a.997.997 0 0 0-1-1H7a.997.997 0 0 0-1 1v1h5.24c.734 0 1.444.27 1.993.758l3.363 2.989a.998.998 0 0 0 .664.253z" fill="currentColor"></path>
+                </svg>
+                <span class="workspace-back-meta">
+                    <span class="workspace-back-name">{{ workspace_display_name }}</span>
+                    <span class="workspace-back-path">{{ workspace_display_path }}</span>
+                </span>
+            </a>
+            <button type="button" class="workspace-spotlight-trigger" data-workspace-spotlight-trigger aria-label="Search workspace" title="Search workspace">
+                <svg class="workspace-spotlight-trigger-icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 6.35 6.35" aria-hidden="true" focusable="false">
+                    <path d="M2.894.511a2.384 2.384 0 0 0-2.38 2.38 2.386 2.386 0 0 0 2.38 2.384c.56 0 1.076-.197 1.484-.523l.991.991a.265.265 0 0 0 .375-.374l-.991-.992a2.37 2.37 0 0 0 .523-1.485C5.276 1.58 4.206.51 2.894.51zm0 .53c1.026 0 1.852.825 1.852 1.85S3.92 4.746 2.894 4.746s-1.851-.827-1.851-1.853.825-1.852 1.851-1.852z" fill="currentColor"></path>
+                </svg>
+                <span id="workspace-spotlight-trigger-text" class="workspace-spotlight-trigger-label">Search</span>
+                <span class="workspace-spotlight-trigger-kbd" aria-hidden="true">/</span>
+            </button>
         </div>
         {% endif %}
         <div id="notes-sidebar"></div>
@@ -873,26 +891,10 @@
         <span class="footer-separator"> | </span>
         <a href="https://github.com/kookyleo/markon/issues/new?title=%5BFeedback%5D%20&body=One-line%20summary%3A%0A%0A%23%23%20Environment%0A-%20markon%20version%3A%0A-%20OS%3A%0A-%20Browser%3A%0A%0A%23%23%20Steps%20to%20reproduce%0A1.%0A%0A%23%23%20Expected%0A%0A%23%23%20Actual%0A" id="feedback-link-text" target="_blank" rel="noopener noreferrer">Feedback</a>
         <span class="footer-separator"> | </span>
-        <a href="#" id="kbd-link-text" onclick="window.shortcutsManager.showHelp(); return false;">Keyboard Shortcuts (?)</a>
-        <span class="footer-separator"> | </span>
-        <a href="#" id="theme-link-text">Theme: Auto</a>
+        <a href="#" id="kbd-link-text" onclick="window.shortcutsManager.showHelp(); return false;">Features & Shortcuts (?)</a>
         <span class="footer-separator"> | </span>
         <a href="https://github.com/kookyleo/markon/releases" id="footer-version" target="_blank" rel="noopener noreferrer" title="markon version">v{{ version }}</a>
     </footer>
-
-    {% if enable_search %}
-    <div id="search-modal" class="search-modal">
-        <div class="search-modal-content">
-            <div class="search-input-container">
-                <input type="text" id="search-input" placeholder="Search..." autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false">
-            </div>
-            <div id="search-esc-hint" style="text-align:center;padding:8px 0 4px;font-size:12px;color:var(--markon-fg-muted)"><kbd style="padding:1px 5px;border:1px solid var(--markon-border-emphasis);border-radius:3px;font-size:11px;font-family:monospace;background:var(--markon-bg-muted)">ESC</kbd> <span id="search-esc-text">to close</span></div>
-            <div class="search-results-container">
-                <ul id="search-results"></ul>
-            </div>
-        </div>
-    </div>
-    {% endif %}
 
     {% if has_math %}
     <link rel="stylesheet" href="/_/js/katex/katex.min.css">

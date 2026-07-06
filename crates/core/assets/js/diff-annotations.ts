@@ -4,29 +4,36 @@
  * The compare page does NOT boot MarkonApp (no single markdown body, no single
  * file path). Instead this lightweight coordinator runs ONE selection toolbar
  * over the whole rendered pane and fans every action out to a PER-FILE context,
- * keyed by the file's real canonical absolute path (`section.dataset.absPath`).
+ * keyed by the file's real canonical absolute path (`section.dataset['absPath']`).
  * That key is byte-identical to the normal file view's annotation key, so a
  * highlight made here lands in the same `localStorage` bucket as opening the
  * file directly — annotations are shared between the two surfaces.
  *
  * Scope (per the agreed design): LOCAL storage only — no shared/WebSocket sync
- * on this page. Activated only for a worktree diff (`is-worktree-diff` meta),
- * where the NEW side is a live file; otherwise the page stays inert. Only the
- * NEW (worktree) side is annotatable — `NEW_SIDE_REJECT` keeps the old/deleted
- * text out of selection, anchoring, and wrapping.
+ * on this page. Activated on rendered diffs whose file sections carry a
+ * canonical `data-abs-path`; only the NEW side is annotatable —
+ * `NEW_SIDE_REJECT` keeps the old/deleted text out of selection, anchoring,
+ * and wrapping.
  */
 
 import { CONFIG } from './core/config';
 import { copyText } from './core/clipboard';
-import { Meta } from './services/dom';
 import { StorageManager } from './managers/storage-manager';
 import { AnnotationManager, type Annotation } from './managers/annotation-manager';
+import { EditorManager } from './managers/editor-manager';
 import { NoteManager } from './managers/note-manager';
 import { PopoverManager, type PopoverActionPayload } from './managers/popover-manager';
 import { ModalManager, showConfirmDialog } from './components/modal';
 import { NEW_SIDE_REJECT, newSideRootFor, sectionForNode } from './diff-new-side-filter';
 
 const PANE_SELECTOR = '[data-md-diff-content]';
+
+const hasNote = (annotation: Annotation): boolean => !!annotation.note && annotation.note.trim() !== '';
+
+const markdownFileHeading = (path: string): string => {
+    const text = path.replace(/\r?\n/g, ' ').trim() || 'Untitled file';
+    return `# ${text}`;
+};
 
 /** Per-file annotation state. One per changed file (keyed by absolute path). */
 interface PerFileContext {
@@ -42,6 +49,7 @@ class DiffAnnotationCoordinator {
     #pane: HTMLElement;
     #popover: PopoverManager;
     #contexts = new Map<string, PerFileContext>();
+    #editor: EditorManager | null = null;
 
     constructor(pane: HTMLElement) {
         this.#pane = pane;
@@ -61,7 +69,7 @@ class DiffAnnotationCoordinator {
     /** A file body was (re)built — re-anchor that file's annotations onto it. */
     onBodyRendered(body: HTMLElement): void {
         const section = body.closest<HTMLElement>('.md-diff-file-section[data-abs-path]');
-        const absPath = section?.dataset.absPath;
+        const absPath = section?.dataset['absPath'];
         if (!section || !absPath) return;
         const ctx = this.#contextFor(absPath, section);
         const root = newSideRootFor(section);
@@ -83,6 +91,31 @@ class DiffAnnotationCoordinator {
         document.querySelector('.note-popup')?.remove();
     }
 
+    /** Export notes from every changed file, grouped under top-level file headings. */
+    async exportNotes(_anchor?: HTMLElement | null): Promise<boolean> {
+        const files = await this.#collectFileNotes();
+        if (!files.length) return false;
+
+        const markdown = files
+            .map(file => `${markdownFileHeading(file.path)}\n\n${file.markdown.trimEnd()}`)
+            .join('\n\n') + '\n';
+
+        if (!this.#editor) {
+            this.#editor = new EditorManager(window.location.pathname || 'notes');
+        }
+        await this.#editor.open({
+            mode: 'export',
+            content: markdown,
+            exportFileName: 'notes',
+        });
+        return true;
+    }
+
+    async notesCount(): Promise<number> {
+        const files = await this.#collectFileNotes();
+        return files.reduce((sum, file) => sum + file.count, 0);
+    }
+
     // ── Per-file context ────────────────────────────────────────────────────────
     #contextFor(absPath: string, section: HTMLElement): PerFileContext {
         let ctx = this.#contexts.get(absPath);
@@ -94,6 +127,28 @@ class DiffAnnotationCoordinator {
         ctx = { absPath, storage, annotationManager, noteManager, ready: annotationManager.load() };
         this.#contexts.set(absPath, ctx);
         return ctx;
+    }
+
+    async #collectFileNotes(): Promise<{ path: string; markdown: string; count: number }[]> {
+        const sections = [...this.#pane.querySelectorAll<HTMLElement>('.md-diff-file-section[data-abs-path]')];
+        const files: { path: string; markdown: string; count: number }[] = [];
+        for (const section of sections) {
+            const absPath = section.dataset['absPath'];
+            if (!absPath) continue;
+            const ctx = this.#contextFor(absPath, section);
+            await ctx.ready;
+            const noteIds = ctx.annotationManager.getAll().filter(hasNote).map(a => a.id);
+            if (!noteIds.length) continue;
+            const markdown = ctx.annotationManager.formatAsMarkdown({ ids: noteIds });
+            if (markdown.trim()) {
+                files.push({
+                    path: section.dataset['filePath'] || absPath,
+                    markdown,
+                    count: noteIds.length,
+                });
+            }
+        }
+        return files;
     }
 
     /** Find the context owning an annotation id (popup actions carry only the id). */
@@ -108,7 +163,7 @@ class DiffAnnotationCoordinator {
     #contextForNode(node: Node | null): { ctx: PerFileContext; section: HTMLElement } | null {
         if (!node) return null;
         const section = sectionForNode(node);
-        const absPath = section?.dataset.absPath;
+        const absPath = section?.dataset['absPath'];
         if (!section || !absPath) return null;
         return { ctx: this.#contextFor(absPath, section), section };
     }
@@ -119,12 +174,13 @@ class DiffAnnotationCoordinator {
 
         if (action === 'unhighlight') {
             const el = highlightedElement instanceof HTMLElement ? highlightedElement : null;
-            const id = el?.dataset.annotationId;
+            const id = el?.dataset['annotationId'];
             const resolved = el ? this.#contextForNode(el) : null;
             if (id && resolved) {
                 await resolved.ctx.annotationManager.delete(id);
                 resolved.ctx.annotationManager.removeFromDOM(id);
                 resolved.ctx.noteManager.render();
+                this.#emitNotesChanged();
             }
             window.getSelection()?.removeAllRanges();
             return;
@@ -162,6 +218,7 @@ class DiffAnnotationCoordinator {
         ctx.annotationManager.applyToDOM([anno]);
         ctx.noteManager.setMarkdownBody(newSideRootFor(section));
         ctx.noteManager.render();
+        this.#emitNotesChanged();
     }
 
     #showNoteInputModal(
@@ -175,31 +232,35 @@ class DiffAnnotationCoordinator {
         ModalManager.showNoteInput({
             anchorElement,
             initialValue: existing ? existing.note ?? '' : '',
-            onSave: async (noteText: string) => {
-                if (noteText) {
-                    if (existing) {
-                        existing.note = noteText;
-                        await ctx.annotationManager.add(existing);
+            onSave: (noteText: string) => {
+                void (async () => {
+                    if (noteText) {
+                        if (existing) {
+                            existing.note = noteText;
+                            await ctx.annotationManager.add(existing);
+                            ctx.annotationManager.removeFromDOM(existing.id);
+                            ctx.annotationManager.setRoot(newSideRootFor(section));
+                            ctx.annotationManager.applyToDOM([existing]);
+                            ctx.noteManager.setMarkdownBody(newSideRootFor(section));
+                            ctx.noteManager.render();
+                            this.#emitNotesChanged();
+                        } else {
+                            const anno = ctx.annotationManager.createAnnotation(
+                                selection,
+                                CONFIG.ANNOTATION_TYPES.HAS_NOTE as Annotation['type'],
+                                CONFIG.HTML_TAGS.HIGHLIGHT as Annotation['tagName'],
+                                noteText,
+                            );
+                            await this.#applyAdd(ctx, section, anno);
+                        }
+                    } else if (existing) {
+                        await ctx.annotationManager.delete(existing.id);
                         ctx.annotationManager.removeFromDOM(existing.id);
-                        ctx.annotationManager.setRoot(newSideRootFor(section));
-                        ctx.annotationManager.applyToDOM([existing]);
-                        ctx.noteManager.setMarkdownBody(newSideRootFor(section));
                         ctx.noteManager.render();
-                    } else {
-                        const anno = ctx.annotationManager.createAnnotation(
-                            selection,
-                            CONFIG.ANNOTATION_TYPES.HAS_NOTE as Annotation['type'],
-                            CONFIG.HTML_TAGS.HIGHLIGHT as Annotation['tagName'],
-                            noteText,
-                        );
-                        await this.#applyAdd(ctx, section, anno);
+                        this.#emitNotesChanged();
                     }
-                } else if (existing) {
-                    await ctx.annotationManager.delete(existing.id);
-                    ctx.annotationManager.removeFromDOM(existing.id);
-                    ctx.noteManager.render();
-                }
-                window.getSelection()?.removeAllRanges();
+                    window.getSelection()?.removeAllRanges();
+                })();
             },
             onCancel: () => {
                 window.getSelection()?.removeAllRanges();
@@ -247,16 +308,16 @@ class DiffAnnotationCoordinator {
         const deleteBtn = target.closest<HTMLElement>('.note-delete');
 
         if (copyBtn) {
-            const id = copyBtn.dataset.annotationId;
+            const id = copyBtn.dataset['annotationId'];
             const ctx = id ? this.#contextForAnnotationId(id) : null;
             const anno = id && ctx ? ctx.annotationManager.getById(id) : null;
-            if (anno) await copyText(ctx!.annotationManager.formatAnnotation(anno));
+            if (anno && ctx) await copyText(ctx.annotationManager.formatAnnotation(anno));
             e.stopPropagation();
             return;
         }
 
         if (editBtn) {
-            const id = editBtn.dataset.annotationId;
+            const id = editBtn.dataset['annotationId'];
             const ctx = id ? this.#contextForAnnotationId(id) : null;
             const anno = id && ctx ? ctx.annotationManager.getById(id) : null;
             if (id && ctx && anno) {
@@ -274,7 +335,7 @@ class DiffAnnotationCoordinator {
         }
 
         if (deleteBtn) {
-            const id = deleteBtn.dataset.annotationId;
+            const id = deleteBtn.dataset['annotationId'];
             const ctx = id ? this.#contextForAnnotationId(id) : null;
             if (id && ctx) {
                 showConfirmDialog(
@@ -284,6 +345,7 @@ class DiffAnnotationCoordinator {
                         ctx.annotationManager.removeFromDOM(id);
                         ctx.noteManager.render();
                         document.querySelector('.note-popup')?.remove();
+                        this.#emitNotesChanged();
                     },
                     deleteBtn,
                     'Delete',
@@ -296,7 +358,7 @@ class DiffAnnotationCoordinator {
         // Click on a note highlight → open its popup.
         const noteEl = target.closest<HTMLElement>('.has-note');
         if (noteEl) {
-            const id = noteEl.dataset.annotationId;
+            const id = noteEl.dataset['annotationId'];
             const ctx = id ? this.#contextForAnnotationId(id) : null;
             if (id && ctx) {
                 ctx.noteManager.showNotePopup(noteEl, id);
@@ -309,18 +371,23 @@ class DiffAnnotationCoordinator {
         const highlight = target.closest<HTMLElement>(CONFIG.SELECTORS.HIGHLIGHT_CLASSES);
         if (highlight) this.#popover.handleHighlightClick(highlight);
     }
+
+    #emitNotesChanged(): void {
+        document.dispatchEvent(new CustomEvent('markon:diff-notes-count-changed'));
+    }
 }
 
 const init = (): void => {
-    // Activate only for a worktree diff where the new side is a live file.
-    if (!Meta.flag('is-worktree-diff')) return;
     const pane = document.querySelector<HTMLElement>(PANE_SELECTOR);
     if (!pane) return;
     const coordinator = new DiffAnnotationCoordinator(pane);
     window.markonDiffAnnotations = {
         onBodyRendered: (body) => coordinator.onBodyRendered(body),
         onContentRendered: () => coordinator.onContentRendered(),
+        exportNotes: (anchor) => coordinator.exportNotes(anchor),
+        notesCount: () => coordinator.notesCount(),
     };
+    document.dispatchEvent(new CustomEvent('markon:diff-annotations-ready'));
 };
 
 if (document.readyState === 'loading') {

@@ -31,8 +31,8 @@ export class AnnotationNavigator {
      */
     #getAllAnnotations(): NavAnnotation[] {
         const markdownBody =
-            (document.querySelector('[data-markon-interactive-body]') as HTMLElement | null) ??
-            (document.querySelector(CONFIG.SELECTORS.MARKDOWN_BODY) as HTMLElement | null);
+            (document.querySelector('[data-markon-interactive-body]')) ??
+            (document.querySelector(CONFIG.SELECTORS.MARKDOWN_BODY));
         if (!markdownBody) return [];
 
         const annotations: NavAnnotation[] = [];
@@ -91,7 +91,8 @@ export class AnnotationNavigator {
 
         // Advance the cursor.
         this.#currentIndex = (this.#currentIndex + 1) % this.#annotations.length;
-        this.#focusAnnotation(this.#annotations[this.#currentIndex]);
+        const annotation = this.#annotations[this.#currentIndex];
+        if (annotation) this.#focusAnnotation(annotation);
     }
 
     /**
@@ -106,7 +107,8 @@ export class AnnotationNavigator {
 
         // Step the cursor backward.
         this.#currentIndex = this.#currentIndex <= 0 ? this.#annotations.length - 1 : this.#currentIndex - 1;
-        this.#focusAnnotation(this.#annotations[this.#currentIndex]);
+        const annotation = this.#annotations[this.#currentIndex];
+        if (annotation) this.#focusAnnotation(annotation);
     }
 
     /**
@@ -151,11 +153,11 @@ export class AnnotationNavigator {
                 element.classList.add('annotation-focused');
 
                 // Locate and highlight the matching margin card.
-                const annotationId = element.dataset.annotationId;
+                const annotationId = element.dataset['annotationId'];
                 if (annotationId) {
                     const noteCard = document.querySelector(
                         `.note-card-margin[data-annotation-id="${annotationId}"]`,
-                    ) as HTMLElement | null;
+                    );
                     if (noteCard) {
                         noteCard.classList.add('highlight-active');
 
