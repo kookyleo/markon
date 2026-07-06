@@ -5,6 +5,7 @@ use markon_core::net::{available_bind_hosts, host_in_list, BindHostOption};
 use markon_core::server;
 use markon_core::settings::{AppSettings, PortMode};
 use markon_core::workspace::{expand_and_canonicalize, WorkspaceConfig, WorkspaceFlags};
+use serde::Deserialize;
 use std::path::PathBuf;
 use std::sync::atomic::Ordering;
 use tauri::menu::{Menu, MenuItem, PredefinedMenuItem};
@@ -286,10 +287,9 @@ fn flags_from_params(
     }
 }
 
-/// Update a workspace's feature flags in place. `registry.update_flags` fires
-/// the persist hook, so the change is written to settings and survives restart.
-#[tauri::command]
-pub fn update_workspace(
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct UpdateWorkspaceRequest {
     id: String,
     enable_search: bool,
     enable_viewed: bool,
@@ -297,19 +297,26 @@ pub fn update_workspace(
     enable_live: bool,
     enable_chat: bool,
     shared_annotation: bool,
+}
+
+/// Update a workspace's feature flags in place. `registry.update_flags` fires
+/// the persist hook, so the change is written to settings and survives restart.
+#[tauri::command]
+pub fn update_workspace(
+    request: UpdateWorkspaceRequest,
     state: State<AppState>,
 ) -> Result<(), String> {
     let flags = flags_from_params(
-        enable_search,
-        enable_viewed,
-        enable_edit,
-        enable_live,
-        enable_chat,
-        shared_annotation,
+        request.enable_search,
+        request.enable_viewed,
+        request.enable_edit,
+        request.enable_live,
+        request.enable_chat,
+        request.shared_annotation,
     );
     let server = state.server.lock().unwrap();
-    if !server.registry.update_flags(&id, flags) {
-        return Err(format!("Workspace {id} not found"));
+    if !server.registry.update_flags(&request.id, flags) {
+        return Err(format!("Workspace {} not found", request.id));
     }
     Ok(())
 }
@@ -381,7 +388,11 @@ pub fn get_workspaces(state: State<AppState>) -> Vec<serde_json::Value> {
 /// Set (or clear, with an empty string) a workspace's alias. Per-workspace and
 /// live — updates the shared registry (persists via its hook), no restart.
 #[tauri::command]
-pub fn set_alias(workspace_id: String, alias: String, state: State<AppState>) -> Result<(), String> {
+pub fn set_alias(
+    workspace_id: String,
+    alias: String,
+    state: State<AppState>,
+) -> Result<(), String> {
     if state
         .server
         .lock()
@@ -480,11 +491,33 @@ fn os_version_string() -> String {
 }
 
 #[tauri::command]
-pub async fn pick_db_path() -> Option<String> {
+pub async fn pick_db_path(current_path: Option<String>) -> Option<String> {
+    let current_path = current_path
+        .as_deref()
+        .map(str::trim)
+        .filter(|path| !path.is_empty())
+        .map(PathBuf::from);
+    let fallback_dir = dirs::home_dir()
+        .map(|home| home.join(".markon"))
+        .unwrap_or_else(|| PathBuf::from("."));
+    let directory = current_path
+        .as_ref()
+        .and_then(|path| path.parent().map(PathBuf::from))
+        .filter(|path| path.is_dir())
+        .unwrap_or(fallback_dir);
+    let file_name = current_path
+        .as_ref()
+        .and_then(|path| path.file_name())
+        .and_then(|name| name.to_str())
+        .filter(|name| !name.is_empty())
+        .unwrap_or("annotation.sqlite");
+    let _ = std::fs::create_dir_all(&directory);
+
     rfd::AsyncFileDialog::new()
         .set_title("Select annotation database")
         .add_filter("SQLite", &["sqlite", "db", "sqlite3"])
-        .set_file_name("annotation.sqlite")
+        .set_directory(directory)
+        .set_file_name(file_name)
         .save_file()
         .await
         .map(|h| h.path().to_string_lossy().to_string())

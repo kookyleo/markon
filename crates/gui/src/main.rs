@@ -383,6 +383,33 @@ fn show_settings_window(app: &tauri::AppHandle) {
     }
 }
 
+/// App menu bar. Starts from Tauri's standard menu (so Edit copy/paste, Quit,
+/// Window management stay intact) and adds a "New Workspace" item with the ⌘N
+/// accelerator to the File submenu. Registering it as a real menu accelerator is
+/// what makes the shortcut actually fire — see the on_menu_event comment.
+fn build_app_menu<R: tauri::Runtime>(
+    handle: &tauri::AppHandle<R>,
+) -> tauri::Result<tauri::menu::Menu<R>> {
+    use tauri::menu::{Menu, MenuItem};
+    let menu = Menu::default(handle)?;
+    let new_ws = MenuItem::with_id(
+        handle,
+        "new_workspace",
+        "New Workspace",
+        true,
+        Some("CmdOrCtrl+N"),
+    )?;
+    for kind in menu.items()? {
+        if let Some(sub) = kind.as_submenu() {
+            if sub.text().map(|t| t == "File").unwrap_or(false) {
+                sub.prepend(&new_ws)?;
+                break;
+            }
+        }
+    }
+    Ok(menu)
+}
+
 /// Show Settings as a *deferred* fallback after a macOS activation that carried
 /// no file. A Finder double-click delivers BOTH a `Reopen` activation and an
 /// `Opened` (the file) Apple Event, in either order — so reacting to `Reopen`
@@ -450,6 +477,14 @@ fn init_tracing() {
         .init();
 }
 
+// Force `main.rs` to recompile whenever the embedded frontend changes. Tauri's
+// `generate_context!()` bakes `ui/` into the binary at THIS file's compile time,
+// but a plain `cargo:rerun-if-changed=ui` only re-runs build.rs — it does NOT
+// recompile main.rs, so editing ui/index.html alone left the old frontend
+// embedded on incremental builds. Depending on the file via `include_str!` makes
+// rustc track it as an input of main.rs, so a ui/ edit now forces the re-embed.
+const _UI_REEMBED_MARKER: &str = include_str!("../ui/index.html");
+
 fn main() {
     init_tracing();
     let settings = AppSettings::load();
@@ -487,11 +522,22 @@ fn main() {
                 // separate Opened Apple Event right after, so defer the Settings
                 // fallback and let a file-open cancel it.
                 schedule_settings_fallback(app);
-                return;
             }
             #[cfg(not(target_os = "macos"))]
             show_settings_window(app);
         }))
+        .menu(build_app_menu)
+        .on_menu_event(|app, event| {
+            if event.id().as_ref() == "new_workspace" {
+                // A native accelerator is the only reliable way to fire ⌘N on
+                // macOS — WKWebView's responder chain swallows Cmd-letter combos
+                // that match no menu item, so a JS keydown listener never sees
+                // them. Surface Settings, then let the frontend run its existing
+                // add-workspace flow (native folder picker + registry insert).
+                show_settings_window(app);
+                let _ = app.emit("menu:new-workspace", ());
+            }
+        })
         .setup(move |app| {
             let mut settings = settings;
             ensure_example_workspace(app, &mut settings);

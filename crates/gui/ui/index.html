@@ -152,11 +152,12 @@
       min-height: 36px;
     }
     .pref-label, .st-name, .sc-name { font-size: 13px; color: var(--text); flex: 1; }
-    /* Inline help affordance: a small ⓘ next to a label, with the explanation
-       in its native hover tooltip (data-i18n-title) instead of a wrapping
-       inline paragraph. */
+    /* Inline help affordance: a small ⓘ next to a label. Native title
+       tooltips are too slow in WKWebView, so pref-info uses a fast custom
+       bubble fed from data-tooltip. */
     .pref-info {
       display: inline-flex;
+      position: relative;
       margin-left: 5px;
       color: var(--text-3);
       font-size: 12px;
@@ -165,6 +166,55 @@
       transition: color 0.15s;
     }
     .pref-info:hover { color: var(--text-2); }
+    .mk-fast-tooltip {
+      position: fixed;
+      z-index: 2147483647;
+      width: max-content;
+      max-width: min(320px, calc(100vw - 16px));
+      padding: 6px 8px;
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      background: var(--surface);
+      color: var(--text);
+      box-shadow: 0 10px 30px rgba(0,0,0,0.18);
+      font-size: 12px;
+      line-height: 1.35;
+      white-space: normal;
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 0.08s ease, transform 0.08s ease;
+      transform: translateX(-3px);
+    }
+    .mk-fast-tooltip.show {
+      opacity: 1;
+      transform: translateX(0);
+    }
+    .mk-fast-tooltip[data-side="left"] {
+      transform: translateX(3px);
+    }
+    .mk-fast-tooltip[data-side="left"].show {
+      transform: translateX(0);
+    }
+    .mk-fast-tooltip-arrow {
+      content: "";
+      position: absolute;
+      left: -4px;
+      top: var(--tooltip-arrow-top, 50%);
+      width: 7px;
+      height: 7px;
+      border-left: 1px solid var(--border);
+      border-bottom: 1px solid var(--border);
+      background: var(--surface);
+      transform: rotate(45deg);
+    }
+    .mk-fast-tooltip[data-side="left"] .mk-fast-tooltip-arrow {
+      left: auto;
+      right: -4px;
+      border-left: 0;
+      border-bottom: 0;
+      border-right: 1px solid var(--border);
+      border-top: 1px solid var(--border);
+    }
     .pref-control {
       display: flex;
       align-items: center;
@@ -974,7 +1024,7 @@
           </div>
           <div class="pref-row" id="advertised-row" style="display:none">
             <span class="pref-label">
-              <span data-i18n="pref.advertised"></span><span class="pref-info" data-i18n-title="advertised.hint" title="" aria-hidden="true">&#9432;</span>
+              <span data-i18n="pref.advertised"></span><span class="pref-info" data-i18n-title="advertised.hint" tabindex="0">&#9432;</span>
             </span>
             <div class="pref-control">
               <select id="advertised-host" style="width:240px"></select>
@@ -985,7 +1035,9 @@
             <div class="pref-control" style="color:#d93025;font-size:12px;line-height:1.4;max-width:380px"></div>
           </div>
           <div class="pref-row">
-            <span class="pref-label" data-i18n="pref.collaborator_access_code"></span>
+            <span class="pref-label">
+              <span data-i18n="pref.collaborator_access_code"></span><span class="pref-info" data-i18n-title="pref.collaborator_access_code.hint" tabindex="0">&#9432;</span>
+            </span>
             <div class="pref-control" id="collaborator_access_code_control"></div>
           </div>
         </div>
@@ -1641,7 +1693,7 @@
 
   document.getElementById('db_path_browse').addEventListener('click', async () => {
     let path;
-    try { path = await invoke('pick_db_path'); } catch (_) { return; }
+    try { path = await invoke('pick_db_path', { currentPath: currentDbPath || null }); } catch (_) { return; }
     if (!path) return; // cancelled
     updateDbPathDisplay(path);
     saveSettings();
@@ -2091,13 +2143,15 @@
           const checks = card.querySelectorAll('.ws-flag input');
           try {
             await invoke('update_workspace', {
-              id: ws.id,
-              enableSearch:     checks[0].checked,
-              enableViewed:     checks[1].checked,
-              enableEdit:       checks[2].checked,
-              enableLive:       checks[3].checked,
-              enableChat:       checks[4].checked,
-              sharedAnnotation: checks[5].checked,
+              request: {
+                id: ws.id,
+                enableSearch:     checks[0].checked,
+                enableViewed:     checks[1].checked,
+                enableEdit:       checks[2].checked,
+                enableLive:       checks[3].checked,
+                enableChat:       checks[4].checked,
+                sharedAnnotation: checks[5].checked,
+              },
             });
             checks.forEach(c => {
               c.closest('.ws-flag').classList.toggle('checked', c.checked);
@@ -2251,12 +2305,116 @@
   function renderWorkspaceAddTip() {
     const tip = document.getElementById('ws-add-tip');
     if (!tip) return;
-    const shortcut = getShortcut('NEW_WORKSPACE');
-    tip.innerHTML = `
-      <span class="ws-fab-tip-label">${T('ws.add.hint')}</span>
-      <span class="ws-fab-tip-key">${formatKey(shortcut)}</span>
-    `;
+    let label = 'New workspace';
+    try { label = T('ws.add.hint') || label; } catch (_) {}
+    let keyStr = '';
+    try {
+      const sc = getShortcut('NEW_WORKSPACE');
+      if (sc && sc.key) keyStr = formatKey(sc);
+    } catch (_) {}
+    // The first applyI18n() runs while `const DEFAULT_SHORTCUTS` is still in its
+    // temporal dead zone, so getShortcut() throws and keyStr stays empty. Rather
+    // than depend on a later re-render landing last, fall back to the default
+    // ⌘N here so the chip is NEVER empty regardless of call order.
+    if (!keyStr) {
+      const mac = (navigator.platform || navigator.userAgent || '').includes('Mac');
+      keyStr = (mac ? '⌘' : 'Ctrl') + ' + N';
+    }
+    tip.innerHTML =
+      `<span class="ws-fab-tip-label">${label}</span>` +
+      `<span class="ws-fab-tip-key">${keyStr}</span>`;
   }
+
+  let fastTooltip = null;
+  let fastTooltipTimer = 0;
+
+  function ensureFastTooltip() {
+    if (fastTooltip) return fastTooltip;
+    fastTooltip = document.createElement('div');
+    fastTooltip.className = 'mk-fast-tooltip';
+    fastTooltip.setAttribute('role', 'tooltip');
+    fastTooltip.innerHTML = '<span class="mk-fast-tooltip-arrow"></span><span class="mk-fast-tooltip-body"></span>';
+    document.body.appendChild(fastTooltip);
+    return fastTooltip;
+  }
+
+  function hideFastTooltip() {
+    clearTimeout(fastTooltipTimer);
+    if (fastTooltip) fastTooltip.classList.remove('show');
+  }
+
+  function positionFastTooltip(target) {
+    const tip = ensureFastTooltip();
+    const body = tip.querySelector('.mk-fast-tooltip-body');
+    const text = target.dataset.tooltip || target.getAttribute('aria-label') || '';
+    if (!text) {
+      hideFastTooltip();
+      return;
+    }
+
+    body.textContent = text;
+    tip.classList.remove('show');
+    tip.dataset.side = 'right';
+    tip.style.left = '0px';
+    tip.style.top = '0px';
+
+    const margin = 8;
+    const gap = 10;
+    const rect = target.getBoundingClientRect();
+    const width = tip.offsetWidth;
+    const height = tip.offsetHeight;
+    const viewportWidth = window.innerWidth;
+    const viewportHeight = window.innerHeight;
+    let side = 'right';
+    let left = rect.right + gap;
+
+    if (left + width > viewportWidth - margin) {
+      side = 'left';
+      left = rect.left - gap - width;
+    }
+    left = Math.min(Math.max(left, margin), Math.max(margin, viewportWidth - width - margin));
+
+    let top = rect.top + rect.height / 2 - height / 2;
+    top = Math.min(Math.max(top, margin), Math.max(margin, viewportHeight - height - margin));
+
+    const arrowTop = Math.min(
+      Math.max(rect.top + rect.height / 2 - top - 4, 8),
+      Math.max(8, height - 12),
+    );
+
+    tip.dataset.side = side;
+    tip.style.left = `${left}px`;
+    tip.style.top = `${top}px`;
+    tip.style.setProperty('--tooltip-arrow-top', `${arrowTop}px`);
+  }
+
+  function showFastTooltip(target) {
+    clearTimeout(fastTooltipTimer);
+    fastTooltipTimer = setTimeout(() => {
+      positionFastTooltip(target);
+      ensureFastTooltip().classList.add('show');
+    }, 100);
+  }
+
+  document.addEventListener('pointerover', event => {
+    const target = event.target.closest?.('.pref-info');
+    if (target) showFastTooltip(target);
+  });
+  document.addEventListener('pointerout', event => {
+    const target = event.target.closest?.('.pref-info');
+    if (!target) return;
+    if (event.relatedTarget && target.contains(event.relatedTarget)) return;
+    hideFastTooltip();
+  });
+  document.addEventListener('focusin', event => {
+    const target = event.target.closest?.('.pref-info');
+    if (target) showFastTooltip(target);
+  });
+  document.addEventListener('focusout', event => {
+    if (event.target.closest?.('.pref-info')) hideFastTooltip();
+  });
+  document.addEventListener('scroll', hideFastTooltip, true);
+  window.addEventListener('resize', hideFastTooltip);
 
   function bindHostLabel(host) {
     switch (host?.kind) {
@@ -2375,8 +2533,19 @@
       el.placeholder = T(el.getAttribute('data-i18n-placeholder'));
     });
     document.querySelectorAll('[data-i18n-title]').forEach(el => {
-      el.title = T(el.getAttribute('data-i18n-title'));
+      const text = T(el.getAttribute('data-i18n-title'));
+      if (el.classList.contains('pref-info')) {
+        el.dataset.tooltip = text;
+        el.setAttribute('aria-label', text);
+        el.removeAttribute('title');
+      } else {
+        el.title = text;
+      }
     });
+    // Fill the FAB tooltip HERE, before the settings-only dynamic renders
+    // below — those can throw on the workspaces tab and abort applyI18n,
+    // which previously left this tip empty.
+    renderWorkspaceAddTip();
     // Feedback buttons (dynamic)
     ['bug', 'idea', 'ask'].forEach(kind => {
       const btn = document.getElementById(`btn-${kind}`);
@@ -2520,14 +2689,29 @@
         setLocale(langPref);
       }
     } catch (_) {}
+    // Render the visible tab (workspaces) FIRST and in isolation. The settings
+    // tab isn't shown on load, so a failure hydrating it (loadSettings touches
+    // many optional inputs unguarded) must NOT blank the workspace list — that
+    // was the "empty until you switch tabs" bug.
+    try { await refreshWorkspaces(); } catch (_) {}
     // Load settings AFTER locale is resolved so all UI renders in correct
     // language. Reuses the settings fetched above; re-fetches if that failed.
-    s = await loadSettings(s);
-    refreshWorkspaces();
-    refreshServerStatus();
-    setupBindHostListeners();
+    try { s = await loadSettings(s); } catch (e) { console.error('loadSettings threw:', e); }
+    // Belt-and-suspenders: the Page Styles + Keyboard Shortcuts lists render at
+    // the tail of loadSettings, so any earlier throw would leave them empty.
+    // Render them directly if still unpopulated.
+    try { if (!document.getElementById('webstyles-list')?.children.length) renderWebStyles(); } catch (e) { console.error('renderWebStyles threw:', e); }
+    try { if (!document.getElementById('shortcuts-list')?.children.length) renderShortcuts(); } catch (e) { console.error('renderShortcuts threw:', e); }
+    try { refreshServerStatus(); } catch (_) {}
+    try { setupBindHostListeners(); } catch (_) {}
+    // Re-render the FAB tooltip now that DEFAULT_SHORTCUTS is initialized and
+    // loadSettings has applied any user override. The FIRST applyI18n() runs
+    // before `const DEFAULT_SHORTCUTS` is defined (it's declared lower in the
+    // file), so getShortcut() hit its temporal-dead-zone and the shortcut pill
+    // was silently dropped — the label showed but the "⌘N" chip never did.
+    try { renderWorkspaceAddTip(); } catch (_) {}
     // Auto-check for updates on startup if enabled.
-    if (s.auto_update !== false) doUpdateCheck();
+    if (s?.auto_update !== false) doUpdateCheck();
   })();
   window.addEventListener('focus', () => {
     // Don't rebuild the list while a code editor is actively being edited —
@@ -2555,6 +2739,10 @@
   function setupBindHostListeners() {
     const ev = window.__TAURI__?.event;
     if (!ev?.listen) return;
+    // Native File ▸ New Workspace (⌘N). The accelerator is registered on the
+    // native menu (Rust side) because WKWebView won't deliver Cmd-letter combos
+    // to JS; the menu handler emits this event and we run the normal add flow.
+    ev.listen('menu:new-workspace', () => { addWorkspace(); });
     ev.listen('bind-hosts-changed', (evt) => {
       const payload = evt?.payload || {};
       if (Array.isArray(payload.hosts) && payload.hosts.length > 0) {
@@ -2613,7 +2801,7 @@
   });
 
   // ── CLI command builder ──────────────────────────────────────────────
-  const cliIds = ['cli-path','cli-port','cli-host','cli-qr','cli-access','cli-collab-access','cli-open'];
+  const cliIds = ['cli-path','cli-port','cli-host','cli-qr','cli-collab-access','cli-open'];
   const cliOutput = document.getElementById('cli-output');
   const cliAliasOutput = document.getElementById('cli-alias-output');
 
@@ -2645,6 +2833,10 @@
 
   cliIds.forEach(id => {
     const el = document.getElementById(id);
+    // Guard against a stale id (an element removed from the HTML but left in
+    // this list): a null deref here throws at top level and aborts the rest of
+    // the script — which silently kills every const/handler defined below it.
+    if (!el) return;
     el.addEventListener(el.type === 'checkbox' ? 'change' : 'input', () => {
       // Toggle pill style
       if (el.type === 'checkbox') {
@@ -2832,8 +3024,10 @@
     ESCAPE:         { key: 'Escape', ctrl: false, shift: false },
     TOGGLE_TOC:     { key: '\\', ctrl: true, shift: false },
     HELP:           { key: '?', ctrl: false, shift: false },
+    THEME_PANEL:    { key: 't', ctrl: false, shift: false },
     NEW_WORKSPACE:  { key: 'n', ctrl: true, shift: false },
     SEARCH:         { key: '/', ctrl: false, shift: false },
+    WORKSPACE_NAVIGATOR: { key: 'g', ctrl: false, shift: false },
     PREV_HEADING:   { key: 'k', ctrl: false, shift: false },
     NEXT_HEADING:   { key: 'j', ctrl: false, shift: false },
     PREV_ANNOTATION:{ key: 'k', ctrl: true, shift: false },
@@ -2846,20 +3040,28 @@
     TOGGLE_LIVE_OFF:    { key: 'l', ctrl: false, shift: true  },
     TOGGLE_CHAT:        { key: 'c', ctrl: false, shift: false },
     TOGGLE_CHAT_ALT:    { key: 'c', ctrl: false, shift: true  },
+    DIFF_TOGGLE_VIEW:   { key: 'm', ctrl: false, shift: false },
+    DIFF_NEXT_FILE:     { key: 'n', ctrl: false, shift: false },
+    DIFF_PREV_FILE:     { key: 'p', ctrl: false, shift: false },
   };
 
   // i18n keys for shortcut descriptions (reuse web.kbd.* keys)
   const SHORTCUT_DESC_KEYS = {
     UNDO: 'web.kbd.undo', REDO: 'web.kbd.redo', REDO_ALT: 'web.kbd.redo.alt',
     ESCAPE: 'web.kbd.escape', TOGGLE_TOC: 'web.kbd.toc', HELP: 'web.kbd.help',
+    THEME_PANEL: 'web.kbd.theme',
     NEW_WORKSPACE: 'ws.add.hint',
-    SEARCH: 'web.kbd.search', PREV_HEADING: 'web.kbd.prevheading',
+    SEARCH: 'web.kbd.search', WORKSPACE_NAVIGATOR: 'web.kbd.workspace_nav',
+    PREV_HEADING: 'web.kbd.prevheading',
     NEXT_HEADING: 'web.kbd.nextheading', PREV_ANNOTATION: 'web.kbd.prevanno',
     NEXT_ANNOTATION: 'web.kbd.nextanno', SCROLL_HALF_PAGE_DOWN: 'web.kbd.scroll',
     TOGGLE_SECTION_COLLAPSE: 'web.kbd.collapse', TOGGLE_VIEWED: 'web.kbd.viewed',
     EDIT: 'web.kbd.edit',
     TOGGLE_LIVE_ACTIVE: 'web.kbd.live.active', TOGGLE_LIVE_OFF: 'web.kbd.live.off',
     TOGGLE_CHAT: 'web.kbd.chat', TOGGLE_CHAT_ALT: 'web.kbd.chat.alt',
+    DIFF_TOGGLE_VIEW: 'web.kbd.diff.view',
+    DIFF_NEXT_FILE: 'web.kbd.diff.nextfile',
+    DIFF_PREV_FILE: 'web.kbd.diff.prevfile',
   };
 
   // Render layout: each row holds one or more shortcut names. Multi-name rows
@@ -2872,8 +3074,9 @@
     ['ESCAPE'],
     ['TOGGLE_TOC'],
     ['HELP'],
+    ['THEME_PANEL'],
     ['NEW_WORKSPACE'],
-    ['SEARCH'],
+    ['SEARCH', 'WORKSPACE_NAVIGATOR'],
     ['PREV_HEADING'],
     ['NEXT_HEADING'],
     ['PREV_ANNOTATION'],
@@ -2886,6 +3089,9 @@
     ['TOGGLE_LIVE_OFF'],
     ['TOGGLE_CHAT'],
     ['TOGGLE_CHAT_ALT'],
+    ['DIFF_TOGGLE_VIEW'],
+    ['DIFF_NEXT_FILE'],
+    ['DIFF_PREV_FILE'],
   ];
 
   let currentShortcuts = {}; // user overrides only
@@ -2896,7 +3102,7 @@
     if (sc.shift) parts.push('Shift');
     let k = sc.key;
     if (k === ' ') k = 'Space';
-    else if (k === 'Escape') k = 'ESC';
+    else if (k === 'Escape') k = 'Esc';
     else if (k.length === 1) k = k.toUpperCase();
     parts.push(k);
     return parts.join(' + ');
