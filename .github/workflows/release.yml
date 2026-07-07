@@ -175,7 +175,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          git clone --depth 1 --branch v0.2.3 https://github.com/Actrium/supramark.git /tmp/supramark-graphviz
+          git clone --depth 1 --branch v0.2.3 --recurse-submodules --shallow-submodules https://github.com/Actrium/supramark.git /tmp/supramark-graphviz
           cd /tmp/supramark-graphviz/crates/graphviz-anywhere
           ./scripts/build-windows.sh --arch arm64
           native_dir="$(cygpath -m "$(pwd)/output/windows-arm64")"
