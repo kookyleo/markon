@@ -20,6 +20,9 @@ env:
   # Incremental + sccache don't compose cleanly; release builds default
   # to incremental=0 anyway, set it explicitly for clarity.
   CARGO_INCREMENTAL: "0"
+  # GitHub-hosted Linux runners do not consistently expose FUSE to AppImage
+  # helpers. Let linuxdeploy AppImages self-extract instead of mounting.
+  APPIMAGE_EXTRACT_AND_RUN: "1"
 
 jobs:
   # Create the GitHub release ONCE, up front. The 6-way build matrix then
@@ -142,6 +145,7 @@ jobs:
               libappindicator3-dev \
               librsvg2-dev \
               libfontconfig1-dev \
+              libfuse2 \
               pkg-config \
               patchelf; then
               exit 0
@@ -346,7 +350,7 @@ jobs:
 
   publish:
     needs: build
-    if: ${{ !cancelled() }}
+    if: ${{ success() }}
     runs-on: ubuntu-latest
     permissions:
       contents: write
