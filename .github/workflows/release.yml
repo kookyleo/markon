@@ -174,6 +174,88 @@ jobs:
           includeUpdaterJson: false
           args: ${{ matrix.args }}
 
+      # tauri-action uploads the DMG before we can mutate the .app bundle.
+      # The Graphviz runtime dylib is required at process launch, so patch the
+      # generated macOS app, rebuild the DMG under the same filename, and
+      # replace the uploaded release asset. The local build-dmg.sh script does
+      # this before creating its DMG; this step keeps release builds equivalent.
+      - name: Bundle Graphviz dylib into macOS DMG
+        if: contains(matrix.target, 'apple-darwin')
+        shell: bash
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          APPLE_SIGNING_IDENTITY: "-"
+        run: |
+          set -euo pipefail
+
+          TAG="${{ env.RELEASE_TAG }}"
+          TARGET="${{ matrix.target }}"
+          APP_BUNDLE="target/$TARGET/release/bundle/macos/Markon.app"
+          DMG=$(find "target/$TARGET/release/bundle/dmg" -maxdepth 1 -name "*.dmg" -type f | head -1)
+
+          if [ -z "$DMG" ]; then
+            echo "No macOS DMG found for $TARGET"
+            exit 1
+          fi
+
+          WORK_DIR=$(mktemp -d)
+          MOUNT_DIR="$WORK_DIR/mount"
+          VERIFY_DIR="$WORK_DIR/verify"
+          PATCH_DIR="$WORK_DIR/app"
+          DMG_ROOT="$WORK_DIR/dmg-root"
+          NEW_DMG="$WORK_DIR/$(basename "$DMG")"
+          mkdir -p "$PATCH_DIR" "$DMG_ROOT"
+
+          cleanup_mounts() {
+            if mount | grep -q "on $MOUNT_DIR "; then
+              hdiutil detach "$MOUNT_DIR" -quiet || true
+            fi
+            if mount | grep -q "on $VERIFY_DIR "; then
+              hdiutil detach "$VERIFY_DIR" -quiet || true
+            fi
+          }
+          trap cleanup_mounts EXIT
+
+          if [ -d "$APP_BUNDLE" ]; then
+            cp -R "$APP_BUNDLE" "$PATCH_DIR/"
+          else
+            mkdir -p "$MOUNT_DIR"
+            hdiutil attach "$DMG" -mountpoint "$MOUNT_DIR" -nobrowse -quiet
+            SRC_APP=$(find "$MOUNT_DIR" -maxdepth 1 -name "*.app" -type d | head -1)
+            if [ -z "$SRC_APP" ]; then
+              echo "No .app bundle found inside $DMG"
+              exit 1
+            fi
+            cp -R "$SRC_APP" "$PATCH_DIR/"
+            hdiutil detach "$MOUNT_DIR" -quiet
+          fi
+
+          PATCHED_APP=$(find "$PATCH_DIR" -maxdepth 1 -name "*.app" -type d | head -1)
+          if [ -z "$PATCHED_APP" ]; then
+            echo "No .app bundle available for Graphviz patching"
+            exit 1
+          fi
+
+          scripts/macos-bundle-graphviz.sh "$PATCHED_APP" "$TARGET"
+
+          rm -rf "$(dirname "$APP_BUNDLE")"
+          mkdir -p "$(dirname "$APP_BUNDLE")"
+          cp -R "$PATCHED_APP" "$APP_BUNDLE"
+
+          cp -R "$PATCHED_APP" "$DMG_ROOT/"
+          ln -s /Applications "$DMG_ROOT/Applications"
+          hdiutil create -volname "Markon" -srcfolder "$DMG_ROOT" -ov -format UDZO -fs HFS+ "$NEW_DMG"
+          cp "$NEW_DMG" "$DMG"
+
+          mkdir -p "$VERIFY_DIR"
+          hdiutil attach "$DMG" -mountpoint "$VERIFY_DIR" -nobrowse -quiet
+          VERIFY_APP=$(find "$VERIFY_DIR" -maxdepth 1 -name "*.app" -type d | head -1)
+          test -f "$VERIFY_APP/Contents/Frameworks/libgraphviz_api.dylib"
+          hdiutil detach "$VERIFY_DIR" -quiet
+
+          gh release upload "$TAG" "$DMG" --clobber
+          echo "Replaced macOS DMG with Graphviz-bundled app: $(basename "$DMG")"
+
       # tauri-bundler names the AppImage with mixed arch styles: x86_64 ->
       # `amd64` (Debian) but aarch64 stays `aarch64` (GNU). Rename the ARM
       # build to `arm64` so all four Linux artifacts (.deb + .AppImage) share
