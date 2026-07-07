@@ -23,6 +23,9 @@ env:
   # GitHub-hosted Linux runners do not consistently expose FUSE to AppImage
   # helpers. Let linuxdeploy AppImages self-extract instead of mounting.
   APPIMAGE_EXTRACT_AND_RUN: "1"
+  # Release builds must be able to fetch graphviz-anywhere native assets when
+  # no checked-in prebuilt library exists for the target.
+  GRAPHVIZ_ANYWHERE_ALLOW_DOWNLOAD: "1"
 
 jobs:
   # Create the GitHub release ONCE, up front. The 6-way build matrix then
@@ -163,6 +166,21 @@ jobs:
       - name: Build frontend assets
         shell: bash
         run: npm install && npm run build
+
+      # The upstream v0.2.3 graphviz-anywhere release does not ship a
+      # windows-arm64 native asset. Build it on the native ARM runner and point
+      # the Rust build script at that local output directory.
+      - name: Build Graphviz native runtime for Windows ARM64
+        if: matrix.target == 'aarch64-pc-windows-msvc'
+        shell: bash
+        run: |
+          set -euo pipefail
+          git clone --depth 1 --branch v0.2.3 https://github.com/Actrium/supramark.git /tmp/supramark-graphviz
+          cd /tmp/supramark-graphviz/crates/graphviz-anywhere
+          ./scripts/build-windows.sh --arch arm64
+          native_dir="$(cygpath -m "$(pwd)/output/windows-arm64")"
+          echo "GRAPHVIZ_ANYWHERE_DIR=${native_dir}" >> "$GITHUB_ENV"
+          echo "Using local Graphviz native runtime: ${native_dir}"
 
       - name: Build installer
         uses: tauri-apps/tauri-action@v0
