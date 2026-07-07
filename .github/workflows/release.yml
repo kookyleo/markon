@@ -384,6 +384,7 @@ jobs:
           cp "$SRC" "$(dirname "$SRC")/$NEW"
           gh release upload "$TAG" "$(dirname "$SRC")/$NEW" --clobber
           gh release delete-asset "$TAG" "$OLD" --yes || true
+          rm -f "$SRC"
           echo "Renamed release asset: $OLD -> $NEW"
 
       # Create updater signature ourselves since tauri-action doesn't
