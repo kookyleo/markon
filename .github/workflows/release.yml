@@ -23,6 +23,10 @@ env:
   # GitHub-hosted Linux runners do not consistently expose FUSE to AppImage
   # helpers. Let linuxdeploy AppImages self-extract instead of mounting.
   APPIMAGE_EXTRACT_AND_RUN: "1"
+  # linuxdeploy strips binaries by default while building AppImages. Tauri
+  # patches a bundle-type marker into the executable before bundling; keep that
+  # marker intact through AppImage packaging.
+  NO_STRIP: "true"
   # Release builds must be able to fetch graphviz-anywhere native assets when
   # no checked-in prebuilt library exists for the target.
   GRAPHVIZ_ANYWHERE_ALLOW_DOWNLOAD: "1"
@@ -177,6 +181,19 @@ jobs:
           set -euo pipefail
           git clone --depth 1 --branch v0.2.3 --recurse-submodules --shallow-submodules https://github.com/Actrium/supramark.git /tmp/supramark-graphviz
           cd /tmp/supramark-graphviz/crates/graphviz-anywhere
+          python3 - <<'PY'
+          from pathlib import Path
+
+          path = Path("scripts/common.sh")
+          text = path.read_text()
+          if "-DCMAKE_DISABLE_FIND_PACKAGE_GD=TRUE" not in text:
+              text = text.replace(
+                  "    -DCMAKE_DISABLE_FIND_PACKAGE_ANN=TRUE\n",
+                  "    -DCMAKE_DISABLE_FIND_PACKAGE_ANN=TRUE\n"
+                  "    -DCMAKE_DISABLE_FIND_PACKAGE_GD=TRUE\n",
+              )
+              path.write_text(text)
+          PY
           ./scripts/build-windows.sh --arch arm64
           native_dir="$(cygpath -m "$(pwd)/output/windows-arm64")"
           echo "GRAPHVIZ_ANYWHERE_DIR=${native_dir}" >> "$GITHUB_ENV"
