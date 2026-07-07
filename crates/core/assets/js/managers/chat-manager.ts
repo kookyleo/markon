@@ -21,6 +21,7 @@ import { workspaceChatApiUrl, workspaceChatUrl, workspaceFileUrl } from '../core
 import { debounce, Ids, Logger } from '../core/utils';
 import { Meta } from '../services/dom';
 import { FloatingLayer } from '../components/floating-layer';
+import { MODAL_FRAME_DRAG_REGION_SELECTOR, renderModalFrameDragRegions } from '../components/modal';
 
 // ────────────────────────────────────────────────────────────────────────────
 // Public types
@@ -120,6 +121,43 @@ export interface Citation {
     line: number | null;
     lineEnd: number | null;
     anchor: string | null;
+}
+
+export async function formatChatHttpError(res: Response): Promise<string> {
+    const status = `HTTP ${res.status}${res.statusText ? ` ${res.statusText}` : ''}`;
+    let detail = '';
+    try {
+        const raw = (await res.text()).trim();
+        if (raw) {
+            detail = extractChatErrorDetail(raw);
+        }
+    } catch {
+        detail = '';
+    }
+    return detail ? `${status}: ${detail}` : status;
+}
+
+function extractChatErrorDetail(raw: string): string {
+    try {
+        const json = JSON.parse(raw) as unknown;
+        if (json && typeof json === 'object') {
+            const object = json as Record<string, unknown>;
+            for (const key of ['error', 'message', 'detail']) {
+                const value = object[key];
+                if (typeof value === 'string' && value.trim()) {
+                    return limitChatErrorDetail(value);
+                }
+            }
+        }
+    } catch {
+        // Plain-text errors are the current backend contract.
+    }
+    return limitChatErrorDetail(raw);
+}
+
+function limitChatErrorDetail(text: string): string {
+    const compact = text.replace(/\s+/g, ' ').trim();
+    return compact.length > 500 ? `${compact.slice(0, 497)}...` : compact;
 }
 
 // ────────────────────────────────────────────────────────────────────────────
@@ -975,6 +1013,7 @@ export class ChatManager {
         const wrap = document.createElement('div');
         wrap.innerHTML = `
             <div id="markon-chat-container" class="markon-chat-container" role="dialog" aria-label="AI Chat">
+                ${renderModalFrameDragRegions()}
                 <div class="markon-chat-face" title="${escapeHtml(tooltip)}" aria-label="${escapeHtml(tooltip)}">
                     <span class="markon-chat-face-icon icon-chat">${ICON_CHAT}</span>
                     <span class="markon-chat-face-icon icon-close">${ICON_CLOSE}</span>
@@ -1082,7 +1121,7 @@ export class ChatManager {
             panelAnchor: 'TL',
             initialOffset: { right: 20, bottom: 70 },
             storageKey: CONFIG.STORAGE_KEYS.CHAT_POS,
-            expandedDragHandle: '.markon-chat-header',
+            expandedDragHandle: `.markon-chat-header, ${MODAL_FRAME_DRAG_REGION_SELECTOR}`,
             // Header drag handle covers buttons too — FloatingLayer's 5px
             // threshold separates click from drag, so a normal click on the
             // thread switcher / rename / new still works while a small drag
@@ -1505,12 +1544,15 @@ export class ChatManager {
         if (msg.error) {
             const err = document.createElement('div');
             err.className = 'markon-chat-error';
-            err.textContent = msg.error;
+            const text = document.createElement('span');
+            text.className = 'markon-chat-error-text';
+            text.textContent = msg.error;
             const retry = document.createElement('button');
             retry.type = 'button';
             retry.className = 'markon-chat-retry';
             retry.textContent = this.#tt('web.chat.retry', 'Retry');
             retry.addEventListener('click', () => this.#retryLast());
+            err.appendChild(text);
             err.appendChild(retry);
             body.appendChild(err);
         }
@@ -1900,7 +1942,8 @@ export class ChatManager {
                 body: JSON.stringify(payload),
                 signal: this.#abortController.signal,
             });
-            if (!res.ok || !res.body) throw new Error(`HTTP ${res.status}`);
+            if (!res.ok) throw new Error(await formatChatHttpError(res));
+            if (!res.body) throw new Error(`HTTP ${res.status}: empty chat stream`);
             await this.#consumeSSE(res.body, assistantMsg);
         } catch (err) {
             const e = err as { name?: string; message?: string };
@@ -2064,8 +2107,9 @@ export class ChatManager {
     }
 
     #retryLast(): void {
-        if (!this.#textarea || !this.#currentThreadId) return;
-        const list = this.#messagesByThread.get(this.#currentThreadId) || [];
+        if (!this.#textarea) return;
+        const threadKey = this.#currentThreadId ?? '__pending__';
+        const list = this.#messagesByThread.get(threadKey) || [];
         // Find the most recent user message and re-send it.
         for (let i = list.length - 1; i >= 0; i--) {
             const m = list[i];
@@ -2076,7 +2120,7 @@ export class ChatManager {
                 if (text) {
                     // Drop everything after this user msg (failed assistant attempt).
                     list.length = i + 1;
-                    this.#messagesByThread.set(this.#currentThreadId, list);
+                    this.#messagesByThread.set(threadKey, list);
                     this.#renderAllMessages();
                     this.#textarea.value = text;
                     void this.#submit();
@@ -2460,5 +2504,10 @@ export class ChatManager {
     /** @internal — test-only: drive Undo on an already-applied edit. */
     _testUndoAppliedEdit(editId: string): Promise<void> {
         return this.#undoAppliedEdit(editId);
+    }
+
+    /** @internal — test-only: drive Retry on the most recent failed turn. */
+    _testRetryLast(): void {
+        this.#retryLast();
     }
 }

@@ -106,6 +106,76 @@ describe('SectionViewedManager', () => {
         const raw = localStorage.getItem('markon-viewed-docs/x.md');
         expect(raw).not.toBeNull();
         expect(JSON.parse(raw as string)).toEqual({ 'h2-a': true });
+
+        const collapsedRaw = localStorage.getItem('markon-collapsed-docs/x.md');
+        expect(collapsedRaw).not.toBeNull();
+        expect(JSON.parse(collapsedRaw as string)).toEqual({ 'h2-a': true });
+    });
+
+    it('restores viewed sections as collapsed when no explicit collapse state exists', async () => {
+        seedMeta('file-path', 'docs/x.md');
+        seedMeta('enable-viewed', 'true');
+        localStorage.setItem('markon-viewed-docs/x.md', JSON.stringify({ 'h2-a': true }));
+        buildArticle(['h2-a']);
+
+        const mgr = new SectionViewedManager(false, null);
+        await mgr.ready;
+
+        expect(document.getElementById('h2-a')?.classList.contains('section-collapsed')).toBe(true);
+        const cb = document.querySelector<HTMLInputElement>('.viewed-checkbox[data-heading-id="h2-a"]');
+        expect(cb?.checked).toBe(true);
+    });
+
+    it('persists manual collapse and expand independently of viewed state', async () => {
+        seedMeta('file-path', 'docs/x.md');
+        seedMeta('enable-viewed', 'true');
+        buildArticle(['h2-a']);
+
+        const mgr = new SectionViewedManager(false, null);
+        await mgr.ready;
+
+        mgr.toggleCollapse('h2-a');
+        expect(JSON.parse(localStorage.getItem('markon-collapsed-docs/x.md') ?? '{}')).toEqual({ 'h2-a': true });
+
+        document.body.innerHTML = '';
+        buildArticle(['h2-a']);
+        const restoredCollapsed = new SectionViewedManager(false, null);
+        await restoredCollapsed.ready;
+        expect(document.getElementById('h2-a')?.classList.contains('section-collapsed')).toBe(true);
+
+        restoredCollapsed.toggleCollapse('h2-a');
+        expect(JSON.parse(localStorage.getItem('markon-collapsed-docs/x.md') ?? '{}')).toEqual({ 'h2-a': false });
+
+        document.body.innerHTML = '';
+        buildArticle(['h2-a']);
+        const restoredExpanded = new SectionViewedManager(false, null);
+        await restoredExpanded.ready;
+        expect(document.getElementById('h2-a')?.classList.contains('section-collapsed')).toBe(false);
+    });
+
+    it('keeps a manually expanded viewed section expanded after reload', async () => {
+        seedMeta('file-path', 'docs/x.md');
+        seedMeta('enable-viewed', 'true');
+        localStorage.setItem('markon-viewed-docs/x.md', JSON.stringify({ 'h2-a': true }));
+        buildArticle(['h2-a']);
+
+        const mgr = new SectionViewedManager(false, null);
+        await mgr.ready;
+        expect(document.getElementById('h2-a')?.classList.contains('section-collapsed')).toBe(true);
+
+        mgr.toggleCollapse('h2-a');
+        expect(document.getElementById('h2-a')?.classList.contains('section-collapsed')).toBe(false);
+
+        document.body.innerHTML = '';
+        buildArticle(['h2-a']);
+        const restored = new SectionViewedManager(false, null);
+        await restored.ready;
+
+        expect(restored.viewedState).toEqual({ 'h2-a': true });
+        expect(restored.collapsedState).toEqual({ 'h2-a': false });
+        expect(document.getElementById('h2-a')?.classList.contains('section-collapsed')).toBe(false);
+        const cb = document.querySelector<HTMLInputElement>('.viewed-checkbox[data-heading-id="h2-a"]');
+        expect(cb?.checked).toBe(true);
     });
 
     it('toggleCollapse flips section-collapsed without touching viewedState', async () => {
@@ -209,6 +279,76 @@ describe('SectionViewedManager', () => {
         expect(paragraph.classList.contains('section-content-temp-visible')).toBe(false);
     });
 
+    it('temporarily expands a collapsed note source and restores it when the note loses focus', async () => {
+        seedMeta('file-path', 'docs/x.md');
+        seedMeta('enable-viewed', 'true');
+        localStorage.setItem('markon-viewed-docs/x.md', JSON.stringify({ 'h2-a': true }));
+        const article = buildArticle(['h2-a']);
+        const paragraph = article.querySelector('p')!;
+        paragraph.innerHTML = '<span class="has-note" data-annotation-id="anno-a">note source</span>';
+
+        const mgr = new SectionViewedManager(false, null);
+        await mgr.ready;
+
+        const heading = document.getElementById('h2-a')!;
+        const source = article.querySelector<HTMLElement>('[data-annotation-id="anno-a"]')!;
+        expect(heading.classList.contains('section-collapsed')).toBe(true);
+
+        mgr.revealNoteSource('anno-a', source);
+        expect(heading.classList.contains('section-collapsed')).toBe(false);
+        expect(paragraph.classList.contains('section-content-hidden')).toBe(false);
+
+        mgr.clearNoteSourceReveal('anno-a');
+        expect(heading.classList.contains('section-collapsed')).toBe(true);
+        expect(paragraph.classList.contains('section-content-hidden')).toBe(true);
+    });
+
+    it('does not restore an auto-expanded note source after manual expand/collapse', async () => {
+        seedMeta('file-path', 'docs/x.md');
+        seedMeta('enable-viewed', 'true');
+        localStorage.setItem('markon-viewed-docs/x.md', JSON.stringify({ 'h2-a': true }));
+        const article = buildArticle(['h2-a']);
+        const paragraph = article.querySelector('p')!;
+        paragraph.innerHTML = '<span class="has-note" data-annotation-id="anno-a">note source</span>';
+
+        const mgr = new SectionViewedManager(false, null);
+        await mgr.ready;
+
+        const heading = document.getElementById('h2-a')!;
+        const source = article.querySelector<HTMLElement>('[data-annotation-id="anno-a"]')!;
+
+        mgr.revealNoteSource('anno-a', source);
+        mgr.toggleCollapse('h2-a');
+        mgr.toggleCollapse('h2-a');
+        mgr.clearNoteSourceReveal('anno-a');
+
+        expect(heading.classList.contains('section-collapsed')).toBe(false);
+    });
+
+    it('temporarily expands every collapsed ancestor section containing the note source', async () => {
+        seedMeta('file-path', 'docs/x.md');
+        seedMeta('enable-viewed', 'true');
+        buildNestedArticle();
+
+        const mgr = new SectionViewedManager(false, null);
+        await mgr.ready;
+
+        const nestedParagraph = document.querySelector<HTMLElement>('#h3-b + p')!;
+        nestedParagraph.innerHTML = '<span class="has-note" data-annotation-id="anno-b">nested source</span>';
+        const source = nestedParagraph.querySelector<HTMLElement>('[data-annotation-id="anno-b"]')!;
+
+        mgr.collapseSection('h2-a');
+        mgr.collapseSection('h3-b');
+        mgr.revealNoteSource('anno-b', source);
+
+        expect(document.getElementById('h2-a')?.classList.contains('section-collapsed')).toBe(false);
+        expect(document.getElementById('h3-b')?.classList.contains('section-collapsed')).toBe(false);
+
+        mgr.clearNoteSourceReveal('anno-b');
+        expect(document.getElementById('h2-a')?.classList.contains('section-collapsed')).toBe(true);
+        expect(document.getElementById('h3-b')?.classList.contains('section-collapsed')).toBe(true);
+    });
+
     it('shared-mode: WS viewed_state push updates viewedState and reflects in checkboxes', async () => {
         seedMeta('file-path', 'docs/x.md');
         seedMeta('enable-viewed', 'true');
@@ -234,6 +374,35 @@ describe('SectionViewedManager', () => {
         // Checkbox state reflects the push.
         const cb = document.querySelector<HTMLInputElement>('.viewed-checkbox[data-heading-id="h2-a"]');
         expect(cb?.checked).toBe(true);
+    });
+
+    it('can preserve current expansion state for the first shared viewed_state replay', async () => {
+        seedMeta('file-path', 'docs/x.md');
+        seedMeta('enable-viewed', 'true');
+        buildArticle(['h2-a', 'h2-b']);
+
+        const fakeWs = new EventTarget() as unknown as WebSocket;
+        Object.defineProperty(fakeWs, 'readyState', { value: WebSocket.OPEN, configurable: true });
+        Object.defineProperty(fakeWs, 'send', { value: vi.fn(), configurable: true });
+
+        const mgr = new SectionViewedManager(false, null);
+        await mgr.ready;
+
+        mgr.toggleCollapse('h2-a');
+        expect(document.getElementById('h2-a')?.classList.contains('section-collapsed')).toBe(true);
+        expect(document.getElementById('h2-b')?.classList.contains('section-collapsed')).toBe(false);
+
+        mgr.isSharedMode = true;
+        mgr.ws = fakeWs;
+        mgr.preserveExpansionForNextSharedState();
+        mgr.setupWebSocketListeners();
+        (fakeWs as EventTarget).dispatchEvent(new MessageEvent('message', {
+            data: JSON.stringify({ type: 'viewed_state', state: { 'h2-b': true } }),
+        }));
+
+        expect(mgr.viewedState).toEqual({ 'h2-b': true });
+        expect(document.getElementById('h2-a')?.classList.contains('section-collapsed')).toBe(true);
+        expect(document.getElementById('h2-b')?.classList.contains('section-collapsed')).toBe(false);
     });
 
     it('saveState in shared mode sends update_viewed_state through the WebSocket', () => {

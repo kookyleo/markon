@@ -8,7 +8,13 @@
  * registered set, pressing `?` here shows exactly this page's shortcuts.
  */
 
+import { CONFIG } from './core/config';
+import { Logger } from './core/utils';
+import { ChatManager } from './managers/chat-manager';
+import { CollaborationManager } from './managers/collaboration-manager';
 import { KeyboardShortcutsManager } from './managers/keyboard-shortcuts';
+import { WebSocketManager } from './managers/websocket-manager';
+import { Meta } from './services/dom';
 
 const currentView = (shell: HTMLElement): 'rendered' | 'raw' =>
     shell.getAttribute('data-current-diff-view') === 'rendered' ? 'rendered' : 'raw';
@@ -26,6 +32,36 @@ const toggleView = (shell: HTMLElement): void => {
 // works for Raw and Rendered alike — only the surface DOM differs, not the logic.
 const CHANGE_SELECTOR =
     '.diff-change-block.is-modified, .diff-change-block.is-added, .diff-change-block.is-deleted';
+
+const workspaceRouteKey = (): string =>
+    `${window.location.pathname}${window.location.search}${window.location.hash}`;
+
+const initWorkspaceSurfaces = async (): Promise<CollaborationManager | null> => {
+    const enableLive = Meta.flag(CONFIG.META_TAGS.ENABLE_LIVE);
+    const sharedAnnotation = Meta.flag(CONFIG.META_TAGS.SHARED_ANNOTATION);
+    let collaboration: CollaborationManager | null = null;
+
+    if (enableLive || sharedAnnotation) {
+        const ws = new WebSocketManager(workspaceRouteKey());
+        try {
+            await ws.connect();
+            const socket = ws.getWebSocket();
+            if (socket) window.ws = socket;
+            collaboration = new CollaborationManager({ enableLive, ws });
+            collaboration.init();
+        } catch (error) {
+            Logger.warn('DiffShortcuts', 'Workspace live socket unavailable:', error);
+        }
+    }
+
+    if (Meta.flag(CONFIG.META_TAGS.ENABLE_CHAT)) {
+        const chat = new ChatManager(null);
+        chat.init();
+        window.chatManager = chat;
+    }
+
+    return collaboration;
+};
 
 /** The active view panel and the element that actually scrolls inside it. */
 const activeScroller = (shell: HTMLElement): { panel: HTMLElement; scroller: HTMLElement } | null => {
@@ -79,9 +115,10 @@ const stepBlock = (shell: HTMLElement, dir: 1 | -1): void => {
     scroller.scrollTo({ top: Math.max(0, y), behavior: 'smooth' });
 };
 
-const init = (): void => {
+const init = async (): Promise<void> => {
     const shell = document.querySelector<HTMLElement>('[data-diff-shell]');
     if (!shell) return;
+    const collaboration = await initWorkspaceSurfaces();
 
     const km = new KeyboardShortcutsManager();
 
@@ -110,6 +147,14 @@ const init = (): void => {
     km.register('DIFF_TOGGLE_VIEW', () => toggleView(shell));
     km.register('DIFF_NEXT_FILE', () => stepBlock(shell, 1));
     km.register('DIFF_PREV_FILE', () => stepBlock(shell, -1));
+    if (Meta.flag(CONFIG.META_TAGS.ENABLE_LIVE) && collaboration) {
+        km.register('TOGGLE_LIVE_ACTIVE', () => collaboration.toggleActiveMode());
+        km.register('TOGGLE_LIVE_OFF', () => collaboration.toggleOff());
+    }
+    if (Meta.flag(CONFIG.META_TAGS.ENABLE_CHAT)) {
+        km.register('TOGGLE_CHAT', () => window.chatManager?.openInDefault());
+        km.register('TOGGLE_CHAT_ALT', () => window.chatManager?.openInDefault({ invert: true }));
+    }
 
     document.addEventListener('keydown', (e) => km.handle(e));
     document.addEventListener('click', (e) => {
@@ -129,7 +174,7 @@ const init = (): void => {
 };
 
 if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', init, { once: true });
+    document.addEventListener('DOMContentLoaded', () => { void init(); }, { once: true });
 } else {
-    init();
+    void init();
 }

@@ -237,6 +237,12 @@ describe('StorageManager', () => {
             expect(localStorage.getItem('markon-annotations-foo.md')).toBeNull();
         });
 
+        it('loads and saves the local annotation mirror independent of mode', async () => {
+            const a = makeAnno({ id: 'a' });
+            await StorageManager.saveLocalAnnotations('foo.md', [a]);
+            expect(await StorageManager.loadLocalAnnotations('foo.md')).toEqual([a]);
+        });
+
         it('falls back to LocalStorageStrategy when shared mode is requested but ws is null', () => {
             const m = new StorageManager('foo.md', true, null);
             const a = makeAnno({ id: 'a' });

@@ -76,6 +76,22 @@ describe('DraggableManager', () => {
         expect(element.style.top).toBe('100px');
     });
 
+    it('binds every element matched by a handle selector', () => {
+        const topHandle = document.createElement('span');
+        const bottomHandle = document.createElement('span');
+        topHandle.className = 'edge-handle';
+        bottomHandle.className = 'edge-handle';
+        element.append(topHandle, bottomHandle);
+
+        new DraggableManager(element, { handle: '.edge-handle' });
+
+        bottomHandle.dispatchEvent(makeMouseEvent('mousedown', 20, 20, bottomHandle));
+        document.dispatchEvent(makeMouseEvent('mousemove', 35, 50));
+
+        expect(element.style.left).toBe('115px');
+        expect(element.style.top).toBe('130px');
+    });
+
     it('persists offset to localStorage when saveOffset + storageKey are set', () => {
         element.dataset['originalLeft'] = '50';
         element.dataset['originalTop'] = '50';
@@ -92,6 +108,22 @@ describe('DraggableManager', () => {
         // initialLeft 100 + dx 25 = 125 → offset.dx = 125 - 50 = 75
         expect(parsed.dx).toBe(75);
         expect(parsed.dy).toBe(85);
+    });
+
+    it('restores offset relative to the original element position', () => {
+        element.dataset['originalLeft'] = '50';
+        element.dataset['originalTop'] = '60';
+        localStorage.setItem('offset-key', JSON.stringify({ dx: 15, dy: -10 }));
+
+        new DraggableManager(element, {
+            fixed: true,
+            restoreOffset: true,
+            storageKey: 'offset-key',
+        });
+
+        expect(element.style.position).toBe('fixed');
+        expect(element.style.left).toBe('65px');
+        expect(element.style.top).toBe('50px');
     });
 
     it('restores and persists fixed window position', () => {

@@ -311,6 +311,50 @@
     user-select: none;
 }
 
+.markon-modal-frame.markon-modal-drag-handle > * {
+    cursor: auto;
+    user-select: auto;
+}
+
+.markon-modal-frame-drag-region {
+    position: absolute;
+    z-index: var(--markon-z-content-overlay);
+    pointer-events: auto;
+}
+
+.markon-modal-frame-drag-top {
+    top: 0;
+    right: 24px;
+    left: 0;
+    height: var(--markon-modal-frame-inset);
+}
+
+.markon-modal-frame-drag-right {
+    top: 0;
+    right: 0;
+    bottom: 24px;
+    width: var(--markon-modal-frame-inset);
+}
+
+.markon-modal-frame-drag-bottom {
+    right: 24px;
+    bottom: 0;
+    left: 0;
+    height: var(--markon-modal-frame-inset);
+}
+
+.markon-modal-frame-drag-left {
+    top: 0;
+    bottom: 24px;
+    left: 0;
+    width: var(--markon-modal-frame-inset);
+}
+
+.shortcuts-help-modal.markon-modal-drag-handle .shortcuts-help-header {
+    cursor: grab;
+    user-select: none;
+}
+
 .markon-modal-drag-handle.is-dragging {
     cursor: grabbing;
 }

@@ -47,6 +47,8 @@ describe('NoteManager', () => {
         logSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
         // Default to wide-screen so layout uses physical layout.
         Object.defineProperty(window, 'innerWidth', { value: 1600, configurable: true, writable: true });
+        Object.defineProperty(window, 'innerHeight', { value: 800, configurable: true, writable: true });
+        Object.defineProperty(document.documentElement, 'clientHeight', { value: 800, configurable: true });
     });
 
     afterEach(() => {
@@ -135,6 +137,28 @@ describe('NoteManager', () => {
         expect(card.textContent).toContain('<img');
     });
 
+    it('autolinks http(s) URLs in note content without allowing unsafe schemes', () => {
+        const root = setupBody(`<p><span class="has-note" data-annotation-id="x">y</span></p>`);
+        const annos = [
+            makeAnno({
+                id: 'x',
+                note: 'see https://example.com/a?b=1, not javascript:alert(1)',
+            }),
+        ];
+        const mgr = new NoteManager(fakeAnnotationManager(annos), root);
+        mgr.render();
+
+        const card = document.querySelector('.note-card-margin .note-content')!;
+        const link = card.querySelector<HTMLAnchorElement>('a');
+        expect(link).not.toBeNull();
+        expect(link?.href).toBe('https://example.com/a?b=1');
+        expect(link?.target).toBe('_blank');
+        expect(link?.rel).toContain('noopener');
+        expect(link?.rel).toContain('noreferrer');
+        expect(card.textContent).toContain('not javascript:alert(1)');
+        expect(card.querySelector('a[href^="javascript:"]')).toBeNull();
+    });
+
     it('clear() removes all note cards and resets state', () => {
         const root = setupBody(`<p><span class="has-note" data-annotation-id="a">x</span></p>`);
         const mgr = new NoteManager(
@@ -181,6 +205,59 @@ describe('NoteManager', () => {
         mgr.render();
         const card = document.querySelector<HTMLElement>('.note-card-margin')!;
         expect(card.style.display).toBe('none');
+    });
+
+    it('hides cards whose source anchor is outside the current viewport', () => {
+        const root = setupBody(`
+            <p><span class="has-note" data-annotation-id="visible">visible</span></p>
+            <p><span class="has-note" data-annotation-id="offscreen">offscreen</span></p>
+        `);
+        const visible = root.querySelector<HTMLElement>('[data-annotation-id="visible"]')!;
+        const offscreen = root.querySelector<HTMLElement>('[data-annotation-id="offscreen"]')!;
+        visible.getBoundingClientRect = () =>
+            ({ left: 0, top: 100, right: 0, bottom: 120, width: 0, height: 20, x: 0, y: 100, toJSON: () => ({}) });
+        offscreen.getBoundingClientRect = () =>
+            ({ left: 0, top: 1200, right: 0, bottom: 1220, width: 0, height: 20, x: 0, y: 1200, toJSON: () => ({}) });
+        const mgr = new NoteManager(
+            fakeAnnotationManager([
+                makeAnno({ id: 'visible', note: 'shown' }),
+                makeAnno({ id: 'offscreen', note: 'hidden' }),
+            ]),
+            root,
+        );
+
+        mgr.render();
+
+        const visibleCard = document.querySelector<HTMLElement>('[data-annotation-id="visible"].note-card-margin')!;
+        const offscreenCard = document.querySelector<HTMLElement>('[data-annotation-id="offscreen"].note-card-margin')!;
+        expect(visibleCard.style.display).toBe('block');
+        expect(offscreenCard.style.display).toBe('none');
+    });
+
+    it('emits active-change events with the source element and prior id', () => {
+        const root = setupBody(`<p><span class="has-note" data-annotation-id="a">word</span></p>`);
+        const mgr = new NoteManager(
+            fakeAnnotationManager([makeAnno({ id: 'a', note: 'body' })]),
+            root,
+        );
+        mgr.render();
+        const source = root.querySelector<HTMLElement>('[data-annotation-id="a"]')!;
+        const onActiveChange = vi.fn();
+        mgr.onActiveChange(onActiveChange);
+
+        mgr.setActive('a');
+        expect(onActiveChange).toHaveBeenLastCalledWith({
+            annotationId: 'a',
+            previousAnnotationId: null,
+            sourceElement: source,
+        });
+
+        mgr.clearActive();
+        expect(onActiveChange).toHaveBeenLastCalledWith({
+            annotationId: null,
+            previousAnnotationId: 'a',
+            sourceElement: null,
+        });
     });
 
     it('showNotePopup creates a positioned .note-popup near the highlight', () => {

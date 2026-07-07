@@ -9,6 +9,7 @@ import { Meta } from '../services/dom';
 import { Text } from '../services/text';
 import { downloadTextFile, toMarkdownFilename } from '../core/download';
 import { copyText, flashText } from '../core/clipboard';
+import { showNotification } from '../core/notifications';
 
 const _t = (key: string, ...args: unknown[]): string => i18n.t(key, ...args);
 
@@ -620,27 +621,7 @@ export class EditorManager {
             // Text not found, just focus at the beginning
             Logger.warn('EditorManager', `Text not found: "${searchText}"`);
             this.#focusEditor();
-
-            // Show a subtle notification
-            const notification = document.createElement('div');
-            notification.textContent = 'Selected text not found in source';
-            notification.style.cssText = `
-                position: fixed;
-                top: 80px;
-                left: 50%;
-                transform: translateX(-50%);
-                background: rgba(0, 0, 0, 0.8);
-                color: white;
-                padding: 10px 20px;
-                border-radius: 4px;
-                z-index: 10001;
-                font-size: 14px;
-            `;
-            document.body.appendChild(notification);
-
-            setTimeout(() => {
-                notification.remove();
-            }, 3000);
+            showNotification(_t('web.editor.selection_not_found'), { variant: 'warning' });
         }
     }
 

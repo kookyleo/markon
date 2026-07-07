@@ -15,6 +15,7 @@
 import { CONFIG, i18n, type ShortcutDef, type ShortcutName } from '../core/config';
 import { PlatformUtils } from '../core/utils';
 import { makeModalDraggable } from './modal';
+import { DEFAULT_NON_DRAG_SELECTOR } from './draggable';
 
 const _t = (key: string, ...args: unknown[]): string => i18n.t(key, ...args);
 
@@ -203,8 +204,9 @@ export function openShortcutsHelp(registered: Iterable<ShortcutName>, invoke?: S
     const modal = panel.querySelector<HTMLElement>('.shortcuts-help-modal');
     if (modal) {
         dragManager = makeModalDraggable(modal, {
-            handle: '.shortcuts-help-header',
+            handle: modal,
             storageKey: CONFIG.STORAGE_KEYS.SHORTCUTS_HELP_POS,
+            nonDragSelector: `${DEFAULT_NON_DRAG_SELECTOR}, .shortcuts-help-content, .shortcuts-help-footer`,
         });
     }
 

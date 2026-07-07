@@ -93,7 +93,7 @@ export interface AnnotationStorage {
 }
 
 /** Action emitted via the `onChange` callback. */
-export type AnnotationChangeAction = 'add' | 'delete' | 'clear';
+export type AnnotationChangeAction = 'add' | 'delete' | 'clear' | 'replace';
 
 /** Payload sent to the `onChange` callback. */
 export interface AnnotationChangeEvent {
@@ -147,6 +147,19 @@ export class AnnotationManager {
 
     getById(id: string): Annotation | null {
         return this.#annotations.find(a => a.id === id) ?? null;
+    }
+
+    /**
+     * Replace the in-memory annotation snapshot without writing to storage.
+     *
+     * Shared mode uses this after merging a server snapshot with the local
+     * mirror. Persistence is handled explicitly by the caller so a reconnect
+     * cannot accidentally clear or overwrite either side.
+     */
+    replaceAll(annotations: Annotation[]): void {
+        this.#annotations = [...annotations];
+        this.#triggerChange('replace', annotations);
+        Logger.log('AnnotationManager', `Replaced annotations in memory: ${annotations.length}`);
     }
 
     /**

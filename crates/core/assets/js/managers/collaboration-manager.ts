@@ -65,6 +65,8 @@ export interface LiveFocusAction {
     action: 'focus_section';
     clientId: string;
     color: string;
+    workspaceId?: string;
+    route?: string;
     xpath: string;
 }
 
@@ -73,6 +75,8 @@ export interface LiveSelectionAction {
     action: 'selection';
     clientId: string;
     color: string;
+    workspaceId?: string;
+    route?: string;
     cleared?: boolean;
     startPath?: string;
     startOffset?: number;
@@ -85,11 +89,38 @@ export interface LiveViewedAction {
     action: 'viewed';
     clientId: string;
     color: string;
+    workspaceId?: string;
+    route?: string;
     headingId: string;
     checked: boolean;
 }
 
-export type LiveAction = LiveFocusAction | LiveSelectionAction | LiveViewedAction;
+/** Workspace-route broadcast. Sent when a broadcaster enters a page. */
+export interface LiveNavigationAction {
+    action: 'navigate';
+    clientId: string;
+    color: string;
+    workspaceId?: string;
+    route: string;
+}
+
+/** Viewport broadcast. Applies to window scrolling and diff-page scroll panes. */
+export interface LiveViewportAction {
+    action: 'viewport';
+    clientId: string;
+    color: string;
+    workspaceId?: string;
+    route?: string;
+    scrollX: number;
+    scrollY: number;
+}
+
+export type LiveAction =
+    | LiveFocusAction
+    | LiveSelectionAction
+    | LiveViewedAction
+    | LiveNavigationAction
+    | LiveViewportAction;
 
 // ── App surface ────────────────────────────────────────────────────────────
 
@@ -110,6 +141,7 @@ export class CollaborationManager {
     app: CollaborationApp;
     clientId: string;
     userColor: string;
+    workspaceId: string;
     /** Whether Live broadcast/follow is enabled. When false the sphere still
      *  appears (for shared-annotation identity) but the Live mode section is
      *  hidden. */
@@ -128,6 +160,7 @@ export class CollaborationManager {
     _applyingRemote?: boolean;
     _lastFocusXPath?: string;
     _lastSelectionKey?: string | null;
+    _lastViewportKey?: string | null;
     // Retained so a future destroy() / reinit cycle can detach without
     // leaking accumulated observers on every call to _observeFocusedSection.
     _focusObserver?: MutationObserver;
@@ -135,6 +168,7 @@ export class CollaborationManager {
     constructor(app: CollaborationApp) {
         this.app = app;
         this.clientId = this._getOrCreateClientId();
+        this.workspaceId = Meta.get(CONFIG.META_TAGS.WORKSPACE_ID) || '';
         // Single identity colour source (auto-assigns + persists on first use);
         // shared with annotation authorship.
         this.userColor = Identity.color();
@@ -179,6 +213,11 @@ export class CollaborationManager {
             this.handleLiveAction(msg.data as unknown as LiveAction);
         });
 
+        if (this.isBroadcasting) {
+            this._broadcastNavigation();
+            this._broadcastViewport();
+        }
+
         Logger.log('Live', `Initialized (clientId=${this.clientId}, mode=${this.mode})`);
     }
 
@@ -207,6 +246,10 @@ export class CollaborationManager {
         this.mode = mode;
         localStorage.setItem(CONFIG.STORAGE_KEYS.LIVE_MODE, mode);
         this._updateUIState();
+        if (mode === LiveMode.BROADCAST) {
+            this._broadcastNavigation();
+            this._broadcastViewport();
+        }
     }
 
     _loadSavedMode(): LiveModeValue {
@@ -219,15 +262,35 @@ export class CollaborationManager {
     handleLiveAction(data: LiveAction): void {
         if (data.clientId === this.clientId) return;
         if (!this.isFollowing) return;
+        if (!this._sameWorkspace(data.workspaceId)) return;
 
-        this.activeLeader = data;
-        this._updateUIState();
+        if (data.action === 'navigate') {
+            this._applyNavigation(data);
+            return;
+        }
 
-        if (this.leaderTimer) clearTimeout(this.leaderTimer);
-        this.leaderTimer = setTimeout(() => {
-            this.activeLeader = null;
+        if (data.route && !this._isCurrentRoute(data.route)) {
+            const nav: LiveNavigationAction = {
+                action: 'navigate',
+                clientId: data.clientId,
+                color: data.color,
+                route: data.route,
+            };
+            if (data.workspaceId) nav.workspaceId = data.workspaceId;
+            this._applyNavigation(nav);
+            return;
+        }
+
+        if (data.action !== 'viewport') {
+            this.activeLeader = data;
             this._updateUIState();
-        }, 3000);
+
+            if (this.leaderTimer) clearTimeout(this.leaderTimer);
+            this.leaderTimer = setTimeout(() => {
+                this.activeLeader = null;
+                this._updateUIState();
+            }, 3000);
+        }
 
         if (data.action === 'focus_section') {
             this._applyFocusSection(data.xpath, data.color);
@@ -239,6 +302,82 @@ export class CollaborationManager {
             }
         } else if (data.action === 'viewed') {
             this._applyViewed(data);
+        } else if (data.action === 'viewport') {
+            this._applyViewport(data);
+        }
+    }
+
+    _sameWorkspace(workspaceId: string | undefined): boolean {
+        return !workspaceId || !this.workspaceId || workspaceId === this.workspaceId;
+    }
+
+    _currentRoute(): string {
+        return `${window.location.pathname}${window.location.search}${window.location.hash}`;
+    }
+
+    _resolveWorkspaceRoute(route: string): URL | null {
+        let url: URL;
+        try {
+            url = new URL(route, window.location.origin);
+        } catch {
+            return null;
+        }
+        if (url.origin !== window.location.origin) return null;
+        if (!this.workspaceId) return url;
+        const wsRoot = `/${this.workspaceId}`;
+        const internalRoot = `/_/${this.workspaceId}`;
+        const path = url.pathname;
+        if (
+            path !== wsRoot &&
+            !path.startsWith(`${wsRoot}/`) &&
+            path !== internalRoot &&
+            !path.startsWith(`${internalRoot}/`)
+        ) return null;
+        return url;
+    }
+
+    _isCurrentRoute(route: string): boolean {
+        const url = this._resolveWorkspaceRoute(route);
+        if (!url) return true;
+        return `${url.pathname}${url.search}${url.hash}` === this._currentRoute();
+    }
+
+    _applyNavigation(data: LiveNavigationAction): void {
+        const url = this._resolveWorkspaceRoute(data.route);
+        if (!url) return;
+        const target = `${url.pathname}${url.search}${url.hash}`;
+        if (target === this._currentRoute()) return;
+        window.location.assign(target);
+    }
+
+    _currentScrollTarget(): Window | HTMLElement {
+        const diffScroller = document.querySelector<HTMLElement>(
+            '[data-diff-view-panel]:not([hidden])[data-diff-scroller], ' +
+            '[data-diff-view-panel]:not([hidden]) [data-diff-scroller]',
+        );
+        return diffScroller || window;
+    }
+
+    _readViewport(): { scrollX: number; scrollY: number } {
+        const target = this._currentScrollTarget();
+        if (target === window) {
+            return { scrollX: window.scrollX, scrollY: window.scrollY };
+        }
+        const el = target as HTMLElement;
+        return { scrollX: el.scrollLeft, scrollY: el.scrollTop };
+    }
+
+    _applyViewport(data: LiveViewportAction): void {
+        const target = this._currentScrollTarget();
+        this._applyingRemote = true;
+        try {
+            if (target === window) {
+                window.scrollTo({ left: data.scrollX, top: data.scrollY, behavior: 'smooth' });
+            } else {
+                target.scrollTo({ left: data.scrollX, top: data.scrollY, behavior: 'smooth' });
+            }
+        } finally {
+            setTimeout(() => { this._applyingRemote = false; }, 250);
         }
     }
 
@@ -357,10 +496,24 @@ export class CollaborationManager {
             data: {
                 clientId: this.clientId,
                 color: this.userColor, // identity is purely the speaker's color
+                workspaceId: this.workspaceId,
+                route: this._currentRoute(),
                 action,
                 ...extraData,
             },
         });
+    }
+
+    _broadcastNavigation(): void {
+        this.broadcastAction('navigate', { route: this._currentRoute() });
+    }
+
+    _broadcastViewport(): void {
+        const { scrollX, scrollY } = this._readViewport();
+        const key = `${this._currentRoute()}|${Math.round(scrollX)}|${Math.round(scrollY)}`;
+        if (key === this._lastViewportKey) return;
+        this._lastViewportKey = key;
+        this.broadcastAction('viewport', { scrollX, scrollY });
     }
 
     // Watch for the reader changing the active section (via click or j/k
@@ -414,6 +567,22 @@ export class CollaborationManager {
             const id = cb.dataset?.['headingId'];
             if (!id) return;
             this.broadcastAction('viewed', { headingId: id, checked: cb.checked });
+        });
+    }
+
+    _observeViewport(): void {
+        let timer: ReturnType<typeof setTimeout> | undefined;
+        const schedule = (): void => {
+            if (this._applyingRemote) return;
+            if (timer) clearTimeout(timer);
+            timer = setTimeout(() => this._broadcastViewport(), 140);
+        };
+        window.addEventListener('scroll', schedule, { passive: true });
+        document.querySelectorAll<HTMLElement>('[data-diff-scroller]').forEach((scroller) => {
+            scroller.addEventListener('scroll', schedule, { passive: true });
+        });
+        window.addEventListener('hashchange', () => {
+            if (this.isBroadcasting) this._broadcastNavigation();
         });
     }
 
@@ -574,12 +743,12 @@ export class CollaborationManager {
             });
         }
 
-        // Live sync is semantic, not geometric — we track the focused
-        // section, the text selection, and viewed-checkbox toggles. Scroll
-        // is never broadcast.
+        // Live sync is Workspace-level: route + viewport are available on
+        // every page; document pages add section/selection/viewed semantics.
         this._observeFocusedSection();
         this._observeSelection();
         this._observeViewed();
+        this._observeViewport();
 
         // Any local user input clears the "remote selection" marker so the
         // popover is suppressed only while the rendered selection still

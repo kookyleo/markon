@@ -6,6 +6,9 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Directory Listing - markon</title>
     <meta name="enable-search" content="{{ enable_search }}">
+    <meta name="enable-live" content="{{ enable_live }}">
+    <meta name="enable-chat" content="{{ enable_chat }}">
+    <meta name="default-chat-mode" content="{{ default_chat_mode }}">
     <meta name="workspace-id" content="{{ workspace_id }}">
     <link id="markon-github-markdown-light" rel="stylesheet" href="/_/css/github-markdown-light.css" media="not all">
     <link id="markon-github-markdown-dark" rel="stylesheet" href="/_/css/github-markdown-dark.css" media="not all">
@@ -13,6 +16,8 @@
     <link rel="stylesheet" href="/_/css/tokens.css">
     <link rel="stylesheet" href="/_/css/shortcuts.css">
     <link rel="stylesheet" href="/_/css/editor.css">
+    <link rel="stylesheet" href="/_/css/collaboration.css">
+    <link rel="stylesheet" href="/_/css/chat.css">
     <style>
         body {
             font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
@@ -337,15 +342,27 @@
             padding-bottom: 22px;
             border-bottom: 1px solid var(--markon-border-default);
         }
+        .workspace-shell--no-git .workspace-meta-panel {
+            border-bottom: 0;
+        }
         .workspace-files-panel {
             container-type: inline-size;
             padding-top: 15px;
+        }
+        .workspace-shell--no-git .workspace-files-panel {
+            margin-top: -50px;
+            padding-top: 0;
         }
         .workspace-repo-toolbar {
             display: grid;
             grid-template-columns: minmax(0, 1fr) auto;
             align-items: center;
             gap: 12px;
+        }
+        .workspace-repo-toolbar--plain {
+            margin-bottom: 5px;
+            padding-bottom: 12px;
+            border-bottom: 1px solid var(--markon-border-default);
         }
         .workspace-repo-toolbar-left,
         .workspace-repo-toolbar-right {
@@ -1484,6 +1501,56 @@
         .git-diff-word-del {
             background: color-mix(in srgb, var(--markon-danger) 28%, transparent);
         }
+        @media (max-width: 850px) {
+            .workspace-shell--no-git {
+                display: block;
+                height: auto;
+                min-height: 100vh;
+                overflow: visible;
+            }
+            .workspace-shell--no-git .workspace-main {
+                min-height: 0;
+                margin-right: 0;
+                padding: 12px;
+            }
+            .workspace-shell--no-git .workspace-detail {
+                position: static;
+                width: auto;
+                height: auto;
+                overflow: visible;
+                border-left: 0;
+                border-top: 1px solid var(--markon-border-default);
+                padding: 12px;
+            }
+            .workspace-shell--no-git .workspace-file-toolbar {
+                align-items: flex-start;
+                flex-direction: column;
+            }
+            .workspace-shell--no-git .file-filter-switch {
+                width: 100%;
+            }
+            .workspace-shell--no-git .file-filter-switch button {
+                flex: 1;
+            }
+            .workspace-shell--no-git .workspace-repo-file-list li,
+            .workspace-shell--no-git .workspace-repo-file-list .workspace-tree-row {
+                grid-template-columns: minmax(0, 1fr) auto;
+                column-gap: 12px;
+                row-gap: 0;
+                align-items: center;
+                padding: 8px var(--ws-row-right-inset) 8px 0;
+            }
+            .workspace-shell--no-git .workspace-entry-commit {
+                display: none;
+            }
+            .workspace-shell--no-git .workspace-entry-time {
+                white-space: nowrap;
+                text-align: right;
+            }
+            .workspace-shell--no-git .ws-col-handle {
+                display: none;
+            }
+        }
         @media (max-width: 720px) {
             .workspace-shell {
                 display: block;
@@ -1547,7 +1614,7 @@
     {% include "i18n-boot.html" %}
 </head>
 <body>
-    <main class="workspace-shell{% if not is_workspace_root %} workspace-shell--full{% endif %}"
+    <main class="workspace-shell{% if not is_workspace_root %} workspace-shell--full{% endif %}{% if not git.available %} workspace-shell--no-git{% endif %}"
           data-workspace-workbench
           data-workspace-id="{{ workspace_id }}"
           data-checkout-url="{{ checkout_url }}">
@@ -1579,15 +1646,15 @@
             </header>
 
             <section class="workspace-files-panel" aria-labelledby="dir-heading">
-                <div class="workspace-repo-toolbar">
+                <div class="workspace-repo-toolbar{% if not git.available %} workspace-repo-toolbar--plain{% endif %}">
                     <div class="workspace-repo-toolbar-left">
+                        {% if git.available %}
                         <div class="workspace-ref-menu" data-workspace-dropdown>
-                            <button class="workspace-tool-button" type="button" {% if not git.available %}disabled{% endif %}>
+                            <button class="workspace-tool-button" type="button">
                                 <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 3a2 2 0 1 1-2-2 2 2 0 0 1 2 2Zm0 10a2 2 0 1 1-2-2 2 2 0 0 1 2 2Zm8-10a2 2 0 1 1-2-2 2 2 0 0 1 2 2Z"/><path d="M3 5v6m2-8h2.5A3.5 3.5 0 0 1 11 6.5V11"/></svg>
-                                <span class="workspace-tool-label">{% if git.available %}{% if git.branch %}{{ git.branch }}{% else %}<span data-i18n="web.ws.git.detached">Detached HEAD</span>{% endif %}{% else %}<span data-i18n="web.ws.git.none">Not a git repository</span>{% endif %}</span>
+                                <span class="workspace-tool-label">{% if git.branch %}{{ git.branch }}{% else %}<span data-i18n="web.ws.git.detached">Detached HEAD</span>{% endif %}</span>
                                 <svg class="workspace-tool-caret" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m4 6 4 4 4-4"/></svg>
                             </button>
-                            {% if git.available %}
                             <div class="workspace-dropdown-menu workspace-branch-panel" data-branch-panel>
                                 <div class="branch-panel-head">
                                     <span class="branch-panel-title" data-i18n="web.ws.git.switch_branches_tags">Switch branches/tags</span>
@@ -1624,7 +1691,6 @@
                                     <a class="branch-panel-tags-link" href="{{ tags_url }}"><span data-i18n="web.ws.git.view_all_tags">View all tags</span> →</a>
                                 </div>
                             </div>
-                            {% endif %}
                         </div>
                         <a class="workspace-ref-link workspace-secondary-link" href="{{ branches_url }}">
                             <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 3a2 2 0 1 1-2-2 2 2 0 0 1 2 2Zm0 10a2 2 0 1 1-2-2 2 2 0 0 1 2 2Zm8-10a2 2 0 1 1-2-2 2 2 0 0 1 2 2Z"/><path d="M3 5v6m2-8h2.5A3.5 3.5 0 0 1 11 6.5V11"/></svg>
@@ -1634,6 +1700,7 @@
                             <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2 2h5l7 7-5 5-7-7V2Z"/><path d="M5 5h.01"/></svg>
                             <span data-i18n="web.ws.git.tags">Tags</span>
                         </a>
+                        {% endif %}
                     </div>
                     <div class="workspace-repo-toolbar-right">
                         <button type="button" class="workspace-spotlight-trigger workspace-spotlight-trigger--toolbar" data-workspace-spotlight-trigger aria-label="Open Workspace Spotlight" title="Open Workspace Spotlight">
@@ -1653,6 +1720,7 @@
                                 <button class="workspace-menu-item" type="button" data-open-add-file><span data-i18n="web.ws.new_markdown_file">New Markdown file</span></button>
                                 <div class="workspace-menu-separator"></div>
                                 {% endif %}
+                                {% if git.available %}
                                 <div class="workspace-menu-secondary-links">
                                     <div class="workspace-menu-label" data-i18n="web.ws.git">Git</div>
                                     <div class="workspace-menu-git-links">
@@ -1662,9 +1730,10 @@
                                     </div>
                                     <div class="workspace-menu-separator"></div>
                                 </div>
+                                {% endif %}
                                 <button class="workspace-menu-item" type="button" data-copy-current-url><span data-i18n="web.ws.copy_url">Copy workspace URL</span></button>
-                                <button class="workspace-menu-item" type="button" data-copy-text="{{ current_dir }}"><span data-i18n="web.ws.copy_path">Copy repo path</span></button>
-                                {% if work_diff_url %}<a class="workspace-menu-item" href="{{ work_diff_url }}" data-i18n="web.ws.git.working_diff">Working diff</a>{% endif %}
+                                <button class="workspace-menu-item" type="button" data-copy-text="{{ current_dir }}"><span data-i18n="web.ws.copy_path">Copy Workspace path</span></button>
+                                {% if git.available and work_diff_url %}<a class="workspace-menu-item" href="{{ work_diff_url }}" data-i18n="web.ws.git.working_diff">Working diff</a>{% endif %}
                                 <div class="workspace-menu-separator"></div>
                                 <div class="workspace-menu-label" data-i18n="web.ws.files">Files</div>
                                 <div class="file-filter-switch file-filter-switch-menu" role="group" data-file-filter-switch>
@@ -1762,20 +1831,16 @@
                 </div>
             </section>
 
+            {% if git.available %}
             <section class="workspace-side-section">
                 <div class="workspace-section-main">
                     <div class="workspace-pane-kicker" data-i18n="web.ws.git">Git</div>
                     <h2 class="workspace-section-title" data-i18n="web.ws.changes">Workspace changes</h2>
                     <div class="workspace-section-desc">
-                        {% if git.available %}
                         <span class="workspace-status-pill {% if git.dirty %}is-warn{% else %}is-ok{% endif %}" data-i18n="{% if git.dirty %}web.ws.git.dirty{% else %}web.ws.git.clean{% endif %}">{% if git.dirty %}Dirty{% else %}Clean{% endif %}</span>
-                        {% else %}
-                        <span data-i18n="web.ws.git.none">Not a git repository</span>
-                        {% endif %}
                     </div>
                 </div>
                 <div class="workspace-section-body">
-                    {% if git.available %}
                     {% if latest_commit %}
                     <article class="workspace-change-primary">
                         <div class="workspace-pane-kicker" data-i18n="web.ws.git.head_vs_parent">HEAD vs previous commit</div>
@@ -1790,9 +1855,6 @@
                         {% if git.added > 0 %}<span class="workspace-status-pill">+{{ git.added }} <span data-i18n="web.ws.git.added">Added</span></span>{% endif %}
                         {% if git.modified > 0 %}<span class="workspace-status-pill">{{ git.modified }} <span data-i18n="web.ws.git.modified">Modified</span></span>{% endif %}
                     </div>
-                    {% else %}
-                    <div class="workspace-empty" data-i18n="web.ws.git.non_repo">Open a Git repository to use history and diff.</div>
-                    {% endif %}
                 </div>
                 <div class="workspace-action-links">
                     {% if latest_commit_diff_url %}
@@ -1805,11 +1867,10 @@
                     {% else %}
                     <span class="workspace-action-disabled" data-i18n="web.ws.git.working_diff">Working diff</span>
                     {% endif %}
-                    {% if git.available %}
                     <a href="{{ history_url }}" data-i18n="web.ws.git.history">Git history</a>
-                    {% endif %}
                 </div>
             </section>
+            {% endif %}
 
             <section class="workspace-side-section workspace-side-footer">
                 <a id="dir-footer" href="https://kookyleo.github.io/markon/">Powered by markon</a>

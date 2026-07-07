@@ -4,11 +4,14 @@
  */
 
 import { Logger } from '../core/utils';
+import { CONFIG } from '../core/config';
 import { Position } from '../services/position';
 import { DraggableManager, DEFAULT_NON_DRAG_SELECTOR } from './draggable';
 
 const _t: (k: string, ...args: unknown[]) => string =
     (window.__MARKON_I18N__?.t) || ((k: string) => k);
+
+type ModalDragStorageMode = 'position' | 'offset';
 
 /**
  * Shared options accepted by every modal.
@@ -20,10 +23,14 @@ export interface BaseModalOptions {
     closeOnOutsideClick?: boolean;
     /** Close the modal when pressing Escape. Defaults to true. */
     closeOnEscape?: boolean;
-    /** CSS selector or element that drags the modal frame. Disabled by default. */
+    /** Whether the modal can be dragged. Defaults to true for glass-frame popups. */
+    draggable?: boolean;
+    /** CSS selector or element that drags the modal frame. Defaults to the glass frame itself. */
     dragHandle?: string | HTMLElement | null;
     /** localStorage key used to remember this modal's last dragged position. */
     dragStorageKey?: string | null;
+    /** Whether drag persistence stores an absolute position or anchor-relative offset. */
+    dragStorageMode?: ModalDragStorageMode;
 }
 
 interface BaseModalHandlers {
@@ -38,6 +45,8 @@ export interface ModalDragOptions {
     handle: string | HTMLElement;
     /** localStorage key used to remember the last position. */
     storageKey?: string | null;
+    /** Drag persistence mode. Defaults to absolute position. */
+    storageMode?: ModalDragStorageMode;
     /** Descendant selector that should not initiate a drag. */
     nonDragSelector?: string | null;
     /** Minimum viewport gap while dragging. Defaults to 10px. */
@@ -45,13 +54,25 @@ export interface ModalDragOptions {
 }
 
 export const MODAL_DRAG_HANDLE_CLASS = 'markon-modal-drag-handle';
+export const MODAL_FRAME_DRAG_REGION_SELECTOR = '.markon-modal-frame-drag-region';
+
+const MODAL_FRAME_NON_DRAG_SELECTOR = `${DEFAULT_NON_DRAG_SELECTOR}, .markon-modal-frame > *`;
+
+export const renderModalFrameDragRegions = (): string => `
+    <span class="markon-modal-frame-drag-region markon-modal-frame-drag-top" aria-hidden="true"></span>
+    <span class="markon-modal-frame-drag-region markon-modal-frame-drag-right" aria-hidden="true"></span>
+    <span class="markon-modal-frame-drag-region markon-modal-frame-drag-bottom" aria-hidden="true"></span>
+    <span class="markon-modal-frame-drag-region markon-modal-frame-drag-left" aria-hidden="true"></span>
+`;
 
 export const makeModalDraggable = (element: HTMLElement, options: ModalDragOptions): DraggableManager =>
     new DraggableManager(element, {
         handle: options.handle,
         storageKey: options.storageKey ?? null,
-        savePosition: Boolean(options.storageKey),
-        restorePosition: Boolean(options.storageKey),
+        saveOffset: options.storageMode === 'offset' && Boolean(options.storageKey),
+        restoreOffset: options.storageMode === 'offset' && Boolean(options.storageKey),
+        savePosition: (options.storageMode ?? 'position') === 'position' && Boolean(options.storageKey),
+        restorePosition: (options.storageMode ?? 'position') === 'position' && Boolean(options.storageKey),
         fixed: true,
         margin: options.margin ?? 10,
         nonDragSelector: options.nonDragSelector ?? DEFAULT_NON_DRAG_SELECTOR,
@@ -72,8 +93,10 @@ export abstract class BaseModal {
             className: '',
             closeOnOutsideClick: true,
             closeOnEscape: true,
+            draggable: true,
             dragHandle: null,
             dragStorageKey: null,
+            dragStorageMode: 'position',
             ...options,
         };
     }
@@ -108,10 +131,15 @@ export abstract class BaseModal {
             this.#positionNear(anchorElement);
         }
 
-        if (this.#options.dragHandle) {
+        if (this.#options.draggable) {
+            const handle = this.#options.dragHandle ?? this.#element;
             this.#draggable = makeModalDraggable(this.#element, {
-                handle: this.#options.dragHandle,
+                handle,
                 storageKey: this.#options.dragStorageKey,
+                storageMode: this.#options.dragStorageMode,
+                nonDragSelector: this.#options.dragHandle
+                    ? DEFAULT_NON_DRAG_SELECTOR
+                    : MODAL_FRAME_NON_DRAG_SELECTOR,
             });
         }
 
@@ -184,6 +212,8 @@ export abstract class BaseModal {
         ({ left, top } = Position.constrainToViewport(left, top, modalWidth, modalHeight, { fixed: isFixed }));
         this.#element.style.left = `${left}px`;
         this.#element.style.top = `${top}px`;
+        this.#element.dataset['originalLeft'] = String(left);
+        this.#element.dataset['originalTop'] = String(top);
     }
 
     /**
@@ -269,10 +299,15 @@ export class NoteInputModal extends BaseModal {
     #onSave: (value: string) => void;
     #onCancel: () => void;
     #initialValue: string;
+    #resizeObserver: ResizeObserver | null = null;
+    #sizeTrackingReady = false;
 
     constructor(options: NoteInputModalOptions = {}) {
         super({
             className: 'note-input-modal',
+            dragHandle: '.note-input-drag-region',
+            dragStorageKey: CONFIG.STORAGE_KEYS.NOTE_INPUT_OFFSET,
+            dragStorageMode: 'offset',
             ...options,
         });
 
@@ -281,15 +316,45 @@ export class NoteInputModal extends BaseModal {
         this.#initialValue = options.initialValue ?? '';
     }
 
+    override show(anchorElement: HTMLElement | null = null): void {
+        super.show(anchorElement);
+        const modal = this.getElement();
+        if (!modal) return;
+        this.#restoreSize(modal);
+        this.#constrainCurrentPosition(modal);
+        this.#observeSize(modal);
+    }
+
+    override close(): void {
+        this.#resizeObserver?.disconnect();
+        this.#resizeObserver = null;
+        this.#sizeTrackingReady = false;
+        super.close();
+    }
+
     create(): HTMLElement {
         const modal = document.createElement('div');
         modal.className = 'note-input-modal markon-modal-frame';
 
         modal.innerHTML = `
-            <textarea class="note-textarea" placeholder="${_t('web.modal.note.placeholder')}"></textarea>
-            <div class="note-input-actions">
-                <button class="note-cancel">${_t('web.modal.cancel')}</button>
-                <button class="note-save" disabled>${_t('web.modal.save')}</button>
+            <span class="note-input-drag-region note-input-drag-top" aria-hidden="true"></span>
+            <span class="note-input-drag-region note-input-drag-right" aria-hidden="true"></span>
+            <span class="note-input-drag-region note-input-drag-bottom" aria-hidden="true"></span>
+            <span class="note-input-drag-region note-input-drag-left" aria-hidden="true"></span>
+            <div class="note-input-field">
+                <textarea class="note-textarea" placeholder="${_t('web.modal.note.placeholder')}"></textarea>
+                <div class="note-input-actions">
+                    <button class="note-cancel" type="button" title="${_t('web.modal.cancel')}" aria-label="${_t('web.modal.cancel')}">
+                        <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+                            <path d="M6 6l12 12M18 6L6 18"></path>
+                        </svg>
+                    </button>
+                    <button class="note-save" type="button" title="${_t('web.modal.save')}" aria-label="${_t('web.modal.save')}" disabled>
+                        <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+                            <path d="M12 19V5M6.5 10.5 12 5l5.5 5.5"></path>
+                        </svg>
+                    </button>
+                </div>
             </div>
         `;
 
@@ -352,6 +417,79 @@ export class NoteInputModal extends BaseModal {
     override cancel(): void {
         this.#onCancel();
         this.close();
+    }
+
+    #restoreSize(modal: HTMLElement): void {
+        try {
+            const raw: unknown = JSON.parse(localStorage.getItem(CONFIG.STORAGE_KEYS.NOTE_INPUT_SIZE) || 'null');
+            if (!raw || typeof raw !== 'object') return;
+            const saved = raw as Record<string, unknown>;
+            const width = typeof saved['width'] === 'number' ? saved['width'] : NaN;
+            const height = typeof saved['height'] === 'number' ? saved['height'] : NaN;
+            if (!Number.isFinite(width) || !Number.isFinite(height)) return;
+
+            const { width: nextWidth, height: nextHeight } = this.#clampSize(modal, width, height);
+            modal.style.width = `${nextWidth}px`;
+            modal.style.height = `${nextHeight}px`;
+        } catch {
+            // Ignore invalid stored size and keep the CSS default.
+        }
+    }
+
+    #observeSize(modal: HTMLElement): void {
+        if (typeof ResizeObserver === 'undefined') return;
+
+        let lastWidth = Math.round(modal.offsetWidth);
+        let lastHeight = Math.round(modal.offsetHeight);
+        this.#sizeTrackingReady = false;
+        window.setTimeout(() => {
+            this.#sizeTrackingReady = true;
+        }, 0);
+
+        this.#resizeObserver = new ResizeObserver(() => {
+            if (!this.#sizeTrackingReady) {
+                lastWidth = Math.round(modal.offsetWidth);
+                lastHeight = Math.round(modal.offsetHeight);
+                return;
+            }
+
+            const width = Math.round(modal.offsetWidth);
+            const height = Math.round(modal.offsetHeight);
+            if (Math.abs(width - lastWidth) < 2 && Math.abs(height - lastHeight) < 2) return;
+            lastWidth = width;
+            lastHeight = height;
+            localStorage.setItem(CONFIG.STORAGE_KEYS.NOTE_INPUT_SIZE, JSON.stringify({ width, height }));
+            this.#constrainCurrentPosition(modal);
+        });
+        this.#resizeObserver.observe(modal);
+    }
+
+    #clampSize(modal: HTMLElement, width: number, height: number): { width: number; height: number } {
+        const style = getComputedStyle(modal);
+        const minWidth = parseFloat(style.minWidth) || 0;
+        const minHeight = parseFloat(style.minHeight) || 0;
+        const maxWidth = Math.max(minWidth, window.innerWidth - 24);
+        const maxHeight = Math.max(minHeight, window.innerHeight - 24);
+        return {
+            width: Math.min(Math.max(width, minWidth), maxWidth),
+            height: Math.min(Math.max(height, minHeight), maxHeight),
+        };
+    }
+
+    #constrainCurrentPosition(modal: HTMLElement): void {
+        const left = parseFloat(modal.style.left);
+        const top = parseFloat(modal.style.top);
+        if (!Number.isFinite(left) || !Number.isFinite(top)) return;
+
+        const constrained = Position.constrainToViewport(
+            left,
+            top,
+            modal.offsetWidth,
+            modal.offsetHeight,
+            { fixed: true, margin: 10 },
+        );
+        modal.style.left = `${constrained.left}px`;
+        modal.style.top = `${constrained.top}px`;
     }
 }
 

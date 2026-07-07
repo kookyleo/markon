@@ -9,6 +9,7 @@
 import { CONFIG, i18n } from './core/config';
 import { Logger } from './core/utils';
 import { copyText, flashBeside, flashCopied } from './core/clipboard';
+import { showNotification } from './core/notifications';
 import { Meta } from './services/dom';
 import { Position } from './services/position';
 import { Text } from './services/text';
@@ -30,6 +31,8 @@ import { TOCNavigator } from './navigators/toc-navigator';
 import { AnnotationNavigator } from './navigators/annotation-navigator';
 import { ModalManager, showConfirmDialog } from './components/modal';
 import { FloatingLayer } from './components/floating-layer';
+import { mergeAnnotationSnapshots } from './services/annotation-sync';
+import { currentPageNoteLink, noteLinkIdFromHash } from './services/note-link';
 
 const INTERACTIVE_MARKDOWN_BODY_SELECTOR = '[data-markon-interactive-body]';
 
@@ -124,7 +127,13 @@ export class MarkonApp {
         this.#initSearchHighlights();
 
         if (!this.#markdownBody) {
-            // Directory mode: setup keyboard event listeners and register shortcuts
+            // Workspace/directory-style pages still own Workspace-level
+            // surfaces: Spotlight, Chat, and Live. They simply skip document
+            // annotation/viewed/edit managers.
+            await this.#initStorage();
+            this.#collaboration = new CollaborationManager(this);
+            this.#collaboration.init();
+            this.#initChat();
             this.#setupKeyboardEventListener();
             this.#registerShortcuts();
             Logger.log('MarkonApp', 'Minimal initialization complete (directory mode)');
@@ -151,7 +160,7 @@ export class MarkonApp {
         }
 
         // 4. Apply to DOM
-        this.#applyToDOM();
+        await this.#applyToDOM();
 
         // 5. Setup event listeners
         this.#setupEventListeners();
@@ -165,17 +174,25 @@ export class MarkonApp {
         // 8. Update clear button text
         this.#updateClearButtonText();
 
-        // 9. Start collaboration
+        // 9. Resolve an incoming #note-... link after annotation DOM exists.
+        this.#setupNoteLinkHandling();
+
+        // 10. Start collaboration
         this.#collaboration?.init();
 
-        // 10. Start chat (gated internally on Meta.flag('enable-chat'))
+        // 11. Start chat (gated internally on Meta.flag('enable-chat'))
+        this.#initChat();
+
+        Logger.log('MarkonApp', 'Initialization complete');
+    }
+
+    /** Initialize Workspace-level chat when enabled. @private */
+    #initChat(): void {
         if (Meta.flag(CONFIG.META_TAGS.ENABLE_CHAT)) {
             const chat = new ChatManager(this);
             chat.init();
             window.chatManager = chat;
         }
-
-        Logger.log('MarkonApp', 'Initialization complete');
     }
 
     /** Initialize storage. @private */
@@ -197,6 +214,7 @@ export class MarkonApp {
                 if (window.viewedManager) {
                     if (this.#isSharedMode && !window.viewedManager.isSharedMode) {
                         window.viewedManager.isSharedMode = true;
+                        window.viewedManager.preserveExpansionForNextSharedState();
                     }
                     // Always thread the op_id-aware adapter so viewed.ts can
                     // tag outgoing frames and skip its own echoes, even on
@@ -255,9 +273,17 @@ export class MarkonApp {
             document.dispatchEvent(new CustomEvent('markon:notes-count-changed', {
                 detail: { count: this.notesCount() },
             }));
+            this.#mirrorSharedAnnotationsLocally();
         });
 
         this.#noteManager = new NoteManager(this.#annotationManager, this.#markdownBody);
+        this.#noteManager.onActiveChange(({ annotationId, previousAnnotationId, sourceElement }) => {
+            if (annotationId && sourceElement) {
+                window.viewedManager?.revealNoteSource(annotationId, sourceElement);
+            } else {
+                window.viewedManager?.clearNoteSourceReveal(previousAnnotationId);
+            }
+        });
 
         this.#popoverManager = new PopoverManager(this.#markdownBody, {
             enableEdit: this.#enableEdit,
@@ -294,15 +320,33 @@ export class MarkonApp {
     async #loadData(): Promise<void> {
         if (!this.#annotationManager) return;
         await this.#annotationManager.load();
+        if (this.#isSharedMode && this.#annotationManager.getAll().length === 0) {
+            const localAnnotations = await StorageManager.loadLocalAnnotations(this.#filePath);
+            if (localAnnotations.length > 0) {
+                this.#annotationManager.replaceAll(localAnnotations);
+                Logger.log(
+                    'MarkonApp',
+                    `Loaded ${localAnnotations.length} local annotations while waiting for shared sync`,
+                );
+            }
+        }
         Logger.log('MarkonApp', `Loaded ${this.#annotationManager.getAll().length} annotations`);
         document.dispatchEvent(new CustomEvent('markon:notes-count-changed', {
             detail: { count: this.notesCount() },
         }));
     }
 
+    #mirrorSharedAnnotationsLocally(annotations = this.#annotationManager?.getAll() ?? []): void {
+        if (!this.#isSharedMode) return;
+        void StorageManager.saveLocalAnnotations(this.#filePath, annotations);
+    }
+
     /** Apply to DOM. @private */
-    #applyToDOM(): void {
+    async #applyToDOM(): Promise<void> {
         this.#annotationManager?.applyToDOM();
+        await window.viewedManager?.ready.catch((error: unknown) => {
+            Logger.warn('MarkonApp', 'Viewed state initialization failed before note layout:', error);
+        });
         this.#noteManager?.render();
         this.#noteManager?.setupResponsiveLayout();
     }
@@ -438,11 +482,35 @@ export class MarkonApp {
             });
         }
 
+        // Live mode (if enabled):
+        //   L       — toggle Broadcast ⇄ Follow.
+        //   Shift+L — toggle Off ⇄ last active mode.
+        if (this.#enableLive && this.#collaboration) {
+            shortcuts.register('TOGGLE_LIVE_ACTIVE', () => {
+                this.#collaboration?.toggleActiveMode();
+            });
+            shortcuts.register('TOGGLE_LIVE_OFF', () => {
+                this.#collaboration?.toggleOff();
+            });
+        }
+
+        // Chat (if enabled):
+        //   C       — open chat in the user's default surface.
+        //   Shift+C — open in the alternate surface (in-page ⇄ popout).
+        if (Meta.flag(CONFIG.META_TAGS.ENABLE_CHAT)) {
+            shortcuts.register('TOGGLE_CHAT', () => {
+                window.chatManager?.openInDefault();
+            });
+            shortcuts.register('TOGGLE_CHAT_ALT', () => {
+                window.chatManager?.openInDefault({ invert: true });
+            });
+        }
+
         // Directory / workspace landing page: no markdown body, so none of the
-        // document-view features below exist here. The shared Workspace
-        // Spotlight shortcuts are registered above when a workspace id exists.
+        // document-view features below exist here. Workspace-level features
+        // above still remain available.
         if (!this.#markdownBody) {
-            Logger.log('MarkonApp', 'Directory mode: minimal shortcuts registered');
+            Logger.log('MarkonApp', 'Directory mode: workspace shortcuts registered');
             return;
         }
 
@@ -502,30 +570,6 @@ export class MarkonApp {
         if (this.#enableEdit) {
             shortcuts.register('EDIT', () => {
                 this.#openEditor();
-            });
-        }
-
-        // Live mode (if enabled):
-        //   L       — toggle Broadcast ⇄ Follow.
-        //   Shift+L — toggle Off ⇄ last active mode.
-        if (this.#enableLive && this.#collaboration) {
-            shortcuts.register('TOGGLE_LIVE_ACTIVE', () => {
-                this.#collaboration?.toggleActiveMode();
-            });
-            shortcuts.register('TOGGLE_LIVE_OFF', () => {
-                this.#collaboration?.toggleOff();
-            });
-        }
-
-        // Chat (if enabled):
-        //   C       — open chat in the user's default surface.
-        //   Shift+C — open in the alternate surface (in-page ⇄ popout).
-        if (Meta.flag(CONFIG.META_TAGS.ENABLE_CHAT)) {
-            shortcuts.register('TOGGLE_CHAT', () => {
-                window.chatManager?.openInDefault();
-            });
-            shortcuts.register('TOGGLE_CHAT_ALT', () => {
-                window.chatManager?.openInDefault({ invert: true });
             });
         }
 
@@ -725,17 +769,35 @@ export class MarkonApp {
 
         ws.on('all_annotations', (message) => {
             if (!annotationManager || !noteManager) return;
-            annotationManager.clearDOM();
-            const annotations = (message.annotations ?? []) as Annotation[];
-            annotations.forEach((anno) => {
+            const inbound = (message.annotations ?? []) as Annotation[];
+            const annotations: Annotation[] = [];
+            inbound.forEach((anno) => {
                 if (!validId(anno?.id)) {
                     Logger.warn('WebSocket', `Dropped annotation with invalid id: ${String(anno?.id)}`);
                     return;
                 }
-                void annotationManager.add(anno, true); // skipSave=true: from remote
+                annotations.push(anno);
             });
+
+            const { merged, missingFromShared } = mergeAnnotationSnapshots(
+                annotationManager.getAll(),
+                annotations,
+            );
+
+            annotationManager.clearDOM();
+            annotationManager.replaceAll(merged);
             annotationManager.applyToDOM();
             noteManager.render();
+
+            if (missingFromShared.length > 0 && this.#storage) {
+                const storage = this.#storage;
+                void Promise.all(missingFromShared.map(anno => storage.saveAnnotation(anno)))
+                    .then((opIds) => {
+                        if (opIds.some(Boolean)) {
+                            showNotification(i18n.t('web.annot.sharedsynced'), { variant: 'success' });
+                        }
+                    });
+            }
         });
 
         ws.on('new_annotation', (message) => {
@@ -803,6 +865,7 @@ export class MarkonApp {
             // rather than matching e.target directly (else clicks on the icon
             // strokes silently miss).
             const copyBtn = target.closest<HTMLElement>('.note-copy');
+            const linkBtn = target.closest<HTMLElement>('.note-link');
             const editBtn = target.closest<HTMLElement>('.note-edit');
             const deleteBtn = target.closest<HTMLElement>('.note-delete');
 
@@ -810,6 +873,14 @@ export class MarkonApp {
             if (copyBtn) {
                 const annotationId = copyBtn.dataset['annotationId'];
                 if (annotationId) void this.copyAnnotation(annotationId, copyBtn);
+                e.stopPropagation();
+                return;
+            }
+
+            // Copy a shareable link to this note.
+            if (linkBtn) {
+                const annotationId = linkBtn.dataset['annotationId'];
+                if (annotationId) void this.copyNoteLink(annotationId, linkBtn);
                 e.stopPropagation();
                 return;
             }
@@ -1386,6 +1457,84 @@ export class MarkonApp {
             if (ok) flashCopied(button);
             else flashBeside(button, i18n.t('web.export.failed'));
         }
+    }
+
+    /** Copy a best-effort link back to a note in the current document. */
+    async copyNoteLink(annotationId: string, button?: HTMLElement | null): Promise<void> {
+        const annotation = this.#annotationManager?.getById(annotationId);
+        if (!annotation?.note?.trim()) return;
+        const link = currentPageNoteLink(annotationId);
+        if (!link) return;
+        const ok = await copyText(link);
+        if (button) {
+            if (ok) flashCopied(button);
+            else flashBeside(button, i18n.t('web.export.failed'));
+        }
+    }
+
+    #setupNoteLinkHandling(): void {
+        const openFromHash = (): void => {
+            const annotationId = noteLinkIdFromHash(window.location.hash);
+            if (annotationId) this.#focusNoteLink(annotationId);
+        };
+        openFromHash();
+        window.addEventListener('hashchange', openFromHash);
+    }
+
+    #focusNoteLink(annotationId: string, attempts = 50): void {
+        const annotation = this.#annotationManager?.getById(annotationId);
+        const highlightElements = Array.from(
+            this.#markdownBody?.querySelectorAll<HTMLElement>(
+                `.has-note[data-annotation-id="${annotationId}"]`,
+            ) ?? [],
+        );
+        const highlightElement = this.#noteLinkAnchorElement(highlightElements, annotationId);
+
+        if (annotation?.note?.trim() && highlightElement) {
+            highlightElement.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            if (this.#noteManager?.getActiveAnnotationId() !== annotationId) {
+                this.#noteManager?.setActive(annotationId);
+            }
+            highlightElements.forEach(el => el.classList.add('note-link-target'));
+            const noteCard = document.querySelector<HTMLElement>(
+                `.note-card-margin[data-annotation-id="${annotationId}"]`,
+            );
+            noteCard?.classList.add('note-link-target');
+            window.setTimeout(() => {
+                highlightElements.forEach(el => el.classList.remove('note-link-target'));
+                noteCard?.classList.remove('note-link-target');
+            }, 1800);
+
+            if (window.innerWidth <= CONFIG.BREAKPOINTS.WIDE_SCREEN) {
+                this.#noteManager?.showNotePopup(highlightElement, annotationId);
+            } else {
+                noteCard?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+            }
+            return;
+        }
+
+        if (attempts > 0) {
+            window.setTimeout(() => this.#focusNoteLink(annotationId, attempts - 1), 100);
+            return;
+        }
+
+        showNotification(i18n.t('web.note.linkmissing'), { variant: 'warning' });
+    }
+
+    #noteLinkAnchorElement(elements: HTMLElement[], annotationId: string): HTMLElement | null {
+        return elements.find((element) => {
+            let parent = element.parentElement;
+            while (parent && parent !== this.#markdownBody) {
+                if (
+                    parent.classList.contains('has-note') &&
+                    parent.dataset['annotationId'] !== annotationId
+                ) {
+                    return false;
+                }
+                parent = parent.parentElement;
+            }
+            return true;
+        }) ?? elements[0] ?? null;
     }
 
     /** Initialize workspace-wide Spotlight search/navigation. @private */

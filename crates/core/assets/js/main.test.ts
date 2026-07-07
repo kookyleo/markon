@@ -109,11 +109,12 @@ describe('MarkonApp', () => {
         vi.unstubAllGlobals();
     });
 
-    it('directory mode (no .markdown-body) only initializes the keyboard layer', async () => {
+    it('directory mode (no .markdown-body) initializes workspace-level managers only', async () => {
         const app = new MarkonApp({ filePath: 'docs/' });
         await app.init();
 
         const m = app.getManagers();
+        expect(m.storage).not.toBeNull();
         expect(m.shortcutsManager).not.toBeNull();
         // Document-mode managers should remain null.
         expect(m.annotationManager).toBeNull();
@@ -122,7 +123,6 @@ describe('MarkonApp', () => {
         expect(m.visualZoomManager).toBeNull();
         expect(m.tocNavigator).toBeNull();
         expect(m.annotationNavigator).toBeNull();
-        expect(m.storage).toBeNull();
     });
 
     it('directory mode keeps truly global shortcuts such as Theme available', async () => {

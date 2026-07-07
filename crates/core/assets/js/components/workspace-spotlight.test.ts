@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { CONFIG } from '../core/config';
 import { WorkspaceSpotlight } from './workspace-spotlight';
 
 const files = [
@@ -43,6 +44,7 @@ describe('WorkspaceSpotlight', () => {
     afterEach(() => {
         vi.unstubAllGlobals();
         document.body.innerHTML = '';
+        localStorage.clear();
     });
 
     it('opens a Spotlight-style document list backed by the workspace file endpoint', async () => {
@@ -128,5 +130,46 @@ describe('WorkspaceSpotlight', () => {
         expect(input.dispatchEvent(headerWheel)).toBe(false);
         expect(headerWheel.defaultPrevented).toBe(true);
         expect(results.scrollTop).toBe(40);
+    });
+
+    it('lets the glass frame drag the Spotlight panel', async () => {
+        const nav = new WorkspaceSpotlight({ workspaceId: 'ws' });
+        nav.open();
+        await flush();
+
+        const panel = document.querySelector<HTMLElement>('.workspace-spotlight-panel')!;
+        const edge = panel.querySelector<HTMLElement>('.markon-modal-frame-drag-top')!;
+        Object.defineProperty(panel, 'offsetWidth', { value: 720, configurable: true });
+        Object.defineProperty(panel, 'offsetHeight', { value: 420, configurable: true });
+        panel.getBoundingClientRect = () => ({
+            left: 100,
+            top: 80,
+            right: 820,
+            bottom: 500,
+            width: 720,
+            height: 420,
+            x: 100,
+            y: 80,
+            toJSON: () => ({}),
+        });
+
+        const md = new MouseEvent('mousedown', { bubbles: true, cancelable: true, button: 0 });
+        Object.defineProperty(md, 'clientX', { value: 100 });
+        Object.defineProperty(md, 'clientY', { value: 80 });
+        edge.dispatchEvent(md);
+
+        const mv = new MouseEvent('mousemove', { bubbles: true });
+        Object.defineProperty(mv, 'clientX', { value: 130 });
+        Object.defineProperty(mv, 'clientY', { value: 106 });
+        document.dispatchEvent(mv);
+        document.dispatchEvent(new MouseEvent('mouseup', { bubbles: true }));
+
+        expect(panel.style.position).toBe('fixed');
+        expect(panel.style.left).toBe('130px');
+        expect(panel.style.top).toBe('106px');
+        expect(JSON.parse(localStorage.getItem(CONFIG.STORAGE_KEYS.WORKSPACE_SPOTLIGHT_POS) || 'null')).toEqual({
+            left: 130,
+            top: 106,
+        });
     });
 });

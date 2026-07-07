@@ -8,8 +8,9 @@
  * content.
  */
 
-import { i18n } from '../core/config';
+import { CONFIG, i18n } from '../core/config';
 import { workspaceFilesDataUrl, workspaceFileUrl, workspaceSearchUrl } from '../core/routes';
+import { makeModalDraggable, MODAL_FRAME_DRAG_REGION_SELECTOR, renderModalFrameDragRegions } from './modal';
 
 interface WorkspaceFileEntry {
     path: string;
@@ -84,6 +85,7 @@ export class WorkspaceSpotlight {
     #contentTimer: number | null = null;
     #contentSeq = 0;
     #activeIndex = 0;
+    #dragManager: ReturnType<typeof makeModalDraggable> | null = null;
 
     constructor({ workspaceId, currentPath = '', enableContentSearch = false }: WorkspaceSpotlightOptions) {
         this.#workspaceId = workspaceId;
@@ -112,6 +114,7 @@ export class WorkspaceSpotlight {
         this.#panel.classList.add('is-open');
         this.#panel.setAttribute('aria-hidden', 'false');
         document.body.classList.add('workspace-spotlight-open');
+        this.#ensureDraggable();
         this.#input.value = '';
         this.#contentResults = [];
         this.#contentStatus = 'idle';
@@ -149,6 +152,7 @@ export class WorkspaceSpotlight {
         panel.innerHTML = `
             <div class="workspace-spotlight-scrim markon-modal-backdrop" data-workspace-spotlight-close></div>
             <div class="workspace-spotlight-panel markon-modal-frame" role="dialog" aria-modal="true" aria-label="${escapeHtml(i18n.t('web.wsnav.title'))}">
+                ${renderModalFrameDragRegions()}
                 <div class="workspace-spotlight-input-wrap">
                     <span class="workspace-spotlight-search-icon" aria-hidden="true"></span>
                     <input class="workspace-spotlight-input" type="search" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" placeholder="${escapeHtml(i18n.t('web.wsnav.placeholder'))}">
@@ -175,6 +179,16 @@ export class WorkspaceSpotlight {
             const links = this.#links();
             const idx = links.indexOf(link);
             if (idx >= 0) this.#setActive(idx, links);
+        });
+    }
+
+    #ensureDraggable(): void {
+        if (this.#dragManager || !this.#panel) return;
+        const spotlightPanel = this.#panel.querySelector<HTMLElement>('.workspace-spotlight-panel');
+        if (!spotlightPanel) return;
+        this.#dragManager = makeModalDraggable(spotlightPanel, {
+            handle: MODAL_FRAME_DRAG_REGION_SELECTOR,
+            storageKey: CONFIG.STORAGE_KEYS.WORKSPACE_SPOTLIGHT_POS,
         });
     }
 

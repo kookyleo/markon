@@ -467,66 +467,150 @@ html[data-theme="dark"] .markdown-body h6.heading-focused {
    ============================================================ */
 
 .note-input-modal {
-    position: absolute;
-    width: max-content;
-    min-width: 360px;
+    position: fixed;
+    width: calc(360px + (var(--markon-modal-frame-inset) * 2));
+    height: calc(120px + (var(--markon-modal-frame-inset) * 2));
+    min-width: calc(300px + (var(--markon-modal-frame-inset) * 2));
+    min-height: calc(104px + (var(--markon-modal-frame-inset) * 2));
     max-width: calc(100vw - 24px);
+    max-height: calc(100vh - 24px);
+    overflow: hidden;
+    resize: both;
+}
+
+.note-input-modal.markon-modal-frame::before,
+.note-input-modal.markon-modal-frame::after {
+    display: none;
+    border: 0;
+    box-shadow: none;
+}
+
+.note-input-drag-region {
+    position: absolute;
+    z-index: 2;
+    pointer-events: auto;
+}
+
+.note-input-drag-top {
+    top: 0;
+    right: 24px;
+    left: 0;
+    height: var(--markon-modal-frame-inset);
+}
+
+.note-input-drag-right {
+    top: 0;
+    right: 0;
+    bottom: 24px;
+    width: var(--markon-modal-frame-inset);
+}
+
+.note-input-drag-bottom {
+    right: 24px;
+    bottom: 0;
+    left: 0;
+    height: var(--markon-modal-frame-inset);
+}
+
+.note-input-drag-left {
+    top: 0;
+    bottom: 24px;
+    left: 0;
+    width: var(--markon-modal-frame-inset);
+}
+
+.note-input-field {
+    position: relative;
+    width: 100%;
+    height: 100%;
+    min-width: 0;
+    min-height: 0;
+    border-radius: var(--markon-radius-lg);
+    box-sizing: border-box;
+    overflow: hidden;
 }
 
 .note-textarea {
-    width: 322px;
-    min-width: 240px;
-    max-width: calc(100vw - 72px);
-    padding: 8px 12px;
+    display: block;
+    width: 100%;
+    height: 100%;
+    min-height: 0;
+    padding: 14px 72px 44px 14px;
     border: 1px solid var(--markon-border-emphasis);
-    border-radius: var(--markon-radius-sm);
+    border-radius: inherit;
+    background: var(--markon-bg-default);
+    color: var(--markon-fg-default);
     font-size: 14px;
     font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Noto Sans", Helvetica, Arial, sans-serif;
-    resize: both;
-    min-height: 80px;
-    margin: 12px 12px 12px;
+    resize: none;
     box-sizing: border-box;
 }
 
 .note-textarea:focus {
-    outline: none;
     border-color: var(--markon-accent);
-    box-shadow: 0 0 0 3px color-mix(in srgb, var(--markon-accent) 10%, transparent);
+    outline: 3px solid -webkit-focus-ring-color;
+    outline-offset: 0;
 }
 
 .note-input-actions {
+    position: absolute;
+    right: 10px;
+    bottom: 10px;
     display: flex;
-    justify-content: flex-end;
-    gap: 8px;
-    margin: 0 12px 12px;
+    gap: 6px;
+    align-items: center;
+    pointer-events: auto;
+    -webkit-user-select: none;
+    user-select: none;
 }
 
 .note-input-actions button {
-    padding: 6px 14px;
-    border-radius: var(--markon-radius-sm);
-    font-size: 13px;
-    font-weight: 500;
+    width: 28px;
+    height: 28px;
+    padding: 0;
+    border: 0;
+    border-radius: 999px;
+    background: transparent;
+    color: var(--markon-fg-muted);
     cursor: pointer;
-    border: 1px solid var(--markon-border-emphasis);
-    background: var(--markon-bg-default);
-    color: var(--markon-fg-default);
-    transition: background-color 0.15s, border-color 0.15s, color 0.15s;
+    display: grid;
+    place-items: center;
+    transition: background-color 0.15s, color 0.15s, opacity 0.15s;
+}
+
+.note-input-actions button svg {
+    width: 18px;
+    height: 18px;
+    fill: none;
+    stroke: currentColor;
+    stroke-width: 2.25;
+    stroke-linecap: round;
+    stroke-linejoin: round;
 }
 
 .note-input-actions button:hover {
     background: var(--markon-bg-muted);
 }
 
-/* Specificity raised to `.note-input-actions button.note-save` (0,3,1) so it
-   beats the earlier `.note-input-actions button` (0,2,0) generic style. */
 .note-input-actions button.note-save {
     background: var(--markon-success);
     color: var(--markon-fg-on-emphasis);
-    border-color: var(--markon-success);
 }
 
-.note-input-actions button.note-save:hover {
+.note-input-actions button.note-save:disabled {
+    background: color-mix(in srgb, var(--markon-success) 36%, var(--markon-bg-muted));
+    color: color-mix(in srgb, var(--markon-fg-default) 42%, transparent);
+    cursor: default;
+    opacity: 1;
+}
+
+.note-input-actions button.note-save:disabled:hover {
+    background: color-mix(in srgb, var(--markon-success) 36%, var(--markon-bg-muted));
+}
+
+.note-input-actions button.note-save:not(:disabled):hover {
     background: var(--markon-success-hover);
+    color: var(--markon-fg-on-emphasis);
 }
 
 /* ============================================================
@@ -558,12 +642,46 @@ html[data-theme="dark"] .markdown-body h6.heading-focused {
     border-left-color: color-mix(in srgb, var(--markon-accent) 50%, transparent);
 }
 
+.note-card-margin::before {
+    content: "";
+    position: absolute;
+    right: -10px;
+    bottom: 100%;
+    width: calc(100% + 20px);
+    height: 30px;
+    pointer-events: none;
+    background: transparent;
+    clip-path: polygon(54% 0, 100% 0, 100% 100%, 0 100%);
+}
+
+.note-card-margin:hover::before {
+    pointer-events: auto;
+}
+
 .note-card-margin.highlight-active {
     background: color-mix(in srgb, var(--markon-accent) 12%, var(--markon-bg-default));
     /* Active: stripe deepens toward primary, but the rest of the hairline only
        picks up the same soft accent rather than a full-strength frame. */
     border-color: color-mix(in srgb, var(--markon-accent) 30%, transparent);
     border-left-color: var(--markon-accent);
+}
+
+.note-card-margin.note-link-target {
+    animation: markon-note-link-card-pulse 1.8s ease-out;
+}
+
+@keyframes markon-note-link-card-pulse {
+    0%,
+    100% {
+        background: color-mix(in srgb, var(--markon-accent) 12%, var(--markon-bg-default));
+        border-color: color-mix(in srgb, var(--markon-accent) 30%, transparent);
+        border-left-color: var(--markon-accent);
+    }
+    24% {
+        background: color-mix(in srgb, var(--markon-accent) 22%, var(--markon-bg-default));
+        border-color: color-mix(in srgb, var(--markon-accent) 55%, transparent);
+        border-left-color: var(--markon-accent);
+    }
 }
 
 /* ============================================================
@@ -611,15 +729,17 @@ html[data-theme="dark"] .markdown-body h6.heading-focused {
     border-radius: var(--markon-radius-sm);
     background: var(--markon-bg-default);
     border: 0.5px solid var(--markon-border-default);
-    box-shadow: var(--markon-shadow-pop);
 }
 
 /* Margin card: the cluster floats over the text and only appears on hover, so
    the text uses the full width and no space is reserved for it. */
 .note-card-margin .note-actions {
+    top: -28px;
+    right: 2px;
     opacity: 0;
     pointer-events: none;
     transition: opacity 0.12s ease;
+    z-index: 1;
 }
 .note-card-margin:hover .note-actions {
     opacity: 1;
@@ -629,6 +749,7 @@ html[data-theme="dark"] .markdown-body h6.heading-focused {
 /* Flat line-icon actions: no filled circles, a muted stroke that warms on
    hover (delete warms to danger). Icons are stroked SVGs (see note-manager). */
 .note-copy,
+.note-link,
 .note-edit,
 .note-delete {
     width: 22px;
@@ -647,13 +768,20 @@ html[data-theme="dark"] .markdown-body h6.heading-focused {
 }
 
 .note-copy svg,
+.note-link svg,
 .note-edit svg,
 .note-delete svg {
     width: 15px;
     height: 15px;
 }
 
+.note-link svg {
+    width: 16px;
+    height: 16px;
+}
+
 .note-copy:hover,
+.note-link:hover,
 .note-edit:hover {
     color: var(--markon-fg-default);
     background: var(--markon-bg-muted);
@@ -662,6 +790,11 @@ html[data-theme="dark"] .markdown-body h6.heading-focused {
 
 /* Successful-copy flash: the icon swaps to a check and turns green. */
 .note-copy.is-copied {
+    color: var(--markon-success);
+    opacity: 1;
+}
+
+.note-link.is-copied {
     color: var(--markon-success);
     opacity: 1;
 }
@@ -676,6 +809,12 @@ html[data-theme="dark"] .markdown-body h6.heading-focused {
     color: var(--markon-fg-default);
     white-space: pre-wrap;
     word-wrap: break-word;
+}
+
+.note-content a {
+    color: var(--markon-accent);
+    text-decoration: underline;
+    text-underline-offset: 2px;
 }
 
 /* The popup shows its actions persistently (no hover to reveal them). They sit
@@ -770,6 +909,24 @@ html[data-theme="dark"] .markdown-body h6.heading-focused {
     background-color: color-mix(in srgb, var(--markon-accent) 15%, transparent);
     border-bottom: 2px solid var(--markon-accent);
     box-shadow: 0 0 0 2px color-mix(in srgb, var(--markon-accent) 15%, transparent);
+}
+
+.has-note.note-link-target {
+    animation: markon-note-link-underline-pulse 1.8s ease-out;
+    border-bottom-style: solid;
+    border-bottom-color: var(--markon-accent);
+}
+
+@keyframes markon-note-link-underline-pulse {
+    0%,
+    100% {
+        background-color: color-mix(in srgb, var(--markon-accent) 15%, transparent);
+        border-bottom-color: var(--markon-accent);
+    }
+    24% {
+        background-color: color-mix(in srgb, var(--markon-accent) 28%, transparent);
+        border-bottom-color: var(--markon-accent);
+    }
 }
 
 /* ============================================================
@@ -2057,6 +2214,114 @@ html[data-theme="dark"] .editor-tab.active {
 
 .markon-copy-flash.is-visible {
     opacity: 1;
+}
+
+.markon-notification-stack {
+    position: fixed;
+    top: calc(16px + env(safe-area-inset-top));
+    right: calc(18px + env(safe-area-inset-right));
+    z-index: var(--markon-z-modal-layer);
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+    gap: 10px;
+    width: min(390px, calc(100vw - 32px));
+    pointer-events: none;
+}
+
+.markon-notification {
+    --markon-notification-accent: var(--markon-accent);
+    width: min(360px, 100%);
+    max-width: 100%;
+    max-height: 240px;
+    overflow: hidden;
+    opacity: 0;
+    transform: translateX(14px) scale(0.985);
+    pointer-events: auto;
+    transition:
+        opacity 0.2s ease,
+        transform 0.2s ease,
+        max-height 0.24s ease,
+        margin 0.24s ease;
+}
+
+.markon-notification.is-success {
+    --markon-notification-accent: var(--markon-success);
+    --markon-modal-surface-border: var(--markon-modal-border-success);
+}
+
+.markon-notification.is-warning {
+    --markon-notification-accent: var(--markon-warning);
+    --markon-modal-surface-border: var(--markon-modal-border-accent);
+}
+
+.markon-notification.is-danger {
+    --markon-notification-accent: var(--markon-danger);
+    --markon-modal-surface-border: var(--markon-modal-border-danger);
+}
+
+.markon-notification-content {
+    display: grid;
+    grid-template-columns: 8px minmax(0, 1fr) auto;
+    gap: 10px;
+    align-items: start;
+    padding: 10px 11px 10px 10px;
+}
+
+.markon-notification-dot {
+    width: 8px;
+    height: 8px;
+    margin-top: 6px;
+    border-radius: 999px;
+    background: var(--markon-notification-accent);
+    box-shadow: 0 0 0 3px color-mix(in srgb, var(--markon-notification-accent) 13%, transparent);
+}
+
+.markon-notification-title {
+    margin-bottom: 2px;
+    color: var(--markon-fg-default);
+    font-size: 12px;
+    font-weight: 700;
+    line-height: 1.25;
+}
+
+.markon-notification-message {
+    color: var(--markon-fg-muted);
+    font-size: 13px;
+    line-height: 1.35;
+    overflow-wrap: anywhere;
+    text-align: left;
+}
+
+.markon-notification-close {
+    width: 22px;
+    height: 22px;
+    padding: 0;
+    border: 0;
+    border-radius: 999px;
+    background: transparent;
+    color: var(--markon-fg-muted);
+    cursor: pointer;
+    font-size: 18px;
+    line-height: 1;
+    display: grid;
+    place-items: center;
+}
+
+.markon-notification-close:hover {
+    background: var(--markon-bg-muted);
+    color: var(--markon-fg-default);
+}
+
+.markon-notification.is-visible {
+    opacity: 1;
+    transform: translateX(0) scale(1);
+}
+
+.markon-notification.is-leaving {
+    margin: 0;
+    opacity: 0;
+    transform: translateX(14px) scale(0.985);
 }
 
 /* Background scroll lock applied to <html> while a full-screen editor is open

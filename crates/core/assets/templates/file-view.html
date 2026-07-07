@@ -17,36 +17,21 @@
     <style>
         body {
             box-sizing: border-box;
-            max-width: 1100px;
-            margin: 0 auto;
-            padding: 28px 24px 80px;
+            min-height: 100vh;
+            margin: 0;
+            padding: 0;
             font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
             color: var(--markon-fg-default, #1f2328);
             background: var(--markon-bg-default, #fff);
-        }
-        .fv-back { margin-bottom: 16px; font-size: 15px; }
-        .fv-back a { color: var(--markon-accent-fg, #0969da); text-decoration: none; font-weight: 600; }
-        .fv-back a:hover { text-decoration: underline; }
-
-        .fv-head {
-            display: flex; align-items: center; justify-content: space-between;
-            gap: 12px; flex-wrap: wrap;
-            padding-bottom: 12px; margin-bottom: 16px;
-            border-bottom: 1px solid var(--markon-border-default, #d1d9e0);
-        }
-        .fv-title { display: flex; align-items: baseline; gap: 10px; min-width: 0; }
-        .fv-name { font-size: 15px; font-weight: 650; white-space: nowrap; }
-        .fv-path {
-            font-size: 12.5px; color: var(--markon-fg-muted, #59636e);
-            font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-            overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
         }
 
         /* ── Code viewer ── */
         .code-view {
             display: flex;
-            border: 1px solid var(--markon-border-default, #d1d9e0);
-            border-radius: 8px; overflow: hidden;
+            min-height: 100vh;
+            border: 0;
+            border-radius: 0;
+            overflow: visible;
             font-size: 12.75px; line-height: 1.55;
             font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
             background: var(--markon-code-bg, var(--markon-canvas-subtle, #f6f8fa));
@@ -75,17 +60,6 @@
     </style>
 </head>
 <body>
-    {% if show_back_link %}
-    <div class="fv-back"><a href="{{ back_link }}"><span data-i18n="web.back">← Back to workspace</span></a></div>
-    {% endif %}
-
-    <div class="fv-head">
-        <div class="fv-title">
-            <span class="fv-name">{{ file_name }}</span>
-            {% if rel_display != file_name %}<span class="fv-path">{{ rel_display }}</span>{% endif %}
-        </div>
-    </div>
-
     <div class="code-view">
         <pre class="code-gutter" aria-hidden="true">{{ gutter }}</pre>
         <pre class="code-body"><code class="mk-code">{{ code_html | safe }}</code></pre>

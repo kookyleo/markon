@@ -79,6 +79,10 @@ html[data-theme="dark"] {
     resize: both;
 }
 
+.markon-chat-container:not(.expanded) .markon-modal-frame-drag-region {
+    display: none;
+}
+
 /* Webkit-only restyle of the BR resize handle. Draw a short 1/4-circle handle
    around the panel corner; longer arcs start looking like an extra panel
    border turning inward. */
@@ -663,6 +667,11 @@ html[data-theme="dark"] .markon-chat-tool-output {
     gap: 8px;
 }
 
+.markon-chat-error-text {
+    flex: 1;
+    min-width: 0;
+}
+
 html[data-theme="dark"] .markon-chat-error {
     color: #ff8a91;
     background: rgba(220, 53, 69, 0.18);
@@ -673,16 +682,19 @@ html[data-theme="dark"] .markon-chat-error {
     border: 1px solid currentColor;
     background: transparent;
     color: inherit;
-    padding: 2px 8px;
+    min-height: 30px;
+    padding: 2px 10px;
     border-radius: 4px;
     cursor: pointer;
     font: inherit;
     font-size: 11px;
+    flex: 0 0 auto;
+    white-space: nowrap;
 }
 
 .markon-chat-retry:hover {
-    background: currentColor;
-    color: var(--markon-fg-on-emphasis);
+    background: rgba(220, 53, 69, 0.12);
+    color: inherit;
 }
 
 .markon-chat-stopped {

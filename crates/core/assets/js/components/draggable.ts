@@ -43,6 +43,8 @@ export interface DraggableOptions {
     onDragEnd?: DragEndCallback | null;
     /** When true, persists offset relative to `data-original-left/top` to `storageKey`. */
     saveOffset?: boolean;
+    /** When true, restores offset relative to `data-original-left/top` from `storageKey`. */
+    restoreOffset?: boolean;
     /** When true, persists the element's absolute left/top to `storageKey`. */
     savePosition?: boolean;
     /** When true, restores the element's absolute left/top from `storageKey` during init. */
@@ -71,7 +73,7 @@ interface InternalHandlers {
  */
 export class DraggableManager {
     #element: HTMLElement;
-    #handle: HTMLElement | null = null;
+    #handles: HTMLElement[] = [];
     #options: Required<DraggableOptions>;
     #isDragging = false;
     #startX = 0;
@@ -93,6 +95,7 @@ export class DraggableManager {
             handle: null,
             onDragEnd: null,
             saveOffset: false,
+            restoreOffset: false,
             savePosition: false,
             restorePosition: false,
             fixed: false,
@@ -110,22 +113,26 @@ export class DraggableManager {
      */
     #init(): void {
         if (typeof this.#options.handle === 'string') {
-            this.#handle = this.#element.querySelector(this.#options.handle);
+            this.#handles = Array.from(this.#element.querySelectorAll<HTMLElement>(this.#options.handle));
         } else {
-            this.#handle = this.#options.handle ?? this.#element;
+            this.#handles = [this.#options.handle ?? this.#element];
         }
 
-        if (!this.#handle) {
+        if (this.#handles.length === 0) {
             Logger.warn('Draggable', 'Handle element not found');
             return;
         }
 
         if (this.#options.handleClassName) {
-            this.#handle.classList.add(this.#options.handleClassName);
+            for (const handle of this.#handles) {
+                handle.classList.add(this.#options.handleClassName);
+            }
         }
 
         if (this.#options.restorePosition) {
             this.#restorePosition();
+        } else if (this.#options.restoreOffset) {
+            this.#restoreOffset();
         }
 
         // Mouse events
@@ -138,8 +145,10 @@ export class DraggableManager {
         this.#handlers.touchmove = (e: TouchEvent) => this.#onDragmove(e);
         this.#handlers.touchend = () => this.#onDragEnd();
 
-        this.#handle.addEventListener('mousedown', this.#handlers.mousedown);
-        this.#handle.addEventListener('touchstart', this.#handlers.touchstart, { passive: false });
+        for (const handle of this.#handles) {
+            handle.addEventListener('mousedown', this.#handlers.mousedown);
+            handle.addEventListener('touchstart', this.#handlers.touchstart, { passive: false });
+        }
     }
 
     /**
@@ -160,7 +169,9 @@ export class DraggableManager {
         this.#initialTop = initial.top;
 
         this.#element.style.cursor = 'grabbing';
-        this.#handle?.classList.add('is-dragging');
+        for (const handle of this.#handles) {
+            handle.classList.add('is-dragging');
+        }
         this.#previousUserSelect = document.body.style.userSelect;
         this.#hasUserSelectOverride = true;
         document.body.style.userSelect = 'none';
@@ -207,7 +218,9 @@ export class DraggableManager {
 
         this.#isDragging = false;
         this.#element.style.cursor = ''; // restore the CSS default cursor
-        this.#handle?.classList.remove('is-dragging');
+        for (const handle of this.#handles) {
+            handle.classList.remove('is-dragging');
+        }
         if (this.#hasUserSelectOverride) {
             document.body.style.userSelect = this.#previousUserSelect;
             this.#hasUserSelectOverride = false;
@@ -253,6 +266,36 @@ export class DraggableManager {
             };
             localStorage.setItem(this.#options.storageKey, JSON.stringify(offset));
             Logger.log('Draggable', `Saved offset to ${this.#options.storageKey}:`, offset);
+        }
+    }
+
+    /**
+     * Restore an offset relative to data-original-left/top from localStorage.
+     */
+    #restoreOffset(): void {
+        if (!this.#options.storageKey) return;
+        const originalLeft = parseFloat(this.#element.dataset['originalLeft'] ?? '');
+        const originalTop = parseFloat(this.#element.dataset['originalTop'] ?? '');
+        if (!Number.isFinite(originalLeft) || !Number.isFinite(originalTop)) return;
+
+        try {
+            const raw: unknown = JSON.parse(localStorage.getItem(this.#options.storageKey) || 'null');
+            if (!raw || typeof raw !== 'object') return;
+            const obj = raw as Record<string, unknown>;
+            const dx = typeof obj['dx'] === 'number' ? obj['dx'] : 0;
+            const dy = typeof obj['dy'] === 'number' ? obj['dy'] : 0;
+            if (!Number.isFinite(dx) || !Number.isFinite(dy)) return;
+
+            const constrained = Position.constrainToViewport(
+                originalLeft + dx,
+                originalTop + dy,
+                this.#element.offsetWidth,
+                this.#element.offsetHeight,
+                { fixed: this.#options.fixed, margin: this.#options.margin },
+            );
+            this.#writePosition(constrained.left, constrained.top);
+        } catch {
+            // Ignore bad localStorage values and keep the anchor-relative placement.
         }
     }
 
@@ -344,11 +387,11 @@ export class DraggableManager {
      * Tear down the drag behavior.
      */
     destroy(): void {
-        if (this.#handle) {
-            if (this.#handlers.mousedown) this.#handle.removeEventListener('mousedown', this.#handlers.mousedown);
-            if (this.#handlers.touchstart) this.#handle.removeEventListener('touchstart', this.#handlers.touchstart);
-            if (this.#options.handleClassName) this.#handle.classList.remove(this.#options.handleClassName);
-            this.#handle.classList.remove('is-dragging');
+        for (const handle of this.#handles) {
+            if (this.#handlers.mousedown) handle.removeEventListener('mousedown', this.#handlers.mousedown);
+            if (this.#handlers.touchstart) handle.removeEventListener('touchstart', this.#handlers.touchstart);
+            if (this.#options.handleClassName) handle.classList.remove(this.#options.handleClassName);
+            handle.classList.remove('is-dragging');
         }
 
         // Detach global listeners if a drag is still active.

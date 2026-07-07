@@ -61,7 +61,7 @@ export const CONFIG = {
     // Layout thresholds
     THRESHOLDS: {
         NOTE_CLUSTER: 50,               // Note clustering threshold (pixels)
-        NOTE_MIN_SPACING: 10,           // Note minimum spacing
+        NOTE_MIN_SPACING: 32,           // Note minimum spacing
         HEADING_SCROLL_THRESHOLD: 40,   // Heading scroll threshold
     },
 
@@ -158,8 +158,11 @@ export const CONFIG = {
         CLIENT_ID: 'markon-client-id',
         CHAT_POS: 'markon-chat-pos',
         CHAT_SIZE: 'markon-chat-size',
+        NOTE_INPUT_OFFSET: 'markon-note-input-offset',
+        NOTE_INPUT_SIZE: 'markon-note-input-size',
         POPOVER_OFFSET: 'markon-popover-offset',
         SHORTCUTS_HELP_POS: 'markon-shortcuts-help-pos',
+        WORKSPACE_SPOTLIGHT_POS: 'markon-workspace-spotlight-pos',
     },
 
     // DOM Selectors

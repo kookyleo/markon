@@ -188,6 +188,20 @@ export class StorageManager {
         }
     }
 
+    /** Load the local annotation mirror regardless of the active storage mode. */
+    static async loadLocalAnnotations(filePath: string): Promise<Annotation[]> {
+        const storage = new LocalStorageStrategy<Annotation[]>();
+        const key = CONFIG.STORAGE_KEYS.ANNOTATIONS(filePath);
+        return (await storage.load(key)) ?? [];
+    }
+
+    /** Save the local annotation mirror regardless of the active storage mode. */
+    static async saveLocalAnnotations(filePath: string, annotations: Annotation[]): Promise<void> {
+        const storage = new LocalStorageStrategy<Annotation[]>();
+        const key = CONFIG.STORAGE_KEYS.ANNOTATIONS(filePath);
+        await storage.save(key, annotations);
+    }
+
     /** Load all annotations for the current file. */
     async loadAnnotations(): Promise<Annotation[]> {
         const key = CONFIG.STORAGE_KEYS.ANNOTATIONS(this.#filePath);

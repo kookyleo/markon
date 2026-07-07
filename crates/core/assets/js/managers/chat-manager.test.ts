@@ -3,6 +3,7 @@ import {
     ChatManager,
     escapeHtml,
     extractMentionContext,
+    formatChatHttpError,
     hydrateMessage,
     parseCitation,
     renderInline,
@@ -37,6 +38,38 @@ describe('ChatManager — pure helpers', () => {
 
         it('passes through plain text untouched', () => {
             expect(escapeHtml('hello world 123')).toBe('hello world 123');
+        });
+    });
+
+    describe('formatChatHttpError', () => {
+        it('includes plain-text response bodies', async () => {
+            const res = new Response('missing API key for the selected chat provider', {
+                status: 400,
+                statusText: 'Bad Request',
+            });
+
+            await expect(formatChatHttpError(res))
+                .resolves
+                .toBe('HTTP 400 Bad Request: missing API key for the selected chat provider');
+        });
+
+        it('extracts common JSON error fields', async () => {
+            const res = new Response(JSON.stringify({ error: 'model not found' }), {
+                status: 404,
+                statusText: 'Not Found',
+            });
+
+            await expect(formatChatHttpError(res))
+                .resolves
+                .toBe('HTTP 404 Not Found: model not found');
+        });
+
+        it('falls back to the status when the body is empty', async () => {
+            const res = new Response('', { status: 503, statusText: 'Service Unavailable' });
+
+            await expect(formatChatHttpError(res))
+                .resolves
+                .toBe('HTTP 503 Service Unavailable');
         });
     });
 
@@ -523,6 +556,7 @@ describe('ChatManager — header markup invariants', () => {
         const title = container?.querySelector('.markon-chat-thread-title');
         const rename = container?.querySelector('.markon-chat-rename');
         const switcher = container?.querySelector('.markon-chat-thread-switcher');
+        const dragRegions = container?.querySelectorAll('.markon-modal-frame-drag-region');
 
         // Title must NOT be a button anymore — it's a plain <span> that only
         // becomes editable when the rename button is clicked.
@@ -541,6 +575,7 @@ describe('ChatManager — header markup invariants', () => {
         expect(rename?.previousElementSibling).toBe(title);
         expect(rename?.parentElement?.classList.contains('markon-chat-header-titlebar')).toBe(true);
         expect(switcher?.parentElement?.classList.contains('markon-chat-header-actions')).toBe(true);
+        expect(dragRegions).toHaveLength(4);
     });
 });
 
@@ -606,6 +641,38 @@ describe('ChatManager — input focus on open', () => {
 
         const textarea = document.querySelector<HTMLTextAreaElement>('.markon-chat-input');
         expect(document.activeElement).toBe(textarea);
+    });
+
+    it('retries a failed first turn before the server assigns a thread id', async () => {
+        const fetchMock = vi.fn(async (_input: RequestInfo | URL, init?: RequestInit) => {
+            if (init?.method === 'POST') {
+                return new Response('data: {"type":"done"}\n\n', {
+                    status: 200,
+                    headers: { 'Content-Type': 'text/event-stream' },
+                });
+            }
+            return new Response('[]', {
+                status: 200,
+                headers: { 'Content-Type': 'application/json' },
+            });
+        });
+        vi.stubGlobal('fetch', fetchMock);
+
+        const mgr = new ChatManager(null);
+        mgr.init();
+        mgr._testMessagesByThread.set('__pending__', [
+            { id: 'local-u', role: 'user', blocks: [{ type: 'text', text: 'hello' }] },
+            { id: 'local-a', role: 'assistant', blocks: [{ type: 'text', text: '' }], error: 'HTTP 400' },
+        ]);
+
+        mgr._testRetryLast();
+        await tick();
+        await tick();
+
+        const postCall = fetchMock.mock.calls.find(([, init]) => init?.method === 'POST');
+        expect(postCall).toBeDefined();
+        const body = JSON.parse(String(postCall?.[1]?.body)) as { user_message?: string };
+        expect(body.user_message).toBe('hello');
     });
 });
 

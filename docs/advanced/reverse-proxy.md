@@ -111,7 +111,7 @@ VirtualHost 配置：
 
 最简配置：
 
-```caddyfile
+```text
 docs.example.com {
   reverse_proxy 127.0.0.1:6419
 }

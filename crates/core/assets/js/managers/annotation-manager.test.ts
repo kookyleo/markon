@@ -144,6 +144,24 @@ describe('AnnotationManager', () => {
         expect(mgr.getAll()).toHaveLength(1);
     });
 
+    it('replaceAll() updates memory without touching storage', () => {
+        const article = setupArticle('<p>aaa</p>');
+        const storage = makeStorage();
+        const mgr = new AnnotationManager(storage, article);
+        const events: AnnotationChangeEvent[] = [];
+        mgr.onChange(e => events.push(e));
+
+        const range = makeRange(article.querySelector('p')!.firstChild!, 0, 3);
+        const anno = mgr.createAnnotation(range, 'highlight-green', 'span');
+        mgr.replaceAll([anno]);
+
+        expect(storage.saveAnnotation).not.toHaveBeenCalled();
+        expect(storage.deleteAnnotation).not.toHaveBeenCalled();
+        expect(storage.clearAnnotations).not.toHaveBeenCalled();
+        expect(mgr.getAll()).toEqual([anno]);
+        expect(itemAt(events, 0).action).toBe('replace');
+    });
+
     it('applyToDOM wraps the range in the configured tag with annotation metadata', () => {
         const article = setupArticle('<p>highlight this</p>');
         const storage = makeStorage();

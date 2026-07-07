@@ -279,6 +279,48 @@ describe('FloatingLayer / drag', () => {
         document.dispatchEvent(new MouseEvent('mouseup', { bubbles: true }));
     });
 
+    it('expanded drag handle selector can bind multiple matching handles', () => {
+        installAnimateStub();
+        const container = makeContainer();
+        container.innerHTML = `
+            <div class="panel-title"></div>
+            <div class="panel-glass-edge"></div>
+        `;
+        const layer = new FloatingLayer({
+            name: 'multi-expanded-drag',
+            container,
+            homeAnchor: 'TL',
+            panelAnchor: 'TL',
+            panelSize: { width: 420, height: 300 },
+            initialOffset: { left: 120, top: 140 },
+            expandedDragHandle: '.panel-title, .panel-glass-edge',
+        });
+        layer.init();
+        container.classList.add('expanded');
+
+        const internal = layer as unknown as {
+            _home: { x: number; y: number };
+            _intentionalHome: { x: number; y: number };
+        };
+        const before = { ...internal._home };
+        const edge = container.querySelector<HTMLElement>('.panel-glass-edge')!;
+
+        const md = new MouseEvent('mousedown', { bubbles: true, cancelable: true, button: 0 });
+        Object.defineProperty(md, 'clientX', { value: 10 });
+        Object.defineProperty(md, 'clientY', { value: 10 });
+        edge.dispatchEvent(md);
+
+        const mv = new MouseEvent('mousemove', { bubbles: true });
+        Object.defineProperty(mv, 'clientX', { value: 34 });
+        Object.defineProperty(mv, 'clientY', { value: 28 });
+        document.dispatchEvent(mv);
+        document.dispatchEvent(new MouseEvent('mouseup', { bubbles: true }));
+
+        expect(internal._home.x).toBeCloseTo(before.x + 24);
+        expect(internal._home.y).toBeCloseTo(before.y + 18);
+        expect(internal._intentionalHome).toEqual(internal._home);
+    });
+
     it('a human drag of A moves only A: peers B/C do not cascade, A stays clear + on-screen', () => {
         installAnimateStub();
 

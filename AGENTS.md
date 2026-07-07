@@ -52,5 +52,9 @@
      以及 `i18n-boot.html` 注入 `window.__MARKON_I18N__` 的引导——这些把服务端数据插进页面,天然必须内联。
 - **i18n**:文案在 `crates/core/i18n/{en,ja,zh_CN}.json5`,由 `build.rs` 在**编译期**生成
   `langs_generated.rs`。新增 key 需要 `cargo build` 才生效(仅重启进程不够);三语必须 **key 对齐**。
+- **反馈提示系统**:页面级非阻塞消息统一使用 `crates/core/assets/js/core/notifications.ts`
+  (`showNotification`) 的右上角 notification stack,不得手写临时 toast / fixed div /
+  inline style;按钮旁局部反馈继续用 `core/clipboard.ts` 的 `flashText` / `flashCopied` /
+  `flashBeside`;需要用户决策的情况使用现有 modal / confirm 组件。
 - **Tauri 设置界面**(`crates/gui/ui/`)是独立于 core 的另一套手写 JS,暂不纳入本 TS 流水线;若要 TS 化
   单独立项。

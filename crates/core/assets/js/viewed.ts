@@ -48,9 +48,25 @@ function sectionHeadingsByLevel(deepestFirst: boolean): HTMLElement[] {
  * importing config.ts would pull its window side effects into this bundle.
  */
 const viewedStorageKey = (filePath: string): string => `markon-viewed-${filePath}`;
+const collapsedStorageKey = (filePath: string): string => `markon-collapsed-${filePath}`;
 
 /** Map of `headingId → viewed?`. */
 type ViewedState = Record<string, boolean>;
+/** Map of `headingId → collapsed?`, independent from viewed state. */
+type CollapsedState = Record<string, boolean>;
+
+type RevealContentOptions = {
+    animate?: boolean;
+};
+
+type NoteFocusReveal = {
+    annotationId: string;
+    token: string;
+    headings: {
+        id: string;
+        wasCollapsed: boolean;
+    }[];
+};
 
 /**
  * Subset of `WebSocketManager` that ViewedManager actually uses. Kept as a
@@ -82,11 +98,15 @@ export class SectionViewedManager {
     wsManager: OpIdAwareWs | null;
     filePath: string;
     viewedState: ViewedState;
+    collapsedState: CollapsedState;
     stateLoaded: boolean;
     enableViewed: boolean;
     allViewedCheckbox: HTMLInputElement | null;
     updatingAllViewedCheckbox: boolean;
     revealSeq: number;
+    private noteFocusReveal: NoteFocusReveal | null;
+    private noteFocusRevealSeq: number;
+    private preserveExpansionOnNextSharedState: boolean;
 
     /** Latest WS handler — kept so we can detach it before re-attaching. */
     private _wsMessageHandler: ((event: MessageEvent) => void) | null;
@@ -101,10 +121,14 @@ export class SectionViewedManager {
         const filePathMeta = document.querySelector('meta[name="file-path"]');
         this.filePath = filePathMeta ? filePathMeta.getAttribute('content') ?? window.location.pathname : window.location.pathname;
         this.viewedState = {};
+        this.collapsedState = {};
         this.stateLoaded = false;
         this.allViewedCheckbox = null;
         this.updatingAllViewedCheckbox = false;
         this._wsMessageHandler = null;
+        this.noteFocusReveal = null;
+        this.noteFocusRevealSeq = 0;
+        this.preserveExpansionOnNextSharedState = false;
 
         // Check if viewed feature is enabled
         const enableViewedMeta = document.querySelector('meta[name="enable-viewed"]');
@@ -119,7 +143,9 @@ export class SectionViewedManager {
     }
 
     async init(): Promise<void> {
-        // 1. Load saved state (async for shared mode) — only if viewed is enabled.
+        this.loadCollapsedState();
+
+        // 1. Load saved viewed state (async for shared mode) — only if viewed is enabled.
         if (this.enableViewed) {
             await this.loadState();
         }
@@ -132,10 +158,9 @@ export class SectionViewedManager {
             this.createToolbar();
         }
 
-        // 4. Apply saved viewed state — only if viewed is enabled.
-        if (this.enableViewed) {
-            this.applyViewedState();
-        }
+        // 4. Apply saved section expansion state. Viewed state supplies the
+        // default collapsed posture; explicit collapse/expand choices override it.
+        this.applyViewedState();
 
         // 5. Setup event listeners
         this.setupEventListeners();
@@ -165,8 +190,15 @@ export class SectionViewedManager {
                 this.stateLoaded = true;
 
                 if (document.querySelector('.viewed-checkbox')) {
-                    this.updateCheckboxes();
-                    this.applyViewedState();
+                    if (this.preserveExpansionOnNextSharedState) {
+                        this.preserveExpansionOnNextSharedState = false;
+                        this.updateCheckboxes();
+                        this.updateTocHighlights();
+                        this.updateAllViewedCheckbox();
+                    } else {
+                        this.updateCheckboxes();
+                        this.applyViewedState();
+                    }
                 }
             } catch {
                 // Not a viewed message, ignore
@@ -289,6 +321,106 @@ export class SectionViewedManager {
         return elements;
     }
 
+    preserveExpansionForNextSharedState(): void {
+        this.preserveExpansionOnNextSharedState = true;
+    }
+
+    private hasCollapsedState(headingId: string): boolean {
+        return Object.prototype.hasOwnProperty.call(this.collapsedState, headingId);
+    }
+
+    private shouldCollapse(headingId: string): boolean {
+        if (this.hasCollapsedState(headingId)) {
+            return !!this.collapsedState[headingId];
+        }
+        return !!this.viewedState[headingId];
+    }
+
+    private setCollapsedState(headingId: string, isCollapsed: boolean): void {
+        this.collapsedState[headingId] = isCollapsed;
+        this.saveCollapsedState();
+    }
+
+    revealNoteSource(annotationId: string, sourceElement: Element): void {
+        if (this.noteFocusReveal?.annotationId === annotationId) {
+            return;
+        }
+
+        this.clearNoteSourceReveal();
+
+        const collapsedHeadings = this.collapsedHeadingsContaining(sourceElement);
+        if (collapsedHeadings.length === 0) {
+            return;
+        }
+
+        const token = String(++this.noteFocusRevealSeq);
+        this.noteFocusReveal = {
+            annotationId,
+            token,
+            headings: collapsedHeadings.map((heading) => ({
+                id: heading.id,
+                wasCollapsed: heading.classList.contains('section-collapsed'),
+            })),
+        };
+
+        collapsedHeadings.forEach((heading) => {
+            heading.dataset['markonNoteFocusReveal'] = token;
+            this.expandSection(heading.id, { animate: false });
+        });
+    }
+
+    clearNoteSourceReveal(annotationId?: string | null): void {
+        const reveal = this.noteFocusReveal;
+        if (!reveal) return;
+        if (annotationId && reveal.annotationId !== annotationId) return;
+
+        this.noteFocusReveal = null;
+        [...reveal.headings].reverse().forEach(({ id, wasCollapsed }) => {
+            const heading = document.getElementById(id);
+            if (!heading || heading.dataset['markonNoteFocusReveal'] !== reveal.token) {
+                return;
+            }
+
+            delete heading.dataset['markonNoteFocusReveal'];
+            if (wasCollapsed) {
+                this.collapseSection(id);
+            }
+        });
+    }
+
+    private collapsedHeadingsContaining(sourceElement: Element): HTMLElement[] {
+        return Array.from(document.querySelectorAll<HTMLElement>(SECTION_HEADINGS_SELECTOR))
+            .filter((heading) => {
+                if (!heading.id || !heading.classList.contains('section-collapsed')) return false;
+                return this.getSectionContent(heading).some(el => el === sourceElement || el.contains(sourceElement));
+            });
+    }
+
+    private cancelNoteSourceRevealForHeading(headingId: string): void {
+        const reveal = this.noteFocusReveal;
+        if (!reveal || !reveal.headings.some(heading => heading.id === headingId)) return;
+
+        reveal.headings.forEach(({ id }) => {
+            const heading = document.getElementById(id);
+            if (heading?.dataset['markonNoteFocusReveal'] === reveal.token) {
+                delete heading.dataset['markonNoteFocusReveal'];
+            }
+        });
+        this.noteFocusReveal = null;
+    }
+
+    private cancelNoteSourceReveal(): void {
+        const reveal = this.noteFocusReveal;
+        if (!reveal) return;
+        reveal.headings.forEach(({ id }) => {
+            const heading = document.getElementById(id);
+            if (heading?.dataset['markonNoteFocusReveal'] === reveal.token) {
+                delete heading.dataset['markonNoteFocusReveal'];
+            }
+        });
+        this.noteFocusReveal = null;
+    }
+
     collapseSection(headingId: string): void {
         const heading = document.getElementById(headingId);
         if (!heading) return;
@@ -322,7 +454,10 @@ export class SectionViewedManager {
         placeholder.className = 'section-collapsed-placeholder';
         placeholder.dataset['headingId'] = headingId;
         placeholder.textContent = _t('web.viewed.collapsed.hint');
-        placeholder.addEventListener('click', () => this.toggleTempExpand(headingId));
+        placeholder.addEventListener('click', () => {
+            this.cancelNoteSourceRevealForHeading(headingId);
+            this.toggleTempExpand(headingId);
+        });
         heading.insertAdjacentElement('afterend', placeholder);
     }
 
@@ -333,7 +468,7 @@ export class SectionViewedManager {
         }
     }
 
-    expandSection(headingId: string): void {
+    expandSection(headingId: string, options: RevealContentOptions = {}): void {
         const heading = document.getElementById(headingId);
         if (!heading) return;
 
@@ -342,20 +477,24 @@ export class SectionViewedManager {
         heading.classList.remove('section-collapsed');
         this.removeCollapsedPlaceholder(heading);
 
-        // Make sure elements start hidden so the transition fires.
-        content.forEach((el) => {
-            if (!el.classList.contains('section-content-hidden')) {
-                el.classList.add('section-content-hidden');
-            }
-        });
+        if (options.animate === false) {
+            this.revealContent(content, { animate: false });
+        } else {
+            // Make sure elements start hidden so the transition fires.
+            content.forEach((el) => {
+                if (!el.classList.contains('section-content-hidden')) {
+                    el.classList.add('section-content-hidden');
+                }
+            });
 
-        // Force reflow.
-        content.forEach((el) => void el.offsetHeight);
+            // Force reflow.
+            content.forEach((el) => void el.offsetHeight);
 
-        // Trigger expand animation.
-        requestAnimationFrame(() => {
-            this.revealContent(content);
-        });
+            // Trigger expand animation.
+            requestAnimationFrame(() => {
+                this.revealContent(content);
+            });
+        }
 
         this.syncToggleBtn(heading, false);
     }
@@ -364,7 +503,16 @@ export class SectionViewedManager {
         this.toggleCollapse(headingId);
     }
 
-    revealContent(content: HTMLElement[]): void {
+    revealContent(content: HTMLElement[], options: RevealContentOptions = {}): void {
+        if (options.animate === false) {
+            content.forEach((el) => {
+                el.classList.remove('section-content-hidden');
+                el.classList.remove('section-content-temp-visible');
+                delete el.dataset['markonRevealToken'];
+            });
+            return;
+        }
+
         content.forEach((el) => {
             const token = String(++this.revealSeq);
             el.dataset['markonRevealToken'] = token;
@@ -702,6 +850,7 @@ export class SectionViewedManager {
 
     toggleCollapse(headingId: string): void {
         // Plain collapse/expand toggle, ignores viewed state.
+        this.cancelNoteSourceRevealForHeading(headingId);
         const heading = document.getElementById(headingId);
         if (!heading) return;
 
@@ -711,13 +860,17 @@ export class SectionViewedManager {
             this.removeCollapsedPlaceholder(heading);
             this.revealContent(content);
             this.syncToggleBtn(heading, false);
+            this.setCollapsedState(headingId, false);
         } else {
             this.collapseSection(headingId);
+            this.setCollapsedState(headingId, true);
         }
     }
 
     toggleViewed(headingId: string, isViewed: boolean): void {
+        this.cancelNoteSourceRevealForHeading(headingId);
         this.viewedState[headingId] = isViewed;
+        this.collapsedState[headingId] = isViewed;
 
         if (isViewed) {
             this.collapseSection(headingId);
@@ -737,8 +890,15 @@ export class SectionViewedManager {
         this.updateCheckboxes();
         this.updateTocHighlights();
         this.saveState();
+        this.saveCollapsedState();
 
         this.updateAllViewedCheckbox();
+    }
+
+    private sectionHeadingIds(): string[] {
+        return Array.from(document.querySelectorAll<HTMLElement>(SECTION_HEADINGS_SELECTOR))
+            .map((heading) => heading.id)
+            .filter((id): id is string => Boolean(id));
     }
 
     /** Heading IDs of all per-section viewed checkboxes currently in the DOM. */
@@ -791,6 +951,19 @@ export class SectionViewedManager {
         this.stateLoaded = true;
     }
 
+    loadCollapsedState(): void {
+        try {
+            const saved = localStorage.getItem(collapsedStorageKey(this.filePath));
+            this.collapsedState = saved ? (JSON.parse(saved) as CollapsedState) : {};
+        } catch {
+            this.collapsedState = {};
+        }
+    }
+
+    saveCollapsedState(): void {
+        localStorage.setItem(collapsedStorageKey(this.filePath), JSON.stringify(this.collapsedState));
+    }
+
     saveState(): void {
         if (this.isSharedMode) {
             // Preferred path: route through the op_id-aware WebSocketManager
@@ -820,8 +993,8 @@ export class SectionViewedManager {
     }
 
     applyViewedState(): void {
-        this.headingIds().forEach((headingId) => {
-            if (this.viewedState[headingId]) {
+        this.sectionHeadingIds().forEach((headingId) => {
+            if (this.shouldCollapse(headingId)) {
                 this.collapseSection(headingId);
             } else {
                 this.expandSection(headingId);
@@ -839,6 +1012,7 @@ export class SectionViewedManager {
                 const target = e.target as HTMLInputElement;
                 const headingId = target.dataset['headingId'];
                 if (!headingId) return;
+                this.cancelNoteSourceRevealForHeading(headingId);
                 this.toggleViewed(headingId, target.checked);
             });
         });
@@ -850,6 +1024,7 @@ export class SectionViewedManager {
                 const target = e.target as HTMLElement;
                 const headingId = target.dataset['headingId'];
                 if (!headingId) return;
+                this.cancelNoteSourceRevealForHeading(headingId);
                 this.toggleTempExpand(headingId);
             });
         });
@@ -960,14 +1135,17 @@ export class SectionViewedManager {
     }
 
     markAllViewed(): void {
-        this.headingIds().forEach((headingId) => {
+        this.cancelNoteSourceReveal();
+        this.sectionHeadingIds().forEach((headingId) => {
             this.viewedState[headingId] = true;
+            this.collapsedState[headingId] = true;
             this.collapseSection(headingId);
         });
 
         this.updateCheckboxes();
         this.updateTocHighlights();
         this.saveState();
+        this.saveCollapsedState();
 
         if (this.allViewedCheckbox) {
             this.updatingAllViewedCheckbox = true;
@@ -977,7 +1155,11 @@ export class SectionViewedManager {
     }
 
     markAllUnviewed(): void {
+        this.cancelNoteSourceReveal();
         this.viewedState = {};
+        this.sectionHeadingIds().forEach((headingId) => {
+            this.collapsedState[headingId] = false;
+        });
 
         this.updateCheckboxes();
         // applyViewedState() ends with updateAllViewedCheckbox(), which
@@ -985,21 +1167,27 @@ export class SectionViewedManager {
         this.applyViewedState();
         this.updateTocHighlights();
         this.saveState();
+        this.saveCollapsedState();
     }
 
     collapseAll(): void {
+        this.cancelNoteSourceReveal();
         // Process h6 → h2 to handle nested sections correctly.
         sectionHeadingsByLevel(true).forEach((heading) => {
             if (heading.id) {
+                this.collapsedState[heading.id] = true;
                 this.collapseSection(heading.id);
             }
         });
+        this.saveCollapsedState();
     }
 
     expandAll(): void {
+        this.cancelNoteSourceReveal();
         // Process h2 → h6 to handle nested sections correctly.
         sectionHeadingsByLevel(false).forEach((heading) => {
             if (heading.id) {
+                this.collapsedState[heading.id] = false;
                 heading.classList.remove('section-collapsed');
                 this.removeCollapsedPlaceholder(heading);
                 this.syncToggleBtn(heading, false);
@@ -1015,6 +1203,7 @@ export class SectionViewedManager {
                 el.classList.remove('section-content-temp-visible');
                 delete el.dataset['markonRevealToken'];
             });
+        this.saveCollapsedState();
     }
 
     // ============================================================
@@ -1053,10 +1242,16 @@ function initViewedFeature(): void {
         const ws = window.ws ?? null;
 
         window.viewedManager = new SectionViewedManager(isSharedMode, ws);
+        const dispatchReady = (): void => {
+            document.dispatchEvent(new CustomEvent('markon:viewed-ready'));
+        };
+        void window.viewedManager.ready.then(dispatchReady, dispatchReady);
     }
 }
 
-if (document.readyState === 'loading') {
+if (document.querySelector('.markdown-body')) {
+    initViewedFeature();
+} else if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', initViewedFeature);
 } else {
     initViewedFeature();

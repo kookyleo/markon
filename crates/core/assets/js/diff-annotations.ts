@@ -17,7 +17,9 @@
  */
 
 import { CONFIG } from './core/config';
-import { copyText } from './core/clipboard';
+import { copyText, flashBeside, flashCopied } from './core/clipboard';
+import { Meta } from './services/dom';
+import { workspaceFileNoteLink } from './services/note-link';
 import { StorageManager } from './managers/storage-manager';
 import { AnnotationManager, type Annotation } from './managers/annotation-manager';
 import { EditorManager } from './managers/editor-manager';
@@ -38,6 +40,7 @@ const markdownFileHeading = (path: string): string => {
 /** Per-file annotation state. One per changed file (keyed by absolute path). */
 interface PerFileContext {
     absPath: string;
+    filePath: string;
     storage: StorageManager;
     annotationManager: AnnotationManager;
     noteManager: NoteManager;
@@ -124,7 +127,14 @@ class DiffAnnotationCoordinator {
         const root = newSideRootFor(section);
         const annotationManager = new AnnotationManager(storage, root, NEW_SIDE_REJECT);
         const noteManager = new NoteManager(annotationManager, root, { marginCards: false });
-        ctx = { absPath, storage, annotationManager, noteManager, ready: annotationManager.load() };
+        ctx = {
+            absPath,
+            filePath: section.dataset['filePath'] || absPath,
+            storage,
+            annotationManager,
+            noteManager,
+            ready: annotationManager.load(),
+        };
         this.#contexts.set(absPath, ctx);
         return ctx;
     }
@@ -304,6 +314,7 @@ class DiffAnnotationCoordinator {
 
         // Note popup action buttons (carry data-annotation-id).
         const copyBtn = target.closest<HTMLElement>('.note-copy');
+        const linkBtn = target.closest<HTMLElement>('.note-link');
         const editBtn = target.closest<HTMLElement>('.note-edit');
         const deleteBtn = target.closest<HTMLElement>('.note-delete');
 
@@ -312,6 +323,22 @@ class DiffAnnotationCoordinator {
             const ctx = id ? this.#contextForAnnotationId(id) : null;
             const anno = id && ctx ? ctx.annotationManager.getById(id) : null;
             if (anno && ctx) await copyText(ctx.annotationManager.formatAnnotation(anno));
+            e.stopPropagation();
+            return;
+        }
+
+        if (linkBtn) {
+            const id = linkBtn.dataset['annotationId'];
+            const ctx = id ? this.#contextForAnnotationId(id) : null;
+            const anno = id && ctx ? ctx.annotationManager.getById(id) : null;
+            const workspaceId = Meta.get(CONFIG.META_TAGS.WORKSPACE_ID);
+            let link = '';
+            if (id && ctx && anno?.note?.trim() && workspaceId) {
+                link = workspaceFileNoteLink(workspaceId, ctx.filePath, id);
+            }
+            const ok = link ? await copyText(link) : false;
+            if (ok) flashCopied(linkBtn);
+            else flashBeside(linkBtn, 'Copy failed');
             e.stopPropagation();
             return;
         }

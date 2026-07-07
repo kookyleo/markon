@@ -651,6 +651,7 @@
   .note-popup,
   .confirm-dialog,
   .note-actions,
+  .note-link,
   .note-edit,
   .note-delete {
     display: none !important;

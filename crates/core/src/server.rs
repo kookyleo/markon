@@ -2096,9 +2096,7 @@ async fn handle_git_history(
             author.as_deref(),
             &range_key,
         ),
-        Err(git::GitError::NotRepository) => {
-            (StatusCode::CONFLICT, "Workspace is not a git repository").into_response()
-        }
+        Err(git::GitError::NotRepository) => git_not_repository_response(),
         Err(e) => (
             StatusCode::INTERNAL_SERVER_ERROR,
             format!("Failed to list git history: {e}"),
@@ -2116,9 +2114,7 @@ async fn handle_git_history_data(
     };
     match git::history(&ws.root, 80) {
         Ok(commits) => Json(commits).into_response(),
-        Err(git::GitError::NotRepository) => {
-            (StatusCode::CONFLICT, "Workspace is not a git repository").into_response()
-        }
+        Err(git::GitError::NotRepository) => git_not_repository_response(),
         Err(e) => (
             StatusCode::INTERNAL_SERVER_ERROR,
             format!("Failed to list git history: {e}"),
@@ -2136,9 +2132,7 @@ async fn handle_git_branches(
     };
     match git::branches_detailed(&ws.root) {
         Ok(branches) => render_git_branches_page(&state, &workspace_id, &branches),
-        Err(git::GitError::NotRepository) => {
-            (StatusCode::CONFLICT, "Workspace is not a git repository").into_response()
-        }
+        Err(git::GitError::NotRepository) => git_not_repository_response(),
         Err(e) => (
             StatusCode::INTERNAL_SERVER_ERROR,
             format!("Failed to list git branches: {e}"),
@@ -2156,9 +2150,7 @@ async fn handle_git_tags(
     };
     match git::tags(&ws.root, 200) {
         Ok(tags) => render_git_tags_page(&state, &workspace_id, &tags),
-        Err(git::GitError::NotRepository) => {
-            (StatusCode::CONFLICT, "Workspace is not a git repository").into_response()
-        }
+        Err(git::GitError::NotRepository) => git_not_repository_response(),
         Err(e) => (
             StatusCode::INTERNAL_SERVER_ERROR,
             format!("Failed to list git tags: {e}"),
@@ -2180,9 +2172,7 @@ async fn handle_git_working_diff(
     let initial_view = diff_view_from_query(query.view.as_deref());
     match git::working_diff(&ws.root) {
         Ok(diff) => render_git_diff_page(&state, &workspace_id, &ws, is_local, &diff, initial_view),
-        Err(git::GitError::NotRepository) => {
-            (StatusCode::CONFLICT, "Workspace is not a git repository").into_response()
-        }
+        Err(git::GitError::NotRepository) => git_not_repository_response(),
         Err(e) => (
             StatusCode::INTERNAL_SERVER_ERROR,
             format!("Failed to read git diff: {e}"),
@@ -2208,9 +2198,7 @@ async fn handle_git_working_diff_data(
             query.f.as_deref(),
         ) {
             Ok(data) => Json(data).into_response(),
-            Err(git::GitError::NotRepository) => {
-                (StatusCode::CONFLICT, "Workspace is not a git repository").into_response()
-            }
+            Err(git::GitError::NotRepository) => git_not_repository_response(),
             Err(git::GitError::InvalidRevision) => {
                 (StatusCode::BAD_REQUEST, "Invalid git revision").into_response()
             }
@@ -2223,9 +2211,7 @@ async fn handle_git_working_diff_data(
     }
     match git::working_diff(&ws.root) {
         Ok(diff) => git_diff_json_response(&diff, query.f.as_deref()),
-        Err(git::GitError::NotRepository) => {
-            (StatusCode::CONFLICT, "Workspace is not a git repository").into_response()
-        }
+        Err(git::GitError::NotRepository) => git_not_repository_response(),
         Err(e) => (
             StatusCode::INTERNAL_SERVER_ERROR,
             format!("Failed to read git diff: {e}"),
@@ -2250,9 +2236,7 @@ async fn handle_git_commit_diff(
         Err(git::GitError::InvalidRevision) => {
             (StatusCode::BAD_REQUEST, "Invalid git revision").into_response()
         }
-        Err(git::GitError::NotRepository) => {
-            (StatusCode::CONFLICT, "Workspace is not a git repository").into_response()
-        }
+        Err(git::GitError::NotRepository) => git_not_repository_response(),
         Err(e) => (StatusCode::NOT_FOUND, format!("Git diff not found: {e}")).into_response(),
     }
 }
@@ -2270,9 +2254,7 @@ async fn handle_git_commit_diff_data(
         Err(git::GitError::InvalidRevision) => {
             (StatusCode::BAD_REQUEST, "Invalid git revision").into_response()
         }
-        Err(git::GitError::NotRepository) => {
-            (StatusCode::CONFLICT, "Workspace is not a git repository").into_response()
-        }
+        Err(git::GitError::NotRepository) => git_not_repository_response(),
         Err(e) => (StatusCode::NOT_FOUND, format!("Git diff not found: {e}")).into_response(),
     }
 }
@@ -2304,6 +2286,10 @@ fn diff_view_from_query(view: Option<&str>) -> &'static str {
     }
 }
 
+fn git_not_repository_response() -> Response {
+    (StatusCode::CONFLICT, "Workspace is not a git repository").into_response()
+}
+
 async fn handle_pretty_compare_diff(
     State(state): State<AppState>,
     AxumPath((workspace_id, range)): AxumPath<(String, String)>,
@@ -2327,9 +2313,7 @@ async fn handle_pretty_compare_diff(
             query.f.as_deref(),
         ) {
             Ok(data) => Json(data).into_response(),
-            Err(git::GitError::NotRepository) => {
-                (StatusCode::CONFLICT, "Workspace is not a git repository").into_response()
-            }
+            Err(git::GitError::NotRepository) => git_not_repository_response(),
             Err(git::GitError::InvalidRevision) => {
                 (StatusCode::BAD_REQUEST, "Invalid git revision").into_response()
             }
@@ -2348,9 +2332,7 @@ async fn handle_pretty_compare_diff(
         Err(git::GitError::InvalidRevision) => {
             (StatusCode::BAD_REQUEST, "Invalid git revision").into_response()
         }
-        Err(git::GitError::NotRepository) => {
-            (StatusCode::CONFLICT, "Workspace is not a git repository").into_response()
-        }
+        Err(git::GitError::NotRepository) => git_not_repository_response(),
         Err(e) => (StatusCode::NOT_FOUND, format!("Git diff not found: {e}")).into_response(),
     }
 }
@@ -2363,6 +2345,9 @@ async fn handle_git_compare_options_status(
     let Some(ws) = state.workspace_registry.get(&workspace_id) else {
         return StatusCode::NOT_FOUND.into_response();
     };
+    if !git::status(&ws.root).available {
+        return git_not_repository_response();
+    }
     // Each side independently probes ~dozens of candidate refs for markdown
     // changes (one git diff each), so run the two sides concurrently; each side
     // also parallelizes its own probes internally.
@@ -2444,9 +2429,7 @@ async fn handle_git_commit(
             commit: None,
         })
         .into_response(),
-        Err(git::GitError::NotRepository) => {
-            (StatusCode::CONFLICT, "Workspace is not a git repository").into_response()
-        }
+        Err(git::GitError::NotRepository) => git_not_repository_response(),
         Err(e) => (
             StatusCode::INTERNAL_SERVER_ERROR,
             format!("Failed to commit workspace changes: {e}"),
@@ -2476,9 +2459,7 @@ async fn handle_git_checkout(
             status: None,
         })
         .into_response(),
-        Err(git::GitError::NotRepository) => {
-            (StatusCode::CONFLICT, "Workspace is not a git repository").into_response()
-        }
+        Err(git::GitError::NotRepository) => git_not_repository_response(),
         Err(e) => Json(GitCheckoutResponse {
             success: false,
             message: format!("Failed to switch branch: {e}"),
@@ -4254,6 +4235,7 @@ fn render_git_diff_page(
     context.insert("is_local", &is_local);
     context.insert("shared_annotation", &flags.shared_annotation);
     context.insert("enable_live", &flags.enable_live);
+    context.insert("enable_chat", &flags.enable_chat);
     context.insert("history_url", &workspace_git_history_url(workspace_id));
     context.insert("files_url", &workspace_root_url(workspace_id));
     // Home-collapsed workspace path shown beside the title (links to the home).
@@ -5201,7 +5183,7 @@ fn read_text_for_preview(path: &FsPath) -> Option<(String, String)> {
 }
 
 /// Read-only, syntax-highlighted preview page for a non-markdown text/code file.
-/// No collaboration chrome — just the file, line numbers and a back link.
+/// No collaboration chrome — just the file contents and line numbers.
 fn render_file_view(
     path: &FsPath,
     content: String,
@@ -5726,6 +5708,8 @@ fn render_directory_listing(
     context.insert("parent_link", &parent_link);
     context.insert("breadcrumb", &breadcrumb);
     context.insert("enable_search", &flags.enable_search);
+    context.insert("enable_live", &flags.enable_live);
+    context.insert("enable_chat", &flags.enable_chat);
 
     render_template(state, "directory.html", &context)
 }
@@ -6671,6 +6655,33 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn workspace_path_handler_renders_text_file_as_content_only_view() {
+        let dir = tempfile::tempdir().unwrap();
+        fs::write(dir.path().join("notes.txt"), "alpha\nbeta").unwrap();
+
+        let registry = Arc::new(WorkspaceRegistry::new("text-preview-test".into()));
+        let id = add_test_workspace(&registry, dir.path().to_path_buf(), all_flags());
+        let state = test_state(registry);
+
+        let response = handle_workspace_path(
+            State(state),
+            AxumPath((id, "notes.txt".to_string())),
+            axum::extract::ConnectInfo(loopback()),
+        )
+        .await
+        .into_response();
+        assert_eq!(response.status(), StatusCode::OK);
+        let body = response_text(response).await;
+        assert!(body.contains("class=\"code-view\""), "{body}");
+        assert!(body.contains("alpha"), "{body}");
+        assert!(body.contains("beta"), "{body}");
+        assert!(!body.contains("class=\"fv-back\""), "{body}");
+        assert!(!body.contains("class=\"fv-head\""), "{body}");
+        assert!(!body.contains("Back to workspace"), "{body}");
+        assert!(!body.contains("notes.txt</span>"), "{body}");
+    }
+
+    #[tokio::test]
     async fn workspace_path_handler_loads_math_assets_when_needed() {
         let dir = tempfile::tempdir().unwrap();
         let file = dir.path().join("README.md");
@@ -6928,6 +6939,90 @@ mod tests {
         assert!(!body.contains(&format!("/_/{id}/compare/")));
         assert!(!body.contains(">Markdown diff<"));
         assert!(body.contains(&format!("/_/{id}/git/history")));
+    }
+
+    #[tokio::test]
+    async fn non_git_workspace_hides_git_ui_and_git_routes_return_text() {
+        let dir = tempfile::tempdir().unwrap();
+        fs::write(dir.path().join("README.md"), "# Notes\n").unwrap();
+
+        let registry = Arc::new(WorkspaceRegistry::new("non-git-workspace-test".into()));
+        let id = add_test_workspace(&registry, dir.path().to_path_buf(), all_flags());
+        let state = test_state(registry);
+
+        let response = handle_workspace_root(
+            State(state.clone()),
+            AxumPath(id.clone()),
+            axum::extract::ConnectInfo(loopback()),
+        )
+        .await
+        .into_response();
+        assert_eq!(response.status(), StatusCode::OK);
+        let body = html_escape::decode_html_entities(&response_text(response).await).to_string();
+        assert!(body.contains("workspace-shell--no-git"));
+        assert!(body.contains("workspace-repo-toolbar--plain"));
+        assert!(body.contains("data-workspace-spotlight-trigger"));
+        assert!(!body.contains("workspace-file-kicker"));
+        assert!(!body.contains(r#"<div class="workspace-ref-menu""#));
+        assert!(!body.contains(r#"<a class="workspace-ref-link workspace-secondary-link""#));
+        assert!(!body.contains(r#"data-branch-panel"#));
+        assert!(!body.contains(r#"<article class="workspace-change-primary""#));
+        assert!(!body.contains(r#"<h2 class="workspace-section-title" data-i18n="web.ws.changes""#));
+        assert!(!body.contains(r#"data-i18n="web.ws.git.non_repo""#));
+        assert!(!body.contains(&format!(r#"href="/_/{id}/git/branches""#)));
+        assert!(!body.contains(&format!(r#"href="/_/{id}/git/tags""#)));
+        assert!(!body.contains(&format!(r#"href="/_/{id}/git/history""#)));
+
+        let diff = handle_git_working_diff(
+            State(state.clone()),
+            AxumPath(id.clone()),
+            Query(GitViewQuery {
+                view: Some("rendered".into()),
+                f: None,
+            }),
+            axum::extract::ConnectInfo(loopback()),
+        )
+        .await
+        .into_response();
+        assert_eq!(diff.status(), StatusCode::CONFLICT);
+        assert_eq!(
+            response_text(diff).await,
+            "Workspace is not a git repository"
+        );
+
+        let compare = handle_pretty_compare_diff(
+            State(state.clone()),
+            AxumPath((id.clone(), "HEAD...worktree".into())),
+            Query(PrettyCompareQuery {
+                view: Some("rendered".into()),
+                format: None,
+                f: None,
+            }),
+            axum::extract::ConnectInfo(loopback()),
+        )
+        .await
+        .into_response();
+        assert_eq!(compare.status(), StatusCode::CONFLICT);
+        assert_eq!(
+            response_text(compare).await,
+            "Workspace is not a git repository"
+        );
+
+        let options = handle_git_compare_options_status(
+            State(state),
+            AxumPath(id),
+            Query(GitCompareOptionsStatusQuery {
+                base: "HEAD".into(),
+                compare: "worktree".into(),
+            }),
+        )
+        .await
+        .into_response();
+        assert_eq!(options.status(), StatusCode::CONFLICT);
+        assert_eq!(
+            response_text(options).await,
+            "Workspace is not a git repository"
+        );
     }
 
     #[tokio::test]

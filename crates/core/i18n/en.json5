@@ -330,7 +330,7 @@
     "web.ws.new_markdown_file": "New Markdown file",
     "web.ws.code": "Code",
     "web.ws.copy_url": "Copy workspace URL",
-    "web.ws.copy_path": "Copy repo path",
+    "web.ws.copy_path": "Copy Workspace path",
     "web.ws.set_alias": "Set alias…",
     "web.ws.set_alias_prompt": "Workspace alias (leave empty to clear):",
     "web.ws.set_alias_failed": "Could not update the alias.",
@@ -425,8 +425,12 @@
     "web.annot.yellow":     "Yellow",
     "web.annot.strike":     "Strike",
     "web.annot.clear":      "Clear Annotations in this page",
+    "web.annot.sharedsynced": "Notes synced to shared workspace.",
     "web.note.edit":        "Edit note",
     "web.note.delete":      "Delete note",
+    "web.note.copylink":    "Copy note link",
+    "web.note.linkmissing": "Note link is no longer valid.",
+    "web.notification.dismiss": "Dismiss notification",
 
     // ── Modals ───────────────────────────────────────────────
     "web.modal.note.placeholder": "Enter your note…",
@@ -444,6 +448,7 @@
     "web.editor.err.disabled": "Edit feature is not enabled. Enable it from the workspace settings page.",
     "web.editor.err.notmd":    "Only Markdown files (.md) can be edited.",
     "web.editor.err.save":     "Save failed: ",
+    "web.editor.selection_not_found": "Selected text was not found in the source.",
 
     // ── Viewed tracking ──────────────────────────────────────
     "web.viewed":           "Viewed",

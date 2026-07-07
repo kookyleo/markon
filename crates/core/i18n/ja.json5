@@ -330,7 +330,7 @@
     "web.ws.new_markdown_file": "新規 Markdown ファイル",
     "web.ws.code": "Code",
     "web.ws.copy_url": "ワークスペース URL をコピー",
-    "web.ws.copy_path": "リポジトリパスをコピー",
+    "web.ws.copy_path": "ワークスペースパスをコピー",
     "web.ws.set_alias": "エイリアスを設定…",
     "web.ws.set_alias_prompt": "ワークスペースのエイリアス（空で解除）：",
     "web.ws.set_alias_failed": "エイリアスを更新できませんでした。",
@@ -425,8 +425,12 @@
     "web.annot.yellow":     "イエロー",
     "web.annot.strike":     "取り消し線",
     "web.annot.clear":      "このページの注釈をすべて消去",
+    "web.annot.sharedsynced": "Notes を共有ワークスペースに同期しました。",
     "web.note.edit":        "メモを編集",
     "web.note.delete":      "メモを削除",
+    "web.note.copylink":    "Note リンクをコピー",
+    "web.note.linkmissing": "Note リンクは無効になっています。",
+    "web.notification.dismiss": "通知を閉じる",
 
     // ── Modals ───────────────────────────────────────────────
     "web.modal.note.placeholder": "メモを入力…",
@@ -444,6 +448,7 @@
     "web.editor.err.disabled": "編集機能が有効になっていません。ワークスペース設定ページで有効にしてください。",
     "web.editor.err.notmd":    "Markdown ファイル (.md) のみ編集可能です。",
     "web.editor.err.save":     "保存に失敗: ",
+    "web.editor.selection_not_found": "選択したテキストはソース内に見つかりませんでした。",
 
     // ── Viewed tracking ──────────────────────────────────────
     "web.viewed":           "既読",

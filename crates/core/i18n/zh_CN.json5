@@ -329,7 +329,7 @@
     "web.ws.new_markdown_file": "新建 Markdown 文件",
     "web.ws.code": "Code",
     "web.ws.copy_url": "复制工作区 URL",
-    "web.ws.copy_path": "复制仓库路径",
+    "web.ws.copy_path": "复制工作区路径",
     "web.ws.set_alias": "设置别名…",
     "web.ws.set_alias_prompt": "工作区别名（留空清除）：",
     "web.ws.set_alias_failed": "无法更新别名。",
@@ -424,8 +424,12 @@
     "web.annot.yellow":     "黄色",
     "web.annot.strike":     "删除线",
     "web.annot.clear":      "清除本页所有批注",
+    "web.annot.sharedsynced": "Notes 已同步到共享工作区。",
     "web.note.edit":        "编辑便条",
     "web.note.delete":      "删除便条",
+    "web.note.copylink":    "复制 Note 链接",
+    "web.note.linkmissing": "Note 链接已失效。",
+    "web.notification.dismiss": "关闭通知",
 
     // ── 模态框 ───────────────────────────────────────────────
     "web.modal.note.placeholder": "输入便条内容…",
@@ -443,6 +447,7 @@
     "web.editor.err.disabled": "编辑功能未启用。请在工作区设置页面启用。",
     "web.editor.err.notmd":    "仅支持编辑 Markdown 文件 (.md)。",
     "web.editor.err.save":     "保存失败: ",
+    "web.editor.selection_not_found": "未在源码中找到所选文本。",
 
     // ── 已读追踪 ─────────────────────────────────────────────
     "web.viewed":           "已读",

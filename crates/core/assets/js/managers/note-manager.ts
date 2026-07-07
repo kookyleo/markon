@@ -4,7 +4,7 @@
  */
 
 import { CONFIG, i18n } from '../core/config';
-import { PlatformUtils, Logger, debounce } from '../core/utils';
+import { PlatformUtils, Logger } from '../core/utils';
 import { LayoutEngine } from '../services/layout';
 import { Text } from '../services/text';
 import type { AnnotationManager, Annotation } from './annotation-manager';
@@ -22,6 +22,13 @@ const ICON_ATTRS =
 const ICON_COPY =
     `<svg ${ICON_ATTRS}><rect x="5.5" y="5.5" width="8" height="8" rx="1.5"/>` +
     `<path d="M3.5 10.5H3a1 1 0 0 1-1-1V3a1 1 0 0 1 1-1h6.5a1 1 0 0 1 1 1v.5"/></svg>`;
+const ICON_LINK_ATTRS =
+    'viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" ' +
+    'stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"';
+const ICON_LINK =
+    `<svg ${ICON_LINK_ATTRS}><path d="M6.4 9.6l3.2-3.2"/>` +
+    `<path d="M9 4.2l.7-.7a2.45 2.45 0 1 1 3.5 3.5l-1.55 1.55a2.45 2.45 0 0 1-3.4.08"/>` +
+    `<path d="M7 11.8l-.7.7a2.45 2.45 0 1 1-3.5-3.5l1.55-1.55a2.45 2.45 0 0 1 3.4-.08"/></svg>`;
 const ICON_EDIT =
     `<svg ${ICON_ATTRS}><path d="M2.5 13.5l1-3.2 7.3-7.3a1.3 1.3 0 0 1 1.8 1.8l-7.3 7.3z"/>` +
     `<path d="M9.5 4.5l2 2"/></svg>`;
@@ -30,6 +37,41 @@ const ICON_DELETE =
     `<path d="M6.5 4.5V3a1 1 0 0 1 1-1h1a1 1 0 0 1 1 1v1.5"/>` +
     `<path d="M4.5 4.5l.6 8a1 1 0 0 0 1 .9h3.8a1 1 0 0 0 1-.9l.6-8"/>` +
     `<path d="M6.8 7v4M9.2 7v4"/></svg>`;
+
+function splitTrailingUrlPunctuation(url: string): { core: string; tail: string } {
+    let core = url;
+    let tail = '';
+    while (/[.,;:!?)]$/.test(core)) {
+        tail = core.slice(-1) + tail;
+        core = core.slice(0, -1);
+    }
+    return { core, tail };
+}
+
+function renderNoteContent(note: string): string {
+    const pattern = /\bhttps?:\/\/[^\s<>"'`]+/gi;
+    const parts: string[] = [];
+    let lastIndex = 0;
+    for (const match of note.matchAll(pattern)) {
+        const raw = match[0] ?? '';
+        const index = match.index ?? 0;
+        const { core, tail } = splitTrailingUrlPunctuation(raw);
+        if (!core) continue;
+        try {
+            const parsed = new URL(core);
+            if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') continue;
+        } catch {
+            continue;
+        }
+        parts.push(Text.escape(note.slice(lastIndex, index)));
+        const safeUrl = Text.escape(core);
+        parts.push(`<a href="${safeUrl}" target="_blank" rel="noopener noreferrer">${safeUrl}</a>`);
+        parts.push(Text.escape(tail));
+        lastIndex = index + raw.length;
+    }
+    parts.push(Text.escape(note.slice(lastIndex)));
+    return parts.join('');
+}
 
 /**
  * Internal in-memory record kept per rendered note card. Exposed via
@@ -57,6 +99,12 @@ export interface NoteManagerOptions {
     marginCards?: boolean;
 }
 
+export interface NoteActiveChangeEvent {
+    annotationId: string | null;
+    previousAnnotationId: string | null;
+    sourceElement: Element | null;
+}
+
 export class NoteManager {
     #annotationManager: AnnotationManager;
     #markdownBody: HTMLElement;
@@ -65,8 +113,10 @@ export class NoteManager {
     #activeAnnotationId: string | null = null;
     #connectorSvg: SVGSVGElement | null = null;
     #connectorPath: SVGPathElement | null = null;
-    #resizeObserver: ResizeObserver | null = null;
+    #viewportLayoutFrame: number | null = null;
+    #responsiveLayoutSetup = false;
     #marginCards: boolean;
+    #activeChangeHandler: ((event: NoteActiveChangeEvent) => void) | null = null;
 
     constructor(annotationManager: AnnotationManager, markdownBody: HTMLElement, options: NoteManagerOptions = {}) {
         this.#annotationManager = annotationManager;
@@ -158,33 +208,51 @@ export class NoteManager {
         return [...this.#noteCardsData];
     }
 
+    onActiveChange(handler: ((event: NoteActiveChangeEvent) => void) | null): void {
+        this.#activeChangeHandler = handler;
+    }
+
     setupResponsiveLayout(): void {
-        const onResize = debounce(() => {
-            this.#layout();
-            this.#drawConnector();
-            // Close any popup window when on a narrow-screen layout.
+        if (this.#responsiveLayoutSetup) {
+            this.#scheduleStableLayout();
+            return;
+        }
+        this.#responsiveLayoutSetup = true;
+
+        const onViewportChange = (): void => this.#scheduleViewportLayout();
+        window.addEventListener('scroll', onViewportChange, { passive: true });
+        window.addEventListener('resize', () => {
+            this.#scheduleViewportLayout();
             if (PlatformUtils.isNarrowScreen()) {
                 document.querySelector('.note-popup')?.remove();
             }
-        }, CONFIG.ANIMATION.RESIZE_DEBOUNCE);
-        window.addEventListener('resize', onResize);
-
-        // Re-layout on async content changes (font load, images,
-        // collapse/expand, etc.) — without this, notes anchor to the page's
-        // initial pre-async layout and visibly drift away from their source.
-        if (typeof ResizeObserver !== 'undefined') {
-            this.#resizeObserver = new ResizeObserver(onResize);
-            this.#resizeObserver.observe(this.#markdownBody);
-        }
-
-        if (typeof document !== 'undefined' && document.fonts) {
-            void document.fonts.ready.then(() => {
-                this.#layout();
-                this.#drawConnector();
-            }).catch(() => { /* font load failures are non-fatal */ });
-        }
+        });
+        document.addEventListener('markon:viewed-ready', () => this.#scheduleViewportLayout(), { once: true });
+        this.#scheduleStableLayout();
 
         Logger.log('NoteManager', 'Responsive layout setup complete');
+    }
+
+    #scheduleViewportLayout(): void {
+        if (this.#viewportLayoutFrame !== null) return;
+        this.#viewportLayoutFrame = window.requestAnimationFrame(() => {
+            this.#viewportLayoutFrame = null;
+            this.#layout();
+            this.#drawConnector();
+        });
+    }
+
+    #scheduleStableLayout(): void {
+        this.#scheduleViewportLayout();
+        window.requestAnimationFrame(() => this.#scheduleViewportLayout());
+        void window.viewedManager?.ready.then(() => {
+            this.#scheduleViewportLayout();
+        }).catch(() => { /* viewed state failures are handled by main.ts */ });
+        if (typeof document !== 'undefined' && document.fonts) {
+            void document.fonts.ready.then(() => {
+                this.#scheduleViewportLayout();
+            }).catch(() => { /* font load failures are non-fatal */ });
+        }
     }
 
     /** Author attribution footer for a note card (shared workspaces only):
@@ -243,9 +311,11 @@ export class NoteManager {
         const editLabel = _t('web.note.edit');
         const deleteLabel = _t('web.note.delete');
         const copyLabel = _t('web.export.copyitem');
+        const linkLabel = _t('web.note.copylink');
         return `
             <div class="note-actions">
                 <button class="note-copy" data-annotation-id="${annotationId}" title="${copyLabel}" aria-label="${copyLabel}">${ICON_COPY}</button>
+                <button class="note-link" data-annotation-id="${annotationId}" title="${linkLabel}" aria-label="${linkLabel}">${ICON_LINK}</button>
                 <button class="note-edit" data-annotation-id="${annotationId}" title="${editLabel}" aria-label="${editLabel}">${ICON_EDIT}</button>
                 <button class="note-delete" data-annotation-id="${annotationId}" title="${deleteLabel}" aria-label="${deleteLabel}">${ICON_DELETE}</button>
             </div>
@@ -259,7 +329,7 @@ export class NoteManager {
 
         noteCard.innerHTML = `
             ${this.#noteActionsHtml(annotation.id)}
-            <div class="note-content">${Text.escape(annotation.note ?? '')}</div>
+            <div class="note-content">${renderNoteContent(annotation.note ?? '')}</div>
             ${this.#noteAuthorLine(annotation)}
         `;
 
@@ -312,6 +382,10 @@ export class NoteManager {
 
         // Apply the computed positions.
         notes.forEach(note => {
+            if (!note.visible) {
+                note.element.style.display = 'none';
+                return;
+            }
             note.element.style.left = `${rightEdge}px`;
             note.element.style.top = `${note.currentTop}px`;
             note.element.style.display = 'block';
@@ -340,15 +414,22 @@ export class NoteManager {
             return;
         }
 
+        const previousAnnotationId = this.#activeAnnotationId;
+        const sourceElement = this.#sourceElementFor(annotationId);
         this.#clearActiveClasses();
         this.#activeAnnotationId = annotationId;
+        this.#emitActiveChange(annotationId, previousAnnotationId, sourceElement);
         this.#applyActiveClasses(annotationId);
         this.#drawConnector();
     }
 
     clearActive(): void {
+        const previousAnnotationId = this.#activeAnnotationId;
         this.#clearActiveClasses();
         this.#activeAnnotationId = null;
+        if (previousAnnotationId) {
+            this.#emitActiveChange(null, previousAnnotationId, null);
+        }
         this.#hideConnector();
     }
 
@@ -375,6 +456,22 @@ export class NoteManager {
                 `.has-note[data-annotation-id="${annotationId}"]`,
             )
             .forEach(el => el.classList.add('highlight-active'));
+    }
+
+    #sourceElementFor(annotationId: string): Element | null {
+        return this.#noteCardsData.find(n => n.highlightId === annotationId)?.highlightElement ?? null;
+    }
+
+    #emitActiveChange(
+        annotationId: string | null,
+        previousAnnotationId: string | null,
+        sourceElement: Element | null,
+    ): void {
+        this.#activeChangeHandler?.({
+            annotationId,
+            previousAnnotationId,
+            sourceElement,
+        });
     }
 
     #ensureConnectorSvg(): SVGSVGElement {
@@ -420,21 +517,7 @@ export class NoteManager {
             return;
         }
 
-        // Use the LAST client rect — for a multi-line highlight that's the
-        // visual line tail the user would expect the connector to spring from.
-        const sourceFragments = this.#markdownBody.querySelectorAll<HTMLElement>(
-            `.has-note[data-annotation-id="${annotationId}"]`,
-        );
-        let sourceRect: DOMRect | null = null;
-        sourceFragments.forEach(frag => {
-            const rects = frag.getClientRects();
-            if (rects.length === 0) return;
-            const last = rects[rects.length - 1];
-            if (!last) return;
-            if (!sourceRect || last.bottom > sourceRect.bottom) {
-                sourceRect = last;
-            }
-        });
+        const sourceRect = this.#sourceRectForConnector(annotationId, noteData);
         if (!sourceRect) {
             this.#hideConnector();
             return;
@@ -480,6 +563,30 @@ export class NoteManager {
         }
     }
 
+    #sourceRectForConnector(annotationId: string, noteData: NoteCard): DOMRect | null {
+        const anchorElement = this.#layoutEngine.anchorElementFor(noteData);
+        if (anchorElement !== noteData.highlightElement) {
+            return anchorElement.getBoundingClientRect();
+        }
+
+        // Use the LAST client rect — for a multi-line highlight that's the
+        // visual line tail the user would expect the connector to spring from.
+        const sourceFragments = this.#markdownBody.querySelectorAll<HTMLElement>(
+            `.has-note[data-annotation-id="${annotationId}"]`,
+        );
+        let sourceRect: DOMRect | null = null;
+        sourceFragments.forEach(frag => {
+            const rects = frag.getClientRects();
+            if (rects.length === 0) return;
+            const last = rects[rects.length - 1];
+            if (!last) return;
+            if (!sourceRect || last.bottom > sourceRect.bottom) {
+                sourceRect = last;
+            }
+        });
+        return sourceRect;
+    }
+
     #hideConnector(): void {
         this.#connectorPath?.classList.remove('is-visible');
     }
@@ -499,7 +606,7 @@ export class NoteManager {
         popup.dataset['annotationId'] = annotationId;
         popup.innerHTML = `
             ${this.#noteActionsHtml(annotationId)}
-            <div class="note-content">${Text.escape(noteData.note)}</div>
+            <div class="note-content">${renderNoteContent(noteData.note)}</div>
         `;
 
         // Position the popup below the highlight.

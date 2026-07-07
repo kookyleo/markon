@@ -608,8 +608,8 @@ export class FloatingLayer {
                 if (e.button !== 0) return;
                 this._beginDrag(e);
             });
-            const dragArea = this._resolveExpandedDragHandle();
-            if (dragArea) {
+            const dragAreas = this._resolveExpandedDragHandles();
+            for (const dragArea of dragAreas) {
                 dragArea.addEventListener('mousedown', (e: MouseEvent) => {
                     if (!this.isExpanded) return;
                     if (e.button !== 0) return;
@@ -636,11 +636,11 @@ export class FloatingLayer {
         window.addEventListener('resize', this._resizeHandler);
     }
 
-    private _resolveExpandedDragHandle(): HTMLElement | null {
+    private _resolveExpandedDragHandles(): HTMLElement[] {
         const h = this._opts.expandedDragHandle;
-        if (!h) return this._opts.body || null;
-        if (typeof h === 'string') return this._opts.container.querySelector(h);
-        return h;
+        if (!h) return this._opts.body ? [this._opts.body] : [];
+        if (typeof h === 'string') return Array.from(this._opts.container.querySelectorAll<HTMLElement>(h));
+        return [h];
     }
 
     /** Passive layers don't compute positions but still toggle class names

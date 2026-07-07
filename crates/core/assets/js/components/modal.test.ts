@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { CONFIG } from '../core/config';
 import { BaseModal, ConfirmModal, NoteInputModal, showConfirmDialog } from './modal';
 
 class TestModal extends BaseModal {
@@ -65,7 +66,10 @@ describe('BaseModal', () => {
 
 describe('NoteInputModal', () => {
     afterEach(() => {
+        vi.useRealTimers();
+        vi.unstubAllGlobals();
         document.body.innerHTML = '';
+        localStorage.clear();
     });
 
     it('Save button is disabled until textarea has content', () => {
@@ -92,6 +96,99 @@ describe('NoteInputModal', () => {
         cancelBtn.click();
         expect(onCancel).toHaveBeenCalled();
         expect(document.querySelector('.note-input-modal')).toBeNull();
+    });
+
+    it('renders compact icon actions inside the note input field', () => {
+        const m = new NoteInputModal();
+        m.show();
+
+        const field = m.getElement()!.querySelector('.note-input-field');
+        const cancelBtn = m.getElement()!.querySelector('.note-cancel') as HTMLButtonElement;
+        const saveBtn = m.getElement()!.querySelector('.note-save') as HTMLButtonElement;
+
+        expect(field).not.toBeNull();
+        expect(field?.contains(cancelBtn)).toBe(true);
+        expect(field?.contains(saveBtn)).toBe(true);
+        expect(cancelBtn.querySelector('svg path')?.getAttribute('d')).toBe('M6 6l12 12M18 6L6 18');
+        expect(saveBtn.querySelector('svg path')?.getAttribute('d')).toBe('M12 19V5M6.5 10.5 12 5l5.5 5.5');
+    });
+
+    it('renders edge drag regions around the compact note input', () => {
+        const m = new NoteInputModal();
+        m.show();
+
+        const modal = m.getElement()!;
+        const dragRegions = modal.querySelectorAll('.note-input-drag-region');
+
+        expect(dragRegions).toHaveLength(4);
+        expect(modal.querySelector('.note-input-drag-top')).not.toBeNull();
+        expect(modal.querySelector('.note-input-drag-right')).not.toBeNull();
+        expect(modal.querySelector('.note-input-drag-bottom')).not.toBeNull();
+        expect(modal.querySelector('.note-input-drag-left')).not.toBeNull();
+    });
+
+    it('restores anchor-relative drag offset', () => {
+        const anchor = document.createElement('span');
+        Object.defineProperty(anchor, 'getBoundingClientRect', {
+            value: () => ({
+                left: 100,
+                top: 200,
+                right: 120,
+                bottom: 220,
+                width: 20,
+                height: 20,
+                x: 100,
+                y: 200,
+                toJSON: () => ({}),
+            }),
+        });
+        document.body.appendChild(anchor);
+        localStorage.setItem(CONFIG.STORAGE_KEYS.NOTE_INPUT_OFFSET, JSON.stringify({ dx: 15, dy: -5 }));
+
+        const m = new NoteInputModal();
+        m.show(anchor);
+
+        expect(m.getElement()!.style.left).toBe('115px');
+        expect(m.getElement()!.style.top).toBe('220px');
+    });
+
+    it('restores saved note input size', () => {
+        localStorage.setItem(CONFIG.STORAGE_KEYS.NOTE_INPUT_SIZE, JSON.stringify({ width: 420, height: 148 }));
+
+        const m = new NoteInputModal();
+        m.show();
+
+        expect(m.getElement()!.style.width).toBe('420px');
+        expect(m.getElement()!.style.height).toBe('148px');
+    });
+
+    it('persists manually resized note input size', () => {
+        vi.useFakeTimers();
+        let triggerObserver = (): void => {};
+        class ResizeObserverMock {
+            #callback: ResizeObserverCallback;
+            constructor(callback: ResizeObserverCallback) {
+                this.#callback = callback;
+                triggerObserver = () => this.#callback([], this as unknown as ResizeObserver);
+            }
+            observe(): void {}
+            disconnect(): void {}
+        }
+        vi.stubGlobal('ResizeObserver', ResizeObserverMock);
+
+        const m = new NoteInputModal();
+        m.show();
+        const modal = m.getElement()!;
+        Object.defineProperty(modal, 'offsetWidth', { value: 410, configurable: true });
+        Object.defineProperty(modal, 'offsetHeight', { value: 142, configurable: true });
+
+        vi.advanceTimersByTime(0);
+        triggerObserver();
+
+        expect(JSON.parse(localStorage.getItem(CONFIG.STORAGE_KEYS.NOTE_INPUT_SIZE) || 'null')).toEqual({
+            width: 410,
+            height: 142,
+        });
     });
 });
 
