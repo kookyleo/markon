@@ -174,12 +174,20 @@ jobs:
 
       - name: Install Linux system dependencies
         run: |
-          sudo apt-get update
-          sudo apt-get install -y \
-            libwebkit2gtk-4.1-dev \
-            libappindicator3-dev \
-            librsvg2-dev \
-            patchelf
+          for attempt in 1 2 3; do
+            if sudo apt-get update && sudo apt-get install -y --no-install-recommends \
+              libwebkit2gtk-4.1-dev \
+              libappindicator3-dev \
+              librsvg2-dev \
+              libfontconfig1-dev \
+              pkg-config \
+              patchelf; then
+              exit 0
+            fi
+            sudo apt-get clean
+            sleep $((attempt * 10))
+          done
+          exit 1
 
       - name: Setup Rust
         uses: actions-rust-lang/setup-rust-toolchain@v1

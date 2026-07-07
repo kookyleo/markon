@@ -135,10 +135,21 @@ jobs:
 
       - name: Install Linux system dependencies
         if: startsWith(matrix.platform, 'ubuntu-')
-        uses: awalsh128/cache-apt-pkgs-action@v1
-        with:
-          packages: libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev libfontconfig1-dev patchelf
-          version: 1
+        run: |
+          for attempt in 1 2 3; do
+            if sudo apt-get update && sudo apt-get install -y --no-install-recommends \
+              libwebkit2gtk-4.1-dev \
+              libappindicator3-dev \
+              librsvg2-dev \
+              libfontconfig1-dev \
+              pkg-config \
+              patchelf; then
+              exit 0
+            fi
+            sudo apt-get clean
+            sleep $((attempt * 10))
+          done
+          exit 1
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
