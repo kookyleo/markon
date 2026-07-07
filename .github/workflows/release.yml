@@ -246,6 +246,17 @@ jobs:
           set -euo pipefail
           npm install -g @tauri-apps/cli@v2
           cd crates/gui
+          tauri --verbose build --no-bundle --target ${{ matrix.target }}
+          graphviz_lib="$(
+            find "../../target/${{ matrix.target }}/release/build" "../../target/release/build" \
+              -name libgraphviz_api.so -type f -print -quit
+          )"
+          if [ -z "$graphviz_lib" ]; then
+            echo "Unable to locate graphviz-anywhere native runtime after no-bundle build"
+            exit 1
+          fi
+          export LD_LIBRARY_PATH="$(dirname "$graphviz_lib"):${LD_LIBRARY_PATH:-}"
+          echo "Using Graphviz runtime for linuxdeploy: $graphviz_lib"
           tauri --verbose build ${{ matrix.args }}
 
       - name: Upload Linux installer artifacts
