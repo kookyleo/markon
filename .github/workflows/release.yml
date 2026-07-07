@@ -546,8 +546,9 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           MANIFEST="${{ steps.meta.outputs.manifest }}"
-          cp /tmp/latest.json "/tmp/${MANIFEST}"
-          gh release upload updater "/tmp/${MANIFEST}" --clobber
+          mkdir -p /tmp/updater-manifest
+          cp /tmp/latest.json "/tmp/updater-manifest/${MANIFEST}"
+          gh release upload updater "/tmp/updater-manifest/${MANIFEST}" --clobber
 
       - name: Update Homebrew Cask
         if: steps.meta.outputs.is_rc == 'false'
