@@ -58,7 +58,10 @@ for TARGET in "${TARGETS[@]}"; do
     exit 1
   fi
 
-  "$REPO_ROOT/scripts/macos-bundle-graphviz.sh" "$APP" "$TARGET"
+  if [[ ! -f "$APP/Contents/Frameworks/libgraphviz_api.dylib" ]]; then
+    echo "Missing bundled libgraphviz_api.dylib in $APP" >&2
+    exit 1
+  fi
 
   DMG_NAME="Markon_${VERSION}_${ARCH}.dmg"
   DMG_PATH="$DMG_OUT/$DMG_NAME"

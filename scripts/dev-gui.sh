@@ -50,7 +50,7 @@ sync_dev_bundle_icon() {
 # but emits its `-rpath` link-arg only for its OWN artifacts, not for a downstream
 # binary like markon-gui. So the bare dev binary has no LC_RPATH and dyld aborts
 # at launch ("Library not loaded: @rpath/libgraphviz_api.dylib"). The release .app
-# gets this rpath from macos-bundle-graphviz.sh; here we bake it in at link time.
+# resolves from Contents/Frameworks; here we bake the build output dir in at link time.
 # (DYLD_* env vars can't substitute: macOS strips them for the signed arm64 binary,
 # and an unsigned arm64 binary won't run.)
 graphviz_lib_dir() {  # $1 = profile dir (debug|release)

@@ -45,12 +45,18 @@ describe('VisualZoomManager', () => {
 
     it('decorates markdown images with a corner trigger and opens only from that trigger', () => {
         const body = seedMarkdown('<p><img src="/assets/diagram.svg" alt="Architecture"></p>');
+        const img = document.querySelector<HTMLImageElement>('img')!;
+        Object.defineProperty(img, 'getBoundingClientRect', {
+            configurable: true,
+            value: () => new DOMRect(0, 0, 212, 150),
+        });
+
         manager = new VisualZoomManager(body);
         manager.init();
 
-        const img = document.querySelector<HTMLImageElement>('img')!;
         expect(img.classList.contains('markon-visual-zoomable')).toBe(true);
         expect(img.getAttribute('role')).toBeNull();
+        expect(document.querySelector<HTMLElement>('.markon-visual-zoom-shell')?.style.width).toBe('212px');
 
         click(img);
         expect(document.querySelector('.markon-visual-zoom-overlay')).toBeNull();
@@ -64,6 +70,67 @@ describe('VisualZoomManager', () => {
         expect(document.querySelector('.markon-visual-zoom-content-image img')).not.toBeNull();
         expect(document.querySelector('.markon-visual-zoom-title')).toBeNull();
         expect(document.querySelector('.markon-visual-zoom-scale')?.textContent).toBe('100%');
+    });
+
+    it('uses image intrinsic width when the zoom shell would otherwise shrink to zero', () => {
+        const body = seedMarkdown('<p><img src="/assets/Actrium.svg" alt="Actrium"></p>');
+        const img = document.querySelector<HTMLImageElement>('img')!;
+        Object.defineProperty(img, 'getBoundingClientRect', {
+            configurable: true,
+            value: () => new DOMRect(0, 0, 0, 0),
+        });
+        Object.defineProperty(img, 'naturalWidth', {
+            configurable: true,
+            value: 212,
+        });
+
+        manager = new VisualZoomManager(body);
+        manager.init();
+
+        expect(document.querySelector<HTMLElement>('.markon-visual-zoom-shell')?.style.width).toBe('212px');
+    });
+
+    it('uses intrinsic width for svg images that layout as full-width before decoration', () => {
+        const body = seedMarkdown('<p><img src="/assets/Actrium.svg" alt="Actrium"></p>');
+        const img = document.querySelector<HTMLImageElement>('img')!;
+        Object.defineProperty(img, 'getBoundingClientRect', {
+            configurable: true,
+            value: () => new DOMRect(0, 0, 1117, 790),
+        });
+        Object.defineProperty(img, 'naturalWidth', {
+            configurable: true,
+            value: 212,
+        });
+
+        manager = new VisualZoomManager(body);
+        manager.init();
+
+        expect(document.querySelector<HTMLElement>('.markon-visual-zoom-shell')?.style.width).toBe('212px');
+    });
+
+    it('copies intrinsic image dimensions into the zoom overlay clone', () => {
+        const body = seedMarkdown('<p><img src="/assets/Actrium.svg" alt="Actrium"></p>');
+        const img = document.querySelector<HTMLImageElement>('img')!;
+        Object.defineProperty(img, 'getBoundingClientRect', {
+            configurable: true,
+            value: () => new DOMRect(0, 0, 212, 150),
+        });
+        Object.defineProperty(img, 'naturalWidth', {
+            configurable: true,
+            value: 212,
+        });
+        Object.defineProperty(img, 'naturalHeight', {
+            configurable: true,
+            value: 150,
+        });
+
+        manager = new VisualZoomManager(body);
+        manager.init();
+        click(document.querySelector<HTMLButtonElement>('[data-visual-zoom-trigger]')!);
+
+        const clone = document.querySelector<HTMLImageElement>('.markon-visual-zoom-content-image img')!;
+        expect(clone.width).toBe(212);
+        expect(clone.height).toBe(150);
     });
 
     it('opens the whole diagram container from the diagram corner trigger', () => {

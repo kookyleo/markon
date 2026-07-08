@@ -5240,7 +5240,11 @@ fn render_markdown_file(
 ) -> Response {
     match fs::read_to_string(file_path) {
         Ok(markdown_input) => {
-            let renderer = default_markdown_engine(&state.theme);
+            let renderer = default_markdown_engine(&state.theme).with_asset_context(
+                workspace_id,
+                file_path,
+                root,
+            );
             let rendered = MarkdownEngine::render(&renderer, &markdown_input);
 
             let title = std::path::Path::new(file_path)
@@ -7848,9 +7852,20 @@ mod tests {
     #[tokio::test]
     async fn single_file_workspace_redirects_and_hides_siblings() {
         let dir = tempfile::tempdir().unwrap();
-        fs::write(dir.path().join("opened.md"), "# opened\n\n![pic](pic.png)").unwrap();
+        fs::create_dir_all(dir.path().join("nested")).unwrap();
+        let spaced_asset = dir.path().join("pic with space.png");
+        fs::write(
+            dir.path().join("opened.md"),
+            format!(
+                "# opened\n\n![pic](pic.png)\n![space]({})\n![root](/nested/root.png)",
+                spaced_asset.to_string_lossy()
+            ),
+        )
+        .unwrap();
         fs::write(dir.path().join("sibling.md"), "# sibling").unwrap();
         fs::write(dir.path().join("pic.png"), b"png").unwrap();
+        fs::write(&spaced_asset, b"png").unwrap();
+        fs::write(dir.path().join("nested/root.png"), b"png").unwrap();
 
         let registry = Arc::new(WorkspaceRegistry::new("single-file-test".into()));
         let id = registry.add(WorkspaceConfig {
@@ -7882,7 +7897,17 @@ mod tests {
         )
         .await
         .into_response();
-        assert_eq!(opened.status(), StatusCode::OK);
+        let opened_status = opened.status();
+        let opened_body = response_text(opened).await;
+        assert_eq!(opened_status, StatusCode::OK);
+        assert!(
+            opened_body.contains(&format!(r#"src="/{id}/pic%20with%20space.png""#)),
+            "body: {opened_body}"
+        );
+        assert!(
+            opened_body.contains(&format!(r#"src="/{id}/nested/root.png""#)),
+            "body: {opened_body}"
+        );
 
         let asset = handle_workspace_path(
             State(state.clone()),
@@ -7892,6 +7917,24 @@ mod tests {
         .await
         .into_response();
         assert_eq!(asset.status(), StatusCode::OK);
+
+        let spaced_asset = handle_workspace_path(
+            State(state.clone()),
+            AxumPath((id.clone(), "pic%20with%20space.png".into())),
+            axum::extract::ConnectInfo(loopback()),
+        )
+        .await
+        .into_response();
+        assert_eq!(spaced_asset.status(), StatusCode::OK);
+
+        let root_asset = handle_workspace_path(
+            State(state.clone()),
+            AxumPath((id.clone(), "nested/root.png".into())),
+            axum::extract::ConnectInfo(loopback()),
+        )
+        .await
+        .into_response();
+        assert_eq!(root_asset.status(), StatusCode::OK);
 
         let sibling = handle_workspace_path(
             State(state),

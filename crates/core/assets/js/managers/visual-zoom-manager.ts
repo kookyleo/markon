@@ -656,13 +656,59 @@ export class VisualZoomManager {
         const existingShell = target.parentElement?.classList.contains('markon-visual-zoom-shell')
             ? target.parentElement
             : null;
-        if (existingShell) return existingShell;
+        if (existingShell) {
+            this.#syncVisualShellSize(existingShell, target, element);
+            return existingShell;
+        }
 
         const shell = document.createElement('span');
         shell.className = 'markon-visual-zoom-shell';
+        this.#syncVisualShellSize(shell, target, element);
         target.before(shell);
         shell.appendChild(target);
+        if (element instanceof HTMLImageElement && !element.complete) {
+            element.addEventListener('load', () => this.#syncVisualShellSize(shell, target, element), { once: true });
+        }
         return shell;
+    }
+
+    #syncVisualShellSize(shell: HTMLElement, target: Element, visual: VisualElement): void {
+        const width = this.#visualShellWidth(target, visual);
+        if (width > 0) {
+            shell.style.width = `${width}px`;
+        }
+    }
+
+    #visualShellWidth(target: Element, visual: VisualElement): number {
+        if (visual instanceof HTMLImageElement) {
+            const attrWidth = visual.getAttribute('width');
+            const parsedAttrWidth = attrWidth ? Number.parseFloat(attrWidth) : 0;
+            if (parsedAttrWidth > 0) return parsedAttrWidth;
+            if (this.#isSvgImage(visual) && visual.naturalWidth > 0) return visual.naturalWidth;
+        }
+
+        const rectWidth = target.getBoundingClientRect().width;
+        if (rectWidth > 0) return rectWidth;
+
+        if (visual instanceof HTMLImageElement) {
+            if (visual.naturalWidth > 0) return visual.naturalWidth;
+        }
+
+        if (visual instanceof SVGSVGElement) {
+            const attrWidth = visual.getAttribute('width');
+            const parsedAttrWidth = attrWidth ? Number.parseFloat(attrWidth) : 0;
+            if (parsedAttrWidth > 0) return parsedAttrWidth;
+            const viewBox = parseViewBox(visual.getAttribute('viewBox'));
+            if (viewBox && viewBox.width > 0) return viewBox.width;
+        }
+
+        return 0;
+    }
+
+    #isSvgImage(image: HTMLImageElement): boolean {
+        const source = image.currentSrc || image.src || image.getAttribute('src') || '';
+        const path = source.split(/[?#]/, 1)[0]?.toLowerCase() ?? '';
+        return path.endsWith('.svg') || source.toLowerCase().startsWith('data:image/svg+xml');
     }
 
     #ensureTrigger(host: HTMLElement, title: string): void {
@@ -736,6 +782,8 @@ export class VisualZoomManager {
             image.alt = element.alt || '';
             image.draggable = false;
             if (element.title) image.title = element.title;
+            if (element.naturalWidth > 0) image.width = element.naturalWidth;
+            if (element.naturalHeight > 0) image.height = element.naturalHeight;
             return {
                 kind: 'image',
                 element,
@@ -893,8 +941,13 @@ export class VisualZoomManager {
 
     #fitSoon(node: Element): void {
         const fit = (): void => this.#fit();
-        if (node instanceof HTMLImageElement && !node.complete) {
-            node.addEventListener('load', fit, { once: true });
+        if (node instanceof HTMLImageElement) {
+            if (!node.complete) {
+                node.addEventListener('load', fit, { once: true });
+            }
+            if (typeof node.decode === 'function') {
+                void node.decode().then(fit).catch(() => {});
+            }
         }
         if (typeof window.requestAnimationFrame === 'function') {
             window.requestAnimationFrame(fit);

@@ -1,6 +1,6 @@
 use crate::chat::edits::PendingEditStore;
 use crate::fswalk::path_to_forward_slash;
-use crate::markdown::extract_referenced_assets;
+use crate::markdown::extract_referenced_assets_for_file;
 use crate::search::SearchIndex;
 use arc_swap::ArcSwapOption;
 use notify::{EventKind, RecursiveMode, Watcher};
@@ -506,7 +506,7 @@ impl WorkspaceRegistry {
 fn refresh_allowed_assets(entry: &WorkspaceEntry, file_name: &str) {
     let abs = entry.root.join(file_name);
     let new_set = match std::fs::read_to_string(&abs) {
-        Ok(content) => extract_referenced_assets(&content),
+        Ok(content) => extract_referenced_assets_for_file(&content, &abs, &entry.root),
         Err(_) => HashSet::new(),
     };
     *entry.allowed_assets.write().unwrap() = new_set;

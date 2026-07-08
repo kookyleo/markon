@@ -1,6 +1,7 @@
 use lazy_static::lazy_static;
 use regex::Regex;
 use std::borrow::Cow;
+use std::path::{Path, PathBuf};
 // Use the syntect that `two-face` was built against (re-exported), so the
 // `SyntaxSet` produced by `two_face::syntax::extra_newlines()` matches the
 // syntect types we reference here. Cargo unifies both to a single 5.3.0, but
@@ -73,6 +74,9 @@ lazy_static! {
     static ref CSS_URL_REGEX: Regex = Regex::new(
         r#"url\(\s*['"]?([^'")]+)['"]?\s*\)"#
     ).expect("Failed to compile CSS_URL_REGEX");
+    static ref MARKDOWN_IMAGE_REGEX: Regex = Regex::new(
+        r#"!\[([^\]\n]*)\]\(([^)\n]+)\)"#
+    ).expect("Failed to compile MARKDOWN_IMAGE_REGEX");
     static ref SVG_EVENT_ATTR_REGEX: Regex = Regex::new(r#"(?i)\s+on[a-z0-9_-]+\s*="#)
         .expect("Failed to compile SVG_EVENT_ATTR_REGEX");
     static ref SVG_ROOT_WIDTH_ATTR_REGEX: Regex = Regex::new(r#"(?i)(?:^|[\s<])width\s*="#)
@@ -94,11 +98,28 @@ lazy_static! {
 /// absolute URLs (`http://`, `data:`, …), parent-traversing (`../…`), and
 /// anchor-only fragments are filtered out.
 pub(crate) fn extract_referenced_assets(markdown: &str) -> std::collections::HashSet<String> {
+    extract_referenced_assets_with_context(markdown, None)
+}
+
+pub(crate) fn extract_referenced_assets_for_file(
+    markdown: &str,
+    file_path: impl Into<PathBuf>,
+    workspace_root: impl Into<PathBuf>,
+) -> std::collections::HashSet<String> {
+    let asset_context = MarkdownAssetContext::new("", file_path, workspace_root);
+    extract_referenced_assets_with_context(markdown, Some(&asset_context))
+}
+
+fn extract_referenced_assets_with_context(
+    markdown: &str,
+    asset_context: Option<&MarkdownAssetContext>,
+) -> std::collections::HashSet<String> {
     use std::collections::HashSet;
     let mut out: HashSet<String> = HashSet::new();
 
-    let ast = supramark_markdown::parse(markdown);
-    collect_supramark_assets(&ast, &mut out);
+    let normalized = normalize_local_image_destinations(markdown);
+    let ast = supramark_markdown::parse(normalized.as_ref());
+    collect_supramark_assets(&ast, &mut out, asset_context);
     out
 }
 
@@ -129,7 +150,7 @@ fn sanitize_asset_ref(raw: &str) -> Option<String> {
         return None;
     }
     // Reject anything with a URL scheme.
-    if trimmed.contains("://") || trimmed.starts_with("data:") || trimmed.starts_with("mailto:") {
+    if is_remote_or_special_asset_url(trimmed) {
         return None;
     }
     if trimmed.starts_with('/') {
@@ -140,12 +161,328 @@ fn sanitize_asset_ref(raw: &str) -> Option<String> {
     if path.is_empty() {
         return None;
     }
+    let decoded = urlencoding::decode(path).ok()?;
+    let path = decoded.as_ref();
+    if path.starts_with('/') {
+        return None;
+    }
     // Reject any segment that escapes upward.
     if path.split('/').any(|seg| seg == ".." || seg.is_empty()) {
         return None;
     }
     let stripped = path.strip_prefix("./").unwrap_or(path);
     Some(stripped.to_string())
+}
+
+#[derive(Debug, Clone)]
+pub(crate) struct MarkdownAssetContext {
+    workspace_id: String,
+    file_path: PathBuf,
+    workspace_root: PathBuf,
+}
+
+impl MarkdownAssetContext {
+    fn new(
+        workspace_id: impl Into<String>,
+        file_path: impl Into<PathBuf>,
+        workspace_root: impl Into<PathBuf>,
+    ) -> Self {
+        let file_path = file_path.into();
+        let workspace_root = workspace_root.into();
+        Self {
+            workspace_id: workspace_id.into(),
+            file_path: dunce::canonicalize(&file_path).unwrap_or(file_path),
+            workspace_root: dunce::canonicalize(&workspace_root).unwrap_or(workspace_root),
+        }
+    }
+}
+
+fn normalize_local_image_destinations(markdown: &str) -> Cow<'_, str> {
+    let mut output = String::with_capacity(markdown.len());
+    let mut changed = false;
+    let mut fence: Option<(char, usize)> = None;
+
+    for line in markdown.split_inclusive('\n') {
+        let trimmed = line.trim_start();
+        if let Some((marker, len)) = fence {
+            output.push_str(line);
+            if is_markdown_fence_close(trimmed, marker, len) {
+                fence = None;
+            }
+            continue;
+        }
+
+        if is_indented_code_line(line) {
+            output.push_str(line);
+            continue;
+        }
+
+        if let Some(marker) = markdown_fence_marker(trimmed) {
+            output.push_str(line);
+            fence = Some(marker);
+            continue;
+        }
+
+        match normalize_line_image_destinations(line) {
+            Cow::Borrowed(_) => output.push_str(line),
+            Cow::Owned(normalized) => {
+                output.push_str(&normalized);
+                changed = true;
+            }
+        }
+    }
+
+    if changed {
+        Cow::Owned(output)
+    } else {
+        Cow::Borrowed(markdown)
+    }
+}
+
+fn normalize_line_image_destinations(line: &str) -> Cow<'_, str> {
+    let mut output = String::with_capacity(line.len());
+    let mut changed = false;
+    let mut cursor = 0;
+
+    while cursor < line.len() {
+        let Some(tick_rel) = line[cursor..].find('`') else {
+            let segment = &line[cursor..];
+            append_normalized_image_segment(segment, &mut output, &mut changed);
+            break;
+        };
+        let tick_start = cursor + tick_rel;
+        let segment = &line[cursor..tick_start];
+        append_normalized_image_segment(segment, &mut output, &mut changed);
+
+        let tick_count = count_repeated_char(&line[tick_start..], '`');
+        let code_start = tick_start + tick_count;
+        let needle = "`".repeat(tick_count);
+        if let Some(close_rel) = line[code_start..].find(&needle) {
+            let code_end = code_start + close_rel + tick_count;
+            output.push_str(&line[tick_start..code_end]);
+            cursor = code_end;
+        } else {
+            output.push_str(&line[tick_start..]);
+            cursor = line.len();
+        }
+    }
+
+    if changed {
+        Cow::Owned(output)
+    } else {
+        Cow::Borrowed(line)
+    }
+}
+
+fn append_normalized_image_segment(segment: &str, output: &mut String, changed: &mut bool) {
+    match normalize_image_destinations_in_segment(segment) {
+        Cow::Borrowed(_) => output.push_str(segment),
+        Cow::Owned(normalized) => {
+            output.push_str(&normalized);
+            *changed = true;
+        }
+    }
+}
+
+fn normalize_image_destinations_in_segment(segment: &str) -> Cow<'_, str> {
+    let replaced = MARKDOWN_IMAGE_REGEX.replace_all(segment, |caps: &regex::Captures| {
+        let full = caps.get(0).map_or("", |m| m.as_str());
+        let alt = caps.get(1).map_or("", |m| m.as_str());
+        let inner = caps.get(2).map_or("", |m| m.as_str());
+        match normalize_image_destination_inner(inner) {
+            Some(normalized) => format!("![{alt}]({normalized})"),
+            None => full.to_string(),
+        }
+    });
+    match replaced {
+        Cow::Borrowed(_) => Cow::Borrowed(segment),
+        Cow::Owned(normalized) if normalized == segment => Cow::Borrowed(segment),
+        Cow::Owned(normalized) => Cow::Owned(normalized),
+    }
+}
+
+fn is_indented_code_line(line: &str) -> bool {
+    line.starts_with("    ") || line.starts_with('\t')
+}
+
+fn markdown_fence_marker(trimmed_line: &str) -> Option<(char, usize)> {
+    let marker = trimmed_line.chars().next()?;
+    if marker != '`' && marker != '~' {
+        return None;
+    }
+    let len = count_repeated_char(trimmed_line, marker);
+    (len >= 3).then_some((marker, len))
+}
+
+fn is_markdown_fence_close(trimmed_line: &str, marker: char, open_len: usize) -> bool {
+    let len = count_repeated_char(trimmed_line, marker);
+    if len < open_len {
+        return false;
+    }
+    trimmed_line[len..].trim().is_empty()
+}
+
+fn count_repeated_char(input: &str, target: char) -> usize {
+    input.chars().take_while(|ch| *ch == target).count()
+}
+
+fn normalize_image_destination_inner(inner: &str) -> Option<String> {
+    if !inner.chars().any(char::is_whitespace) {
+        return None;
+    }
+    let leading_len = inner.len() - inner.trim_start().len();
+    let leading = &inner[..leading_len];
+    let rest = inner.trim_start();
+    if rest.starts_with('<') || rest.contains('\n') {
+        return None;
+    }
+
+    let dest_end = image_destination_end(rest)?;
+    let destination = &rest[..dest_end];
+    let title = &rest[dest_end..];
+    if destination.contains(['<', '>']) || !is_local_image_destination(destination) {
+        return None;
+    }
+    if !is_image_destination_title_tail(title) {
+        return None;
+    }
+
+    Some(format!("{leading}<{destination}>{title}"))
+}
+
+fn image_destination_end(input: &str) -> Option<usize> {
+    const IMAGE_EXTENSIONS: &[&str] = &[
+        ".png", ".jpg", ".jpeg", ".gif", ".webp", ".avif", ".svg", ".bmp", ".ico", ".tif", ".tiff",
+    ];
+
+    let lower = input.to_ascii_lowercase();
+    let mut candidates = Vec::new();
+    for extension in IMAGE_EXTENSIONS {
+        let mut start = 0;
+        while let Some(relative_idx) = lower[start..].find(extension) {
+            let idx = start + relative_idx;
+            let mut end = idx + extension.len();
+            if is_image_extension_boundary(input, end) {
+                while end < input.len() {
+                    let ch = input[end..].chars().next()?;
+                    if ch.is_whitespace() {
+                        break;
+                    }
+                    end += ch.len_utf8();
+                }
+                candidates.push(end);
+            }
+            start = end;
+        }
+    }
+
+    candidates.sort_unstable();
+    candidates.dedup();
+    candidates
+        .into_iter()
+        .find(|end| is_image_destination_title_tail(&input[*end..]))
+}
+
+fn is_image_extension_boundary(input: &str, end: usize) -> bool {
+    match input[end..].chars().next() {
+        Some(ch) => ch.is_whitespace() || matches!(ch, '?' | '#'),
+        None => true,
+    }
+}
+
+fn is_image_destination_title_tail(tail: &str) -> bool {
+    let trimmed = tail.trim_start();
+    trimmed.is_empty()
+        || trimmed.starts_with('"')
+        || trimmed.starts_with('\'')
+        || trimmed.starts_with('(')
+}
+
+fn is_local_image_destination(destination: &str) -> bool {
+    let trimmed = destination.trim();
+    !trimmed.is_empty()
+        && !trimmed.starts_with('#')
+        && !trimmed.starts_with("//")
+        && !is_remote_or_special_asset_url(trimmed)
+}
+
+fn is_remote_or_special_asset_url(raw: &str) -> bool {
+    let trimmed = raw.trim();
+    let lower = trimmed.to_ascii_lowercase();
+    trimmed.contains("://")
+        || trimmed.starts_with("//")
+        || lower.starts_with("data:")
+        || lower.starts_with("mailto:")
+        || lower.starts_with("blob:")
+        || lower.starts_with("javascript:")
+}
+
+fn local_asset_route_from_url(raw_url: &str, ctx: &MarkdownAssetContext) -> Option<String> {
+    let trimmed = raw_url.trim();
+    if trimmed.is_empty()
+        || trimmed.starts_with('#')
+        || trimmed.starts_with("//")
+        || is_remote_or_special_asset_url(trimmed)
+    {
+        return None;
+    }
+
+    let path_part = trimmed.split(['#', '?']).next().unwrap_or(trimmed);
+    if path_part.is_empty() {
+        return None;
+    }
+    let decoded = urlencoding::decode(path_part).ok()?;
+    let decoded = decoded.as_ref();
+
+    let mut candidates = Vec::with_capacity(2);
+    let decoded_path = Path::new(decoded);
+    if decoded_path.is_absolute() {
+        candidates.push(decoded_path.to_path_buf());
+        if let Some(root_relative) = decoded.strip_prefix('/') {
+            if !root_relative.is_empty() {
+                candidates.push(ctx.workspace_root.join(root_relative));
+            }
+        }
+    } else if let Some(parent) = ctx.file_path.parent() {
+        candidates.push(parent.join(decoded_path));
+    }
+
+    for candidate in candidates {
+        let Ok(canonical) = dunce::canonicalize(&candidate) else {
+            continue;
+        };
+        let Ok(relative) = canonical.strip_prefix(&ctx.workspace_root) else {
+            continue;
+        };
+        if relative.as_os_str().is_empty() {
+            continue;
+        }
+        return Some(path_to_route(relative));
+    }
+
+    None
+}
+
+fn rewrite_local_asset_url(raw_url: &str, ctx: &MarkdownAssetContext) -> Option<String> {
+    if ctx.workspace_id.is_empty() {
+        return None;
+    }
+    let route = local_asset_route_from_url(raw_url, ctx)?;
+    let encoded_route = encode_route_path(&route);
+    let suffix_start = raw_url.find(['#', '?']).unwrap_or(raw_url.len());
+    let suffix = &raw_url[suffix_start..];
+    Some(format!("/{}/{encoded_route}{suffix}", ctx.workspace_id))
+}
+
+fn path_to_route(path: &Path) -> String {
+    path.to_string_lossy().replace('\\', "/")
+}
+
+fn encode_route_path(path: &str) -> String {
+    path.split('/')
+        .map(|segment| urlencoding::encode(segment).into_owned())
+        .collect::<Vec<_>>()
+        .join("/")
 }
 
 /// GitHub octicon-alert icon, shared by the WARNING alert title and the
@@ -343,7 +680,9 @@ pub(crate) fn highlight_source_file(token: &str, code: &str) -> String {
     highlight_code_to_classed_html(syntax, ss, code)
 }
 
-pub(crate) struct MarkdownRenderer;
+pub(crate) struct MarkdownRenderer {
+    asset_context: Option<MarkdownAssetContext>,
+}
 
 impl MarkdownRenderer {
     /// `_theme` is accepted for API compatibility but no longer affects
@@ -351,7 +690,23 @@ impl MarkdownRenderer {
     /// `highlight_code_to_classed_html`) and coloured by the `--markon-code-*`
     /// design tokens, which switch with the page's `data-theme`.
     pub(crate) fn new(_theme: &str) -> Self {
-        Self
+        Self {
+            asset_context: None,
+        }
+    }
+
+    pub(crate) fn with_asset_context(
+        mut self,
+        workspace_id: impl Into<String>,
+        file_path: impl Into<PathBuf>,
+        workspace_root: impl Into<PathBuf>,
+    ) -> Self {
+        self.asset_context = Some(MarkdownAssetContext::new(
+            workspace_id,
+            file_path,
+            workspace_root,
+        ));
+        self
     }
 
     #[cfg(test)]
@@ -359,11 +714,16 @@ impl MarkdownRenderer {
         let output = MarkdownEngine::render(self, markdown);
         (output.html, output.has_mermaid, output.toc)
     }
+
+    fn rewrite_image_url(&self, url: &str) -> Option<String> {
+        rewrite_local_asset_url(url, self.asset_context.as_ref()?)
+    }
 }
 
 impl MarkdownHtmlRenderer for MarkdownRenderer {
     fn render_html(&self, markdown: &str) -> MarkdownHtmlOutput {
-        let ast = supramark_markdown::parse(markdown);
+        let normalized = normalize_local_image_destinations(markdown);
+        let ast = supramark_markdown::parse(normalized.as_ref());
         let mut html_output = String::new();
         let mut ctx = RenderContext::default();
 
@@ -395,7 +755,12 @@ impl MarkdownHtmlRenderer for MarkdownRenderer {
 
 impl MarkdownAssetExtractor for MarkdownRenderer {
     fn referenced_assets(&self, markdown: &str) -> std::collections::HashSet<String> {
-        extract_referenced_assets(markdown)
+        match self.asset_context.as_ref() {
+            Some(asset_context) => {
+                extract_referenced_assets_with_context(markdown, Some(asset_context))
+            }
+            None => extract_referenced_assets(markdown),
+        }
     }
 }
 
@@ -759,8 +1124,10 @@ impl MarkdownRenderer {
             SupramarkNode::Image {
                 url, title, alt, ..
             } => {
+                let rewritten_url = self.rewrite_image_url(url);
+                let src = rewritten_url.as_deref().unwrap_or(url);
                 out.push_str("<img src=\"");
-                html_escape::encode_double_quoted_attribute_to_string(url, out);
+                html_escape::encode_double_quoted_attribute_to_string(src, out);
                 out.push_str("\" alt=\"");
                 html_escape::encode_double_quoted_attribute_to_string(alt, out);
                 out.push('"');
@@ -1352,11 +1719,14 @@ fn strip_html_tags(value: &str) -> String {
 fn collect_supramark_assets(
     node: &supramark_markdown::SupramarkNode,
     out: &mut std::collections::HashSet<String>,
+    asset_context: Option<&MarkdownAssetContext>,
 ) {
     use supramark_markdown::SupramarkNode;
     match node {
         SupramarkNode::Image { url, .. } => {
-            if let Some(rel) = sanitize_asset_ref(url) {
+            if let Some(rel) = asset_context.and_then(|ctx| local_asset_route_from_url(url, ctx)) {
+                out.insert(rel);
+            } else if let Some(rel) = sanitize_asset_ref(url) {
                 out.insert(rel);
             }
         }
@@ -1365,7 +1735,7 @@ fn collect_supramark_assets(
     }
     if let Some(children) = supramark_children(node) {
         for child in children {
-            collect_supramark_assets(child, out);
+            collect_supramark_assets(child, out, asset_context);
         }
     }
 }
@@ -1463,6 +1833,7 @@ fn supramark_children(
 mod assets_tests {
     use super::extract_referenced_assets;
     use super::MarkdownRenderer;
+    use crate::markdown::MarkdownEngine;
 
     fn assert_set(actual: std::collections::HashSet<String>, expected: &[&str]) {
         let want: std::collections::HashSet<String> =
@@ -1517,6 +1888,127 @@ mod assets_tests {
     fn dot_slash_normalized() {
         let s = "![](./pic.png)";
         assert_set(extract_referenced_assets(s), &["pic.png"]);
+    }
+
+    #[test]
+    fn percent_encoded_relative_asset_is_allowlisted_decoded() {
+        let s = "![](pic%20with%20space.png)";
+        assert_set(extract_referenced_assets(s), &["pic with space.png"]);
+    }
+
+    #[test]
+    fn raw_local_image_path_with_spaces_renders_as_image() {
+        let md = "![alt](pic with space.png)";
+        let (html, _has_mermaid, _toc) = MarkdownRenderer::new("light").render(md);
+        assert!(
+            html.contains(r#"<img src="pic%20with%20space.png" alt="alt" />"#),
+            "html: {html}"
+        );
+    }
+
+    #[test]
+    fn raw_local_image_path_with_spaces_preserves_title() {
+        let md = r#"![alt](pic with space.png "title.png")"#;
+        let (html, _has_mermaid, _toc) = MarkdownRenderer::new("light").render(md);
+        assert!(
+            html.contains(r#"<img src="pic%20with%20space.png" alt="alt" title="title.png" />"#),
+            "html: {html}"
+        );
+    }
+
+    #[test]
+    fn raw_local_svg_path_with_spaces_renders_as_image() {
+        let md = "![vector](icon art.svg)";
+        let (html, _has_mermaid, _toc) = MarkdownRenderer::new("light").render(md);
+        assert!(
+            html.contains(r#"<img src="icon%20art.svg" alt="vector" />"#),
+            "html: {html}"
+        );
+    }
+
+    #[test]
+    fn raw_local_image_path_normalization_skips_inline_code() {
+        let md = "`![alt](pic with space.png)`";
+        let (html, _has_mermaid, _toc) = MarkdownRenderer::new("light").render(md);
+        assert!(!html.contains("<img"), "html: {html}");
+        assert!(html.contains("pic with space.png"), "html: {html}");
+    }
+
+    #[test]
+    fn raw_local_image_path_normalization_skips_fenced_code() {
+        let md = "```\n![alt](pic with space.png)\n```\n";
+        let (html, _has_mermaid, _toc) = MarkdownRenderer::new("light").render(md);
+        assert!(!html.contains("<img"), "html: {html}");
+        assert!(html.contains("pic with space.png"), "html: {html}");
+    }
+
+    #[test]
+    fn workspace_absolute_image_path_is_rewritten() {
+        let dir = tempfile::tempdir().unwrap();
+        let root = dunce::canonicalize(dir.path()).unwrap();
+        std::fs::create_dir_all(root.join("assets")).unwrap();
+        let image = root.join("assets/pic with space.png");
+        std::fs::write(&image, b"png").unwrap();
+        let doc = root.join("note.md");
+        std::fs::write(&doc, "# note").unwrap();
+
+        let renderer = MarkdownRenderer::new("light").with_asset_context("wsid", &doc, &root);
+        let md = format!("![alt](<{}>)", image.to_string_lossy());
+        let output = MarkdownEngine::render(&renderer, &md);
+
+        assert!(
+            output
+                .html
+                .contains(r#"<img src="/wsid/assets/pic%20with%20space.png" alt="alt" />"#),
+            "html: {}",
+            output.html
+        );
+        assert!(output
+            .referenced_assets
+            .contains("assets/pic with space.png"));
+    }
+
+    #[test]
+    fn workspace_root_absolute_image_path_is_rewritten() {
+        let dir = tempfile::tempdir().unwrap();
+        let root = dunce::canonicalize(dir.path()).unwrap();
+        std::fs::create_dir_all(root.join("assets")).unwrap();
+        std::fs::write(root.join("assets/pic.png"), b"png").unwrap();
+        let doc = root.join("note.md");
+        std::fs::write(&doc, "# note").unwrap();
+
+        let renderer = MarkdownRenderer::new("light").with_asset_context("wsid", &doc, &root);
+        let output = MarkdownEngine::render(&renderer, "![alt](/assets/pic.png)");
+
+        assert!(
+            output
+                .html
+                .contains(r#"<img src="/wsid/assets/pic.png" alt="alt" />"#),
+            "html: {}",
+            output.html
+        );
+        assert!(output.referenced_assets.contains("assets/pic.png"));
+    }
+
+    #[test]
+    fn workspace_external_absolute_image_path_is_not_rewritten() {
+        let dir = tempfile::tempdir().unwrap();
+        let root = dunce::canonicalize(dir.path()).unwrap();
+        let outside = tempfile::NamedTempFile::new().unwrap();
+        std::fs::write(outside.path(), b"png").unwrap();
+        let doc = root.join("note.md");
+        std::fs::write(&doc, "# note").unwrap();
+
+        let renderer = MarkdownRenderer::new("light").with_asset_context("wsid", &doc, &root);
+        let md = format!("![alt]({})", outside.path().to_string_lossy());
+        let output = MarkdownEngine::render(&renderer, &md);
+
+        assert!(
+            !output.html.contains(r#"src="/wsid/"#),
+            "html: {}",
+            output.html
+        );
+        assert!(output.referenced_assets.is_empty());
     }
 
     #[test]
