@@ -608,6 +608,7 @@ jobs:
           else
             BRANCH="release/update-cask-${TAG}"
             git commit -m "chore: update cask to $TAG [skip ci]"
+            git fetch origin "$BRANCH:refs/remotes/origin/$BRANCH" || true
             git push --force-with-lease origin HEAD:"$BRANCH"
 
             pr_url=$(gh pr list \
