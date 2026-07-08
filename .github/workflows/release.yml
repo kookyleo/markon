@@ -619,10 +619,12 @@ jobs:
             if [ -n "$pr_url" ]; then
               echo "Updated existing Cask update PR: $pr_url"
             else
-              gh pr create \
+              if ! gh pr create \
                 --base main \
                 --head "$BRANCH" \
                 --title "chore: update cask to $TAG" \
-                --body "Update the Homebrew Cask version and DMG checksums for ${TAG}."
+                --body "Update the Homebrew Cask version and DMG checksums for ${TAG}."; then
+                echo "::warning::GitHub Actions could not create the Cask update PR. Open it manually: https://github.com/${{ github.repository }}/pull/new/${BRANCH}"
+              fi
             fi
           fi
