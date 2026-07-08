@@ -456,6 +456,7 @@ jobs:
     permissions:
       contents: write
       actions: write
+      pull-requests: write
     steps:
       - uses: actions/checkout@v4
         with:
@@ -597,13 +598,31 @@ jobs:
               f.write(content)
           PY
 
-          # 4. Commit and push back to main
+          # 4. Commit and open/update a PR. Main is protected and must not be
+          # updated directly from release automation.
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git add Casks/markon.rb
           if git diff --cached --quiet; then
             echo "No changes to commit"
           else
+            BRANCH="release/update-cask-${TAG}"
             git commit -m "chore: update cask to $TAG [skip ci]"
-            git push origin HEAD:main
+            git push --force-with-lease origin HEAD:"$BRANCH"
+
+            pr_url=$(gh pr list \
+              --base main \
+              --head "$BRANCH" \
+              --state open \
+              --json url \
+              -q '.[0].url // empty')
+            if [ -n "$pr_url" ]; then
+              echo "Updated existing Cask update PR: $pr_url"
+            else
+              gh pr create \
+                --base main \
+                --head "$BRANCH" \
+                --title "chore: update cask to $TAG" \
+                --body "Update the Homebrew Cask version and DMG checksums for ${TAG}."
+            fi
           fi
