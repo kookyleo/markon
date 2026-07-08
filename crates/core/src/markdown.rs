@@ -92,11 +92,14 @@ lazy_static! {
 
 /// Returns a set of relative asset paths referenced from a markdown source.
 ///
-/// Used by single-file workspaces to allowlist co-located images and stylesheets
-/// the document needs (so `![](pic.png)` still loads), while keeping every other
-/// sibling file 404. Only same-directory or descendant relative paths are kept;
-/// absolute URLs (`http://`, `data:`, …), parent-traversing (`../…`), and
-/// anchor-only fragments are filtered out.
+/// Used by single-file workspaces to allowlist local images and stylesheets the
+/// document needs (so `![](pic.png)` and `![](images/a.png)` still load), while
+/// keeping every other sibling file 404. Without a full file context, only
+/// same-directory or descendant relative paths are kept; with context,
+/// workspace-root paths and absolute filesystem paths are accepted only after
+/// they canonicalize inside the single-file workspace root. Absolute URLs
+/// (`http://`, `data:`, …), parent-traversing (`../…`), and anchor-only
+/// fragments are filtered out.
 pub(crate) fn extract_referenced_assets(markdown: &str) -> std::collections::HashSet<String> {
     extract_referenced_assets_with_context(markdown, None)
 }

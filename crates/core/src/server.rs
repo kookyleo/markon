@@ -1958,8 +1958,8 @@ async fn handle_workspace_path(
 
     let decoded = urlencoding::decode(&path).unwrap_or_else(|_| path.clone().into());
     let rel = decoded.trim_start_matches('/');
-    // Single-file gate: reject anything outside the pinned file and the
-    // assets it currently references. Directory listings are not allowed
+    // Single-file gate: reject anything outside the pinned file and the local
+    // assets it explicitly references. Directory listings are not allowed
     // either — `allows()` is false for everything else.
     if ws.is_ephemeral() && !ws.allows(rel) {
         return (StatusCode::NOT_FOUND, "Path not found").into_response();
@@ -5856,9 +5856,10 @@ async fn save_file_handler(
         })
         .into_response();
     }
-    // Single-file gate, mirroring `handle_workspace_path`: writes outside
-    // the pinned file (and its allowed assets) are rejected even when the
-    // path resolves inside `ws.root`. No-op for normal directory workspaces.
+    // Single-file gate, mirroring `handle_workspace_path`: writes outside the
+    // pinned file (and explicitly referenced local assets) are rejected even
+    // when the path resolves inside `ws.root`. No-op for normal directory
+    // workspaces.
     if ws.is_ephemeral() {
         let rel = workspace_relative_path(&canonical, &root)
             .map(|r| path_to_route(&r))

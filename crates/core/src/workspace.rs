@@ -40,10 +40,12 @@ pub struct WorkspaceFlags {
 pub struct WorkspaceConfig {
     pub path: PathBuf,
     pub flags: WorkspaceFlags,
-    /// `Some(name)` → the workspace exposes only `name` (relative to `path`)
-    /// plus assets that file references. Used by Open-With on macOS so that
-    /// opening `~/Downloads/note.md` does not turn `~/Downloads` into an
-    /// indexed, browsable workspace. Ephemeral (not persisted).
+    /// `Some(name)` → a single-file workspace rooted at the file's parent
+    /// directory. It exposes only `name` plus local assets that file explicitly
+    /// references and that canonicalize inside `path`. Used by Open-With on
+    /// macOS so opening `~/Downloads/note.md` can render `logo.svg` next to it
+    /// without turning `~/Downloads` into an indexed, browsable workspace.
+    /// Ephemeral (not persisted).
     pub single_file: Option<String>,
     /// Per-workspace collaborator access-code hash (empty = inherit the
     /// server-level collaborator code).
@@ -67,8 +69,10 @@ pub(crate) struct WorkspaceEntry {
     /// Set for single-file ephemeral workspaces. Holds the file name (relative
     /// to `root`); routes outside this file + `allowed_assets` return 404.
     pub single_file: Option<String>,
-    /// Co-located assets the single-file's markdown references (images,
-    /// stylesheets, etc.). Re-derived whenever the file is modified.
+    /// Local assets the single-file's markdown references (images, stylesheets,
+    /// etc.). Paths may be same-directory or descendants of `root`, but must be
+    /// explicitly referenced and canonicalize inside `root`. Re-derived whenever
+    /// the file is modified.
     /// Empty (and unread) for normal directory workspaces.
     pub allowed_assets: RwLock<HashSet<String>>,
     /// In-flight `edit_file` proposals from the chat tool, awaiting the
@@ -111,8 +115,8 @@ impl WorkspaceEntry {
         self.alias.read().unwrap().clone()
     }
 
-    /// True when `rel` is the workspace's pinned file or one of the assets it
-    /// currently references. Always true for non-single-file workspaces.
+    /// True when `rel` is the workspace's pinned file or one of the local assets
+    /// it currently references. Always true for non-single-file workspaces.
     pub(crate) fn allows(&self, rel: &str) -> bool {
         let Some(only) = &self.single_file else {
             return true;
@@ -501,8 +505,9 @@ impl WorkspaceRegistry {
 }
 
 /// Read the single-file's current content and replace `entry.allowed_assets`
-/// with the asset paths it references. Errors (file gone, unreadable) clear
-/// the set — a missing source can't legitimately bless any sibling.
+/// with the local asset paths it explicitly references. Errors (file gone,
+/// unreadable) clear the set — a missing source can't legitimately bless any
+/// sibling.
 fn refresh_allowed_assets(entry: &WorkspaceEntry, file_name: &str) {
     let abs = entry.root.join(file_name);
     let new_set = match std::fs::read_to_string(&abs) {
@@ -542,7 +547,7 @@ fn spawn_watch_thread(
 /// Watch the parent directory of a single-file workspace and:
 ///   * filter events down to `{file_name} ∪ allowed_assets`
 ///   * on changes to `file_name`, re-derive the asset allowlist so that newly
-///     referenced images become accessible (and removed ones stop being)
+///     referenced local assets become accessible (and removed ones stop being)
 ///   * push a `file_changed` WS message so the open browser tab reloads.
 ///
 /// `notify` cannot reliably watch a single file across platforms, so the

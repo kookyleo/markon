@@ -344,6 +344,8 @@ Opening a single `.md` file — via Finder's **Open With** or `markon path/to/fi
 - It appears in the GUI workspace list with a file icon and can use the same feature flags and collaborator-code controls as any other workspace.
 - It is **transient**: single-file workspaces are not persisted across server restarts.
 - Its full-text search is **scoped to that one file**.
+- Its file-serving scope is the opened file plus local assets that file explicitly references. This keeps normal Markdown such as `![logo](logo.svg)` or `![shot](images/a.png)` working while unrelated sibling files stay hidden.
+- Referenced assets must still resolve inside the opened file's parent directory after path canonicalization. Paths that escape that directory, or unreferenced neighboring files, return 404.
 
 ## Supported Markdown Features
 
