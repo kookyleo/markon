@@ -592,7 +592,13 @@ jobs:
 
           content = re.sub(r'version ".*?"', f'version "{ver}"', content)
           content = re.sub(r'sha256 arm:\s+".*?"', f'sha256 arm:   "{sha_arm}"', content)
-          content = re.sub(r'intel:\s+".*?"', f'intel: "{sha_intel}"', content)
+          content = re.sub(
+              r'(^\s*intel:\s*)(?::no_check|".*?")',
+              f'\\1"{sha_intel}"',
+              content,
+              count=1,
+              flags=re.MULTILINE,
+          )
 
           with open(path, 'w') as f:
               f.write(content)
