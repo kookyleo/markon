@@ -23,20 +23,7 @@ function createMemoryStorage(): Storage {
     };
 }
 
-function hasUsableStorage(value: unknown): value is Storage {
-    return Boolean(
-        value
-            && typeof (value as Storage).getItem === 'function'
-            && typeof (value as Storage).setItem === 'function'
-            && typeof (value as Storage).removeItem === 'function'
-            && typeof (value as Storage).clear === 'function',
-    );
-}
-
 function installStorage(name: 'localStorage' | 'sessionStorage'): void {
-    const current = globalThis[name];
-    if (hasUsableStorage(current)) return;
-
     const storage = createMemoryStorage();
     Object.defineProperty(globalThis, name, {
         configurable: true,

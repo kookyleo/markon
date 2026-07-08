@@ -2710,6 +2710,7 @@
     // file), so getShortcut() hit its temporal-dead-zone and the shortcut pill
     // was silently dropped — the label showed but the "⌘N" chip never did.
     try { renderWorkspaceAddTip(); } catch (_) {}
+    try { await runPendingNativeActions(); } catch (_) {}
     // Auto-check for updates on startup if enabled.
     if (s?.auto_update !== false) doUpdateCheck();
   })();
@@ -2763,6 +2764,12 @@
         updateBindWarning(payload.host, payload.host_available);
       }
     });
+  }
+
+  async function runPendingNativeActions() {
+    if (await invoke('take_pending_new_workspace')) {
+      addWorkspace();
+    }
   }
 
   // ── Tips: Cmd+F search ───────────────────────────────────────────────

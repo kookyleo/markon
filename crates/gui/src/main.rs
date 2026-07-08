@@ -101,6 +101,9 @@ pub struct AppState {
     pub last_file_open_ms: AtomicU64,
     /// Live tray_resident flag — written by menu handler, read by window close handler.
     pub tray_resident: Arc<AtomicBool>,
+    /// A File -> New Workspace action can arrive while the settings webview has
+    /// been recycled. The next settings page boot consumes this flag.
+    pub pending_new_workspace: AtomicBool,
 }
 
 impl AppState {
@@ -129,6 +132,14 @@ impl AppState {
 
 const EXAMPLE_WORKSPACE_RESOURCE: &str = "example";
 const EXAMPLE_WORKSPACE_MANIFEST: &str = "e2e-manifest.json";
+#[cfg(any(target_os = "macos", test))]
+const SETTINGS_WEBVIEW_RECYCLE_AFTER: std::time::Duration =
+    std::time::Duration::from_secs(12 * 60 * 60);
+#[cfg(target_os = "macos")]
+const SETTINGS_WEBVIEW_RECYCLE_CHECK_EVERY: std::time::Duration =
+    std::time::Duration::from_secs(10 * 60);
+#[cfg(target_os = "macos")]
+const KEEPALIVE_WINDOW_LABEL: &str = "__markon_keepalive";
 
 fn ensure_example_workspace(app: &tauri::App, settings: &mut AppSettings) {
     if settings.example_workspace_hidden {
@@ -377,10 +388,177 @@ fn handle_open_path(app: &tauri::AppHandle, path: &Path) {
 }
 
 fn show_settings_window(app: &tauri::AppHandle) {
-    if let Some(w) = app.get_webview_window("settings") {
-        let _ = w.show();
-        let _ = w.set_focus();
+    let window = match app.get_webview_window("settings") {
+        Some(window) => window,
+        None => match create_settings_window(app) {
+            Some(window) => window,
+            None => return,
+        },
+    };
+    let _ = window.show();
+    let _ = window.set_focus();
+}
+
+fn create_settings_window(app: &tauri::AppHandle) -> Option<tauri::WebviewWindow> {
+    #[cfg(target_os = "macos")]
+    ensure_keepalive_window(app);
+
+    let Some(config) = app
+        .config()
+        .app
+        .windows
+        .iter()
+        .find(|config| config.label == "settings")
+    else {
+        tracing::warn!("settings window config not found");
+        return None;
+    };
+
+    let window = match tauri::WebviewWindowBuilder::from_config(app, config)
+        .and_then(|builder| builder.build())
+    {
+        Ok(window) => window,
+        Err(e) => {
+            tracing::warn!("failed to recreate settings window: {e}");
+            return None;
+        }
+    };
+    configure_settings_window(app, &window);
+    tracing::info!("recreated settings webview window after idle recycle");
+    Some(window)
+}
+
+#[cfg(target_os = "macos")]
+fn ensure_keepalive_window(app: &tauri::AppHandle) {
+    if app.get_webview_window(KEEPALIVE_WINDOW_LABEL).is_some() {
+        return;
     }
+    let url = "about:blank"
+        .parse()
+        .expect("about:blank is a valid external URL");
+    if let Err(e) = tauri::WebviewWindowBuilder::new(
+        app,
+        KEEPALIVE_WINDOW_LABEL,
+        tauri::WebviewUrl::External(url),
+    )
+    .title("")
+    .inner_size(1.0, 1.0)
+    .visible(false)
+    .decorations(false)
+    .skip_taskbar(true)
+    .build()
+    {
+        tracing::warn!("failed to create keepalive window: {e}");
+    }
+}
+
+fn persist_settings_window_size(app: &tauri::AppHandle, window: &tauri::WebviewWindow) {
+    let Ok(size) = window.inner_size() else {
+        return;
+    };
+    let Ok(factor) = window.scale_factor() else {
+        return;
+    };
+    let logical = size.to_logical::<u32>(factor);
+    let state = app.state::<AppState>();
+    let mut settings = state.settings.lock().unwrap();
+    settings.window_width = Some(logical.width);
+    settings.window_height = Some(logical.height);
+    settings.save().ok();
+}
+
+fn configure_settings_window(app: &tauri::AppHandle, window: &tauri::WebviewWindow) {
+    #[cfg(target_os = "windows")]
+    install_exe_window_icon(window);
+
+    {
+        let state = app.state::<AppState>();
+        let settings = state.settings.lock().unwrap();
+        if let (Some(w), Some(h)) = (settings.window_width, settings.window_height) {
+            let _ = window.set_size(tauri::LogicalSize::new(w, h));
+        }
+    }
+
+    let window_for_event = window.clone();
+    let app_handle = app.clone();
+    let tray_flag = app.state::<AppState>().tray_resident.clone();
+    window.on_window_event(move |event| {
+        if let tauri::WindowEvent::CloseRequested { api, .. } = event {
+            persist_settings_window_size(&app_handle, &window_for_event);
+            if tray_flag.load(Ordering::Relaxed) {
+                api.prevent_close();
+                let _ = window_for_event.hide();
+            }
+            // else: allow close -> app exits normally
+        }
+    });
+}
+
+#[cfg(any(target_os = "macos", test))]
+fn settings_webview_recycle_due(hidden_since_ms: Option<u64>, now_ms: u64) -> bool {
+    let threshold_ms = SETTINGS_WEBVIEW_RECYCLE_AFTER.as_millis() as u64;
+    hidden_since_ms
+        .map(|hidden_since| now_ms.saturating_sub(hidden_since) >= threshold_ms)
+        .unwrap_or(false)
+}
+
+#[cfg(target_os = "macos")]
+fn spawn_settings_webview_recycler(app: &tauri::AppHandle) {
+    let app_for_recycler = app.clone();
+    let mut hidden_since_ms =
+        app.get_webview_window("settings")
+            .and_then(|window| match window.is_visible() {
+                Ok(false) => Some(AppState::now_ms()),
+                _ => None,
+            });
+
+    tauri::async_runtime::spawn(async move {
+        use tokio::time::sleep;
+
+        loop {
+            sleep(SETTINGS_WEBVIEW_RECYCLE_CHECK_EVERY).await;
+
+            let Some(window) = app_for_recycler.get_webview_window("settings") else {
+                hidden_since_ms = None;
+                continue;
+            };
+            if window.is_visible().unwrap_or(true) {
+                hidden_since_ms = None;
+                continue;
+            }
+
+            let now_ms = AppState::now_ms();
+            let started_ms = *hidden_since_ms.get_or_insert(now_ms);
+            if !settings_webview_recycle_due(Some(started_ms), now_ms) {
+                continue;
+            }
+            hidden_since_ms = None;
+
+            let inner = app_for_recycler.clone();
+            if let Err(e) = app_for_recycler.run_on_main_thread(move || {
+                let Some(window) = inner.get_webview_window("settings") else {
+                    return;
+                };
+                if window.is_visible().unwrap_or(true) {
+                    return;
+                }
+                persist_settings_window_size(&inner, &window);
+                match window.destroy() {
+                    Ok(()) => tracing::info!(
+                        "destroyed idle hidden settings webview to release WKWebView resources"
+                    ),
+                    Err(e) => tracing::warn!("failed to destroy hidden settings webview: {e}"),
+                }
+            }) {
+                tracing::warn!("failed to schedule hidden settings webview recycle: {e}");
+            }
+        }
+    });
+}
+
+#[tauri::command]
+fn take_pending_new_workspace(state: tauri::State<AppState>) -> bool {
+    state.pending_new_workspace.swap(false, Ordering::Relaxed)
 }
 
 /// App menu bar. Starts from Tauri's standard menu (so Edit copy/paste, Quit,
@@ -534,8 +712,22 @@ fn main() {
                 // that match no menu item, so a JS keydown listener never sees
                 // them. Surface Settings, then let the frontend run its existing
                 // add-workspace flow (native folder picker + registry insert).
+                let settings_window_recycled = app.get_webview_window("settings").is_none();
+                if settings_window_recycled {
+                    if let Some(state) = app.try_state::<AppState>() {
+                        state.pending_new_workspace.store(true, Ordering::Relaxed);
+                    }
+                }
                 show_settings_window(app);
-                let _ = app.emit("menu:new-workspace", ());
+                if settings_window_recycled {
+                    if app.get_webview_window("settings").is_none() {
+                        if let Some(state) = app.try_state::<AppState>() {
+                            state.pending_new_workspace.store(false, Ordering::Relaxed);
+                        }
+                    }
+                } else {
+                    let _ = app.emit("menu:new-workspace", ());
+                }
             }
         })
         .setup(move |app| {
@@ -559,6 +751,7 @@ fn main() {
                 server: Mutex::new(ServerManager::new()),
                 last_file_open_ms: AtomicU64::new(0),
                 tray_resident: Arc::new(AtomicBool::new(tray_resident_init)),
+                pending_new_workspace: AtomicBool::new(false),
             };
             let mut server = state.server.lock().unwrap();
             if let Err(e) = server.start(config, Some(persist_hook)) {
@@ -566,6 +759,9 @@ fn main() {
             }
             drop(server);
             app.manage(state);
+
+            #[cfg(target_os = "macos")]
+            ensure_keepalive_window(app.app_handle());
 
             // Poll for NIC changes — switching Wi-Fi or toggling a VPN
             // mutates the available-bind-hosts list, and a server bound to a
@@ -597,6 +793,9 @@ fn main() {
                     let _ = app_for_watcher.emit("bind-hosts-changed", payload);
                 }
             });
+
+            #[cfg(target_os = "macos")]
+            spawn_settings_webview_recycler(app.app_handle());
 
             // ── System tray ───────────────────────────────────────────────
             // macOS uses a template icon (monochrome + alpha) that the system
@@ -631,45 +830,7 @@ fn main() {
 
             // ── Settings window: restore size, close behavior, persist size ──
             if let Some(win) = app.get_webview_window("settings") {
-                // Windows: replace Tauri's single-PNG icon (bilinearly scaled by
-                // Windows into a blurry titlebar blob) with the multi-size icon
-                // baked into the .exe resource. Windows picks the exact 16/20/24
-                // raster from our .ico instead of downsampling 32x32.png.
-                #[cfg(target_os = "windows")]
-                install_exe_window_icon(&win);
-
-                // Restore saved size from settings if present.
-                {
-                    let state = app.state::<AppState>();
-                    let settings = state.settings.lock().unwrap();
-                    if let (Some(w), Some(h)) = (settings.window_width, settings.window_height) {
-                        let _ = win.set_size(tauri::LogicalSize::new(w, h));
-                    }
-                }
-
-                let win_clone = win.clone();
-                let app_handle = app.app_handle().clone();
-                let tray_flag = app.state::<AppState>().tray_resident.clone();
-                win.on_window_event(move |event| {
-                    if let tauri::WindowEvent::CloseRequested { api, .. } = event {
-                        // Persist current window size before hiding/closing.
-                        if let Ok(size) = win_clone.inner_size() {
-                            if let Ok(factor) = win_clone.scale_factor() {
-                                let logical = size.to_logical::<u32>(factor);
-                                let state = app_handle.state::<AppState>();
-                                let mut settings = state.settings.lock().unwrap();
-                                settings.window_width = Some(logical.width);
-                                settings.window_height = Some(logical.height);
-                                settings.save().ok();
-                            }
-                        }
-                        if tray_flag.load(Ordering::Relaxed) {
-                            api.prevent_close();
-                            let _ = win_clone.hide();
-                        }
-                        // else: allow close → app exits normally
-                    }
-                });
+                configure_settings_window(app.app_handle(), &win);
             }
 
             // ── Handle CLI / file-association launch arg ───────────────────
@@ -741,6 +902,7 @@ fn main() {
             commands::list_fonts,
             commands::list_chat_models,
             commands::star_repo,
+            take_pending_new_workspace,
         ])
         .build(tauri::generate_context!())
         .expect("error building markon-gui");
@@ -850,5 +1012,20 @@ mod tests {
 
         assert_eq!(paths, vec![markdown, md]);
         let _ = fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn settings_webview_recycle_due_waits_for_threshold() {
+        let threshold_ms = SETTINGS_WEBVIEW_RECYCLE_AFTER.as_millis() as u64;
+        assert!(!settings_webview_recycle_due(None, threshold_ms));
+        assert!(!settings_webview_recycle_due(
+            Some(1_000),
+            1_000 + threshold_ms - 1
+        ));
+        assert!(settings_webview_recycle_due(
+            Some(1_000),
+            1_000 + threshold_ms
+        ));
+        assert!(!settings_webview_recycle_due(Some(2_000), 1_000));
     }
 }
