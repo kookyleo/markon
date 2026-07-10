@@ -1,517 +1,311 @@
 # Markon
 
 Mark it on.
-轻量级的 Markdown 阅览与审校工作台。开源、免费，完全本地。
+
+本地优先的 Markdown 阅览、审校与协作工作台。Markon 可以把一个文件或仓库变成可搜索的浏览器工作区，提供 GitHub 风格渲染、批注、章节进度、编辑、Git 差异查看，以及可选的 AI 助手。
 
 ![Markon Banner](banner.png)
 
-[English](README.md) | 简体中文
+[English](README.md) | 简体中文 | [在线文档](https://kookyleo.github.io/markon/) | [最新版本](https://github.com/kookyleo/markon/releases/latest)
 
-## 使用场景
+## Markon 是什么
 
-Markon 让您能够以美观的 GitHub 风格阅读、审阅和验证 Markdown 文档。无论您是：
+Markon 面向的是 Markdown 的深度阅读与审校，而不只是预览。它适合这些场景：
 
-- **阅读与审阅** - 批注要点，使用 Section Viewed 复选框（GitHub PR 风格）跟踪进度
-- **远程服务器** - 在无 GUI 的服务器上通过浏览器浏览和批注 Markdown 文件
-- **团队协作** - 跨设备实时同步共享批注
-- **打印与演示** - 专业排版和 GitHub 风格渲染，支持服务端图表渲染
+- 阅读长篇设计文档，用高亮、便条和章节进度完成审阅；
+- 在本机或无 GUI 的服务器上浏览、检索 Markdown；
+- 对比工作区改动或不同 Git 提交中的渲染结果；
+- 演示文档时，让其它设备跟随当前章节；
+- 不离开浏览器就快速编辑正文；
+- 让 AI 助手检索工作区文件，并提出可审核、可撤销的修改建议。
 
-只需在任意目录运行 `markon`，即可以简洁、无干扰的界面浏览和渲染 Markdown 文件。
+Markon 提供 macOS、Windows、Linux 的 Tauri 桌面应用，也提供适合终端和服务器环境的独立 CLI。
 
-## 功能特性
+## 功能概览
 
-### 核心渲染
-- ✅ **GitHub 样式**：完整的 GitHub Markdown CSS，支持深色/浅色/自动主题
-- ✅ **语法高亮**：基于 Syntect，支持 40+ 种编程语言
-- ✅ **GitHub Alerts**：支持 NOTE、TIP、IMPORTANT、WARNING、CAUTION
-- ✅ **Emoji 支持**：Unicode emoji 短代码（如 `:smile:` → 😄）
-- ✅ **图表渲染**：服务端渲染 Mermaid、PlantUML、D2、DOT/Graphviz、Vega-Lite/Vega/chart、ECharts、Chart.js/chart.js
-- ✅ **GFM 表格**：完整的 GitHub Flavored Markdown 表格支持
-- ✅ **任务列表**：交互式复选框任务列表
-- ✅ **打印优化**：专业打印样式，支持多语言字体
-- ✅ **自动目录**：自动生成目录，智能滚动
-- ✅ **目录浏览**：浏览并选择当前目录中的 Markdown 文件
-- ✅ **移动端友好**：响应式设计，支持 QR 码便捷移动访问
-- ✅ **零依赖**：单一二进制文件，所有资源内嵌
+| 领域 | 当前能力 |
+| --- | --- |
+| 渲染 | GitHub 风格亮色/暗色主题、GFM 表格与任务列表、脚注、Alerts、Emoji shortcode、语法高亮、数学公式和服务端图表渲染 |
+| 审校 | 文本高亮、删除线、便条、撤销/重做、章节 Viewed 状态、独立折叠、焦点章节操作、整页/章节便条导出、章节/整页打印 |
+| 导航 | 多工作区目录浏览、树形展开、自动 TOC、同时搜索文件与内容的 Workspace Spotlight、中文分词与键盘导航 |
+| 编辑 | 浏览器内 Markdown 编辑器、从渲染选区定位源码、保存后刷新、文件实时监听与工作区路径边界保护 |
+| 协作 | 本地/共享批注、SQLite + WebSocket 同步，以及同步章节焦点、选区和 Viewed 状态的 Live 主控/跟随模式 |
+| AI 对话 | Anthropic 或 OpenAI 兼容 Provider、工作区文件工具与引用、多会话、页内/独立窗口，以及 Edit 开启后的人工确认编辑 |
+| Git | 分支/标签/ref 浏览、近期历史、工作区与提交 diff、Markdown 原始/渲染对比、本机 checkout 与 commit |
+| 桌面端 | 托盘常驻、多工作区管理、独立功能开关、文件关联、自定义样式与快捷键、Stable/RC 更新通道 |
 
-### 批注系统
-- ✅ **文本高亮**：三种颜色（橙色、绿色、黄色）用于不同目的
-- ✅ **删除线**：标记文本为已删除或过时
-- ✅ **笔记**：为任何高亮文本添加注释
-- ✅ **侧边栏卡片**：笔记显示在右侧边栏（宽屏模式），智能定位
-- ✅ **弹出式笔记**：笔记以弹窗形式显示（窄屏模式），靠近高亮文本
-- ✅ **点击编辑**：点击高亮文本查看/编辑/删除笔记
-- ✅ **清除选择**：再次选择高亮文本可移除高亮
-- ✅ **两种存储模式**：
-  - **本地模式**：浏览器 LocalStorage（单设备）
-  - **共享模式**：SQLite + WebSocket（实时多设备同步）
-- ✅ **撤销/重做**：完整支持所有批注操作的撤销/重做
-
-### Section Viewed 系统
-- ✅ **GitHub PR 风格复选框**：在标题（H2-H6）旁标记章节为「已查看」
-- ✅ **自动折叠**：已勾选的章节自动折叠
-- ✅ **点击展开**：切换折叠章节而不改变已查看状态
-- ✅ **批量操作**：H1 标题后的「全部已查看」和「全部未查看」工具栏
-- ✅ **视觉进度**：TOC 中已查看的章节变为绿色
-- ✅ **智能折叠**：折叠内容直到下一个同级或更高级标题
-- ✅ **两种存储模式**：
-  - **本地模式**：浏览器 LocalStorage（每个浏览器独立）
-  - **共享模式**：SQLite + WebSocket（跨设备同步）
-- ✅ **独立切换**：展开/折叠不改变已查看状态
-
-### 章节打印
-- ✅ **独立打印**：在标题（H2-H6）旁提供「打印」按钮
-- ✅ **精确范围**：仅打印当前章节内容（从标题到下一个同级或更高级标题）
-- ✅ **清洁输出**：打印时自动隐藏交互元素（复选框、按钮等）
-- ✅ **保留样式**：打印保持 GitHub 风格的专业排版
-- ✅ **一键操作**：点击「打印」按钮即可调用系统打印对话框
-
-### 全文搜索
-- ✅ **Tantivy 引擎**：快速全文搜索引擎，支持内存索引
-- ✅ **中文支持**：Jieba 分词，精确匹配中文文本
-- ✅ **多字段搜索**：搜索文件路径、名称、标题和内容
-- ✅ **代码片段预览**：高亮显示搜索结果和上下文摘录
-- ✅ **自动滚动与高亮**：跳转到精确位置，临时高亮关键词
-- ✅ **键盘导航**：`↑/↓` 选择结果，`Enter` 跳转
-- ✅ **自动索引**：文件监视器自动更新索引
-- ✅ **便携 URL**：相对路径确保导航一致性
-- ✅ **简洁 UI**：全屏搜索，内容宽度限制 980px
-- ✅ **快速访问**：按 `/` 打开搜索，`Esc` 关闭
-
-### 键盘快捷键
-- ✅ **撤销/重做**：`Ctrl/Cmd+Z`、`Ctrl/Cmd+Shift+Z`、`Ctrl/Cmd+Y`
-- ✅ **导航**：`j/k`（下一个/上一个标题）、`Ctrl/Cmd+j/k`（下一个/上一个批注）
-- ✅ **智能滚动**：`Space`（平滑滚动 1/3 页，`Esc` 停止）
-- ✅ **TOC 控制**：`Ctrl/Cmd+\`（切换/聚焦 TOC）
-- ✅ **章节控制**：`o`（折叠/展开当前章节）
-- ✅ **已查看控制**：`v`（切换当前章节已查看状态）
-- ✅ **搜索**：`/`（打开全文搜索）
-- ✅ **帮助面板**：`?`（显示所有快捷键）
-- ✅ **关闭/取消**：`Esc`（关闭弹窗、清除选择、取消聚焦）
-- ✅ **平台检测**：自动检测 Mac vs Windows/Linux 的修饰键
-
-### UI/UX 增强
-- ✅ **智能弹出框**：选择工具栏自动定位（上方/下方）
-- ✅ **模态系统**：统一的模态管理器，用于笔记和确认对话框
-- ✅ **选择覆盖层**：笔记输入时视觉选择高亮保持
-- ✅ **焦点管理**：点击 markdown 区域外清除章节焦点
-- ✅ **响应式布局**：适应宽屏（1400px+）和窄屏模式
-- ✅ **笔记定位**：智能定位，避开滚动条和屏幕边缘
-- ✅ **防止滚动**：模态/弹出框聚焦不触发自动滚动
-
-### 开发者特性
-- ✅ **模块化架构**：清晰分离（managers、navigators、components、services）
-- ✅ **配置系统**：集中式配置，冻结常量
-- ✅ **日志工具**：结构化日志用于调试
-- ✅ **WebSocket 管理器**：自动重连，指数退避
-- ✅ **存储抽象**：本地 vs 共享存储的策略模式
-- ✅ **事件系统**：WebSocket 和批注变更的发布/订阅
+渲染、搜索、批注和持久化都在本机完成。AI 对话是可选功能，会把它读取的上下文发送给你配置的 Provider；详见[数据与隐私](#数据与隐私)。
 
 ## 安装
 
-### 从 crates.io 安装
+### 桌面应用
+
+从 [GitHub Releases](https://github.com/kookyleo/markon/releases/latest) 下载对应平台安装包：
+
+| 平台 | 安装包 |
+| --- | --- |
+| macOS | Apple Silicon 与 Intel `.dmg` |
+| Windows | x64 与 ARM64 NSIS 安装程序 |
+| Linux | x64 与 ARM64 `.deb`、`.AppImage` |
+
+macOS 可使用仓库内的 Homebrew tap：
+
+```bash
+brew tap kookyleo/markon https://github.com/kookyleo/markon
+brew install --cask markon
+```
+
+Windows 可使用仓库内的 Scoop bucket：
+
+```powershell
+scoop bucket add kookyleo https://github.com/kookyleo/markon
+scoop install kookyleo/markon
+```
+
+macOS 应用使用 ad-hoc 签名，Windows 安装程序尚未代码签名，因此首次启动可能遇到 Gatekeeper 或 SmartScreen。具体放行步骤见[安装指南](docs/guide/installation.md)。
+
+### CLI
+
+通过 Cargo 安装已发布的 CLI：
 
 ```bash
 cargo install markon
 ```
 
-### 从源码安装
+或从源码安装：
 
 ```bash
+git clone https://github.com/kookyleo/markon.git
+cd markon
 cargo install --path crates/cli
 ```
 
-### 从 GitHub Releases 安装
+## 快速开始
 
-从 [Releases](https://github.com/kookyleo/markon/releases) 下载预编译二进制文件。
+### 桌面端
 
-## 使用方法
+1. 启动 Markon，在「工作区」标签页添加一个目录。
+2. 在浏览器中打开该工作区。
+3. 按工作区开启搜索、Viewed、编辑、Live、AI 对话或共享批注。
+4. 在文档中按 `?` 查看当前页面可用的快捷键。
 
-### 基本用法
+也可以直接用 Markon 打开 `.md`/`.markdown` 文件。单文件工作区是临时的，只搜索该文件，也只开放该文件和它明确引用且位于父目录边界内的本地资源。
 
-Markon CLI 默认以**后台驻留**模式运行。第一次启动时它会自动转入后台并释放终端，后续运行会自动将新工作区追加到已有服务中。
+### CLI
 
 ```bash
-# 渲染单个文件（并在后台启动服务，自动尝试打开浏览器）
+# 打开单个文件。传入路径时会自动尝试打开浏览器。
 markon README.md
 
-# 目录浏览模式
-markon
+# 浏览当前目录，并显式打开浏览器。
+markon -b
 
-# 追加工作区：若服务已在运行，再次运行会自动添加并打开
+# 将目录作为另一个工作区打开。
 markon docs/
 
-# 列出活跃工作区
+# 查看和管理后台服务。
 markon ls
-
-# 移除工作区（支持序号或 ID）
+markon set 1 edit on
 markon detach 1
-
-# 关闭后台服务
 markon shutdown
-
-# 自定义端口
-markon -p 8080
-
-# 局域网访问 - 绑定所有接口
-markon --host 0.0.0.0 README.md
-
-# 局域网访问 - 交互式选择
-markon --host README.md
 ```
 
-### 命令行选项
+CLI 使用「单个后台服务 + 多个工作区」模型。第一次调用会启动 daemon，后续调用会在同一个服务中注册或更新其它工作区。
 
-| 选项 | 说明 | 示例 |
-|------|------|------|
-| `<FILE>` | 要渲染的 Markdown 文件 | `markon README.md` |
-| `-p, --port <PORT>` | HTTP 服务器端口（默认：6419） | `markon -p 8080` |
-| `--host [IP]` | 绑定地址（用于局域网访问）<br>- 不指定：仅本地 (127.0.0.1)<br>- `--host`：交互式选择<br>- `--host 0.0.0.0`：所有接口<br>- `--host <IP>`：指定 IP | `markon --host 0.0.0.0` |
-| `-b, --open-browser [BASE_URL]` | 自动打开浏览器；可选传入 BASE_URL 覆盖默认 | `markon -b` |
-| `--entry, --qr [PREFIX]` | 指定外部访问地址前缀（生成二维码） | `markon --entry http://{IP}:6419` |
-| `--collaborator-access-code <CODE>` | 设置或清除该工作区的协作者访问码（远程访客门禁；本机始终免码） | `markon --collaborator-access-code guest README.md` |
+## CLI 速查
 
-### 常用示例
+```text
+markon [OPTIONS] [FILE]
+markon <COMMAND>
+```
+
+### 主要选项
+
+| 选项 | 说明 |
+| --- | --- |
+| `[FILE]` | Markdown 文件或目录；默认使用当前目录 |
+| `-p, --port <PORT>` | 服务端口，默认 `6419` |
+| `--host [IP]` | 绑定地址；不传值时打开网卡选择器，`0.0.0.0` 表示所有接口 |
+| `--entry, --qr [URL_PREFIX]` | 公共 URL 前缀和二维码目标；不传值时使用首选可访问地址 |
+| `-b, --open-browser [BASE_URL]` | 打开浏览器；可选 BASE_URL 用于反向代理场景 |
+| `--collaborator-access-code <CODE>` | 设置或清除该工作区的远程协作者门禁码 |
+| `--print-collapsed-content` | 打印时包含折叠章节的正文 |
+| `--salt <SALT>` | 高级选项：覆盖 workspace ID 的生成 salt |
+
+### 子命令
+
+| 命令 | 用途 |
+| --- | --- |
+| `markon ls [--format cards\|table]` | 列出活跃工作区和功能状态 |
+| `markon detach <ID\|序号>` | 从运行中的服务移除工作区 |
+| `markon set <ID\|序号> <FEATURE> <on\|off>` | 开关 `search`、`viewed`、`edit`、`live`、`chat` 或 `shared` |
+| `markon shutdown` | 关闭后台服务 |
+| `markon bug` | 通过已登录的 `gh` 起草并打开 GitHub Bug |
+| `markon idea` | 通过 `gh` 创建 GitHub Discussion 功能建议 |
+| `markon ask` | 通过 `gh` 创建 GitHub Discussions 问题 |
+
+### 网络示例
 
 ```bash
-# 带二维码的目录浏览
-markon --entry http://192.168.1.100:6419
+# 局域网访问，并按首选局域网地址生成二维码。
+markon docs/ --host 0.0.0.0 --entry
 
-# 局域网访问 + 二维码（方便移动设备和团队访问）
-markon --host 0.0.0.0 --entry http://192.168.1.100:6419
+# 显式绑定一个网卡地址。
+markon --host 192.168.1.5 docs/
 
-# 局域网访问 - 交互式选择网络接口
-markon --host
+# 声明 HTTPS 反向代理对外提供的公共地址。
+markon --entry https://docs.example.com docs/
 
-# 添加工作区时设置协作者访问码（远程访客门禁；本机始终免码）
-markon --collaborator-access-code guest-secret README.md
-
-# 工作区功能在浏览器里的 workspace 设置页控制
-markon --entry {YOUR_URL} README.md
+# 给该工作区的远程访客设置门禁，本机访问仍然免码。
+markon --collaborator-access-code guest-secret docs/
 ```
 
-### 功能指南
-
-**局域网访问**（`--host`）：
-- 默认：服务器绑定到 `127.0.0.1`（仅本地访问，安全）
-- `--host`：交互式选择可用网络接口（上下箭头选择）
-- `--host 0.0.0.0`：绑定所有接口（局域网可访问）
-- `--host <IP>`：绑定到指定 IP 地址
-- 结合 `--qr` 使用，方便移动设备和团队访问
-
-**批注**：
-- 选择文本 → 从工具栏选择高亮/删除线/笔记
-- 本地模式：存储在浏览器 LocalStorage
-- 共享模式：在工作区设置中启用「共享批注」后，使用 SQLite 数据库并通过 WebSocket 实时同步
-- 自定义数据库路径：启动 Markon 前设置 `MARKON_SQLITE_PATH=/path/to/db`
-
-**Section Viewed**：
-- 标题旁的复选框 → 章节折叠
-- 点击「(点击展开)」 → 临时查看折叠的章节
-- 取消勾选 → 章节永久展开
-- 批量工具栏（H1 后）：「全部已查看」/「全部未查看」按钮
-- 存储：LocalStorage（默认）或启用「共享批注」后的 SQLite
-
-**全文搜索**：
-- 按 `/` 打开搜索模态框
-- 输入关键词搜索所有 markdown 文件
-- 使用 `↑/↓` 箭头键导航结果，`Enter` 跳转
-- 结果显示文件路径、标题和高亮的代码片段
-- 点击结果或按 `Enter` 跳转，支持自动滚动和关键词高亮
-- 中文文本自动使用 Jieba 分词，精确匹配
-
-**Markdown 编辑**：
-- 按 `e` 键打开编辑器，带行号和语法高亮
-- 选中文本 → 点击工具栏"Edit"按钮 → 自动跳转到源码并选中相应文本
-- `Ctrl/Cmd+S`：保存更改（标题中的星号 * 表示有未保存更改）
-- `Esc`：关闭编辑器返回查看模式
-- 安全限制：仅允许编辑启动目录内的 `.md` 文件
-- 主题：自动跟随亮色/暗色模式，使用 GitHub 风格语法高亮
-
-**实时协作 Live**：
-- 页面右下三态协作球：关闭 / 主控 / 被控
-- 主控端广播自己的章节焦点、文本选区、已读勾选；被控端平滑滚动同步
-- 基于 XPath 锚点定位，跨屏幕尺寸通用（4K 主讲 ↔ 手机被控都能对上同一段）
-- 每个客户端从 8 种代表色里选一个标识身份，主控色绕在协作球外环并触发对方端的呼吸灯
-- 按 `l` 在主控/被控间切换（即使当前关闭也直接进入循环）；`Shift+L` 在关闭与上一次激活态间切换
+完整说明见 [CLI 指南](docs/guide/cli.md)和 [反向代理指南](REVERSE_PROXY.zh.md)。
 
-**AI 对话**：
-- 嵌入式只读助手：通过 `read_file` / `list_dir` / `glob` / `grep` 读取工作区文件，无写入或执行能力
-- 按 `c` 以默认形式打开（页内浮层或独立窗口）；`Shift+C` 一次性反转打开形式
-- 会话按工作区独立保存，存储在 `~/.markon/annotation.sqlite`（可用 `MARKON_SQLITE_PATH` 自定义路径）
-- 输入框 `@` 引用工作区任意文本文件；正文选中文字点「聊聊」会作为引用 pill 送入对话
-- Provider 支持 Anthropic / OpenAI；API Key 以**明文**保存在 `~/.markon/settings.json`，对外暴露前请参考 [反向代理说明](REVERSE_PROXY.zh.md) 配 auth
+## 工作区模型
 
-**键盘快捷键**（按 `?` 查看全部）：
-- `/`：打开搜索（需要该工作区启用搜索）
-- `e`：编辑当前文件（需要该工作区启用编辑）
-- `l` / `Shift+L`：切换 Live 主控/被控/关闭（需要该工作区启用 Live）
-- `c` / `Shift+C`：以默认 / 反向形式打开 AI 对话（需要该工作区启用 AI 对话）
-- `Ctrl/Cmd+Z` / `Ctrl/Cmd+Shift+Z`：撤销/重做批注
-- `j` / `k`：下一个/上一个标题
-- `Ctrl/Cmd+\`：切换 TOC
-- `v`：切换当前章节已查看状态（需要该工作区启用已读追踪）
-- `Esc`：关闭弹窗/清除选择
-
-## 重要说明
+Markon 用一个服务承载任意数量的工作区根目录：
 
-### 系统路径前缀
+- 目录工作区会持久化到 `~/.markon/settings.json`，重启后自动恢复。
+- 单文件工作区是临时的，不会开放无关的兄弟文件。
+- 每个工作区都有可选别名、协作者门禁码和独立功能开关。
+- 新工作区继承桌面端「通用设置」里的全局默认值。
+- 默认开启搜索和 Viewed；编辑、Live、AI 对话、共享批注默认按需开启。
 
-Markon 使用 `/_/` 作为所有系统资源（CSS、JavaScript、WebSocket、favicon）的保留路径前缀。这确保系统文件与您的内容完全分离：
+### 功能开关
 
-- **保留路径**：`/_/`（仅此特定前缀）
-- **注意事项**：不要在工作目录根目录创建名为 `_`（单下划线）的目录
-- **允许操作**：
-  - ✅ 创建 `_build/`、`__pycache__/`、`_test/`、`_cache/` 等目录（与 `_` 不同）
-  - ✅ 创建 `ws/`、`static/`、`css/`、`js/` 等目录（无冲突！）
-  - ✅ 使用任何不以 `_/` 开头的文件或目录名
-
-**为什么？** Markon 将 `/_/` 映射到系统资源。浏览器会将 `/ws` 和 `/_/ws` 视为不同路径，因此只有精确的 `_/` 前缀是保留的。
-
-### 共享批注模式
-
-工作区启用「共享批注」时：
-
-**数据库位置**：
-- Linux/macOS：`~/.markon/annotation.sqlite`
-- Windows：`%USERPROFILE%\.markon\annotation.sqlite`
-- 自定义：设置 `MARKON_SQLITE_PATH` 环境变量
+| 功能 | 效果 |
+| --- | --- |
+| 搜索 | 构建 Tantivy/Jieba 索引，并启用 Workspace Spotlight（`/` 或 `g`） |
+| Viewed | 为 H2-H6 增加阅读进度和折叠；章节操作只在标题获得焦点时出现 |
+| 编辑 | 启用 Markdown 编辑器，并允许 AI 对话提出需要人工确认的文件修改 |
+| Live | 启用通过 WebSocket 同步阅读位置的主控/跟随模式 |
+| AI 对话 | 使用已配置 Provider 开启工作区感知的多会话对话 |
+| 共享批注 | 将批注与 Viewed 状态从浏览器存储迁移到 SQLite，并通过 WebSocket 同步 |
 
-**同步机制**：
-- 通过 WebSocket 实时同步批注和 viewed 状态
-- 自动重连，指数退避
-- 广播到所有连接的客户端
+对于 Git 仓库，工作区页面还会提供分支、标签、历史、工作区改动，以及 Markdown 原始/渲染 diff。Checkout、commit、创建文件等结构性操作仅允许本机管理员执行。
 
-**多设备用法**：
-1. 在服务器启动：`markon --host 0.0.0.0 README.md`
-2. 在浏览器工作区设置中启用「共享批注」
-3. 在任何设备打开：`http://server-ip:6419`
-4. 所有批注在设备间实时同步
+## 访问权限
 
-### 权限与访问码
+Markon 不使用账号系统，而是按网络来源区分权限：
 
-Markon 的权限只按**访问来源**分两层，不需要账号或角色：
+- **本机 loopback 是管理员。** 桌面应用和 `127.0.0.1` 浏览器页面可管理工作区、修改功能与别名、编辑文件，以及执行 Git/文件操作，且无需访问码。
+- **远程访问是协作者。** 只能使用该工作区已开启的能力，不能执行结构性/管理操作。
+- **协作者码只约束远程访问。** 工作区自己的码覆盖全局码；本机始终绕过门禁。
 
-- **本机（loopback，`127.0.0.1`）= 完整管理，免码**。桌面版 GUI，以及本机浏览器打开的 `127.0.0.1` 页面都算本机，拥有全部能力——改功能开关、改别名、增删工作区、`git commit` / `checkout`、增删文件——全部无需任何码。
-- **远程（局域网 / 其它机器）= 协作者**。能做什么由该工作区的**功能开关**决定：`edit` 开可编辑保存正文，`chat` 开可用 AI 助手，`annotation`（共享批注 / shared）开可批注，等等。远程不能做管理 / 结构性操作。
+协作者码是应用层访问控制，不提供传输加密。对公网开放时必须使用 HTTPS 和反向代理。部署前请阅读[访问权限](docs/features/access.md)和[反向代理](REVERSE_PROXY.zh.md)。
 
-**协作者访问码**是给远程访客的门禁：某范围设了它，远程访客要先在浏览器门禁页输入正确的码才能进入；**本机永远免码放行**。两级、就近覆盖：
+## 数据与隐私
 
-- **全局协作者码（服务级）**：在 **General（通用）** 设置里配置，对所有未单独设码的工作区生效。
-- **工作区协作者码**：通过工作区卡片上的**协作者锁图标**设置，或用 CLI 的 `--collaborator-access-code` 设置。工作区自己的码会**覆盖**全局码——全局码只对没有自己码的工作区生效。
+| 数据 | 默认位置或行为 |
+| --- | --- |
+| 设置、工作区列表、Provider 配置 | `~/.markon/settings.json` |
+| 共享批注、共享 Viewed 状态、AI 对话会话 | `~/.markon/annotation.sqlite` |
+| 本地批注与本地 Viewed 状态 | 浏览器 LocalStorage |
+| 自定义 SQLite 路径 | `MARKON_SQLITE_PATH=/path/to/annotation.sqlite` |
+| 工作区访问码 | 以加盐 hash 持久化，不保存明文 |
+| AI Provider Key | 明文保存在本机 `settings.json`，应按敏感文件保护 |
 
-从本机还可以用 CLI 直接管理工作区（`markon set <id|序号> <feature> <on|off>`、`markon ls`、`markon detach`、`markon shutdown`）。
+Markdown 渲染、搜索和批注不会把工作区内容上传到云端。AI 对话会把选区、`@` 引用以及工具读取的上下文发送给配置的 Anthropic 或 OpenAI 兼容端点。它的文件工具被限制在工作区内，会拒绝二进制/超大文件，也不能执行命令。开启编辑后，每次写入都必须由用户明确 Apply/Reject，已经应用的修改可以在对话中撤销。
 
-这是**应用层的访问控制**，并非传输层安全。协作者码会沿着你暴露出去的连接传输，正式对外暴露时请把 Markon 放在 HTTPS / 反向代理之后。参见 [反向代理说明](REVERSE_PROXY.zh.md)。
+卸载 Markon 不会自动删除 `~/.markon`。
 
-### 单文件工作区
+## Markdown 支持
 
-打开单个 `.md` 文件——通过 Finder 的「Open With」或 `markon path/to/file.md`——会创建一个**单文件工作区**：
+Markon 使用 Supramark 解析 Markdown 和渲染图表。目前覆盖：
 
-- 它会出现在 GUI 工作区列表中（文件图标），并可像任何工作区一样配置（主题、功能开关、协作者访问码等）。
-- 它是**临时的**：单文件工作区不会在服务重启后保留。
-- 它的全文搜索仅**限定于该文件**。
-- 它的文件服务范围是「当前打开的 md 文件 + 该文件明确引用的本地资源」。因此 `![logo](logo.svg)` 或 `![shot](images/a.png)` 这类同目录 / 子目录图片会正常显示，但未被引用的兄弟文件仍然不可访问。
-- 被引用资源仍必须在打开文件所在目录内完成路径规范化；逃出该目录的路径、以及未被引用的邻居文件会返回 404。
+- CommonMark/GFM 标题、强调、链接、图片、Raw HTML、列表、表格、任务列表、引用和代码围栏；
+- 脚注、GitHub Alerts、Emoji shortcode、语法高亮与 KaTeX 数学公式；
+- Mermaid、PlantUML、D2、DOT/Graphviz、Vega/Vega-Lite、ECharts、Chart.js；
+- 工作区边界内被明确引用的本地图片、样式表、视频和音频；
+- 自动生成的章节结构与可导航 TOC。
 
-### 反向代理
+[示例工作区](example/)包含可直接运行的渲染与端到端测试素材。
 
-通过反向代理暴露 Markon 时，使用 `--browser` 和 `--qr` 指定公共 URL：
+## 键盘快捷键
 
-```bash
-# Nginx 监听 docs.example.com
-markon -b http://docs.example.com --qr http://docs.example.com
-```
+快捷键可以在桌面端设置中自定义。当前页面的权威列表以按 `?` 打开的面板为准。
 
-参见 [反向代理配置指南](REVERSE_PROXY.zh.md) 了解详细设置。
-
-## GitHub Alerts
-
-支持 GitHub 风格的提示块：
-
-```markdown
-> [!NOTE]
-> 高亮需要注意的信息。
-
-> [!TIP]
-> 可选信息，帮助用户更成功。
-
-> [!IMPORTANT]
-> 用户成功所需的关键信息。
-
-> [!WARNING]
-> 由于潜在风险需要用户立即注意的关键内容。
-
-> [!CAUTION]
-> 操作的负面潜在后果。
-```
-
-颜色主题：
-- **NOTE**（蓝色）- 高亮信息
-- **TIP**（绿色）- 可选提示
-- **IMPORTANT**（紫色）- 关键信息
-- **WARNING**（黄色）- 重要警告
-- **CAUTION**（红色）- 危险或严重警告
-
-## 技术栈
-
-### 后端
-- **Markdown 解析**：Supramark（`supramark-markdown`）
-- **图表渲染**：Supramark（`supramark-diagram`）
-- **语法高亮**：[syntect](https://github.com/trishume/syntect)
-- **HTTP 服务器**：[axum](https://github.com/tokio-rs/axum) + [tokio](https://tokio.rs/)
-- **模板引擎**：[tera](https://github.com/Keats/tera)
-- **静态资源嵌入**：[rust-embed](https://github.com/pyrossh/rust-embed)
-- **Emoji**：[emojis](https://github.com/rosetta-rs/emojis)
-- **全文搜索**：[tantivy](https://github.com/quickwit-oss/tantivy) + [tantivy-jieba](https://github.com/baoyachi/tantivy-jieba)
-
-### 前端
-- **样式**：[GitHub Markdown CSS](https://github.com/sindresorhus/github-markdown-css)
-- **架构**：ES6 模块，面向对象设计，策略模式
-
-## 常见问题
-
-<details>
-<summary><strong>如何从其他设备访问？</strong></summary>
-
-在服务器上使用 `--host 0.0.0.0` 绑定所有接口：
-
-```bash
-markon --host 0.0.0.0 README.md
-```
-
-然后从任何设备打开 `http://{IP}:6419`。使用 `--entry` 生成移动访问二维码。
-</details>
-
-<details>
-<summary><strong>批注存储在哪里？</strong></summary>
-
-**本地模式**（默认）：浏览器 LocalStorage（每个浏览器独立）
-
-**共享模式**：工作区启用「共享批注」后使用 SQLite 数据库
-- Linux/macOS：`~/.markon/annotation.sqlite`
-- Windows：`%USERPROFILE%\.markon\annotation.sqlite`
-- 自定义：启动 Markon 前设置 `MARKON_SQLITE_PATH=/path/to/db`
-</details>
-
-<details>
-<summary><strong>如何使用 Nginx/Apache 反向代理？</strong></summary>
-
-Nginx 示例：
-
-```nginx
-location / {
-    proxy_pass http://127.0.0.1:6419;
-    proxy_http_version 1.1;
-    proxy_set_header Upgrade $http_upgrade;
-    proxy_set_header Connection "upgrade";
-    proxy_set_header Host $host;
-    proxy_set_header X-Real-IP $remote_addr;
-}
-```
-
-然后使用：
-```bash
-markon -b http://yourdomain.com --qr http://yourdomain.com
-```
-
-参见 [反向代理指南](REVERSE_PROXY.zh.md) 了解详细配置。
-</details>
-
-<details>
-<summary><strong>可以同时渲染多个文件吗？</strong></summary>
-
-单文件渲染工作区一次只显示一个文件，但你可以同时打开多个工作区，目录浏览模式也能让你在文件间快速切换：
-
-```bash
-markon  # 在当前目录浏览所有 .md 文件
-```
-</details>
-
-<details>
-<summary><strong>如何更改端口？</strong></summary>
-
-```bash
-markon -p 8080 README.md
-```
-</details>
-
-<details>
-<summary><strong>支持哪些主题？</strong></summary>
-
-三种主题模式：
-- 浅色
-- 深色
-- 跟随系统 / 页面默认
-
-渲染页面使用浏览器页面里的主题切换器；桌面面板使用 GUI 外观设置。
-</details>
+| 按键 | 操作 |
+| --- | --- |
+| `?` / `t` | 快捷键帮助 / 主题面板 |
+| `/` 或 `g` | 打开 Workspace Spotlight |
+| `j` / `k` | 下一个 / 上一个标题 |
+| `Ctrl/Cmd+j` / `Ctrl/Cmd+k` | 下一个 / 上一个批注 |
+| `Ctrl/Cmd+\` | 打开或聚焦 TOC |
+| `o` / `v` | 折叠当前章节 / 切换 Viewed |
+| `x` | 导出当前页面的便条 |
+| `e` | 编辑当前 Markdown 文件 |
+| `l` / `Shift+L` | 切换 Live 激活模式 / 开关 Live |
+| `c` / `Shift+C` | 以默认 / 另一种界面打开 AI 对话 |
+| `m`、`n`、`p` | diff 页切换模式 / 下一处 / 上一处改动 |
+| `Ctrl/Cmd+z` / `Ctrl/Cmd+Shift+z` | 撤销 / 重做批注 |
+| `Esc` | 关闭当前浮层，或清除焦点/选区 |
 
 ## 开发
 
-### 构建
+浏览器端资源以 TypeScript bundle 的形式嵌入 `markon-core`。全新 checkout 需要先构建前端，再编译 Rust：
 
 ```bash
-# 开发构建
+npm install
+npm run build
 cargo build
-
-# 发布构建
-cargo build --release
-
-# 运行测试
-cargo test
-npm test
-
-# JavaScript lint
-npx eslint 'crates/core/assets/js/**/*.js'
-
-# 运行
-./target/debug/markon README.md
 ```
+
+提交前运行统一质量门禁：
+
+```bash
+scripts/quality-gate.sh
+```
+
+它会执行 Rust 格式检查、严格 Clippy、Rust 测试、TypeScript 类型检查/ESLint 和 Vitest。常用的独立命令包括：
+
+```bash
+npm run typecheck
+npm test
+cargo test
+cargo clippy --all-targets --all-features -- -D warnings
+```
+
+桌面端开发和 macOS 打包：
+
+```bash
+scripts/dev-gui.sh
+scripts/build-dmg.sh
+```
+
+### 仓库结构
+
+| 路径 | 职责 |
+| --- | --- |
+| `crates/core` | HTTP 服务、渲染、搜索、持久化、Git、Chat 与浏览器资源 |
+| `crates/cli` | CLI 与后台服务生命周期 |
+| `crates/gui` | Tauri 2 桌面壳与设置界面 |
+| `crates/xtask` | 构建期维护工具 |
+| `docs` | VitePress 文档 |
+| `example` | 渲染与端到端测试素材 |
+
+架构与持久化兼容约束见 [ARCHITECTURE.md](ARCHITECTURE.md)。
 
 ## 贡献
 
-欢迎贡献！无论是 bug 报告、功能请求还是代码改进。
+欢迎提交 Issue 和 Pull Request。请保持改动范围清晰，按风险补充测试，并在开 PR 前运行 `scripts/quality-gate.sh`。
 
-### 如何贡献
-
-1. **报告问题**：通过 [GitHub Issues](https://github.com/kookyleo/markon/issues) 提交 bug 或功能请求
-2. **提交 PR**：
-   - Fork 仓库
-   - 创建功能分支（`git checkout -b feature/your-feature`）
-   - 提交更改（`git commit -m 'Add your feature'`）
-   - 推送分支（`git push origin feature/your-feature`）
-   - 创建 Pull Request
-
-### 提交 PR 前
-
-- 运行 `cargo test` 和 `npm test` - 确保所有测试通过
-- 运行 `cargo clippy` - 检查代码质量
-- 运行 `cargo fmt` - 格式化代码
-- 运行 `npx eslint 'crates/core/assets/js/**/*.js'` - 检查 JavaScript 代码
+- [Issues](https://github.com/kookyleo/markon/issues)
+- [Discussions](https://github.com/kookyleo/markon/discussions)
+- [发布流程](RELEASE.zh.md)
 
 ## 许可证
 
 版权所有 © 2025-至今 kookyleo。基于 [Apache License 2.0](LICENSE) 开源发布。
 
-依据 Apache-2.0 第 4 条，任何再分发或衍生作品**必须**保留 [`NOTICE`](NOTICE)
-文件、原始版权信息，并对修改过的文件作出显著标注。具体条款以 LICENSE 为准。
+依据 Apache-2.0 第 4 条，再分发或衍生作品必须保留 [`NOTICE`](NOTICE)、原始版权信息，并显著标注修改过的文件。
 
-### 名称与标识
-
-`"Markon"` 名称及标识为作者所有。依据 Apache-2.0 第 6 条，本授权**不包含**将
-`"Markon"` 名称、徽标或相关标识用于衍生作品、产品命名或宣传推广的权利。
-Fork 与衍生项目请使用与本项目区分的名称。
+`Markon` 名称及标识为作者所有。Apache-2.0 不授予将这些名称或标识用于衍生产品命名或宣传的权利。
 
 ## 致谢
 
-- [go-grip](https://github.com/kookyleo/go-grip) - Markdown 渲染的最初启发
-- [GitHub Markdown CSS](https://github.com/sindresorhus/github-markdown-css) - 样式来源
-- [Medium](https://medium.com) - 批注功能灵感
-- 所有开源贡献者
-
-## 链接
-
-- GitHub Markdown CSS: https://github.com/sindresorhus/github-markdown-css
-- Mermaid 语法文档: https://mermaid.js.org/
-- go-grip: https://github.com/kookyleo/go-grip
+- [go-grip](https://github.com/kookyleo/go-grip)：最初的渲染灵感
+- [GitHub Markdown CSS](https://github.com/sindresorhus/github-markdown-css)：阅读样式基线
+- [Supramark](https://github.com/kookyleo/supramark)：Markdown 与图表渲染
+- 所有贡献者
