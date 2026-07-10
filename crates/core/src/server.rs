@@ -5294,7 +5294,7 @@ fn render_markdown_file(
                 .unwrap_or_else(|| file_path.to_string());
 
             let mut context = base_context(state);
-            context.insert("title", &format!("markon - {title}"));
+            context.insert("title", &title);
             context.insert("file_path", file_path);
             context.insert("workspace_id", workspace_id);
             insert_workspace_header_context(&mut context, ws, root);
@@ -6683,6 +6683,8 @@ mod tests {
         assert!(body.contains("enable-edit"));
         assert!(body.contains("enable-search"));
         assert!(body.contains("window.MarkonTheme"));
+        assert!(body.contains("<title>EVDI_IMPLEMENTATION_PLAN.md</title>"));
+        assert!(!body.contains("<title>markon - EVDI_IMPLEMENTATION_PLAN.md</title>"));
         assert!(body.contains(&format!("href=\"/{id}/#docs/EVDI_IMPLEMENTATION_PLAN.md\"")));
         let root = canonicalize_route_path(dir.path()).unwrap();
         let workspace_name = root
