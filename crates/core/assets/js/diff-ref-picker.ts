@@ -11,6 +11,8 @@
  * Reads its data from the `[data-compare-picker]` JSON the server renders.
  */
 
+import { BaseModal } from './components/modal';
+
 interface RefOption {
     value: string;
     label: string;
@@ -75,7 +77,31 @@ const shortValue = (opts: RefOption[], value: string): string => {
     return o.label.replace(' (current)', '');
 };
 
-function init(): void {
+class CompareRefModal extends BaseModal {
+    #build: () => HTMLElement;
+    #onClosed: () => void;
+
+    constructor(build: () => HTMLElement, onClosed: () => void) {
+        super({ className: 'git-compare-panel' });
+        this.#build = build;
+        this.#onClosed = onClosed;
+    }
+
+    create(): HTMLElement {
+        const modal = this.#build();
+        modal.classList.add('markon-modal-frame');
+        modal.setAttribute('aria-label', 'Choose compared revisions');
+        return modal;
+    }
+
+    override close(): void {
+        const wasOpen = Boolean(this.getElement());
+        super.close();
+        if (wasOpen) this.#onClosed();
+    }
+}
+
+export function initCompareRefPicker(): void {
     const control = document.querySelector<HTMLElement>('[data-compare-control]');
     const dataEl = document.querySelector<HTMLElement>('[data-compare-picker]');
     const trigger = document.querySelector<HTMLButtonElement>('[data-compare-trigger]');
@@ -89,7 +115,7 @@ function init(): void {
 
     let pendingBase = data.baseValue;
     let pendingCompare = data.compareValue;
-    let panel: HTMLElement | null = null;
+    let pickerModal: CompareRefModal | null = null;
 
     const baseLabelEl = trigger.querySelector<HTMLElement>('[data-compare-base-label]');
     const compareLabelEl = trigger.querySelector<HTMLElement>('[data-compare-compare-label]');
@@ -134,18 +160,7 @@ function init(): void {
     renderPresets();
 
     // ── Panel ───────────────────────────────────────────────────────────────
-    const close = (): void => {
-        panel?.remove();
-        panel = null;
-        trigger.setAttribute('aria-expanded', 'false');
-        document.removeEventListener('keydown', onKey, true);
-        document.removeEventListener('mousedown', onDoc, true);
-    };
-    const onKey = (e: KeyboardEvent): void => { if (e.key === 'Escape') close(); };
-    const onDoc = (e: MouseEvent): void => {
-        const t = e.target as Node;
-        if (panel && !panel.contains(t) && !trigger.contains(t)) close();
-    };
+    const close = (): void => pickerModal?.close();
 
     /** Render one column's rows (grouped by kind), honouring the search query. */
     const renderColumn = (
@@ -236,7 +251,7 @@ function init(): void {
                     if (byVal.has(v)) r.classList.toggle('is-disabled', !!byVal.get(v));
                 });
             };
-            if (panel && status) {
+            if (pickerModal?.getElement() && status) {
                 apply(baseListEl, status.base, pendingBase);
                 apply(compareListEl, status.compare, pendingCompare);
             }
@@ -246,8 +261,6 @@ function init(): void {
     const buildPanel = (): HTMLElement => {
         const p = document.createElement('div');
         p.className = 'git-compare-panel';
-        p.setAttribute('role', 'dialog');
-        p.setAttribute('aria-label', 'Choose compared revisions');
 
         // Two columns.
         const cols = document.createElement('div');
@@ -274,8 +287,8 @@ function init(): void {
         baseSearch.addEventListener('input', () => renderColumn(baseListEl, data.base, 'base', baseSearch.value));
         compareSearch.addEventListener('input', () => renderColumn(compareListEl, data.compare, 'compare', compareSearch.value));
         cols.append(baseCol.col, compareCol.col);
-        // The columns live in their own bordered surface; presets sit outside it
-        // (above) as plain links — the panel itself is just a transparent wrapper.
+        // Presets stay inline under the trigger; the standard modal frame owns
+        // this two-column surface and its outer chrome.
         const surface = document.createElement('div');
         surface.className = 'git-compare-surface';
         surface.appendChild(cols);
@@ -287,29 +300,18 @@ function init(): void {
         return p;
     };
 
-    const positionPanel = (p: HTMLElement, anchor: HTMLElement): void => {
-        const r = anchor.getBoundingClientRect();
-        const width = Math.min(720, window.innerWidth - 16);
-        p.style.width = `${width}px`;
-        let left = r.left;
-        if (left + width > window.innerWidth - 8) left = window.innerWidth - width - 8;
-        p.style.left = `${Math.max(8, left)}px`;
-        p.style.top = `${r.bottom + 6}px`;
-    };
-
     const open = (): void => {
-        if (panel) { close(); return; }
+        if (pickerModal) { close(); return; }
         // Reset pending to the live selection each open.
         pendingBase = data.baseValue;
         pendingCompare = data.compareValue;
-        panel = buildPanel();
-        document.body.appendChild(panel);
-        positionPanel(panel, trigger);
+        pickerModal = new CompareRefModal(buildPanel, () => {
+            pickerModal = null;
+            trigger.setAttribute('aria-expanded', 'false');
+        });
+        pickerModal.show(trigger);
         trigger.setAttribute('aria-expanded', 'true');
-        document.addEventListener('keydown', onKey, true);
-        document.addEventListener('mousedown', onDoc, true);
         void refreshStatus();
-        baseSearch.focus();
     };
     trigger.addEventListener('click', (e) => { e.preventDefault(); open(); });
 }
@@ -320,9 +322,7 @@ function escapeHtml(s: string): string {
 }
 
 if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', init, { once: true });
+    document.addEventListener('DOMContentLoaded', initCompareRefPicker, { once: true });
 } else {
-    init();
+    initCompareRefPicker();
 }
-
-export {};

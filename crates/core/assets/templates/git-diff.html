@@ -270,15 +270,12 @@
             font-size: 13px;
         }
         .git-compare-chevron { justify-self: end; align-self: center; color: var(--markon-fg-muted); }
-        /* ── Picker panel (popover) ────────────────────────────────────────── */
-        /* The panel itself is a transparent positioning wrapper: quick presets
-           (plain links) on top, then the bordered columns surface. */
+        /* ── Picker modal ──────────────────────────────────────────────────── */
         .git-compare-panel {
             position: fixed;
-            z-index: 60;
+            width: min(720px, calc(100vw - 16px));
             display: flex;
             flex-direction: column;
-            gap: 8px;
         }
         /* Quick presets under the Base→Compare trigger — they SET the comparator, so
            they read as subordinate chips of the button above, not standalone links.
@@ -308,16 +305,14 @@
             border-color: color-mix(in srgb, var(--markon-fg-default) 30%, var(--markon-border-default));
             background: var(--markon-bg-muted);
         }
-        /* Bordered surface holding the two columns. */
+        /* The standard modal frame owns the outer surface; this element only
+           clips and sizes the two-column body. */
         .git-compare-surface {
             display: flex;
             flex-direction: column;
             min-height: 0;
             max-height: min(52vh, 400px);
-            border: 1px solid var(--markon-border-default);
-            border-radius: var(--markon-radius-sm);
-            background: var(--markon-bg-default);
-            box-shadow: 0 3px 10px color-mix(in srgb, var(--markon-fg-default) 14%, transparent);
+            border-radius: var(--markon-radius-lg);
             overflow: hidden;
         }
         .git-compare-cols {
@@ -362,7 +357,7 @@
             position: sticky;
             top: 0;
             padding: 5px 4px 3px;
-            background: var(--markon-bg-default);
+            background: var(--markon-bg-overlay);
             color: var(--markon-fg-muted);
             font-size: 10px;
             font-weight: 700;
