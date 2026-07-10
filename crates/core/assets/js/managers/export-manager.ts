@@ -33,11 +33,11 @@ export class ExportManager {
     }
 
     /**
-     * Open the export editor with all notes on the page. Returns false when the
-     * page has no notes, so the caller can flash the "empty" hint.
+     * Open the export editor with notes from the page or one heading section.
+     * Returns false when the selected scope has no notes.
      */
-    open(): boolean {
-        const ids = this.#noteIds();
+    open(headingId?: string | null): boolean {
+        const ids = this.#noteIds(headingId);
         if (ids.length === 0) return false;
         const title = this.#deps.getDocumentTitle();
         const markdown = this.#deps.annotationManager.formatAsMarkdown({
@@ -61,8 +61,11 @@ export class ExportManager {
         this.#editor?.close();
     }
 
-    #noteIds(): string[] {
-        return this.#deps.annotationManager.getAllInDocumentOrder()
+    #noteIds(headingId?: string | null): string[] {
+        const annotations = headingId
+            ? this.#deps.annotationManager.getAllInSection(headingId)
+            : this.#deps.annotationManager.getAllInDocumentOrder();
+        return annotations
             .filter(a => !!a.note && a.note.trim() !== '')
             .map(a => a.id);
     }

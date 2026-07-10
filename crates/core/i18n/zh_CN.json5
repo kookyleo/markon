@@ -468,8 +468,10 @@
     // ── 导出 Notes ─────────────────────────────────────────
     "web.export.label":     "导出 Notes",
     "web.export.tip":       "导出本页 Notes 为 Markdown",
+    "web.export.section.tip": "导出此章节的 Notes 为 Markdown",
     "web.export.copied":    "✓ 已复制",
     "web.export.empty":     "本页无 Notes",
+    "web.export.section.empty": "此章节无 Notes",
     "web.export.failed":    "复制失败",
     "web.export.copytext":  "复制文本",
     "web.export.copyselection": "复制选中",

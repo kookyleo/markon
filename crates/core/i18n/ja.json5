@@ -469,8 +469,10 @@
     // ── Notes export ────────────────────────────────────────
     "web.export.label":     "Notes をエクスポート",
     "web.export.tip":       "このページの Notes を Markdown としてエクスポート",
+    "web.export.section.tip": "このセクションの Notes を Markdown としてエクスポート",
     "web.export.copied":    "✓ コピーしました",
     "web.export.empty":     "このページに Notes はありません",
+    "web.export.section.empty": "このセクションに Notes はありません",
     "web.export.failed":    "コピーに失敗しました",
     "web.export.copytext":  "テキストをコピー",
     "web.export.copyselection": "選択範囲をコピー",

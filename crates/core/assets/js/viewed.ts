@@ -152,6 +152,8 @@ export class SectionViewedManager {
 
         // 2. Inject action buttons to all headings (h2-h6)
         this.injectCheckboxes();
+        this.updateExportNotesButtons();
+        document.addEventListener('markon:notes-count-changed', () => this.updateExportNotesButtons());
 
         // 3. Toolbar — only if viewed is enabled.
         if (this.enableViewed) {
@@ -273,7 +275,20 @@ export class SectionViewedManager {
                 },
             });
 
-            // 3. Expand/collapse toggle (always enabled)
+            // 3. Export notes in this heading section (always enabled)
+            actions.push({
+                type: 'export-notes',
+                create: () => {
+                    const exportBtn = document.createElement('span');
+                    exportBtn.className = 'section-action section-export-notes';
+                    exportBtn.textContent = exportNotesLabel(0);
+                    exportBtn.title = _t('web.export.section.tip');
+                    exportBtn.dataset['headingId'] = headingId;
+                    return exportBtn;
+                },
+            });
+
+            // 4. Expand/collapse toggle (always enabled)
             actions.push({
                 type: 'toggle',
                 create: () => {
@@ -286,17 +301,22 @@ export class SectionViewedManager {
                 },
             });
 
+            const actionsContainer = document.createElement('span');
+            actionsContainer.className = 'section-actions';
+
             actions.forEach((action, idx) => {
                 if (idx > 0) {
                     const separator = document.createElement('span');
                     separator.className = 'section-action-separator';
                     separator.textContent = ' | ';
-                    heading.appendChild(separator);
+                    actionsContainer.appendChild(separator);
                 }
 
                 const element = action.create();
-                heading.appendChild(element);
+                actionsContainer.appendChild(element);
             });
+
+            heading.appendChild(actionsContainer);
         });
     }
 
@@ -563,7 +583,7 @@ export class SectionViewedManager {
 
         const headingClone = heading.cloneNode(true) as HTMLElement;
         headingClone
-            .querySelectorAll('.viewed-checkbox-label, .section-action-separator, .section-print-btn, .section-expand-toggle')
+            .querySelectorAll('.section-actions, .viewed-checkbox-label, .section-action-separator, .section-print-btn, .section-expand-toggle')
             .forEach((el) => el.remove());
         sectionContainer.appendChild(headingClone);
 
@@ -761,7 +781,7 @@ export class SectionViewedManager {
         // STEP 2: prepare content (async OK — window is already open).
         const headingClone = heading.cloneNode(true) as HTMLElement;
         headingClone
-            .querySelectorAll('.viewed-checkbox-label, .section-action-separator, .section-print-btn, .section-expand-toggle, .section-action')
+            .querySelectorAll('.section-actions, .viewed-checkbox-label, .section-action-separator, .section-print-btn, .section-expand-toggle, .section-action')
             .forEach((el) => el.remove());
 
         const contentClones = content.map((el) => el.cloneNode(true) as HTMLElement);
@@ -1039,6 +1059,18 @@ export class SectionViewedManager {
                 void this.printSection(headingId);
             });
         });
+
+        // Section notes export.
+        document.querySelectorAll<HTMLElement>('.section-export-notes').forEach((exportBtn) => {
+            exportBtn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                const target = e.currentTarget as HTMLElement;
+                if (target.getAttribute('aria-disabled') === 'true') return;
+                const headingId = target.dataset['headingId'];
+                if (!headingId) return;
+                window.markonExportNotes?.(target, headingId);
+            });
+        });
     }
 
     // ============================================================
@@ -1118,20 +1150,31 @@ export class SectionViewedManager {
                 window.markonExportNotes?.(link);
             },
         );
-        this.updateExportNotesButton();
-        document.addEventListener('markon:notes-count-changed', () => this.updateExportNotesButton());
+        this.updateExportNotesButtons();
     }
 
-    updateExportNotesButton(): void {
+    updateExportNotesButtons(): void {
         const link = document.querySelector<HTMLElement>('.btn-export-notes');
-        if (!link) return;
-        const count = Math.max(0, window.markonNotesCount?.() ?? 0);
-        link.textContent = exportNotesLabel(count);
-        const disabled = count === 0;
-        link.classList.toggle('is-disabled', disabled);
-        link.setAttribute('aria-disabled', disabled ? 'true' : 'false');
-        if (disabled) link.setAttribute('tabindex', '-1');
-        else link.removeAttribute('tabindex');
+        if (link) {
+            const count = Math.max(0, window.markonNotesCount?.() ?? 0);
+            link.textContent = exportNotesLabel(count);
+            const disabled = count === 0;
+            link.classList.toggle('is-disabled', disabled);
+            link.setAttribute('aria-disabled', disabled ? 'true' : 'false');
+            if (disabled) link.setAttribute('tabindex', '-1');
+            else link.removeAttribute('tabindex');
+        }
+
+        document.querySelectorAll<HTMLElement>('.section-export-notes').forEach((button) => {
+            const headingId = button.dataset['headingId'];
+            const count = Math.max(0, headingId ? window.markonNotesCount?.(headingId) ?? 0 : 0);
+            button.textContent = exportNotesLabel(count);
+            const disabled = count === 0;
+            button.classList.toggle('is-disabled', disabled);
+            button.setAttribute('aria-disabled', disabled ? 'true' : 'false');
+            if (disabled) button.setAttribute('tabindex', '-1');
+            else button.removeAttribute('tabindex');
+        });
     }
 
     markAllViewed(): void {

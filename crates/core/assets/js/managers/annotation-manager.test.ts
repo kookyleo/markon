@@ -458,6 +458,51 @@ describe('AnnotationManager', () => {
         expect(mgr.formatAsMarkdown({ ids: new Set<string>() })).toBe('');
     });
 
+    it('getAllInSection includes nested child sections but excludes siblings', async () => {
+        const article = setupArticle(
+            '<div class="heading-section"><h2 id="parent">Parent</h2><p>parent text</p>'
+            + '<div class="heading-section"><h3 id="child">Child</h3><p>child text</p></div></div>'
+            + '<div class="heading-section"><h2 id="sibling">Sibling</h2><p>sibling text</p></div>',
+        );
+        const mgr = new AnnotationManager(makeStorage(), article);
+        const paragraphs = article.querySelectorAll('p');
+
+        const parent = mgr.createAnnotation(
+            makeRange(itemAt(paragraphs, 0).firstChild!, 0, 6),
+            'has-note',
+            'span',
+            'parent note',
+        );
+        await mgr.add(parent);
+        mgr.applyToDOM([parent]);
+
+        const child = mgr.createAnnotation(
+            makeRange(itemAt(paragraphs, 1).firstChild!, 0, 5),
+            'has-note',
+            'span',
+            'child note',
+        );
+        await mgr.add(child);
+        mgr.applyToDOM([child]);
+
+        const sibling = mgr.createAnnotation(
+            makeRange(itemAt(paragraphs, 2).firstChild!, 0, 7),
+            'has-note',
+            'span',
+            'sibling note',
+        );
+        await mgr.add(sibling);
+        mgr.applyToDOM([sibling]);
+
+        expect(mgr.getAllInSection('parent').map(item => item.id)).toEqual([
+            parent.id,
+            child.id,
+        ]);
+        expect(mgr.getAllInSection('child').map(item => item.id)).toEqual([child.id]);
+        expect(mgr.getAllInSection('sibling').map(item => item.id)).toEqual([sibling.id]);
+        expect(mgr.getAllInSection('missing')).toEqual([]);
+    });
+
     it('formatAnnotation renders quote and note for a single annotation', async () => {
         const article = setupArticle('<p>alpha bravo charlie</p>');
         const mgr = new AnnotationManager(makeStorage(), article);

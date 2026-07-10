@@ -190,6 +190,27 @@ export class AnnotationManager {
     }
 
     /**
+     * Return annotations rendered inside one heading section. The renderer
+     * nests child `.heading-section` elements, so a parent heading includes
+     * its subsections while same-level and higher-level siblings stay out.
+     */
+    getAllInSection(headingId: string): Annotation[] {
+        const heading = Array.from(
+            this.#markdownBody.querySelectorAll<HTMLElement>('h1, h2, h3, h4, h5, h6'),
+        ).find(candidate => candidate.id === headingId);
+        const section = heading?.closest<HTMLElement>('.heading-section');
+        if (!section || !this.#markdownBody.contains(section)) return [];
+
+        const ids = new Set<string>();
+        section.querySelectorAll<HTMLElement>('[data-annotation-id]').forEach((element) => {
+            const id = element.dataset['annotationId'];
+            if (id) ids.add(id);
+        });
+
+        return this.getAllInDocumentOrder().filter(annotation => ids.has(annotation.id));
+    }
+
+    /**
      * Find the nearest heading ancestor for an annotation (so the export can
      * group annotations by section). Returns null if the annotation isn't
      * rendered or sits before the first heading.

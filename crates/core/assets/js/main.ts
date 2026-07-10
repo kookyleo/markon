@@ -270,9 +270,7 @@ export class MarkonApp {
 
         this.#annotationManager = new AnnotationManager(this.#storage, this.#markdownBody);
         this.#annotationManager.onChange(() => {
-            document.dispatchEvent(new CustomEvent('markon:notes-count-changed', {
-                detail: { count: this.notesCount() },
-            }));
+            this.#dispatchNotesCountChanged();
             this.#mirrorSharedAnnotationsLocally();
         });
 
@@ -331,9 +329,7 @@ export class MarkonApp {
             }
         }
         Logger.log('MarkonApp', `Loaded ${this.#annotationManager.getAll().length} annotations`);
-        document.dispatchEvent(new CustomEvent('markon:notes-count-changed', {
-            detail: { count: this.notesCount() },
-        }));
+        this.#dispatchNotesCountChanged();
     }
 
     #mirrorSharedAnnotationsLocally(annotations = this.#annotationManager?.getAll() ?? []): void {
@@ -349,6 +345,7 @@ export class MarkonApp {
         });
         this.#noteManager?.render();
         this.#noteManager?.setupResponsiveLayout();
+        this.#dispatchNotesCountChanged();
     }
 
     /** Setup keyboard event listener (used in both directory and document modes). @private */
@@ -645,6 +642,7 @@ export class MarkonApp {
         if (!this.#annotationManager || !this.#noteManager) return;
         await this.#annotationManager.add(annotation);
         this.#annotationManager.applyToDOM([annotation]);
+        this.#dispatchNotesCountChanged();
         if (options.pushUndo) {
             this.#undoManager?.push({ type: 'add_annotation', annotation });
         }
@@ -663,6 +661,7 @@ export class MarkonApp {
         await this.#annotationManager.delete(annotationId);
         this.#annotationManager.removeFromDOM(annotationId);
         this.#noteManager.render();
+        this.#dispatchNotesCountChanged();
         if (options.pushUndo) {
             this.#undoManager?.push({
                 type: 'delete_annotation',
@@ -788,6 +787,7 @@ export class MarkonApp {
             annotationManager.replaceAll(merged);
             annotationManager.applyToDOM();
             noteManager.render();
+            this.#dispatchNotesCountChanged();
 
             if (missingFromShared.length > 0 && this.#storage) {
                 const storage = this.#storage;
@@ -822,6 +822,7 @@ export class MarkonApp {
             void annotationManager.add(incoming, true);
             annotationManager.applyToDOM([incoming]);
             noteManager.render();
+            this.#dispatchNotesCountChanged();
         });
 
         ws.on('delete_annotation', (message) => {
@@ -837,6 +838,7 @@ export class MarkonApp {
             void annotationManager.delete(message.id, true);
             annotationManager.removeFromDOM(message.id);
             noteManager.render();
+            this.#dispatchNotesCountChanged();
         });
 
         ws.on('clear_annotations', (message) => {
@@ -849,6 +851,7 @@ export class MarkonApp {
             void annotationManager.clear(true);
             annotationManager.clearDOM();
             noteManager.clear();
+            this.#dispatchNotesCountChanged();
             Logger.log('MarkonApp', 'Cleared annotations from broadcast, no reload needed');
         });
     }
@@ -1385,6 +1388,7 @@ export class MarkonApp {
                 Logger.log('MarkonApp', 'Annotations cleared from DOM');
                 this.#noteManager.clear();
                 Logger.log('MarkonApp', 'Notes cleared');
+                this.#dispatchNotesCountChanged();
 
                 if (Meta.flag(CONFIG.META_TAGS.ENABLE_VIEWED)) {
                     await this.#storage.clearViewedState();
@@ -1413,7 +1417,7 @@ export class MarkonApp {
      * Open the notes export editor. When the page has no notes, flash an inline
      * hint on the toolbar link instead.
      */
-    exportNotes(anchor?: HTMLElement | null): void {
+    exportNotes(anchor?: HTMLElement | null, headingId?: string | null): void {
         const annotationManager = this.#annotationManager;
         if (!annotationManager) return;
         if (!this.#exportManager) {
@@ -1423,10 +1427,10 @@ export class MarkonApp {
                 getFilePath: () => this.#filePath,
             });
         }
-        const opened = this.#exportManager.open();
+        const opened = this.#exportManager.open(headingId);
         if (!opened && anchor) {
             const original = anchor.textContent ?? '';
-            anchor.textContent = i18n.t('web.export.empty');
+            anchor.textContent = i18n.t(headingId ? 'web.export.section.empty' : 'web.export.empty');
             anchor.classList.add('is-flashing');
             setTimeout(() => {
                 anchor.textContent = original;
@@ -1435,10 +1439,21 @@ export class MarkonApp {
         }
     }
 
-    notesCount(): number {
-        return this.#annotationManager?.getAll()
+    notesCount(headingId?: string | null): number {
+        const annotationManager = this.#annotationManager;
+        if (!annotationManager) return 0;
+        const annotations = headingId
+            ? annotationManager.getAllInSection(headingId)
+            : annotationManager.getAll();
+        return annotations
             .filter(a => !!a.note && a.note.trim() !== '')
-            .length ?? 0;
+            .length;
+    }
+
+    #dispatchNotesCountChanged(): void {
+        document.dispatchEvent(new CustomEvent('markon:notes-count-changed', {
+            detail: { count: this.notesCount() },
+        }));
     }
 
     /**
@@ -1598,6 +1613,7 @@ export class MarkonApp {
         this.#annotationManager.clearDOM();
         this.#annotationManager.applyToDOM();
         this.#noteManager.render();
+        this.#dispatchNotesCountChanged();
     }
 
     /** Manager snapshot — used for window globals + debug. */
@@ -1631,14 +1647,17 @@ window.clearPageAnnotations = function (event?: Event): void {
     }
 };
 
-window.markonExportNotes = function (anchor?: HTMLElement | null): void {
+window.markonExportNotes = function (
+    anchor?: HTMLElement | null,
+    headingId?: string | null,
+): void {
     if (window.markonApp) {
-        window.markonApp.exportNotes(anchor ?? null);
+        window.markonApp.exportNotes(anchor ?? null, headingId ?? null);
     }
 };
 
-window.markonNotesCount = function (): number {
-    return window.markonApp?.notesCount() ?? 0;
+window.markonNotesCount = function (headingId?: string | null): number {
+    return window.markonApp?.notesCount(headingId ?? null) ?? 0;
 };
 
 // Dev-only auto-reload: esbuild watcher pings /_/dev/reload-trigger after each

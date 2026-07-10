@@ -66,6 +66,8 @@ describe('SectionViewedManager', () => {
         warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
         delete (window as { viewedManager?: unknown }).viewedManager;
         delete (window as { ws?: unknown }).ws;
+        delete window.markonExportNotes;
+        delete window.markonNotesCount;
     });
 
     afterEach(() => {
@@ -88,6 +90,63 @@ describe('SectionViewedManager', () => {
 
         const h1 = document.querySelector('h1');
         expect(h1?.querySelector('.viewed-checkbox')).not.toBeNull(); // toolbar mounts on h1
+    });
+
+    it('groups each section heading action row for focus-only visibility', async () => {
+        seedMeta('file-path', 'docs/x.md');
+        seedMeta('enable-viewed', 'true');
+        buildArticle(['h2-a', 'h3-b']);
+
+        const mgr = new SectionViewedManager(false, null);
+        await mgr.ready;
+
+        document.querySelectorAll<HTMLElement>('h2, h3').forEach((heading) => {
+            const actionRows = heading.querySelectorAll(':scope > .section-actions');
+            expect(actionRows).toHaveLength(1);
+            expect(actionRows[0]?.querySelector('.viewed-checkbox-label')).not.toBeNull();
+            expect(actionRows[0]?.querySelector('.section-print-btn')).not.toBeNull();
+            expect(actionRows[0]?.querySelector('.section-export-notes')).not.toBeNull();
+            expect(actionRows[0]?.querySelector('.section-expand-toggle')).not.toBeNull();
+        });
+
+        expect(document.querySelector('h1 > .section-actions')).toBeNull();
+    });
+
+    it('exports notes from each heading scope and refreshes scoped counts', async () => {
+        seedMeta('file-path', 'docs/x.md');
+        seedMeta('enable-viewed', 'false');
+        buildNestedArticle();
+
+        const counts: Record<string, number> = { 'h2-a': 2, 'h3-b': 1 };
+        const notesCount = vi.fn((headingId?: string | null) => headingId ? counts[headingId] ?? 0 : 3);
+        const exportNotes = vi.fn();
+        window.markonNotesCount = notesCount;
+        window.markonExportNotes = exportNotes;
+
+        const mgr = new SectionViewedManager(false, null);
+        await mgr.ready;
+
+        const parentButton = document.querySelector<HTMLElement>(
+            '#h2-a > .section-actions .section-export-notes',
+        );
+        const childButton = document.querySelector<HTMLElement>(
+            '#h3-b > .section-actions .section-export-notes',
+        );
+        expect(parentButton?.textContent).toBe('web.export.label (2)');
+        expect(childButton?.textContent).toBe('web.export.label (1)');
+        expect(document.querySelector('.viewed-toolbar')).toBeNull();
+
+        childButton?.click();
+        expect(exportNotes).toHaveBeenCalledWith(childButton, 'h3-b');
+
+        counts['h3-b'] = 0;
+        document.dispatchEvent(new CustomEvent('markon:notes-count-changed'));
+        expect(childButton?.textContent).toBe('web.export.label (0)');
+        expect(childButton?.getAttribute('aria-disabled')).toBe('true');
+
+        exportNotes.mockClear();
+        childButton?.click();
+        expect(exportNotes).not.toHaveBeenCalled();
     });
 
     it('toggleViewed marks a section collapsed and persists to LocalStorage in local mode', async () => {

@@ -14,6 +14,7 @@ const annotation = (id: string, note: string | null): Annotation => ({
 
 const makeManager = (items: Annotation[], markdown = '"quoted"\n> note\n'): AnnotationManager => ({
     getAllInDocumentOrder: vi.fn(() => items),
+    getAllInSection: vi.fn(() => items),
     formatAsMarkdown: vi.fn(() => markdown),
 } as unknown as AnnotationManager);
 
@@ -81,5 +82,30 @@ describe('ExportManager', () => {
         expect(document.querySelector('.export-modal')).toBeNull();
         expect(document.querySelector('.editor-modal-export')).toBeNull();
         expect(manager.formatAsMarkdown).not.toHaveBeenCalled();
+    });
+
+    it('exports only notes inside the requested heading section', () => {
+        const parentNote = annotation('parent-note', 'keep me');
+        const childNote = annotation('child-note', 'keep me too');
+        const outsideNote = annotation('outside-note', 'leave out');
+        const highlight = annotation('highlight-only', null);
+        const manager = makeManager([outsideNote]);
+        const getAllInSection = manager.getAllInSection as unknown as ReturnType<typeof vi.fn>;
+        getAllInSection.mockReturnValue([parentNote, highlight, childNote]);
+        const exportManager = new ExportManager({
+            annotationManager: manager,
+            getDocumentTitle: () => 'Review notes',
+            getFilePath: () => '/tmp/review.md',
+        });
+
+        expect(exportManager.open('section-a')).toBe(true);
+
+        expect(getAllInSection).toHaveBeenCalledWith('section-a');
+        expect(manager.getAllInDocumentOrder).not.toHaveBeenCalled();
+        const format = manager.formatAsMarkdown as unknown as ReturnType<typeof vi.fn>;
+        expect(Array.from(itemAt(format.mock.calls, 0)[0].ids)).toEqual([
+            'parent-note',
+            'child-note',
+        ]);
     });
 });

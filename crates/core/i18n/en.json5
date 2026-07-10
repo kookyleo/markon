@@ -469,8 +469,10 @@
     // ── Notes export ────────────────────────────────────────
     "web.export.label":     "Export notes",
     "web.export.tip":       "Export this page's notes as Markdown",
+    "web.export.section.tip": "Export this section's notes as Markdown",
     "web.export.copied":    "✓ Copied",
     "web.export.empty":     "No notes on this page",
+    "web.export.section.empty": "No notes in this section",
     "web.export.failed":    "Copy failed",
     "web.export.copytext":  "Copy text",
     "web.export.copyselection": "Copy selection",
