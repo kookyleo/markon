@@ -2192,6 +2192,7 @@ async fn handle_git_working_diff_data(
     if diff_view_from_query(query.view.as_deref()) == "rendered" {
         return match markdown_compare_diff_data(
             &state,
+            &workspace_id,
             &ws.root,
             "HEAD",
             "worktree",
@@ -2307,6 +2308,7 @@ async fn handle_pretty_compare_diff(
     if query.format.as_deref() == Some("data") && initial_view == "rendered" {
         return match markdown_compare_diff_data(
             &state,
+            &workspace_id,
             &ws.root,
             &base,
             &compare,
@@ -3146,7 +3148,7 @@ struct MarkdownDiffDiagnostic {
     end_line: Option<u32>,
 }
 
-const MARKDOWN_DIFF_CACHE_VERSION: &str = "markdown-diff-cache-v1";
+const MARKDOWN_DIFF_CACHE_VERSION: &str = "markdown-diff-cache-v2";
 const MARKDOWN_DIFF_DOCUMENT_CACHE_LIMIT: usize = 256;
 const MARKDOWN_DIFF_FILE_CACHE_LIMIT: usize = 512;
 
@@ -3154,6 +3156,8 @@ const MARKDOWN_DIFF_FILE_CACHE_LIMIT: usize = 512;
 struct MarkdownDocumentCacheKey {
     version: &'static str,
     theme: String,
+    workspace_id: String,
+    file_path: String,
     content_hash: String,
 }
 
@@ -3161,6 +3165,7 @@ struct MarkdownDocumentCacheKey {
 struct MarkdownDiffFileCacheKey {
     version: &'static str,
     theme: String,
+    workspace_id: String,
     path: String,
     old_path: Option<String>,
     status: String,
@@ -4607,6 +4612,7 @@ struct MarkdownBuildItem<'a> {
 
 fn markdown_compare_diff_data(
     state: &AppState,
+    workspace_id: &str,
     root: &FsPath,
     base: &str,
     compare: &str,
@@ -4681,6 +4687,7 @@ fn markdown_compare_diff_data(
             .then(|| MarkdownDiffFileCacheKey {
                 version: MARKDOWN_DIFF_CACHE_VERSION,
                 theme: state.theme.as_str().to_string(),
+                workspace_id: workspace_id.to_string(),
                 path: entry.path.clone(),
                 old_path: entry.old_path.clone(),
                 status: entry.status.clone(),
@@ -4735,7 +4742,12 @@ fn markdown_compare_diff_data(
         .collect();
     let mut built: HashMap<usize, MarkdownDiffFile> = builds
         .into_par_iter()
-        .map(|(i, item)| (i, build_markdown_diff_file(state, item, &blobs, root)))
+        .map(|(i, item)| {
+            (
+                i,
+                build_markdown_diff_file(state, workspace_id, item, &blobs, root),
+            )
+        })
         .collect();
 
     // ---- Pass 4: assemble in original order; promote freshly built into cache ----
@@ -4775,6 +4787,7 @@ fn markdown_compare_diff_data(
 /// Pure CPU + cache lookups — safe to run in parallel across files.
 fn build_markdown_diff_file(
     state: &AppState,
+    workspace_id: &str,
     item: &MarkdownBuildItem,
     blobs: &HashMap<String, Vec<u8>>,
     root: &FsPath,
@@ -4794,7 +4807,6 @@ fn build_markdown_diff_file(
             .map(|p| p.to_string_lossy().into_owned())
             .unwrap_or_else(|_| joined.to_string_lossy().into_owned())
     };
-    let renderer = default_markdown_engine(state.theme.as_str());
     let mut diagnostics = item.read_diagnostics.clone();
 
     let blob_text =
@@ -4826,12 +4838,28 @@ fn build_markdown_diff_file(
             .and_then(|id| blob_text(id, "new", &mut diagnostics))
     };
 
+    let old_path = entry.old_path.as_deref().unwrap_or(&entry.path);
+    let old_file_path = root.join(old_path);
+    let new_file_path = root.join(&entry.path);
+    let old_renderer = default_markdown_engine(state.theme.as_str()).with_asset_context(
+        workspace_id,
+        &old_file_path,
+        root,
+    );
+    let new_renderer = default_markdown_engine(state.theme.as_str()).with_asset_context(
+        workspace_id,
+        &new_file_path,
+        root,
+    );
+
     let old = summarize_side_cached(
         state,
         "old",
         old_content.as_deref(),
         item.old_id.as_deref(),
-        &renderer,
+        workspace_id,
+        &old_file_path,
+        &old_renderer,
     );
     diagnostics.extend(markdown_side_diagnostics("old", old.as_ref()));
     let new = summarize_side_cached(
@@ -4839,7 +4867,9 @@ fn build_markdown_diff_file(
         "new",
         new_content.as_deref(),
         item.new_id.as_deref(),
-        &renderer,
+        workspace_id,
+        &new_file_path,
+        &new_renderer,
     );
     diagnostics.extend(markdown_side_diagnostics("new", new.as_ref()));
 
@@ -4865,13 +4895,17 @@ fn build_markdown_diff_file(
 }
 
 /// Summarize one side, keyed in the document cache by a stable content id (blob
-/// oid, or `h:<sha256>` for worktree content). Renders blocks via `render_html`
-/// only — the diff never needs the asset/diagnostic passes of full `render()`.
+/// oid, or `h:<sha256>` for worktree content). The cache includes workspace and
+/// file path because rendered local asset URLs depend on both. Blocks use
+/// `render_html` only; the diff does not need the diagnostic pass of full
+/// `render()`.
 fn summarize_side_cached(
     state: &AppState,
     side: &'static str,
     content: Option<&str>,
     content_id: Option<&str>,
+    workspace_id: &str,
+    file_path: &FsPath,
     renderer: &MarkdownRenderer,
 ) -> Option<markdown_ast::MarkdownDocumentSummary> {
     let content = content?;
@@ -4883,7 +4917,7 @@ fn summarize_side_cached(
             id_owned.as_str()
         }
     };
-    let key = markdown_document_cache_key(state, id);
+    let key = markdown_document_cache_key(state, id, workspace_id, file_path);
     if let Some(summary) = state
         .markdown_diff_cache
         .lock()
@@ -4923,10 +4957,17 @@ fn markdown_content_hash(content: &str) -> String {
     format!("{:x}", hasher.finalize())
 }
 
-fn markdown_document_cache_key(state: &AppState, content_hash: &str) -> MarkdownDocumentCacheKey {
+fn markdown_document_cache_key(
+    state: &AppState,
+    content_hash: &str,
+    workspace_id: &str,
+    file_path: &FsPath,
+) -> MarkdownDocumentCacheKey {
     MarkdownDocumentCacheKey {
         version: MARKDOWN_DIFF_CACHE_VERSION,
         theme: state.theme.as_str().to_string(),
+        workspace_id: workspace_id.to_string(),
+        file_path: file_path.to_string_lossy().into_owned(),
         content_hash: content_hash.to_string(),
     }
 }
@@ -7438,9 +7479,15 @@ mod tests {
         let registry = Arc::new(WorkspaceRegistry::new("git-cache-test".into()));
         let state = test_state(registry);
 
-        let first =
-            markdown_compare_diff_data(&state, dir.path(), "HEAD", "worktree", Some("a.md"))
-                .unwrap();
+        let first = markdown_compare_diff_data(
+            &state,
+            "git-cache-test",
+            dir.path(),
+            "HEAD",
+            "worktree",
+            Some("a.md"),
+        )
+        .unwrap();
         assert_eq!(first.files.len(), 1);
         // `abs_path` is the per-file annotation key. It must be byte-identical to
         // the canonical path `render_markdown_file` derives for the same file
@@ -7459,9 +7506,15 @@ mod tests {
         assert_eq!(first_stats.document_entries, 2);
         assert_eq!(first_stats.file_entries, 1);
 
-        let second =
-            markdown_compare_diff_data(&state, dir.path(), "HEAD", "worktree", Some("a.md"))
-                .unwrap();
+        let second = markdown_compare_diff_data(
+            &state,
+            "git-cache-test",
+            dir.path(),
+            "HEAD",
+            "worktree",
+            Some("a.md"),
+        )
+        .unwrap();
         assert_eq!(second.files.len(), 1);
         let second_stats = state.markdown_diff_cache.lock().unwrap().stats();
         assert_eq!(second_stats.file_hits, 1);
@@ -7470,9 +7523,15 @@ mod tests {
         assert_eq!(second_stats.document_misses, 2);
 
         fs::write(dir.path().join("a.md"), "# Title\n\nNewest body\n").unwrap();
-        let third =
-            markdown_compare_diff_data(&state, dir.path(), "HEAD", "worktree", Some("a.md"))
-                .unwrap();
+        let third = markdown_compare_diff_data(
+            &state,
+            "git-cache-test",
+            dir.path(),
+            "HEAD",
+            "worktree",
+            Some("a.md"),
+        )
+        .unwrap();
         let third_json = serde_json::to_string(&third).unwrap();
         assert!(third_json.contains("Newest body"));
         assert!(!third_json.contains("New body\\n"));
@@ -7483,6 +7542,70 @@ mod tests {
         assert_eq!(third_stats.document_misses, 3);
         assert_eq!(third_stats.document_entries, 3);
         assert_eq!(third_stats.file_entries, 2);
+    }
+
+    #[test]
+    fn rendered_markdown_diff_rewrites_relative_assets_per_file_path() {
+        let dir = tempfile::tempdir().unwrap();
+        for folder in ["docs", "guide"] {
+            let asset_dir = dir.path().join(folder).join("images");
+            fs::create_dir_all(&asset_dir).unwrap();
+            fs::write(asset_dir.join("pic one.png"), b"png").unwrap();
+            fs::write(
+                dir.path().join(folder).join("page.md"),
+                "# Title\n\n![diagram](images/pic one.png)\n\nOld body\n",
+            )
+            .unwrap();
+        }
+
+        let git = |args: &[&str]| {
+            let output = std::process::Command::new("git")
+                .arg("-C")
+                .arg(dir.path())
+                .args(args)
+                .output()
+                .unwrap();
+            assert!(output.status.success(), "git {:?} failed", args);
+        };
+        git(&["init"]);
+        git(&["config", "user.email", "test@example.com"]);
+        git(&["config", "user.name", "Test User"]);
+        git(&["add", "."]);
+        git(&["commit", "-m", "initial"]);
+
+        for folder in ["docs", "guide"] {
+            fs::write(
+                dir.path().join(folder).join("page.md"),
+                "# Title\n\n![diagram](images/pic one.png)\n\nNew body\n",
+            )
+            .unwrap();
+        }
+
+        let registry = Arc::new(WorkspaceRegistry::new("asset-diff-test".into()));
+        let state = test_state(registry);
+        let data =
+            markdown_compare_diff_data(&state, "asset-ws", dir.path(), "HEAD", "worktree", None)
+                .unwrap();
+
+        for folder in ["docs", "guide"] {
+            let path = format!("{folder}/page.md");
+            let file = data
+                .files
+                .iter()
+                .find(|file| file.path == path)
+                .unwrap_or_else(|| panic!("missing rendered diff for {path}"));
+            let html = file
+                .blocks
+                .iter()
+                .flat_map(|block| block.old.iter().chain(block.new.iter()))
+                .map(|block| block.html.as_str())
+                .collect::<String>();
+            assert!(
+                html.contains(&format!("src=\"/asset-ws/{folder}/images/pic%20one.png\"")),
+                "unexpected rendered asset HTML: {html}",
+            );
+            assert!(!html.contains("src=\"images/pic%20one.png\""));
+        }
     }
 
     // Regression for finding F / §10.4: when the workspace is a *subdirectory* of
@@ -7522,7 +7645,15 @@ mod tests {
         let state = test_state(registry);
 
         // Pass the SUBDIRECTORY as the workspace root, exactly as the route would.
-        let data = markdown_compare_diff_data(&state, &ws_root, "HEAD", "worktree", None).unwrap();
+        let data = markdown_compare_diff_data(
+            &state,
+            "subdir-abs-test",
+            &ws_root,
+            "HEAD",
+            "worktree",
+            None,
+        )
+        .unwrap();
         assert_eq!(data.files.len(), 2, "expected tracked + untracked file");
 
         for rel in ["tracked.md", "untracked.md"] {
