@@ -45,7 +45,8 @@ pub struct WorkspaceConfig {
     /// references and that canonicalize inside `path`. Used by Open-With on
     /// macOS so opening `~/Downloads/note.md` can render `logo.svg` next to it
     /// without turning `~/Downloads` into an indexed, browsable workspace.
-    /// Ephemeral (not persisted).
+    /// Treated as temporary; settings may persist it so startup policy can
+    /// either restore or automatically remove it.
     pub single_file: Option<String>,
     /// Per-workspace collaborator access-code hash (empty = inherit the
     /// server-level collaborator code).
@@ -66,7 +67,7 @@ pub(crate) struct WorkspaceEntry {
     pub shared_annotation: AtomicBool,
     pub config_tx: broadcast::Sender<()>,
     pub search_index: ArcSwapOption<SearchIndex>,
-    /// Set for single-file ephemeral workspaces. Holds the file name (relative
+    /// Set for temporary single-file workspaces. Holds the file name (relative
     /// to `root`); routes outside this file + `allowed_assets` return 404.
     pub single_file: Option<String>,
     /// Local assets the single-file's markdown references (images, stylesheets,
@@ -136,7 +137,7 @@ impl WorkspaceEntry {
 pub struct WorkspaceInfo {
     pub id: String,
     /// Workspace **serving root** — what `/{id}/…` resolves under. For
-    /// single-file (ephemeral) workspaces this is the parent directory, not
+    /// temporary single-file workspaces this is the parent directory, not
     /// the file itself; the file name lives in `single_file`. Consumers that
     /// render a user-visible path **must** join the two for ephemeral entries
     /// (or filter ephemeral entries out entirely).
@@ -144,8 +145,7 @@ pub struct WorkspaceInfo {
     #[serde(flatten)]
     pub flags: WorkspaceFlags,
     pub search_ready: bool,
-    /// True for single-file workspaces — the GUI's Settings list filters these
-    /// out (they're created by Open-With and live in memory only).
+    /// True for temporary single-file workspaces created by Open-With.
     pub ephemeral: bool,
     /// `Some(filename)` only when ephemeral, for callers that want to display
     /// or re-derive the URL. Omitted from the wire format when None.

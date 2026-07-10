@@ -182,6 +182,7 @@ fn ensure_example_workspace(app: &tauri::App, settings: &mut AppSettings) {
     let canonical = expand_and_canonicalize(&dest.to_string_lossy()).unwrap_or(dest);
     settings.workspaces.push(WorkspaceSettings {
         path: canonical.to_string_lossy().to_string(),
+        single_file: None,
         flags: WorkspaceFlags {
             enable_search: true,
             enable_viewed: true,
@@ -318,11 +319,11 @@ fn handle_open_path(app: &tauri::AppHandle, path: &Path) {
 
     // Determine workspace root and per-file context.
     //
-    // Files take the single-file ephemeral path: parent dir is the serving
+    // Files take the temporary single-file path: parent dir is the serving
     // root (so co-located images resolve via relative URLs), but only the
-    // file itself + assets it references are reachable, and the workspace
-    // is not persisted to settings.json. Directories keep the existing
-    // "the whole thing is the workspace" behavior.
+    // file itself + assets it references are reachable. The entry is persisted
+    // so the startup preference can restore or remove it. Directories keep the
+    // existing "the whole thing is the workspace" behavior.
     let (ws_root, rel_path, single_file) = if canonical.is_dir() {
         (canonical.clone(), None, None)
     } else {
@@ -362,9 +363,8 @@ fn handle_open_path(app: &tauri::AppHandle, path: &Path) {
     };
 
     // `registry.add` is idempotent on (path, single_file) and triggers the
-    // persist hook, which mirrors directory workspaces into AppSettings.
-    // Single-file entries are skipped by `sync_from_registry` and never hit
-    // settings.json.
+    // persist hook, which mirrors both directory and temporary single-file
+    // workspaces into AppSettings.
     let id = server
         .registry
         .add(markon_core::workspace::WorkspaceConfig {
@@ -732,6 +732,15 @@ fn main() {
         })
         .setup(move |app| {
             let mut settings = settings;
+            let removed = settings.prune_single_file_workspaces_for_startup();
+            if removed > 0 {
+                if let Err(e) = settings.save() {
+                    tracing::warn!(
+                        removed,
+                        "failed to persist startup cleanup of temporary workspaces: {e}"
+                    );
+                }
+            }
             ensure_example_workspace(app, &mut settings);
             let config = settings.to_server_config(commands::effective_port(&settings));
 
@@ -1027,5 +1036,35 @@ mod tests {
             1_000 + threshold_ms
         ));
         assert!(!settings_webview_recycle_due(Some(2_000), 1_000));
+    }
+
+    #[test]
+    fn single_file_cleanup_setting_is_wired_at_end_of_more_section() {
+        let html = _UI_REEMBED_MARKER;
+        let section_start = html.find("data-i18n=\"sec.behavior\"").unwrap();
+        let section_end = html[section_start..].find("<!-- ── 工作区").unwrap() + section_start;
+        let section = &html[section_start..section_end];
+        let db_path = section.find("id=\"db_path_clear\"").unwrap();
+        let cleanup = section
+            .find("id=\"auto_remove_single_file_workspaces\"")
+            .unwrap();
+
+        assert!(
+            cleanup > db_path,
+            "cleanup setting must follow the database row"
+        );
+        assert!(
+            !section[cleanup..].contains("class=\"pref-row\""),
+            "cleanup setting must remain the final More row"
+        );
+        assert!(html.contains(
+            "document.getElementById('auto_remove_single_file_workspaces').checked = s.auto_remove_single_file_workspaces ?? true;"
+        ));
+        assert!(html.contains(
+            "auto_remove_single_file_workspaces: document.getElementById('auto_remove_single_file_workspaces').checked,"
+        ));
+        assert!(html.contains(
+            "'auto_update', 'print_collapsed_content', 'auto_remove_single_file_workspaces',"
+        ));
     }
 }

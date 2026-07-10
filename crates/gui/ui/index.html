@@ -1276,6 +1276,15 @@
               <button class="btn" id="db_path_clear" data-i18n="pref.dbpath.clear" style="font-size:12px;display:none"></button>
             </div>
           </div>
+          <div class="pref-row">
+            <div class="pref-label">
+              <span data-i18n="pref.auto_remove_single_file_workspaces"></span>
+            </div>
+            <label class="switch">
+              <input type="checkbox" id="auto_remove_single_file_workspaces">
+              <div class="switch-track"></div>
+            </label>
+          </div>
         </div>
       </div>
 
@@ -1580,6 +1589,7 @@
     document.getElementById('web_language').value = s.web_language || 'auto';
     updateDbPathDisplay(s.db_path ?? '');
     document.getElementById('tray_resident').checked = s.tray_resident ?? true;
+    document.getElementById('auto_remove_single_file_workspaces').checked = s.auto_remove_single_file_workspaces ?? true;
     document.getElementById('print_collapsed_content').checked = s.print_collapsed_content ?? false;
     document.getElementById('default_search').checked = s.default_search ?? true;
     document.getElementById('default_viewed').checked = s.default_viewed ?? true;
@@ -1641,6 +1651,7 @@
       default_chat: document.getElementById('default_chat').checked,
       default_chat_mode: document.querySelector('input[name="default_chat_mode"]:checked')?.value ?? 'in_page',
       default_shared_annotation: document.getElementById('default_shared').checked,
+      auto_remove_single_file_workspaces: document.getElementById('auto_remove_single_file_workspaces').checked,
       print_collapsed_content: document.getElementById('print_collapsed_content').checked,
       chat: {
         provider: document.getElementById('chat_provider').value,
@@ -1855,7 +1866,7 @@
     'default_chat', 'chat_provider',
     'chat_anthropic_model', 'chat_anthropic_key', 'chat_anthropic_base',
     'chat_openai_model',    'chat_openai_key',    'chat_openai_base',
-    'auto_update', 'print_collapsed_content',
+    'auto_update', 'print_collapsed_content', 'auto_remove_single_file_workspaces',
   ].forEach(id =>
     document.getElementById(id).addEventListener('change', saveSettings)
   );

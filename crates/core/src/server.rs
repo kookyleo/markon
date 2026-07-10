@@ -54,6 +54,10 @@ pub struct WorkspaceInit {
     pub flags: WorkspaceFlags,
     /// Path within this workspace to open in the browser (e.g. "notes/file.md").
     pub initial_path: Option<String>,
+    /// File name for a temporary single-file workspace. When set, `path` is
+    /// its parent directory and the registry keeps serving/search scoped to
+    /// this file and its explicitly referenced local assets.
+    pub single_file: Option<String>,
     /// Per-workspace collaborator access-code hash (empty = inherit the server
     /// collaborator code).
     pub collaborator_access_code_hash: String,
@@ -684,7 +688,7 @@ pub async fn start(config: ServerConfig) -> Result<(), String> {
         let id = registry.add(WorkspaceConfig {
             path,
             flags: ws_init.flags,
-            single_file: None,
+            single_file: ws_init.single_file,
             collaborator_access_code_hash: ws_init.collaborator_access_code_hash,
             alias: ws_init.alias,
         });

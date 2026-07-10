@@ -34,6 +34,9 @@ fn default_in_page() -> String {
 fn default_follow() -> String {
     "follow".to_string()
 }
+fn default_single_file() -> Option<String> {
+    None
+}
 
 /// A stable, per-device identifier (never random), used as the root of the
 /// workspace-id salt. Read from OS-provided machine identity so it survives
@@ -150,9 +153,16 @@ pub enum PortMode {
     Spec,
 }
 
-#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 pub struct WorkspaceSettings {
     pub path: String,
+    /// File name for a temporary single-file workspace. The serving root stays
+    /// in `path`, preserving the existing file-scoped access boundary.
+    #[serde(
+        default = "default_single_file",
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub single_file: Option<String>,
     #[serde(flatten, default)]
     pub flags: WorkspaceFlags,
     /// Per-workspace collaborator access code. Empty = inherit the server-level
@@ -248,6 +258,10 @@ pub struct AppSettings {
     pub workspaces: Vec<WorkspaceSettings>,
     #[serde(default = "default_true")]
     pub tray_resident: bool,
+    /// Remove persisted single-file workspaces before restoring the registry
+    /// on the next process launch. Directory workspaces are never affected.
+    #[serde(default = "default_true")]
+    pub auto_remove_single_file_workspaces: bool,
     #[serde(default = "default_true")]
     pub default_search: bool,
     #[serde(default = "default_true")]
@@ -311,6 +325,7 @@ impl Default for AppSettings {
             salt: String::new(),
             workspaces: vec![],
             tray_resident: true,
+            auto_remove_single_file_workspaces: true,
             default_search: true,
             default_viewed: true,
             default_live: false,
@@ -410,6 +425,11 @@ impl AppSettings {
         recover_field(object, "db_path", &mut settings.db_path);
         recover_field(object, "salt", &mut settings.salt);
         recover_field(object, "tray_resident", &mut settings.tray_resident);
+        recover_field(
+            object,
+            "auto_remove_single_file_workspaces",
+            &mut settings.auto_remove_single_file_workspaces,
+        );
         recover_field(object, "default_search", &mut settings.default_search);
         recover_field(object, "default_viewed", &mut settings.default_viewed);
         recover_field(object, "default_live", &mut settings.default_live);
@@ -456,6 +476,7 @@ impl AppSettings {
         if workspace.path.is_empty() {
             return None;
         }
+        recover_field(object, "single_file", &mut workspace.single_file);
         recover_field(
             object,
             "collaborator_access_code_hash",
@@ -480,7 +501,8 @@ impl AppSettings {
     fn normalize(&mut self) {
         use std::collections::HashSet;
         let mut seen = HashSet::new();
-        self.workspaces.retain(|w| seen.insert(w.path.clone()));
+        self.workspaces
+            .retain(|w| seen.insert((w.path.clone(), w.single_file.clone())));
         for field in [
             &mut self.language,
             &mut self.web_theme,
@@ -533,7 +555,8 @@ impl AppSettings {
             .map(|w| WorkspaceInit {
                 path: PathBuf::from(&w.path),
                 flags: w.flags,
-                initial_path: None,
+                initial_path: w.single_file.clone(),
+                single_file: w.single_file.clone(),
                 collaborator_access_code_hash: w.collaborator_access_code_hash.clone(),
                 alias: w.alias.clone(),
             })
@@ -600,16 +623,30 @@ impl AppSettings {
             serde_json::to_string(&self.shortcuts).ok()
         }
     }
-    /// Overwrite `workspaces` with the current registry contents. Ephemeral
-    /// (single-file) workspaces are skipped — they're created on demand by
-    /// Open-With, live in memory only, and should not pile up in settings.json.
+    /// Remove temporary single-file entries at process startup when configured.
+    /// Persistence and cleanup are intentionally separate: persisting the entry
+    /// lets a user disable the option during the current session and keep it on
+    /// the next launch, while the default preserves the historical cleanup.
+    pub fn prune_single_file_workspaces_for_startup(&mut self) -> usize {
+        if !self.auto_remove_single_file_workspaces {
+            return 0;
+        }
+        let before = self.workspaces.len();
+        self.workspaces
+            .retain(|workspace| workspace.single_file.is_none());
+        before - self.workspaces.len()
+    }
+
+    /// Overwrite `workspaces` with the current registry contents, including
+    /// temporary single-file entries. Their startup retention is controlled by
+    /// `auto_remove_single_file_workspaces`.
     pub(crate) fn sync_from_registry(&mut self, registry: &WorkspaceRegistry) {
         self.workspaces = registry
             .info_list()
             .into_iter()
-            .filter(|info| !info.ephemeral)
             .map(|info| WorkspaceSettings {
                 path: info.path,
+                single_file: info.single_file,
                 flags: info.flags,
                 collaborator_access_code_hash: info.collaborator_access_code_hash,
                 alias: info.alias,
@@ -860,6 +897,7 @@ mod tests {
         assert!(s.workspaces[0].flags.enable_viewed);
         assert_eq!(s.workspaces[0].collaborator_access_code_hash, "def");
         assert!(!s.example_workspace_hidden);
+        assert!(s.auto_remove_single_file_workspaces);
 
         let cfg = s.to_server_config(6419);
         assert_eq!(cfg.initial_workspaces[0].path, PathBuf::from("/docs"));
@@ -928,6 +966,7 @@ mod tests {
         assert_eq!(s.web_theme, "auto");
         assert_eq!(s.default_chat_mode, "in_page");
         assert!(!s.example_workspace_hidden);
+        assert!(s.auto_remove_single_file_workspaces);
     }
 
     #[test]
@@ -1065,7 +1104,37 @@ mod tests {
     }
 
     #[test]
-    fn sync_from_registry_skips_ephemeral() {
+    fn normalize_keeps_distinct_single_files_under_the_same_parent() {
+        let mut s = AppSettings {
+            workspaces: vec![
+                WorkspaceSettings {
+                    path: "/notes".to_string(),
+                    single_file: Some("one.md".to_string()),
+                    ..Default::default()
+                },
+                WorkspaceSettings {
+                    path: "/notes".to_string(),
+                    single_file: Some("two.md".to_string()),
+                    ..Default::default()
+                },
+                WorkspaceSettings {
+                    path: "/notes".to_string(),
+                    single_file: Some("one.md".to_string()),
+                    ..Default::default()
+                },
+            ],
+            ..AppSettings::default()
+        };
+
+        s.normalize();
+
+        assert_eq!(s.workspaces.len(), 2);
+        assert_eq!(s.workspaces[0].single_file.as_deref(), Some("one.md"));
+        assert_eq!(s.workspaces[1].single_file.as_deref(), Some("two.md"));
+    }
+
+    #[test]
+    fn sync_from_registry_persists_single_file_scope() {
         let reg = WorkspaceRegistry::new("testsalt".to_string());
         let home = TempHome::new("reg");
         let ws_path = home.path().to_path_buf();
@@ -1088,9 +1157,69 @@ mod tests {
         let mut s = AppSettings::default();
         s.sync_from_registry(&reg);
 
-        assert_eq!(s.workspaces.len(), 1, "ephemeral entry must be excluded");
+        assert_eq!(s.workspaces.len(), 2);
         assert_eq!(s.workspaces[0].path, ws_path.to_string_lossy());
+        assert_eq!(s.workspaces[0].single_file, None);
         assert_eq!(s.workspaces[0].collaborator_access_code_hash, "def");
+        assert_eq!(s.workspaces[1].path, ws_path.to_string_lossy());
+        assert_eq!(s.workspaces[1].single_file.as_deref(), Some("note.md"));
+    }
+
+    #[test]
+    fn single_file_workspace_round_trip_preserves_restricted_scope() {
+        let home = TempHome::new("single-file-round-trip");
+        let mut s = AppSettings::load_at(home.path());
+        s.auto_remove_single_file_workspaces = false;
+        s.workspaces = vec![WorkspaceSettings {
+            path: "/tmp/notes".to_string(),
+            single_file: Some("note.md".to_string()),
+            flags: WorkspaceFlags {
+                enable_search: true,
+                ..Default::default()
+            },
+            ..Default::default()
+        }];
+        s.save_at(home.path()).unwrap();
+
+        let loaded = AppSettings::load_at(home.path());
+        assert!(!loaded.auto_remove_single_file_workspaces);
+        assert_eq!(loaded.workspaces[0].single_file.as_deref(), Some("note.md"));
+
+        let config = loaded.to_server_config(6419);
+        let init = &config.initial_workspaces[0];
+        assert_eq!(init.path, PathBuf::from("/tmp/notes"));
+        assert_eq!(init.single_file.as_deref(), Some("note.md"));
+        assert_eq!(init.initial_path.as_deref(), Some("note.md"));
+        assert!(init.flags.enable_search);
+    }
+
+    #[test]
+    fn startup_pruning_follows_single_file_setting() {
+        let directory = WorkspaceSettings {
+            path: "/docs".to_string(),
+            ..Default::default()
+        };
+        let temporary = WorkspaceSettings {
+            path: "/tmp".to_string(),
+            single_file: Some("note.md".to_string()),
+            ..Default::default()
+        };
+        let mut enabled = AppSettings {
+            workspaces: vec![directory.clone(), temporary.clone()],
+            ..AppSettings::default()
+        };
+
+        assert_eq!(enabled.prune_single_file_workspaces_for_startup(), 1);
+        assert_eq!(enabled.workspaces, vec![directory.clone()]);
+
+        let mut disabled = AppSettings {
+            auto_remove_single_file_workspaces: false,
+            workspaces: vec![directory, temporary],
+            ..AppSettings::default()
+        };
+
+        assert_eq!(disabled.prune_single_file_workspaces_for_startup(), 0);
+        assert_eq!(disabled.workspaces.len(), 2);
     }
 
     /// Helper: build settings with the given `web_styles` map and nothing else.

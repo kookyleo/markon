@@ -899,11 +899,11 @@ async fn main() {
     // so a path always hashes to the same id regardless of which surface
     // (CLI / GUI) opens it. The port-derived fallback only kicks in when no
     // settings file exists yet.
-    let settings = AppSettings::load();
+    let mut settings = AppSettings::load();
     let saved_workspace = settings
         .workspaces
         .iter()
-        .find(|w| workspace_path_matches(&w.path, &ws_root));
+        .find(|w| w.single_file.is_none() && workspace_path_matches(&w.path, &ws_root));
     let flags = saved_workspace
         .map(|w| w.flags)
         .unwrap_or_else(|| default_workspace_flags(&settings));
@@ -911,6 +911,7 @@ async fn main() {
         path: ws_root.clone(),
         flags,
         initial_path: initial_path.clone(),
+        single_file: None,
         collaborator_access_code_hash: String::new(),
         alias: saved_workspace.map(|w| w.alias.clone()).unwrap_or_default(),
     };
@@ -1041,6 +1042,16 @@ async fn main() {
         }
     }
 
+    let removed = settings.prune_single_file_workspaces_for_startup();
+    if removed > 0 {
+        if let Err(e) = settings.save() {
+            tracing::warn!(
+                removed,
+                "failed to persist startup cleanup of temporary workspaces: {e}"
+            );
+        }
+    }
+
     // Restore persisted workspaces so a daemon cold-start doesn't immediately
     // drop them when the persist hook fires. The explicitly-opened workspace
     // keeps its persisted feature flags; only explicit CLI access-code args
@@ -1051,14 +1062,19 @@ async fn main() {
         .iter()
         .filter(|w| !w.path.is_empty())
         .map(|w| {
-            let explicit = workspace_path_matches(&w.path, &ws_root);
+            let explicit = w.single_file.is_none() && workspace_path_matches(&w.path, &ws_root);
             if explicit {
                 loaded_explicit_workspace = true;
             }
             WorkspaceInit {
                 path: PathBuf::from(&w.path),
                 flags: w.flags,
-                initial_path: if explicit { initial_path.clone() } else { None },
+                initial_path: if explicit {
+                    initial_path.clone()
+                } else {
+                    w.single_file.clone()
+                },
+                single_file: w.single_file.clone(),
                 collaborator_access_code_hash: if explicit {
                     workspace_collaborator_access_code_hash.clone()
                 } else {

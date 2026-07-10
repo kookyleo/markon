@@ -31,10 +31,11 @@ Markon 的用户数据**独立于进程**,持久在 `~/.markon/`:
   3. **算法固定**:sha256 + 取前 4 字节,不得更换。
 - **红线**:不得更改 hash 算法、其输入构成、salt 的来源 / 生成时机、路径规范化方式。
   任一变动都会使**全部既有 URL 失效**。
-- **冷启动恢复**:CLI 与 GUI 都从 `settings.workspaces` 恢复**全部** workspace
+- **冷启动恢复**:CLI 与 GUI 都从 `settings.workspaces` 恢复 workspace
   (CLI 的 `initial_workspaces`、`AppSettings::to_server_config`);`WorkspaceRegistry::add`
-  对 `(salt, path)` 幂等(重复注册只更新 flags)。因此「无 FILE 冷启动」也能完整恢复所有
-  workspace,且 id 不变。
+  对 `(salt, identity path)` 幂等(重复注册只更新 flags)。目录 workspace 必须完整恢复且 id 不变。
+  单文件临时 workspace 以父目录 + `single_file` 持久化,仍使用完整文件路径作为 identity;启动时仅当
+  `auto_remove_single_file_workspaces` 为 true(默认值)才在恢复前清理,关闭该设置则必须按原范围恢复。
 - **降级 / 迁移 fallback**:旧 settings 已有 `workspaces` 但缺 `salt` 时退化为 `markon:{port}`
   并写回,以保持升级前 URL;根本没有 settings 文件的全新安装才生成随机 salt。
 
