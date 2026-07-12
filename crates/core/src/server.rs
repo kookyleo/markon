@@ -671,9 +671,25 @@ pub async fn start(config: ServerConfig) -> Result<(), String> {
     let parent_dir = std::path::Path::new(&db_path).parent().unwrap();
     fs::create_dir_all(parent_dir).expect("Failed to create database directory");
     let conn = Connection::open(&db_path).expect("Failed to open database");
+    // WAL: the single-server invariant is not enforced (the GUI can start a
+    // second server on a different/auto port while a CLI daemon holds the same
+    // db — it never consults the server lock), so two processes can open this
+    // file concurrently. WAL gives multi-reader / single-writer concurrency
+    // across processes instead of the rollback journal's whole-file lock. It is
+    // persisted in the db header (set-once; re-asserting on each open is cheap)
+    // and adds `-wal`/`-shm` sidecar files — a plain-copy backup must include
+    // them or checkpoint first.
+    let journal_mode: String = conn
+        .query_row("PRAGMA journal_mode=WAL", [], |row| row.get(0))
+        .unwrap_or_default();
+    if !journal_mode.eq_ignore_ascii_case("wal") {
+        tracing::warn!(
+            got = %journal_mode,
+            "could not enable WAL journal mode; concurrent multi-process access may hit 'database is locked'"
+        );
+    }
     // Wait up to 5s for a competing writer to release the lock instead of
-    // failing immediately with SQLITE_BUSY. WAL is intentionally not enabled
-    // (it would change the on-disk format).
+    // failing immediately with SQLITE_BUSY — complements WAL under write bursts.
     conn.pragma_update(None, "busy_timeout", 5000)
         .expect("Failed to set busy_timeout");
     conn.execute(
