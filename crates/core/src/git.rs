@@ -990,25 +990,36 @@ pub fn read_blobs(root: &Path, oids: &[String]) -> Result<HashMap<String, Vec<u8
         .stderr(Stdio::null())
         .spawn()
         .map_err(|e| GitError::Io(e.to_string()))?;
-    {
-        let mut stdin = child
-            .stdin
-            .take()
-            .ok_or_else(|| GitError::Io("cat-file: no stdin".to_string()))?;
-        let mut buf = String::with_capacity(oids.len() * 41);
-        for oid in oids {
-            buf.push_str(oid);
-            buf.push('\n');
-        }
-        // Input is small (one sha per line); writing it fully before reading the
-        // (larger) output cannot deadlock.
-        stdin
-            .write_all(buf.as_bytes())
-            .map_err(|e| GitError::Io(e.to_string()))?;
+    let mut stdin = child
+        .stdin
+        .take()
+        .ok_or_else(|| GitError::Io("cat-file: no stdin".to_string()))?;
+    let mut buf = String::with_capacity(oids.len() * 41);
+    for oid in oids {
+        buf.push_str(oid);
+        buf.push('\n');
     }
+    // The output can be far larger than the OS pipe buffer, so git may block on
+    // stdout (and stop reading stdin) before we finish writing. Drain stdout on
+    // this thread while a helper thread feeds stdin, then closes it via drop.
+    let writer = std::thread::spawn(move || {
+        if let Err(e) = stdin.write_all(buf.as_bytes()) {
+            // git may exit early (e.g. all oids reported before we finish),
+            // closing its read end; a broken pipe here is expected and benign.
+            if e.kind() != std::io::ErrorKind::BrokenPipe {
+                return Err(GitError::Io(e.to_string()));
+            }
+        }
+        Ok(())
+    });
     let out = child
         .wait_with_output()
         .map_err(|e| GitError::Io(e.to_string()))?;
+    // Surface a genuine (non-broken-pipe) write failure; a panicked writer
+    // thread is treated as an I/O error.
+    writer
+        .join()
+        .map_err(|_| GitError::Io("cat-file: writer thread panicked".to_string()))??;
     parse_cat_file_batch(&out.stdout, &mut map);
     Ok(map)
 }
@@ -1287,27 +1298,6 @@ pub fn parent_commit(root: &Path, rev: &str) -> Result<Option<String>> {
         return Err(GitError::InvalidRevision);
     }
     Ok(git_stdout(root, &["rev-parse", &format!("{rev}^")]).filter(|s| !s.is_empty()))
-}
-
-pub fn head_file(root: &Path, rel_path: &str) -> Result<Option<String>> {
-    ensure_repo(root)?;
-    if !has_head(root) {
-        return Ok(None);
-    }
-    file_at_ref(root, "HEAD", rel_path)
-}
-
-pub fn file_at_ref(root: &Path, rev: &str, rel_path: &str) -> Result<Option<String>> {
-    ensure_repo(root)?;
-    if rev == "worktree" || rev.starts_with('-') || rev.contains('\0') || rel_path.contains('\0') {
-        return Err(GitError::InvalidRevision);
-    }
-    let spec = format!("{}:{}", rev, rel_path.replace('\\', "/"));
-    let output = run_git(root, &["show", &spec])?;
-    if !output.status.success() {
-        return Ok(None);
-    }
-    Ok(Some(String::from_utf8_lossy(&output.stdout).to_string()))
 }
 
 pub fn commit_workspace(root: &Path, message: &str) -> Result<GitCommitResult> {

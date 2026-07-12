@@ -124,6 +124,10 @@ pub(crate) struct AccessAttempts {
     pub fails: u32,
     /// If set, unlock attempts are rejected until this instant.
     pub locked_until: Option<std::time::Instant>,
+    /// Timestamp of the most recent recorded failure. Used to expire stale
+    /// entries so the per-IP map does not grow unbounded (especially with
+    /// per-address IPv6 clients).
+    pub last_attempt: Option<std::time::Instant>,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -431,6 +435,27 @@ fn is_inside_workspace(path: &FsPath, root: &FsPath) -> bool {
     path.starts_with(root)
 }
 
+/// Verify that the deepest already-existing ancestor of `target` canonicalizes
+/// to a location inside `root`, BEFORE any directory is materialized. This
+/// closes the window where a pre-existing symlinked intermediate could make
+/// `create_dir_all` create directories outside the workspace root: any newly
+/// created component cannot be a symlink, so only existing ancestors can
+/// escape, and the deepest one dominates the resolved location.
+fn deepest_existing_ancestor_inside_workspace(target: &FsPath, root: &FsPath) -> bool {
+    let mut ancestor = target.parent();
+    while let Some(dir) = ancestor {
+        if fs::symlink_metadata(dir).is_ok() {
+            return matches!(
+                canonicalize_route_path(dir),
+                Ok(p) if is_inside_workspace(&p, root)
+            );
+        }
+        ancestor = dir.parent();
+    }
+    // No existing ancestor found (the workspace root should always exist).
+    false
+}
+
 fn path_to_route(path: &FsPath) -> String {
     path.to_string_lossy().replace('\\', "/")
 }
@@ -646,6 +671,11 @@ pub async fn start(config: ServerConfig) -> Result<(), String> {
     let parent_dir = std::path::Path::new(&db_path).parent().unwrap();
     fs::create_dir_all(parent_dir).expect("Failed to create database directory");
     let conn = Connection::open(&db_path).expect("Failed to open database");
+    // Wait up to 5s for a competing writer to release the lock instead of
+    // failing immediately with SQLITE_BUSY. WAL is intentionally not enabled
+    // (it would change the on-disk format).
+    conn.pragma_update(None, "busy_timeout", 5000)
+        .expect("Failed to set busy_timeout");
     conn.execute(
         "CREATE TABLE IF NOT EXISTS annotations (
             id TEXT PRIMARY KEY,
@@ -1023,13 +1053,22 @@ async fn config_ws_handler(
     };
     let mut rx = ws_entry.config_tx.subscribe();
     ws.on_upgrade(move |mut socket| async move {
-        while let Ok(()) = rx.recv().await {
-            if socket
-                .send(axum::extract::ws::Message::Text("reload".into()))
-                .await
-                .is_err()
-            {
-                break;
+        loop {
+            match rx.recv().await {
+                Ok(()) => {
+                    if socket
+                        .send(axum::extract::ws::Message::Text("reload".into()))
+                        .await
+                        .is_err()
+                    {
+                        break;
+                    }
+                }
+                Err(tokio::sync::broadcast::error::RecvError::Lagged(n)) => {
+                    tracing::warn!(skipped = n, "config ws broadcast lagged; continuing");
+                    continue;
+                }
+                Err(tokio::sync::broadcast::error::RecvError::Closed) => break,
             }
         }
     })
@@ -1255,22 +1294,40 @@ fn access_safe_redirect(redirect: &str, ws_id: &str) -> String {
     }
 }
 
+/// Drop entries whose last recorded failure is older than the maximum
+/// cooldown. Any lock on such an entry is guaranteed to have expired (a lock
+/// lasts at most `ACCESS_MAX_COOLDOWN_SECS`), so this only removes dead state.
+fn prune_access_attempts(
+    map: &mut std::collections::HashMap<std::net::IpAddr, AccessAttempts>,
+    now: std::time::Instant,
+) {
+    let max = std::time::Duration::from_secs(ACCESS_MAX_COOLDOWN_SECS);
+    map.retain(|_, st| match st.last_attempt {
+        Some(ts) => now.saturating_duration_since(ts) < max,
+        None => true,
+    });
+}
+
 fn access_cooldown_remaining(state: &AppState, ip: std::net::IpAddr) -> Option<u64> {
-    let map = state.access_attempts.lock().unwrap();
-    let until = map.get(&ip)?.locked_until?;
+    let mut map = state.access_attempts.lock().unwrap();
     let now = std::time::Instant::now();
+    prune_access_attempts(&mut map, now);
+    let until = map.get(&ip)?.locked_until?;
     (until > now).then(|| (until - now).as_secs() + 1)
 }
 
 /// Record a failed unlock; returns the cooldown seconds if it just locked.
 fn access_record_failure(state: &AppState, ip: std::net::IpAddr) -> Option<u64> {
     let mut map = state.access_attempts.lock().unwrap();
+    let now = std::time::Instant::now();
+    prune_access_attempts(&mut map, now);
     let st = map.entry(ip).or_default();
     st.fails += 1;
+    st.last_attempt = Some(now);
     if st.fails >= ACCESS_MAX_FAILS {
         let over = (st.fails - ACCESS_MAX_FAILS).min(7);
         let secs = (ACCESS_BASE_COOLDOWN_SECS << over).min(ACCESS_MAX_COOLDOWN_SECS);
-        st.locked_until = Some(std::time::Instant::now() + std::time::Duration::from_secs(secs));
+        st.locked_until = Some(now + std::time::Duration::from_secs(secs));
         Some(secs)
     } else {
         None
@@ -1630,7 +1687,7 @@ async fn dev_reload_trigger(State(state): State<AppState>) -> impl IntoResponse 
 
 async fn load_annotations(db: Arc<Mutex<Connection>>, file_path: String) -> Vec<serde_json::Value> {
     tokio::task::spawn_blocking(move || {
-        let db = db.lock().unwrap();
+        let db = db.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
         let mut stmt = match db.prepare("SELECT data FROM annotations WHERE file_path = ?1") {
             Ok(s) => s,
             Err(e) => {
@@ -1658,7 +1715,7 @@ async fn load_annotations(db: Arc<Mutex<Connection>>, file_path: String) -> Vec<
 
 async fn load_viewed_state(db: Arc<Mutex<Connection>>, file_path: String) -> serde_json::Value {
     tokio::task::spawn_blocking(move || {
-        let db = db.lock().unwrap();
+        let db = db.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
         let state_json = db
             .query_row(
                 "SELECT state FROM viewed_state WHERE file_path = ?1",
@@ -1726,7 +1783,7 @@ async fn handle_client_msg(
     // run whichever SQL the message requires, then return the broadcast plan
     // for the async side to fan out.
     let result = tokio::task::spawn_blocking(move || {
-        let conn = db.lock().unwrap();
+        let conn = db.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
         match msg {
             WebSocketMessage::NewAnnotation { annotation, op_id } => {
                 let Some(id) = annotation["id"].as_str().map(str::to_owned) else {
@@ -1835,7 +1892,15 @@ async fn handle_socket(socket: WebSocket, state: AppState) {
     let db = state.db.clone();
     let mut rx = tx.subscribe();
 
-    let file_path = match receiver.next().await {
+    let first_frame =
+        match tokio::time::timeout(std::time::Duration::from_secs(10), receiver.next()).await {
+            Ok(frame) => frame,
+            Err(_) => {
+                tracing::warn!("timed out waiting for file path from client; closing socket");
+                return;
+            }
+        };
+    let file_path = match first_frame {
         Some(Ok(Message::Text(text))) => text.to_string(),
         _ => {
             tracing::warn!("failed to receive file path from client");
@@ -1880,9 +1945,18 @@ async fn handle_socket(socket: WebSocket, state: AppState) {
     }
 
     let mut send_task = tokio::spawn(async move {
-        while let Ok(msg) = rx.recv().await {
-            if sender.send(Message::Text(msg.into())).await.is_err() {
-                break;
+        loop {
+            match rx.recv().await {
+                Ok(msg) => {
+                    if sender.send(Message::Text(msg.into())).await.is_err() {
+                        break;
+                    }
+                }
+                Err(tokio::sync::broadcast::error::RecvError::Lagged(n)) => {
+                    tracing::warn!(skipped = n, "ws broadcast lagged; continuing");
+                    continue;
+                }
+                Err(tokio::sync::broadcast::error::RecvError::Closed) => break,
             }
         }
     });
@@ -2090,7 +2164,14 @@ async fn handle_git_history(
         author: author.clone(),
         since: git_history_since(Some(&range_key)),
     };
-    match git::history_filtered(&ws.root, 80, &filter) {
+    let root = ws.root.clone();
+    let history = tokio::task::spawn_blocking(move || git::history_filtered(&root, 80, &filter))
+        .await
+        .unwrap_or_else(|e| {
+            tracing::error!("git history blocking task join error: {e}");
+            Err(git::GitError::Command("internal task error".into()))
+        });
+    match history {
         Ok(commits) => render_git_history_page(
             &state,
             &workspace_id,
@@ -2116,7 +2197,14 @@ async fn handle_git_history_data(
     let Some(ws) = state.workspace_registry.get(&workspace_id) else {
         return StatusCode::NOT_FOUND.into_response();
     };
-    match git::history(&ws.root, 80) {
+    let root = ws.root.clone();
+    let history = tokio::task::spawn_blocking(move || git::history(&root, 80))
+        .await
+        .unwrap_or_else(|e| {
+            tracing::error!("git history blocking task join error: {e}");
+            Err(git::GitError::Command("internal task error".into()))
+        });
+    match history {
         Ok(commits) => Json(commits).into_response(),
         Err(git::GitError::NotRepository) => git_not_repository_response(),
         Err(e) => (
@@ -2134,7 +2222,14 @@ async fn handle_git_branches(
     let Some(ws) = state.workspace_registry.get(&workspace_id) else {
         return StatusCode::NOT_FOUND.into_response();
     };
-    match git::branches_detailed(&ws.root) {
+    let root = ws.root.clone();
+    let branches = tokio::task::spawn_blocking(move || git::branches_detailed(&root))
+        .await
+        .unwrap_or_else(|e| {
+            tracing::error!("git branches blocking task join error: {e}");
+            Err(git::GitError::Command("internal task error".into()))
+        });
+    match branches {
         Ok(branches) => render_git_branches_page(&state, &workspace_id, &branches),
         Err(git::GitError::NotRepository) => git_not_repository_response(),
         Err(e) => (
@@ -2152,7 +2247,14 @@ async fn handle_git_tags(
     let Some(ws) = state.workspace_registry.get(&workspace_id) else {
         return StatusCode::NOT_FOUND.into_response();
     };
-    match git::tags(&ws.root, 200) {
+    let root = ws.root.clone();
+    let tags = tokio::task::spawn_blocking(move || git::tags(&root, 200))
+        .await
+        .unwrap_or_else(|e| {
+            tracing::error!("git tags blocking task join error: {e}");
+            Err(git::GitError::Command("internal task error".into()))
+        });
+    match tags {
         Ok(tags) => render_git_tags_page(&state, &workspace_id, &tags),
         Err(git::GitError::NotRepository) => git_not_repository_response(),
         Err(e) => (
@@ -2174,7 +2276,14 @@ async fn handle_git_working_diff(
     };
     let is_local = addr.ip().is_loopback();
     let initial_view = diff_view_from_query(query.view.as_deref());
-    match git::working_diff(&ws.root) {
+    let root = ws.root.clone();
+    let diff = tokio::task::spawn_blocking(move || git::working_diff(&root))
+        .await
+        .unwrap_or_else(|e| {
+            tracing::error!("git working diff blocking task join error: {e}");
+            Err(git::GitError::Command("internal task error".into()))
+        });
+    match diff {
         Ok(diff) => render_git_diff_page(&state, &workspace_id, &ws, is_local, &diff, initial_view),
         Err(git::GitError::NotRepository) => git_not_repository_response(),
         Err(e) => (
@@ -2214,7 +2323,14 @@ async fn handle_git_working_diff_data(
                 .into_response(),
         };
     }
-    match git::working_diff(&ws.root) {
+    let root = ws.root.clone();
+    let diff = tokio::task::spawn_blocking(move || git::working_diff(&root))
+        .await
+        .unwrap_or_else(|e| {
+            tracing::error!("git working diff blocking task join error: {e}");
+            Err(git::GitError::Command("internal task error".into()))
+        });
+    match diff {
         Ok(diff) => git_diff_json_response(&diff, query.f.as_deref()),
         Err(git::GitError::NotRepository) => git_not_repository_response(),
         Err(e) => (
@@ -2236,7 +2352,14 @@ async fn handle_git_commit_diff(
     };
     let is_local = addr.ip().is_loopback();
     let initial_view = diff_view_from_query(query.view.as_deref());
-    match git::commit_diff(&ws.root, &commit) {
+    let root = ws.root.clone();
+    let diff = tokio::task::spawn_blocking(move || git::commit_diff(&root, &commit))
+        .await
+        .unwrap_or_else(|e| {
+            tracing::error!("git commit diff blocking task join error: {e}");
+            Err(git::GitError::Command("internal task error".into()))
+        });
+    match diff {
         Ok(diff) => render_git_diff_page(&state, &workspace_id, &ws, is_local, &diff, initial_view),
         Err(git::GitError::InvalidRevision) => {
             (StatusCode::BAD_REQUEST, "Invalid git revision").into_response()
@@ -2254,7 +2377,14 @@ async fn handle_git_commit_diff_data(
     let Some(ws) = state.workspace_registry.get(&workspace_id) else {
         return StatusCode::NOT_FOUND.into_response();
     };
-    match git::commit_diff(&ws.root, &commit) {
+    let root = ws.root.clone();
+    let diff = tokio::task::spawn_blocking(move || git::commit_diff(&root, &commit))
+        .await
+        .unwrap_or_else(|e| {
+            tracing::error!("git commit diff blocking task join error: {e}");
+            Err(git::GitError::Command("internal task error".into()))
+        });
+    match diff {
         Ok(diff) => git_diff_json_response(&diff, query.f.as_deref()),
         Err(git::GitError::InvalidRevision) => {
             (StatusCode::BAD_REQUEST, "Invalid git revision").into_response()
@@ -2563,6 +2693,17 @@ async fn handle_workspace_create_file(
         })
         .into_response();
     }
+    // Verify containment BEFORE creating any directory, so a symlinked
+    // intermediate cannot cause `create_dir_all` to materialize dirs outside
+    // the workspace root.
+    if !deepest_existing_ancestor_inside_workspace(&full_path, &root) {
+        return Json(CreateFileResponse {
+            success: false,
+            message: "Access denied".to_string(),
+            url: None,
+        })
+        .into_response();
+    }
     if let Some(parent) = full_path.parent() {
         if let Err(e) = fs::create_dir_all(parent) {
             return Json(CreateFileResponse {
@@ -2573,6 +2714,8 @@ async fn handle_workspace_create_file(
             .into_response();
         }
     }
+    // Defense in depth: confirm the resolved parent still lands inside the
+    // workspace after creation.
     if let Some(parent) = full_path.parent() {
         match canonicalize_route_path(parent) {
             Ok(parent) if is_inside_workspace(&parent, &root) => {}
@@ -2642,6 +2785,17 @@ async fn handle_workspace_create_folder(
         return Json(CreateFileResponse {
             success: false,
             message: "Folder already exists".to_string(),
+            url: None,
+        })
+        .into_response();
+    }
+    // Verify containment BEFORE creating any directory, so a symlinked
+    // intermediate cannot cause `create_dir_all` to materialize dirs outside
+    // the workspace root.
+    if !deepest_existing_ancestor_inside_workspace(&full_path, &root) {
+        return Json(CreateFileResponse {
+            success: false,
+            message: "Access denied".to_string(),
             url: None,
         })
         .into_response();
@@ -2888,10 +3042,10 @@ async fn workspace_search_handler(
     AxumPath(workspace_id): AxumPath<String>,
     axum::extract::Query(query): axum::extract::Query<SearchQuery>,
 ) -> impl IntoResponse {
-    workspace_search_results(&state, &workspace_id, &query.q)
+    workspace_search_results(&state, &workspace_id, &query.q).await
 }
 
-fn workspace_search_results(
+async fn workspace_search_results(
     state: &AppState,
     workspace_id: &str,
     query: &str,
@@ -2908,10 +3062,19 @@ fn workspace_search_results(
     let Some(idx) = ws.search_index.load_full() else {
         return Json(Vec::new()); // still indexing
     };
-    let results = idx.search(query, 20).unwrap_or_else(|e| {
-        tracing::warn!("search error: {e}");
-        Vec::new()
-    });
+    // Tantivy search is CPU/IO-bound; run it on the blocking pool so it does not
+    // stall a tokio worker thread.
+    let query_owned = query.to_string();
+    let results = tokio::task::spawn_blocking(move || idx.search(&query_owned, 20))
+        .await
+        .unwrap_or_else(|e| {
+            tracing::error!("search blocking task join error: {e}");
+            Ok(Vec::new())
+        })
+        .unwrap_or_else(|e| {
+            tracing::warn!("search error: {e}");
+            Vec::new()
+        });
     Json(results)
 }
 
@@ -5837,6 +6000,57 @@ struct SaveFileResponse {
     message: String,
 }
 
+/// Write `content` to `target` atomically: create a uniquely-named temp file in
+/// the SAME directory, write + flush it, then `rename` it over the target. A
+/// crash mid-write can therefore never leave a truncated document — either the
+/// old file or the fully-written new file is visible. The temp file is removed
+/// on any error. The unique name is derived from the process id plus a static
+/// counter to avoid collisions between concurrent saves.
+fn atomic_write(target: &FsPath, content: &[u8]) -> std::io::Result<()> {
+    use std::io::Write;
+    static COUNTER: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+    let dir = target.parent().ok_or_else(|| {
+        std::io::Error::new(
+            std::io::ErrorKind::InvalidInput,
+            "target has no parent directory",
+        )
+    })?;
+    let base = target
+        .file_name()
+        .map(|s| s.to_string_lossy().to_string())
+        .unwrap_or_default();
+    let n = COUNTER.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    let tmp_path = dir.join(format!(".{base}.{}.{n}.tmp", std::process::id()));
+
+    let mut file = std::fs::OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .open(&tmp_path)?;
+    // The temp file now exists and is exclusively ours, so any later failure is
+    // safe to clean up.
+    if let Err(e) = file.write_all(content).and_then(|()| file.sync_all()) {
+        drop(file);
+        let _ = std::fs::remove_file(&tmp_path);
+        return Err(e);
+    }
+    drop(file);
+    // Preserve the destination's existing permission bits: `rename` swaps in the
+    // fresh temp inode, which would otherwise reset an already-existing file's
+    // mode to the umask default. Best-effort and Unix-only; the crash-safety of
+    // the write does not depend on it succeeding.
+    #[cfg(unix)]
+    if let Ok(meta) = std::fs::metadata(target) {
+        let _ = std::fs::set_permissions(&tmp_path, meta.permissions());
+    }
+    match std::fs::rename(&tmp_path, target) {
+        Ok(()) => Ok(()),
+        Err(e) => {
+            let _ = std::fs::remove_file(&tmp_path);
+            Err(e)
+        }
+    }
+}
+
 async fn save_file_handler(
     State(state): State<AppState>,
     Json(payload): Json<SaveFileRequest>,
@@ -5931,22 +6145,35 @@ async fn save_file_handler(
         })
         .into_response();
     }
-    match fs::write(&canonical, &payload.content) {
-        Ok(_) => Json(SaveFileResponse {
+    // Perform the atomic write on the blocking pool so file I/O (open, write,
+    // fsync, rename) does not stall a tokio worker thread.
+    let content = payload.content;
+    let write_result =
+        tokio::task::spawn_blocking(move || atomic_write(&canonical, content.as_bytes())).await;
+    match write_result {
+        Ok(Ok(())) => Json(SaveFileResponse {
             success: true,
             message: "File saved successfully".into(),
         })
         .into_response(),
-        Err(e) if e.kind() == std::io::ErrorKind::PermissionDenied => Json(SaveFileResponse {
+        Ok(Err(e)) if e.kind() == std::io::ErrorKind::PermissionDenied => Json(SaveFileResponse {
             success: false,
             message: "File is read-only".into(),
         })
         .into_response(),
-        Err(e) => Json(SaveFileResponse {
+        Ok(Err(e)) => Json(SaveFileResponse {
             success: false,
             message: format!("Failed to save: {e}"),
         })
         .into_response(),
+        Err(e) => {
+            tracing::error!("save_file_handler blocking task join error: {e}");
+            Json(SaveFileResponse {
+                success: false,
+                message: "Failed to save: internal error".into(),
+            })
+            .into_response()
+        }
     }
 }
 
