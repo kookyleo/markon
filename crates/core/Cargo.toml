@@ -47,6 +47,7 @@ syntect = "5.3.0"
 # version built against syntect 5.3.0 so Cargo unifies on a single syntect.
 two-face = "0.5.1"
 tower-http = { version = "0.6.8", features = ["fs", "trace"] }
+tower = { version = "0.5", features = ["util"] }
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 rust-embed = "8.11.0"
@@ -101,4 +102,3 @@ version = "0.1.4"
 
 [dev-dependencies]
 tempfile = "3.27"
-tower = { version = "0.5", features = ["util"] }

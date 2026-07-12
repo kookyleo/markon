@@ -86,6 +86,11 @@ pub(crate) struct WorkspaceEntry {
     /// Optional short display name (empty = none). RwLock so the GUI/web can
     /// rename a workspace live without re-registering it.
     pub alias: RwLock<String>,
+    /// Shutdown flag for the background watch thread. `remove()` sets it before
+    /// dropping the map entry; the watch loop observes it and exits, dropping
+    /// its own `Arc<WorkspaceEntry>` so the OS thread and the in-RAM search
+    /// index this entry holds are freed instead of leaking after removal.
+    stopped: Arc<AtomicBool>,
 }
 
 impl WorkspaceEntry {
@@ -258,30 +263,61 @@ pub(crate) fn generate_token() -> String {
 }
 
 /// Write a file that holds secrets (management token, salt, provider api keys)
-/// with owner-only (0600) permissions and **no world-readable window**: on Unix
-/// the file is created with mode 0600 up front (closing the create-then-chmod
-/// TOCTOU gap), then re-tightened afterwards in case it pre-existed with looser
-/// bits (`mode()` only applies on creation). On non-Unix we fall back to a plain
-/// write — files under the user profile inherit restrictive per-user ACLs.
+/// with owner-only (0600) permissions and **no world-readable window**, and
+/// **atomically** — a crash mid-write must never leave a truncated
+/// `settings.json` (which holds the per-install salt and provider API keys).
+///
+/// Strategy: write the full contents into a uniquely-named temp file in the
+/// **same directory** (so `rename` stays on one filesystem and is therefore
+/// atomic), fsync it, then `rename` it over the destination. `rename(2)`
+/// atomically replaces the destination inode, so a reader/observer always sees
+/// either the old complete file or the new complete file — never a partial one.
+/// On Unix the temp is created with mode 0600 up front (closing the
+/// create-then-chmod TOCTOU gap); since `rename` swaps in that fresh inode, the
+/// destination ends up 0600 regardless of any looser bits it previously had. On
+/// non-Unix we temp+rename as well — files under the user profile inherit
+/// restrictive per-user ACLs. On any error the temp file is removed.
 pub(crate) fn write_file_user_private(path: &Path, contents: &[u8]) -> std::io::Result<()> {
-    #[cfg(unix)]
-    {
-        use std::io::Write;
-        use std::os::unix::fs::{OpenOptionsExt, PermissionsExt};
-        let mut f = std::fs::OpenOptions::new()
-            .write(true)
-            .create(true)
-            .truncate(true)
-            .mode(0o600)
-            .open(path)?;
+    use std::io::Write;
+    // Unique temp name in the destination directory: pid + a process-global
+    // counter guarantees no collision between concurrent or repeated writes.
+    static TMP_COUNTER: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+    let dir = path.parent().unwrap_or_else(|| Path::new("."));
+    let stem = path
+        .file_name()
+        .and_then(|s| s.to_str())
+        .unwrap_or("settings");
+    let seq = TMP_COUNTER.fetch_add(1, Ordering::Relaxed);
+    let tmp = dir.join(format!(".{stem}.tmp.{}.{seq}", std::process::id()));
+
+    let write_tmp = || -> std::io::Result<()> {
+        let mut opts = std::fs::OpenOptions::new();
+        opts.write(true).create_new(true);
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::OpenOptionsExt;
+            opts.mode(0o600);
+        }
+        let mut f = opts.open(&tmp)?;
         f.write_all(contents)?;
-        let _ = std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o600));
+        f.sync_all()?;
         Ok(())
+    };
+
+    if let Err(e) = write_tmp() {
+        let _ = std::fs::remove_file(&tmp);
+        return Err(e);
     }
-    #[cfg(not(unix))]
-    {
-        std::fs::write(path, contents)
+    if let Err(e) = std::fs::rename(&tmp, path) {
+        tracing::warn!(
+            "atomic rename of {} onto {} failed: {e}",
+            tmp.display(),
+            path.display()
+        );
+        let _ = std::fs::remove_file(&tmp);
+        return Err(e);
     }
+    Ok(())
 }
 
 /// Expand `~` / `～` and canonicalize (dunce strips the `\\?\` verbatim prefix
@@ -366,6 +402,7 @@ impl WorkspaceRegistry {
             pending_edits: Arc::new(PendingEditStore::new()),
             collaborator_access_code_hash: RwLock::new(config.collaborator_access_code_hash),
             alias: RwLock::new(config.alias),
+            stopped: Arc::new(AtomicBool::new(false)),
         });
         self.inner
             .write()
@@ -438,7 +475,17 @@ impl WorkspaceRegistry {
         true
     }
     pub fn remove(&self, id: &str) -> bool {
-        let removed = self.inner.write().unwrap().remove(id).is_some();
+        // Signal the watch thread to stop before we drop our map entry: the
+        // watcher holds its own Arc<WorkspaceEntry>, so dropping the map entry
+        // alone would leave the thread (and the search index it pins) alive and
+        // still broadcasting file_changed for a removed workspace.
+        let removed = match self.inner.write().unwrap().remove(id) {
+            Some(entry) => {
+                entry.stopped.store(true, Ordering::Relaxed);
+                true
+            }
+            None => false,
+        };
         if removed {
             self.notify_persist();
         }
@@ -520,10 +567,11 @@ fn refresh_allowed_assets(entry: &WorkspaceEntry, file_name: &str) {
 /// Shared scaffold for the notify-based watchers below: spawn a thread that
 /// owns the channel and watcher, forward Ok events, and run `on_event` for
 /// each one. The thread exits (dropping the watcher) when the watch cannot
-/// be established or the channel closes.
+/// be established, the channel closes, or `stopped` is set (workspace removed).
 fn spawn_watch_thread(
     root: PathBuf,
     mode: RecursiveMode,
+    stopped: Arc<AtomicBool>,
     mut on_event: impl FnMut(notify::Event) + Send + 'static,
 ) {
     std::thread::spawn(move || {
@@ -538,8 +586,24 @@ fn spawn_watch_thread(
         if watcher.watch(&root, mode).is_err() {
             return;
         }
-        while let Ok(event) = rx.recv() {
-            on_event(event);
+        // Poll with a timeout rather than a bare `recv()` so the thread wakes
+        // periodically to observe `stopped` even when no filesystem events
+        // arrive. A removed workspace would otherwise block here forever,
+        // leaking the OS thread and the in-RAM search index it pins.
+        loop {
+            if stopped.load(Ordering::Relaxed) {
+                return;
+            }
+            match rx.recv_timeout(std::time::Duration::from_millis(500)) {
+                Ok(event) => {
+                    if stopped.load(Ordering::Relaxed) {
+                        return;
+                    }
+                    on_event(event);
+                }
+                Err(std::sync::mpsc::RecvTimeoutError::Timeout) => continue,
+                Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => return,
+            }
         }
     });
 }
@@ -559,9 +623,11 @@ fn spawn_single_file_watcher(
     live_tx: Arc<ArcSwapOption<broadcast::Sender<String>>>,
 ) {
     let target = root.join(&file_name);
+    let stopped = entry.stopped.clone();
     spawn_watch_thread(
         root.clone(),
         RecursiveMode::NonRecursive,
+        stopped,
         move |event: notify::Event| {
             for path in event.paths {
                 let Ok(rel) = path.strip_prefix(&root) else {
@@ -625,9 +691,11 @@ fn spawn_directory_watcher(
     entry: Arc<WorkspaceEntry>,
     live_tx: Arc<ArcSwapOption<broadcast::Sender<String>>>,
 ) {
+    let stopped = entry.stopped.clone();
     spawn_watch_thread(
         root.clone(),
         RecursiveMode::Recursive,
+        stopped,
         move |event: notify::Event| {
             let event_kind = event.kind;
             for path in event.paths {
