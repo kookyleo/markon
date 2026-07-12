@@ -2029,6 +2029,7 @@ async fn handle_workspace_path(
     State(state): State<AppState>,
     AxumPath((workspace_id, path)): AxumPath<(String, String)>,
     axum::extract::ConnectInfo(addr): axum::extract::ConnectInfo<std::net::SocketAddr>,
+    headers: axum::http::HeaderMap,
 ) -> impl IntoResponse {
     let Some(ws) = state.workspace_registry.get(&workspace_id) else {
         return StatusCode::NOT_FOUND.into_response();
@@ -2059,31 +2060,32 @@ async fn handle_workspace_path(
 
     if canonical.is_file() {
         if is_markdown_path(&canonical) {
-            render_markdown_file(
-                &canonical.to_string_lossy(),
-                &workspace_id,
-                &ws,
-                &root,
-                &state,
+            render_markdown_file_async(
+                canonical.to_string_lossy().into_owned(),
+                workspace_id.clone(),
+                ws.clone(),
+                root.clone(),
+                state.clone(),
                 is_local,
             )
+            .await
         } else {
             // Small UTF-8 text/code files get an elegant read-only, syntax-
             // highlighted preview page. Everything else — images, media, PDFs,
             // binaries, oversized text — is served as raw bytes (the browser
             // displays what it can inline and downloads the rest); this also
             // keeps embedded resources like markdown images working verbatim.
-            match read_text_for_preview(&canonical) {
-                Some((content, token)) => render_file_view(
-                    &canonical,
-                    content,
-                    token,
-                    &workspace_id,
-                    &ws,
-                    &root,
-                    &state,
-                ),
-                None => serve_file(&canonical),
+            match render_preview_or_none(
+                canonical.clone(),
+                workspace_id.clone(),
+                ws.clone(),
+                root.clone(),
+                state.clone(),
+            )
+            .await
+            {
+                Some(resp) => resp,
+                None => serve_file(&canonical, &headers).await,
             }
         }
     } else if canonical.is_dir() {
@@ -2303,14 +2305,16 @@ async fn handle_git_working_diff_data(
         return StatusCode::NOT_FOUND.into_response();
     };
     if diff_view_from_query(query.view.as_deref()) == "rendered" {
-        return match markdown_compare_diff_data(
+        return match markdown_compare_diff_data_async(
             &state,
             &workspace_id,
             &ws.root,
             "HEAD",
             "worktree",
             query.f.as_deref(),
-        ) {
+        )
+        .await
+        {
             Ok(data) => Json(data).into_response(),
             Err(git::GitError::NotRepository) => git_not_repository_response(),
             Err(git::GitError::InvalidRevision) => {
@@ -2440,14 +2444,16 @@ async fn handle_pretty_compare_diff(
     let is_local = addr.ip().is_loopback();
     let initial_view = diff_view_from_query(query.view.as_deref());
     if query.format.as_deref() == Some("data") && initial_view == "rendered" {
-        return match markdown_compare_diff_data(
+        return match markdown_compare_diff_data_async(
             &state,
             &workspace_id,
             &ws.root,
             &base,
             &compare,
             query.f.as_deref(),
-        ) {
+        )
+        .await
+        {
             Ok(data) => Json(data).into_response(),
             Err(git::GitError::NotRepository) => git_not_repository_response(),
             Err(git::GitError::InvalidRevision) => {
@@ -4950,6 +4956,41 @@ fn markdown_compare_diff_data(
     })
 }
 
+/// Async wrapper for [`markdown_compare_diff_data`]. The diff build shells out to
+/// git, reads worktree files, and renders in parallel via rayon — all blocking
+/// work that would otherwise stall a tokio worker. Move it to the blocking pool;
+/// a join failure surfaces as a generic IO error the caller already maps to 500.
+async fn markdown_compare_diff_data_async(
+    state: &AppState,
+    workspace_id: &str,
+    root: &FsPath,
+    base: &str,
+    compare: &str,
+    file_filter: Option<&str>,
+) -> git::Result<MarkdownDiffData> {
+    let state = state.clone();
+    let workspace_id = workspace_id.to_string();
+    let root = root.to_path_buf();
+    let base = base.to_string();
+    let compare = compare.to_string();
+    let file_filter = file_filter.map(str::to_string);
+    tokio::task::spawn_blocking(move || {
+        markdown_compare_diff_data(
+            &state,
+            &workspace_id,
+            &root,
+            &base,
+            &compare,
+            file_filter.as_deref(),
+        )
+    })
+    .await
+    .unwrap_or_else(|e| {
+        tracing::error!("markdown_compare_diff_data join error: {e}");
+        Err(git::GitError::Io("diff render task failed".to_string()))
+    })
+}
+
 /// Build a single file's rendered diff from already-resolved content sources.
 /// Pure CPU + cache lookups — safe to run in parallel across files.
 fn build_markdown_diff_file(
@@ -5436,6 +5477,58 @@ fn render_file_view(
     context.insert("line_count", &line_count);
 
     render_template(state, "file-view.html", &context)
+}
+
+/// Async wrapper for [`render_markdown_file`]: the file read plus the markdown
+/// render (syntect highlighting + server-side diagrams) run on the blocking pool
+/// so a large document can't stall a tokio worker.
+async fn render_markdown_file_async(
+    file_path: String,
+    workspace_id: String,
+    ws: Arc<WorkspaceEntry>,
+    root: PathBuf,
+    state: AppState,
+    is_local: bool,
+) -> Response {
+    tokio::task::spawn_blocking(move || {
+        render_markdown_file(&file_path, &workspace_id, &ws, &root, &state, is_local)
+    })
+    .await
+    .unwrap_or_else(|e| {
+        tracing::error!("render_markdown_file join error: {e}");
+        (StatusCode::INTERNAL_SERVER_ERROR, "render task failed").into_response()
+    })
+}
+
+/// Async wrapper for the non-markdown preview path: the text sniff/read
+/// ([`read_text_for_preview`]) and, when the file is text, the syntect-
+/// highlighted [`render_file_view`] both run on the blocking pool. Returns
+/// `None` when the file is not previewable text, so the caller falls back to
+/// `serve_file`.
+async fn render_preview_or_none(
+    canonical: PathBuf,
+    workspace_id: String,
+    ws: Arc<WorkspaceEntry>,
+    root: PathBuf,
+    state: AppState,
+) -> Option<Response> {
+    tokio::task::spawn_blocking(move || {
+        let (content, token) = read_text_for_preview(&canonical)?;
+        Some(render_file_view(
+            &canonical,
+            content,
+            token,
+            &workspace_id,
+            &ws,
+            &root,
+            &state,
+        ))
+    })
+    .await
+    .unwrap_or_else(|e| {
+        tracing::error!("render_file_view join error: {e}");
+        Some((StatusCode::INTERNAL_SERVER_ERROR, "preview task failed").into_response())
+    })
 }
 
 fn render_markdown_file(
@@ -5968,20 +6061,34 @@ where
     }
 }
 
-fn serve_file(path: &std::path::Path) -> Response {
-    match fs::read(path) {
-        Ok(content) => {
-            let mime_type = mime_guess::from_path(path)
-                .first_or_octet_stream()
-                .essence_str()
-                .to_string();
-            (StatusCode::OK, [(header::CONTENT_TYPE, mime_type)], content).into_response()
+/// Serve a raw (non-markdown) workspace file. Delegates to `tower_http`'s
+/// `ServeFile`, which streams the body from async I/O instead of reading the
+/// whole file into memory, and honors `Range` (206) / conditional requests. The
+/// caller's relevant request headers are forwarded so those features work;
+/// `ServeFile` serves the fixed `path` regardless of the request URI. `path`
+/// is already canonicalized and confinement-checked by the caller.
+async fn serve_file(path: &std::path::Path, req_headers: &axum::http::HeaderMap) -> Response {
+    use tower::ServiceExt;
+    let mut req = axum::http::Request::new(axum::body::Body::empty());
+    for name in [
+        header::RANGE,
+        header::IF_RANGE,
+        header::IF_MODIFIED_SINCE,
+        header::IF_NONE_MATCH,
+        header::ACCEPT_ENCODING,
+    ] {
+        if let Some(value) = req_headers.get(&name) {
+            req.headers_mut().insert(name, value.clone());
         }
-        Err(e) => (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            format!("Error reading file: {e}"),
-        )
-            .into_response(),
+    }
+    match tower_http::services::ServeFile::new(path)
+        .oneshot(req)
+        .await
+    {
+        Ok(resp) => resp.map(axum::body::Body::new).into_response(),
+        // ServeFile's error type is `Infallible`; it reports IO problems as an
+        // error status in the response body, so this arm is effectively dead.
+        Err(_) => (StatusCode::INTERNAL_SERVER_ERROR, "Error reading file").into_response(),
     }
 }
 
@@ -6904,6 +7011,7 @@ mod tests {
             State(state),
             AxumPath((id.clone(), "docs/EVDI_IMPLEMENTATION_PLAN.md".to_string())),
             axum::extract::ConnectInfo(loopback()),
+            axum::http::HeaderMap::new(),
         )
         .await
         .into_response();
@@ -6946,6 +7054,7 @@ mod tests {
             State(state),
             AxumPath((id, "notes.txt".to_string())),
             axum::extract::ConnectInfo(loopback()),
+            axum::http::HeaderMap::new(),
         )
         .await
         .into_response();
@@ -6974,6 +7083,7 @@ mod tests {
             State(state),
             AxumPath((id, "README.md".to_string())),
             axum::extract::ConnectInfo(loopback()),
+            axum::http::HeaderMap::new(),
         )
         .await
         .into_response();
@@ -7077,6 +7187,7 @@ mod tests {
                 State(test_state(reg_on)),
                 AxumPath((id_on, "README.md".to_string())),
                 axum::extract::ConnectInfo(lan_peer()),
+                axum::http::HeaderMap::new(),
             )
             .await
             .into_response(),
@@ -7104,6 +7215,7 @@ mod tests {
                 State(test_state(reg_off)),
                 AxumPath((id_off, "README.md".to_string())),
                 axum::extract::ConnectInfo(lan_peer()),
+                axum::http::HeaderMap::new(),
             )
             .await
             .into_response(),
@@ -7945,6 +8057,7 @@ mod tests {
             State(state),
             AxumPath((id, route)),
             axum::extract::ConnectInfo(loopback()),
+            axum::http::HeaderMap::new(),
         )
         .await
         .into_response();
@@ -7972,6 +8085,7 @@ mod tests {
             State(state.clone()),
             AxumPath((id.clone(), "sub/".into())),
             axum::extract::ConnectInfo(loopback()),
+            axum::http::HeaderMap::new(),
         )
         .await
         .into_response();
@@ -8259,6 +8373,7 @@ mod tests {
             State(state.clone()),
             AxumPath((id.clone(), "opened.md".into())),
             axum::extract::ConnectInfo(loopback()),
+            axum::http::HeaderMap::new(),
         )
         .await
         .into_response();
@@ -8278,6 +8393,7 @@ mod tests {
             State(state.clone()),
             AxumPath((id.clone(), "pic.png".into())),
             axum::extract::ConnectInfo(loopback()),
+            axum::http::HeaderMap::new(),
         )
         .await
         .into_response();
@@ -8287,6 +8403,7 @@ mod tests {
             State(state.clone()),
             AxumPath((id.clone(), "pic%20with%20space.png".into())),
             axum::extract::ConnectInfo(loopback()),
+            axum::http::HeaderMap::new(),
         )
         .await
         .into_response();
@@ -8296,6 +8413,7 @@ mod tests {
             State(state.clone()),
             AxumPath((id.clone(), "nested/root.png".into())),
             axum::extract::ConnectInfo(loopback()),
+            axum::http::HeaderMap::new(),
         )
         .await
         .into_response();
@@ -8305,6 +8423,7 @@ mod tests {
             State(state),
             AxumPath((id, "sibling.md".into())),
             axum::extract::ConnectInfo(loopback()),
+            axum::http::HeaderMap::new(),
         )
         .await
         .into_response();
