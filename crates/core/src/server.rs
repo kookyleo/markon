@@ -970,6 +970,19 @@ pub async fn start(config: ServerConfig) -> Result<(), String> {
             require_local_save_origin,
         ));
 
+    // Preview API: stateless "text in, HTML out" for the editor's live preview.
+    // Guarded same-origin (or loopback without Origin), so a cross-site page or
+    // an anonymous LAN device can no longer hammer syntect rendering into a CPU
+    // DoS. A tight body limit bounds per-request work, and the handler offloads
+    // the render to a blocking pool so one large document can't stall a worker.
+    let preview = Router::new()
+        .route("/api/preview", post(preview_handler))
+        .layer(axum::extract::DefaultBodyLimit::max(PREVIEW_BODY_LIMIT))
+        .layer(axum::middleware::from_fn_with_state(
+            state.clone(),
+            require_local_save_origin,
+        ));
+
     let app = Router::new()
         // Static assets (literal prefix beats /{workspace_id}/ param)
         .route("/favicon.ico", get(serve_favicon))
@@ -983,7 +996,6 @@ pub async fn start(config: ServerConfig) -> Result<(), String> {
         .route("/_/ws/{workspace_id}", get(config_ws_handler))
         // Read-only public APIs
         .route("/_/{workspace_id}/search", get(workspace_search_handler))
-        .route("/api/preview", post(preview_handler))
         // Access-code gate: unlock endpoint (not itself gated).
         .route("/_/unlock", post(unlock_handler))
         // Workspace content routes
@@ -1078,7 +1090,8 @@ pub async fn start(config: ServerConfig) -> Result<(), String> {
         // Everything else → 404
         .fallback(|| async { StatusCode::NOT_FOUND })
         .merge(mgmt)
-        .merge(save);
+        .merge(save)
+        .merge(preview);
 
     // Dev-only live-reload: esbuild's watch onEnd hook POSTs the trigger,
     // server fans it out as an SSE event, the webview reloads. cfg gate keeps
@@ -1487,7 +1500,8 @@ fn access_cookie_scopes(secret: &str, cookie_header: Option<&str>) -> Vec<(Strin
 
 /// The workspace id a request targets, for access-gating. `None` means the
 /// route isn't workspace-scoped (static assets, mgmt, unlock, preview) and is
-/// allowed through the gate.
+/// allowed through the access-code gate. (`/api/preview` is not access-gated but
+/// carries its own same-origin guard — see the `preview` router.)
 fn decoded_workspace_id(segment: &str) -> Option<String> {
     let decoded = urlencoding::decode(segment).ok()?;
     (decoded.len() == 8 && decoded.bytes().all(|byte| byte.is_ascii_hexdigit()))
@@ -5859,6 +5873,11 @@ fn coalesce_markdown_block_ops(ops: Vec<MarkdownBlockOp>) -> Vec<MarkdownDiffBlo
 /// highlight preview and fall back to raw bytes (the browser shows plain text).
 const MAX_TEXT_PREVIEW_BYTES: u64 = 2 * 1024 * 1024;
 
+/// Request-body cap for `POST /api/preview`. The live editor preview never
+/// needs the global 2 MB default; a smaller ceiling bounds the per-request
+/// render cost (defense in depth behind the same-origin guard).
+const PREVIEW_BODY_LIMIT: usize = 512 * 1024;
+
 /// If `path` is a small UTF-8 text/code file, return its contents plus a
 /// language hint (extension, or file name for extension-less files) for the
 /// highlighted preview. Returns `None` for images, media, binaries and
@@ -6827,8 +6846,23 @@ async fn preview_handler(
     State(state): State<AppState>,
     Json(payload): Json<PreviewRequest>,
 ) -> impl IntoResponse {
-    let renderer = default_markdown_engine(&state.theme);
-    let rendered = MarkdownEngine::render(&renderer, &payload.content);
+    // Markdown rendering (syntect highlight + AST walk) is CPU-bound; run it on
+    // the blocking pool so a large document can't stall a runtime worker.
+    let theme = state.theme.clone();
+    let content = payload.content;
+    let rendered =
+        match tokio::task::spawn_blocking(move || {
+            let renderer = default_markdown_engine(&theme);
+            MarkdownEngine::render(&renderer, &content)
+        })
+        .await
+        {
+            Ok(rendered) => rendered,
+            Err(e) => {
+                tracing::error!(error = %e, "preview render task failed");
+                return StatusCode::INTERNAL_SERVER_ERROR.into_response();
+            }
+        };
     Json(PreviewResponse {
         html: rendered.html,
         has_mermaid: rendered.has_mermaid,
@@ -7152,6 +7186,72 @@ mod tests {
             Some("example.local:1618"),
         );
         assert!(check_ws_origin(&h, &loopback()));
+    }
+
+    #[tokio::test]
+    async fn preview_route_is_guarded_same_origin() {
+        use axum::body::Body;
+        use axum::http::Request;
+
+        let registry = Arc::new(WorkspaceRegistry::new("preview-guard-test".into()));
+        let state = test_state(registry);
+        let app = Router::new()
+            .route("/api/preview", post(preview_handler))
+            .layer(axum::extract::DefaultBodyLimit::max(PREVIEW_BODY_LIMIT))
+            .layer(axum::middleware::from_fn_with_state(
+                state.clone(),
+                require_local_save_origin,
+            ))
+            .with_state(state);
+
+        let body = json!({ "content": "# hi" }).to_string();
+        let build = |origin: Option<&str>, host: &str, peer: SocketAddr| {
+            let mut b = Request::builder()
+                .method("POST")
+                .uri("/api/preview")
+                .header("host", host)
+                .header("content-type", "application/json");
+            if let Some(o) = origin {
+                b = b.header("origin", o);
+            }
+            let mut req = b.body(Body::from(body.clone())).unwrap();
+            req.extensions_mut()
+                .insert(axum::extract::ConnectInfo(peer));
+            req
+        };
+
+        // Cross-site page from the LAN → rejected.
+        let resp = app
+            .clone()
+            .oneshot(build(
+                Some("http://evil.example.com"),
+                "192.168.1.13:6419",
+                lan_peer(),
+            ))
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), StatusCode::FORBIDDEN);
+
+        // Anonymous LAN device (no Origin, not loopback) → rejected. This is the
+        // curl-style abuse the fix closes.
+        let resp = app
+            .clone()
+            .oneshot(build(None, "192.168.1.13:6419", lan_peer()))
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), StatusCode::FORBIDDEN);
+
+        // Same-origin editor page → allowed.
+        let resp = app
+            .clone()
+            .oneshot(build(
+                Some("http://127.0.0.1:6419"),
+                "127.0.0.1:6419",
+                loopback(),
+            ))
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), StatusCode::OK);
     }
 
     #[test]
