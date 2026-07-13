@@ -140,8 +140,8 @@ jobs:
       - name: Verify generated icons are up to date
         run: cargo xtask icons --check
 
-  js:
-    name: JS Tests & Lint
+  ts:
+    name: TS Tests & Lint
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
