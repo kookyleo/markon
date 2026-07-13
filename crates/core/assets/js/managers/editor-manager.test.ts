@@ -84,7 +84,7 @@ describe('EditorManager', () => {
     it('save() POSTs to /api/save with the canonical body shape and X-Markon-Token header', async () => {
         seedOriginalMarkdown('# hello');
         seedMeta('workspace-id', 'ws-42');
-        seedMeta('mgmt-token', 'tok-abc');
+        seedMeta('save-token', 'tok-abc');
 
         const fetchMock = vi.fn(async (_url: string, _init?: RequestInit) => ({
             ok: true,

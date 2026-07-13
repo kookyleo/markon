@@ -959,14 +959,14 @@ pub async fn start(config: ServerConfig) -> Result<(), String> {
             require_local_and_token,
         ));
 
-    // Save API: same-origin browser page + the save-scoped token (or the
-    // master token). Kept separate from `mgmt` so the token embedded in edit
-    // pages can't reach the privileged routes above.
+    // Save API: same-origin browser page + a workspace-scoped save capability
+    // (or the master token). Kept separate from `mgmt` so a token embedded in
+    // one edit page cannot reach privileged routes or another workspace.
     let save = Router::new()
         .route("/api/save", post(save_file_handler))
         .layer(axum::middleware::from_fn_with_state(
             state.clone(),
-            require_local_and_save_token,
+            require_local_save_origin,
         ));
 
     let app = Router::new()
@@ -1406,6 +1406,13 @@ fn access_sig(secret: &str, payload_hex: &str) -> String {
     admin_auth::auth_tag(secret, b"markon-access-cookie\0", payload_hex)
 }
 
+/// Derive a browser save capability for exactly one workspace. The process
+/// secret never enters a page, and a token learned from workspace A cannot be
+/// replayed against workspace B.
+fn workspace_save_token(secret: &str, workspace_id: &str) -> String {
+    admin_auth::auth_tag(secret, b"markon-save-workspace\0", workspace_id)
+}
+
 /// Build the `Set-Cookie` value carrying the unlocked scopes until `exp`.
 fn make_access_cookie(secret: &str, scopes: &[(String, String)], exp: u64, secure: bool) -> String {
     // payload grammar (before hex): "<exp>|<scope>=<hash>|<scope>=<hash>…"
@@ -1480,27 +1487,27 @@ fn access_cookie_scopes(secret: &str, cookie_header: Option<&str>) -> Vec<(Strin
 /// The workspace id a request targets, for access-gating. `None` means the
 /// route isn't workspace-scoped (static assets, mgmt, unlock, preview) and is
 /// allowed through the gate.
+fn decoded_workspace_id(segment: &str) -> Option<String> {
+    let decoded = urlencoding::decode(segment).ok()?;
+    (decoded.len() == 8 && decoded.bytes().all(|byte| byte.is_ascii_hexdigit()))
+        .then(|| decoded.into_owned())
+}
+
 fn access_gated_workspace(path: &str) -> Option<String> {
     let segs: Vec<&str> = path.trim_start_matches('/').split('/').collect();
     if segs.len() >= 3 && segs[0] == "api" && segs[1] == "chat" {
-        return Some(segs[2].to_string());
+        return decoded_workspace_id(segs[2]);
     }
     if segs.len() >= 3 && segs[0] == "_" && segs[1] == "ws" {
-        return Some(segs[2].to_string());
+        return decoded_workspace_id(segs[2]);
     }
-    if segs.len() >= 2
-        && segs[0] == "_"
-        && segs[1].len() == 8
-        && segs[1].bytes().all(|b| b.is_ascii_hexdigit())
-    {
-        return Some(segs[1].to_string());
-    }
-    if let Some(first) = segs.first() {
-        if first.len() == 8 && first.bytes().all(|b| b.is_ascii_hexdigit()) {
-            return Some(first.to_string());
+    if segs.len() >= 2 && segs[0] == "_" {
+        if let Some(workspace_id) = decoded_workspace_id(segs[1]) {
+            return Some(workspace_id);
         }
     }
-    None
+    segs.first()
+        .and_then(|segment| decoded_workspace_id(segment))
 }
 
 /// Only allow same-site relative redirect targets (no open redirect / no `//`).
@@ -1978,30 +1985,17 @@ async fn require_local_and_token(
     next.run(req).await
 }
 
-/// Save API guard: accept the save-scoped token (or the master token) from a
-/// same-origin browser page, including LAN clients. Local CLI/tooling callers
-/// may omit Origin but must come from loopback. The master token is still
-/// honored so CLI/tooling callers keep working.
-async fn require_local_and_save_token(
-    State(state): State<AppState>,
+/// Save API origin guard. The handler validates the workspace-scoped token
+/// after decoding the request body, because the target workspace is part of
+/// that body. Local CLI/tooling callers may omit Origin only from loopback.
+async fn require_local_save_origin(
+    State(_state): State<AppState>,
     axum::extract::ConnectInfo(addr): axum::extract::ConnectInfo<std::net::SocketAddr>,
     req: axum::extract::Request,
     next: axum::middleware::Next,
 ) -> Response {
     if !same_origin_or_loopback_no_origin(req.headers(), &addr) {
         return StatusCode::FORBIDDEN.into_response();
-    }
-    let ok = req
-        .headers()
-        .get("X-Markon-Token")
-        .and_then(|v| v.to_str().ok())
-        .map(|t| {
-            ct_eq(t.as_bytes(), state.save_token.as_bytes())
-                || ct_eq(t.as_bytes(), state.management_token.as_bytes())
-        })
-        .unwrap_or(false);
-    if !ok {
-        return StatusCode::UNAUTHORIZED.into_response();
     }
     next.run(req).await
 }
@@ -2167,6 +2161,26 @@ enum DbResult {
     None,
 }
 
+/// Insert or update an annotation only when an existing global id already
+/// belongs to this same document. The persisted schema intentionally keeps its
+/// historical global primary key, so the query itself must prevent a client on
+/// one document from moving/replacing a row owned by another document.
+fn upsert_annotation_for_file(
+    conn: &Connection,
+    id: &str,
+    file_path: &str,
+    data: &str,
+) -> rusqlite::Result<bool> {
+    conn.execute(
+        "INSERT INTO annotations (id, file_path, data)
+         VALUES (?1, ?2, ?3)
+         ON CONFLICT(id) DO UPDATE SET data = excluded.data
+         WHERE annotations.file_path = excluded.file_path",
+        rusqlite::params![id, file_path, data],
+    )
+    .map(|changed| changed > 0)
+}
+
 async fn handle_client_msg(
     db: Option<Arc<Mutex<Connection>>>,
     entry: Arc<WorkspaceEntry>,
@@ -2214,13 +2228,25 @@ async fn handle_client_msg(
                 let Ok(data) = serde_json::to_string(&annotation) else {
                     return DbResult::None;
                 };
-                if let Err(e) = conn.execute(
-                    "INSERT OR REPLACE INTO annotations (id, file_path, data)
-                          VALUES (?1, ?2, ?3)",
-                    rusqlite::params![id.as_str(), file_path.as_str(), data.as_str()],
+                match upsert_annotation_for_file(
+                    &conn,
+                    id.as_str(),
+                    file_path.as_str(),
+                    data.as_str(),
                 ) {
-                    tracing::error!(file_path = %file_path, "insert annotation failed: {e}");
-                    return DbResult::None;
+                    Ok(true) => {}
+                    Ok(false) => {
+                        tracing::warn!(
+                            annotation_id = %id,
+                            file_path = %file_path,
+                            "rejected annotation id already owned by another document"
+                        );
+                        return DbResult::None;
+                    }
+                    Err(e) => {
+                        tracing::error!(file_path = %file_path, "insert annotation failed: {e}");
+                        return DbResult::None;
+                    }
                 }
                 DbResult::Broadcast(WebSocketMessage::NewAnnotation { annotation, op_id })
             }
@@ -6010,9 +6036,13 @@ fn render_markdown_file(
                 // JSON-encode and HTML-escape so </script> in content can't break the page.
                 let json = js_json_safe(serde_json::to_string(&markdown_input).unwrap_or_default());
                 context.insert("markdown_content_json", &json);
-                // Embed the save-scoped token, NOT the master management token —
-                // this HTML is served to every viewer of the page.
-                context.insert("save_token", state.save_token.as_str());
+                // Embed a token derived for this workspace, NOT the process
+                // secret or master management token. A collaborator cannot
+                // replay it against a differently gated workspace.
+                context.insert(
+                    "save_token",
+                    &workspace_save_token(&state.save_token, workspace_id),
+                );
             }
 
             render_template(state, "layout.html", &context)
@@ -6649,8 +6679,21 @@ fn atomic_write(target: &FsPath, content: &[u8]) -> std::io::Result<()> {
 
 async fn save_file_handler(
     State(state): State<AppState>,
+    headers: axum::http::HeaderMap,
     Json(payload): Json<SaveFileRequest>,
 ) -> impl IntoResponse {
+    let supplied_token = headers
+        .get("X-Markon-Token")
+        .and_then(|value| value.to_str().ok());
+    let scoped_token = workspace_save_token(&state.save_token, &payload.workspace_id);
+    let token_valid = supplied_token.is_some_and(|token| {
+        ct_eq(token.as_bytes(), scoped_token.as_bytes())
+            || ct_eq(token.as_bytes(), state.management_token.as_bytes())
+    });
+    if !token_valid {
+        return StatusCode::UNAUTHORIZED.into_response();
+    }
+
     let ws = match state.workspace_registry.get(&payload.workspace_id) {
         Some(w) => w,
         None => {
@@ -6662,11 +6705,8 @@ async fn save_file_handler(
         }
     };
 
-    // Authorization is enforced by the `require_local_and_save_token`
-    // middleware (same-origin + save/mgmt token) plus the per-workspace edit
-    // flag below. The save token is embedded in the page only when
-    // `enable_edit` is on, so reaching here means the caller is either loopback
-    // or an edit-enabled page — including remote collaborators.
+    // Authorization is enforced by the origin middleware, the workspace-bound
+    // token above, and the per-workspace edit flag below.
     if !ws.enable_edit.load(std::sync::atomic::Ordering::Relaxed) {
         return Json(SaveFileResponse {
             success: false,
@@ -7015,6 +7055,17 @@ mod tests {
             h.insert("host", host.parse().unwrap());
         }
         h
+    }
+
+    fn save_headers(state: &AppState, workspace_id: &str) -> HeaderMap {
+        let mut headers = HeaderMap::new();
+        headers.insert(
+            "X-Markon-Token",
+            workspace_save_token(&state.save_token, workspace_id)
+                .parse()
+                .unwrap(),
+        );
+        headers
     }
 
     fn loopback() -> SocketAddr {
@@ -7753,6 +7804,114 @@ mod tests {
         assert_eq!(replay.status(), StatusCode::UNAUTHORIZED);
     }
 
+    #[tokio::test]
+    async fn save_capability_cannot_cross_workspace_boundary() {
+        let root_a = tempfile::tempdir().unwrap();
+        let root_b = tempfile::tempdir().unwrap();
+        std::fs::write(root_a.path().join("a.md"), "workspace a").unwrap();
+        std::fs::write(root_b.path().join("b.md"), "workspace b").unwrap();
+
+        let registry = Arc::new(WorkspaceRegistry::new("save-scope".into()));
+        let id_a = add_test_workspace(&registry, root_a.path().to_path_buf(), all_flags());
+        let id_b = add_test_workspace(&registry, root_b.path().to_path_buf(), all_flags());
+        let state = test_state(registry);
+        let token_a = workspace_save_token(&state.save_token, &id_a);
+        let token_b = workspace_save_token(&state.save_token, &id_b);
+        assert_ne!(token_a, token_b);
+
+        let app = Router::new()
+            .route("/api/save", post(save_file_handler))
+            .layer(axum::middleware::from_fn_with_state(
+                state.clone(),
+                require_local_save_origin,
+            ))
+            .with_state(state);
+        let request = |token: &str, content: &str| {
+            axum::http::Request::builder()
+                .method("POST")
+                .uri("/api/save")
+                .header(header::CONTENT_TYPE, "application/json")
+                .header(header::HOST, "127.0.0.1:6419")
+                .header(header::ORIGIN, "http://127.0.0.1:6419")
+                .header("X-Markon-Token", token)
+                .extension(axum::extract::ConnectInfo(loopback()))
+                .body(axum::body::Body::from(
+                    json!({
+                        "workspace_id": id_b,
+                        "file_path": "b.md",
+                        "content": content,
+                    })
+                    .to_string(),
+                ))
+                .unwrap()
+        };
+
+        let denied = app
+            .clone()
+            .oneshot(request(&token_a, "stolen"))
+            .await
+            .unwrap();
+        assert_eq!(denied.status(), StatusCode::UNAUTHORIZED);
+        assert_eq!(
+            std::fs::read_to_string(root_b.path().join("b.md")).unwrap(),
+            "workspace b"
+        );
+
+        let allowed = app.oneshot(request(&token_b, "updated b")).await.unwrap();
+        assert_eq!(allowed.status(), StatusCode::OK);
+        assert_eq!(
+            std::fs::read_to_string(root_b.path().join("b.md")).unwrap(),
+            "updated b"
+        );
+    }
+
+    #[test]
+    fn annotation_id_cannot_replace_another_documents_row() {
+        let conn = Connection::open_in_memory().unwrap();
+        conn.execute(
+            "CREATE TABLE annotations (
+                id TEXT PRIMARY KEY,
+                file_path TEXT NOT NULL,
+                data TEXT NOT NULL
+            )",
+            [],
+        )
+        .unwrap();
+
+        assert!(upsert_annotation_for_file(
+            &conn,
+            "shared-id",
+            "/workspace/a.md",
+            r#"{"id":"shared-id","text":"a"}"#,
+        )
+        .unwrap());
+        assert!(!upsert_annotation_for_file(
+            &conn,
+            "shared-id",
+            "/workspace/b.md",
+            r#"{"id":"shared-id","text":"b"}"#,
+        )
+        .unwrap());
+
+        let (file_path, data): (String, String) = conn
+            .query_row(
+                "SELECT file_path, data FROM annotations WHERE id = ?1",
+                ["shared-id"],
+                |row| Ok((row.get(0)?, row.get(1)?)),
+            )
+            .unwrap();
+        assert_eq!(file_path, "/workspace/a.md");
+        assert!(data.contains(r#""text":"a""#));
+
+        assert!(upsert_annotation_for_file(
+            &conn,
+            "shared-id",
+            "/workspace/a.md",
+            r#"{"id":"shared-id","text":"a2"}"#,
+        )
+        .unwrap());
+    }
+
     #[test]
     fn access_cooldown_locks_after_threshold() {
         let state = test_state(Arc::new(WorkspaceRegistry::new("s".into())));
@@ -7794,6 +7953,19 @@ mod tests {
             access_gated_workspace("/_/abcd1234/search").as_deref(),
             Some("abcd1234")
         );
+        for encoded in [
+            "/%61bcd1234/doc.md",
+            "/api/chat/%61bcd1234/threads",
+            "/_/ws/%61bcd1234",
+            "/_/%61bcd1234/ws",
+        ] {
+            assert_eq!(
+                access_gated_workspace(encoded).as_deref(),
+                Some("abcd1234"),
+                "encoded workspace id escaped the gate: {encoded}"
+            );
+        }
+        assert!(access_gated_workspace("/_/%2Fbad123/ws").is_none());
         assert!(access_gated_workspace("/_/css/tokens.css").is_none());
         assert!(access_gated_workspace("/_/unlock").is_none());
         assert!(access_gated_workspace("/api/preview").is_none());
@@ -7832,6 +8004,18 @@ mod tests {
             .unwrap();
         let response = app.clone().oneshot(request).await.unwrap();
         assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
+
+        let encoded_id = format!("%{:02X}{}", id.as_bytes()[0], &id[1..]);
+        let encoded_request = axum::http::Request::builder()
+            .uri(format!("/_/{encoded_id}/ws"))
+            .header(header::UPGRADE, "websocket")
+            .header(header::ORIGIN, "http://markon.local")
+            .header(header::HOST, "markon.local")
+            .extension(axum::extract::ConnectInfo(lan_peer()))
+            .body(axum::body::Body::empty())
+            .unwrap();
+        let encoded_response = app.clone().oneshot(encoded_request).await.unwrap();
+        assert_eq!(encoded_response.status(), StatusCode::UNAUTHORIZED);
 
         let cookie = make_access_cookie(
             &state.access_secret,
@@ -8362,7 +8546,7 @@ mod tests {
             "{on}"
         );
         assert!(
-            on.contains(r#"name="mgmt-token""#),
+            on.contains(r#"name="save-token""#),
             "remote collaborator with the edit flag must receive the save token"
         );
         assert!(on.contains(r#"<meta name="enable-chat" content="true">"#));
@@ -8387,7 +8571,7 @@ mod tests {
         .await;
         assert!(off.contains(r#"<meta name="enable-edit" content="false">"#));
         assert!(
-            !off.contains(r#"name="mgmt-token""#),
+            !off.contains(r#"name="save-token""#),
             "no edit flag → no save token even on a readable page"
         );
         assert!(off.contains(r#"<meta name="enable-chat" content="false">"#));
@@ -9334,22 +9518,30 @@ mod tests {
             file_path: "README.md".into(),
             content: "# relative save".into(),
         };
-        let response = save_file_handler(State(state.clone()), Json(relative))
-            .await
-            .into_response();
+        let response = save_file_handler(
+            State(state.clone()),
+            save_headers(&state, &id),
+            Json(relative),
+        )
+        .await
+        .into_response();
         assert_eq!(response.status(), StatusCode::OK);
         let body: serde_json::Value = serde_json::from_str(&response_text(response).await).unwrap();
         assert_eq!(body["success"], true);
         assert_eq!(fs::read_to_string(&file).unwrap(), "# relative save");
 
         let absolute = SaveFileRequest {
-            workspace_id: id,
+            workspace_id: id.clone(),
             file_path: file.to_string_lossy().to_string(),
             content: "# absolute save".into(),
         };
-        let response = save_file_handler(State(state), Json(absolute))
-            .await
-            .into_response();
+        let response = save_file_handler(
+            State(state.clone()),
+            save_headers(&state, &id),
+            Json(absolute),
+        )
+        .await
+        .into_response();
         assert_eq!(response.status(), StatusCode::OK);
         let body: serde_json::Value = serde_json::from_str(&response_text(response).await).unwrap();
         assert_eq!(body["success"], true);
@@ -9374,13 +9566,17 @@ mod tests {
         let state = test_state(registry);
 
         let request = SaveFileRequest {
-            workspace_id: id,
+            workspace_id: id.clone(),
             file_path: outside.path().to_string_lossy().to_string(),
             content: "# should not write".into(),
         };
-        let response = save_file_handler(State(state), Json(request))
-            .await
-            .into_response();
+        let response = save_file_handler(
+            State(state.clone()),
+            save_headers(&state, &id),
+            Json(request),
+        )
+        .await
+        .into_response();
         assert_eq!(response.status(), StatusCode::OK);
         let body: serde_json::Value = serde_json::from_str(&response_text(response).await).unwrap();
         assert_eq!(body["success"], false);
@@ -9624,6 +9820,7 @@ mod tests {
 
         let save = save_file_handler(
             State(state.clone()),
+            save_headers(&state, &id),
             Json(SaveFileRequest {
                 workspace_id: id.clone(),
                 file_path: "sibling.md".into(),

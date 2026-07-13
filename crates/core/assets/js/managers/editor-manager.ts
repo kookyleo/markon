@@ -264,7 +264,7 @@ export class EditorManager {
             this.#setSaving(true);
 
             const workspaceId = Meta.get(CONFIG.META_TAGS.WORKSPACE_ID) ?? '';
-            const token = Meta.get('mgmt-token') ?? '';
+            const token = Meta.get('save-token') ?? '';
             const body: EditorSaveRequest = {
                 workspace_id: workspaceId,
                 file_path: this.#filePath,
