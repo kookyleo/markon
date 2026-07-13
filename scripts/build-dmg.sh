@@ -58,8 +58,14 @@ for TARGET in "${TARGETS[@]}"; do
     exit 1
   fi
 
-  if [[ ! -f "$APP/Contents/Frameworks/libgraphviz_api.dylib" ]]; then
-    echo "Missing bundled libgraphviz_api.dylib in $APP" >&2
+  APP_BIN_NAME=$(/usr/libexec/PlistBuddy -c 'Print :CFBundleExecutable' "$APP/Contents/Info.plist")
+  APP_BIN="$APP/Contents/MacOS/$APP_BIN_NAME"
+  if [[ ! -x "$APP_BIN" ]]; then
+    echo "Markon executable not found at $APP_BIN" >&2
+    exit 1
+  fi
+  if otool -L "$APP_BIN" | grep -qi graphviz; then
+    echo "Unexpected Graphviz dynamic-library dependency in $APP_BIN" >&2
     exit 1
   fi
 

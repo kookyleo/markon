@@ -96,7 +96,9 @@ impl Tool for ReadFileTool {
         let end = (offset + limit).min(total_lines);
         let slice = &all[offset..end];
 
-        let rel = rel_path_string(&abs, &ctx.workspace_root);
+        let rel = ctx
+            .route_for_path(&abs)
+            .unwrap_or_else(|| args.path.replace('\\', "/"));
         let mut out = String::new();
         out.push_str(&format!(
             "{}:{}-{} (of {})\n",
@@ -112,14 +114,6 @@ impl Tool for ReadFileTool {
 
         Ok(truncate_to_budget(out, total_lines.saturating_sub(end)))
     }
-}
-
-/// Render a workspace-relative path with forward slashes. Falls back to the
-/// absolute path if the strip fails (shouldn't happen since `resolve` checks
-/// containment).
-fn rel_path_string(abs: &std::path::Path, root: &std::path::Path) -> String {
-    let rel = abs.strip_prefix(root).unwrap_or(abs);
-    super::path_to_forward_slash(rel)
 }
 
 /// Cap output at `MAX_TOOL_OUTPUT_BYTES`, truncating at a line boundary and

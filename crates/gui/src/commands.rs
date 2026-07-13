@@ -160,6 +160,7 @@ pub fn save_settings(
     let (
         existing_workspaces,
         existing_collaborator_access_code,
+        existing_trusted_hosts,
         example_workspace_hidden,
         existing_salt,
     ) = {
@@ -167,6 +168,7 @@ pub fn save_settings(
         (
             s.workspaces.clone(),
             s.collaborator_access_code_hash.clone(),
+            s.trusted_hosts.clone(),
             s.example_workspace_hidden,
             s.salt.clone(),
         )
@@ -174,6 +176,9 @@ pub fn save_settings(
     let mut settings = settings;
     settings.workspaces = existing_workspaces;
     settings.collaborator_access_code_hash = existing_collaborator_access_code;
+    // The current GUI has no trusted-host editor; preserve manually configured
+    // reverse-proxy/mDNS entries instead of treating an omitted field as clear.
+    settings.trusted_hosts = existing_trusted_hosts;
     settings.example_workspace_hidden = example_workspace_hidden;
     // The salt determines every workspace id and is never part of the settings
     // form, so the round-trip must preserve it — a dropped salt would reset all
@@ -407,8 +412,23 @@ pub fn set_alias(
 }
 
 #[tauri::command]
-pub fn open_url(url: String) -> Result<(), String> {
-    open::that(url).map_err(|e| e.to_string())
+pub fn open_url(url: String, state: State<AppState>) -> Result<(), String> {
+    let server = state.server.lock().unwrap();
+    let base = browser_base_url_for_state(&state, server.port());
+    let markon_prefix = format!("{}/", base.trim_end_matches('/'));
+    let target = if url.starts_with(&markon_prefix) {
+        let parsed = url::Url::parse(&url).map_err(|error| error.to_string())?;
+        let mut redirect = parsed.path().to_string();
+        if let Some(query) = parsed.query() {
+            redirect.push('?');
+            redirect.push_str(query);
+        }
+        server.admin_url(&base, &redirect)
+    } else {
+        url
+    };
+    drop(server);
+    open::that(target).map_err(|e| e.to_string())
 }
 
 #[tauri::command]

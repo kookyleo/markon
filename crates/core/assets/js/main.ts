@@ -200,7 +200,19 @@ export class MarkonApp {
         // WebSocket is needed by either shared-annotation persistence or Live
         // broadcast. Establish one connection in either case.
         if (this.#isSharedMode || this.#enableLive) {
-            this.#wsManager = new WebSocketManager(this.#filePath);
+            const workspaceId = Meta.get(CONFIG.META_TAGS.WORKSPACE_ID);
+            if (!workspaceId) {
+                Logger.warn('MarkonApp', 'Collaboration enabled without workspace-id; skipping');
+                return;
+            }
+            const documentPath = Meta.get(CONFIG.META_TAGS.FILE_PATH);
+            const target = documentPath
+                ? { kind: 'document' as const, path: documentPath }
+                : {
+                      kind: 'surface' as const,
+                      key: `${window.location.pathname}${window.location.search}`,
+                  };
+            this.#wsManager = new WebSocketManager(workspaceId, target);
             this.ws = this.#wsManager;
 
             try {

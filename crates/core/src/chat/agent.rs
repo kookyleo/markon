@@ -63,7 +63,7 @@ pub(crate) struct AgentRequest {
     pub thread_title: String,
     #[allow(dead_code)]
     pub workspace_id: String,
-    pub workspace_root: std::path::PathBuf,
+    pub workspace_fs: Arc<crate::workspace_fs::WorkspaceFs>,
     /// Full prior history (already persisted).
     pub history: Vec<Message>,
     /// The new user turn we just appended (already persisted).
@@ -111,12 +111,12 @@ impl Agent {
         let mut messages = request.history;
         messages.push(request.user_message);
         let tool_schemas = self.tools.schemas();
-        let tool_ctx = match ToolContext::new(&request.workspace_root) {
+        let tool_ctx = match ToolContext::for_workspace(request.workspace_fs.clone()) {
             Ok(ctx) => ctx.with_chat_state(request.pending_edits.clone(), sink.clone()),
             Err(e) => {
                 tracing::error!(
                     "failed to canonicalize workspace root {}: {e}",
-                    request.workspace_root.display()
+                    request.workspace_fs.ambient_root().display()
                 );
                 let _ = sink
                     .send(AgentEvent::Error {

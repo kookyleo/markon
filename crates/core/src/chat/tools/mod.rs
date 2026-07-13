@@ -9,25 +9,20 @@ pub(crate) mod list_dir;
 pub(crate) mod read_file;
 
 use crate::chat::edits::PendingEditStore;
+use crate::workspace_fs::WorkspaceFs;
 use async_trait::async_trait;
 use std::collections::HashMap;
-use std::path::{Component, Path, PathBuf};
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use tokio::sync::mpsc;
 
 pub(crate) use crate::fswalk::{default_walker, path_to_forward_slash};
 
-/// Per-request tool scope — currently just the workspace root. Anything
-/// extra (cwd, environment) lives here so individual tools stay pure.
-///
-/// `workspace_root` must be canonicalized at construction so the sandbox
-/// check in `resolve()` can rely on lexical prefix comparison being
-/// semantically meaningful. Use `ToolContext::new()` instead of building the
-/// struct literally — the literal constructor is kept `pub` only for tests
-/// that pass an already-canonicalized temp dir.
+/// Per-request tool scope. Filesystem access is delegated to `WorkspaceFs` so
+/// tools cannot accidentally turn a serving directory into broader authority.
 #[derive(Clone)]
 pub(crate) struct ToolContext {
-    pub workspace_root: PathBuf,
+    workspace_fs: Arc<WorkspaceFs>,
     /// Pending-edit queue, shared with the workspace's HTTP routes so the
     /// `edit_file` tool can stash a proposal and await the user's decision.
     /// `None` in unit-test contexts that don't need it.
@@ -41,14 +36,50 @@ pub(crate) struct ToolContext {
 impl ToolContext {
     /// Canonicalize `root` and wrap it in a `ToolContext`. Returns an error
     /// when the root cannot be canonicalized (e.g. doesn't exist).
+    #[cfg(test)]
     pub(crate) fn new(root: impl AsRef<Path>) -> Result<Self, ToolError> {
         let workspace_root = dunce::canonicalize(root.as_ref())
             .map_err(|e| ToolError::Io(format!("workspace root: {e}")))?;
+        let workspace_fs = Arc::new(WorkspaceFs::new(workspace_root.clone(), None));
         Ok(Self {
-            workspace_root,
+            workspace_fs,
             pending_edits: None,
             event_sink: None,
         })
+    }
+
+    #[cfg(test)]
+    pub(crate) fn for_single_file(root: impl AsRef<Path>, file: &str) -> Result<Self, ToolError> {
+        let workspace_root = dunce::canonicalize(root.as_ref())
+            .map_err(|e| ToolError::Io(format!("workspace root: {e}")))?;
+        Self::for_workspace(Arc::new(WorkspaceFs::new(workspace_root, Some(file))))
+    }
+
+    pub(crate) fn for_workspace(workspace_fs: Arc<WorkspaceFs>) -> Result<Self, ToolError> {
+        if !workspace_fs.ambient_root().is_dir() {
+            return Err(ToolError::Io("workspace root is unavailable".to_string()));
+        }
+        Ok(Self {
+            workspace_fs,
+            pending_edits: None,
+            event_sink: None,
+        })
+    }
+
+    pub(crate) fn content_files(&self, limit: usize) -> Vec<(String, PathBuf)> {
+        self.workspace_fs
+            .content_files(limit)
+            .into_iter()
+            .map(|(rel, abs)| (rel.as_route(), abs))
+            .collect()
+    }
+
+    pub(crate) fn directory_root(&self) -> Option<&Path> {
+        self.workspace_fs.directory_root()
+    }
+
+    pub(crate) fn route_for_path(&self, path: &Path) -> Option<String> {
+        self.workspace_fs.route_for_path(path)
     }
 
     /// Builder that attaches the shared pending-edit store and event sink
@@ -63,43 +94,18 @@ impl ToolContext {
         self
     }
 
-    /// Resolve a relative-to-workspace path, rejecting any traversal that
-    /// escapes the root. Returns the absolute path on success.
-    ///
-    /// Defense-in-depth strategy:
-    /// 1. Reject `..`, absolute paths, and Windows path prefixes lexically —
-    ///    no syscall needed, eliminates the obvious attempts up front.
-    /// 2. Canonicalize the candidate (must exist). This collapses any
-    ///    symlinks inside `workspace_root` that point outside, so the next
-    ///    check can catch them.
-    /// 3. `starts_with` against the canonical root — only paths that resolve
-    ///    inside the sandbox are returned.
-    ///
-    /// We intentionally do NOT fall back to the un-canonicalized candidate
-    /// on `canonicalize()` failure: that fallback silently broke step 3 for
-    /// any path whose last component didn't exist (`..` traversal to a
-    /// non-existent file then read), since `PathBuf::starts_with` is a
-    /// lexical component-prefix match and does not normalize `..`.
+    /// Resolve an existing path through the workspace content capability.
     pub(crate) fn resolve(&self, rel: &str) -> Result<PathBuf, ToolError> {
-        let rel_path = Path::new(rel);
-        for comp in rel_path.components() {
-            match comp {
-                Component::ParentDir => return Err(ToolError::OutsideWorkspace),
-                Component::RootDir | Component::Prefix(_) => {
-                    return Err(ToolError::OutsideWorkspace);
+        self.workspace_fs
+            .resolve_content(rel)
+            .map_err(|error| match error {
+                crate::workspace_fs::WorkspaceFsError::InvalidPath
+                | crate::workspace_fs::WorkspaceFsError::Denied => ToolError::OutsideWorkspace,
+                crate::workspace_fs::WorkspaceFsError::NotFound => {
+                    ToolError::NotFound(rel.to_string())
                 }
-                Component::CurDir | Component::Normal(_) => {}
-            }
-        }
-        let candidate = self.workspace_root.join(rel_path);
-        let canon = dunce::canonicalize(&candidate).map_err(|e| match e.kind() {
-            std::io::ErrorKind::NotFound => ToolError::NotFound(rel.to_string()),
-            _ => ToolError::Io(e.to_string()),
-        })?;
-        if !canon.starts_with(&self.workspace_root) {
-            return Err(ToolError::OutsideWorkspace);
-        }
-        Ok(canon)
+                crate::workspace_fs::WorkspaceFsError::Io(message) => ToolError::Io(message),
+            })
     }
 }
 
@@ -239,7 +245,7 @@ mod resolve_tests {
         let (_td, ctx) = ctx();
         let p = ctx.resolve("ok.md").unwrap();
         assert!(p.ends_with("ok.md"));
-        assert!(p.starts_with(&ctx.workspace_root));
+        assert_eq!(ctx.route_for_path(&p).as_deref(), Some("ok.md"));
     }
 
     #[test]
@@ -298,5 +304,83 @@ mod resolve_tests {
         // workspace; the post-canonicalize starts_with check must catch it.
         let err = ctx.resolve("escape/secret.txt").unwrap_err();
         assert!(matches!(err, ToolError::OutsideWorkspace), "got {err:?}");
+    }
+
+    #[tokio::test]
+    async fn single_file_scope_is_enforced_across_all_chat_tools() {
+        let td = TempDir::new().unwrap();
+        fs::write(td.path().join("opened.md"), "visible marker\n").unwrap();
+        fs::write(td.path().join("sibling.md"), "secret marker\n").unwrap();
+        let ctx = ToolContext::for_single_file(td.path(), "opened.md").unwrap();
+        let tools = ToolRegistry::for_workspace(true);
+
+        let read = tools
+            .dispatch(
+                &ctx,
+                "read_file",
+                serde_json::json!({ "path": "opened.md" }),
+            )
+            .await
+            .unwrap();
+        assert!(read.contains("visible marker"));
+        assert!(matches!(
+            tools
+                .dispatch(
+                    &ctx,
+                    "read_file",
+                    serde_json::json!({ "path": "sibling.md" })
+                )
+                .await,
+            Err(ToolError::OutsideWorkspace)
+        ));
+
+        let listing = tools
+            .dispatch(&ctx, "list_dir", serde_json::json!({}))
+            .await
+            .unwrap();
+        assert!(listing.contains("opened.md"), "got: {listing}");
+        assert!(!listing.contains("sibling.md"), "got: {listing}");
+
+        let glob = tools
+            .dispatch(&ctx, "glob", serde_json::json!({ "pattern": "**/*.md" }))
+            .await
+            .unwrap();
+        assert_eq!(glob, "opened.md");
+
+        let grep = tools
+            .dispatch(&ctx, "grep", serde_json::json!({ "pattern": "marker" }))
+            .await
+            .unwrap();
+        assert!(grep.contains("opened.md:1:visible marker"), "got: {grep}");
+        assert!(!grep.contains("sibling.md"), "got: {grep}");
+        assert!(matches!(
+            tools
+                .dispatch(
+                    &ctx,
+                    "grep",
+                    serde_json::json!({ "pattern": "secret", "path": "sibling.md" })
+                )
+                .await,
+            Err(ToolError::OutsideWorkspace)
+        ));
+
+        assert!(matches!(
+            tools
+                .dispatch(
+                    &ctx,
+                    "edit_file",
+                    serde_json::json!({
+                        "path": "sibling.md",
+                        "old_string": "secret",
+                        "new_string": "stolen"
+                    })
+                )
+                .await,
+            Err(ToolError::OutsideWorkspace)
+        ));
+        assert_eq!(
+            fs::read_to_string(td.path().join("sibling.md")).unwrap(),
+            "secret marker\n"
+        );
     }
 }

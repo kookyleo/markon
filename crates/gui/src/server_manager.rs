@@ -1,4 +1,5 @@
-use markon_core::server::ServerConfig;
+use markon_core::admin_auth::AdminBootstrapStore;
+use markon_core::server::{self, ServerConfig};
 use markon_core::workspace::{PersistHook, WorkspaceRegistry};
 use std::sync::Arc;
 
@@ -9,6 +10,7 @@ pub struct ServerManager {
     last_error: Option<String>,
     /// Shared with the server's AppState; allows Tauri commands to add/remove workspaces.
     pub registry: Arc<WorkspaceRegistry>,
+    admin_bootstraps: Arc<AdminBootstrapStore>,
 }
 
 impl Default for ServerManager {
@@ -19,6 +21,7 @@ impl Default for ServerManager {
             port: 0,
             last_error: None,
             registry: Arc::new(WorkspaceRegistry::new("markon:0".into())),
+            admin_bootstraps: Arc::new(AdminBootstrapStore::new()),
         }
     }
 }
@@ -49,6 +52,8 @@ impl ServerManager {
         }
         config.salt = Some(salt);
         config.registry = Some(self.registry.clone());
+        self.admin_bootstraps = Arc::new(AdminBootstrapStore::new());
+        config.admin_bootstraps = Some(self.admin_bootstraps.clone());
 
         // Pre-bind synchronously so a bad address (e.g. NIC IP saved in a
         // previous network) fails loudly here instead of leaving the async
@@ -118,6 +123,15 @@ impl ServerManager {
 
     pub fn last_error(&self) -> Option<String> {
         self.last_error.clone()
+    }
+
+    /// Wrap a workspace URL in a one-time browser administrator bootstrap.
+    pub fn admin_url(&self, base: &str, redirect: &str) -> String {
+        let nonce = self.admin_bootstraps.issue_url(redirect);
+        format!(
+            "{}#nonce={nonce}",
+            server::build_workspace_url(base, "/_/admin/bootstrap")
+        )
     }
 }
 

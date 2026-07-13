@@ -166,7 +166,11 @@ fn sanitize_asset_ref(raw: &str) -> Option<String> {
     }
     let decoded = urlencoding::decode(path).ok()?;
     let path = decoded.as_ref();
-    if path.starts_with('/') {
+    if path.starts_with('/')
+        || path.starts_with('\\')
+        || is_windows_absolute_path(path)
+        || Path::new(path).is_absolute()
+    {
         return None;
     }
     // Reject any segment that escapes upward.
@@ -330,17 +334,33 @@ fn count_repeated_char(input: &str, target: char) -> usize {
 }
 
 fn normalize_image_destination_inner(inner: &str) -> Option<String> {
-    if !inner.chars().any(char::is_whitespace) {
-        return None;
-    }
     let leading_len = inner.len() - inner.trim_start().len();
     let leading = &inner[..leading_len];
     let rest = inner.trim_start();
-    if rest.starts_with('<') || rest.contains('\n') {
+    if rest.contains('\n') {
         return None;
     }
 
-    let dest_end = image_destination_end(rest)?;
+    // Angle brackets protect destinations containing spaces, but they do not
+    // protect Windows backslashes from every Markdown parser. Normalize a
+    // wrapped drive/UNC path before parsing just like the unwrapped form below.
+    if let Some(wrapped) = rest.strip_prefix('<') {
+        let close = wrapped.find('>')?;
+        let destination = &wrapped[..close];
+        let title = &wrapped[close + 1..];
+        if !is_windows_absolute_path(destination) || !is_image_destination_title_tail(title) {
+            return None;
+        }
+        let normalized = normalize_windows_image_path(destination);
+        return Some(format!("{leading}<{normalized}>{title}"));
+    }
+
+    let has_whitespace = rest.chars().any(char::is_whitespace);
+    let dest_end = if has_whitespace {
+        image_destination_end(rest)?
+    } else {
+        rest.len()
+    };
     let destination = &rest[..dest_end];
     let title = &rest[dest_end..];
     if destination.contains(['<', '>']) || !is_local_image_destination(destination) {
@@ -350,7 +370,38 @@ fn normalize_image_destination_inner(inner: &str) -> Option<String> {
         return None;
     }
 
+    if is_windows_absolute_path(destination) {
+        // Backslashes inside Markdown destinations are escape characters. In
+        // particular, a temp directory such as `\.tmp...` loses its separator
+        // before the renderer sees it. Normalize drive paths to URL separators;
+        // percent-encode UNC paths so their leading `\\` is not mistaken for a
+        // protocol-relative URL.
+        let normalized = normalize_windows_image_path(destination);
+        return Some(format!("{leading}<{normalized}>{title}"));
+    }
+
+    if !has_whitespace {
+        return None;
+    }
+
     Some(format!("{leading}<{destination}>{title}"))
+}
+
+fn normalize_windows_image_path(path: &str) -> String {
+    if path.starts_with(r"\\") {
+        urlencoding::encode(path).into_owned()
+    } else {
+        path.replace('\\', "/")
+    }
+}
+
+fn is_windows_absolute_path(path: &str) -> bool {
+    let bytes = path.as_bytes();
+    (bytes.len() >= 3
+        && bytes[0].is_ascii_alphabetic()
+        && bytes[1] == b':'
+        && matches!(bytes[2], b'\\' | b'/'))
+        || path.starts_with(r"\\")
 }
 
 fn image_destination_end(input: &str) -> Option<usize> {
@@ -441,12 +492,12 @@ fn local_asset_route_from_url(raw_url: &str, ctx: &MarkdownAssetContext) -> Opti
     let decoded_path = Path::new(decoded);
     if decoded_path.is_absolute() {
         candidates.push(decoded_path.to_path_buf());
-        if let Some(root_relative) = decoded.strip_prefix('/') {
-            if !root_relative.is_empty() {
-                candidates.push(ctx.workspace_root.join(root_relative));
-            }
+    }
+    if let Some(root_relative) = decoded.strip_prefix('/') {
+        if !root_relative.is_empty() {
+            candidates.push(ctx.workspace_root.join(root_relative));
         }
-    } else if let Some(parent) = ctx.file_path.parent() {
+    } else if let (false, Some(parent)) = (decoded_path.is_absolute(), ctx.file_path.parent()) {
         candidates.push(parent.join(decoded_path));
     }
 
@@ -1834,8 +1885,10 @@ fn supramark_children(
 
 #[cfg(test)]
 mod assets_tests {
-    use super::extract_referenced_assets;
     use super::MarkdownRenderer;
+    use super::{
+        extract_referenced_assets, normalize_local_image_destinations, sanitize_asset_ref,
+    };
     use crate::markdown::MarkdownEngine;
 
     fn assert_set(actual: std::collections::HashSet<String>, expected: &[&str]) {
@@ -1927,6 +1980,32 @@ mod assets_tests {
             html.contains(r#"<img src="icon%20art.svg" alt="vector" />"#),
             "html: {html}"
         );
+    }
+
+    #[test]
+    fn windows_absolute_image_path_normalizes_markdown_escapes() {
+        let normalized = normalize_local_image_destinations(
+            r"![drive](C:\Users\leo\.tmp\pic.png) ![wrapped](<C:\Users\leo\.tmp\pic.png>) ![unc](\\server\share\pic.png)",
+        );
+        assert!(
+            normalized.contains(r"![drive](<C:/Users/leo/.tmp/pic.png>)"),
+            "normalized: {normalized}"
+        );
+        assert!(
+            normalized.contains(r"![wrapped](<C:/Users/leo/.tmp/pic.png>)"),
+            "normalized: {normalized}"
+        );
+        assert!(
+            normalized.contains(r"![unc](<%5C%5Cserver%5Cshare%5Cpic.png>)"),
+            "normalized: {normalized}"
+        );
+    }
+
+    #[test]
+    fn windows_absolute_asset_refs_never_fall_back_to_relative() {
+        assert!(sanitize_asset_ref(r"C:\Users\leo\secret.png").is_none());
+        assert!(sanitize_asset_ref("C:/Users/leo/secret.png").is_none());
+        assert!(sanitize_asset_ref(r"%5C%5Cserver%5Cshare%5Csecret.png").is_none());
     }
 
     #[test]

@@ -9,9 +9,7 @@
 //!   - results formatted as `path:line: <matched line>` so the model can cite
 //!   - cap total bytes by [`MAX_TOOL_OUTPUT_BYTES`] and append truncation note.
 
-use super::{
-    default_walker, path_to_forward_slash, Tool, ToolContext, ToolError, MAX_TOOL_OUTPUT_BYTES,
-};
+use super::{Tool, ToolContext, ToolError, MAX_TOOL_OUTPUT_BYTES};
 use async_trait::async_trait;
 use globset::Glob;
 use grep_regex::RegexMatcherBuilder;
@@ -75,10 +73,12 @@ impl Tool for GrepTool {
             .clamp(1, HARD_MAX_MATCHES);
         let case_insensitive = args.case_insensitive.unwrap_or(false);
 
-        let start = match args.path.as_deref() {
-            Some(p) if !p.is_empty() => ctx.resolve(p)?,
-            _ => ctx.workspace_root.clone(),
-        };
+        let start = args
+            .path
+            .as_deref()
+            .filter(|path| !path.is_empty())
+            .map(|path| ctx.resolve(path))
+            .transpose()?;
 
         let matcher = RegexMatcherBuilder::new()
             .case_insensitive(case_insensitive)
@@ -94,7 +94,6 @@ impl Tool for GrepTool {
             _ => None,
         };
 
-        let walker = default_walker(&start).build();
         let mut searcher = SearcherBuilder::new()
             .line_number(true)
             .multi_line(false)
@@ -104,36 +103,24 @@ impl Tool for GrepTool {
         let mut byte_budget_used: usize = 0;
         let mut budget_full = false;
 
-        'walk: for entry in walker {
-            let entry = match entry {
-                Ok(e) => e,
-                Err(_) => continue,
-            };
-            let is_file = entry.file_type().map(|t| t.is_file()).unwrap_or(false);
-            if !is_file {
-                continue;
+        'walk: for (rel, path) in ctx.content_files(100_000) {
+            if let Some(start) = &start {
+                if path != *start && !path.starts_with(start) {
+                    continue;
+                }
             }
-            let path = entry.path();
-            // Compute the workspace-relative path used both for glob filter
-            // and for output. If the path lives outside the workspace root
-            // (shouldn't happen, but be defensive), skip it.
-            let rel = match path.strip_prefix(&ctx.workspace_root) {
-                Ok(r) => r.to_path_buf(),
-                Err(_) => continue,
-            };
             if let Some(matcher) = &glob_matcher {
                 if !matcher.is_match(&rel) {
                     continue;
                 }
             }
-            let rel_str = path_to_forward_slash(&rel);
 
             let remaining = max_matches.saturating_sub(hits.len());
             if remaining == 0 {
                 break;
             }
             let mut sink = CollectingSink {
-                rel: rel_str,
+                rel,
                 hits: &mut hits,
                 remaining,
                 bytes_used: &mut byte_budget_used,
@@ -141,7 +128,7 @@ impl Tool for GrepTool {
                 budget_full: &mut budget_full,
             };
             // search_path opens the file and runs binary detection internally.
-            let _ = searcher.search_path(&matcher, path, &mut sink);
+            let _ = searcher.search_path(&matcher, &path, &mut sink);
             if hits.len() >= max_matches || budget_full {
                 break 'walk;
             }

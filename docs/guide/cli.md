@@ -24,7 +24,8 @@ markon [FILE] [OPTIONS]
 | `--host [IP]` | 绑定地址，省略值时交互式选择 | `127.0.0.1` |
 | `-b, --open-browser [BASE_URL]` | 自动打开浏览器；可选传入 BASE_URL 覆盖默认（不传则用本地工作区地址） | 是（若提供路径） |
 | `--entry, --qr [PREFIX]` | 指定外部访问地址前缀（生成二维码） | — |
-| `--collaborator-access-code <CODE>` | 设置或清除该工作区的协作者访问码（远程访客门禁；本机始终免码） | — |
+| `--trusted-host <HOST_OR_ORIGIN>` | 额外允许的精确 Host / HTTPS origin，可重复 | — |
+| `--collaborator-access-code <CODE>` | 设置或清除该工作区的协作者访问码（约束所有非管理员浏览器） | — |
 | `--print-collapsed-content` | 打印时包含折叠章节的内容（默认隐藏折叠内容） | false |
 | `--salt <STRING>` | 自定义 workspace ID salt | — |
 
@@ -70,7 +71,16 @@ markon set abc12345 chat off # 通过 ID，关闭「AI 对话」
 - feature 名可选：`search`（搜索）/ `viewed`（已读追踪）/ `edit`（编辑）/ `live`（Live）/ `chat`（AI 对话）/ `shared`（共享批注）。
 - 最后一个参数是 `on` 或 `off`。
 
-> 管理与结构性操作（改功能开关 / 别名、增删工作区、git 提交等）只在本机可用；远程访客只有该工作区功能开关允许的协作能力。详见[访问权限](/features/access)。
+> CLI 管理 API 同时要求本机连接与 0600 lock file 中的 management token。浏览器不会获得这个长期 token；其管理与结构性操作使用下面的短期 Admin session。详见[访问权限](/features/access)。
+
+### 打开管理员浏览器会话
+
+```bash
+markon admin open  # 通过 60 秒、一次性的 URL fragment nonce 自动打开
+markon admin code  # 打印 5 分钟有效的手动配对码（适合 SSH/headless）
+```
+
+两条入口最终兑换相同的 12 小时 `HttpOnly` Admin session。loopback 地址本身不授予管理员权限。
 
 ### 停止服务
 
@@ -158,7 +168,7 @@ markon --entry https://docs.example.com
 markon --collaborator-access-code guest-secret README.md
 ```
 
-给远程访客加一道门禁：设了协作者访问码后，从其它机器访问该工作区要先在门禁页输入正确的码；**本机（桌面版 / 本机浏览器）始终免码放行**。明文只用于这次 CLI 调用，Markon 写入 `settings.json` 时只保存加盐 hash。传空字符串则清除该工作区的码。详见[访问权限](/features/access)。
+给协作者加一道门禁：设了协作者访问码后，任何未持有 Admin session 的浏览器都要先输入正确的码，loopback 也不例外。明文只用于这次 CLI 调用，Markon 写入 `settings.json` 时只保存加盐 hash。传空字符串则清除该工作区的码。详见[访问权限](/features/access)。
 
 ## `--host` 详解
 

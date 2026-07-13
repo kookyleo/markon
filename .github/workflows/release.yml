@@ -27,8 +27,8 @@ env:
   # patches a bundle-type marker into the executable before bundling; keep that
   # marker intact through AppImage packaging.
   NO_STRIP: "true"
-  # Release builds must be able to fetch graphviz-anywhere native assets when
-  # no checked-in prebuilt library exists for the target.
+  # Release builds may fetch graphviz-anywhere's target-specific static archive
+  # when no checked-in prebuilt library exists for the target.
   GRAPHVIZ_ANYWHERE_ALLOW_DOWNLOAD: "1"
 
 jobs:
@@ -171,57 +171,6 @@ jobs:
         shell: bash
         run: npm install && npm run build
 
-      # The upstream v0.2.3 graphviz-anywhere release does not ship a
-      # windows-arm64 native asset. Build it on the native ARM runner and point
-      # the Rust build script at that local output directory.
-      - name: Install Windows ARM Graphviz build dependencies
-        if: matrix.target == 'aarch64-pc-windows-msvc'
-        shell: powershell
-        run: |
-          choco install winflexbison3 -y --no-progress
-          "C:\ProgramData\chocolatey\bin" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
-
-      - name: Build Graphviz native runtime for Windows ARM64
-        if: matrix.target == 'aarch64-pc-windows-msvc'
-        shell: bash
-        run: |
-          set -euo pipefail
-          git clone --depth 1 --branch v0.2.3 --recurse-submodules --shallow-submodules https://github.com/Actrium/supramark.git /tmp/supramark-graphviz
-          cd /tmp/supramark-graphviz/crates/graphviz-anywhere
-          BISON_EXE="$(command -v win_bison.exe || command -v bison || true)"
-          FLEX_EXE="$(command -v win_flex.exe || command -v flex || true)"
-          if [ -z "$BISON_EXE" ] || [ -z "$FLEX_EXE" ]; then
-            echo "Bison/Flex not found after winflexbison3 install"
-            exit 1
-          fi
-          BISON_EXE="$(cygpath -m "$BISON_EXE")"
-          FLEX_EXE="$(cygpath -m "$FLEX_EXE")"
-          export BISON_EXE
-          export FLEX_EXE
-          python3 - <<'PY'
-          import os
-          from pathlib import Path
-
-          path = Path("scripts/common.sh")
-          text = path.read_text()
-          extra = (
-              "    -DCMAKE_DISABLE_FIND_PACKAGE_GD=TRUE\n"
-              f"    -DBISON_EXECUTABLE={os.environ['BISON_EXE']}\n"
-              f"    -DFLEX_EXECUTABLE={os.environ['FLEX_EXE']}\n"
-          )
-          if "-DCMAKE_DISABLE_FIND_PACKAGE_GD=TRUE" not in text:
-              text = text.replace(
-                  "    -DCMAKE_DISABLE_FIND_PACKAGE_ANN=TRUE\n",
-                  "    -DCMAKE_DISABLE_FIND_PACKAGE_ANN=TRUE\n"
-                  f"{extra}",
-              )
-              path.write_text(text)
-          PY
-          ./scripts/build-windows.sh --arch arm64
-          native_dir="$(cygpath -m "$(pwd)/output/windows-arm64")"
-          echo "GRAPHVIZ_ANYWHERE_DIR=${native_dir}" >> "$GITHUB_ENV"
-          echo "Using local Graphviz native runtime: ${native_dir}"
-
       - name: Build installer
         if: ${{ !startsWith(matrix.platform, 'ubuntu-') }}
         uses: tauri-apps/tauri-action@v0
@@ -246,18 +195,54 @@ jobs:
           set -euo pipefail
           npm install -g @tauri-apps/cli@v2
           cd crates/gui
-          tauri --verbose build --no-bundle --target ${{ matrix.target }}
-          graphviz_lib="$(
-            find "../../target/${{ matrix.target }}/release/build" "../../target/release/build" \
-              -name libgraphviz_api.so -type f -print -quit
-          )"
-          if [ -z "$graphviz_lib" ]; then
-            echo "Unable to locate graphviz-anywhere native runtime after no-bundle build"
+          tauri --verbose build ${{ matrix.args }}
+
+      - name: Verify Graphviz static linkage (macOS / Linux)
+        if: runner.os != 'Windows'
+        shell: bash
+        run: |
+          set -euo pipefail
+          binary="target/${{ matrix.target }}/release/markon-gui"
+          if [ ! -x "$binary" ]; then
+            echo "Markon executable not found: $binary" >&2
             exit 1
           fi
-          export LD_LIBRARY_PATH="$(dirname "$graphviz_lib"):${LD_LIBRARY_PATH:-}"
-          echo "Using Graphviz runtime for linuxdeploy: $graphviz_lib"
-          tauri --verbose build ${{ matrix.args }}
+          case "${{ matrix.target }}" in
+            *-apple-darwin) dependencies="$(otool -L "$binary")" ;;
+            *-linux-gnu) dependencies="$(ldd "$binary")" ;;
+            *) echo "Unsupported dependency-inspection target" >&2; exit 1 ;;
+          esac
+          printf '%s\n' "$dependencies"
+          if grep -qi graphviz <<<"$dependencies"; then
+            echo "Unexpected Graphviz dynamic-library dependency" >&2
+            exit 1
+          fi
+
+      - name: Verify Graphviz static linkage (Windows)
+        if: runner.os == 'Windows'
+        shell: powershell
+        run: |
+          $binary = "target\${{ matrix.target }}\release\markon-gui.exe"
+          if (-not (Test-Path $binary)) {
+            throw "Markon executable not found: $binary"
+          }
+          $vswhere = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe"
+          $installation = & $vswhere -latest -products "*" -prerelease -property installationPath
+          if (-not $installation) {
+            throw "Visual Studio installation not found"
+          }
+          $targetArch = if ("${{ matrix.target }}" -like "aarch64-*") { "arm64" } else { "x64" }
+          $dumpbin = Get-ChildItem "$installation\VC\Tools\MSVC\*\bin\Host*\$targetArch\dumpbin.exe" |
+            Sort-Object FullName |
+            Select-Object -Last 1
+          if (-not $dumpbin) {
+            throw "dumpbin not found for $targetArch"
+          }
+          $dependencies = & $dumpbin.FullName /DEPENDENTS $binary | Out-String
+          Write-Output $dependencies
+          if ($dependencies -match "(?i)graphviz") {
+            throw "Unexpected Graphviz DLL dependency"
+          }
 
       - name: Upload Linux installer artifacts
         if: startsWith(matrix.platform, 'ubuntu-')
@@ -277,88 +262,6 @@ jobs:
             gh release upload "$TAG" "$artifact" --clobber
             echo "Uploaded: $(basename "$artifact")"
           done
-
-      # tauri-action uploads the DMG before we can mutate the .app bundle.
-      # The Graphviz runtime dylib is required at process launch, so patch the
-      # generated macOS app, rebuild the DMG under the same filename, and
-      # replace the uploaded release asset. The local build-dmg.sh script does
-      # this before creating its DMG; this step keeps release builds equivalent.
-      - name: Bundle Graphviz dylib into macOS DMG
-        if: contains(matrix.target, 'apple-darwin')
-        shell: bash
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          APPLE_SIGNING_IDENTITY: "-"
-        run: |
-          set -euo pipefail
-
-          TAG="${{ env.RELEASE_TAG }}"
-          TARGET="${{ matrix.target }}"
-          APP_BUNDLE="target/$TARGET/release/bundle/macos/Markon.app"
-          DMG=$(find "target/$TARGET/release/bundle/dmg" -maxdepth 1 -name "*.dmg" -type f | head -1)
-
-          if [ -z "$DMG" ]; then
-            echo "No macOS DMG found for $TARGET"
-            exit 1
-          fi
-
-          WORK_DIR=$(mktemp -d)
-          MOUNT_DIR="$WORK_DIR/mount"
-          VERIFY_DIR="$WORK_DIR/verify"
-          PATCH_DIR="$WORK_DIR/app"
-          DMG_ROOT="$WORK_DIR/dmg-root"
-          NEW_DMG="$WORK_DIR/$(basename "$DMG")"
-          mkdir -p "$PATCH_DIR" "$DMG_ROOT"
-
-          cleanup_mounts() {
-            if mount | grep -q "on $MOUNT_DIR "; then
-              hdiutil detach "$MOUNT_DIR" -quiet || true
-            fi
-            if mount | grep -q "on $VERIFY_DIR "; then
-              hdiutil detach "$VERIFY_DIR" -quiet || true
-            fi
-          }
-          trap cleanup_mounts EXIT
-
-          if [ -d "$APP_BUNDLE" ]; then
-            cp -R "$APP_BUNDLE" "$PATCH_DIR/"
-          else
-            mkdir -p "$MOUNT_DIR"
-            hdiutil attach "$DMG" -mountpoint "$MOUNT_DIR" -nobrowse -quiet
-            SRC_APP=$(find "$MOUNT_DIR" -maxdepth 1 -name "*.app" -type d | head -1)
-            if [ -z "$SRC_APP" ]; then
-              echo "No .app bundle found inside $DMG"
-              exit 1
-            fi
-            cp -R "$SRC_APP" "$PATCH_DIR/"
-            hdiutil detach "$MOUNT_DIR" -quiet
-          fi
-
-          PATCHED_APP=$(find "$PATCH_DIR" -maxdepth 1 -name "*.app" -type d | head -1)
-          if [ -z "$PATCHED_APP" ]; then
-            echo "No .app bundle available for Graphviz patching"
-            exit 1
-          fi
-
-          scripts/macos-bundle-graphviz.sh "$PATCHED_APP" "$TARGET"
-
-          rm -rf "$(dirname "$APP_BUNDLE")"
-          mkdir -p "$(dirname "$APP_BUNDLE")"
-          cp -R "$PATCHED_APP" "$APP_BUNDLE"
-
-          cp -R "$PATCHED_APP" "$DMG_ROOT/"
-          ln -s /Applications "$DMG_ROOT/Applications"
-          hdiutil create -volname "Markon" -srcfolder "$DMG_ROOT" -ov -format UDZO -fs HFS+ "$NEW_DMG"
-          cp "$NEW_DMG" "$DMG"
-
-          mkdir -p "$VERIFY_DIR"
-          hdiutil attach "$DMG" -mountpoint "$VERIFY_DIR" -nobrowse -quiet
-          VERIFY_APP=$(find "$VERIFY_DIR" -maxdepth 1 -name "*.app" -type d | head -1)
-          test -f "$VERIFY_APP/Contents/Frameworks/libgraphviz_api.dylib"
-          hdiutil detach "$VERIFY_DIR" -quiet
-
-          gh release upload "$TAG" "$DMG" --clobber
-          echo "Replaced macOS DMG with Graphviz-bundled app: $(basename "$DMG")"
 
       # tauri-bundler names the AppImage with mixed arch styles: x86_64 ->
       # `amd64` (Debian) but aarch64 stays `aarch64` (GNU). Rename the ARM

@@ -5,6 +5,7 @@
  */
 
 import { CONFIG } from '../core/config';
+import { workspaceWebSocketUrl } from '../core/routes';
 import { Logger } from '../core/utils';
 
 /** Connection state machine. */
@@ -58,6 +59,10 @@ export type WsOutbound =
 /** Outbound messages that participate in op_id-based echo dedup. */
 export type WsOutboundWithOpId = Exclude<WsOutbound, { type: 'live_action' }>;
 
+export type WsTarget =
+    | { kind: 'document'; path: string }
+    | { kind: 'surface'; key: string };
+
 /**
  * Generate a 64-bit (16 hex chars) random id, used to tag outgoing mutating
  * frames so the originator can recognise its own echo. The space is plenty
@@ -87,7 +92,8 @@ export type StateChangeCallback = (newState: WSStateValue, oldState: WSStateValu
 export class WebSocketManager {
     #ws: WebSocket | null = null;
     #state: WSStateValue = WSState.DISCONNECTED;
-    #filePath: string;
+    #workspaceId: string;
+    #target: WsTarget;
     #reconnectAttempts = 0;
     #reconnectTimer: ReturnType<typeof setTimeout> | null = null;
     #stabilityTimer: ReturnType<typeof setTimeout> | null = null;
@@ -111,8 +117,9 @@ export class WebSocketManager {
      */
     #outgoingOpIds = new Map<string, number>();
 
-    constructor(filePath: string) {
-        this.#filePath = filePath;
+    constructor(workspaceId: string, target: WsTarget) {
+        this.#workspaceId = workspaceId;
+        this.#target = target;
     }
 
     /** Returns the underlying native WebSocket (kept for back-compat callers). */
@@ -132,7 +139,7 @@ export class WebSocketManager {
         return new Promise<void>((resolve, reject) => {
             try {
                 const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-                const wsUrl = `${wsProtocol}//${window.location.host}/_/ws`;
+                const wsUrl = `${wsProtocol}//${window.location.host}${workspaceWebSocketUrl(this.#workspaceId)}`;
 
                 Logger.log('WebSocket', `Connecting to ${wsUrl}...`);
                 this.#ws = new WebSocket(wsUrl);
@@ -141,10 +148,12 @@ export class WebSocketManager {
                     Logger.log('WebSocket', 'Connected successfully');
                     this.#setState(WSState.CONNECTED);
 
-                    // Send the file path as the first frame.
-                    if (this.#filePath && this.#ws) {
-                        this.#ws.send(this.#filePath);
-                        Logger.log('WebSocket', `Sent file path: ${this.#filePath}`);
+                    // Declare the authorized document/surface channel before
+                    // any collaboration message. The server rejects malformed,
+                    // out-of-workspace, and feature-incompatible targets.
+                    if (this.#ws) {
+                        this.#ws.send(JSON.stringify({ type: 'hello', target: this.#target }));
+                        Logger.log('WebSocket', `Sent ${this.#target.kind} hello`);
                     }
 
                     // Reset reconnect counter once the connection has been

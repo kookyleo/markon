@@ -147,6 +147,13 @@ async function build() {
     format: 'iife',
     target: ['es2022'],
   };
+  const adminBootstrapOpts = {
+    ...shared,
+    entryPoints: [resolve(srcDir, 'admin-bootstrap.ts')],
+    outfile: resolve(outDir, 'admin-bootstrap.js'),
+    format: 'iife',
+    target: ['es2022'],
+  };
   const gitRefsOpts = {
     ...shared,
     entryPoints: [resolve(srcDir, 'git-refs.ts')],
@@ -203,6 +210,7 @@ async function build() {
     const ctxDirectory = await esbuild.context(directoryOpts);
     const ctxLayoutPage = await esbuild.context(layoutPageOpts);
     const ctxAccessGate = await esbuild.context(accessGateOpts);
+    const ctxAdminBootstrap = await esbuild.context(adminBootstrapOpts);
     const ctxGitRefs = await esbuild.context(gitRefsOpts);
     const ctxPageShortcuts = await esbuild.context(pageShortcutsOpts);
     const ctxMathRender = await esbuild.context(mathRenderOpts);
@@ -218,6 +226,7 @@ async function build() {
     await ctxDirectory.watch();
     await ctxLayoutPage.watch();
     await ctxAccessGate.watch();
+    await ctxAdminBootstrap.watch();
     await ctxGitRefs.watch();
     await ctxPageShortcuts.watch();
     await ctxMathRender.watch();
@@ -236,6 +245,7 @@ async function build() {
       esbuild.build(directoryOpts),
       esbuild.build(layoutPageOpts),
       esbuild.build(accessGateOpts),
+      esbuild.build(adminBootstrapOpts),
       esbuild.build(gitRefsOpts),
       esbuild.build(pageShortcutsOpts),
       esbuild.build(mathRenderOpts),

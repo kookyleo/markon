@@ -47,7 +47,11 @@ impl Tool for ListDirTool {
 
         let rel_arg = args.path.as_deref().unwrap_or("");
         let abs = if rel_arg.is_empty() {
-            ctx.workspace_root.clone()
+            if let Some(root) = ctx.directory_root() {
+                root.to_path_buf()
+            } else {
+                return Ok(list_single_file_root(ctx));
+            }
         } else {
             ctx.resolve(rel_arg)?
         };
@@ -134,6 +138,16 @@ impl Tool for ListDirTool {
 
         Ok(out)
     }
+}
+
+fn list_single_file_root(ctx: &ToolContext) -> String {
+    let files = ctx.content_files(1);
+    let mut out = format!("Listing ./ (0 dirs, {} files)\n", files.len());
+    for (rel, path) in files {
+        let size = std::fs::metadata(path).map(|meta| meta.len()).unwrap_or(0);
+        out.push_str(&format!("{rel}  ({})\n", human_size(size)));
+    }
+    out
 }
 
 /// Best-effort relative-path normalization for the header line — replaces

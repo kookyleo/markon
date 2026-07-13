@@ -7,7 +7,7 @@
 //!   - return at most `limit` matches, one path per line (workspace-relative)
 //!   - if more matches exist, append "... (N more matches)".
 
-use super::{default_walker, Tool, ToolContext, ToolError, MAX_TOOL_OUTPUT_BYTES};
+use super::{Tool, ToolContext, ToolError, MAX_TOOL_OUTPUT_BYTES};
 use async_trait::async_trait;
 use globset::Glob;
 use serde::Deserialize;
@@ -61,7 +61,6 @@ impl Tool for GlobTool {
             })?
             .compile_matcher();
 
-        let walker = default_walker(&ctx.workspace_root).build();
         let mut matches: Vec<String> = Vec::new();
         // Cumulative byte budget. The previous implementation collected
         // every match, formatted them all into one String, then truncated.
@@ -73,34 +72,18 @@ impl Tool for GlobTool {
         let mut bytes_used: usize = 0;
         let mut over_budget = false;
 
-        for entry in walker {
-            let entry = match entry {
-                Ok(e) => e,
-                Err(_) => continue,
-            };
-            // Only consider regular files; gitignore directory pruning is done
-            // by the walker itself.
-            let is_file = entry.file_type().map(|t| t.is_file()).unwrap_or(false);
-            if !is_file {
+        for (rel, _) in ctx.content_files(100_000) {
+            if !matcher.is_match(&rel) {
                 continue;
             }
-            let rel = match entry.path().strip_prefix(&ctx.workspace_root) {
-                Ok(r) => r,
-                Err(_) => continue,
-            };
-            if !matcher.is_match(rel) {
-                continue;
-            }
-            // Forward-slash normalize for stable cross-OS citations.
-            let line = super::path_to_forward_slash(rel);
             // +1 for the newline that joins this line to the previous one.
-            let line_cost = line.len() + 1;
+            let line_cost = rel.len() + 1;
             if bytes_used + line_cost > MAX_TOOL_OUTPUT_BYTES {
                 over_budget = true;
                 break;
             }
             bytes_used += line_cost;
-            matches.push(line);
+            matches.push(rel);
         }
 
         matches.sort();

@@ -75,6 +75,10 @@ struct Cli {
     #[arg(long, alias = "qr", value_name = "URL_PREFIX", action = clap::ArgAction::Set, num_args = 0..=1, default_missing_value = "missing")]
     entry: Option<String>,
 
+    /// Additional exact Host/origin accepted by the server (repeatable).
+    #[arg(long = "trusted-host", value_name = "HOST_OR_ORIGIN", action = clap::ArgAction::Append)]
+    trusted_hosts: Vec<String>,
+
     /// Automatically open browser (best-effort). Default is true if a path is provided.
     #[arg(short = 'b', long, value_name = "BASE_URL", action = clap::ArgAction::Set, num_args = 0..=1, default_missing_value = "local")]
     open_browser: Option<String>,
@@ -99,6 +103,11 @@ struct Cli {
 
 #[derive(clap::Subcommand, Debug)]
 enum Commands {
+    /// Create an explicit administrator browser session.
+    Admin {
+        #[command(subcommand)]
+        command: AdminCommands,
+    },
     /// List all active workspaces in the running server.
     Ls {
         /// Output format.
@@ -148,6 +157,14 @@ enum Commands {
         #[arg(long, short = 'b')]
         body: Option<String>,
     },
+}
+
+#[derive(clap::Subcommand, Debug)]
+enum AdminCommands {
+    /// Open a browser and redeem a one-time fragment nonce.
+    Open,
+    /// Print a one-time pairing code for manual browser entry.
+    Code,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, clap::ValueEnum)]
@@ -344,6 +361,7 @@ fn resolve_workspace_collaborator_hash_from_env_or_cli(
     resolve_workspace_collaborator_hash(saved_collaborator_hash, collaborator_access_code, salt)
 }
 
+#[cfg(any(unix, test))]
 fn daemon_args_without_access_codes<I>(args: I) -> Vec<String>
 where
     I: IntoIterator<Item = String>,
@@ -420,24 +438,6 @@ fn build_workspace_access_summary(
         public_url,
         qr_url,
     }
-}
-
-fn build_browser_target_url(
-    featured_workspace_url: &str,
-    workspace_id: &str,
-    initial_path: Option<&str>,
-    open_browser: Option<&str>,
-) -> Option<String> {
-    open_browser.map(|base| {
-        if base == "local" {
-            featured_workspace_url.to_string()
-        } else {
-            server::build_workspace_url(
-                base,
-                &server::workspace_url_path(workspace_id, initial_path),
-            )
-        }
-    })
 }
 
 fn resolve_workspace_list_base(
@@ -724,6 +724,73 @@ async fn shutdown_server(port: u16, token: &str) -> Result<(), Box<dyn std::erro
     Ok(())
 }
 
+#[derive(Serialize)]
+struct AdminBootstrapRequest<'a> {
+    mode: &'a str,
+    redirect: &'a str,
+}
+
+#[derive(Deserialize)]
+struct AdminBootstrapResponse {
+    path: String,
+    nonce: Option<String>,
+    code: Option<String>,
+}
+
+async fn request_admin_bootstrap(
+    port: u16,
+    token: &str,
+    mode: &str,
+    redirect: &str,
+) -> Result<AdminBootstrapResponse, Box<dyn std::error::Error>> {
+    Ok(reqwest::Client::new()
+        .post(format!("http://127.0.0.1:{port}/api/admin/bootstrap"))
+        .header("X-Markon-Token", token)
+        .json(&AdminBootstrapRequest { mode, redirect })
+        .send()
+        .await?
+        .error_for_status()?
+        .json()
+        .await?)
+}
+
+async fn admin_browser_command(
+    port: u16,
+    token: &str,
+    command: AdminCommands,
+) -> Result<(), Box<dyn std::error::Error>> {
+    let client = reqwest::Client::new();
+    let workspaces = fetch_workspaces(&client, port, token).await?;
+    let redirect = workspaces
+        .first()
+        .map(|workspace| server::workspace_url_path(&workspace.id, None))
+        .unwrap_or_else(|| "/".to_string());
+    let base = format!("http://127.0.0.1:{port}");
+    match command {
+        AdminCommands::Open => {
+            let bootstrap = request_admin_bootstrap(port, token, "url", &redirect).await?;
+            let nonce = bootstrap.nonce.ok_or("server did not return a nonce")?;
+            let url = format!(
+                "{}#nonce={nonce}",
+                server::build_workspace_url(&base, &bootstrap.path)
+            );
+            open::that(&url)?;
+            println!("Administrator session opened in your browser.");
+        }
+        AdminCommands::Code => {
+            let bootstrap = request_admin_bootstrap(port, token, "code", &redirect).await?;
+            let code = bootstrap
+                .code
+                .ok_or("server did not return a pairing code")?;
+            let url = server::build_workspace_url(&base, &bootstrap.path);
+            println!("Open: {url}");
+            println!("One-time administrator code: {code}");
+            println!("Expires in 5 minutes and is invalidated after 5 failed attempts.");
+        }
+    }
+    Ok(())
+}
+
 async fn add_or_update_workspace(
     port: u16,
     token: &str,
@@ -833,6 +900,7 @@ async fn main() {
         };
 
         let res = match cmd {
+            Commands::Admin { command } => admin_browser_command(port, &token, command).await,
             Commands::Ls { format } => {
                 // Reproduce the daemon's reachable URLs: bind host from the
                 // lock, advertised preference from the shared global config.
@@ -943,6 +1011,10 @@ async fn main() {
     });
 
     let advertised_host = settings.advertised_host.clone();
+    let mut trusted_hosts = settings.trusted_hosts.clone();
+    trusted_hosts.extend(cli.trusted_hosts.iter().cloned());
+    trusted_hosts.sort();
+    trusted_hosts.dedup();
     // Bind host used to build the printed / opened URLs in the register and
     // spawn paths (never prompts; `--host select` is resolved interactively
     // only in the foreground server path below).
@@ -981,14 +1053,31 @@ async fn main() {
                         cli.entry.as_deref(),
                     );
                     print_workspace_access_summary(&summary);
-                    if let Some(browser_url) = build_browser_target_url(
-                        &summary.featured_url,
-                        &workspace_id,
-                        initial_path.as_deref(),
-                        open_browser_target.as_deref(),
-                    ) {
-                        if let Err(e) = open::that(&browser_url) {
-                            tracing::warn!("best-effort browser open failed: {e}");
+                    if let Some(base_option) = open_browser_target.as_deref() {
+                        let base = if base_option == "local" {
+                            server::featured_base_url(&bind_host, &advertised_host, lock.port)
+                        } else {
+                            base_option.to_string()
+                        };
+                        let redirect =
+                            server::workspace_url_path(&workspace_id, initial_path.as_deref());
+                        match request_admin_bootstrap(lock.port, &lock.token, "url", &redirect)
+                            .await
+                        {
+                            Ok(bootstrap) => {
+                                if let Some(nonce) = bootstrap.nonce {
+                                    let browser_url = format!(
+                                        "{}#nonce={nonce}",
+                                        server::build_workspace_url(&base, &bootstrap.path)
+                                    );
+                                    if let Err(e) = open::that(&browser_url) {
+                                        tracing::warn!("best-effort browser open failed: {e}");
+                                    }
+                                } else {
+                                    tracing::warn!("server returned no browser bootstrap nonce");
+                                }
+                            }
+                            Err(e) => tracing::warn!("failed to create browser admin session: {e}"),
                         }
                     }
                 }
@@ -1121,6 +1210,7 @@ async fn main() {
             _ => configured_host.clone(),
         },
         advertised_host,
+        trusted_hosts,
         port: cli.port,
         theme: "auto".to_string(),
         qr: cli.entry,
@@ -1132,6 +1222,7 @@ async fn main() {
         bound_listener: None,
         registry: Some(registry),
         management_token: None,
+        admin_bootstraps: None,
         language,
         shortcuts_json,
         styles_css,
@@ -1150,6 +1241,24 @@ async fn main() {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn admin_subcommands_parse_without_exposing_management_tokens() {
+        let open = Cli::try_parse_from(["markon", "admin", "open"]).unwrap();
+        assert!(matches!(
+            open.command,
+            Some(Commands::Admin {
+                command: AdminCommands::Open
+            })
+        ));
+        let code = Cli::try_parse_from(["markon", "admin", "code"]).unwrap();
+        assert!(matches!(
+            code.command,
+            Some(Commands::Admin {
+                command: AdminCommands::Code
+            })
+        ));
+    }
 
     #[test]
     fn workspace_summary_lists_local_and_public_urls() {

@@ -1,17 +1,8 @@
 {
-  "build": {
-    "beforeBundleCommand": {
-      "script": "bash ../../scripts/prepare-macos-graphviz-framework.sh",
-      "cwd": "."
-    }
-  },
   "bundle": {
     "macOS": {
       "signingIdentity": "-",
-      "entitlements": "Entitlements.plist",
-      "frameworks": [
-        "../../target/tauri-macos-frameworks/libgraphviz_api.dylib"
-      ]
+      "entitlements": "Entitlements.plist"
     }
   }
 }

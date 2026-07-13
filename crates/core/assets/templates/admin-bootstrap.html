@@ -1,0 +1,77 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="{{ theme }}" data-theme-default="{{ theme }}">
+<head>
+  {% include "theme-boot.html" %}
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Markon Admin</title>
+  <link rel="stylesheet" href="/_/css/tokens.css">
+  <style>
+    html, body { height: 100%; }
+    body {
+      margin: 0;
+      padding: 16vh 16px 24px;
+      box-sizing: border-box;
+      display: flex;
+      align-items: flex-start;
+      justify-content: center;
+      font-family: var(--markon-ui-font);
+      background: var(--markon-bg-default);
+      color: var(--markon-fg-default);
+    }
+    .admin-bootstrap {
+      width: 360px;
+      max-width: calc(100vw - 32px);
+      box-sizing: border-box;
+      padding: 28px 24px;
+      border: 1px solid var(--markon-border-default);
+      border-radius: var(--markon-radius-lg);
+      background: var(--markon-bg-elevated);
+      box-shadow: var(--markon-shadow-modal);
+    }
+    h1 { margin: 0 0 6px; font-size: 17px; }
+    p { margin: 0 0 16px; color: var(--markon-fg-muted); font-size: 13px; line-height: 1.5; }
+    input {
+      width: 100%;
+      box-sizing: border-box;
+      padding: 9px 10px;
+      border: 1px solid var(--markon-border-default);
+      border-radius: var(--markon-radius-sm);
+      background: var(--markon-bg-default);
+      color: var(--markon-fg-default);
+      font: inherit;
+      text-transform: uppercase;
+      letter-spacing: .08em;
+    }
+    button {
+      width: 100%;
+      margin-top: 12px;
+      padding: 9px;
+      border: 0;
+      border-radius: var(--markon-radius-sm);
+      background: var(--markon-accent);
+      color: var(--markon-fg-on-emphasis);
+      font: inherit;
+      font-weight: 500;
+      cursor: pointer;
+    }
+    button:disabled { opacity: .5; cursor: not-allowed; }
+    .status { min-height: 1.4em; margin-top: 10px; font-size: 12px; color: var(--markon-fg-muted); }
+    .status.is-error { color: var(--markon-danger); }
+  </style>
+</head>
+<body>
+  <main class="admin-bootstrap">
+    <h1 data-i18n="admin.title"></h1>
+    <p data-i18n="admin.prompt"></p>
+    <form id="admin-code-form">
+      <input id="admin-code" type="text" inputmode="text" autocomplete="one-time-code"
+             data-i18n-ph="admin.code.placeholder" autofocus>
+      <button type="submit" data-i18n="admin.submit"></button>
+    </form>
+    <div class="status" id="admin-status" role="status" aria-live="polite"></div>
+  </main>
+  {% include "i18n-boot.html" %}
+  <script src="/_/js/admin-bootstrap.js"></script>
+</body>
+</html>

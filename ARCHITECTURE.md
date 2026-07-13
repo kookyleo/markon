@@ -51,12 +51,16 @@ Markon 的用户数据**独立于进程**,持久在 `~/.markon/`:
   继续返回 404。
 - **Workspace 内部功能空间**:`/_/{workspace_id}/...`。所有不代表文件本身的工作区级页面 /
   数据 / 操作都放在这里,例如 `compare`, `git`, `files`, `settings`, `chat`, `search`。
+  批注 / Live 协作 WebSocket 也只能使用 `/_/{workspace_id}/ws`,使访问码门禁和资源能力在
+  HTTP upgrade 前就能绑定到明确 workspace。
   这样不会占用用户文件名空间,也能在视觉上明确区分“内容 URL”和“工具 URL”。
-- **全局系统空间**:`/_/...`。静态资源、WebSocket、unlock、dev reload 等不属于某个文件路径的
-  系统能力放在这里。
+- **全局系统空间**:`/_/...`。静态资源、unlock、dev reload 等不属于某个文件路径的系统能力
+  放在这里。`/_/ws/{workspace_id}` 仅保留为工作区配置变更通知通道,不是协作数据通道。
 - **JSON / 管理 API**:`/api/...`。CLI/GUI 管理、保存、chat agent 等程序接口保持在 API
-  命名空间内,并由各自 token / same-origin / loopback gate 控制。
+  命名空间内,并由各自 capability token / admin session / same-origin gate 控制。TCP 来源地址
+  只用于限流与缩小原生管理 API 的暴露面,不得作为管理员身份。
 - **废弃路径**:`/{workspace_id}/_/...` 与旧 `/search?ws=...` 不提供兼容;
+  旧协作通道 `/_/ws` 同样不提供兼容;
   这类路径要么按用户文件路径处理,要么返回 404。新链接必须使用 `/_/{workspace_id}/...`。
 
 实现约束:后端新增 URL 必须优先通过 `server.rs` 中的 route helper 生成;前端新增 URL 必须优先
@@ -119,14 +123,20 @@ Markon 的用户数据**独立于进程**,持久在 `~/.markon/`:
   在各自层面都做得更干净。**关注点分离:通道在 markon 之下,app 保持纯 HTTP。**
 
 **正交的应用层控制(markon 确实提供)**:
-- **按来源分权**(授权层):**本机(loopback)= 管理员**,免码放行全部能力(改功能开关 /
-  别名、增删工作区、git commit/checkout、增删文件);**远程 = 协作者**,能力由该工作区的
-  功能开关(feature flags)决定,不能做管理 / 结构性操作。
+- **显式 capability 分权**(授权层):浏览器默认是 Viewer / Collaborator;只有持有短期、
+  `HttpOnly` Admin session 的页面才能改功能开关 / 别名、执行 git commit/checkout、增删文件。
+  TCP peer 即使是 loopback 也不会自动成为管理员。原生 CLI / GUI 使用仅存于 0600 lock file /
+  原生进程内的 management token,不把它注入页面。
+- **管理员 bootstrap**:`markon admin open` 通过 URL fragment 传递 256-bit、60 秒、一次性 nonce;
+  `markon admin code` 提供 5 分钟、最多 5 次尝试的手动配对码。两者只兑换同一种 12 小时
+  Admin session,服务重启即失效。fragment 在发起兑换前从地址栏 / 历史中清除。
 - **可选协作者访问码门禁**(认证层,见 `server.rs` 的 access gate / `access_scope_for`)——
-  只拦**远程**访客(本机始终放行),两级就近覆盖(全局 + 按工作区);解决「知道 URL 就能进」,
-  与 TLS(保密层)是**两件不同的事**。
-- 一旦经任意 HTTPS 暴露,协作者访问码 cookie 应按 `X-Forwarded-Proto: https` 条件追加 `Secure`
-  (**尚未实现**,留作正式上线 HTTPS 时的小跟进)。
+  对所有非 Admin 浏览器一致生效,不因 loopback 绕过;两级就近覆盖(全局 + 按工作区)。
+- **Host / Origin 边界**:每个请求的 Host 必须属于 localhost、实际绑定 / advertised 地址、
+  `--entry` 或显式 `trusted_hosts`。`Origin == Host` 只负责同源,不能替代 Host allowlist;
+  这两层共同阻断 DNS rebinding。反向代理头不参与身份授权。
+- **Cookie**:协作者与 Admin cookie 均使用 HMAC-SHA256;显式 HTTPS origin 下追加 `Secure`。
+  Cookie 算法升级会让旧 cookie 一次性失效,不影响任何持久化数据。
 
 **按访问方式的推荐**:`localhost` → 无需任何加密;内网 IP 自用 → Tailscale(或纯本地、
 零依赖时用可选自签名);公网域名 → 反代 + Let's Encrypt。

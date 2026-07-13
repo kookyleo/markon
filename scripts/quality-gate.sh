@@ -21,6 +21,9 @@ if command -v cargo >/dev/null 2>&1; then
   step "cargo fmt --check"
   cargo fmt --check || fail "Formatting issues — run 'cargo fmt' first"
 
+  step "Graphviz static-link policy"
+  scripts/check-graphviz-link-policy.sh || fail "Legacy Graphviz runtime wiring found"
+
   step "cargo clippy --all-targets --all-features -- -D warnings"
   cargo clippy --all-targets --all-features --quiet -- -D warnings || fail "Clippy warnings must be resolved"
 

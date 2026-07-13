@@ -67,9 +67,12 @@ walkdir = "2.5.0"
 notify = "6.1.1"
 sys-locale = "0.3"
 sha2 = "0.10"
+hmac = "0.12"
+getrandom = "0.3"
 mime_guess = "2.0"
 rayon = "1.12"
 arc-swap = "1.9"
+cap-std = "4.0"
 ignore = "0.4"
 globset = "0.4"
 similar = "2.7"
@@ -102,3 +105,5 @@ version = "0.1.4"
 
 [dev-dependencies]
 tempfile = "3.27"
+tower = { version = "0.5", features = ["util"] }
+tokio-tungstenite = "0.29"

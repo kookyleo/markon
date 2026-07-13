@@ -1,8 +1,10 @@
 use local_ip_address::list_afinet_netifas;
 use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
+#[cfg(unix)]
 use std::ffi::CString;
 use std::net::{IpAddr, Ipv6Addr, SocketAddr, SocketAddrV6};
+#[cfg(unix)]
 use std::os::raw::{c_char, c_uint};
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]

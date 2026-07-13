@@ -232,6 +232,10 @@ pub struct AppSettings {
     /// auto-open. Empty = no preference (fall back to the first interface).
     #[serde(default)]
     pub advertised_host: String,
+    /// Additional exact host names/origins accepted by the HTTP rebinding
+    /// boundary (for reverse proxies, mDNS, or custom local DNS).
+    #[serde(default)]
+    pub trusted_hosts: Vec<String>,
     pub theme: String,
     #[serde(default = "default_auto")]
     pub language: String,
@@ -315,6 +319,7 @@ impl Default for AppSettings {
             port: 6419,
             host: "127.0.0.1".to_string(),
             advertised_host: String::new(),
+            trusted_hosts: Vec::new(),
             theme: "auto".to_string(),
             language: "auto".to_string(),
             web_theme: "auto".to_string(),
@@ -412,6 +417,7 @@ impl AppSettings {
         recover_field(object, "port", &mut settings.port);
         recover_field(object, "host", &mut settings.host);
         recover_field(object, "advertised_host", &mut settings.advertised_host);
+        recover_field(object, "trusted_hosts", &mut settings.trusted_hosts);
         recover_field(object, "theme", &mut settings.theme);
         recover_field(object, "language", &mut settings.language);
         recover_field(object, "web_theme", &mut settings.web_theme);
@@ -564,6 +570,7 @@ impl AppSettings {
         ServerConfig {
             host: self.host.clone(),
             advertised_host: self.advertised_host.clone(),
+            trusted_hosts: self.trusted_hosts.clone(),
             port,
             // Web pages resolve theme at runtime and persist page-local
             // overrides in the browser. The persisted `web_theme` field is
@@ -579,6 +586,7 @@ impl AppSettings {
             bound_listener: None,
             registry: None,
             management_token: None,
+            admin_bootstraps: None,
             language: if self.web_language == "auto" {
                 Some(self.language.clone())
             } else {
@@ -1392,8 +1400,11 @@ mod tests {
         let s2 = AppSettings {
             host: "0.0.0.0".to_string(),
             advertised_host: "192.168.1.20".to_string(),
+            trusted_hosts: vec!["https://md.example.com".to_string()],
             ..AppSettings::default()
         };
-        assert_eq!(s2.to_server_config(6419).advertised_host, "192.168.1.20");
+        let config = s2.to_server_config(6419);
+        assert_eq!(config.advertised_host, "192.168.1.20");
+        assert_eq!(config.trusted_hosts, ["https://md.example.com"]);
     }
 }

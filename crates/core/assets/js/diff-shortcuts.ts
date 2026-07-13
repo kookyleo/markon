@@ -34,15 +34,22 @@ const CHANGE_SELECTOR =
     '.diff-change-block.is-modified, .diff-change-block.is-added, .diff-change-block.is-deleted';
 
 const workspaceRouteKey = (): string =>
-    `${window.location.pathname}${window.location.search}${window.location.hash}`;
+    `${window.location.pathname}${window.location.search}`;
 
 const initWorkspaceSurfaces = async (): Promise<CollaborationManager | null> => {
     const enableLive = Meta.flag(CONFIG.META_TAGS.ENABLE_LIVE);
-    const sharedAnnotation = Meta.flag(CONFIG.META_TAGS.SHARED_ANNOTATION);
     let collaboration: CollaborationManager | null = null;
 
-    if (enableLive || sharedAnnotation) {
-        const ws = new WebSocketManager(workspaceRouteKey());
+    if (enableLive) {
+        const workspaceId = Meta.get(CONFIG.META_TAGS.WORKSPACE_ID);
+        if (!workspaceId) {
+            Logger.warn('DiffShortcuts', 'Collaboration enabled without workspace-id; skipping');
+            return null;
+        }
+        const ws = new WebSocketManager(workspaceId, {
+            kind: 'surface',
+            key: workspaceRouteKey(),
+        });
         try {
             await ws.connect();
             const socket = ws.getWebSocket();

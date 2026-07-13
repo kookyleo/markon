@@ -127,8 +127,9 @@ markon <COMMAND>
 | `-p, --port <PORT>` | 服务端口，默认 `6419` |
 | `--host [IP]` | 绑定地址；不传值时打开网卡选择器，`0.0.0.0` 表示所有接口 |
 | `--entry, --qr [URL_PREFIX]` | 公共 URL 前缀和二维码目标；不传值时使用首选可访问地址 |
+| `--trusted-host <HOST_OR_ORIGIN>` | 额外允许的精确 Host / HTTPS origin，可重复 |
 | `-b, --open-browser [BASE_URL]` | 打开浏览器；可选 BASE_URL 用于反向代理场景 |
-| `--collaborator-access-code <CODE>` | 设置或清除该工作区的远程协作者门禁码 |
+| `--collaborator-access-code <CODE>` | 设置或清除该工作区的非管理员浏览器门禁码 |
 | `--print-collapsed-content` | 打印时包含折叠章节的正文 |
 | `--salt <SALT>` | 高级选项：覆盖 workspace ID 的生成 salt |
 
@@ -139,6 +140,7 @@ markon <COMMAND>
 | `markon ls [--format cards\|table]` | 列出活跃工作区和功能状态 |
 | `markon detach <ID\|序号>` | 从运行中的服务移除工作区 |
 | `markon set <ID\|序号> <FEATURE> <on\|off>` | 开关 `search`、`viewed`、`edit`、`live`、`chat` 或 `shared` |
+| `markon admin open` / `markon admin code` | 自动 / 通过配对码创建管理员浏览器会话 |
 | `markon shutdown` | 关闭后台服务 |
 | `markon bug` | 通过已登录的 `gh` 起草并打开 GitHub Bug |
 | `markon idea` | 通过 `gh` 创建 GitHub Discussion 功能建议 |
@@ -156,7 +158,7 @@ markon --host 192.168.1.5 docs/
 # 声明 HTTPS 反向代理对外提供的公共地址。
 markon --entry https://docs.example.com docs/
 
-# 给该工作区的远程访客设置门禁，本机访问仍然免码。
+# 给该工作区的所有非管理员浏览器设置门禁。
 markon --collaborator-access-code guest-secret docs/
 ```
 
@@ -183,15 +185,16 @@ Markon 用一个服务承载任意数量的工作区根目录：
 | AI 对话 | 使用已配置 Provider 开启工作区感知的多会话对话 |
 | 共享批注 | 将批注与 Viewed 状态从浏览器存储迁移到 SQLite，并通过 WebSocket 同步 |
 
-对于 Git 仓库，工作区页面还会提供分支、标签、历史、工作区改动，以及 Markdown 原始/渲染 diff。Checkout、commit、创建文件等结构性操作仅允许本机管理员执行。
+对于 Git 仓库，工作区页面还会提供分支、标签、历史、工作区改动，以及 Markdown 原始/渲染 diff。Checkout、commit、创建文件等结构性操作需要显式管理员浏览器会话。
 
 ## 访问权限
 
-Markon 不使用账号系统，而是按网络来源区分权限：
+Markon 不把网络位置当作身份，而使用显式 capability 区分权限：
 
-- **本机 loopback 是管理员。** 桌面应用和 `127.0.0.1` 浏览器页面可管理工作区、修改功能与别名、编辑文件，以及执行 Git/文件操作，且无需访问码。
-- **远程访问是协作者。** 只能使用该工作区已开启的能力，不能执行结构性/管理操作。
-- **协作者码只约束远程访问。** 工作区自己的码覆盖全局码；本机始终绕过门禁。
+- **管理员会话必须显式创建。** 使用 `markon admin open` 或 `markon admin code`；loopback、代理拓扑和转发头都不会授予管理权限。
+- **其它浏览器是协作者。** 只能使用该工作区已开启的能力，不能执行结构性/管理操作。
+- **协作者码约束所有非管理员浏览器。** 工作区自己的码覆盖全局码；loopback 不再绕过门禁。
+- **Host 必须在允许集合中。** 反代 / 自定义域名需通过 `--entry`、`--trusted-host` 或 settings 的 `trusted_hosts` 显式登记。
 
 协作者码是应用层访问控制，不提供传输加密。对公网开放时必须使用 HTTPS 和反向代理。部署前请阅读[访问权限](docs/features/access.md)和[反向代理](REVERSE_PROXY.zh.md)。
 

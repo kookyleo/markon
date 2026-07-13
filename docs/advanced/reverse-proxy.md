@@ -4,7 +4,9 @@
 
 ## 访问控制
 
-Markon 没有按账号的角色体系，权限只按**访问来源**分：本机（loopback）等同管理员、拥有全部能力；远程访客是协作者，能力由工作区功能开关决定。远程访问还可以叠加一道[协作者访问码门禁](/features/access)（支持全局口令与按工作区独立口令）。开启后，**远程访客**要在浏览器门禁页输入正确口令才能进入（本机始终免码）；未配置口令时，凡是能访问到该地址的远程访客，均可读取工作区的全部内容，并在启用「共享批注」或「编辑」等功能后具有相应写入能力。
+Markon 不把 TCP 来源地址当作身份。浏览器默认是协作者，能力由工作区功能开关决定；管理与结构性写操作要求显式 Admin session。协作者访问码对所有非 Admin 浏览器生效，loopback 与同机反向代理都不会绕过。
+
+每个请求还必须命中 Host allowlist。`--entry https://docs.example.com` 会自动登记该 HTTPS origin；也可重复传 `--trusted-host https://docs.example.com`，或在 `settings.json` 的 `trusted_hosts` 数组中登记。未登记域名返回 421，以阻断 DNS rebinding。`X-Forwarded-For` / `X-Forwarded-Proto` 不参与身份授权。
 
 不过协作者访问码属于**应用层**控制，并不等同于网关层认证。真正对外暴露时，仍应配好 TLS 与反向代理。
 
@@ -46,6 +48,7 @@ markon --host 127.0.0.1 -p 6419 \
 - `--host 127.0.0.1` — 仅本地访问，安全
 - `-b https://docs.example.com` — 启动后浏览器打开公网 URL（不传 BASE 则只开本地地址）
 - `--qr https://docs.example.com`（`--entry` 别名）— 终端二维码与日志中的「accessible at」用公网 URL；不设这条会回落到内网 IP
+- `--entry` / `--trusted-host` 同时把精确域名加入 Host allowlist；HTTPS origin 下的访问 Cookie 自动带 `Secure`
 - 搜索、共享批注等工作区功能在浏览器工作区设置页启用
 
 ## Nginx

@@ -33,7 +33,7 @@ use crate::chat::message::{ContentBlock, Message, Role};
 use crate::chat::prompt::{build_system_blocks, render_mention_block, PromptInputs};
 use crate::chat::provider;
 use crate::chat::storage::{ChatStorage, StorageError, Thread};
-use crate::chat::tools::{default_walker, looks_binary, ToolRegistry, MAX_FILE_BYTES};
+use crate::chat::tools::{looks_binary, ToolRegistry, MAX_FILE_BYTES};
 use crate::server::AppState;
 use crate::settings::AppSettings;
 use crate::workspace::WorkspaceEntry;
@@ -283,7 +283,7 @@ async fn apply_edit_handler(
     // edit_file) can be invalidated by a symlink swapped in between proposal
     // and apply (TOCTOU); a path that no longer canonicalizes inside the
     // workspace is treated as drift rather than written through.
-    let ctx = crate::chat::tools::ToolContext::new(&ws.root)
+    let ctx = crate::chat::tools::ToolContext::for_workspace(ws.fs.clone())
         .map_err(|e| ChatHttpError::Unavailable(format!("workspace root: {e}")))?;
     let abs = match ctx.resolve(&snap.path) {
         Ok(p) => p,
@@ -383,7 +383,7 @@ async fn undo_edit_handler(
     // Re-validate path under the workspace sandbox. ToolContext::resolve
     // rejects `..`, absolute paths, and symlink escapes, then canonicalizes;
     // we reuse it rather than reimplementing the same check here.
-    let ctx = match crate::chat::tools::ToolContext::new(&ws.root) {
+    let ctx = match crate::chat::tools::ToolContext::for_workspace(ws.fs.clone()) {
         Ok(c) => c,
         Err(e) => {
             return Err(ChatHttpError::Unavailable(format!("workspace root: {e}")));
@@ -428,27 +428,15 @@ async fn list_files_handler(
     let ws = ensure_chat_enabled(&state, &workspace_id)?;
     let limit = query.limit.unwrap_or(50).clamp(1, 200);
     let needle = query.q.trim().to_lowercase();
-    let root = ws.root.clone();
+    let workspace_fs = ws.fs.clone();
 
     // The walk and the text-sniffs are blocking filesystem I/O — keep them
     // off the async pool (same policy as `ChatStorage::with_conn`).
     let suggestions = tokio::task::spawn_blocking(move || {
         let mut candidates: Vec<(std::path::PathBuf, FileSuggestion)> = Vec::new();
 
-        for entry in default_walker(&root).build() {
-            let entry = match entry {
-                Ok(e) => e,
-                Err(_) => continue,
-            };
-            if !entry.file_type().map(|t| t.is_file()).unwrap_or(false) {
-                continue;
-            }
-            let path = entry.path();
-            let rel = match path.strip_prefix(&root) {
-                Ok(r) => r,
-                Err(_) => continue,
-            };
-            let rel_str = crate::chat::tools::path_to_forward_slash(rel);
+        for (rel, path) in workspace_fs.content_files(10_000) {
+            let rel_str = rel.as_route();
 
             // Skip likely-binary files cheaply: by extension and by metadata
             // size. The NUL-byte sniff (which has to open the file) waits
@@ -456,7 +444,7 @@ async fn list_files_handler(
             if BINARY_EXT.iter().any(|ext| rel_str.ends_with(ext)) {
                 continue;
             }
-            if let Ok(meta) = std::fs::metadata(path) {
+            if let Ok(meta) = std::fs::metadata(&path) {
                 if meta.len() > MAX_FILE_BYTES {
                     // Big files can be referenced by typing the path explicitly,
                     // but we keep them out of autocomplete to discourage accidents.
@@ -468,7 +456,7 @@ async fn list_files_handler(
                 None => continue,
             };
             candidates.push((
-                path.to_path_buf(),
+                path,
                 FileSuggestion {
                     path: rel_str,
                     score,
@@ -659,8 +647,8 @@ async fn chat_stream_handler(
         .collect();
 
     // Workspace outline for tier-2 cache layer — top-level dirs/files.
-    let outline = workspace_outline(&ws.root);
-    let workspace_label = display_workspace_label(&ws.root);
+    let outline = workspace_outline(&ws.fs);
+    let workspace_label = display_workspace_label(ws.fs.ambient_root());
 
     let system = build_system_blocks(&PromptInputs {
         workspace_label,
@@ -682,7 +670,7 @@ async fn chat_stream_handler(
         thread_id: thread.id.clone(),
         thread_title: thread.title.clone(),
         workspace_id: workspace_id.clone(),
-        workspace_root: ws.root.clone(),
+        workspace_fs: ws.fs.clone(),
         history,
         user_message: Message {
             role: Role::User,
@@ -731,27 +719,20 @@ fn display_workspace_label(root: &std::path::Path) -> String {
 
 /// One-level workspace listing used as cacheable system-prompt context.
 /// Capped so a giant repo doesn't blow out the prefix.
-fn workspace_outline(root: &std::path::Path) -> String {
+fn workspace_outline(workspace_fs: &crate::workspace_fs::WorkspaceFs) -> String {
     use std::fmt::Write;
-    let walker = default_walker(root).max_depth(Some(1)).build();
     let mut dirs: Vec<String> = Vec::new();
     let mut files: Vec<String> = Vec::new();
-    for entry in walker.flatten() {
-        if entry.depth() == 0 {
-            continue;
-        }
-        let Some(name) = entry.path().file_name() else {
-            continue;
-        };
-        let n = name.to_string_lossy().into_owned();
-        let is_dir = entry.file_type().map(|t| t.is_dir()).unwrap_or(false);
-        if is_dir {
-            dirs.push(format!("{n}/"));
+    for (rel, _) in workspace_fs.content_files(10_000) {
+        let route = rel.as_route();
+        if let Some((dir, _)) = route.split_once('/') {
+            dirs.push(format!("{dir}/"));
         } else {
-            files.push(n);
+            files.push(route);
         }
     }
     dirs.sort();
+    dirs.dedup();
     files.sort();
     let mut out = String::new();
     for d in dirs.iter().take(40) {
@@ -768,11 +749,7 @@ fn workspace_outline(root: &std::path::Path) -> String {
 /// block. Silently skips files that fail any check — better than a hard
 /// failure, since the user just typed `@` and the model can still answer.
 fn inline_mention(ws: &WorkspaceEntry, rel_path: &str) -> Option<String> {
-    let abs = ws.root.join(rel_path);
-    let canon = dunce::canonicalize(&abs).ok()?;
-    if !canon.starts_with(&ws.root) {
-        return None;
-    }
+    let canon = ws.fs.resolve_content(rel_path).ok()?;
     let meta = std::fs::metadata(&canon).ok()?;
     if !meta.is_file() || meta.len() > MAX_FILE_BYTES {
         return None;
@@ -836,9 +813,10 @@ mod tests {
             theme: Arc::new("dark".into()),
             tera: Arc::new(Tera::default()),
             db: Some(db),
-            tx: None,
             workspace_registry: registry,
             management_token: Arc::new("token".into()),
+            admin_bootstraps: Arc::new(crate::admin_auth::AdminBootstrapStore::new()),
+            allowed_hosts: Arc::new(Default::default()),
             save_token: Arc::new("save-token".into()),
             i18n_json: Arc::new("{}".into()),
             i18n_lang: Arc::new("zh".into()),
@@ -873,6 +851,33 @@ mod tests {
 
     fn json_body(value: serde_json::Value) -> Body {
         Body::from(serde_json::to_vec(&value).unwrap())
+    }
+
+    #[test]
+    fn single_file_prompt_context_excludes_sibling_files() {
+        let tmp = TempDir::new().unwrap();
+        std::fs::write(tmp.path().join("opened.md"), "visible context\n").unwrap();
+        std::fs::write(tmp.path().join("sibling.md"), "secret context\n").unwrap();
+        let registry = WorkspaceRegistry::new("single-chat-salt".into());
+        let id = registry.add(WorkspaceConfig {
+            path: tmp.path().to_path_buf(),
+            flags: WorkspaceFlags {
+                enable_chat: true,
+                ..WorkspaceFlags::default()
+            },
+            single_file: Some("opened.md".into()),
+            collaborator_access_code_hash: String::new(),
+            ..Default::default()
+        });
+        let ws = registry.get(&id).unwrap();
+
+        let outline = workspace_outline(&ws.fs);
+        assert!(outline.contains("opened.md"), "outline: {outline}");
+        assert!(!outline.contains("sibling.md"), "outline: {outline}");
+        assert!(inline_mention(&ws, "opened.md")
+            .unwrap()
+            .contains("visible context"));
+        assert!(inline_mention(&ws, "sibling.md").is_none());
     }
 
     #[tokio::test]

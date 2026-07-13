@@ -2,6 +2,7 @@ use crate::chat::edits::PendingEditStore;
 use crate::fswalk::path_to_forward_slash;
 use crate::markdown::extract_referenced_assets_for_file;
 use crate::search::SearchIndex;
+use crate::workspace_fs::WorkspaceFs;
 use arc_swap::ArcSwapOption;
 use notify::{EventKind, RecursiveMode, Watcher};
 use serde::{Deserialize, Serialize};
@@ -58,7 +59,7 @@ pub struct WorkspaceConfig {
 
 pub(crate) struct WorkspaceEntry {
     pub id: String,
-    pub root: PathBuf,
+    pub fs: Arc<WorkspaceFs>,
     pub enable_search: AtomicBool,
     pub enable_viewed: AtomicBool,
     pub enable_edit: AtomicBool,
@@ -66,16 +67,15 @@ pub(crate) struct WorkspaceEntry {
     pub enable_chat: AtomicBool,
     pub shared_annotation: AtomicBool,
     pub config_tx: broadcast::Sender<()>,
+    /// Collaboration events are scoped to this workspace by construction.
+    /// Channel events are further isolated by document/surface identity;
+    /// workspace events (currently file watcher reloads) reach every socket
+    /// attached to this entry.
+    pub events_tx: broadcast::Sender<WorkspaceEvent>,
     pub search_index: ArcSwapOption<SearchIndex>,
     /// Set for temporary single-file workspaces. Holds the file name (relative
-    /// to `root`); routes outside this file + `allowed_assets` return 404.
+    /// to the filesystem capability root). Serving policy lives in `fs`.
     pub single_file: Option<String>,
-    /// Local assets the single-file's markdown references (images, stylesheets,
-    /// etc.). Paths may be same-directory or descendants of `root`, but must be
-    /// explicitly referenced and canonicalize inside `root`. Re-derived whenever
-    /// the file is modified.
-    /// Empty (and unread) for normal directory workspaces.
-    pub allowed_assets: RwLock<HashSet<String>>,
     /// In-flight `edit_file` proposals from the chat tool, awaiting the
     /// user's accept/reject. Lives on the workspace so HTTP handlers and
     /// the agent loop can share the same store.
@@ -91,6 +91,12 @@ pub(crate) struct WorkspaceEntry {
     /// its own `Arc<WorkspaceEntry>` so the OS thread and the in-RAM search
     /// index this entry holds are freed instead of leaking after removal.
     stopped: Arc<AtomicBool>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(crate) enum WorkspaceEvent {
+    Channel { channel: String, payload: String },
+    Workspace { payload: String },
 }
 
 impl WorkspaceEntry {
@@ -110,7 +116,7 @@ impl WorkspaceEntry {
     }
 
     pub(crate) fn is_ephemeral(&self) -> bool {
-        self.single_file.is_some()
+        self.fs.is_single_file()
     }
 
     pub(crate) fn collaborator_access_code_hash(&self) -> String {
@@ -119,18 +125,6 @@ impl WorkspaceEntry {
 
     pub(crate) fn alias(&self) -> String {
         self.alias.read().unwrap().clone()
-    }
-
-    /// True when `rel` is the workspace's pinned file or one of the local assets
-    /// it currently references. Always true for non-single-file workspaces.
-    pub(crate) fn allows(&self, rel: &str) -> bool {
-        let Some(only) = &self.single_file else {
-            return true;
-        };
-        if rel == only {
-            return true;
-        }
-        self.allowed_assets.read().unwrap().contains(rel)
     }
 }
 
@@ -174,11 +168,6 @@ pub struct WorkspaceRegistry {
     inner: RwLock<HashMap<String, Arc<WorkspaceEntry>>>,
     pub(crate) salt: String,
     persist: RwLock<Option<PersistHook>>,
-    /// Shared broadcaster the server populates once its WS channel is alive.
-    /// Watchers spawned by `add()` capture a clone of this Arc and read it
-    /// lazily on each event, so setting the broadcaster after some entries
-    /// already exist still wires them up correctly.
-    live_tx: Arc<ArcSwapOption<broadcast::Sender<String>>>,
 }
 
 /// Stable workspace id: truncated SHA-256 of salt + path.
@@ -350,16 +339,10 @@ impl WorkspaceRegistry {
             inner: RwLock::new(HashMap::new()),
             salt,
             persist: RwLock::new(None),
-            live_tx: Arc::new(ArcSwapOption::empty()),
         }
     }
     pub fn set_persist_hook(&self, hook: PersistHook) {
         *self.persist.write().unwrap() = Some(hook);
-    }
-    /// Wire a broadcast sender that watchers use to push file-change events to
-    /// connected browser tabs. Pass `None` to disconnect (e.g. on shutdown).
-    pub(crate) fn set_live_broadcaster(&self, tx: Option<broadcast::Sender<String>>) {
-        self.live_tx.store(tx.map(Arc::new));
     }
     fn notify_persist(&self) {
         let hook = self.persist.read().unwrap().clone();
@@ -385,10 +368,15 @@ impl WorkspaceRegistry {
             return id;
         }
         let (config_tx, _) = broadcast::channel(4);
+        let (events_tx, _) = broadcast::channel(100);
         let single_file = config.single_file.clone();
+        let workspace_fs = Arc::new(WorkspaceFs::new(
+            config.path.clone(),
+            single_file.as_deref(),
+        ));
         let entry = Arc::new(WorkspaceEntry {
             id: id.clone(),
-            root: config.path.clone(),
+            fs: workspace_fs,
             enable_search: AtomicBool::new(config.flags.enable_search),
             enable_viewed: AtomicBool::new(config.flags.enable_viewed),
             enable_edit: AtomicBool::new(config.flags.enable_edit),
@@ -396,9 +384,9 @@ impl WorkspaceRegistry {
             enable_chat: AtomicBool::new(config.flags.enable_chat),
             shared_annotation: AtomicBool::new(config.flags.shared_annotation),
             config_tx,
+            events_tx,
             search_index: ArcSwapOption::empty(),
             single_file: single_file.clone(),
-            allowed_assets: RwLock::new(HashSet::new()),
             pending_edits: Arc::new(PendingEditStore::new()),
             collaborator_access_code_hash: RwLock::new(config.collaborator_access_code_hash),
             alias: RwLock::new(config.alias),
@@ -410,7 +398,7 @@ impl WorkspaceRegistry {
             .insert(id.clone(), entry.clone());
         match single_file {
             Some(name) => {
-                // Seed allowed_assets from the file's current content, then watch
+                // Seed scoped assets from the file's current content, then watch
                 // for external edits to keep it fresh. When search is enabled,
                 // build an index scoped to ONLY this file (no parent WalkDir, no
                 // sibling leakage); the single-file watcher refreshes it on edit.
@@ -422,13 +410,13 @@ impl WorkspaceRegistry {
                         name.clone(),
                     );
                 }
-                spawn_single_file_watcher(config.path, entry.clone(), name, self.live_tx.clone());
+                spawn_single_file_watcher(config.path, entry.clone(), name);
             }
             None => {
                 if config.flags.enable_search {
                     spawn_search_indexer(config.path.clone(), entry.clone());
                 }
-                spawn_directory_watcher(config.path, entry.clone(), self.live_tx.clone());
+                spawn_directory_watcher(config.path, entry.clone());
             }
         }
         self.notify_persist();
@@ -463,7 +451,7 @@ impl WorkspaceRegistry {
         // workspaces: turning search on spawns the appropriate indexer, turning
         // it off drops the index so we stop serving stale results and free RAM.
         if flags.enable_search && !was_search && entry.search_index.load().is_none() {
-            let root = entry.root.clone();
+            let root = entry.fs.ambient_root().to_path_buf();
             match &entry.single_file {
                 Some(name) => spawn_single_file_search_indexer(root, entry.clone(), name.clone()),
                 None => spawn_search_indexer(root, entry),
@@ -475,21 +463,16 @@ impl WorkspaceRegistry {
         true
     }
     pub fn remove(&self, id: &str) -> bool {
-        // Signal the watch thread to stop before we drop our map entry: the
-        // watcher holds its own Arc<WorkspaceEntry>, so dropping the map entry
-        // alone would leave the thread (and the search index it pins) alive and
-        // still broadcasting file_changed for a removed workspace.
-        let removed = match self.inner.write().unwrap().remove(id) {
-            Some(entry) => {
-                entry.stopped.store(true, Ordering::Relaxed);
-                true
-            }
-            None => false,
-        };
-        if removed {
+        let removed = self.inner.write().unwrap().remove(id);
+        if let Some(entry) = &removed {
+            // Existing HTTP lookups stop immediately when the entry leaves the
+            // registry. Wake all config/collaboration sockets as well so an
+            // already-upgraded connection cannot outlive a detached workspace.
+            entry.stopped.store(true, Ordering::Relaxed);
+            let _ = entry.config_tx.send(());
             self.notify_persist();
         }
-        removed
+        removed.is_some()
     }
     pub(crate) fn get(&self, id: &str) -> Option<Arc<WorkspaceEntry>> {
         self.inner.read().unwrap().get(id).cloned()
@@ -502,6 +485,7 @@ impl WorkspaceRegistry {
             return false;
         };
         *entry.collaborator_access_code_hash.write().unwrap() = hash.to_string();
+        let _ = entry.config_tx.send(());
         drop(guard);
         self.notify_persist();
         true
@@ -528,8 +512,8 @@ impl WorkspaceRegistry {
         // single-file entries group under their parent dir. (root, single_file)
         // is the workspace identity, so this key is unique and total.
         v.sort_by(|a, b| {
-            a.root
-                .cmp(&b.root)
+            a.fs.ambient_root()
+                .cmp(b.fs.ambient_root())
                 .then_with(|| a.single_file.cmp(&b.single_file))
         });
         v
@@ -539,7 +523,7 @@ impl WorkspaceRegistry {
             .into_iter()
             .map(|e| WorkspaceInfo {
                 id: e.id.clone(),
-                path: e.root.to_string_lossy().to_string(),
+                path: e.fs.ambient_root().to_string_lossy().to_string(),
                 flags: e.flags(),
                 search_ready: e.search_ready(),
                 ephemeral: e.is_ephemeral(),
@@ -551,17 +535,18 @@ impl WorkspaceRegistry {
     }
 }
 
-/// Read the single-file's current content and replace `entry.allowed_assets`
+/// Read the single-file's current content and replace its scoped asset map
 /// with the local asset paths it explicitly references. Errors (file gone,
 /// unreadable) clear the set — a missing source can't legitimately bless any
 /// sibling.
 fn refresh_allowed_assets(entry: &WorkspaceEntry, file_name: &str) {
-    let abs = entry.root.join(file_name);
+    let root = entry.fs.ambient_root();
+    let abs = root.join(file_name);
     let new_set = match std::fs::read_to_string(&abs) {
-        Ok(content) => extract_referenced_assets_for_file(&content, &abs, &entry.root),
+        Ok(content) => extract_referenced_assets_for_file(&content, &abs, root),
         Err(_) => HashSet::new(),
     };
-    *entry.allowed_assets.write().unwrap() = new_set;
+    entry.fs.replace_assets(new_set);
 }
 
 /// Shared scaffold for the notify-based watchers below: spawn a thread that
@@ -609,19 +594,14 @@ fn spawn_watch_thread(
 }
 
 /// Watch the parent directory of a single-file workspace and:
-///   * filter events down to `{file_name} ∪ allowed_assets`
+///   * filter events down to `{file_name} ∪ scoped assets`
 ///   * on changes to `file_name`, re-derive the asset allowlist so that newly
 ///     referenced local assets become accessible (and removed ones stop being)
 ///   * push a `file_changed` WS message so the open browser tab reloads.
 ///
 /// `notify` cannot reliably watch a single file across platforms, so the
 /// minimum viable scope is the parent directory — non-recursive.
-fn spawn_single_file_watcher(
-    root: PathBuf,
-    entry: Arc<WorkspaceEntry>,
-    file_name: String,
-    live_tx: Arc<ArcSwapOption<broadcast::Sender<String>>>,
-) {
+fn spawn_single_file_watcher(root: PathBuf, entry: Arc<WorkspaceEntry>, file_name: String) {
     let target = root.join(&file_name);
     let stopped = entry.stopped.clone();
     spawn_watch_thread(
@@ -635,7 +615,7 @@ fn spawn_single_file_watcher(
                 };
                 let rel_str = rel.to_string_lossy().to_string();
                 let touched_pinned = path == target;
-                let touched_asset = entry.allowed_assets.read().unwrap().contains(&rel_str);
+                let touched_asset = entry.fs.is_asset(rel);
                 if !(touched_pinned || touched_asset) {
                     continue;
                 }
@@ -655,7 +635,7 @@ fn spawn_single_file_watcher(
                     // Don't broadcast for Remove: the file just went away,
                     // reloading would 404 the tab.
                     EventKind::Remove(_) if touched_pinned => {
-                        entry.allowed_assets.write().unwrap().clear();
+                        entry.fs.clear_assets();
                         if let Some(idx) = entry.search_index.load_full() {
                             let _ = idx.delete_file(&target);
                         }
@@ -663,15 +643,15 @@ fn spawn_single_file_watcher(
                     _ => {}
                 }
                 if should_broadcast {
-                    if let Some(tx) = live_tx.load_full() {
-                        let file_payload = serde_json::json!({
-                            "type": "file_changed",
-                            "workspace_id": entry.id,
-                            "path": rel_str,
-                        })
-                        .to_string();
-                        let _ = tx.send(file_payload);
-                    }
+                    let file_payload = serde_json::json!({
+                        "type": "file_changed",
+                        "workspace_id": entry.id,
+                        "path": rel_str,
+                    })
+                    .to_string();
+                    let _ = entry.events_tx.send(WorkspaceEvent::Workspace {
+                        payload: file_payload,
+                    });
                 }
             }
         },
@@ -686,11 +666,7 @@ fn spawn_search_indexer(root: PathBuf, entry: Arc<WorkspaceEntry>) {
     });
 }
 
-fn spawn_directory_watcher(
-    root: PathBuf,
-    entry: Arc<WorkspaceEntry>,
-    live_tx: Arc<ArcSwapOption<broadcast::Sender<String>>>,
-) {
+fn spawn_directory_watcher(root: PathBuf, entry: Arc<WorkspaceEntry>) {
     let stopped = entry.stopped.clone();
     spawn_watch_thread(
         root.clone(),
@@ -712,16 +688,14 @@ fn spawn_directory_watcher(
                     }
                     _ => continue,
                 }
-                if let Some(tx) = live_tx.load_full() {
-                    if let Some(rel_str) = directory_live_reload_path(&root, &path) {
-                        let payload = serde_json::json!({
-                            "type": "file_changed",
-                            "workspace_id": entry.id,
-                            "path": rel_str,
-                        })
-                        .to_string();
-                        let _ = tx.send(payload);
-                    }
+                if let Some(rel_str) = directory_live_reload_path(&root, &path) {
+                    let payload = serde_json::json!({
+                        "type": "file_changed",
+                        "workspace_id": entry.id,
+                        "path": rel_str,
+                    })
+                    .to_string();
+                    let _ = entry.events_tx.send(WorkspaceEvent::Workspace { payload });
                 }
             }
         },
@@ -941,7 +915,7 @@ mod tests {
         let order: Vec<(PathBuf, Option<String>)> = reg
             .list()
             .iter()
-            .map(|e| (e.root.clone(), e.single_file.clone()))
+            .map(|e| (e.fs.ambient_root().to_path_buf(), e.single_file.clone()))
             .collect();
         assert_eq!(
             order,

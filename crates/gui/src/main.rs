@@ -374,10 +374,9 @@ fn handle_open_path(app: &tauri::AppHandle, path: &Path) {
             collaborator_access_code_hash: String::new(),
             alias: String::new(),
         });
-    drop(server);
-
     let workspace_path = markon_core::server::workspace_url_path(&id, rel_path.as_deref());
-    let url = markon_core::server::build_workspace_url(&browser_base, &workspace_path);
+    let url = server.admin_url(&browser_base, &workspace_path);
+    drop(server);
 
     let _ = open::that(url);
 

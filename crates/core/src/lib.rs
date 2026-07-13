@@ -7,7 +7,9 @@ pub mod server;
 pub mod settings;
 pub mod workspace;
 
+pub mod admin_auth;
 pub(crate) mod assets;
 pub(crate) mod fswalk;
 pub(crate) mod markdown;
 pub(crate) mod markdown_ast;
+pub(crate) mod workspace_fs;

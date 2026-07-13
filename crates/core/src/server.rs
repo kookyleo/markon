@@ -1,7 +1,7 @@
 use axum::{
     extract::{
         ws::{Message, WebSocket},
-        Path as AxumPath, Query, State, WebSocketUpgrade,
+        Extension, Path as AxumPath, Query, State, WebSocketUpgrade,
     },
     http::{header, StatusCode},
     response::{Html, IntoResponse, Redirect, Response},
@@ -24,6 +24,7 @@ use tera::Tera;
 use tokio::net::TcpListener;
 use tokio::sync::{broadcast, mpsc};
 
+use crate::admin_auth::{self, AdminBootstrapStore};
 use crate::assets::{CssAssets, IconAssets, JsAssets, Templates};
 use crate::git;
 use crate::i18n;
@@ -34,8 +35,10 @@ use crate::markdown_ast;
 use crate::search::{SearchQuery, SearchResult};
 use crate::workspace::{
     ct_eq, expand_and_canonicalize, generate_token, ServerLock, WorkspaceConfig, WorkspaceEntry,
-    WorkspaceFlags, WorkspaceRegistry,
+    WorkspaceEvent, WorkspaceFlags, WorkspaceRegistry,
 };
+
+const WORKSPACE_WS_ROUTE: &str = "/_/{workspace_id}/ws";
 
 /// Public wire-format types served by the (non-chat) HTTP surface.
 ///
@@ -72,6 +75,10 @@ pub struct ServerConfig {
     /// the LAN IP used for the headline URL, QR code, and browser auto-open.
     /// Empty = no preference (fall back to the first interface).
     pub advertised_host: String,
+    /// Exact host names accepted in HTTP Host/Origin authorities in addition
+    /// to localhost, bind addresses, and the advertised address. Entries may
+    /// be bare hosts or full http(s) origins; no wildcards are accepted.
+    pub trusted_hosts: Vec<String>,
     pub port: u16,
     pub theme: String,
     pub qr: Option<String>,
@@ -91,6 +98,10 @@ pub struct ServerConfig {
     pub registry: Option<Arc<WorkspaceRegistry>>,
     /// Management API token. None = auto-generate and write to lock file.
     pub management_token: Option<String>,
+    /// Optional externally-owned bootstrap store (GUI mode). Keeping the store
+    /// beside the native process lets it mint browser capabilities without
+    /// exposing the long-lived management token to any page.
+    pub admin_bootstraps: Option<Arc<AdminBootstrapStore>>,
     /// UI language override: "zh", "en", or None (auto-detect via sys_locale).
     pub language: Option<String>,
     /// Custom keyboard shortcut overrides (JSON object, injected into browser pages).
@@ -133,6 +144,7 @@ pub(crate) struct AccessAttempts {
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum AccessRole {
     Collaborator,
+    Admin,
 }
 
 #[derive(Clone, Debug)]
@@ -142,14 +154,42 @@ struct AccessRequirement {
     scope: String,
 }
 
+#[derive(Clone, Debug, Default)]
+pub(crate) struct AllowedHosts {
+    names: HashSet<String>,
+    secure_names: HashSet<String>,
+}
+
+impl AllowedHosts {
+    fn insert(&mut self, value: &str) {
+        if let Some((name, secure)) = normalized_configured_host(value) {
+            self.names.insert(name.clone());
+            if secure {
+                self.secure_names.insert(name);
+            }
+        }
+    }
+
+    fn allows_header(&self, host: Option<&str>) -> bool {
+        host.and_then(normalized_authority_host)
+            .is_some_and(|host| self.names.contains(&host))
+    }
+
+    fn is_secure_header(&self, host: Option<&str>) -> bool {
+        host.and_then(normalized_authority_host)
+            .is_some_and(|host| self.secure_names.contains(&host))
+    }
+}
+
 #[derive(Clone)]
 pub(crate) struct AppState {
     pub theme: Arc<String>,
     pub tera: Arc<Tera>,
     pub db: Option<Arc<Mutex<Connection>>>,
-    pub tx: Option<broadcast::Sender<String>>,
     pub workspace_registry: Arc<WorkspaceRegistry>,
     pub management_token: Arc<String>,
+    pub admin_bootstraps: Arc<AdminBootstrapStore>,
+    pub(crate) allowed_hosts: Arc<AllowedHosts>,
     /// Save-scoped token embedded in the edit UI (served to every viewer of an
     /// edit-enabled page). Authorizes ONLY `/api/save`, never the privileged
     /// management routes (add workspace / shutdown), so a leaked page token
@@ -240,6 +280,74 @@ fn workspace_internal_url(workspace_id: &str, path: &str) -> String {
 
 fn workspace_git_history_url(workspace_id: &str) -> String {
     workspace_internal_url(workspace_id, "git/history")
+}
+
+fn normalize_host_name(value: &str) -> Option<String> {
+    let trimmed = value.trim().trim_matches(['[', ']']).trim_end_matches('.');
+    if trimmed.is_empty()
+        || trimmed.contains('/')
+        || trimmed.contains('\\')
+        || trimmed.chars().any(char::is_whitespace)
+    {
+        return None;
+    }
+    Some(trimmed.to_ascii_lowercase())
+}
+
+fn normalized_authority_host(authority: &str) -> Option<String> {
+    authority
+        .parse::<axum::http::uri::Authority>()
+        .ok()
+        .and_then(|authority| normalize_host_name(authority.host()))
+}
+
+fn normalized_configured_host(value: &str) -> Option<(String, bool)> {
+    let trimmed = value.trim();
+    if trimmed.is_empty() || trimmed == "local" || trimmed == "missing" {
+        return None;
+    }
+    if trimmed.contains("://") {
+        let uri = trimmed.parse::<axum::http::Uri>().ok()?;
+        let authority = uri.authority()?;
+        let name = normalize_host_name(authority.host())?;
+        let secure = uri
+            .scheme_str()
+            .is_some_and(|scheme| scheme.eq_ignore_ascii_case("https"));
+        return Some((name, secure));
+    }
+    if let Some(name) = normalized_authority_host(trimmed) {
+        return Some((name, false));
+    }
+    trimmed
+        .parse::<std::net::IpAddr>()
+        .ok()
+        .and_then(|ip| normalize_host_name(&ip.to_string()))
+        .map(|name| (name, false))
+}
+
+fn build_allowed_hosts(
+    bind_host: &str,
+    advertised_host: &str,
+    port: u16,
+    trusted_hosts: &[String],
+    external_bases: &[Option<String>],
+) -> AllowedHosts {
+    let mut allowed = AllowedHosts::default();
+    for host in ["localhost", "127.0.0.1", "::1", bind_host, advertised_host] {
+        allowed.insert(host);
+    }
+    // A wildcard bind is reachable through each current interface address;
+    // reuse the URL enumerator so legitimate LAN Host headers remain valid.
+    for reachable in reachable_urls(bind_host, advertised_host, port).all {
+        allowed.insert(&reachable.url);
+    }
+    for host in trusted_hosts {
+        allowed.insert(host);
+    }
+    for base in external_bases.iter().flatten() {
+        allowed.insert(base);
+    }
+    allowed
 }
 
 fn workspace_git_branches_url(workspace_id: &str) -> String {
@@ -424,7 +532,17 @@ fn canonicalize_route_path(path: &FsPath) -> std::io::Result<PathBuf> {
 }
 
 fn canonical_workspace_root(ws: &WorkspaceEntry) -> PathBuf {
-    canonicalize_route_path(&ws.root).unwrap_or_else(|_| ws.root.clone())
+    canonicalize_route_path(ws.fs.ambient_root())
+        .unwrap_or_else(|_| ws.fs.ambient_root().to_path_buf())
+}
+
+macro_rules! directory_root_or_not_found {
+    ($ws:expr) => {
+        match $ws.fs.directory_root() {
+            Some(root) => root,
+            None => return StatusCode::NOT_FOUND.into_response(),
+        }
+    };
 }
 
 fn workspace_relative_path(path: &FsPath, root: &FsPath) -> Option<PathBuf> {
@@ -615,10 +733,44 @@ enum WebSocketMessage {
     FileChanged { workspace_id: String, path: String },
 }
 
+#[derive(Deserialize, Debug)]
+#[serde(deny_unknown_fields)]
+struct WsHello {
+    #[serde(rename = "type")]
+    _kind: WsHelloKind,
+    target: WsTarget,
+}
+
+#[derive(Deserialize, Debug)]
+#[serde(rename_all = "snake_case")]
+enum WsHelloKind {
+    Hello,
+}
+
+#[derive(Deserialize, Debug)]
+#[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
+enum WsTarget {
+    Document { path: String },
+    Surface { key: String },
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+enum WsSessionTarget {
+    Document { file_path: String },
+    Surface,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+struct WsSession {
+    channel: String,
+    target: WsSessionTarget,
+}
+
 pub async fn start(config: ServerConfig) -> Result<(), String> {
     let ServerConfig {
         host,
         advertised_host,
+        trusted_hosts,
         port,
         theme,
         qr,
@@ -630,6 +782,7 @@ pub async fn start(config: ServerConfig) -> Result<(), String> {
         bound_listener,
         registry,
         management_token,
+        admin_bootstraps,
         language,
         shortcuts_json,
         styles_css,
@@ -657,8 +810,9 @@ pub async fn start(config: ServerConfig) -> Result<(), String> {
     }
 
     // Workspace features are runtime-configurable from the workspace page, so
-    // WebSocket fan-out and the SQLite-backed stores must exist even when the
-    // corresponding features were disabled at process start.
+    // the SQLite-backed stores must exist even when the corresponding features
+    // were disabled at process start. Collaboration fan-out lives on each
+    // WorkspaceEntry so cross-workspace delivery is impossible by construction.
     let db_path = std::env::var("MARKON_SQLITE_PATH")
         .ok()
         .or(db_path)
@@ -712,18 +866,12 @@ pub async fn start(config: ServerConfig) -> Result<(), String> {
     .expect("Failed to create viewed_state table");
     crate::chat::storage::ChatStorage::init(&conn).expect("Failed to create chat tables");
     let db = Some(Arc::new(Mutex::new(conn)));
-    let tx = Some(broadcast::channel(100).0);
 
     // Build workspace registry and register initial workspaces.
     let effective_salt = salt.unwrap_or_else(|| format!("markon:{port}"));
     // Sign access cookies with the persistent salt so they survive restarts.
     let access_cookie_secret = effective_salt.clone();
     let registry = registry.unwrap_or_else(|| Arc::new(WorkspaceRegistry::new(effective_salt)));
-    // Hand the broadcaster to the registry **before** seeding initial
-    // workspaces so single-file watchers spawned from inside `add()` already
-    // have it. Watchers read the slot lazily on each event, but doing it now
-    // means the first emitted event is delivered.
-    registry.set_live_broadcaster(tx.clone());
 
     // Track first workspace's URL path for browser/QR.
     let mut first_workspace_url_path: Option<String> = None;
@@ -745,6 +893,14 @@ pub async fn start(config: ServerConfig) -> Result<(), String> {
     }
 
     let token = Arc::new(management_token.unwrap_or_else(generate_token));
+    let admin_bootstraps = admin_bootstraps.unwrap_or_else(|| Arc::new(AdminBootstrapStore::new()));
+    let allowed_hosts = Arc::new(build_allowed_hosts(
+        &host,
+        &advertised_host,
+        port,
+        &trusted_hosts,
+        &[qr.clone(), open_browser.clone()],
+    ));
     // Distinct from the management token: this one is embedded in served edit
     // pages, so it must not unlock the privileged management routes.
     let save_token = Arc::new(generate_token());
@@ -755,9 +911,10 @@ pub async fn start(config: ServerConfig) -> Result<(), String> {
         theme: Arc::new(theme),
         tera: Arc::new(tera),
         db,
-        tx,
         workspace_registry: registry,
         management_token: token.clone(),
+        admin_bootstraps: admin_bootstraps.clone(),
+        allowed_hosts,
         save_token: save_token.clone(),
         // These JSON blobs are emitted into a <script> via `| safe`. Escape '<'
         // to < (same standard as markdown_content_json) so a stray '<' in a
@@ -795,6 +952,7 @@ pub async fn start(config: ServerConfig) -> Result<(), String> {
             axum::routing::put(update_workspace_access_handler),
         )
         .route("/api/workspaces", get(list_workspaces_handler))
+        .route("/api/admin/bootstrap", post(create_admin_bootstrap_handler))
         .route("/api/shutdown", post(shutdown_handler))
         .layer(axum::middleware::from_fn_with_state(
             state.clone(),
@@ -818,6 +976,9 @@ pub async fn start(config: ServerConfig) -> Result<(), String> {
         .route("/_/favicon.svg", get(serve_favicon_svg))
         .route("/_/css/{filename}", get(serve_css))
         .route("/_/js/{*path}", get(serve_js))
+        .route("/_/admin", get(admin_bootstrap_page))
+        .route("/_/admin/bootstrap", get(admin_bootstrap_page))
+        .route("/_/admin/session", post(admin_session_handler))
         .route("/_/ws/{workspace_id}", get(config_ws_handler))
         // Read-only public APIs
         .route("/_/{workspace_id}/search", get(workspace_search_handler))
@@ -862,13 +1023,13 @@ pub async fn start(config: ServerConfig) -> Result<(), String> {
         .route(
             "/_/{workspace_id}/git/commit",
             post(handle_git_commit)
-                .route_layer(axum::middleware::from_fn(require_loopback))
+                .route_layer(axum::middleware::from_fn(require_admin_role))
                 .route_layer(axum::middleware::from_fn(require_same_origin)),
         )
         .route(
             "/_/{workspace_id}/git/checkout",
             post(handle_git_checkout)
-                .route_layer(axum::middleware::from_fn(require_loopback))
+                .route_layer(axum::middleware::from_fn(require_admin_role))
                 .route_layer(axum::middleware::from_fn(require_same_origin)),
         )
         .route(
@@ -882,35 +1043,35 @@ pub async fn start(config: ServerConfig) -> Result<(), String> {
         .route(
             "/_/{workspace_id}/files/create",
             post(handle_workspace_create_file)
-                .route_layer(axum::middleware::from_fn(require_loopback))
+                .route_layer(axum::middleware::from_fn(require_admin_role))
                 .route_layer(axum::middleware::from_fn(require_same_origin)),
         )
         .route(
             "/_/{workspace_id}/files/folder",
             post(handle_workspace_create_folder)
-                .route_layer(axum::middleware::from_fn(require_loopback))
+                .route_layer(axum::middleware::from_fn(require_admin_role))
                 .route_layer(axum::middleware::from_fn(require_same_origin)),
         )
         .route(
             "/_/{workspace_id}/files/delete",
             post(handle_workspace_delete_file)
-                .route_layer(axum::middleware::from_fn(require_loopback))
+                .route_layer(axum::middleware::from_fn(require_admin_role))
                 .route_layer(axum::middleware::from_fn(require_same_origin)),
         )
         .route(
             "/_/{workspace_id}/settings/features",
             post(handle_workspace_update_features)
-                .route_layer(axum::middleware::from_fn(require_loopback))
+                .route_layer(axum::middleware::from_fn(require_admin_role))
                 .route_layer(axum::middleware::from_fn(require_same_origin)),
         )
         .route(
             "/_/{workspace_id}/settings/alias",
             post(handle_workspace_update_alias)
-                .route_layer(axum::middleware::from_fn(require_loopback))
+                .route_layer(axum::middleware::from_fn(require_admin_role))
                 .route_layer(axum::middleware::from_fn(require_same_origin)),
         )
         .route("/_/{workspace_id}/chat", get(handle_chat_popout))
-        .route("/_/ws", get(ws_handler))
+        .route(WORKSPACE_WS_ROUTE, get(ws_handler))
         .route("/{workspace_id}/", get(handle_workspace_root))
         .route("/{workspace_id}/{*path}", get(handle_workspace_path))
         // Everything else → 404
@@ -931,9 +1092,9 @@ pub async fn start(config: ServerConfig) -> Result<(), String> {
     // checks `enable_chat` per-workspace and 403s otherwise, so it's safe
     // to register unconditionally.
     // Chat is a collaboration ability, not management: each handler checks the
-    // per-workspace `enable_chat` flag and 403s otherwise, so remote (LAN)
-    // collaborators may use it when it's enabled. Only the same-origin guard is
-    // needed here to block cross-site / CSRF / DNS-rebinding fetches.
+    // per-workspace `enable_chat` flag and 403s otherwise, so collaborators may
+    // use it when enabled. Access-code, Host, and same-origin layers remain
+    // independent boundaries.
     let app = app.merge(
         crate::chat::routes::router().route_layer(axum::middleware::from_fn(require_same_origin)),
     );
@@ -941,6 +1102,13 @@ pub async fn start(config: ServerConfig) -> Result<(), String> {
     let app = app.layer(axum::middleware::from_fn_with_state(
         state.clone(),
         require_access_code,
+    ));
+
+    // Reject unknown Host authorities before any route can read or mutate
+    // state. Origin==Host alone is insufficient under DNS rebinding.
+    let app = app.layer(axum::middleware::from_fn_with_state(
+        state.clone(),
+        require_allowed_host,
     ));
 
     // Hardening headers (CSP / nosniff / frame options) on every response.
@@ -1031,7 +1199,15 @@ pub async fn start(config: ServerConfig) -> Result<(), String> {
     }
 
     if let Some(ref base_opt) = open_browser {
-        let url = make_url(base_opt, &first_workspace_url_path);
+        let base = if base_opt == "local" {
+            local_base.clone()
+        } else {
+            base_opt.to_string()
+        };
+        let redirect = first_workspace_url_path.as_deref().unwrap_or("/");
+        let nonce = admin_bootstraps.issue_url(redirect);
+        let bootstrap = build_workspace_url(&base, "/_/admin/bootstrap");
+        let url = format!("{bootstrap}#nonce={nonce}");
         if let Err(e) = open::that(&url) {
             tracing::warn!("best-effort browser open failed: {e}");
         }
@@ -1092,10 +1268,10 @@ async fn config_ws_handler(
 
 /// Reject cross-origin WebSocket upgrades. When the server is bound to a
 /// non-loopback interface (LAN share / QR-code mobile access), any browser on
-/// the same network could otherwise open `/_/ws` from an attacker page and
-/// read or poison annotations under a victim's identity. Browsers always
-/// send `Origin` on WS handshakes; the rule is "Origin authority must equal
-/// Host authority". Native (non-browser) clients can omit Origin entirely —
+/// the same network could otherwise open a workspace collaboration socket from
+/// an attacker page and read or poison annotations under a victim's identity.
+/// Browsers always send `Origin` on WS handshakes; the rule is "Origin authority
+/// must equal Host authority". Native (non-browser) clients can omit Origin —
 /// we let those through only when the TCP peer is loopback, since that's
 /// where local CLI tooling legitimately connects without an Origin header.
 fn check_ws_origin(headers: &axum::http::HeaderMap, peer: &std::net::SocketAddr) -> bool {
@@ -1126,35 +1302,65 @@ fn same_origin_or_loopback_no_origin(
     }
 }
 
-/// Validate the first frame the WebSocket client sends as its `file_path`
-/// identity. The value is used as a SQL key (parameterized, so no injection)
-/// and as a broadcast match key — it does NOT have to point at a real file
-/// on disk. We still reject obviously dangerous shapes so a foreign client
-/// cannot claim a path like `../etc/passwd` and have it silently persist /
-/// fan out to other connected viewers.
-///
-/// Constraints:
-/// - Non-empty and at most 1024 bytes (db keys should be modest).
-/// - No NUL bytes (defends downstream code that might pass the value to C
-///   string APIs in syntect, sqlite, etc.).
-/// - No `..` path components (a client must not normalise its way onto another
-///   key).
-///
-/// Absolute paths ARE allowed: the server hands the browser the file's absolute
-/// path in `<meta name="file-path">`, and the client echoes it back as the very
-/// first WS frame, so the legitimate identity is always absolute. Rejecting it
-/// here silently broke shared-annotation persistence — the socket closed right
-/// after the handshake and no annotation was ever stored. The real access
-/// boundary is the same-origin rule in `check_ws_origin`; this value is only
-/// ever used as a parameterised SQL key and a broadcast match, never to open a
-/// file, so an absolute shape carries no extra risk.
-fn is_valid_ws_file_path(path: &str) -> bool {
-    if path.is_empty() || path.len() > 1024 || path.contains('\0') {
-        return false;
+fn authorize_ws_target(entry: &WorkspaceEntry, target: WsTarget) -> Option<WsSession> {
+    match target {
+        WsTarget::Document { path } => {
+            let requested = FsPath::new(&path);
+            if path.is_empty()
+                || path.len() > 4096
+                || path.contains('\0')
+                || !requested.is_absolute()
+            {
+                return None;
+            }
+            let authorized = entry.fs.resolve_content_input(requested).ok()?;
+            if !authorized.is_file() {
+                return None;
+            }
+            // Preserve the existing database invariant: annotations and viewed
+            // state are keyed by the canonical absolute file path, never by a
+            // workspace id or client-supplied alias.
+            let file_path = authorized.to_string_lossy().into_owned();
+            Some(WsSession {
+                channel: format!("document:{file_path}"),
+                target: WsSessionTarget::Document { file_path },
+            })
+        }
+        WsTarget::Surface { key } => {
+            if !entry.enable_live.load(std::sync::atomic::Ordering::Relaxed) {
+                return None;
+            }
+            let key = canonical_ws_surface_key(&entry.id, &key)?;
+            Some(WsSession {
+                channel: format!("surface:{key}"),
+                target: WsSessionTarget::Surface,
+            })
+        }
     }
-    let p = std::path::Path::new(path);
-    !p.components()
-        .any(|comp| matches!(comp, std::path::Component::ParentDir))
+}
+
+/// Surface channels represent non-file pages such as directory listings and
+/// diffs. They may carry Live actions only. Bind the key to the workspace URL
+/// namespace so a client cannot use this socket as an arbitrary global topic.
+fn canonical_ws_surface_key(workspace_id: &str, key: &str) -> Option<String> {
+    if key.is_empty() || key.len() > 2048 || key.contains('\0') {
+        return None;
+    }
+    // A fragment is client-side view state (expanded directory, focused diff
+    // block), not the identity of the shared page. Excluding it keeps viewers
+    // on the same path/query in one Live channel.
+    let without_fragment = key.split('#').next().unwrap_or(key);
+    let path = without_fragment
+        .split('?')
+        .next()
+        .unwrap_or(without_fragment);
+    let public_root = format!("/{workspace_id}");
+    let internal_root = format!("/_/{workspace_id}");
+    let in_workspace = path == public_root
+        || path.starts_with(&format!("{public_root}/"))
+        || path == internal_root
+        || path.starts_with(&format!("{internal_root}/"));
+    in_workspace.then(|| without_fragment.to_string())
 }
 
 /// True when `origin` (e.g. `http://192.168.1.10:1618`) and `host` (e.g.
@@ -1197,16 +1403,11 @@ fn access_hex(bytes: &[u8]) -> String {
 /// Keyed integrity tag for the cookie. Secret is the per-install salt (in the
 /// 0600 settings file), so a client can't forge or tamper with a cookie.
 fn access_sig(secret: &str, payload_hex: &str) -> String {
-    use sha2::{Digest, Sha256};
-    let mut h = Sha256::new();
-    h.update(secret.as_bytes());
-    h.update(b"\0mk-cookie\0");
-    h.update(payload_hex.as_bytes());
-    access_hex(&h.finalize())
+    admin_auth::auth_tag(secret, b"markon-access-cookie\0", payload_hex)
 }
 
 /// Build the `Set-Cookie` value carrying the unlocked scopes until `exp`.
-fn make_access_cookie(secret: &str, scopes: &[(String, String)], exp: u64) -> String {
+fn make_access_cookie(secret: &str, scopes: &[(String, String)], exp: u64, secure: bool) -> String {
     // payload grammar (before hex): "<exp>|<scope>=<hash>|<scope>=<hash>…"
     //   '|' separates fields (the exp, then each unlocked scope)
     //   '=' separates a scope from its hash
@@ -1223,8 +1424,9 @@ fn make_access_cookie(secret: &str, scopes: &[(String, String)], exp: u64) -> St
     }
     let payload_hex = access_hex(payload.as_bytes());
     let sig = access_sig(secret, &payload_hex);
+    let secure_attr = if secure { "; Secure" } else { "" };
     format!(
-        "{ACCESS_COOKIE}={payload_hex}.{sig}; Path=/; Max-Age={ACCESS_TTL_SECS}; HttpOnly; SameSite=Lax"
+        "{ACCESS_COOKIE}={payload_hex}.{sig}; Path=/; Max-Age={ACCESS_TTL_SECS}; HttpOnly; SameSite=Lax{secure_attr}"
     )
 }
 
@@ -1354,11 +1556,9 @@ fn access_record_success(state: &AppState, ip: std::net::IpAddr) {
     state.access_attempts.lock().unwrap().remove(&ip);
 }
 
-/// The effective access requirements for a workspace. The legacy
-/// `access_code_hash` is the **admin** token. Collaborator tokens are
-/// separate and intentionally use distinct cookie scopes, while admin
-/// scopes keep their old values (`s` / `w:{id}`) so existing admin cookies
-/// continue to work after the upgrade.
+/// The effective collaborator access requirement for a workspace. A
+/// workspace-specific code overrides the server-level code and gets a distinct
+/// cookie scope; browser administrator sessions are handled independently.
 fn access_requirements_for(state: &AppState, ws_id: &str) -> Vec<AccessRequirement> {
     let entry = state.workspace_registry.get(ws_id);
     let workspace_collaborator = entry.as_ref().map(|e| e.collaborator_access_code_hash());
@@ -1442,7 +1642,6 @@ fn render_access_gate(
 /// the workspace's effective code is empty.
 async fn require_access_code(
     State(state): State<AppState>,
-    axum::extract::ConnectInfo(addr): axum::extract::ConnectInfo<std::net::SocketAddr>,
     mut req: axum::extract::Request,
     next: axum::middleware::Next,
 ) -> Response {
@@ -1451,11 +1650,15 @@ async fn require_access_code(
     let Some(ws_id) = ws_id else {
         return next.run(req).await;
     };
-    // Loopback callers are the local admin (same trust as the native GUI): they
-    // bypass the collaborator gate entirely and pass as Collaborator. Their
-    // management powers come from the loopback check, not from this role.
-    if addr.ip().is_loopback() {
-        req.extensions_mut().insert(AccessRole::Collaborator);
+    let cookie = req
+        .headers()
+        .get(axum::http::header::COOKIE)
+        .and_then(|value| value.to_str().ok());
+    // Administration is an explicit browser capability. Network position is
+    // never promoted to identity, so loopback proxies and DNS rebinding cannot
+    // inherit management privileges.
+    if admin_auth::admin_cookie_valid(&state.management_token, cookie, access_now_unix()) {
+        req.extensions_mut().insert(AccessRole::Admin);
         return next.run(req).await;
     }
     let requirements = access_requirements_for(&state, &ws_id);
@@ -1463,13 +1666,17 @@ async fn require_access_code(
         req.extensions_mut().insert(AccessRole::Collaborator);
         return next.run(req).await;
     };
-    let cookie = req
-        .headers()
-        .get(axum::http::header::COOKIE)
-        .and_then(|v| v.to_str().ok());
     if let Some(role) = access_role_from_cookie(&state, &ws_id, cookie) {
         req.extensions_mut().insert(role);
         return next.run(req).await;
+    }
+    let websocket_upgrade = req
+        .headers()
+        .get(axum::http::header::UPGRADE)
+        .and_then(|value| value.to_str().ok())
+        .is_some_and(|value| value.eq_ignore_ascii_case("websocket"));
+    if websocket_upgrade {
+        return (StatusCode::UNAUTHORIZED, "Access code required").into_response();
     }
     if req.method() == axum::http::Method::GET && !path.starts_with("/api/") {
         render_access_gate(&state, &ws_id, &path, None)
@@ -1478,19 +1685,148 @@ async fn require_access_code(
     }
 }
 
-/// Middleware: only loopback (local) callers may pass. Gates all workspace
-/// management and structural writes to the machine running Markon — remote
-/// collaborators get read/collab abilities through feature flags instead.
-async fn require_loopback(
-    axum::extract::ConnectInfo(addr): axum::extract::ConnectInfo<std::net::SocketAddr>,
-    req: axum::extract::Request,
-    next: axum::middleware::Next,
-) -> Response {
-    if addr.ip().is_loopback() {
+/// Structural browser operations require the explicit administrator role
+/// inserted by `require_access_code` after validating the admin session cookie.
+async fn require_admin_role(req: axum::extract::Request, next: axum::middleware::Next) -> Response {
+    if req.extensions().get::<AccessRole>() == Some(&AccessRole::Admin) {
         next.run(req).await
     } else {
         StatusCode::FORBIDDEN.into_response()
     }
+}
+
+/// Global DNS-rebinding boundary: only authorities derived from the bind/
+/// advertised addresses or explicitly trusted origins are accepted.
+async fn require_allowed_host(
+    State(state): State<AppState>,
+    req: axum::extract::Request,
+    next: axum::middleware::Next,
+) -> Response {
+    let host = req
+        .headers()
+        .get(axum::http::header::HOST)
+        .and_then(|value| value.to_str().ok());
+    if !state.allowed_hosts.allows_header(host) {
+        tracing::warn!(
+            host = host.unwrap_or("<missing>"),
+            "request rejected: untrusted Host"
+        );
+        return StatusCode::MISDIRECTED_REQUEST.into_response();
+    }
+    next.run(req).await
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "snake_case")]
+enum AdminBootstrapMode {
+    Url,
+    Code,
+}
+
+#[derive(Deserialize)]
+struct CreateAdminBootstrapRequest {
+    mode: AdminBootstrapMode,
+    #[serde(default = "admin_default_redirect")]
+    redirect: String,
+}
+
+fn admin_default_redirect() -> String {
+    "/".to_string()
+}
+
+#[derive(Serialize)]
+struct CreateAdminBootstrapResponse {
+    path: &'static str,
+    nonce: Option<String>,
+    code: Option<String>,
+    expires_in: u64,
+}
+
+/// Native management clients use the master token to mint a narrow, one-time
+/// browser bootstrap capability. The master token itself never enters HTML,
+/// JavaScript, browser storage, URLs, or cookies.
+async fn create_admin_bootstrap_handler(
+    State(state): State<AppState>,
+    Json(request): Json<CreateAdminBootstrapRequest>,
+) -> Json<CreateAdminBootstrapResponse> {
+    let response = match request.mode {
+        AdminBootstrapMode::Url => CreateAdminBootstrapResponse {
+            path: "/_/admin/bootstrap",
+            nonce: Some(state.admin_bootstraps.issue_url(&request.redirect)),
+            code: None,
+            expires_in: 60,
+        },
+        AdminBootstrapMode::Code => CreateAdminBootstrapResponse {
+            path: "/_/admin",
+            nonce: None,
+            code: Some(state.admin_bootstraps.issue_code(&request.redirect)),
+            expires_in: 5 * 60,
+        },
+    };
+    Json(response)
+}
+
+async fn admin_bootstrap_page(State(state): State<AppState>) -> Response {
+    let context = base_context(&state);
+    let mut response = render_template(&state, "admin-bootstrap.html", &context);
+    response.headers_mut().insert(
+        axum::http::header::CACHE_CONTROL,
+        axum::http::HeaderValue::from_static("no-store"),
+    );
+    response
+}
+
+#[derive(Deserialize)]
+struct AdminSessionRequest {
+    nonce: Option<String>,
+    code: Option<String>,
+}
+
+#[derive(Serialize)]
+struct AdminSessionResponse {
+    redirect: String,
+}
+
+/// Exchange a one-time bootstrap capability for a short-lived, HttpOnly admin
+/// session. The capability is the identity proof; peer IP is not.
+async fn admin_session_handler(
+    State(state): State<AppState>,
+    axum::extract::ConnectInfo(addr): axum::extract::ConnectInfo<std::net::SocketAddr>,
+    headers: axum::http::HeaderMap,
+    Json(request): Json<AdminSessionRequest>,
+) -> Response {
+    if !same_origin_or_loopback_no_origin(&headers, &addr) {
+        return StatusCode::FORBIDDEN.into_response();
+    }
+    let redirect = request
+        .nonce
+        .as_deref()
+        .and_then(|nonce| state.admin_bootstraps.consume_url(nonce))
+        .or_else(|| {
+            request
+                .code
+                .as_deref()
+                .and_then(|code| state.admin_bootstraps.consume_code(code))
+        });
+    let Some(redirect) = redirect else {
+        return StatusCode::UNAUTHORIZED.into_response();
+    };
+    let host = headers
+        .get(axum::http::header::HOST)
+        .and_then(|value| value.to_str().ok());
+    let cookie = admin_auth::make_admin_cookie(
+        &state.management_token,
+        access_now_unix(),
+        state.allowed_hosts.is_secure_header(host),
+    );
+    (
+        [
+            (axum::http::header::SET_COOKIE, cookie),
+            (axum::http::header::CACHE_CONTROL, "no-store".to_string()),
+        ],
+        Json(AdminSessionResponse { redirect }),
+    )
+        .into_response()
 }
 
 #[derive(serde::Deserialize)]
@@ -1542,6 +1878,11 @@ async fn unlock_handler(
             &state.access_secret,
             &scopes,
             access_now_unix() + ACCESS_TTL_SECS,
+            state.allowed_hosts.is_secure_header(
+                headers
+                    .get(axum::http::header::HOST)
+                    .and_then(|value| value.to_str().ok()),
+            ),
         );
         return (
             [(axum::http::header::SET_COOKIE, cookie)],
@@ -1668,15 +2009,23 @@ async fn require_local_and_save_token(
 async fn ws_handler(
     ws: WebSocketUpgrade,
     State(state): State<AppState>,
+    AxumPath(workspace_id): AxumPath<String>,
     axum::extract::ConnectInfo(addr): axum::extract::ConnectInfo<std::net::SocketAddr>,
     headers: axum::http::HeaderMap,
 ) -> impl IntoResponse {
     if !check_ws_origin(&headers, &addr) {
         return StatusCode::FORBIDDEN.into_response();
     }
+    let Some(entry) = state.workspace_registry.get(&workspace_id) else {
+        return StatusCode::NOT_FOUND.into_response();
+    };
+    let flags = entry.flags();
+    if !flags.shared_annotation && !flags.enable_live {
+        return StatusCode::FORBIDDEN.into_response();
+    }
     ws.max_message_size(MAX_WS_MSG_BYTES)
         .max_frame_size(MAX_WS_MSG_BYTES)
-        .on_upgrade(move |socket| handle_socket(socket, state))
+        .on_upgrade(move |socket| handle_socket(socket, state, entry))
         .into_response()
 }
 
@@ -1761,9 +2110,46 @@ async fn send_json(
         .map_err(|_| ())
 }
 
-fn broadcast_msg(tx: &broadcast::Sender<String>, msg: &WebSocketMessage) {
+async fn send_initial_document_state(
+    sender: &mut futures_util::stream::SplitSink<WebSocket, Message>,
+    db: Arc<Mutex<Connection>>,
+    file_path: String,
+) -> Result<(), ()> {
+    let annotations = load_annotations(db.clone(), file_path.clone()).await;
+    tracing::debug!(
+        file_path = %file_path,
+        count = annotations.len(),
+        "sending initial annotations to client",
+    );
+    send_json(sender, &WebSocketMessage::AllAnnotations { annotations }).await?;
+    let viewed = load_viewed_state(db, file_path).await;
+    send_json(
+        sender,
+        &WebSocketMessage::ViewedState {
+            state: viewed,
+            op_id: None,
+        },
+    )
+    .await
+}
+
+fn broadcast_msg(tx: &broadcast::Sender<WorkspaceEvent>, channel: &str, msg: &WebSocketMessage) {
     if let Ok(encoded) = serde_json::to_string(msg) {
-        let _ = tx.send(encoded);
+        let _ = tx.send(WorkspaceEvent::Channel {
+            channel: channel.to_string(),
+            payload: encoded,
+        });
+    }
+}
+
+fn workspace_event_payload(event: WorkspaceEvent, channel: &str) -> Option<String> {
+    match event {
+        WorkspaceEvent::Workspace { payload } => Some(payload),
+        WorkspaceEvent::Channel {
+            channel: event_channel,
+            payload,
+        } if event_channel == channel => Some(payload),
+        WorkspaceEvent::Channel { .. } => None,
     }
 }
 
@@ -1783,16 +2169,36 @@ enum DbResult {
 
 async fn handle_client_msg(
     db: Option<Arc<Mutex<Connection>>>,
-    tx: broadcast::Sender<String>,
-    file_path: String,
+    entry: Arc<WorkspaceEntry>,
+    session: Arc<WsSession>,
     msg: WebSocketMessage,
 ) {
-    // LiveAction is pure broadcast — no DB needed. Handle it before the DB
-    // short-circuit so Live works in workspaces where shared_annotation is off.
+    // Live is independently feature-gated and available to both document and
+    // surface sessions. Checking on every frame closes the small race between
+    // a runtime config update and the socket's config-change shutdown.
     if let WebSocketMessage::LiveAction { data } = msg {
-        broadcast_msg(&tx, &WebSocketMessage::LiveAction { data });
+        if entry.enable_live.load(std::sync::atomic::Ordering::Relaxed) {
+            broadcast_msg(
+                &entry.events_tx,
+                &session.channel,
+                &WebSocketMessage::LiveAction { data },
+            );
+        }
         return;
     }
+
+    // Surface channels never have database capability. Annotation/viewed
+    // operations require both a document target and the server-side feature.
+    if !entry
+        .shared_annotation
+        .load(std::sync::atomic::Ordering::Relaxed)
+    {
+        return;
+    }
+    let WsSessionTarget::Document { file_path } = &session.target else {
+        return;
+    };
+    let file_path = file_path.clone();
     let Some(db) = db else { return };
 
     // One spawn_blocking per inbound message: take the lock exactly once,
@@ -1877,16 +2283,18 @@ async fn handle_client_msg(
     };
 
     match result {
-        DbResult::Broadcast(out) => broadcast_msg(&tx, &out),
+        DbResult::Broadcast(out) => broadcast_msg(&entry.events_tx, &session.channel, &out),
         DbResult::BroadcastClear { op_id } => {
             broadcast_msg(
-                &tx,
+                &entry.events_tx,
+                &session.channel,
                 &WebSocketMessage::ClearAnnotations {
                     op_id: op_id.clone(),
                 },
             );
             broadcast_msg(
-                &tx,
+                &entry.events_tx,
+                &session.channel,
                 &WebSocketMessage::ViewedState {
                     state: serde_json::Value::Object(serde_json::Map::new()),
                     op_id,
@@ -1897,74 +2305,59 @@ async fn handle_client_msg(
     }
 }
 
-async fn handle_socket(socket: WebSocket, state: AppState) {
+async fn handle_socket(socket: WebSocket, state: AppState, entry: Arc<WorkspaceEntry>) {
     let (mut sender, mut receiver) = socket.split();
-
-    // tx is required (broadcast fan-out). db is optional — only present when
-    // shared_annotation is on; absent when only Live is active.
-    let Some(tx) = state.tx.clone() else {
-        return;
-    };
     let db = state.db.clone();
-    let mut rx = tx.subscribe();
+    let mut rx = entry.events_tx.subscribe();
+    let mut config_rx = entry.config_tx.subscribe();
 
-    let first_frame =
-        match tokio::time::timeout(std::time::Duration::from_secs(10), receiver.next()).await {
-            Ok(frame) => frame,
-            Err(_) => {
-                tracing::warn!("timed out waiting for file path from client; closing socket");
-                return;
-            }
-        };
-    let file_path = match first_frame {
-        Some(Ok(Message::Text(text))) => text.to_string(),
+    let hello = match tokio::time::timeout(std::time::Duration::from_secs(5), receiver.next()).await
+    {
+        Ok(Some(Ok(Message::Text(text)))) => serde_json::from_str::<WsHello>(&text).ok(),
+        Err(_) => {
+            tracing::warn!(workspace_id = %entry.id, "timed out waiting for websocket hello");
+            return;
+        }
         _ => {
-            tracing::warn!("failed to receive file path from client");
+            tracing::warn!(workspace_id = %entry.id, "missing or invalid websocket hello");
             return;
         }
     };
-    if !is_valid_ws_file_path(&file_path) {
-        tracing::warn!(file_path = %file_path, "rejecting suspicious file_path from client");
+    let Some(session) = hello.and_then(|hello| authorize_ws_target(&entry, hello.target)) else {
+        tracing::warn!(workspace_id = %entry.id, "rejecting unauthorized websocket target");
         return;
-    }
+    };
+    let session = Arc::new(session);
 
-    // Only send initial annotation/viewed state when a persistence layer exists.
-    if let Some(db) = db.as_ref() {
-        let annotations = load_annotations(db.clone(), file_path.clone()).await;
-        tracing::debug!(
-            file_path = %file_path,
-            count = annotations.len(),
-            "sending initial annotations to client",
-        );
-        if send_json(
-            &mut sender,
-            &WebSocketMessage::AllAnnotations { annotations },
-        )
-        .await
-        .is_err()
-        {
-            return;
-        }
-        let viewed = load_viewed_state(db.clone(), file_path.clone()).await;
-        if send_json(
-            &mut sender,
-            &WebSocketMessage::ViewedState {
-                state: viewed,
-                op_id: None,
-            },
-        )
-        .await
-        .is_err()
-        {
-            return;
+    // A Live-only connection receives no stored annotation/viewed data. Surface
+    // sessions never receive it, even when shared annotations are enabled.
+    if entry
+        .shared_annotation
+        .load(std::sync::atomic::Ordering::Relaxed)
+    {
+        if let WsSessionTarget::Document { file_path } = &session.target {
+            let Some(db) = db.as_ref() else { return };
+            tokio::select! {
+                biased;
+                _ = config_rx.recv() => return,
+                result = send_initial_document_state(&mut sender, db.clone(), file_path.clone()) => {
+                    if result.is_err() {
+                        return;
+                    }
+                }
+            }
         }
     }
 
+    let send_channel = session.channel.clone();
     let mut send_task = tokio::spawn(async move {
         loop {
             match rx.recv().await {
-                Ok(msg) => {
-                    if sender.send(Message::Text(msg.into())).await.is_err() {
+                Ok(event) => {
+                    let Some(payload) = workspace_event_payload(event, &send_channel) else {
+                        continue;
+                    };
+                    if sender.send(Message::Text(payload.into())).await.is_err() {
                         break;
                     }
                 }
@@ -1977,6 +2370,8 @@ async fn handle_socket(socket: WebSocket, state: AppState) {
         }
     });
 
+    let recv_entry = entry.clone();
+    let recv_session = session.clone();
     let mut recv_task = tokio::spawn(async move {
         while let Some(Ok(Message::Text(text))) = receiver.next().await {
             if text.len() > MAX_WS_MSG_BYTES {
@@ -1986,13 +2381,17 @@ async fn handle_socket(socket: WebSocket, state: AppState) {
             let Ok(msg) = serde_json::from_str::<WebSocketMessage>(&text) else {
                 continue;
             };
-            handle_client_msg(db.clone(), tx.clone(), file_path.clone(), msg).await;
+            handle_client_msg(db.clone(), recv_entry.clone(), recv_session.clone(), msg).await;
         }
     });
 
     tokio::select! {
         _ = (&mut send_task) => recv_task.abort(),
         _ = (&mut recv_task) => send_task.abort(),
+        _ = config_rx.recv() => {
+            send_task.abort();
+            recv_task.abort();
+        }
     };
 }
 
@@ -2026,7 +2425,7 @@ async fn handle_chat_popout(
 async fn handle_workspace_root(
     State(state): State<AppState>,
     AxumPath(workspace_id): AxumPath<String>,
-    axum::extract::ConnectInfo(addr): axum::extract::ConnectInfo<std::net::SocketAddr>,
+    role: Option<Extension<AccessRole>>,
 ) -> impl IntoResponse {
     let Some(ws) = state.workspace_registry.get(&workspace_id) else {
         return StatusCode::NOT_FOUND.into_response();
@@ -2037,14 +2436,14 @@ async fn handle_workspace_root(
         return Redirect::to(&workspace_file_url(&workspace_id, only)).into_response();
     }
     let root = canonical_workspace_root(&ws);
-    let is_local = addr.ip().is_loopback();
-    render_directory_listing(&workspace_id, &ws, &root, None, &state, is_local)
+    let can_manage = role.is_some_and(|Extension(role)| role == AccessRole::Admin);
+    render_directory_listing(&workspace_id, &ws, &root, None, &state, can_manage)
 }
 
 async fn handle_workspace_path(
     State(state): State<AppState>,
     AxumPath((workspace_id, path)): AxumPath<(String, String)>,
-    axum::extract::ConnectInfo(addr): axum::extract::ConnectInfo<std::net::SocketAddr>,
+    role: Option<Extension<AccessRole>>,
     headers: axum::http::HeaderMap,
 ) -> impl IntoResponse {
     let Some(ws) = state.workspace_registry.get(&workspace_id) else {
@@ -2053,23 +2452,21 @@ async fn handle_workspace_path(
 
     let decoded = urlencoding::decode(&path).unwrap_or_else(|_| path.clone().into());
     let rel = decoded.trim_start_matches('/');
-    // Single-file gate: reject anything outside the pinned file and the local
-    // assets it explicitly references. Directory listings are not allowed
-    // either — `allows()` is false for everything else.
-    if ws.is_ephemeral() && !ws.allows(rel) {
-        return (StatusCode::NOT_FOUND, "Path not found").into_response();
-    }
-    let full_path = ws.root.join(rel);
-
-    let canonical = match canonicalize_route_path(&full_path) {
-        Ok(p) => p,
+    let canonical = match ws.fs.resolve_served(rel) {
+        Ok(path) => path,
+        Err(
+            crate::workspace_fs::WorkspaceFsError::InvalidPath
+            | crate::workspace_fs::WorkspaceFsError::Denied,
+        ) if !ws.is_ephemeral() => {
+            return (StatusCode::FORBIDDEN, "Access denied").into_response();
+        }
         Err(_) => {
-            return (StatusCode::NOT_FOUND, format!("Path not found: {decoded}")).into_response()
+            return (StatusCode::NOT_FOUND, format!("Path not found: {decoded}")).into_response();
         }
     };
 
     let root = canonical_workspace_root(&ws);
-    let is_local = addr.ip().is_loopback();
+    let can_manage = role.is_some_and(|Extension(role)| role == AccessRole::Admin);
     if !is_inside_workspace(&canonical, &root) {
         return (StatusCode::FORBIDDEN, "Access denied").into_response();
     }
@@ -2082,7 +2479,7 @@ async fn handle_workspace_path(
                 ws.clone(),
                 root.clone(),
                 state.clone(),
-                is_local,
+                can_manage,
             )
             .await
         } else {
@@ -2106,9 +2503,8 @@ async fn handle_workspace_path(
         }
     } else if canonical.is_dir() {
         if ws.is_ephemeral() {
-            // Defense in depth: `allows()` already rejects directories, but
-            // be explicit so a future change to `allows()` can't accidentally
-            // expose a sibling listing.
+            // Single-file capabilities never authorize directories. Keep this
+            // explicit as defense in depth if serving policy changes later.
             return (StatusCode::NOT_FOUND, "Path not found").into_response();
         }
         // Subdirectories are browsed in place on the workspace root via a URL
@@ -2124,7 +2520,7 @@ async fn handle_workspace_path(
             .into_response(),
             // The workspace root itself is served by `handle_workspace_root`;
             // this arm is just a safe fallback.
-            _ => render_directory_listing(&workspace_id, &ws, &root, None, &state, is_local),
+            _ => render_directory_listing(&workspace_id, &ws, &root, None, &state, can_manage),
         }
     } else {
         (StatusCode::NOT_FOUND, "Path not found").into_response()
@@ -2182,18 +2578,20 @@ async fn handle_git_history(
         author: author.clone(),
         since: git_history_since(Some(&range_key)),
     };
-    let root = ws.root.clone();
-    let history = tokio::task::spawn_blocking(move || git::history_filtered(&root, 80, &filter))
-        .await
-        .unwrap_or_else(|e| {
-            tracing::error!("git history blocking task join error: {e}");
-            Err(git::GitError::Command("internal task error".into()))
-        });
+    let root = directory_root_or_not_found!(ws).to_path_buf();
+    let git_root = root.clone();
+    let history =
+        tokio::task::spawn_blocking(move || git::history_filtered(&git_root, 80, &filter))
+            .await
+            .unwrap_or_else(|e| {
+                tracing::error!("git history blocking task join error: {e}");
+                Err(git::GitError::Command("internal task error".into()))
+            });
     match history {
         Ok(commits) => render_git_history_page(
             &state,
             &workspace_id,
-            &ws.root,
+            &root,
             &commits,
             branch.as_deref(),
             author.as_deref(),
@@ -2215,7 +2613,7 @@ async fn handle_git_history_data(
     let Some(ws) = state.workspace_registry.get(&workspace_id) else {
         return StatusCode::NOT_FOUND.into_response();
     };
-    let root = ws.root.clone();
+    let root = directory_root_or_not_found!(ws).to_path_buf();
     let history = tokio::task::spawn_blocking(move || git::history(&root, 80))
         .await
         .unwrap_or_else(|e| {
@@ -2240,7 +2638,7 @@ async fn handle_git_branches(
     let Some(ws) = state.workspace_registry.get(&workspace_id) else {
         return StatusCode::NOT_FOUND.into_response();
     };
-    let root = ws.root.clone();
+    let root = directory_root_or_not_found!(ws).to_path_buf();
     let branches = tokio::task::spawn_blocking(move || git::branches_detailed(&root))
         .await
         .unwrap_or_else(|e| {
@@ -2265,7 +2663,7 @@ async fn handle_git_tags(
     let Some(ws) = state.workspace_registry.get(&workspace_id) else {
         return StatusCode::NOT_FOUND.into_response();
     };
-    let root = ws.root.clone();
+    let root = directory_root_or_not_found!(ws).to_path_buf();
     let tags = tokio::task::spawn_blocking(move || git::tags(&root, 200))
         .await
         .unwrap_or_else(|e| {
@@ -2287,14 +2685,14 @@ async fn handle_git_working_diff(
     State(state): State<AppState>,
     AxumPath(workspace_id): AxumPath<String>,
     Query(query): Query<GitViewQuery>,
-    axum::extract::ConnectInfo(addr): axum::extract::ConnectInfo<std::net::SocketAddr>,
+    role: Option<Extension<AccessRole>>,
 ) -> impl IntoResponse {
     let Some(ws) = state.workspace_registry.get(&workspace_id) else {
         return StatusCode::NOT_FOUND.into_response();
     };
-    let is_local = addr.ip().is_loopback();
+    let can_manage = role.is_some_and(|Extension(role)| role == AccessRole::Admin);
     let initial_view = diff_view_from_query(query.view.as_deref());
-    let root = ws.root.clone();
+    let root = directory_root_or_not_found!(ws).to_path_buf();
     let diff = tokio::task::spawn_blocking(move || git::working_diff(&root))
         .await
         .unwrap_or_else(|e| {
@@ -2302,7 +2700,9 @@ async fn handle_git_working_diff(
             Err(git::GitError::Command("internal task error".into()))
         });
     match diff {
-        Ok(diff) => render_git_diff_page(&state, &workspace_id, &ws, is_local, &diff, initial_view),
+        Ok(diff) => {
+            render_git_diff_page(&state, &workspace_id, &ws, can_manage, &diff, initial_view)
+        }
         Err(git::GitError::NotRepository) => git_not_repository_response(),
         Err(e) => (
             StatusCode::INTERNAL_SERVER_ERROR,
@@ -2324,7 +2724,7 @@ async fn handle_git_working_diff_data(
         return match markdown_compare_diff_data_async(
             &state,
             &workspace_id,
-            &ws.root,
+            directory_root_or_not_found!(ws),
             "HEAD",
             "worktree",
             query.f.as_deref(),
@@ -2343,7 +2743,7 @@ async fn handle_git_working_diff_data(
                 .into_response(),
         };
     }
-    let root = ws.root.clone();
+    let root = directory_root_or_not_found!(ws).to_path_buf();
     let diff = tokio::task::spawn_blocking(move || git::working_diff(&root))
         .await
         .unwrap_or_else(|e| {
@@ -2365,14 +2765,14 @@ async fn handle_git_commit_diff(
     State(state): State<AppState>,
     AxumPath((workspace_id, commit)): AxumPath<(String, String)>,
     Query(query): Query<GitViewQuery>,
-    axum::extract::ConnectInfo(addr): axum::extract::ConnectInfo<std::net::SocketAddr>,
+    role: Option<Extension<AccessRole>>,
 ) -> impl IntoResponse {
     let Some(ws) = state.workspace_registry.get(&workspace_id) else {
         return StatusCode::NOT_FOUND.into_response();
     };
-    let is_local = addr.ip().is_loopback();
+    let can_manage = role.is_some_and(|Extension(role)| role == AccessRole::Admin);
     let initial_view = diff_view_from_query(query.view.as_deref());
-    let root = ws.root.clone();
+    let root = directory_root_or_not_found!(ws).to_path_buf();
     let diff = tokio::task::spawn_blocking(move || git::commit_diff(&root, &commit))
         .await
         .unwrap_or_else(|e| {
@@ -2380,7 +2780,9 @@ async fn handle_git_commit_diff(
             Err(git::GitError::Command("internal task error".into()))
         });
     match diff {
-        Ok(diff) => render_git_diff_page(&state, &workspace_id, &ws, is_local, &diff, initial_view),
+        Ok(diff) => {
+            render_git_diff_page(&state, &workspace_id, &ws, can_manage, &diff, initial_view)
+        }
         Err(git::GitError::InvalidRevision) => {
             (StatusCode::BAD_REQUEST, "Invalid git revision").into_response()
         }
@@ -2397,7 +2799,7 @@ async fn handle_git_commit_diff_data(
     let Some(ws) = state.workspace_registry.get(&workspace_id) else {
         return StatusCode::NOT_FOUND.into_response();
     };
-    let root = ws.root.clone();
+    let root = directory_root_or_not_found!(ws).to_path_buf();
     let diff = tokio::task::spawn_blocking(move || git::commit_diff(&root, &commit))
         .await
         .unwrap_or_else(|e| {
@@ -2449,7 +2851,7 @@ async fn handle_pretty_compare_diff(
     State(state): State<AppState>,
     AxumPath((workspace_id, range)): AxumPath<(String, String)>,
     Query(query): Query<PrettyCompareQuery>,
-    axum::extract::ConnectInfo(addr): axum::extract::ConnectInfo<std::net::SocketAddr>,
+    role: Option<Extension<AccessRole>>,
 ) -> impl IntoResponse {
     let Some(ws) = state.workspace_registry.get(&workspace_id) else {
         return StatusCode::NOT_FOUND.into_response();
@@ -2457,13 +2859,13 @@ async fn handle_pretty_compare_diff(
     let Some((base, compare)) = parse_pretty_compare_range(&range) else {
         return (StatusCode::BAD_REQUEST, "Invalid compare range").into_response();
     };
-    let is_local = addr.ip().is_loopback();
+    let can_manage = role.is_some_and(|Extension(role)| role == AccessRole::Admin);
     let initial_view = diff_view_from_query(query.view.as_deref());
     if query.format.as_deref() == Some("data") && initial_view == "rendered" {
         return match markdown_compare_diff_data_async(
             &state,
             &workspace_id,
-            &ws.root,
+            directory_root_or_not_found!(ws),
             &base,
             &compare,
             query.f.as_deref(),
@@ -2482,11 +2884,13 @@ async fn handle_pretty_compare_diff(
                 .into_response(),
         };
     }
-    match git::compare_diff(&ws.root, &base, &compare) {
+    match git::compare_diff(directory_root_or_not_found!(ws), &base, &compare) {
         Ok(diff) if query.format.as_deref() == Some("data") => {
             git_diff_json_response(&diff, query.f.as_deref())
         }
-        Ok(diff) => render_git_diff_page(&state, &workspace_id, &ws, is_local, &diff, initial_view),
+        Ok(diff) => {
+            render_git_diff_page(&state, &workspace_id, &ws, can_manage, &diff, initial_view)
+        }
         Err(git::GitError::InvalidRevision) => {
             (StatusCode::BAD_REQUEST, "Invalid git revision").into_response()
         }
@@ -2503,7 +2907,8 @@ async fn handle_git_compare_options_status(
     let Some(ws) = state.workspace_registry.get(&workspace_id) else {
         return StatusCode::NOT_FOUND.into_response();
     };
-    if !git::status(&ws.root).available {
+    let root = directory_root_or_not_found!(ws);
+    if !git::status(root).available {
         return git_not_repository_response();
     }
     // Each side independently probes ~dozens of candidate refs for markdown
@@ -2512,7 +2917,7 @@ async fn handle_git_compare_options_status(
     let (base, compare) = rayon::join(
         || {
             git_compare_option_statuses(git_compare_options(
-                &ws.root,
+                root,
                 &query.base,
                 false,
                 &query.compare,
@@ -2522,7 +2927,7 @@ async fn handle_git_compare_options_status(
         },
         || {
             git_compare_option_statuses(git_compare_options(
-                &ws.root,
+                root,
                 &query.compare,
                 true,
                 &query.base,
@@ -2574,7 +2979,7 @@ async fn handle_git_commit(
     let Some(ws) = state.workspace_registry.get(&workspace_id) else {
         return StatusCode::NOT_FOUND.into_response();
     };
-    match git::commit_workspace(&ws.root, &payload.message) {
+    match git::commit_workspace(directory_root_or_not_found!(ws), &payload.message) {
         Ok(commit) => Json(GitCommitResponse {
             success: true,
             message: "Committed workspace changes".to_string(),
@@ -2604,7 +3009,7 @@ async fn handle_git_checkout(
     let Some(ws) = state.workspace_registry.get(&workspace_id) else {
         return StatusCode::NOT_FOUND.into_response();
     };
-    match git::checkout_branch(&ws.root, &payload.branch) {
+    match git::checkout_branch(directory_root_or_not_found!(ws), &payload.branch) {
         Ok(status) => Json(GitCheckoutResponse {
             success: true,
             message: "Switched branch".to_string(),
@@ -2642,24 +3047,15 @@ async fn handle_workspace_files_data(
     let Some(ws) = state.workspace_registry.get(&workspace_id) else {
         return StatusCode::NOT_FOUND.into_response();
     };
-    let root = canonical_workspace_root(&ws);
     let mut files = Vec::new();
-    let walker = crate::fswalk::default_walker(&root).build();
-    for entry in walker.filter_map(|entry| entry.ok()).take(2000) {
-        let path = entry.path();
-        if !path.is_file() {
-            continue;
-        }
-        let Some(rel) = workspace_relative_path(path, &root) else {
-            continue;
-        };
-        let route = path_to_route(&rel);
+    for (rel, path) in ws.fs.served_files(2000) {
+        let route = rel.as_route();
         files.push(WorkspaceFileListEntry {
             name: path
                 .file_name()
                 .map(|name| name.to_string_lossy().to_string())
                 .unwrap_or_else(|| route.clone()),
-            is_markdown: is_markdown_path(path),
+            is_markdown: is_markdown_path(&path),
             url: workspace_file_url(&workspace_id, &route),
             path: route,
         });
@@ -2689,6 +3085,9 @@ async fn handle_workspace_create_file(
     let Some(ws) = state.workspace_registry.get(&workspace_id) else {
         return StatusCode::NOT_FOUND.into_response();
     };
+    let Some(root) = ws.fs.directory_root() else {
+        return StatusCode::NOT_FOUND.into_response();
+    };
     if !ws.enable_edit.load(std::sync::atomic::Ordering::Relaxed) {
         return Json(CreateFileResponse {
             success: false,
@@ -2705,7 +3104,6 @@ async fn handle_workspace_create_file(
         })
         .into_response();
     };
-    let root = canonical_workspace_root(&ws);
     let full_path = root.join(&rel);
     if fs::symlink_metadata(&full_path).is_ok() {
         return Json(CreateFileResponse {
@@ -2718,7 +3116,7 @@ async fn handle_workspace_create_file(
     // Verify containment BEFORE creating any directory, so a symlinked
     // intermediate cannot cause `create_dir_all` to materialize dirs outside
     // the workspace root.
-    if !deepest_existing_ancestor_inside_workspace(&full_path, &root) {
+    if !deepest_existing_ancestor_inside_workspace(&full_path, root) {
         return Json(CreateFileResponse {
             success: false,
             message: "Access denied".to_string(),
@@ -2740,7 +3138,7 @@ async fn handle_workspace_create_file(
     // workspace after creation.
     if let Some(parent) = full_path.parent() {
         match canonicalize_route_path(parent) {
-            Ok(parent) if is_inside_workspace(&parent, &root) => {}
+            Ok(parent) if is_inside_workspace(&parent, root) => {}
             _ => {
                 return Json(CreateFileResponse {
                     success: false,
@@ -2785,6 +3183,9 @@ async fn handle_workspace_create_folder(
     let Some(ws) = state.workspace_registry.get(&workspace_id) else {
         return StatusCode::NOT_FOUND.into_response();
     };
+    let Some(root) = ws.fs.directory_root() else {
+        return StatusCode::NOT_FOUND.into_response();
+    };
     if !ws.enable_edit.load(std::sync::atomic::Ordering::Relaxed) {
         return Json(CreateFileResponse {
             success: false,
@@ -2801,7 +3202,6 @@ async fn handle_workspace_create_folder(
         })
         .into_response();
     };
-    let root = canonical_workspace_root(&ws);
     let full_path = root.join(&rel);
     if fs::symlink_metadata(&full_path).is_ok() {
         return Json(CreateFileResponse {
@@ -2814,7 +3214,7 @@ async fn handle_workspace_create_folder(
     // Verify containment BEFORE creating any directory, so a symlinked
     // intermediate cannot cause `create_dir_all` to materialize dirs outside
     // the workspace root.
-    if !deepest_existing_ancestor_inside_workspace(&full_path, &root) {
+    if !deepest_existing_ancestor_inside_workspace(&full_path, root) {
         return Json(CreateFileResponse {
             success: false,
             message: "Access denied".to_string(),
@@ -2832,7 +3232,7 @@ async fn handle_workspace_create_folder(
     }
     // Defense in depth: confirm the created folder resolved inside the workspace.
     match canonicalize_route_path(&full_path) {
-        Ok(p) if is_inside_workspace(&p, &root) => {}
+        Ok(p) if is_inside_workspace(&p, root) => {}
         _ => {
             return Json(CreateFileResponse {
                 success: false,
@@ -2876,6 +3276,9 @@ async fn handle_workspace_delete_file(
     let Some(ws) = state.workspace_registry.get(&workspace_id) else {
         return StatusCode::NOT_FOUND.into_response();
     };
+    let Some(root) = ws.fs.directory_root() else {
+        return StatusCode::NOT_FOUND.into_response();
+    };
     if !ws.enable_edit.load(std::sync::atomic::Ordering::Relaxed) {
         return fail("Edit feature is not enabled");
     }
@@ -2883,9 +3286,8 @@ async fn handle_workspace_delete_file(
     if rel.is_empty() || rel.contains('\0') {
         return fail("Invalid file path");
     }
-    let root = canonical_workspace_root(&ws);
     let canon = match canonicalize_route_path(&root.join(rel)) {
-        Ok(p) if is_inside_workspace(&p, &root) => p,
+        Ok(p) if is_inside_workspace(&p, root) => p,
         _ => return fail("Access denied"),
     };
     if !canon.is_file() {
@@ -2948,8 +3350,9 @@ struct UpdateWorkspaceAliasRequest {
 }
 
 /// Set/clear a workspace's alias from the web (directory page). Gated by
-/// `require_admin_role` + `require_same_origin` (NOT the master token), so
-/// it's reachable from the served page without GUI-only privileges.
+/// `require_admin_role` + `require_same_origin` (NOT the master token), so the
+/// browser can use its narrow, HttpOnly admin session without exposing the
+/// native management bearer.
 async fn handle_workspace_update_alias(
     State(state): State<AppState>,
     AxumPath(workspace_id): AxumPath<String>,
@@ -4398,12 +4801,13 @@ fn render_git_diff_page(
     state: &AppState,
     workspace_id: &str,
     ws: &WorkspaceEntry,
-    is_local: bool,
+    can_manage: bool,
     diff: &git::GitDiff,
     initial_view: &str,
 ) -> Response {
     let flags = ws.flags();
-    let (base_value, compare_value) = git_diff_ref_values(&ws.root, diff);
+    let root = directory_root_or_not_found!(ws);
+    let (base_value, compare_value) = git_diff_ref_values(root, diff);
     let initial_view = if initial_view == "rendered" {
         "rendered"
     } else {
@@ -4420,30 +4824,30 @@ fn render_git_diff_page(
     context.insert(
         "diff",
         &git_diff_template(
-            &ws.root,
+            root,
             &display_diff,
             base_value.clone(),
             compare_value.clone(),
         ),
     );
-    context.insert("is_local", &is_local);
+    context.insert("can_manage", &can_manage);
     context.insert("shared_annotation", &flags.shared_annotation);
     context.insert("enable_live", &flags.enable_live);
     context.insert("enable_chat", &flags.enable_chat);
     context.insert("history_url", &workspace_git_history_url(workspace_id));
     context.insert("files_url", &workspace_root_url(workspace_id));
     // Home-collapsed workspace path shown beside the title (links to the home).
-    let ws_display_path = workspace_display_path(&ws.root);
+    let ws_display_path = workspace_display_path(root);
     context.insert("workspace_display_path", &ws_display_path);
     context.insert("workspace_alias", &ws.alias());
     context.insert("work_diff_url", &markdown_work_diff_page_url(workspace_id));
     context.insert(
         "markdown_diff_url",
-        &markdown_diff_page_url(workspace_id, &ws.root, diff, &base_value, &compare_value),
+        &markdown_diff_page_url(workspace_id, root, diff, &base_value, &compare_value),
     );
     context.insert(
         "source_diff_url",
-        &git_source_diff_url(workspace_id, &ws.root, diff, &base_value, &compare_value),
+        &git_source_diff_url(workspace_id, root, diff, &base_value, &compare_value),
     );
     context.insert(
         "compare_url",
@@ -4461,7 +4865,7 @@ fn render_git_diff_page(
     context.insert("default_diff_path", &default_diff_path);
     context.insert("is_markdown_diff", &(initial_view == "rendered"));
     let base_options = git_compare_options(
-        &ws.root,
+        root,
         &base_value,
         false,
         &compare_value,
@@ -4469,7 +4873,7 @@ fn render_git_diff_page(
         GitCompareOptionStatusMode::Fast,
     );
     let compare_options = git_compare_options(
-        &ws.root,
+        root,
         &compare_value,
         true,
         &base_value,
@@ -5553,7 +5957,7 @@ fn render_markdown_file(
     ws: &WorkspaceEntry,
     root: &FsPath,
     state: &AppState,
-    is_local: bool,
+    can_manage: bool,
 ) -> Response {
     match fs::read_to_string(file_path) {
         Ok(markdown_input) => {
@@ -5595,10 +5999,9 @@ fn render_markdown_file(
             context.insert("shared_annotation", &flags.shared_annotation);
             context.insert("enable_viewed", &flags.enable_viewed);
             context.insert("enable_search", &flags.enable_search);
-            context.insert("is_local", &is_local);
-            // edit/chat are collaboration abilities gated purely by their flags:
-            // a remote (LAN) collaborator with the flag on gets them too. Only
-            // structural writes stay loopback-only (see require_loopback).
+            context.insert("can_manage", &can_manage);
+            // Edit/chat are collaboration abilities gated by their flags.
+            // Structural writes require an explicit administrator session.
             context.insert("enable_edit", &flags.enable_edit);
             context.insert("enable_live", &flags.enable_live);
             context.insert("enable_chat", &flags.enable_chat);
@@ -5768,6 +6171,13 @@ async fn handle_workspace_dir_data(
     let Some(ws) = state.workspace_registry.get(&workspace_id) else {
         return StatusCode::NOT_FOUND.into_response();
     };
+    if ws.is_ephemeral() {
+        let rel = query.path.as_deref().unwrap_or("").trim().trim_matches('/');
+        if rel.split('/').any(|part| part == ".." || part == ".") {
+            return StatusCode::NOT_FOUND.into_response();
+        }
+        return Json(scoped_directory_entries(&workspace_id, &ws, rel)).into_response();
+    }
     let root = canonical_workspace_root(&ws);
     let rel = query.path.as_deref().unwrap_or("").trim().trim_matches('/');
     let target = if rel.is_empty() {
@@ -5788,6 +6198,66 @@ async fn handle_workspace_dir_data(
     }
 }
 
+/// Build a virtual directory view from the single-file capability set without
+/// touching or enumerating sibling filesystem entries.
+fn scoped_directory_entries(
+    workspace_id: &str,
+    ws: &WorkspaceEntry,
+    directory: &str,
+) -> Vec<DirListingEntry> {
+    let prefix = directory.trim_matches('/');
+    let mut entries: HashMap<String, DirListingEntry> = HashMap::new();
+    for (rel, path) in ws.fs.served_files(2000) {
+        let route = rel.as_route();
+        let rest = if prefix.is_empty() {
+            route.as_str()
+        } else if let Some(rest) = route.strip_prefix(prefix).and_then(|r| r.strip_prefix('/')) {
+            rest
+        } else {
+            continue;
+        };
+        let (name, is_dir) = match rest.split_once('/') {
+            Some((name, _)) => (name, true),
+            None => (rest, false),
+        };
+        if name.is_empty() {
+            continue;
+        }
+        let child_route = if prefix.is_empty() {
+            name.to_string()
+        } else {
+            format!("{prefix}/{name}")
+        };
+        let link_route = if is_dir {
+            format!("{child_route}/")
+        } else {
+            child_route.clone()
+        };
+        let markdown_descendant = is_markdown_path(&path);
+        let entry = entries
+            .entry(name.to_string())
+            .or_insert_with(|| DirListingEntry {
+                name: name.to_string(),
+                is_dir,
+                is_markdown: !is_dir && markdown_descendant,
+                is_hidden: name.starts_with('.'),
+                show_in_markdown: !name.starts_with('.') && markdown_descendant,
+                link: workspace_file_url(workspace_id, &link_route),
+                rel_git_path: child_route,
+                last_commit_subject: None,
+                last_commit_time: None,
+            });
+        entry.show_in_markdown |= !entry.is_hidden && markdown_descendant;
+    }
+    let mut entries: Vec<_> = entries.into_values().collect();
+    entries.sort_by(|a, b| match (a.is_dir, b.is_dir) {
+        (true, false) => std::cmp::Ordering::Less,
+        (false, true) => std::cmp::Ordering::Greater,
+        _ => a.name.cmp(&b.name),
+    });
+    entries
+}
+
 #[derive(Deserialize)]
 struct DirListingQuery {
     path: Option<String>,
@@ -5799,17 +6269,20 @@ fn render_directory_listing(
     root: &FsPath,
     dir_param: Option<&str>,
     state: &AppState,
-    is_local: bool,
+    can_manage: bool,
 ) -> Response {
+    let Some(workspace_root) = ws.fs.directory_root() else {
+        return StatusCode::NOT_FOUND.into_response();
+    };
     let current_dir = if let Some(dir_str) = dir_param {
         let p = PathBuf::from(dir_str);
         if p.is_absolute() {
             p
         } else {
-            ws.root.join(&p)
+            workspace_root.join(&p)
         }
     } else {
-        ws.root.clone()
+        workspace_root.to_path_buf()
     };
 
     let current_dir = match canonicalize_route_path(&current_dir) {
@@ -5981,7 +6454,7 @@ fn render_directory_listing(
         .as_ref()
         .and_then(|commit| git_commit_markdown_diff_url(root, workspace_id, commit, "rendered"));
     let is_workspace_root = current_dir == root;
-    let can_add_file = is_local && flags.enable_edit;
+    let can_add_file = can_manage && flags.enable_edit;
 
     let mut context = base_context(state);
     context.insert("workspace_id", workspace_id);
@@ -5993,7 +6466,7 @@ fn render_directory_listing(
             .map(|n| n.to_string_lossy().to_string())
             .unwrap_or_default(),
     );
-    context.insert("is_local", &is_local);
+    context.insert("can_manage", &can_manage);
     context.insert("current_dir", &current_dir.display().to_string());
     context.insert("history_url", &workspace_git_history_url(workspace_id));
     context.insert("work_diff_url", &work_diff_url);
@@ -6214,14 +6687,22 @@ async fn save_file_handler(
     };
 
     let decoded_path = std::path::Path::new(decoded.as_ref());
-    let full_path = if decoded_path.is_absolute() {
-        decoded_path.to_path_buf()
-    } else {
-        ws.root.join(decoded.trim_start_matches('/'))
-    };
-    let canonical = match canonicalize_route_path(&full_path) {
-        Ok(p) => p,
-        Err(_) => {
+    let canonical = match ws.fs.resolve_editable_input(decoded_path) {
+        Ok(path) => path,
+        Err(
+            crate::workspace_fs::WorkspaceFsError::InvalidPath
+            | crate::workspace_fs::WorkspaceFsError::Denied,
+        ) => {
+            return Json(SaveFileResponse {
+                success: false,
+                message: "Access denied".into(),
+            })
+            .into_response()
+        }
+        Err(
+            crate::workspace_fs::WorkspaceFsError::NotFound
+            | crate::workspace_fs::WorkspaceFsError::Io(_),
+        ) => {
             return Json(SaveFileResponse {
                 success: false,
                 message: format!("File not found: {decoded}"),
@@ -6230,30 +6711,6 @@ async fn save_file_handler(
         }
     };
 
-    let root = canonical_workspace_root(&ws);
-    if !is_inside_workspace(&canonical, &root) {
-        return Json(SaveFileResponse {
-            success: false,
-            message: "Access denied".into(),
-        })
-        .into_response();
-    }
-    // Single-file gate, mirroring `handle_workspace_path`: writes outside the
-    // pinned file (and explicitly referenced local assets) are rejected even
-    // when the path resolves inside `ws.root`. No-op for normal directory
-    // workspaces.
-    if ws.is_ephemeral() {
-        let rel = workspace_relative_path(&canonical, &root)
-            .map(|r| path_to_route(&r))
-            .unwrap_or_default();
-        if !ws.allows(&rel) {
-            return Json(SaveFileResponse {
-                success: false,
-                message: "Access denied".into(),
-            })
-            .into_response();
-        }
-    }
     if !canonical.is_file() {
         return Json(SaveFileResponse {
             success: false,
@@ -6336,6 +6793,7 @@ mod tests {
 
     use axum::http::HeaderMap;
     use std::net::{IpAddr, Ipv4Addr, SocketAddr};
+    use tower::ServiceExt;
 
     fn test_tera() -> Tera {
         let mut tera = Tera::default();
@@ -6354,9 +6812,10 @@ mod tests {
             theme: Arc::new("light".into()),
             tera: Arc::new(test_tera()),
             db: None,
-            tx: None,
             workspace_registry: registry,
             management_token: Arc::new("test-token".into()),
+            admin_bootstraps: Arc::new(AdminBootstrapStore::new()),
+            allowed_hosts: Arc::new(build_allowed_hosts("127.0.0.1", "", 6419, &[], &[])),
             save_token: Arc::new("save-token".into()),
             i18n_json: Arc::new(i18n::load_i18n()),
             i18n_lang: Arc::new("en".into()),
@@ -6387,6 +6846,29 @@ mod tests {
             collaborator_access_code_hash: String::new(),
             ..Default::default()
         })
+    }
+
+    async fn spawn_collaboration_test_server(
+        state: AppState,
+    ) -> (SocketAddr, tokio::task::JoinHandle<()>) {
+        let app = Router::new()
+            .route(WORKSPACE_WS_ROUTE, get(ws_handler))
+            .fallback(|| async { StatusCode::NOT_FOUND })
+            .layer(axum::middleware::from_fn_with_state(
+                state.clone(),
+                require_access_code,
+            ))
+            .with_state(state);
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        let task = tokio::spawn(async move {
+            let _ = axum::serve(
+                listener,
+                app.into_make_service_with_connect_info::<SocketAddr>(),
+            )
+            .await;
+        });
+        (addr, task)
     }
 
     fn collaborator_access_scope_for(state: &AppState, id: &str) -> Option<(String, String)> {
@@ -6466,7 +6948,7 @@ mod tests {
             ("w:1a2b3c4d".to_string(), "4f965".to_string()),
             ("s".to_string(), "abcde".to_string()),
         ];
-        let cookie = make_access_cookie(secret, &scopes, access_now_unix() + 1000);
+        let cookie = make_access_cookie(secret, &scopes, access_now_unix() + 1000, false);
         let back = access_cookie_scopes(secret, Some(&cookie));
         assert!(
             back.contains(&("w:1a2b3c4d".to_string(), "4f965".to_string())),
@@ -6494,6 +6976,7 @@ mod tests {
             salt,
             &[(format!("w:{id}:collaborator"), collaborator_hash)],
             access_now_unix() + 100,
+            false,
         );
         assert_eq!(
             access_role_from_cookie(&state, &id, Some(&collaborator_cookie)),
@@ -6616,38 +7099,234 @@ mod tests {
     }
 
     #[test]
-    fn ws_file_path_accepts_normal_paths() {
-        assert!(is_valid_ws_file_path("notes/intro.md"));
-        assert!(is_valid_ws_file_path("README.md"));
-        assert!(is_valid_ws_file_path("docs/api/index.html"));
+    fn ws_hello_requires_structured_non_legacy_protocol() {
+        let hello: WsHello = serde_json::from_str(
+            r#"{"type":"hello","target":{"kind":"surface","key":"/abcd1234/"}}"#,
+        )
+        .unwrap();
+        assert!(matches!(hello.target, WsTarget::Surface { .. }));
+        assert!(serde_json::from_str::<WsHello>(r#""/tmp/workspace/doc.md""#).is_err());
+        assert!(serde_json::from_str::<WsHello>(
+            r#"{"type":"legacy","target":{"kind":"surface","key":"/abcd1234/"}}"#
+        )
+        .is_err());
     }
 
     #[test]
-    fn ws_file_path_accepts_absolute_path() {
-        // The server issues the file's absolute path; the client echoes it back
-        // as its WS identity. Absolute paths must be accepted or shared-mode
-        // persistence never connects.
-        assert!(is_valid_ws_file_path("/tmp/workspace/doc.md"));
-        assert!(is_valid_ws_file_path("/Users/me/notes/intro.md"));
+    fn ws_document_target_is_canonical_and_workspace_scoped() {
+        let root = tempfile::tempdir().unwrap();
+        let outside = tempfile::tempdir().unwrap();
+        let document = root.path().join("note.md");
+        let outside_file = outside.path().join("secret.md");
+        fs::write(&document, "# note").unwrap();
+        fs::write(&outside_file, "secret").unwrap();
+
+        let registry = Arc::new(WorkspaceRegistry::new("ws-document-scope".into()));
+        let id = add_test_workspace(&registry, root.path().to_path_buf(), all_flags());
+        let entry = registry.get(&id).unwrap();
+        let session = authorize_ws_target(
+            &entry,
+            WsTarget::Document {
+                path: document.to_string_lossy().into_owned(),
+            },
+        )
+        .expect("workspace document should be authorized");
+        let canonical = dunce::canonicalize(&document)
+            .unwrap()
+            .to_string_lossy()
+            .into_owned();
+        assert_eq!(
+            session.target,
+            WsSessionTarget::Document {
+                file_path: canonical.clone()
+            }
+        );
+        assert_eq!(session.channel, format!("document:{canonical}"));
+
+        assert!(authorize_ws_target(
+            &entry,
+            WsTarget::Document {
+                path: outside_file.to_string_lossy().into_owned(),
+            }
+        )
+        .is_none());
+        assert!(authorize_ws_target(
+            &entry,
+            WsTarget::Document {
+                path: "note.md".into(),
+            }
+        )
+        .is_none());
     }
 
     #[test]
-    fn ws_file_path_rejects_parent_traversal() {
-        assert!(!is_valid_ws_file_path("../etc/passwd"));
-        assert!(!is_valid_ws_file_path("notes/../../etc/passwd"));
-        assert!(!is_valid_ws_file_path("/tmp/ws/../../etc/passwd"));
+    fn ws_document_target_obeys_single_file_capability() {
+        let root = tempfile::tempdir().unwrap();
+        let pinned = root.path().join("pinned.md");
+        let sibling = root.path().join("sibling.md");
+        fs::write(&pinned, "# pinned").unwrap();
+        fs::write(&sibling, "# sibling").unwrap();
+        let registry = Arc::new(WorkspaceRegistry::new("ws-single-file".into()));
+        let id = registry.add(WorkspaceConfig {
+            path: dunce::canonicalize(root.path()).unwrap(),
+            flags: all_flags(),
+            single_file: Some("pinned.md".into()),
+            collaborator_access_code_hash: String::new(),
+            alias: String::new(),
+        });
+        let entry = registry.get(&id).unwrap();
+
+        assert!(authorize_ws_target(
+            &entry,
+            WsTarget::Document {
+                path: pinned.to_string_lossy().into_owned(),
+            }
+        )
+        .is_some());
+        assert!(authorize_ws_target(
+            &entry,
+            WsTarget::Document {
+                path: sibling.to_string_lossy().into_owned(),
+            }
+        )
+        .is_none());
     }
 
     #[test]
-    fn ws_file_path_rejects_nul_byte_and_empty() {
-        assert!(!is_valid_ws_file_path(""));
-        assert!(!is_valid_ws_file_path("a\0b"));
+    fn ws_surface_target_is_live_only_and_bound_to_workspace_url() {
+        let root = tempfile::tempdir().unwrap();
+        let registry = Arc::new(WorkspaceRegistry::new("ws-surface".into()));
+        let id = add_test_workspace(&registry, root.path().to_path_buf(), all_flags());
+        let entry = registry.get(&id).unwrap();
+        let surface = authorize_ws_target(
+            &entry,
+            WsTarget::Surface {
+                key: format!("/_/{id}/compare?base=main#change"),
+            },
+        )
+        .unwrap();
+        assert_eq!(
+            surface.channel,
+            format!("surface:/_/{id}/compare?base=main")
+        );
+        assert!(authorize_ws_target(
+            &entry,
+            WsTarget::Surface {
+                key: "/_/deadbeef/compare".into(),
+            }
+        )
+        .is_none());
+
+        registry.update_flags(
+            &id,
+            WorkspaceFlags {
+                shared_annotation: true,
+                enable_live: false,
+                ..Default::default()
+            },
+        );
+        assert!(authorize_ws_target(
+            &entry,
+            WsTarget::Surface {
+                key: format!("/{id}/"),
+            }
+        )
+        .is_none());
     }
 
     #[test]
-    fn ws_file_path_rejects_overlong() {
-        let big = "a".repeat(1025);
-        assert!(!is_valid_ws_file_path(&big));
+    fn workspace_event_filter_prevents_cross_channel_delivery() {
+        let event = WorkspaceEvent::Channel {
+            channel: "document:/workspace/a.md".into(),
+            payload: "a".into(),
+        };
+        assert_eq!(
+            workspace_event_payload(event.clone(), "document:/workspace/a.md").as_deref(),
+            Some("a")
+        );
+        assert!(workspace_event_payload(event, "document:/workspace/b.md").is_none());
+        assert_eq!(
+            workspace_event_payload(
+                WorkspaceEvent::Workspace {
+                    payload: "reload".into()
+                },
+                "surface:/abcd1234/"
+            )
+            .as_deref(),
+            Some("reload")
+        );
+    }
+
+    #[tokio::test]
+    async fn ws_server_enforces_live_and_annotation_capabilities() {
+        let root = tempfile::tempdir().unwrap();
+        let document = root.path().join("note.md");
+        fs::write(&document, "# note").unwrap();
+
+        let registry = Arc::new(WorkspaceRegistry::new("ws-feature-gates".into()));
+        let id = add_test_workspace(
+            &registry,
+            root.path().to_path_buf(),
+            WorkspaceFlags {
+                shared_annotation: true,
+                enable_live: false,
+                ..Default::default()
+            },
+        );
+        let entry = registry.get(&id).unwrap();
+        let session = Arc::new(
+            authorize_ws_target(
+                &entry,
+                WsTarget::Document {
+                    path: document.to_string_lossy().into_owned(),
+                },
+            )
+            .unwrap(),
+        );
+        let mut rx = entry.events_tx.subscribe();
+        handle_client_msg(
+            None,
+            entry.clone(),
+            session,
+            WebSocketMessage::LiveAction { data: json!({}) },
+        )
+        .await;
+        assert!(matches!(
+            rx.try_recv(),
+            Err(tokio::sync::broadcast::error::TryRecvError::Empty)
+        ));
+
+        registry.update_flags(
+            &id,
+            WorkspaceFlags {
+                shared_annotation: false,
+                enable_live: true,
+                ..Default::default()
+            },
+        );
+        let surface = Arc::new(
+            authorize_ws_target(
+                &entry,
+                WsTarget::Surface {
+                    key: format!("/{id}/"),
+                },
+            )
+            .unwrap(),
+        );
+        handle_client_msg(
+            None,
+            entry,
+            surface,
+            WebSocketMessage::NewAnnotation {
+                annotation: json!({ "id": "forbidden" }),
+                op_id: None,
+            },
+        )
+        .await;
+        assert!(matches!(
+            rx.try_recv(),
+            Err(tokio::sync::broadcast::error::TryRecvError::Empty)
+        ));
     }
 
     #[test]
@@ -6724,9 +7403,10 @@ mod tests {
             theme: Arc::new("dark".into()),
             tera: Arc::new(Tera::default()),
             db: None,
-            tx: None,
             workspace_registry: registry,
             management_token: Arc::new("token".into()),
+            admin_bootstraps: Arc::new(AdminBootstrapStore::new()),
+            allowed_hosts: Arc::new(build_allowed_hosts("127.0.0.1", "", 6419, &[], &[])),
             save_token: Arc::new("save-token".into()),
             i18n_json: Arc::new("{}".into()),
             i18n_lang: Arc::new("zh".into()),
@@ -6904,14 +7584,173 @@ mod tests {
     fn access_cookie_round_trips_and_rejects_tamper() {
         let secret = "test-secret";
         let scopes = vec![("s".to_string(), "h1".to_string())];
-        let raw = make_access_cookie(secret, &scopes, access_now_unix() + 100);
+        let raw = make_access_cookie(secret, &scopes, access_now_unix() + 100, false);
         let kv = raw.split(';').next().unwrap(); // markon_access=PAYLOAD.SIG
         assert_eq!(access_cookie_scopes(secret, Some(kv)), scopes);
         // Wrong secret, tampered value, and an expired cookie are all rejected.
         assert!(access_cookie_scopes("other-secret", Some(kv)).is_empty());
         assert!(access_cookie_scopes(secret, Some(&format!("{kv}00"))).is_empty());
-        let expired = make_access_cookie(secret, &scopes, 1);
+        let expired = make_access_cookie(secret, &scopes, 1, false);
         assert!(access_cookie_scopes(secret, Some(expired.split(';').next().unwrap())).is_empty());
+        let secure = make_access_cookie(secret, &scopes, access_now_unix() + 100, true);
+        assert!(secure.contains("; Secure"));
+    }
+
+    #[test]
+    fn allowed_hosts_are_exact_and_track_explicit_https_origins() {
+        let allowed = build_allowed_hosts(
+            "127.0.0.1",
+            "",
+            6419,
+            &["https://md.example.com".into(), "notes.local".into()],
+            &[],
+        );
+        assert!(allowed.allows_header(Some("127.0.0.1:6419")));
+        assert!(allowed.allows_header(Some("[::1]:6419")));
+        assert!(allowed.allows_header(Some("LOCALHOST:9999")));
+        assert!(allowed.allows_header(Some("md.example.com")));
+        assert!(allowed.allows_header(Some("notes.local:443")));
+        assert!(!allowed.allows_header(Some("evil.example")));
+        assert!(!allowed.allows_header(Some("md.example.com.evil")));
+        assert!(allowed.is_secure_header(Some("md.example.com")));
+        assert!(!allowed.is_secure_header(Some("notes.local")));
+    }
+
+    #[tokio::test]
+    async fn unknown_host_is_rejected_before_route_execution() {
+        let state = test_state(Arc::new(WorkspaceRegistry::new("host-gate".into())));
+        let app = Router::new()
+            .route("/state-change", post(|| async { StatusCode::NO_CONTENT }))
+            .layer(axum::middleware::from_fn_with_state(
+                state.clone(),
+                require_allowed_host,
+            ))
+            .with_state(state);
+
+        let evil = axum::http::Request::builder()
+            .method("POST")
+            .uri("/state-change")
+            .header(header::HOST, "evil.example:6419")
+            .header(header::ORIGIN, "http://evil.example:6419")
+            .body(axum::body::Body::empty())
+            .unwrap();
+        assert_eq!(
+            app.clone().oneshot(evil).await.unwrap().status(),
+            StatusCode::MISDIRECTED_REQUEST
+        );
+
+        let local = axum::http::Request::builder()
+            .method("POST")
+            .uri("/state-change")
+            .header(header::HOST, "127.0.0.1:6419")
+            .body(axum::body::Body::empty())
+            .unwrap();
+        assert_eq!(
+            app.oneshot(local).await.unwrap().status(),
+            StatusCode::NO_CONTENT
+        );
+    }
+
+    #[tokio::test]
+    async fn loopback_is_not_an_admin_identity() {
+        let root = tempfile::tempdir().unwrap();
+        let registry = Arc::new(WorkspaceRegistry::new("admin-role".into()));
+        let id = add_test_workspace(&registry, root.path().to_path_buf(), all_flags());
+        let required_hash = crate::workspace::hash_access_code("test-salt", "guest");
+        assert!(registry.set_collaborator_access_code(&id, &required_hash));
+        let state = test_state(registry);
+        let route = format!("/_/{id}/danger");
+        let app = Router::new()
+            .route(
+                "/_/{workspace_id}/danger",
+                post(|| async { StatusCode::NO_CONTENT })
+                    .route_layer(axum::middleware::from_fn(require_admin_role)),
+            )
+            .layer(axum::middleware::from_fn_with_state(
+                state.clone(),
+                require_access_code,
+            ));
+
+        let request = |cookie: Option<String>| {
+            let mut builder = axum::http::Request::builder()
+                .method("POST")
+                .uri(&route)
+                .extension(axum::extract::ConnectInfo(loopback()));
+            if let Some(cookie) = cookie {
+                builder = builder.header(header::COOKIE, cookie);
+            }
+            builder.body(axum::body::Body::empty()).unwrap()
+        };
+
+        // A loopback TCP peer without a capability still hits the collaborator
+        // gate; network topology grants no role.
+        assert_eq!(
+            app.clone().oneshot(request(None)).await.unwrap().status(),
+            StatusCode::UNAUTHORIZED
+        );
+
+        let collaborator = make_access_cookie(
+            &state.access_secret,
+            &[(format!("w:{id}:collaborator"), required_hash)],
+            access_now_unix() + 60,
+            false,
+        );
+        assert_eq!(
+            app.clone()
+                .oneshot(request(Some(collaborator)))
+                .await
+                .unwrap()
+                .status(),
+            StatusCode::FORBIDDEN
+        );
+
+        let admin =
+            admin_auth::make_admin_cookie(&state.management_token, access_now_unix(), false);
+        assert_eq!(
+            app.oneshot(request(Some(admin))).await.unwrap().status(),
+            StatusCode::NO_CONTENT
+        );
+    }
+
+    #[tokio::test]
+    async fn admin_nonce_exchange_sets_single_use_http_only_session() {
+        let state = test_state(Arc::new(WorkspaceRegistry::new("admin-exchange".into())));
+        let nonce = state.admin_bootstraps.issue_url("/abcd1234/");
+        let headers = headers_with(Some("http://127.0.0.1:6419"), Some("127.0.0.1:6419"));
+        let response = admin_session_handler(
+            State(state.clone()),
+            axum::extract::ConnectInfo(loopback()),
+            headers.clone(),
+            Json(AdminSessionRequest {
+                nonce: Some(nonce.clone()),
+                code: None,
+            }),
+        )
+        .await;
+        assert_eq!(response.status(), StatusCode::OK);
+        let cookie = response
+            .headers()
+            .get(header::SET_COOKIE)
+            .and_then(|value| value.to_str().ok())
+            .expect("admin session cookie");
+        assert!(cookie.contains("HttpOnly; SameSite=Strict"));
+        assert!(admin_auth::admin_cookie_valid(
+            &state.management_token,
+            Some(cookie),
+            access_now_unix(),
+        ));
+
+        let replay = admin_session_handler(
+            State(state),
+            axum::extract::ConnectInfo(loopback()),
+            headers,
+            Json(AdminSessionRequest {
+                nonce: Some(nonce),
+                code: None,
+            }),
+        )
+        .await;
+        assert_eq!(replay.status(), StatusCode::UNAUTHORIZED);
     }
 
     #[test]
@@ -6943,6 +7782,11 @@ mod tests {
             Some("abcd1234")
         );
         assert_eq!(
+            access_gated_workspace("/_/abcd1234/ws").as_deref(),
+            Some("abcd1234")
+        );
+        assert!(access_gated_workspace("/_/ws").is_none());
+        assert_eq!(
             access_gated_workspace("/_/abcd1234/git/diff/work").as_deref(),
             Some("abcd1234")
         );
@@ -6954,6 +7798,309 @@ mod tests {
         assert!(access_gated_workspace("/_/unlock").is_none());
         assert!(access_gated_workspace("/api/preview").is_none());
         assert!(access_gated_workspace("/favicon.ico").is_none());
+    }
+
+    #[tokio::test]
+    async fn workspace_ws_upgrade_requires_remote_access_cookie() {
+        let root = tempfile::tempdir().unwrap();
+        let registry = Arc::new(WorkspaceRegistry::new("ws-access-gate".into()));
+        let id = add_test_workspace(
+            &registry,
+            root.path().to_path_buf(),
+            WorkspaceFlags {
+                enable_live: true,
+                ..Default::default()
+            },
+        );
+        let required_hash = "required-hash".to_string();
+        assert!(registry.set_collaborator_access_code(&id, &required_hash));
+        let state = test_state(registry);
+        let app = Router::new()
+            .route(WORKSPACE_WS_ROUTE, get(|| async { StatusCode::NO_CONTENT }))
+            .layer(axum::middleware::from_fn_with_state(
+                state.clone(),
+                require_access_code,
+            ));
+
+        let request = axum::http::Request::builder()
+            .uri(format!("/_/{id}/ws"))
+            .header(header::UPGRADE, "websocket")
+            .header(header::ORIGIN, "http://markon.local")
+            .header(header::HOST, "markon.local")
+            .extension(axum::extract::ConnectInfo(lan_peer()))
+            .body(axum::body::Body::empty())
+            .unwrap();
+        let response = app.clone().oneshot(request).await.unwrap();
+        assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
+
+        let cookie = make_access_cookie(
+            &state.access_secret,
+            &[(format!("w:{id}:collaborator"), required_hash)],
+            access_now_unix() + 60,
+            false,
+        );
+        let request = axum::http::Request::builder()
+            .uri(format!("/_/{id}/ws"))
+            .header(header::UPGRADE, "websocket")
+            .header(header::COOKIE, cookie)
+            .extension(axum::extract::ConnectInfo(lan_peer()))
+            .body(axum::body::Body::empty())
+            .unwrap();
+        let response = app.oneshot(request).await.unwrap();
+        assert_eq!(response.status(), StatusCode::NO_CONTENT);
+    }
+
+    #[tokio::test]
+    async fn workspace_ws_route_and_broadcast_are_actually_isolated() {
+        use tokio_tungstenite::tungstenite::{Error as WsError, Message as ClientMessage};
+
+        let root_a = tempfile::tempdir().unwrap();
+        let root_b = tempfile::tempdir().unwrap();
+        let registry = Arc::new(WorkspaceRegistry::new("ws-integration".into()));
+        let live_flags = WorkspaceFlags {
+            enable_live: true,
+            ..Default::default()
+        };
+        let id_a = add_test_workspace(&registry, root_a.path().to_path_buf(), live_flags);
+        let id_b = add_test_workspace(&registry, root_b.path().to_path_buf(), live_flags);
+        let (addr, server) = spawn_collaboration_test_server(test_state(registry.clone())).await;
+
+        let (mut socket_a, _) =
+            tokio_tungstenite::connect_async(format!("ws://{addr}/_/{id_a}/ws"))
+                .await
+                .unwrap();
+        let (mut socket_a_other_channel, _) =
+            tokio_tungstenite::connect_async(format!("ws://{addr}/_/{id_a}/ws"))
+                .await
+                .unwrap();
+        let (mut socket_b, _) =
+            tokio_tungstenite::connect_async(format!("ws://{addr}/_/{id_b}/ws"))
+                .await
+                .unwrap();
+
+        socket_a
+            .send(ClientMessage::Text(
+                serde_json::json!({
+                    "type": "hello",
+                    "target": { "kind": "surface", "key": format!("/{id_a}/") }
+                })
+                .to_string()
+                .into(),
+            ))
+            .await
+            .unwrap();
+        socket_a_other_channel
+            .send(ClientMessage::Text(
+                serde_json::json!({
+                    "type": "hello",
+                    "target": {
+                        "kind": "surface",
+                        "key": format!("/_/{id_a}/compare")
+                    }
+                })
+                .to_string()
+                .into(),
+            ))
+            .await
+            .unwrap();
+        socket_b
+            .send(ClientMessage::Text(
+                serde_json::json!({
+                    "type": "hello",
+                    "target": { "kind": "surface", "key": format!("/{id_b}/") }
+                })
+                .to_string()
+                .into(),
+            ))
+            .await
+            .unwrap();
+
+        socket_a
+            .send(ClientMessage::Text(
+                r#"{"type":"live_action","data":{"action":"focus"}}"#.into(),
+            ))
+            .await
+            .unwrap();
+        let echoed = tokio::time::timeout(std::time::Duration::from_secs(2), socket_a.next())
+            .await
+            .expect("same channel should receive live event")
+            .unwrap()
+            .unwrap();
+        assert!(echoed.to_text().unwrap().contains("live_action"));
+        assert!(tokio::time::timeout(
+            std::time::Duration::from_millis(150),
+            socket_a_other_channel.next()
+        )
+        .await
+        .is_err());
+        assert!(
+            tokio::time::timeout(std::time::Duration::from_millis(150), socket_b.next())
+                .await
+                .is_err()
+        );
+
+        let legacy = tokio_tungstenite::connect_async(format!("ws://{addr}/_/ws"))
+            .await
+            .unwrap_err();
+        assert!(
+            matches!(legacy, WsError::Http(response) if response.status() == StatusCode::NOT_FOUND)
+        );
+
+        assert!(registry.remove(&id_a));
+        let detached = tokio::time::timeout(std::time::Duration::from_secs(2), socket_a.next())
+            .await
+            .expect("detaching a workspace must close existing sockets");
+        assert!(matches!(
+            detached,
+            None | Some(Ok(ClientMessage::Close(_))) | Some(Err(_))
+        ));
+        server.abort();
+    }
+
+    #[tokio::test]
+    async fn workspace_ws_handshake_rejects_workspace_without_features() {
+        use tokio_tungstenite::tungstenite::Error as WsError;
+
+        let root = tempfile::tempdir().unwrap();
+        let registry = Arc::new(WorkspaceRegistry::new("ws-disabled".into()));
+        let id = add_test_workspace(
+            &registry,
+            root.path().to_path_buf(),
+            WorkspaceFlags::default(),
+        );
+        let (addr, server) = spawn_collaboration_test_server(test_state(registry)).await;
+        let error = tokio_tungstenite::connect_async(format!("ws://{addr}/_/{id}/ws"))
+            .await
+            .unwrap_err();
+        assert!(
+            matches!(error, WsError::Http(response) if response.status() == StatusCode::FORBIDDEN)
+        );
+        server.abort();
+    }
+
+    #[tokio::test]
+    async fn live_only_document_receives_no_stored_data_and_rejects_foreign_path() {
+        use tokio_tungstenite::tungstenite::Message as ClientMessage;
+
+        let root_a = tempfile::tempdir().unwrap();
+        let root_b = tempfile::tempdir().unwrap();
+        let document_a = root_a.path().join("a.md");
+        let document_b = root_b.path().join("b.md");
+        fs::write(&document_a, "# a").unwrap();
+        fs::write(&document_b, "# b").unwrap();
+        let registry = Arc::new(WorkspaceRegistry::new("ws-live-only".into()));
+        let id_a = add_test_workspace(
+            &registry,
+            root_a.path().to_path_buf(),
+            WorkspaceFlags {
+                enable_live: true,
+                shared_annotation: false,
+                ..Default::default()
+            },
+        );
+        let _id_b = add_test_workspace(&registry, root_b.path().to_path_buf(), all_flags());
+
+        let conn = Connection::open_in_memory().unwrap();
+        conn.execute(
+            "CREATE TABLE annotations (id TEXT PRIMARY KEY, file_path TEXT NOT NULL, data TEXT NOT NULL)",
+            [],
+        )
+        .unwrap();
+        conn.execute(
+            "CREATE TABLE viewed_state (file_path TEXT PRIMARY KEY, state TEXT NOT NULL, updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)",
+            [],
+        )
+        .unwrap();
+        conn.execute(
+            "INSERT INTO annotations (id, file_path, data) VALUES ('secret', ?1, '{\"id\":\"secret\"}')",
+            [dunce::canonicalize(&document_a)
+                .unwrap()
+                .to_string_lossy()
+                .as_ref()],
+        )
+        .unwrap();
+        let db = Arc::new(Mutex::new(conn));
+        let mut state = test_state(registry);
+        state.db = Some(db.clone());
+        let (addr, server) = spawn_collaboration_test_server(state).await;
+
+        let (mut valid, _) = tokio_tungstenite::connect_async(format!("ws://{addr}/_/{id_a}/ws"))
+            .await
+            .unwrap();
+        valid
+            .send(ClientMessage::Text(
+                serde_json::json!({
+                    "type": "hello",
+                    "target": {
+                        "kind": "document",
+                        "path": document_a.to_string_lossy()
+                    }
+                })
+                .to_string()
+                .into(),
+            ))
+            .await
+            .unwrap();
+        assert!(
+            tokio::time::timeout(std::time::Duration::from_millis(150), valid.next())
+                .await
+                .is_err()
+        );
+        valid
+            .send(ClientMessage::Text(
+                r#"{"type":"live_action","data":{"action":"focus"}}"#.into(),
+            ))
+            .await
+            .unwrap();
+        let live = tokio::time::timeout(std::time::Duration::from_secs(2), valid.next())
+            .await
+            .unwrap()
+            .unwrap()
+            .unwrap();
+        assert!(live.to_text().unwrap().contains("live_action"));
+        valid
+            .send(ClientMessage::Text(
+                r#"{"type":"new_annotation","annotation":{"id":"forbidden"}}"#.into(),
+            ))
+            .await
+            .unwrap();
+        tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+        let forbidden_count: i64 = db
+            .lock()
+            .unwrap()
+            .query_row(
+                "SELECT COUNT(*) FROM annotations WHERE id = 'forbidden'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(forbidden_count, 0);
+
+        let (mut foreign, _) = tokio_tungstenite::connect_async(format!("ws://{addr}/_/{id_a}/ws"))
+            .await
+            .unwrap();
+        foreign
+            .send(ClientMessage::Text(
+                serde_json::json!({
+                    "type": "hello",
+                    "target": {
+                        "kind": "document",
+                        "path": document_b.to_string_lossy()
+                    }
+                })
+                .to_string()
+                .into(),
+            ))
+            .await
+            .unwrap();
+        let closed = tokio::time::timeout(std::time::Duration::from_secs(2), foreign.next())
+            .await
+            .expect("foreign path must be rejected before any data is sent");
+        assert!(matches!(
+            closed,
+            None | Some(Ok(ClientMessage::Close(_))) | Some(Err(_))
+        ));
+        server.abort();
     }
 
     #[test]
@@ -6971,6 +8118,7 @@ mod tests {
             workspace_internal_url("abcd1234", "git/history"),
             "/_/abcd1234/git/history"
         );
+        assert_eq!(workspace_internal_url("abcd1234", "ws"), "/_/abcd1234/ws");
         assert_eq!(
             workspace_compare_base_url("abcd1234"),
             "/_/abcd1234/compare"
@@ -7026,7 +8174,7 @@ mod tests {
         let response = handle_workspace_path(
             State(state),
             AxumPath((id.clone(), "docs/EVDI_IMPLEMENTATION_PLAN.md".to_string())),
-            axum::extract::ConnectInfo(loopback()),
+            Some(Extension(AccessRole::Admin)),
             axum::http::HeaderMap::new(),
         )
         .await
@@ -7069,7 +8217,7 @@ mod tests {
         let response = handle_workspace_path(
             State(state),
             AxumPath((id, "notes.txt".to_string())),
-            axum::extract::ConnectInfo(loopback()),
+            Some(Extension(AccessRole::Admin)),
             axum::http::HeaderMap::new(),
         )
         .await
@@ -7098,7 +8246,7 @@ mod tests {
         let response = handle_workspace_path(
             State(state),
             AxumPath((id, "README.md".to_string())),
-            axum::extract::ConnectInfo(loopback()),
+            Some(Extension(AccessRole::Admin)),
             axum::http::HeaderMap::new(),
         )
         .await
@@ -7134,7 +8282,7 @@ mod tests {
         let response = handle_workspace_root(
             State(state.clone()),
             AxumPath(id.clone()),
-            axum::extract::ConnectInfo(loopback()),
+            Some(Extension(AccessRole::Admin)),
         )
         .await
         .into_response();
@@ -7167,7 +8315,7 @@ mod tests {
         let response = handle_workspace_root(
             State(state),
             AxumPath(id),
-            axum::extract::ConnectInfo(lan_peer()),
+            Some(Extension(AccessRole::Collaborator)),
         )
         .await
         .into_response();
@@ -7202,7 +8350,7 @@ mod tests {
             handle_workspace_path(
                 State(test_state(reg_on)),
                 AxumPath((id_on, "README.md".to_string())),
-                axum::extract::ConnectInfo(lan_peer()),
+                Some(Extension(AccessRole::Collaborator)),
                 axum::http::HeaderMap::new(),
             )
             .await
@@ -7230,7 +8378,7 @@ mod tests {
             handle_workspace_path(
                 State(test_state(reg_off)),
                 AxumPath((id_off, "README.md".to_string())),
-                axum::extract::ConnectInfo(lan_peer()),
+                Some(Extension(AccessRole::Collaborator)),
                 axum::http::HeaderMap::new(),
             )
             .await
@@ -7333,7 +8481,7 @@ mod tests {
         let response = handle_workspace_root(
             State(state),
             AxumPath(id.clone()),
-            axum::extract::ConnectInfo(loopback()),
+            Some(Extension(AccessRole::Admin)),
         )
         .await
         .into_response();
@@ -7360,7 +8508,7 @@ mod tests {
         let response = handle_workspace_root(
             State(state.clone()),
             AxumPath(id.clone()),
-            axum::extract::ConnectInfo(loopback()),
+            Some(Extension(AccessRole::Admin)),
         )
         .await
         .into_response();
@@ -7387,7 +8535,7 @@ mod tests {
                 view: Some("rendered".into()),
                 f: None,
             }),
-            axum::extract::ConnectInfo(loopback()),
+            Some(Extension(AccessRole::Admin)),
         )
         .await
         .into_response();
@@ -7405,7 +8553,7 @@ mod tests {
                 format: None,
                 f: None,
             }),
-            axum::extract::ConnectInfo(loopback()),
+            Some(Extension(AccessRole::Admin)),
         )
         .await
         .into_response();
@@ -7476,7 +8624,7 @@ mod tests {
         let root = handle_workspace_root(
             State(state.clone()),
             AxumPath(id.clone()),
-            axum::extract::ConnectInfo(loopback()),
+            Some(Extension(AccessRole::Admin)),
         )
         .await
         .into_response();
@@ -7517,7 +8665,7 @@ mod tests {
                 view: None,
                 f: None,
             }),
-            axum::extract::ConnectInfo(loopback()),
+            Some(Extension(AccessRole::Admin)),
         )
         .await
         .into_response();
@@ -7565,7 +8713,7 @@ mod tests {
                 format: None,
                 f: None,
             }),
-            axum::extract::ConnectInfo(loopback()),
+            Some(Extension(AccessRole::Admin)),
         )
         .await
         .into_response();
@@ -7585,7 +8733,7 @@ mod tests {
                 format: Some("data".to_string()),
                 f: None,
             }),
-            axum::extract::ConnectInfo(loopback()),
+            Some(Extension(AccessRole::Admin)),
         )
         .await
         .into_response();
@@ -7652,7 +8800,7 @@ mod tests {
                 view: Some("rendered".to_string()),
                 f: None,
             }),
-            axum::extract::ConnectInfo(loopback()),
+            Some(Extension(AccessRole::Admin)),
         )
         .await
         .into_response();
@@ -7728,7 +8876,7 @@ mod tests {
                 format: None,
                 f: None,
             }),
-            axum::extract::ConnectInfo(loopback()),
+            Some(Extension(AccessRole::Admin)),
         )
         .await
         .into_response();
@@ -7747,7 +8895,7 @@ mod tests {
                 format: Some("data".to_string()),
                 f: None,
             }),
-            axum::extract::ConnectInfo(loopback()),
+            Some(Extension(AccessRole::Admin)),
         )
         .await
         .into_response();
@@ -8072,7 +9220,7 @@ mod tests {
         let response = handle_workspace_path(
             State(state),
             AxumPath((id, route)),
-            axum::extract::ConnectInfo(loopback()),
+            Some(Extension(AccessRole::Admin)),
             axum::http::HeaderMap::new(),
         )
         .await
@@ -8100,7 +9248,7 @@ mod tests {
         let response = handle_workspace_path(
             State(state.clone()),
             AxumPath((id.clone(), "sub/".into())),
-            axum::extract::ConnectInfo(loopback()),
+            Some(Extension(AccessRole::Admin)),
             axum::http::HeaderMap::new(),
         )
         .await
@@ -8117,7 +9265,7 @@ mod tests {
         let response = handle_workspace_root(
             State(state),
             AxumPath(id.clone()),
-            axum::extract::ConnectInfo(loopback()),
+            Some(Extension(AccessRole::Admin)),
         )
         .await
         .into_response();
@@ -8365,7 +9513,10 @@ mod tests {
         let registry = Arc::new(WorkspaceRegistry::new("single-file-test".into()));
         let id = registry.add(WorkspaceConfig {
             path: dunce::canonicalize(dir.path()).unwrap(),
-            flags: WorkspaceFlags::default(),
+            flags: WorkspaceFlags {
+                enable_edit: true,
+                ..WorkspaceFlags::default()
+            },
             single_file: Some("opened.md".into()),
             collaborator_access_code_hash: String::new(),
             ..Default::default()
@@ -8375,7 +9526,7 @@ mod tests {
         let root = handle_workspace_root(
             State(state.clone()),
             AxumPath(id.clone()),
-            axum::extract::ConnectInfo(loopback()),
+            Some(Extension(AccessRole::Admin)),
         )
         .await
         .into_response();
@@ -8388,7 +9539,7 @@ mod tests {
         let opened = handle_workspace_path(
             State(state.clone()),
             AxumPath((id.clone(), "opened.md".into())),
-            axum::extract::ConnectInfo(loopback()),
+            Some(Extension(AccessRole::Admin)),
             axum::http::HeaderMap::new(),
         )
         .await
@@ -8408,7 +9559,7 @@ mod tests {
         let asset = handle_workspace_path(
             State(state.clone()),
             AxumPath((id.clone(), "pic.png".into())),
-            axum::extract::ConnectInfo(loopback()),
+            Some(Extension(AccessRole::Admin)),
             axum::http::HeaderMap::new(),
         )
         .await
@@ -8418,7 +9569,7 @@ mod tests {
         let spaced_asset = handle_workspace_path(
             State(state.clone()),
             AxumPath((id.clone(), "pic%20with%20space.png".into())),
-            axum::extract::ConnectInfo(loopback()),
+            Some(Extension(AccessRole::Admin)),
             axum::http::HeaderMap::new(),
         )
         .await
@@ -8428,7 +9579,7 @@ mod tests {
         let root_asset = handle_workspace_path(
             State(state.clone()),
             AxumPath((id.clone(), "nested/root.png".into())),
-            axum::extract::ConnectInfo(loopback()),
+            Some(Extension(AccessRole::Admin)),
             axum::http::HeaderMap::new(),
         )
         .await
@@ -8436,13 +9587,82 @@ mod tests {
         assert_eq!(root_asset.status(), StatusCode::OK);
 
         let sibling = handle_workspace_path(
-            State(state),
-            AxumPath((id, "sibling.md".into())),
-            axum::extract::ConnectInfo(loopback()),
+            State(state.clone()),
+            AxumPath((id.clone(), "sibling.md".into())),
+            Some(Extension(AccessRole::Admin)),
             axum::http::HeaderMap::new(),
         )
         .await
         .into_response();
         assert_eq!(sibling.status(), StatusCode::NOT_FOUND);
+
+        let files = handle_workspace_files_data(State(state.clone()), AxumPath(id.clone()))
+            .await
+            .into_response();
+        assert_eq!(files.status(), StatusCode::OK);
+        let files = response_text(files).await;
+        assert!(files.contains("opened.md"), "body: {files}");
+        assert!(files.contains("pic.png"), "body: {files}");
+        assert!(!files.contains("sibling.md"), "body: {files}");
+
+        let directory = handle_workspace_dir_data(
+            State(state.clone()),
+            AxumPath(id.clone()),
+            Query(DirListingQuery { path: None }),
+        )
+        .await
+        .into_response();
+        assert_eq!(directory.status(), StatusCode::OK);
+        let directory = response_text(directory).await;
+        assert!(directory.contains("opened.md"), "body: {directory}");
+        assert!(!directory.contains("sibling.md"), "body: {directory}");
+
+        let git = handle_git_history_data(State(state.clone()), AxumPath(id.clone()))
+            .await
+            .into_response();
+        assert_eq!(git.status(), StatusCode::NOT_FOUND);
+
+        let save = save_file_handler(
+            State(state.clone()),
+            Json(SaveFileRequest {
+                workspace_id: id.clone(),
+                file_path: "sibling.md".into(),
+                content: "# overwritten".into(),
+            }),
+        )
+        .await
+        .into_response();
+        assert_eq!(save.status(), StatusCode::OK);
+        let save: serde_json::Value = serde_json::from_str(&response_text(save).await).unwrap();
+        assert_eq!(save["success"], false);
+        assert_eq!(
+            fs::read_to_string(dir.path().join("sibling.md")).unwrap(),
+            "# sibling"
+        );
+
+        let create = handle_workspace_create_file(
+            State(state.clone()),
+            AxumPath(id.clone()),
+            Json(CreateFileRequest {
+                path: "created.md".into(),
+                content: Some("# created".into()),
+            }),
+        )
+        .await
+        .into_response();
+        assert_eq!(create.status(), StatusCode::NOT_FOUND);
+        assert!(!dir.path().join("created.md").exists());
+
+        let delete = handle_workspace_delete_file(
+            State(state),
+            AxumPath(id),
+            Json(DeleteFileRequest {
+                path: "sibling.md".into(),
+            }),
+        )
+        .await
+        .into_response();
+        assert_eq!(delete.status(), StatusCode::NOT_FOUND);
+        assert!(dir.path().join("sibling.md").exists());
     }
 }

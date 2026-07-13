@@ -9,6 +9,7 @@ import {
     workspaceInternalUrl,
     workspaceRootUrl,
     workspaceSearchUrl,
+    workspaceWebSocketUrl,
 } from './routes';
 
 describe('route helpers', () => {
@@ -23,6 +24,7 @@ describe('route helpers', () => {
         expect(workspaceFilesDataUrl('abcd1234')).toBe('/_/abcd1234/files/data');
         expect(workspaceFileDeleteUrl('abcd1234')).toBe('/_/abcd1234/files/delete');
         expect(workspaceChatUrl('abcd1234')).toBe('/_/abcd1234/chat');
+        expect(workspaceWebSocketUrl('abcd1234')).toBe('/_/abcd1234/ws');
         expect(workspaceChatApiUrl('abcd1234')).toBe('/api/chat/abcd1234');
         expect(workspaceChatApiUrl('abcd1234', 'threads/t1')).toBe('/api/chat/abcd1234/threads/t1');
     });

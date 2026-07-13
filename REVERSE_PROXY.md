@@ -4,9 +4,11 @@ When using `--shared-annotation` mode, ensure your reverse proxy correctly suppo
 
 ## Authentication
 
-**Markon has no built-in authentication.** Anyone who can reach the URL — directly or through the proxy — can read every file in the workspace. With `--shared-annotation` or `--edit` enabled, they can also write.
+Markon has built-in collaborator access codes and explicit administrator sessions. Browser management privileges are capability-based: loopback peers and same-machine reverse proxies are not administrators. Use `markon admin open` or `markon admin code` to create an administrator browser session.
 
-Before exposing Markon through a reverse proxy, configure authentication at the gateway level. Recommended approaches:
+Every request must also match the Host allowlist. Start Markon with `--entry https://md.example.com` or `--trusted-host https://md.example.com` (repeatable) for each proxy origin. An HTTPS origin also causes access cookies to carry `Secure`. Unknown Host values receive 421, preventing DNS rebinding. Forwarded IP/protocol headers are never used as authorization.
+
+Before exposing Markon through a reverse proxy, configure authentication at the gateway level as an additional perimeter. Recommended approaches:
 
 - **HTTP Basic Auth (nginx)** — simplest option, suitable for personal or team use:
 
@@ -334,7 +336,7 @@ location /_/ {
 If you see "Mixed Content" errors:
 - HTTPS pages must use `wss://` protocol
 - Markon handles this automatically
-- Ensure reverse proxy correctly passes `X-Forwarded-Proto` header
+- Declare the HTTPS origin with `--entry` or `--trusted-host`; forwarded headers are not trusted for authorization
 
 ---
 
@@ -349,7 +351,7 @@ markon README.md
 
 # Shared annotation mode (WebSocket enabled)
 markon README.md --shared-annotation
-# WebSocket URL: ws://localhost:6419/_/ws
+# Collaboration URL: ws://localhost:6419/_/{workspace_id}/ws
 ```
 
 ### Verify System Resources
@@ -358,7 +360,7 @@ Access in browser:
 - `http://localhost:6419/_/css/editor.css` - CSS file
 - `http://localhost:6419/_/js/editor.js` - JS file
 - `http://localhost:6419/_/favicon.svg` - Favicon
-- `http://localhost:6419/_/ws` - WebSocket (shared-annotation mode only)
+- `ws://localhost:6419/_/{workspace_id}/ws` - gated collaboration WebSocket
 
 ### Verify No User File Conflicts
 
@@ -372,7 +374,7 @@ echo "# Static" > static/readme.md
 Access:
 - `http://localhost:6419/ws/test.md` ✅ User file
 - `http://localhost:6419/static/readme.md` ✅ User file
-- `http://localhost:6419/_/ws` ✅ System WebSocket (no conflict!)
+- `ws://localhost:6419/_/{workspace_id}/ws` ✅ Workspace system WebSocket (no conflict!)
 
 ---
 

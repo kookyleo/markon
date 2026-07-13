@@ -11,6 +11,15 @@
 set -euo pipefail
 
 repo_root="$(git rev-parse --show-toplevel)"
+
+# Git exports repository-local environment variables (notably GIT_DIR and
+# GIT_WORK_TREE) to hooks. If they leak into the test suite, any `git init` or
+# `git commit` spawned by a test targets this checkout instead of its tempdir.
+# Capture the root first, then clear every local variable before running tools.
+for name in $(git rev-parse --local-env-vars); do
+  unset "$name"
+done
+
 cd "$repo_root"
 
 if ! scripts/quality-gate.sh; then

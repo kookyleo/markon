@@ -1673,7 +1673,7 @@
                                     <ul class="branch-panel-list">
                                         {% for branch in git_branches %}
                                         <li data-branch-item data-branch-name-lower="{{ branch.name | lower }}">
-                                            <button class="branch-panel-item" type="button" data-checkout-branch="{{ branch.name }}" {% if branch.current or not is_local %}disabled{% endif %}>
+                                            <button class="branch-panel-item" type="button" data-checkout-branch="{{ branch.name }}" {% if branch.current or not can_manage %}disabled{% endif %}>
                                                 <span class="branch-panel-check" aria-hidden="true">{% if branch.current %}✓{% endif %}</span>
                                                 <span class="branch-panel-name">{{ branch.name }}</span>
                                                 {% if branch.is_default %}<span class="branch-panel-badge" data-i18n="web.ws.git.default">default</span>{% endif %}
@@ -1682,8 +1682,8 @@
                                         {% endfor %}
                                     </ul>
                                     <div class="branch-panel-empty" data-branch-empty hidden data-i18n="web.ws.git.no_branches">No branches found.</div>
-                                    {% if not is_local %}
-                                    <div class="branch-panel-note" data-i18n="web.ws.git.local_only">Local access required</div>
+                                    {% if not can_manage %}
+                                    <div class="branch-panel-note" data-i18n="web.ws.git.admin_required">Administrator session required</div>
                                     {% endif %}
                                     <a class="branch-panel-foot" href="{{ branches_url }}"><span data-i18n="web.ws.git.view_all_branches">View all branches</span> →</a>
                                 </div>
@@ -1800,15 +1800,15 @@
             <section class="workspace-side-section">
                 <div class="workspace-section-main workspace-section-main--features">
                     <h2 class="workspace-section-title" data-i18n="web.ws.features">Features</h2>
-                    {% if not is_local %}
+                    {% if not can_manage %}
                     <span class="workspace-section-info" tabindex="0"
-                          data-i18n-aria="web.ws.features.local_only">
+                          data-i18n-aria="web.ws.features.admin_required">
                         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
                             <circle cx="12" cy="12" r="10"/>
                             <line x1="12" y1="16" x2="12" y2="12"/>
                             <line x1="12" y1="8" x2="12.01" y2="8"/>
                         </svg>
-                        <span class="workspace-section-tip" role="tooltip" data-i18n="web.ws.features.local_only">Editable only when opened from this machine (the local loopback address). Remote visitors see these read-only.</span>
+                        <span class="workspace-section-tip" role="tooltip" data-i18n="web.ws.features.admin_required">Editable only with an administrator session. Collaborators see these read-only.</span>
                     </span>
                     {% endif %}
                 </div>
@@ -1816,13 +1816,13 @@
                     <div class="workspace-feature-list"
                          data-workspace-feature-form
                          data-update-url="{{ settings_features_url }}"
-                         data-can-edit="{{ is_local }}">
+                         data-can-edit="{{ can_manage }}">
                         {% for feature in feature_statuses %}
-                        <label class="workspace-feature-switch {% if feature.enabled %}is-on{% endif %}{% if not is_local %} is-disabled{% endif %}">
+                        <label class="workspace-feature-switch {% if feature.enabled %}is-on{% endif %}{% if not can_manage %} is-disabled{% endif %}">
                             <input type="checkbox"
                                    data-feature-key="{{ feature.key }}"
                                    {% if feature.enabled %}checked{% endif %}
-                                   {% if not is_local %}disabled{% endif %}>
+                                   {% if not can_manage %}disabled{% endif %}>
                             <span class="workspace-feature-toggle" aria-hidden="true"></span>
                             <span data-i18n="{{ feature.label_key }}">{{ feature.label }}</span>
                         </label>

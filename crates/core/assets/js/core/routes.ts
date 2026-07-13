@@ -58,6 +58,10 @@ export function workspaceChatUrl(workspaceId: string): string {
     return workspaceInternalUrl(workspaceId, 'chat');
 }
 
+export function workspaceWebSocketUrl(workspaceId: string): string {
+    return workspaceInternalUrl(workspaceId, 'ws');
+}
+
 export function workspaceChatApiUrl(workspaceId: string, path = ''): string {
     const ws = cleanWorkspaceId(workspaceId);
     const rel = cleanToolPath(path);

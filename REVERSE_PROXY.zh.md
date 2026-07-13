@@ -4,9 +4,11 @@
 
 ## 访问控制
 
-**Markon 本身不做任何身份认证。** 凡是能访问到该 URL 的人，都可以读取工作区里的所有文件；开启 `--shared-annotation` 或 `--edit` 后，他们同样可以写入。
+Markon 内建协作者访问码与显式管理员会话。浏览器管理权限基于 capability：loopback 请求和同机反向代理都不会成为管理员。使用 `markon admin open` 或 `markon admin code` 创建管理员浏览器会话。
 
-通过反向代理对外暴露时，**必须在网关层加上认证**，否则工作区对公网完全开放。常见方案：
+每个请求还必须命中 Host allowlist。请为每个代理 origin 传入 `--entry https://md.example.com` 或可重复的 `--trusted-host https://md.example.com`。HTTPS origin 会让访问 Cookie 自动带 `Secure`；未知 Host 返回 421，以阻断 DNS rebinding。任何转发 IP / 协议头都不参与身份授权。
+
+通过反向代理对外暴露时，仍应在网关层增加认证作为额外外围。常见方案：
 
 - **HTTP Basic Auth（nginx）** — 最简单，个人或小团队首选：
 
@@ -334,7 +336,7 @@ location /_/ {
 如果看到 "Mixed Content" 错误：
 - HTTPS 页面必须使用 `wss://` 协议
 - Markon 已自动处理，无需手动配置
-- 确保反向代理正确传递 `X-Forwarded-Proto` 头
+- 用 `--entry` 或 `--trusted-host` 登记 HTTPS origin；转发头不参与授权
 
 ---
 
@@ -349,7 +351,7 @@ markon README.md
 
 # 共享注释模式（启用 WebSocket）
 markon README.md --shared-annotation
-# WebSocket URL: ws://localhost:6419/_/ws
+# 协作 WebSocket URL: ws://localhost:6419/_/{workspace_id}/ws
 ```
 
 ### 验证系统资源
@@ -358,7 +360,7 @@ markon README.md --shared-annotation
 - `http://localhost:6419/_/css/editor.css` - CSS 文件
 - `http://localhost:6419/_/js/editor.js` - JS 文件
 - `http://localhost:6419/_/favicon.svg` - Favicon
-- `http://localhost:6419/_/ws` - WebSocket（仅 shared-annotation 模式）
+- `ws://localhost:6419/_/{workspace_id}/ws` - 经过门禁的工作区协作 WebSocket
 
 ### 验证用户文件无冲突
 
@@ -372,7 +374,7 @@ echo "# Static" > static/readme.md
 访问：
 - `http://localhost:6419/ws/test.md` ✅ 用户文件
 - `http://localhost:6419/static/readme.md` ✅ 用户文件
-- `http://localhost:6419/_/ws` ✅ 系统 WebSocket（不冲突！）
+- `ws://localhost:6419/_/{workspace_id}/ws` ✅ 工作区系统 WebSocket（不冲突！）
 
 ---
 

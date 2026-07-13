@@ -127,8 +127,9 @@ markon <COMMAND>
 | `-p, --port <PORT>` | Server port, default `6419` |
 | `--host [IP]` | Bind address; no value opens an interface picker, `0.0.0.0` exposes all interfaces |
 | `--entry, --qr [URL_PREFIX]` | Public URL prefix and QR target; without a value, uses the featured reachable URL |
+| `--trusted-host <HOST_OR_ORIGIN>` | Additional exact Host / HTTPS origin, repeatable |
 | `-b, --open-browser [BASE_URL]` | Open the browser; an optional base URL supports reverse-proxy deployments |
-| `--collaborator-access-code <CODE>` | Set or clear the remote collaborator gate for this workspace |
+| `--collaborator-access-code <CODE>` | Set or clear the non-admin browser gate for this workspace |
 | `--print-collapsed-content` | Include collapsed section bodies in printed output |
 | `--salt <SALT>` | Advanced override for workspace-ID generation |
 
@@ -139,6 +140,7 @@ markon <COMMAND>
 | `markon ls [--format cards\|table]` | List active workspaces and feature state |
 | `markon detach <ID\|INDEX>` | Remove a workspace from the running server |
 | `markon set <ID\|INDEX> <FEATURE> <on\|off>` | Toggle `search`, `viewed`, `edit`, `live`, `chat`, or `shared` |
+| `markon admin open` / `markon admin code` | Create an administrator browser session automatically / with a pairing code |
 | `markon shutdown` | Stop the background server |
 | `markon bug` | Draft and open a GitHub bug report using authenticated `gh` |
 | `markon idea` | Create a GitHub Discussion feature idea using `gh` |
@@ -183,15 +185,16 @@ Markon uses a single server with any number of workspace roots:
 | AI Chat | Enables workspace-aware conversations using the configured provider |
 | Shared annotations | Moves annotations and Viewed state from browser storage to SQLite and syncs them over WebSocket |
 
-For Git repositories, the workspace page also exposes branches, tags, history, working changes, and rendered/raw Markdown diffs. Checkout, commit, file creation, and other structural actions are local-admin operations only.
+For Git repositories, the workspace page also exposes branches, tags, history, working changes, and rendered/raw Markdown diffs. Checkout, commit, file creation, and other structural actions require an explicit administrator browser session.
 
 ## Access Model
 
-Markon distinguishes access by network origin instead of user accounts:
+Markon uses explicit capabilities rather than treating network location as identity:
 
-- **Loopback is admin.** The desktop app and browser tabs on `127.0.0.1` can manage workspaces, change flags and aliases, edit files, and perform Git/file operations without an access code.
-- **Remote clients are collaborators.** They can use only the capabilities enabled for that workspace and cannot perform structural/admin operations.
-- **Collaborator codes gate remote access.** A workspace code overrides the global code; loopback always bypasses the gate.
+- **Administrator sessions are explicit.** Use `markon admin open` or `markon admin code`; loopback, proxy topology, and forwarded headers never grant management privileges.
+- **Other browsers are collaborators.** They can use only the capabilities enabled for that workspace and cannot perform structural/admin operations.
+- **Collaborator codes gate every non-admin browser.** A workspace code overrides the global code; loopback does not bypass it.
+- **Host authorities are allowlisted.** Reverse-proxy/custom domains must be declared with `--entry`, `--trusted-host`, or `trusted_hosts` in settings.
 
 The collaborator code is application-layer access control, not transport encryption. Put any public deployment behind HTTPS and a reverse proxy. Read [Access permissions](docs/features/access.md) and [Reverse proxy](REVERSE_PROXY.md) before exposing a server.
 

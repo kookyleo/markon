@@ -58,6 +58,9 @@ function itemAt<T>(items: ArrayLike<T>, index: number): T {
     return item;
 }
 
+const documentManager = (path = '/workspace/a.md'): WebSocketManager =>
+    new WebSocketManager('abcd1234', { kind: 'document', path });
+
 describe('WebSocketManager', () => {
     let logSpy: ReturnType<typeof vi.spyOn>;
     let warnSpy: ReturnType<typeof vi.spyOn>;
@@ -81,7 +84,7 @@ describe('WebSocketManager', () => {
     });
 
     it('connect() resolves on onopen and transitions to CONNECTED', async () => {
-        const m = new WebSocketManager('docs/intro.md');
+        const m = documentManager('/workspace/docs/intro.md');
         const states: string[] = [];
         m.onStateChange((next) => states.push(next));
 
@@ -92,13 +95,33 @@ describe('WebSocketManager', () => {
         expect(states).toContain(WSState.CONNECTED);
         expect(m.isConnected()).toBe(true);
 
-        // First frame should be the file path.
+        // The URL and first frame both carry the workspace-scoped protocol.
         const ws = itemAt(MockWS.instances, 0);
-        expect(itemAt(ws.sent, 0)).toBe('docs/intro.md');
+        expect(ws.url).toBe('ws://localhost:3000/_/abcd1234/ws');
+        expect(JSON.parse(itemAt(ws.sent, 0))).toEqual({
+            type: 'hello',
+            target: { kind: 'document', path: '/workspace/docs/intro.md' },
+        });
+    });
+
+    it('sends an explicit surface hello on the same scoped route', async () => {
+        const m = new WebSocketManager('abcd1234', {
+            kind: 'surface',
+            key: '/_/abcd1234/compare?base=main#change',
+        });
+        await m.connect();
+        const ws = itemAt(MockWS.instances, 0);
+        expect(JSON.parse(itemAt(ws.sent, 0))).toEqual({
+            type: 'hello',
+            target: {
+                kind: 'surface',
+                key: '/_/abcd1234/compare?base=main#change',
+            },
+        });
     });
 
     it('dispatches inbound messages to the matching handler', async () => {
-        const m = new WebSocketManager('a.md');
+        const m = documentManager();
         const handler = vi.fn<(msg: Extract<WsInbound, { type: 'new_annotation' }>) => void>();
         m.on('new_annotation', handler);
 
@@ -114,7 +137,7 @@ describe('WebSocketManager', () => {
     });
 
     it('ignores messages whose type has no registered handler', async () => {
-        const m = new WebSocketManager('a.md');
+        const m = documentManager();
         const newAnno = vi.fn();
         m.on('new_annotation', newAnno);
 
@@ -126,7 +149,7 @@ describe('WebSocketManager', () => {
     });
 
     it('off() unregisters a handler', async () => {
-        const m = new WebSocketManager('a.md');
+        const m = documentManager();
         const handler = vi.fn();
         m.on('clear_annotations', handler);
         m.off('clear_annotations', handler);
@@ -139,10 +162,10 @@ describe('WebSocketManager', () => {
     });
 
     it('send() serialises outbound payload to JSON', async () => {
-        const m = new WebSocketManager('a.md');
+        const m = documentManager();
         await m.connect();
         const ws = itemAt(MockWS.instances, 0);
-        // ws.sent[0] is the file path; subsequent entries are JSON frames.
+        // ws.sent[0] is the hello; subsequent entries are collaboration frames.
 
         await m.send({ type: 'delete_annotation', id: 'abc' });
 
@@ -152,7 +175,7 @@ describe('WebSocketManager', () => {
     });
 
     it('send() is a no-op when not connected', async () => {
-        const m = new WebSocketManager('a.md');
+        const m = documentManager();
         await m.send({ type: 'clear_annotations' });
         // No socket should have been created — send happens before connect.
         expect(MockWS.instances.length).toBe(0);
@@ -161,7 +184,7 @@ describe('WebSocketManager', () => {
 
     it('reconnects with exponential backoff after onclose', async () => {
         vi.useFakeTimers();
-        const m = new WebSocketManager('a.md');
+        const m = documentManager();
         const connectPromise = m.connect();
         // Flush queued microtasks so onopen fires.
         await vi.advanceTimersByTimeAsync(0);
@@ -180,7 +203,7 @@ describe('WebSocketManager', () => {
 
     it('disconnect() clears state and timers without scheduling a reconnect', async () => {
         vi.useFakeTimers();
-        const m = new WebSocketManager('a.md');
+        const m = documentManager();
         const p = m.connect();
         await vi.advanceTimersByTimeAsync(0);
         await p;
@@ -208,7 +231,7 @@ describe('WebSocketManager', () => {
     });
 
     it('isOwnEcho() returns true exactly once for a recorded op_id', () => {
-        const m = new WebSocketManager('a.md');
+        const m = documentManager();
         m.recordOutgoing('op-x');
         expect(m.isOwnEcho('op-x')).toBe(true);
         // Second hit is a miss — entry was consumed.
@@ -216,7 +239,7 @@ describe('WebSocketManager', () => {
     });
 
     it('isOwnEcho() returns false for null / undefined / unknown ids', () => {
-        const m = new WebSocketManager('a.md');
+        const m = documentManager();
         expect(m.isOwnEcho(null)).toBe(false);
         expect(m.isOwnEcho(undefined)).toBe(false);
         expect(m.isOwnEcho('never-sent')).toBe(false);
@@ -224,7 +247,7 @@ describe('WebSocketManager', () => {
 
     it('isOwnEcho() prunes entries older than the 30s TTL', () => {
         vi.useFakeTimers();
-        const m = new WebSocketManager('a.md');
+        const m = documentManager();
         m.recordOutgoing('op-old');
         // Advance just past the 30s TTL.
         vi.advanceTimersByTime(30_001);
@@ -232,7 +255,7 @@ describe('WebSocketManager', () => {
     });
 
     it('recordOutgoing() bounds the dedup map to 256 entries', () => {
-        const m = new WebSocketManager('a.md');
+        const m = documentManager();
         // Insert 300 entries; the oldest should be evicted.
         for (let i = 0; i < 300; i++) {
             m.recordOutgoing(`op-${i}`);
@@ -246,7 +269,7 @@ describe('WebSocketManager', () => {
     });
 
     it('sendWithOpId() tags the outgoing frame and records the id', async () => {
-        const m = new WebSocketManager('a.md');
+        const m = documentManager();
         await m.connect();
         const ws = itemAt(MockWS.instances, 0);
 
@@ -256,7 +279,7 @@ describe('WebSocketManager', () => {
         });
 
         expect(opId).toMatch(/^[0-9a-f]{16}$/);
-        // ws.sent[0] is the file path; the JSON frame follows.
+        // ws.sent[0] is the hello; the mutation frame follows.
         const rawFrame = itemAt(ws.sent, ws.sent.length - 1);
         expect(rawFrame).toBeDefined();
         const last = JSON.parse(String(rawFrame)) as Record<string, unknown>;
