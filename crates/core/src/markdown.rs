@@ -1163,15 +1163,22 @@ impl MarkdownRenderer {
                 children,
                 ..
             } => {
-                out.push_str("<a href=\"");
-                html_escape::encode_double_quoted_attribute_to_string(url, out);
-                out.push('"');
-                if let Some(title) = title {
-                    out.push_str(" title=\"");
-                    html_escape::encode_double_quoted_attribute_to_string(title, out);
+                // Drop the href for unsafe schemes (javascript:, data:, …) so a
+                // `[text](javascript:…)` link renders as inert text, not a click
+                // that executes script.
+                if url_scheme_is_safe(url, false) {
+                    out.push_str("<a href=\"");
+                    html_escape::encode_double_quoted_attribute_to_string(url, out);
                     out.push('"');
+                    if let Some(title) = title {
+                        out.push_str(" title=\"");
+                        html_escape::encode_double_quoted_attribute_to_string(title, out);
+                        out.push('"');
+                    }
+                    out.push('>');
+                } else {
+                    out.push_str("<a>");
                 }
-                out.push('>');
                 self.render_nodes(children, out, ctx);
                 out.push_str("</a>");
             }
@@ -1180,17 +1187,25 @@ impl MarkdownRenderer {
             } => {
                 let rewritten_url = self.rewrite_image_url(url);
                 let src = rewritten_url.as_deref().unwrap_or(url);
-                out.push_str("<img src=\"");
-                html_escape::encode_double_quoted_attribute_to_string(src, out);
-                out.push_str("\" alt=\"");
-                html_escape::encode_double_quoted_attribute_to_string(alt, out);
-                out.push('"');
-                if let Some(title) = title {
-                    out.push_str(" title=\"");
-                    html_escape::encode_double_quoted_attribute_to_string(title, out);
+                // Images may carry `data:image/…`; any other non-safe scheme is
+                // dropped, leaving the alt text.
+                if url_scheme_is_safe(src, true) {
+                    out.push_str("<img src=\"");
+                    html_escape::encode_double_quoted_attribute_to_string(src, out);
+                    out.push_str("\" alt=\"");
+                    html_escape::encode_double_quoted_attribute_to_string(alt, out);
                     out.push('"');
+                    if let Some(title) = title {
+                        out.push_str(" title=\"");
+                        html_escape::encode_double_quoted_attribute_to_string(title, out);
+                        out.push('"');
+                    }
+                    out.push_str(" />");
+                } else {
+                    out.push_str("<img alt=\"");
+                    html_escape::encode_double_quoted_attribute_to_string(alt, out);
+                    out.push_str("\" />");
                 }
-                out.push_str(" />");
             }
             SupramarkNode::Break { .. } => out.push_str("<br />\n"),
             SupramarkNode::Delete { children, .. } => {
@@ -1370,7 +1385,7 @@ impl MarkdownRenderer {
                 ..
             } => {
                 if format.eq_ignore_ascii_case("html") {
-                    out.push_str(value);
+                    out.push_str(&sanitize_raw_html_fragment(value));
                     if *block {
                         out.push('\n');
                     }
@@ -1770,6 +1785,295 @@ fn strip_html_tags(value: &str) -> String {
     out
 }
 
+/// Tags that may survive from *author-written raw HTML* (the `raw-html` feature
+/// passes inline HTML through the AST as `Raw{format:"html"}` fragments). This
+/// is a deliberately small GitHub-flavored formatting/structure set; anything
+/// outside it is escaped to inert text. It does NOT need to list markon's own
+/// generated markup (octicon SVGs, syntect spans, diagram/math containers,
+/// heading anchors …) because that markup never passes through this scrubber —
+/// only untrusted raw fragments do — so there is no risk of silently dropping
+/// first-party markup.
+const RAW_HTML_ALLOWED_TAGS: &[&str] = &[
+    "a", "abbr", "b", "bdi", "bdo", "blockquote", "br", "caption", "cite",
+    "code", "col", "colgroup", "dd", "del", "details", "dfn", "div", "dl", "dt",
+    "em", "figcaption", "figure", "h1", "h2", "h3", "h4", "h5", "h6", "hr", "i",
+    "img", "ins", "kbd", "li", "mark", "ol", "p", "pre", "q", "rp", "rt", "ruby",
+    "s", "samp", "small", "span", "strong", "sub", "summary", "sup", "table",
+    "tbody", "td", "tfoot", "th", "thead", "time", "tr", "u", "ul", "var", "wbr",
+];
+
+/// Attributes whose value carries a URL and must pass [`url_scheme_is_safe`].
+const RAW_HTML_URL_ATTRS: &[&str] = &[
+    "href",
+    "src",
+    "xlink:href",
+    "action",
+    "formaction",
+    "poster",
+    "background",
+    "srcset",
+    "ping",
+    "data",
+];
+
+/// Sanitize one author-written raw HTML fragment WITHOUT rebalancing tags.
+///
+/// The markdown parser hands raw HTML through split into open/close fragments
+/// (`<details>` and `</details>` arrive as separate `Raw` nodes with rendered
+/// markdown in between), so a tree-rebuilding sanitizer (ammonia/html5ever)
+/// would prematurely close `<details>`/`<div>` wrappers and drop the stray
+/// closing tags — breaking legitimate GitHub-style inline HTML. Instead we scan
+/// tag-by-tag and rewrite in place, fail-closed: a tag we can't parse cleanly,
+/// or whose name isn't in [`RAW_HTML_ALLOWED_TAGS`], is escaped to visible text
+/// rather than emitted. On allowed tags we strip event-handler (`on*`) and
+/// `style`/`srcdoc` attributes and drop URL attributes with an unsafe scheme.
+fn sanitize_raw_html_fragment(frag: &str) -> String {
+    let bytes = frag.as_bytes();
+    let mut out = String::with_capacity(frag.len() + 16);
+    let mut i = 0;
+    while i < bytes.len() {
+        if bytes[i] == b'<' {
+            if let Some((end, rendered)) = sanitize_html_tag(frag, i) {
+                out.push_str(&rendered);
+                i = end;
+            } else {
+                // Not a well-formed tag → the '<' is literal text.
+                out.push_str("&lt;");
+                i += 1;
+            }
+            continue;
+        }
+        let start = i;
+        while i < bytes.len() && bytes[i] != b'<' {
+            i += 1;
+        }
+        out.push_str(&frag[start..i]);
+    }
+    out
+}
+
+fn escape_html_text(s: &str) -> String {
+    let mut out = String::with_capacity(s.len());
+    html_escape::encode_text_to_string(s, &mut out);
+    out
+}
+
+/// Parse a single tag starting at `start` (`frag[start] == '<'`). Returns the
+/// index just past the tag and the sanitized replacement, or `None` when the
+/// bytes aren't a well-formed tag (the caller then escapes the lone `<`).
+fn sanitize_html_tag(frag: &str, start: usize) -> Option<(usize, String)> {
+    let bytes = frag.as_bytes();
+    let rest = &frag[start..];
+
+    // Comments: drop entirely (fail closed on an unterminated one).
+    if rest.starts_with("<!--") {
+        return match rest.find("-->") {
+            Some(pos) => Some((start + pos + 3, String::new())),
+            None => Some((frag.len(), String::new())),
+        };
+    }
+    // Doctype / CDATA / processing instructions: not expected inside a fragment.
+    if rest.starts_with("<!") || rest.starts_with("<?") {
+        return None;
+    }
+
+    let mut i = start + 1;
+    let closing = i < bytes.len() && bytes[i] == b'/';
+    if closing {
+        i += 1;
+    }
+
+    // Tag name: must start with a letter.
+    let name_start = i;
+    while i < bytes.len() && (bytes[i].is_ascii_alphanumeric() || bytes[i] == b'-') {
+        i += 1;
+    }
+    if i == name_start || !bytes[name_start].is_ascii_alphabetic() {
+        return None;
+    }
+    let name = frag[name_start..i].to_ascii_lowercase();
+    let allowed = RAW_HTML_ALLOWED_TAGS.contains(&name.as_str());
+
+    if closing {
+        while i < bytes.len() && bytes[i].is_ascii_whitespace() {
+            i += 1;
+        }
+        if i >= bytes.len() || bytes[i] != b'>' {
+            return None;
+        }
+        let end = i + 1;
+        return Some((
+            end,
+            if allowed {
+                format!("</{name}>")
+            } else {
+                escape_html_text(&frag[start..end])
+            },
+        ));
+    }
+
+    // Opening / self-closing tag: parse attributes, honoring quoted values so a
+    // '>' inside a value doesn't end the tag early.
+    let mut attrs: Vec<(String, Option<String>)> = Vec::new();
+    loop {
+        while i < bytes.len() && bytes[i].is_ascii_whitespace() {
+            i += 1;
+        }
+        if i >= bytes.len() {
+            return None; // no closing '>'
+        }
+        match bytes[i] {
+            b'>' => {
+                i += 1;
+                break;
+            }
+            b'/' => {
+                i += 1;
+                while i < bytes.len() && bytes[i].is_ascii_whitespace() {
+                    i += 1;
+                }
+                if i < bytes.len() && bytes[i] == b'>' {
+                    i += 1;
+                    break;
+                }
+                return None;
+            }
+            _ => {
+                let an_start = i;
+                while i < bytes.len() {
+                    let b = bytes[i];
+                    if b.is_ascii_whitespace() || b == b'=' || b == b'>' || b == b'/' {
+                        break;
+                    }
+                    i += 1;
+                }
+                if i == an_start {
+                    return None;
+                }
+                let aname = frag[an_start..i].to_ascii_lowercase();
+                while i < bytes.len() && bytes[i].is_ascii_whitespace() {
+                    i += 1;
+                }
+                let mut aval: Option<String> = None;
+                if i < bytes.len() && bytes[i] == b'=' {
+                    i += 1;
+                    while i < bytes.len() && bytes[i].is_ascii_whitespace() {
+                        i += 1;
+                    }
+                    if i >= bytes.len() {
+                        return None;
+                    }
+                    let quote = bytes[i];
+                    if quote == b'"' || quote == b'\'' {
+                        i += 1;
+                        let v_start = i;
+                        while i < bytes.len() && bytes[i] != quote {
+                            i += 1;
+                        }
+                        if i >= bytes.len() {
+                            return None; // unterminated quote
+                        }
+                        aval = Some(frag[v_start..i].to_string());
+                        i += 1;
+                    } else {
+                        let v_start = i;
+                        while i < bytes.len() {
+                            let b = bytes[i];
+                            if b.is_ascii_whitespace() || b == b'>' {
+                                break;
+                            }
+                            i += 1;
+                        }
+                        aval = Some(frag[v_start..i].to_string());
+                    }
+                }
+                attrs.push((aname, aval));
+            }
+        }
+    }
+    let end = i;
+
+    if !allowed {
+        return Some((end, escape_html_text(&frag[start..end])));
+    }
+
+    let allow_data_image = name == "img";
+    let mut out = String::with_capacity(end - start);
+    out.push('<');
+    out.push_str(&name);
+    for (aname, aval) in attrs {
+        // Event handlers, inline CSS, and iframe srcdoc are dropped outright.
+        if aname.starts_with("on") || aname == "style" || aname == "srcdoc" {
+            continue;
+        }
+        if RAW_HTML_URL_ATTRS.contains(&aname.as_str()) {
+            if let Some(v) = &aval {
+                if !url_scheme_is_safe(v, allow_data_image) {
+                    continue;
+                }
+            }
+        }
+        out.push(' ');
+        out.push_str(&aname);
+        if let Some(v) = aval {
+            out.push_str("=\"");
+            html_escape::encode_double_quoted_attribute_to_string(&v, &mut out);
+            out.push('"');
+        }
+    }
+    out.push('>');
+    Some((end, out))
+}
+
+/// Whether a URL is safe to place in an `href`/`src`-style attribute — i.e. it
+/// can't drive script execution or navigation to a scripting scheme. Relative
+/// URLs, anchors and protocol-relative URLs are safe; among absolute URLs only
+/// a small scheme allowlist passes (`data:` only for images). HTML entities are
+/// decoded and whitespace/control characters removed first, so obfuscations
+/// like `jav&#x61;script:` or `java\tscript:` can't slip through.
+fn url_scheme_is_safe(raw: &str, allow_data_image: bool) -> bool {
+    let decoded = html_escape::decode_html_entities(raw);
+    let mut cleaned = String::with_capacity(decoded.len());
+    for c in decoded.chars() {
+        if (c as u32) > 0x20 {
+            cleaned.push(c.to_ascii_lowercase());
+        }
+    }
+    // A scheme is `[alpha][alnum+.-]* ':'` occurring before any `/ ? #`.
+    let mut scheme = String::new();
+    let mut has_colon = false;
+    for c in cleaned.chars() {
+        match c {
+            ':' => {
+                has_colon = true;
+                break;
+            }
+            '/' | '?' | '#' => break,
+            _ => scheme.push(c),
+        }
+    }
+    if !has_colon {
+        return true; // relative / anchor / protocol-relative
+    }
+    // If it isn't a grammatically valid scheme, the ':' is just data (e.g. a
+    // time like "12:30"), which is likewise safe.
+    if !scheme
+        .chars()
+        .next()
+        .is_some_and(|c| c.is_ascii_alphabetic())
+        || !scheme
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || matches!(c, '+' | '.' | '-'))
+    {
+        return true;
+    }
+    match scheme.as_str() {
+        "http" | "https" | "mailto" | "tel" | "ftp" => true,
+        "data" => allow_data_image && cleaned.starts_with("data:image/"),
+        _ => false,
+    }
+}
+
 fn collect_supramark_assets(
     node: &supramark_markdown::SupramarkNode,
     out: &mut std::collections::HashSet<String>,
@@ -1888,6 +2192,7 @@ mod assets_tests {
     use super::MarkdownRenderer;
     use super::{
         extract_referenced_assets, normalize_local_image_destinations, sanitize_asset_ref,
+        sanitize_raw_html_fragment, url_scheme_is_safe,
     };
     use crate::markdown::MarkdownEngine;
 
@@ -1980,6 +2285,114 @@ mod assets_tests {
             html.contains(r#"<img src="icon%20art.svg" alt="vector" />"#),
             "html: {html}"
         );
+    }
+
+    fn render_html_only(md: &str) -> String {
+        MarkdownRenderer::new("light").render(md).0
+    }
+
+    #[test]
+    fn raw_html_strips_event_handlers() {
+        let html = render_html_only("<img src=x onerror=\"alert(1)\">");
+        assert!(!html.contains("onerror"), "html: {html}");
+        assert!(html.contains(r#"<img src="x">"#), "html: {html}");
+    }
+
+    #[test]
+    fn raw_html_escapes_disallowed_tags() {
+        let html = render_html_only("<script>alert(1)</script>");
+        assert!(!html.contains("<script"), "html: {html}");
+        assert!(html.contains("&lt;script&gt;"), "html: {html}");
+
+        let iframe = render_html_only("<iframe src=\"http://evil\"></iframe>");
+        assert!(!iframe.contains("<iframe"), "html: {iframe}");
+    }
+
+    #[test]
+    fn raw_html_preserves_split_inline_html() {
+        // The parser hands `<details>` and `</details>` as separate fragments;
+        // the non-rebalancing scrubber must keep both so the widget still works.
+        let html = render_html_only("<details>\n<summary>more</summary>\n\nbody\n\n</details>");
+        assert!(html.contains("<details>"), "html: {html}");
+        assert!(html.contains("<summary>"), "html: {html}");
+        assert!(html.contains("</details>"), "html: {html}");
+        assert!(render_html_only("press <kbd>Ctrl</kbd>").contains("<kbd>"));
+    }
+
+    #[test]
+    fn raw_html_link_javascript_scheme_dropped() {
+        let html = render_html_only("<a href=\"javascript:alert(1)\">click</a>");
+        assert!(!html.contains("javascript:"), "html: {html}");
+        // The tag survives (inert), just without the dangerous href.
+        assert!(html.contains("<a>") || html.contains("<a >"), "html: {html}");
+    }
+
+    #[test]
+    fn markdown_link_and_image_scheme_whitelist() {
+        // A javascript: link must never become a clickable href. (supramark
+        // itself refuses to parse it as a link; the Link-node check is the
+        // backstop if that ever changes.)
+        let link = render_html_only("[click](javascript:alert(1))");
+        assert!(!link.contains("href=\"javascript:"), "html: {link}");
+
+        // data:image is allowed for images (embedded images are common).
+        let img = render_html_only("![x](data:image/png;base64,iVBORw0KGgo=)");
+        assert!(img.contains("src=\"data:image/png"), "html: {img}");
+
+        // A data: URL must never surface as an <a href> or non-image <img src>.
+        let bad = render_html_only("[x](data:text/html,<b>hi</b>)");
+        assert!(!bad.contains("href=\"data:"), "html: {bad}");
+    }
+
+    #[test]
+    fn url_scheme_is_safe_allows_benign_and_blocks_dangerous() {
+        for ok in [
+            "http://a",
+            "https://a/b?c#d",
+            "mailto:a@b",
+            "tel:+1",
+            "/rel/path",
+            "relative",
+            "#anchor",
+            "//protocol-relative/x",
+            "12:30",
+        ] {
+            assert!(url_scheme_is_safe(ok, false), "should allow: {ok}");
+        }
+        for bad in [
+            "javascript:alert(1)",
+            "JavaScript:alert(1)",
+            "  javascript:alert(1)",
+            "java\tscript:alert(1)",
+            "jav&#x61;script:alert(1)",
+            "vbscript:msgbox(1)",
+            "data:text/html,<script>",
+            "data:image/png,x", // data blocked when images aren't allowed
+        ] {
+            assert!(!url_scheme_is_safe(bad, false), "should block: {bad}");
+        }
+        // data:image only when the image context opts in.
+        assert!(url_scheme_is_safe("data:image/png;base64,AAAA", true));
+        assert!(!url_scheme_is_safe("data:text/html,x", true));
+    }
+
+    #[test]
+    fn sanitize_fragment_unit_cases() {
+        assert_eq!(sanitize_raw_html_fragment("<details>"), "<details>");
+        assert_eq!(sanitize_raw_html_fragment("</details>"), "</details>");
+        assert_eq!(sanitize_raw_html_fragment("<kbd>"), "<kbd>");
+        assert_eq!(sanitize_raw_html_fragment("<script>"), "&lt;script&gt;");
+        assert_eq!(sanitize_raw_html_fragment("<!-- secret -->"), "");
+        assert_eq!(
+            sanitize_raw_html_fragment("<img src=x onerror=alert(1)>"),
+            r#"<img src="x">"#
+        );
+        assert_eq!(
+            sanitize_raw_html_fragment("<a href=\"javascript:x\">"),
+            "<a>"
+        );
+        // A lone '<' that isn't a tag is escaped, not passed through.
+        assert_eq!(sanitize_raw_html_fragment("a < b"), "a &lt; b");
     }
 
     #[test]
