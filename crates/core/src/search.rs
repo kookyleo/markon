@@ -1,6 +1,5 @@
 use serde::{Deserialize, Serialize};
 use std::{
-    fs,
     path::{Path, PathBuf},
     sync::{Arc, Mutex, MutexGuard},
 };
@@ -13,7 +12,8 @@ use tantivy::{
     Index, IndexReader, IndexWriter, TantivyDocument, TantivyError,
 };
 use tantivy_jieba::JiebaTokenizer;
-use walkdir::WalkDir;
+
+use crate::workspace_fs::WorkspaceFs;
 
 /// Query string for `GET /_/{workspace_id}/search?q=…`.
 #[derive(Deserialize)]
@@ -39,6 +39,7 @@ pub struct SearchIndex {
     field_title: Field,
     field_content: Field,
     start_dir: PathBuf,
+    workspace_fs: Arc<WorkspaceFs>,
 }
 
 impl SearchIndex {
@@ -46,7 +47,7 @@ impl SearchIndex {
     /// but which holds no documents yet. `start_dir` is the prefix that
     /// `rel_path` strips, so stored `path` values stay relative and consistent
     /// across [`Self::new`], [`Self::new_single_file`], and `update_file`.
-    fn empty(start_dir: &Path) -> tantivy::Result<Self> {
+    fn empty(workspace_fs: Arc<WorkspaceFs>) -> tantivy::Result<Self> {
         // Build schema
         let mut schema_builder = Schema::builder();
 
@@ -90,51 +91,35 @@ impl SearchIndex {
             field_file_name,
             field_title,
             field_content,
-            start_dir: start_dir.to_path_buf(),
+            start_dir: workspace_fs.ambient_root().to_path_buf(),
+            workspace_fs,
         })
     }
 
     pub fn new(start_dir: &Path) -> tantivy::Result<Self> {
-        let search_index = Self::empty(start_dir)?;
+        Self::for_workspace(Arc::new(WorkspaceFs::new(start_dir.to_path_buf(), None)))
+    }
+
+    pub(crate) fn for_workspace(workspace_fs: Arc<WorkspaceFs>) -> tantivy::Result<Self> {
+        let search_index = Self::empty(workspace_fs)?;
 
         // Index all markdown files
-        search_index.index_directory(start_dir)?;
+        search_index.index_workspace()?;
 
         Ok(search_index)
     }
 
     /// Build an index scoped to a SINGLE file inside `start_dir`.
     ///
-    /// Unlike [`Self::new`], this never walks `start_dir`: the resulting index
-    /// contains exactly one document — `start_dir/file_name` — so a single-file
-    /// workspace cannot leak sibling files through search. `start_dir` is still
-    /// the parent directory so the stored `path` is just `file_name`, matching
-    /// what the single-file watcher passes to `update_file` on later edits.
+    /// Unlike [`Self::new`], this constructs a single-file `WorkspaceFs`; the
+    /// shared indexer therefore sees exactly the pinned document and never
+    /// walks its parent. `start_dir` remains the stored path base so watcher
+    /// updates keep the same relative document key.
     pub fn new_single_file(start_dir: &Path, file_name: &str) -> tantivy::Result<Self> {
-        let search_index = Self::empty(start_dir)?;
-        search_index.index_single_file(file_name)?;
-        Ok(search_index)
-    }
-
-    /// Index exactly the pinned file (`start_dir/file_name`). Non-markdown or
-    /// unreadable targets leave the index empty rather than erroring, mirroring
-    /// the silent-skip behaviour of `index_directory`.
-    fn index_single_file(&self, file_name: &str) -> tantivy::Result<()> {
-        let path = self.start_dir.join(file_name);
-        tracing::info!("indexing single file {path:?}");
-
-        if path.extension().is_some_and(|ext| ext == "md") {
-            if let Ok(content) = fs::read_to_string(&path) {
-                let doc = self.build_document(&path, &content);
-                let mut writer = self.writer()?;
-                writer.add_document(doc)?;
-                writer.commit()?;
-            }
-        }
-
-        self.reader.reload()?;
-        tracing::info!("single-file indexing complete");
-        Ok(())
+        Self::for_workspace(Arc::new(WorkspaceFs::new(
+            start_dir.to_path_buf(),
+            Some(file_name),
+        )))
     }
 
     /// Acquire the writer lock, mapping poisoning to a tantivy error
@@ -147,16 +132,17 @@ impl SearchIndex {
         })
     }
 
-    fn index_directory(&self, dir: &Path) -> tantivy::Result<()> {
+    fn index_workspace(&self) -> tantivy::Result<()> {
         use rayon::prelude::*;
 
-        tracing::info!("indexing markdown files in {dir:?}");
+        tracing::info!("indexing markdown files in {:?}", self.start_dir);
 
-        let paths: Vec<PathBuf> = WalkDir::new(dir)
+        let paths: Vec<(String, PathBuf)> = self
+            .workspace_fs
+            .content_files(usize::MAX)
             .into_iter()
-            .filter_map(Result::ok)
-            .filter(|e| e.path().extension().is_some_and(|ext| ext == "md"))
-            .map(|e| e.into_path())
+            .filter(|(rel, _)| rel.as_path().extension().is_some_and(|ext| ext == "md"))
+            .map(|(rel, path)| (rel.as_route(), path))
             .collect();
 
         // Stage 1: parallel CPU-bound work. Each worker reads its file
@@ -166,8 +152,8 @@ impl SearchIndex {
         // before.
         let docs: Vec<TantivyDocument> = paths
             .par_iter()
-            .filter_map(|path| {
-                let content = fs::read_to_string(path).ok()?;
+            .filter_map(|(rel, path)| {
+                let content = self.workspace_fs.read_content_to_string(rel).ok()?;
                 Some(self.build_document(path, &content))
             })
             .collect();
@@ -203,7 +189,10 @@ impl SearchIndex {
     /// work — does not touch the writer. Safe to call from rayon
     /// workers in parallel.
     fn build_document(&self, path: &Path, content: &str) -> TantivyDocument {
-        let relative_path = self.rel_path(path);
+        let relative_path = self
+            .workspace_fs
+            .route_for_path(path)
+            .unwrap_or_else(|| self.rel_path(path));
 
         let file_name = path
             .file_stem()
@@ -277,13 +266,23 @@ impl SearchIndex {
     }
 
     pub fn update_file(&self, path: &Path) -> tantivy::Result<()> {
-        if path.extension().is_none_or(|ext| ext != "md") {
+        let authorized = match self.workspace_fs.resolve_content_input(path) {
+            Ok(path) => path,
+            Err(_) => return Ok(()),
+        };
+        if authorized.extension().is_none_or(|ext| ext != "md") {
             return Ok(());
         }
 
-        let content = fs::read_to_string(path)?;
-        let doc = self.build_document(path, &content);
-        let relative_path = self.rel_path(path);
+        let relative_path = self
+            .workspace_fs
+            .route_for_path(&authorized)
+            .unwrap_or_else(|| self.rel_path(&authorized));
+        let content = match self.workspace_fs.read_content_to_string(&relative_path) {
+            Ok(content) => content,
+            Err(_) => return Ok(()),
+        };
+        let doc = self.build_document(&authorized, &content);
 
         // Delete and re-add in same transaction
         {
@@ -834,5 +833,30 @@ mod tests {
         );
         assert!(index.search("originaltoken", 10).unwrap().is_empty());
         assert_eq!(index.search("updatedtoken", 10).unwrap().len(), 1);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn test_directory_index_rejects_outside_symlink_on_build_and_update() {
+        use std::os::unix::fs::symlink;
+
+        let workspace = TempDir::new().unwrap();
+        let outside = TempDir::new().unwrap();
+        let secret = outside.path().join("secret.md");
+        fs::write(&secret, "uniquesymlinksecrettoken").unwrap();
+        let link = workspace.path().join("linked-secret.md");
+        symlink(&secret, &link).unwrap();
+
+        let index = SearchIndex::new(workspace.path()).unwrap();
+        assert!(index
+            .search("uniquesymlinksecrettoken", 10)
+            .unwrap()
+            .is_empty());
+
+        index.update_file(&link).unwrap();
+        assert!(index
+            .search("uniquesymlinksecrettoken", 10)
+            .unwrap()
+            .is_empty());
     }
 }

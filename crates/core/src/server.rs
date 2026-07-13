@@ -37,6 +37,7 @@ use crate::workspace::{
     ct_eq, expand_and_canonicalize, generate_token, ServerLock, WorkspaceConfig, WorkspaceEntry,
     WorkspaceEvent, WorkspaceFlags, WorkspaceRegistry,
 };
+use crate::workspace_fs::WorkspaceFs;
 
 const WORKSPACE_WS_ROUTE: &str = "/_/{workspace_id}/ws";
 
@@ -2718,8 +2719,9 @@ async fn handle_git_working_diff(
     };
     let can_manage = role.is_some_and(|Extension(role)| role == AccessRole::Admin);
     let initial_view = diff_view_from_query(query.view.as_deref());
-    let root = directory_root_or_not_found!(ws).to_path_buf();
-    let diff = tokio::task::spawn_blocking(move || git::working_diff(&root))
+    directory_root_or_not_found!(ws);
+    let workspace_fs = ws.fs.clone();
+    let diff = tokio::task::spawn_blocking(move || git::working_diff(&workspace_fs))
         .await
         .unwrap_or_else(|e| {
             tracing::error!("git working diff blocking task join error: {e}");
@@ -2747,10 +2749,11 @@ async fn handle_git_working_diff_data(
         return StatusCode::NOT_FOUND.into_response();
     };
     if diff_view_from_query(query.view.as_deref()) == "rendered" {
+        directory_root_or_not_found!(ws);
         return match markdown_compare_diff_data_async(
             &state,
             &workspace_id,
-            directory_root_or_not_found!(ws),
+            ws.fs.clone(),
             "HEAD",
             "worktree",
             query.f.as_deref(),
@@ -2769,8 +2772,9 @@ async fn handle_git_working_diff_data(
                 .into_response(),
         };
     }
-    let root = directory_root_or_not_found!(ws).to_path_buf();
-    let diff = tokio::task::spawn_blocking(move || git::working_diff(&root))
+    directory_root_or_not_found!(ws);
+    let workspace_fs = ws.fs.clone();
+    let diff = tokio::task::spawn_blocking(move || git::working_diff(&workspace_fs))
         .await
         .unwrap_or_else(|e| {
             tracing::error!("git working diff blocking task join error: {e}");
@@ -2888,10 +2892,11 @@ async fn handle_pretty_compare_diff(
     let can_manage = role.is_some_and(|Extension(role)| role == AccessRole::Admin);
     let initial_view = diff_view_from_query(query.view.as_deref());
     if query.format.as_deref() == Some("data") && initial_view == "rendered" {
+        directory_root_or_not_found!(ws);
         return match markdown_compare_diff_data_async(
             &state,
             &workspace_id,
-            directory_root_or_not_found!(ws),
+            ws.fs.clone(),
             &base,
             &compare,
             query.f.as_deref(),
@@ -2910,7 +2915,8 @@ async fn handle_pretty_compare_diff(
                 .into_response(),
         };
     }
-    match git::compare_diff(directory_root_or_not_found!(ws), &base, &compare) {
+    directory_root_or_not_found!(ws);
+    match git::compare_diff(&ws.fs, &base, &compare) {
         Ok(diff) if query.format.as_deref() == Some("data") => {
             git_diff_json_response(&diff, query.f.as_deref())
         }
@@ -5232,15 +5238,18 @@ struct MarkdownBuildItem<'a> {
 fn markdown_compare_diff_data(
     state: &AppState,
     workspace_id: &str,
-    root: &FsPath,
+    workspace_fs: &WorkspaceFs,
     base: &str,
     compare: &str,
     file_filter: Option<&str>,
 ) -> git::Result<MarkdownDiffData> {
+    let root = workspace_fs
+        .directory_root()
+        .ok_or_else(|| git::GitError::Io("directory workspace required".to_string()))?;
     let engine = markdown_ast::engine_info();
     // Cheap enumeration: `git diff --raw` (no patch) + untracked md. Gives each
     // changed file's status and per-side blob oids without reading content.
-    let listing = git::markdown_diff_listing(root, base, compare)?;
+    let listing = git::markdown_diff_listing(workspace_fs, base, compare)?;
     if !engine.enabled {
         return Ok(MarkdownDiffData {
             title: "Markdown visual diff".to_string(),
@@ -5283,7 +5292,7 @@ fn markdown_compare_diff_data(
         } else if let Some(blob) = &entry.new_blob {
             Some(blob.clone())
         } else {
-            match fs::read_to_string(root.join(&entry.path)) {
+            match workspace_fs.read_content_to_string(&entry.path) {
                 Ok(content) => {
                     let id = format!("h:{}", markdown_content_hash(&content));
                     new_worktree = Some(content);
@@ -5364,7 +5373,7 @@ fn markdown_compare_diff_data(
         .map(|(i, item)| {
             (
                 i,
-                build_markdown_diff_file(state, workspace_id, item, &blobs, root),
+                build_markdown_diff_file(state, workspace_id, item, &blobs, workspace_fs),
             )
         })
         .collect();
@@ -5409,14 +5418,13 @@ fn markdown_compare_diff_data(
 async fn markdown_compare_diff_data_async(
     state: &AppState,
     workspace_id: &str,
-    root: &FsPath,
+    workspace_fs: Arc<WorkspaceFs>,
     base: &str,
     compare: &str,
     file_filter: Option<&str>,
 ) -> git::Result<MarkdownDiffData> {
     let state = state.clone();
     let workspace_id = workspace_id.to_string();
-    let root = root.to_path_buf();
     let base = base.to_string();
     let compare = compare.to_string();
     let file_filter = file_filter.map(str::to_string);
@@ -5424,7 +5432,7 @@ async fn markdown_compare_diff_data_async(
         markdown_compare_diff_data(
             &state,
             &workspace_id,
-            &root,
+            &workspace_fs,
             &base,
             &compare,
             file_filter.as_deref(),
@@ -5444,9 +5452,12 @@ fn build_markdown_diff_file(
     workspace_id: &str,
     item: &MarkdownBuildItem,
     blobs: &HashMap<String, Vec<u8>>,
-    root: &FsPath,
+    workspace_fs: &WorkspaceFs,
 ) -> MarkdownDiffFile {
     let entry = item.entry;
+    let root = workspace_fs
+        .directory_root()
+        .expect("markdown diff requires a directory workspace");
     // Canonicalize the new-side path the same way `render_markdown_file` builds
     // its `file_path` key, so a highlight made in the diff binds to the same
     // annotation row as one made in the normal file view. `entry.path` is
@@ -5457,8 +5468,9 @@ fn build_markdown_diff_file(
     // back to the lexical join (such files are not annotatable anyway).
     let abs_path = {
         let joined = root.join(&entry.path);
-        canonicalize_route_path(&joined)
-            .map(|p| p.to_string_lossy().into_owned())
+        workspace_fs
+            .resolve_content(&entry.path)
+            .map(|path| path.to_string_lossy().into_owned())
             .unwrap_or_else(|_| joined.to_string_lossy().into_owned())
     };
     let mut diagnostics = item.read_diagnostics.clone();
@@ -9171,11 +9183,12 @@ mod tests {
 
         let registry = Arc::new(WorkspaceRegistry::new("git-cache-test".into()));
         let state = test_state(registry);
+        let workspace_fs = WorkspaceFs::new(dir.path().to_path_buf(), None);
 
         let first = markdown_compare_diff_data(
             &state,
             "git-cache-test",
-            dir.path(),
+            &workspace_fs,
             "HEAD",
             "worktree",
             Some("a.md"),
@@ -9202,7 +9215,7 @@ mod tests {
         let second = markdown_compare_diff_data(
             &state,
             "git-cache-test",
-            dir.path(),
+            &workspace_fs,
             "HEAD",
             "worktree",
             Some("a.md"),
@@ -9219,7 +9232,7 @@ mod tests {
         let third = markdown_compare_diff_data(
             &state,
             "git-cache-test",
-            dir.path(),
+            &workspace_fs,
             "HEAD",
             "worktree",
             Some("a.md"),
@@ -9276,8 +9289,9 @@ mod tests {
 
         let registry = Arc::new(WorkspaceRegistry::new("asset-diff-test".into()));
         let state = test_state(registry);
+        let workspace_fs = WorkspaceFs::new(dir.path().to_path_buf(), None);
         let data =
-            markdown_compare_diff_data(&state, "asset-ws", dir.path(), "HEAD", "worktree", None)
+            markdown_compare_diff_data(&state, "asset-ws", &workspace_fs, "HEAD", "worktree", None)
                 .unwrap();
 
         for folder in ["docs", "guide"] {
@@ -9336,12 +9350,13 @@ mod tests {
 
         let registry = Arc::new(WorkspaceRegistry::new("subdir-abs-test".into()));
         let state = test_state(registry);
+        let workspace_fs = WorkspaceFs::new(ws_root.clone(), None);
 
         // Pass the SUBDIRECTORY as the workspace root, exactly as the route would.
         let data = markdown_compare_diff_data(
             &state,
             "subdir-abs-test",
-            &ws_root,
+            &workspace_fs,
             "HEAD",
             "worktree",
             None,
@@ -9383,6 +9398,58 @@ mod tests {
             "tracked new side must load in a subdir workspace"
         );
         assert!(json.contains("Brand new"), "untracked new side must load");
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn rendered_markdown_diff_does_not_read_untracked_outside_symlink() {
+        use std::os::unix::fs::symlink;
+
+        let repo = tempfile::tempdir().unwrap();
+        let outside = tempfile::NamedTempFile::new().unwrap();
+        fs::write(outside.path(), "OUTSIDE SECRET MARKER").unwrap();
+        fs::write(repo.path().join("README.md"), "# tracked").unwrap();
+        let git = |args: &[&str]| {
+            let output = std::process::Command::new("git")
+                .arg("-C")
+                .arg(repo.path())
+                .args(args)
+                .output()
+                .unwrap();
+            assert!(output.status.success(), "git {args:?} failed");
+        };
+        git(&["init"]);
+        git(&["config", "user.email", "test@example.com"]);
+        git(&["config", "user.name", "Test User"]);
+        git(&["add", "README.md"]);
+        git(&["commit", "-m", "initial"]);
+        symlink(outside.path(), repo.path().join("leak.md")).unwrap();
+
+        let state = test_state(Arc::new(WorkspaceRegistry::new("symlink-diff-test".into())));
+        let workspace_fs = WorkspaceFs::new(repo.path().to_path_buf(), None);
+        let raw = git::working_diff(&workspace_fs).unwrap();
+        assert!(!raw.patch.contains("OUTSIDE SECRET MARKER"));
+        let compare = git::compare_diff(&workspace_fs, "HEAD", "worktree").unwrap();
+        assert!(!compare.patch.contains("OUTSIDE SECRET MARKER"));
+        let data = markdown_compare_diff_data(
+            &state,
+            "symlink-diff-test",
+            &workspace_fs,
+            "HEAD",
+            "worktree",
+            None,
+        )
+        .unwrap();
+        let entry = data
+            .files
+            .iter()
+            .find(|file| file.path == "leak.md")
+            .expect("untracked markdown symlink must exercise the diff path");
+        assert!(entry.new_source.is_none());
+        assert_eq!(entry.additions, 0);
+        assert!(!serde_json::to_string(&data)
+            .unwrap()
+            .contains("OUTSIDE SECRET MARKER"));
     }
 
     #[tokio::test]

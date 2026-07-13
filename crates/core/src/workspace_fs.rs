@@ -196,16 +196,31 @@ impl WorkspaceFs {
         rel: impl AsRef<Path>,
     ) -> Result<PathBuf, WorkspaceFsError> {
         let route = WorkspaceRelPath::parse(rel)?;
-        match &self.scope {
-            WorkspaceScope::Directory => {
-                let target = self.canonicalize_rel(&route)?;
-                Ok(self.absolute(&target))
-            }
-            WorkspaceScope::SingleFile { document, .. } if route == document.route => {
-                self.resolve_scoped(&route, &document.target)
-            }
-            WorkspaceScope::SingleFile { .. } => Err(WorkspaceFsError::Denied),
-        }
+        let target = self.content_target(&route)?;
+        Ok(self.absolute(&target))
+    }
+
+    /// Read through the capability handle after applying the same content
+    /// policy as [`Self::resolve_content`]. This keeps bulk/high-level features
+    /// from re-opening an authorized ambient path and reintroducing a symlink
+    /// race between validation and I/O.
+    pub(crate) fn read_content(&self, rel: impl AsRef<Path>) -> Result<Vec<u8>, WorkspaceFsError> {
+        let route = WorkspaceRelPath::parse(rel)?;
+        let target = self.content_target(&route)?;
+        self.root_dir()?
+            .read(target.as_path())
+            .map_err(map_io_error)
+    }
+
+    pub(crate) fn read_content_to_string(
+        &self,
+        rel: impl AsRef<Path>,
+    ) -> Result<String, WorkspaceFsError> {
+        let route = WorkspaceRelPath::parse(rel)?;
+        let target = self.content_target(&route)?;
+        self.root_dir()?
+            .read_to_string(target.as_path())
+            .map_err(map_io_error)
     }
 
     /// Resolve either a workspace-relative route or an absolute path supplied
@@ -239,7 +254,12 @@ impl WorkspaceFs {
     }
 
     pub(crate) fn route_for_path(&self, path: &Path) -> Option<String> {
-        let rel = path.strip_prefix(&self.canonical_root).ok()?;
+        // Callers may hand us a lexical path produced by a directory walk. A
+        // symlink under the workspace can still target an ambient file outside
+        // it, so containment must be checked after resolution, not just with a
+        // lexical `strip_prefix`.
+        let canonical = dunce::canonicalize(path).ok()?;
+        let rel = canonical.strip_prefix(&self.canonical_root).ok()?;
         let target = WorkspaceRelPath::parse(rel).ok()?;
         match &self.scope {
             WorkspaceScope::SingleFile { document, .. } if target == document.target => {
@@ -302,8 +322,18 @@ impl WorkspaceFs {
             .filter(|entry| entry.path().is_file())
             .filter_map(|entry| {
                 let rel = entry.path().strip_prefix(&self.canonical_root).ok()?;
-                let rel = WorkspaceRelPath::parse(rel).ok()?;
-                allow(&rel).then(|| (rel, entry.into_path()))
+                let route = WorkspaceRelPath::parse(rel).ok()?;
+                if !allow(&route) {
+                    return None;
+                }
+                // `ignore::DirEntry::path().is_file()` follows symlinks. Always
+                // re-resolve through the capability before returning an ambient
+                // path, otherwise bulk consumers (grep/glob/file listings) could
+                // read a symlink target outside the workspace even though the
+                // point resolver correctly rejects it.
+                let target = self.canonicalize_rel(&route).ok()?;
+                let absolute = self.absolute(&target);
+                absolute.is_file().then_some((route, absolute))
             })
             .take(limit)
             .collect()
@@ -313,18 +343,28 @@ impl WorkspaceFs {
         &self,
         rel: &WorkspaceRelPath,
     ) -> Result<WorkspaceRelPath, WorkspaceFsError> {
-        let root = self
-            .root
-            .as_ref()
-            .ok_or_else(|| WorkspaceFsError::Io("workspace root is not open".to_string()))?;
-        let canonical = root
-            .canonicalize(rel.as_path())
-            .map_err(|error| match error.kind() {
-                std::io::ErrorKind::NotFound => WorkspaceFsError::NotFound,
-                std::io::ErrorKind::PermissionDenied => WorkspaceFsError::Denied,
-                _ => WorkspaceFsError::Io(error.to_string()),
-            })?;
+        let root = self.root_dir()?;
+        let canonical = root.canonicalize(rel.as_path()).map_err(map_io_error)?;
         WorkspaceRelPath::parse(canonical)
+    }
+
+    fn root_dir(&self) -> Result<&Dir, WorkspaceFsError> {
+        self.root
+            .as_deref()
+            .ok_or_else(|| WorkspaceFsError::Io("workspace root is not open".to_string()))
+    }
+
+    fn content_target(
+        &self,
+        route: &WorkspaceRelPath,
+    ) -> Result<WorkspaceRelPath, WorkspaceFsError> {
+        match &self.scope {
+            WorkspaceScope::Directory => self.canonicalize_rel(route),
+            WorkspaceScope::SingleFile { document, .. } if route == &document.route => {
+                self.scoped_target(route, &document.target)
+            }
+            WorkspaceScope::SingleFile { .. } => Err(WorkspaceFsError::Denied),
+        }
     }
 
     fn resolve_scoped(
@@ -332,15 +372,32 @@ impl WorkspaceFs {
         route: &WorkspaceRelPath,
         expected_target: &WorkspaceRelPath,
     ) -> Result<PathBuf, WorkspaceFsError> {
+        let current_target = self.scoped_target(route, expected_target)?;
+        Ok(self.absolute(&current_target))
+    }
+
+    fn scoped_target(
+        &self,
+        route: &WorkspaceRelPath,
+        expected_target: &WorkspaceRelPath,
+    ) -> Result<WorkspaceRelPath, WorkspaceFsError> {
         let current_target = self.canonicalize_rel(route)?;
         if &current_target != expected_target {
             return Err(WorkspaceFsError::Denied);
         }
-        Ok(self.absolute(&current_target))
+        Ok(current_target)
     }
 
     fn absolute(&self, rel: &WorkspaceRelPath) -> PathBuf {
         self.canonical_root.join(rel.as_path())
+    }
+}
+
+fn map_io_error(error: std::io::Error) -> WorkspaceFsError {
+    match error.kind() {
+        std::io::ErrorKind::NotFound => WorkspaceFsError::NotFound,
+        std::io::ErrorKind::PermissionDenied => WorkspaceFsError::Denied,
+        _ => WorkspaceFsError::Io(error.to_string()),
     }
 }
 
@@ -387,6 +444,40 @@ mod tests {
         ));
         #[cfg(unix)]
         assert!(fs.resolve_content("escape/secret.md").is_err());
+    }
+
+    #[test]
+    fn bulk_enumeration_rejects_outside_file_symlink() {
+        let temp = tempfile::TempDir::new().unwrap();
+        let outside = tempfile::TempDir::new().unwrap();
+        std::fs::write(temp.path().join("inside.md"), "inside").unwrap();
+        let secret = outside.path().join("secret.md");
+        std::fs::write(&secret, "secret").unwrap();
+        let link = temp.path().join("linked-secret.md");
+
+        #[cfg(unix)]
+        std::os::unix::fs::symlink(&secret, &link).unwrap();
+        #[cfg(windows)]
+        if std::os::windows::fs::symlink_file(&secret, &link).is_err() {
+            // Windows requires Developer Mode or elevated symlink privilege.
+            return;
+        }
+
+        let fs = WorkspaceFs::new(temp.path().to_path_buf(), None);
+        let content_routes: Vec<_> = fs
+            .content_files(10)
+            .into_iter()
+            .map(|(rel, _)| rel.as_route())
+            .collect();
+        let served_routes: Vec<_> = fs
+            .served_files(10)
+            .into_iter()
+            .map(|(rel, _)| rel.as_route())
+            .collect();
+
+        assert_eq!(content_routes, ["inside.md"]);
+        assert_eq!(served_routes, ["inside.md"]);
+        assert!(fs.route_for_path(&link).is_none());
     }
 
     #[cfg(unix)]
