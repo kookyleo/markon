@@ -1,5 +1,5 @@
 use crate::server::{ServerConfig, WorkspaceInit};
-use crate::workspace::{PersistHook, WorkspaceFlags, WorkspaceRegistry};
+use crate::workspace::{generate_token, PersistHook, WorkspaceFlags, WorkspaceRegistry};
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex, OnceLock};
@@ -38,9 +38,9 @@ fn default_single_file() -> Option<String> {
     None
 }
 
-/// A stable, per-device identifier (never random), used as the root of the
-/// workspace-id salt. Read from OS-provided machine identity so it survives
-/// reinstalls and settings resets, yet differs across machines.
+/// A stable, per-device identifier used only as a last-resort recovery salt
+/// when settings cannot be read or parsed and therefore cannot safely be
+/// rewritten. Normal loads must preserve the persisted random salt verbatim.
 fn machine_id() -> Option<String> {
     #[cfg(target_os = "macos")]
     {
@@ -97,9 +97,9 @@ fn machine_id() -> Option<String> {
     }
 }
 
-/// Deterministic, device-bound workspace-id salt. SHA-256 of a domain tag plus
-/// the machine id — so a workspace id is reproducible on this device but not
-/// guessable from the (public) port and path alone.
+/// Deterministic recovery salt. This is deliberately not used when a persisted
+/// salt is available: replacing that value would invalidate every existing
+/// workspace URL.
 pub(crate) fn device_salt() -> String {
     use sha2::{Digest, Sha256};
     let id = machine_id().unwrap_or_else(|| "markon-fallback-device".to_string());
@@ -393,14 +393,19 @@ impl AppSettings {
             }
         };
         s.normalize();
-        // Root every workspace id in a per-device, deterministic salt: never random
-        // (a reset/corrupt settings.json recomputes the same ids) and not derivable
-        // from the public port/path (which a fixed or port-based salt would be).
-        // Recomputed each load and never honoured from disk, so copying settings.json
-        // to another machine cannot transplant this device's ids.
-        let device = device_salt();
-        if s.salt != device {
-            s.salt = device;
+        // The persisted salt is part of workspace identity. Preserve every
+        // non-empty value byte-for-byte across upgrades and restarts; changing
+        // it invalidates all existing workspace URLs. A new, valid settings
+        // file gets a cryptographically random salt which is persisted at
+        // once. Only unreadable/unrecoverable files use the deterministic
+        // device fallback, because overwriting such a file would destroy the
+        // best remaining recovery source.
+        if s.salt.is_empty() {
+            s.salt = if should_persist_missing_salt {
+                generate_token()
+            } else {
+                device_salt()
+            };
             if should_persist_missing_salt {
                 let _ = s.save_at(home);
             }
@@ -800,7 +805,7 @@ mod tests {
     }
 
     #[test]
-    fn load_legacy_settings_with_workspaces_adopts_device_salt() {
+    fn load_legacy_settings_with_workspaces_generates_persisted_salt() {
         let home = TempHome::new("legacy-workspace-salt");
         let p = AppSettings::settings_path_at(home.path());
         std::fs::create_dir_all(p.parent().unwrap()).unwrap();
@@ -820,20 +825,49 @@ mod tests {
 
         let loaded = AppSettings::load_at(home.path());
 
-        // A legacy file with no salt adopts the deterministic, device-bound salt —
-        // never the (guessable) port-derived value.
-        assert_eq!(loaded.salt, device_salt());
-        assert!(loaded.salt.starts_with("device:"));
+        // A valid legacy file with no salt gets a new random value which is
+        // immediately persisted. Subsequent loads must reuse it verbatim.
+        assert_eq!(loaded.salt.len(), 32);
         assert_eq!(loaded.workspaces.len(), 1);
         assert_eq!(
             hash_id(Path::new(&loaded.workspaces[0].path), &loaded.salt),
-            hash_id(Path::new("/tmp/docs"), &device_salt())
+            hash_id(Path::new("/tmp/docs"), &loaded.salt)
         );
 
         let saved: serde_json::Value =
             serde_json::from_str(&std::fs::read_to_string(&p).unwrap()).unwrap();
-        assert_eq!(saved["salt"].as_str(), Some(device_salt().as_str()));
+        assert_eq!(saved["salt"].as_str(), Some(loaded.salt.as_str()));
         assert_eq!(saved["workspaces"][0]["path"].as_str(), Some("/tmp/docs"));
+        assert_eq!(AppSettings::load_at(home.path()).salt, loaded.salt);
+    }
+
+    #[test]
+    fn load_preserves_existing_salt_and_workspace_ids() {
+        let home = TempHome::new("preserve-existing-salt");
+        let p = AppSettings::settings_path_at(home.path());
+        std::fs::create_dir_all(p.parent().unwrap()).unwrap();
+        std::fs::write(
+            &p,
+            r#"{
+                "salt": "historical-random-salt",
+                "workspaces": [{"path": "/tmp/docs", "enable_viewed": true}]
+            }"#,
+        )
+        .unwrap();
+
+        let expected_id = hash_id(Path::new("/tmp/docs"), "historical-random-salt");
+        let first = AppSettings::load_at(home.path());
+        let second = AppSettings::load_at(home.path());
+
+        assert_eq!(first.salt, "historical-random-salt");
+        assert_eq!(second.salt, first.salt);
+        assert_eq!(
+            hash_id(Path::new(&first.workspaces[0].path), &first.salt),
+            expected_id
+        );
+        let saved: serde_json::Value =
+            serde_json::from_str(&std::fs::read_to_string(&p).unwrap()).unwrap();
+        assert_eq!(saved["salt"], "historical-random-salt");
     }
 
     /// Repro: a per-workspace collaborator access-code hash must survive the
@@ -943,9 +977,9 @@ mod tests {
 
         let loaded = AppSettings::load_at(home.path());
 
-        // The salt is always the deterministic device salt — even a recoverable
-        // on-disk salt is not honoured (so a copied file can't transplant ids).
-        assert_eq!(loaded.salt, device_salt());
+        // Even when another field has a schema mismatch, identity fields are
+        // recovered without replacing the historical salt.
+        assert_eq!(loaded.salt, "stable-salt");
         assert_eq!(loaded.default_chat_mode, "popout");
         assert_eq!(loaded.workspaces.len(), 1);
         assert_eq!(loaded.workspaces[0].path, "/tmp/docs");
@@ -953,7 +987,7 @@ mod tests {
         assert_eq!(loaded.workspaces[0].collaborator_access_code_hash, "guest");
         assert_eq!(
             hash_id(Path::new(&loaded.workspaces[0].path), &loaded.salt),
-            hash_id(Path::new("/tmp/docs"), &device_salt())
+            hash_id(Path::new("/tmp/docs"), "stable-salt")
         );
 
         let raw = std::fs::read_to_string(&p).unwrap();
