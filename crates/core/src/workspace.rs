@@ -184,24 +184,48 @@ pub fn hash_id(path: &Path, salt: &str) -> String {
     )
 }
 
+/// Minimum length (in characters) for a newly set collaborator access code.
+/// Empty means "clear the code" and is always allowed; a non-empty code shorter
+/// than this is rejected at the set-code entry points (GUI / CLI). Existing
+/// stored codes are never re-validated, so an upgrade can't lock anyone out.
+pub const MIN_ACCESS_CODE_LEN: usize = 8;
+
+/// Validate a would-be access code before hashing. `Ok(())` for the empty
+/// string (which clears the code) and for any code of at least
+/// [`MIN_ACCESS_CODE_LEN`] characters; `Err(message)` otherwise. Callers should
+/// `trim()` first (empty-after-trim clears). Centralized here so the GUI command
+/// and the CLI flag enforce the same floor.
+pub fn validate_access_code(code: &str) -> Result<(), String> {
+    let code = code.trim();
+    let len = code.chars().count();
+    if !code.is_empty() && len < MIN_ACCESS_CODE_LEN {
+        return Err(format!(
+            "access code must be at least {MIN_ACCESS_CODE_LEN} characters (got {len})"
+        ));
+    }
+    Ok(())
+}
+
 /// Hash an access code for storage and comparison. Salted with the per-install
-/// salt (so the stored value isn't a bare SHA-256 of a often-weak code, and so
+/// salt (so the stored value isn't a bare SHA-256 of an often-weak code, and so
 /// it can't be precomputed without reading the 0600 settings file) and
 /// domain-separated from workspace-id hashing.
 ///
-/// The result is truncated to **as many leading hex chars as the code has
-/// characters**, so the stored length equals the code length — the panel uses
-/// that to render the right number of `•` in the "code is set" token without
-/// being able to recover the code. Verification stays consistent because both
-/// store and check route through this function: the candidate is truncated by
-/// *its own* length, so the correct code (same length) still matches, and a
-/// wrong-length guess can't. Trade-off: very short codes are checked against
-/// only a few hex chars — rely on a reasonable code length (the per-IP unlock
-/// cooldown also throttles guessing).
+/// Returns the **full** 64-hex-char digest. An earlier scheme truncated this to
+/// the code's character count (to let the panel render one `•` per character),
+/// which capped the effective strength at 4·N bits and let any string sharing
+/// the same leading N hex chars unlock — so a short code was far weaker than it
+/// looked. Storing the full digest removes both problems; the panel now shows a
+/// fixed "code is set" marker instead of the real length. [`access_code_matches`]
+/// still accepts the old truncated hashes, so upgrades need no re-set.
+///
+/// An empty `code` hashes to the empty string, preserving the "no code stored"
+/// sentinel that setters and [`access_code_matches`] treat as "gate disabled".
 pub fn hash_access_code(salt: &str, code: &str) -> String {
-    let hex = access_code_digest(salt, code);
-    let n = code.chars().count().min(hex.len());
-    hex[..n].to_string()
+    if code.is_empty() {
+        return String::new();
+    }
+    access_code_digest(salt, code)
 }
 
 /// Full (untruncated) salted digest of an access code, as 64 hex chars.
@@ -214,21 +238,23 @@ fn access_code_digest(salt: &str, code: &str) -> String {
     h.finalize().iter().map(|b| format!("{b:02x}")).collect()
 }
 
-/// Verify a submitted access code against a stored hash. Owns both schemes:
-/// the current length-truncated form (see [`hash_access_code`]) and, when the
-/// stored value is a full 64-char digest, the legacy untruncated form written
-/// before truncation existed — so codes set by older builds keep unlocking
-/// after an upgrade instead of silently never matching.
+/// Verify a submitted access code against a stored hash. Accepts both schemes:
+/// the current full 64-hex-char digest (see [`hash_access_code`]) and the legacy
+/// length-truncated form (leading N hex chars, N = code length) written by
+/// builds before full-digest storage — so codes set by older builds keep
+/// unlocking after an upgrade instead of silently never matching.
 pub fn access_code_matches(salt: &str, code: &str, stored: &str) -> bool {
     if stored.is_empty() {
         return false;
     }
     let full = access_code_digest(salt, code);
-    let n = code.chars().count().min(full.len());
-    if ct_eq(&full.as_bytes()[..n], stored.as_bytes()) {
+    // Current format: full digest, exact compare.
+    if stored.len() == full.len() && ct_eq(full.as_bytes(), stored.as_bytes()) {
         return true;
     }
-    stored.len() == full.len() && ct_eq(full.as_bytes(), stored.as_bytes())
+    // Legacy truncated format: stored is the leading `stored.len()` hex chars.
+    let n = code.chars().count().min(full.len());
+    stored.len() == n && ct_eq(&full.as_bytes()[..n], stored.as_bytes())
 }
 
 /// Constant-time byte comparison (length leak is fine — lengths aren't secret).
@@ -813,30 +839,60 @@ mod tests {
     }
 
     #[test]
-    fn access_code_hash_len_equals_code_len() {
-        assert_eq!(hash_access_code("s", "test123").len(), 7);
+    fn access_code_hash_is_full_width() {
+        // Any non-empty code now stores the full 64-hex digest, regardless of
+        // code length — no truncation, so no leaked length and no 4·N cap.
+        assert_eq!(hash_access_code("s", "abcd12345678").len(), 64);
+        assert_eq!(hash_access_code("s", "x").len(), 64);
+        // Empty stays the "gate disabled" sentinel.
         assert_eq!(hash_access_code("s", "").len(), 0);
     }
 
     #[test]
     fn access_code_matches_current_scheme() {
-        let stored = hash_access_code("s", "test123");
-        assert!(access_code_matches("s", "test123", &stored));
-        assert!(!access_code_matches("s", "test124", &stored));
-        // Wrong length can't match a truncated hash.
-        assert!(!access_code_matches("s", "test1234", &stored));
+        let stored = hash_access_code("s", "test1234");
+        assert_eq!(stored.len(), 64);
+        assert!(access_code_matches("s", "test1234", &stored));
+        assert!(!access_code_matches("s", "test1235", &stored));
+        // A different-length code can't match either.
+        assert!(!access_code_matches("s", "test12345", &stored));
         // Empty stored hash gates nothing.
         assert!(!access_code_matches("s", "anything", ""));
     }
 
     #[test]
-    fn access_code_matches_legacy_full_hash() {
-        // Pre-truncation builds stored the full 64-char digest; those codes
-        // must keep unlocking after an upgrade.
-        let legacy = access_code_digest("s", "test123");
-        assert_eq!(legacy.len(), 64);
-        assert!(access_code_matches("s", "test123", &legacy));
-        assert!(!access_code_matches("s", "wrong", &legacy));
+    fn access_code_matches_legacy_truncated_hash() {
+        // Builds before full-digest storage kept only the leading N hex chars
+        // (N = code length). Those codes must keep unlocking after an upgrade.
+        let full = access_code_digest("s", "test1234");
+        let legacy = full[..8].to_string();
+        assert!(access_code_matches("s", "test1234", &legacy));
+        assert!(!access_code_matches("s", "wrongone", &legacy));
+    }
+
+    #[test]
+    fn access_code_matches_rejects_truncation_collision() {
+        // The old truncation let ANY string sharing the leading N hex chars
+        // unlock. With full-digest storage, only the exact code matches.
+        let stored = hash_access_code("s", "test1234");
+        // Construct a code whose digest is (astronomically unlikely to be) equal;
+        // the point is that partial-prefix matching no longer happens.
+        for guess in ["test1235", "TEST1234", "test123", "test12340"] {
+            assert!(!access_code_matches("s", guess, &stored));
+        }
+    }
+
+    #[test]
+    fn validate_access_code_enforces_floor() {
+        // Empty clears the code and is always allowed.
+        assert!(validate_access_code("").is_ok());
+        assert!(validate_access_code("   ").is_ok());
+        // Below the floor is rejected (trimmed length counts).
+        assert!(validate_access_code("short").is_err());
+        assert!(validate_access_code(&"x".repeat(MIN_ACCESS_CODE_LEN - 1)).is_err());
+        // At/above the floor is accepted.
+        assert!(validate_access_code(&"x".repeat(MIN_ACCESS_CODE_LEN)).is_ok());
+        assert!(validate_access_code("a-reasonable-code").is_ok());
     }
 
     #[test]
