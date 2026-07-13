@@ -83,6 +83,9 @@ impl Tool for ListDirTool {
                 continue;
             }
             let path = entry.path();
+            if ctx.route_for_path(path).is_none() {
+                continue;
+            }
             let name = match path.file_name() {
                 Some(n) => n.to_string_lossy().into_owned(),
                 None => continue,
@@ -92,7 +95,9 @@ impl Tool for ListDirTool {
             if is_dir {
                 dirs.push(name);
             } else {
-                let len = std::fs::metadata(path).map(|m| m.len()).unwrap_or(0);
+                let len = std::fs::symlink_metadata(path)
+                    .map(|metadata| metadata.len())
+                    .unwrap_or(0);
                 files.push((name, len));
             }
         }
@@ -241,5 +246,26 @@ mod tests {
             .await
             .unwrap_err();
         assert!(matches!(err, ToolError::InvalidArgument(_)));
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn omits_symlink_targets_outside_workspace() {
+        use std::os::unix::fs::symlink;
+
+        let td = TempDir::new().unwrap();
+        let outside = TempDir::new().unwrap();
+        let secret = outside.path().join("secret.txt");
+        fs::write(&secret, b"secret").unwrap();
+        symlink(&secret, td.path().join("linked-secret.txt")).unwrap();
+
+        let out = ListDirTool
+            .run(&ctx_for(&td), serde_json::json!({}))
+            .await
+            .unwrap();
+        assert!(
+            !out.contains("linked-secret.txt"),
+            "outside link leaked: {out}"
+        );
     }
 }

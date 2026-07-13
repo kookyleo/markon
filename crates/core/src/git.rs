@@ -4,6 +4,8 @@ use std::io::Write;
 use std::path::Path;
 use std::process::{Command, Output, Stdio};
 
+use crate::workspace_fs::WorkspaceFs;
+
 #[derive(Debug, Clone, Serialize)]
 pub struct GitStatus {
     pub available: bool,
@@ -611,7 +613,10 @@ pub fn last_commits_for_paths(
     Ok(commits)
 }
 
-pub fn working_diff(root: &Path) -> Result<GitDiff> {
+pub(crate) fn working_diff(workspace_fs: &WorkspaceFs) -> Result<GitDiff> {
+    let root = workspace_fs
+        .directory_root()
+        .ok_or_else(|| GitError::Io("directory workspace required".to_string()))?;
     ensure_repo(root)?;
     let mut patch = if has_head(root) {
         git_stdout_required(
@@ -621,7 +626,7 @@ pub fn working_diff(root: &Path) -> Result<GitDiff> {
     } else {
         String::new()
     };
-    append_untracked_file_patches(root, &mut patch, None);
+    append_untracked_file_patches(workspace_fs, &mut patch, None);
     let files = parse_diff_files(&patch);
     Ok(GitDiff {
         range: "HEAD..worktree".to_string(),
@@ -632,16 +637,23 @@ pub fn working_diff(root: &Path) -> Result<GitDiff> {
     })
 }
 
-pub fn compare_diff(root: &Path, base: &str, compare: &str) -> Result<GitDiff> {
-    compare_diff_with_pathspec(root, base, compare, None)
+pub(crate) fn compare_diff(
+    workspace_fs: &WorkspaceFs,
+    base: &str,
+    compare: &str,
+) -> Result<GitDiff> {
+    compare_diff_with_pathspec(workspace_fs, base, compare, None)
 }
 
 fn compare_diff_with_pathspec(
-    root: &Path,
+    workspace_fs: &WorkspaceFs,
     base: &str,
     compare: &str,
     pathspec: Option<&str>,
 ) -> Result<GitDiff> {
+    let root = workspace_fs
+        .directory_root()
+        .ok_or_else(|| GitError::Io("directory workspace required".to_string()))?;
     ensure_repo(root)?;
     let base = validate_compare_ref(root, base, false)?;
     let compare = validate_compare_ref(root, compare, true)?;
@@ -676,7 +688,7 @@ fn compare_diff_with_pathspec(
     };
     if compare == "worktree" {
         let untracked_filter = (pathspec != ".").then_some(pathspec);
-        append_untracked_file_patches(root, &mut patch, untracked_filter);
+        append_untracked_file_patches(workspace_fs, &mut patch, untracked_filter);
     }
     let range = format!("{base}..{compare}");
     let files = parse_diff_files(&patch);
@@ -718,11 +730,14 @@ pub struct MarkdownDiffListing {
 /// Enumerate the markdown files changed between `base` and `compare` using
 /// `git diff --raw` (no patch generation) plus untracked markdown for worktree
 /// compares. Cheap: one `git diff --raw` and, for worktree, one `ls-files`.
-pub fn markdown_diff_listing(
-    root: &Path,
+pub(crate) fn markdown_diff_listing(
+    workspace_fs: &WorkspaceFs,
     base: &str,
     compare: &str,
 ) -> Result<MarkdownDiffListing> {
+    let root = workspace_fs
+        .directory_root()
+        .ok_or_else(|| GitError::Io("directory workspace required".to_string()))?;
     ensure_repo(root)?;
     let base = validate_compare_ref(root, base, false)?;
     let compare = validate_compare_ref(root, compare, true)?;
@@ -789,7 +804,8 @@ pub fn markdown_diff_listing(
         ) {
             for rel in list {
                 if is_markdown_git_path(&rel) {
-                    let additions = std::fs::read_to_string(root.join(&rel))
+                    let additions = workspace_fs
+                        .read_content_to_string(&rel)
                         .map(|c| c.lines().count())
                         .unwrap_or(0);
                     entries.push(MarkdownDiffEntry {
@@ -1370,7 +1386,14 @@ fn validate_compare_ref(root: &Path, value: &str, allow_worktree: bool) -> Resul
     Err(GitError::InvalidRevision)
 }
 
-fn append_untracked_file_patches(root: &Path, patch: &mut String, path_filter: Option<&str>) {
+fn append_untracked_file_patches(
+    workspace_fs: &WorkspaceFs,
+    patch: &mut String,
+    path_filter: Option<&str>,
+) {
+    let Some(root) = workspace_fs.directory_root() else {
+        return;
+    };
     let untracked = git_stdout(
         root,
         &["ls-files", "--others", "--exclude-standard", "--", "."],
@@ -1383,7 +1406,7 @@ fn append_untracked_file_patches(root: &Path, patch: &mut String, path_filter: O
         if !patch.is_empty() && !patch.ends_with('\n') {
             patch.push('\n');
         }
-        patch.push_str(&untracked_file_patch(root, rel));
+        patch.push_str(&untracked_file_patch(workspace_fs, rel));
     }
 }
 
@@ -1469,15 +1492,14 @@ fn parse_diff_git_line(line: &str) -> Option<(&str, &str)> {
     Some((old_path, new_path))
 }
 
-fn untracked_file_patch(root: &Path, rel: &str) -> String {
-    let path = root.join(rel);
+fn untracked_file_patch(workspace_fs: &WorkspaceFs, rel: &str) -> String {
     let mut out = String::new();
     out.push_str(&format!("diff --git a/{rel} b/{rel}\n"));
     out.push_str("new file mode 100644\n");
     out.push_str("--- /dev/null\n");
     out.push_str(&format!("+++ b/{rel}\n"));
 
-    let bytes = match std::fs::read(&path) {
+    let bytes = match workspace_fs.read_content(rel) {
         Ok(bytes) => bytes,
         Err(e) => {
             out.push_str(&format!(

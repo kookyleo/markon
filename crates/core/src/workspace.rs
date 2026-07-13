@@ -404,17 +404,13 @@ impl WorkspaceRegistry {
                 // sibling leakage); the single-file watcher refreshes it on edit.
                 refresh_allowed_assets(&entry, &name);
                 if config.flags.enable_search {
-                    spawn_single_file_search_indexer(
-                        config.path.clone(),
-                        entry.clone(),
-                        name.clone(),
-                    );
+                    spawn_search_indexer(entry.clone());
                 }
                 spawn_single_file_watcher(config.path, entry.clone(), name);
             }
             None => {
                 if config.flags.enable_search {
-                    spawn_search_indexer(config.path.clone(), entry.clone());
+                    spawn_search_indexer(entry.clone());
                 }
                 spawn_directory_watcher(config.path, entry.clone());
             }
@@ -451,11 +447,7 @@ impl WorkspaceRegistry {
         // workspaces: turning search on spawns the appropriate indexer, turning
         // it off drops the index so we stop serving stale results and free RAM.
         if flags.enable_search && !was_search && entry.search_index.load().is_none() {
-            let root = entry.fs.ambient_root().to_path_buf();
-            match &entry.single_file {
-                Some(name) => spawn_single_file_search_indexer(root, entry.clone(), name.clone()),
-                None => spawn_search_indexer(root, entry),
-            }
+            spawn_search_indexer(entry);
         } else if !flags.enable_search && was_search {
             entry.search_index.store(None);
         }
@@ -658,9 +650,9 @@ fn spawn_single_file_watcher(root: PathBuf, entry: Arc<WorkspaceEntry>, file_nam
     );
 }
 
-fn spawn_search_indexer(root: PathBuf, entry: Arc<WorkspaceEntry>) {
+fn spawn_search_indexer(entry: Arc<WorkspaceEntry>) {
     std::thread::spawn(move || {
-        if let Ok(idx) = SearchIndex::new(&root) {
+        if let Ok(idx) = SearchIndex::for_workspace(entry.fs.clone()) {
             entry.search_index.store(Some(Arc::new(idx)));
         }
     });
@@ -719,19 +711,6 @@ fn directory_live_reload_path(root: &Path, path: &Path) -> Option<String> {
         return None;
     }
     Some(path_to_forward_slash(rel))
-}
-
-/// Build a search index scoped to a single-file workspace's pinned file and
-/// store it on the entry. Unlike [`spawn_search_indexer`], this indexes only
-/// `root/file_name` (no WalkDir of the parent → no sibling leakage) and spawns
-/// no extra file watcher: the single-file watcher already owns the parent dir
-/// and refreshes this index on edit via `entry.search_index`.
-fn spawn_single_file_search_indexer(root: PathBuf, entry: Arc<WorkspaceEntry>, file_name: String) {
-    std::thread::spawn(move || {
-        if let Ok(idx) = SearchIndex::new_single_file(&root, &file_name) {
-            entry.search_index.store(Some(Arc::new(idx)));
-        }
-    });
 }
 
 #[derive(serde::Serialize, serde::Deserialize)]
