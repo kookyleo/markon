@@ -86,7 +86,7 @@ thiserror = "2"
 tracing.workspace = true
 
 [dependencies.supramark-markdown]
-version = "0.1.1"
+version = "0.1.2"
 default-features = false
 features = [
     "commonmark",
