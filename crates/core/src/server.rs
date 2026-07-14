@@ -1198,27 +1198,31 @@ pub async fn start(config: ServerConfig) -> Result<(), String> {
     // Write lock file so the CLI/GUI can discover this server: the web TCP port
     // (for building browser URLs) plus the control socket path (for management).
     let _lock_guard = {
+        // A fresh, non-secret per-instance nonce — distinct from the management
+        // token (which signs admin cookies and must NOT leak into the discoverable
+        // lock). It only lets the ownership-checked cleanup below tell our lock
+        // from one a newer server already wrote.
+        let owner_nonce = generate_token();
         if let Err(e) = (ServerLock {
             port: addr.port(),
             control_socket: control_socket_path.clone(),
             host: host.clone(),
             advertised_host: Some(advertised_host.clone()),
+            owner: owner_nonce.clone(),
         })
         .write()
         {
             tracing::warn!("failed to write lock file: {e}");
         }
         struct LockGuard {
-            token: String,
+            owner: String,
         }
         impl Drop for LockGuard {
             fn drop(&mut self) {
-                ServerLock::remove_if_owned(&self.token);
+                ServerLock::remove_if_owned(&self.owner);
             }
         }
-        LockGuard {
-            token: token.as_ref().clone(),
-        }
+        LockGuard { owner: owner_nonce }
     };
 
     // Helper: build a full URL from a base option string.
@@ -6858,42 +6862,49 @@ mod tests {
 
     #[tokio::test]
     async fn management_add_preserves_single_file_capability_and_alias() {
-        use axum::body::Body;
-        use axum::http::Request;
+        // Management moved off the TCP surface onto the control socket, so this
+        // exercises the socket dispatch. The single-file capability confinement
+        // (expose the one file, hide siblings) and the reject-multi-component
+        // guard are the same guarantees the old HTTP handler enforced.
+        use crate::control::proto::{ControlRequest, ControlResponse};
+        use crate::control::transport::{dispatch, ControlContext};
 
         let root = tempfile::tempdir().unwrap();
         std::fs::write(root.path().join("note.md"), "# note").unwrap();
         std::fs::write(root.path().join("secret.md"), "secret").unwrap();
         let registry = Arc::new(WorkspaceRegistry::new("single-file-api".into()));
-        let app = Router::new()
-            .route("/api/workspace", post(add_workspace_handler))
-            .with_state(test_state(registry.clone()));
-
-        let response = app
-            .clone()
-            .oneshot(
-                Request::builder()
-                    .method("POST")
-                    .uri("/api/workspace")
-                    .header("content-type", "application/json")
-                    .body(Body::from(
-                        json!({
-                            "path": root.path(),
-                            "single_file": "note.md",
-                            "alias": "Pinned note"
-                        })
-                        .to_string(),
-                    ))
-                    .unwrap(),
+        let ctx = ControlContext {
+            registry: registry.clone(),
+            shutdown: None,
+            admin_bootstrap: None,
+        };
+        let add = |single_file: Option<&str>| {
+            dispatch(
+                ControlRequest::AddWorkspace {
+                    path: root.path().to_string_lossy().into_owned(),
+                    flags: WorkspaceFlags::default(),
+                    collaborator_access_code_hash: String::new(),
+                    single_file: single_file.map(str::to_string),
+                },
+                &ctx,
             )
-            .await
-            .unwrap();
-        assert_eq!(response.status(), StatusCode::OK);
-        let body = to_bytes(response.into_body(), usize::MAX).await.unwrap();
-        let id = serde_json::from_slice::<serde_json::Value>(&body).unwrap()["id"]
-            .as_str()
-            .unwrap()
-            .to_string();
+        };
+
+        let id = match add(Some("note.md")) {
+            ControlResponse::WorkspaceId(id) => id,
+            other => panic!("expected WorkspaceId, got {other:?}"),
+        };
+        assert!(matches!(
+            dispatch(
+                ControlRequest::SetAlias {
+                    id: id.clone(),
+                    alias: "Pinned note".into(),
+                },
+                &ctx,
+            ),
+            ControlResponse::Ok
+        ));
+
         let info = registry
             .info_list()
             .into_iter()
@@ -6906,20 +6917,8 @@ mod tests {
         assert!(entry.fs.resolve_served("note.md").is_ok());
         assert!(entry.fs.resolve_served("secret.md").is_err());
 
-        let invalid = app
-            .oneshot(
-                Request::builder()
-                    .method("POST")
-                    .uri("/api/workspace")
-                    .header("content-type", "application/json")
-                    .body(Body::from(
-                        json!({ "path": root.path(), "single_file": "../secret.md" }).to_string(),
-                    ))
-                    .unwrap(),
-            )
-            .await
-            .unwrap();
-        assert_eq!(invalid.status(), StatusCode::BAD_REQUEST);
+        // A multi-component single_file is rejected and leaves the registry as-is.
+        assert!(matches!(add(Some("../secret.md")), ControlResponse::Err(_)));
         assert_eq!(registry.info_list().len(), 1);
     }
 

@@ -161,6 +161,21 @@ pub fn dispatch(req: ControlRequest, ctx: &ControlContext) -> ControlResponse {
                 Ok(p) => p,
                 Err(e) => return ControlResponse::Err(format!("invalid path: {e}")),
             };
+            // Defense-in-depth (mirrors the old management HTTP handler): a
+            // single-file workspace name must be exactly one workspace-relative
+            // path component, so it can never point outside the served root even
+            // if a privileged client is buggy.
+            if let Some(name) = single_file.as_deref() {
+                let mut components = std::path::Path::new(name).components();
+                let exactly_one_normal =
+                    matches!(components.next(), Some(std::path::Component::Normal(_)))
+                        && components.next().is_none();
+                if !exactly_one_normal {
+                    return ControlResponse::Err(
+                        "single_file must be one workspace-relative file name".to_string(),
+                    );
+                }
+            }
             // Same call the in-process add makes: `single_file` selects a
             // temporary single-file workspace vs. an ordinary directory one.
             let id = ctx.registry.add(WorkspaceConfig {

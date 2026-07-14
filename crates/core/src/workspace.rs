@@ -757,6 +757,13 @@ pub struct ServerLock {
     /// legacy lock file; `Some("")` is the valid automatic-LAN selection.
     #[serde(default)]
     pub advertised_host: Option<String>,
+    /// Per-instance ownership nonce. NOT a secret (management no longer rides the
+    /// lock — it moved to the control socket) and never used for authentication;
+    /// it exists only so [`remove_if_owned`](Self::remove_if_owned) can tell "my
+    /// lock" from one a newer server already replaced, keeping cleanup race-safe.
+    /// `#[serde(default)]` keeps pre-nonce lock files readable (empty nonce).
+    #[serde(default)]
+    pub owner: String,
 }
 impl ServerLock {
     pub(crate) fn path() -> PathBuf {
@@ -822,9 +829,9 @@ impl ServerLock {
     /// newer process may have replaced it; unconditional cleanup would then
     /// make the live server undiscoverable. The sidecar lock makes the
     /// compare-and-remove transaction race-free against `write()`.
-    pub(crate) fn remove_if_owned(token: &str) {
+    pub(crate) fn remove_if_owned(owner: &str) {
         let _ = Self::with_write_lock(|| {
-            let owned = Self::read().is_some_and(|lock| lock.token == token);
+            let owned = Self::read().is_some_and(|lock| lock.owner == owner);
             if owned {
                 match std::fs::remove_file(Self::path()) {
                     Ok(()) => {}
@@ -1050,6 +1057,7 @@ mod tests {
             control_socket: "/home/u/.markon/control.sock".into(),
             host: "0.0.0.0".into(),
             advertised_host: Some("192.168.1.20".into()),
+            owner: "owner-nonce".into(),
         };
         let json = serde_json::to_string(&lock).unwrap();
         let back: ServerLock = serde_json::from_str(&json).unwrap();
@@ -1057,6 +1065,7 @@ mod tests {
         assert_eq!(back.port, 6419);
         assert_eq!(back.control_socket, "/home/u/.markon/control.sock");
         assert_eq!(back.advertised_host.as_deref(), Some("192.168.1.20"));
+        assert_eq!(back.owner, "owner-nonce");
     }
 
     /// Block until the entry's search index is populated (it's built on a
