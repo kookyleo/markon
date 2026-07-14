@@ -5,7 +5,7 @@ use axum::{
     },
     http::{header, StatusCode},
     response::{Html, IntoResponse, Redirect, Response},
-    routing::{delete, get, post},
+    routing::{get, post},
     Json, Router,
 };
 use futures_util::{stream::StreamExt, SinkExt};
@@ -223,19 +223,12 @@ pub(crate) struct AppState {
     /// Whether collapsed sections should be printed (true) or replaced by a
     /// placeholder (false). Mirrored to the browser as a `<html>` data attr.
     pub print_collapsed_content: bool,
-    /// Shutdown channel.
-    pub shutdown_tx: mpsc::Sender<()>,
     /// Dev-only: esbuild watcher posts to /_/dev/reload-trigger and the
     /// webview's SSE stream listens on this channel to fire location.reload().
     /// Cheap to keep in release builds (one Arc<broadcast::Sender>); the
     /// routes that read it are only registered behind cfg(debug_assertions).
     #[cfg(debug_assertions)]
     pub dev_reload_tx: Arc<broadcast::Sender<()>>,
-}
-
-async fn shutdown_handler(State(state): State<AppState>) -> impl IntoResponse {
-    let _ = state.shutdown_tx.send(()).await;
-    StatusCode::OK
 }
 
 fn detect_lang(override_lang: &Option<String>) -> String {
@@ -923,6 +916,11 @@ pub async fn start(config: ServerConfig) -> Result<(), String> {
 
     let (shutdown_tx, mut shutdown_rx) = mpsc::channel::<()>(1);
 
+    // The control plane (privileged local socket) drives the SAME registry and
+    // shutdown channel the web app uses, so both surfaces observe one state.
+    let control_registry = registry.clone();
+    let control_shutdown_tx = shutdown_tx.clone();
+
     let state = AppState {
         theme: Arc::new(theme),
         tera: Arc::new(tera),
@@ -951,36 +949,17 @@ pub async fn start(config: ServerConfig) -> Result<(), String> {
         access_attempts: Arc::new(std::sync::Mutex::new(std::collections::HashMap::new())),
         markdown_diff_cache: Arc::new(Mutex::new(MarkdownDiffCache::default())),
         print_collapsed_content,
-        shutdown_tx,
         #[cfg(debug_assertions)]
         dev_reload_tx: Arc::new(broadcast::channel::<()>(16).0),
     };
 
-    // Management API: requires loopback source IP + the master token header.
-    let mgmt = Router::new()
-        .route("/api/workspace", post(add_workspace_handler))
-        .route(
-            "/api/workspace/{id}",
-            delete(remove_workspace_handler).put(update_workspace_handler),
-        )
-        .route(
-            "/api/workspace/{id}/access",
-            axum::routing::put(update_workspace_access_handler),
-        )
-        .route(
-            "/api/workspace/{id}/alias",
-            axum::routing::put(handle_workspace_update_alias),
-        )
-        .route("/api/workspaces", get(list_workspaces_handler))
-        .route("/api/admin/bootstrap", post(create_admin_bootstrap_handler))
-        .route("/api/shutdown", post(shutdown_handler))
-        .layer(axum::middleware::from_fn_with_state(
-            state.clone(),
-            require_local_and_token,
-        ));
+    // Management/admin operations no longer live on the TCP surface: they are
+    // served exclusively over the privileged control socket (see the control
+    // server spawned below). The TCP app keeps only browser/collaboration
+    // routes plus the same-origin save/preview helpers.
 
     // Save API: same-origin browser page + a workspace-scoped save capability
-    // (or the master token). Kept separate from `mgmt` so a token embedded in
+    // (or the master token). Kept separate so a token embedded in
     // one edit page cannot reach privileged routes or another workspace.
     let save = Router::new()
         .route("/api/save", post(save_file_handler))
@@ -1108,7 +1087,6 @@ pub async fn start(config: ServerConfig) -> Result<(), String> {
         .route("/{workspace_id}/{*path}", get(handle_workspace_path))
         // Everything else → 404
         .fallback(|| async { StatusCode::NOT_FOUND })
-        .merge(mgmt)
         .merge(save)
         .merge(preview);
 
@@ -1175,11 +1153,54 @@ pub async fn start(config: ServerConfig) -> Result<(), String> {
         println!("workspace: {}", build_workspace_url(&local_base, p));
     }
 
-    // Write lock file so CLI can discover this server.
+    // ── Control plane: privileged same-user local socket ──────────────────────
+    // Management/admin operations arrive here, NOT over TCP. The control server
+    // drives the same registry and shutdown channel the web app uses. Bind it
+    // before writing the discovery lock so the socket is ready the instant a
+    // client (CLI/GUI) reads the lock and connects — no startup race.
+    let control_name = crate::control::ControlSocketName::default_name()
+        .map_err(|e| format!("failed to resolve control socket name: {e}"))?;
+    let control_server = crate::control::bind(&control_name).map_err(|e| {
+        format!(
+            "failed to bind control socket {}: {e}",
+            control_name.as_str()
+        )
+    })?;
+    let control_socket_path = control_server.name().as_str().to_string();
+
+    // Admin bootstrap over the control socket mints a one-time browser URL
+    // against the web plane's featured base (the same URL a local browser uses).
+    let admin_bootstraps_for_control = admin_bootstraps.clone();
+    let admin_base = local_base.clone();
+    let admin_bootstrap_fn: crate::control::AdminBootstrapFn = Arc::new(move |redirect: &str| {
+        let nonce = admin_bootstraps_for_control.issue_url(redirect);
+        Ok(format!(
+            "{}#nonce={nonce}",
+            build_workspace_url(&admin_base, "/_/admin/bootstrap")
+        ))
+    });
+
+    let control_ctx = crate::control::ControlContext {
+        registry: control_registry,
+        shutdown: Some(control_shutdown_tx),
+        admin_bootstrap: Some(admin_bootstrap_fn),
+    };
+    let (control_stop_tx, control_stop_rx) = tokio::sync::oneshot::channel::<()>();
+    let control_task = tokio::spawn(async move {
+        let stop = async move {
+            let _ = control_stop_rx.await;
+        };
+        if let Err(e) = control_server.run(control_ctx, Box::pin(stop)).await {
+            tracing::warn!("control server exited with error: {e}");
+        }
+    });
+
+    // Write lock file so the CLI/GUI can discover this server: the web TCP port
+    // (for building browser URLs) plus the control socket path (for management).
     let _lock_guard = {
         if let Err(e) = (ServerLock {
             port: addr.port(),
-            token: token.as_ref().clone(),
+            control_socket: control_socket_path.clone(),
             host: host.clone(),
             advertised_host: Some(advertised_host.clone()),
         })
@@ -1251,7 +1272,7 @@ pub async fn start(config: ServerConfig) -> Result<(), String> {
         }
     }
 
-    axum::serve(
+    let serve_result = axum::serve(
         listener,
         app.into_make_service_with_connect_info::<std::net::SocketAddr>(),
     )
@@ -1259,8 +1280,14 @@ pub async fn start(config: ServerConfig) -> Result<(), String> {
         shutdown_rx.recv().await;
         println!("Shutting down...");
     })
-    .await
-    .map_err(|e| format!("Server error: {e}"))?;
+    .await;
+
+    // Tear down the control socket alongside the web server so a restart binds a
+    // fresh socket and no orphaned accept loop lingers.
+    let _ = control_stop_tx.send(());
+    let _ = control_task.await;
+
+    serve_result.map_err(|e| format!("Server error: {e}"))?;
     Ok(())
 }
 
@@ -1784,56 +1811,6 @@ async fn require_allowed_host(
     next.run(req).await
 }
 
-#[derive(Deserialize)]
-#[serde(rename_all = "snake_case")]
-enum AdminBootstrapMode {
-    Url,
-    Code,
-}
-
-#[derive(Deserialize)]
-struct CreateAdminBootstrapRequest {
-    mode: AdminBootstrapMode,
-    #[serde(default = "admin_default_redirect")]
-    redirect: String,
-}
-
-fn admin_default_redirect() -> String {
-    "/".to_string()
-}
-
-#[derive(Serialize)]
-struct CreateAdminBootstrapResponse {
-    path: &'static str,
-    nonce: Option<String>,
-    code: Option<String>,
-    expires_in: u64,
-}
-
-/// Native management clients use the master token to mint a narrow, one-time
-/// browser bootstrap capability. The master token itself never enters HTML,
-/// JavaScript, browser storage, URLs, or cookies.
-async fn create_admin_bootstrap_handler(
-    State(state): State<AppState>,
-    Json(request): Json<CreateAdminBootstrapRequest>,
-) -> Json<CreateAdminBootstrapResponse> {
-    let response = match request.mode {
-        AdminBootstrapMode::Url => CreateAdminBootstrapResponse {
-            path: "/_/admin/bootstrap",
-            nonce: Some(state.admin_bootstraps.issue_url(&request.redirect)),
-            code: None,
-            expires_in: 60,
-        },
-        AdminBootstrapMode::Code => CreateAdminBootstrapResponse {
-            path: "/_/admin",
-            nonce: None,
-            code: Some(state.admin_bootstraps.issue_code(&request.redirect)),
-            expires_in: 5 * 60,
-        },
-    };
-    Json(response)
-}
-
 async fn admin_bootstrap_page(State(state): State<AppState>) -> Response {
     let context = base_context(&state);
     let mut response = render_template(&state, "admin-bootstrap.html", &context);
@@ -2027,27 +2004,6 @@ async fn require_same_origin(
     next.run(req).await
 }
 
-/// Middleware: management API only accepts loopback source + valid token header.
-async fn require_local_and_token(
-    State(state): State<AppState>,
-    axum::extract::ConnectInfo(addr): axum::extract::ConnectInfo<std::net::SocketAddr>,
-    req: axum::extract::Request,
-    next: axum::middleware::Next,
-) -> Response {
-    if !addr.ip().is_loopback() {
-        return StatusCode::FORBIDDEN.into_response();
-    }
-    let ok = req
-        .headers()
-        .get("X-Markon-Token")
-        .and_then(|v| v.to_str().ok())
-        .map(|t| ct_eq(t.as_bytes(), state.management_token.as_bytes()))
-        .unwrap_or(false);
-    if !ok {
-        return StatusCode::UNAUTHORIZED.into_response();
-    }
-    next.run(req).await
-}
 
 /// Save API origin guard. The handler validates the workspace-scoped token
 /// after decoding the request body, because the target workspace is part of
@@ -3465,111 +3421,6 @@ async fn handle_workspace_update_alias(
         )
             .into_response()
     }
-}
-
-// ── Workspace management API ──────────────────────────────────────────────────
-
-#[derive(Deserialize)]
-struct AddWorkspaceRequest {
-    path: String,
-    #[serde(flatten)]
-    flags: WorkspaceFlags,
-    #[serde(default)]
-    single_file: Option<String>,
-    #[serde(default)]
-    collaborator_access_code_hash: String,
-    #[serde(default)]
-    alias: String,
-}
-
-#[derive(Deserialize)]
-struct UpdateWorkspaceRequest {
-    #[serde(flatten)]
-    flags: WorkspaceFlags,
-}
-
-#[derive(Deserialize)]
-struct UpdateWorkspaceAccessRequest {
-    collaborator_access_code_hash: Option<String>,
-}
-
-#[derive(Serialize)]
-struct AddWorkspaceResponse {
-    id: String,
-}
-
-async fn add_workspace_handler(
-    State(state): State<AppState>,
-    Json(req): Json<AddWorkspaceRequest>,
-) -> impl IntoResponse {
-    let path = match expand_and_canonicalize(&req.path) {
-        Ok(p) => p,
-        Err(e) => return (StatusCode::BAD_REQUEST, format!("Invalid path: {e}")).into_response(),
-    };
-    if let Some(single_file) = req.single_file.as_deref() {
-        let mut components = FsPath::new(single_file).components();
-        let exactly_one_normal_component =
-            matches!(components.next(), Some(std::path::Component::Normal(_)))
-                && components.next().is_none();
-        if !exactly_one_normal_component {
-            return (
-                StatusCode::BAD_REQUEST,
-                "single_file must be one workspace-relative file name",
-            )
-                .into_response();
-        }
-    }
-    let id = state.workspace_registry.add(WorkspaceConfig {
-        path,
-        flags: req.flags,
-        single_file: req.single_file,
-        collaborator_access_code_hash: req.collaborator_access_code_hash,
-        alias: req.alias,
-    });
-    Json(AddWorkspaceResponse { id }).into_response()
-}
-
-async fn remove_workspace_handler(
-    State(state): State<AppState>,
-    AxumPath(id): AxumPath<String>,
-) -> impl IntoResponse {
-    if state.workspace_registry.remove(&id) {
-        StatusCode::OK
-    } else {
-        StatusCode::NOT_FOUND
-    }
-}
-
-async fn update_workspace_handler(
-    State(state): State<AppState>,
-    AxumPath(id): AxumPath<String>,
-    Json(req): Json<UpdateWorkspaceRequest>,
-) -> impl IntoResponse {
-    if state.workspace_registry.update_flags(&id, req.flags) {
-        StatusCode::OK
-    } else {
-        StatusCode::NOT_FOUND
-    }
-}
-
-async fn update_workspace_access_handler(
-    State(state): State<AppState>,
-    AxumPath(id): AxumPath<String>,
-    Json(req): Json<UpdateWorkspaceAccessRequest>,
-) -> impl IntoResponse {
-    if let Some(hash) = req.collaborator_access_code_hash {
-        if !state
-            .workspace_registry
-            .set_collaborator_access_code(&id, &hash)
-        {
-            return StatusCode::NOT_FOUND.into_response();
-        }
-    }
-    StatusCode::OK.into_response()
-}
-
-async fn list_workspaces_handler(State(state): State<AppState>) -> impl IntoResponse {
-    Json(state.workspace_registry.info_list())
 }
 
 // ── Search handler ────────────────────────────────────────────────────────────
@@ -6966,7 +6817,6 @@ mod tests {
     }
 
     fn test_state(registry: Arc<WorkspaceRegistry>) -> AppState {
-        let (shutdown_tx, _) = tokio::sync::mpsc::channel(1);
         AppState {
             theme: Arc::new("light".into()),
             tera: Arc::new(test_tera()),
@@ -6987,7 +6837,6 @@ mod tests {
             access_attempts: Arc::new(std::sync::Mutex::new(std::collections::HashMap::new())),
             markdown_diff_cache: Arc::new(Mutex::new(MarkdownDiffCache::default())),
             print_collapsed_content: false,
-            shutdown_tx,
             #[cfg(debug_assertions)]
             dev_reload_tx: Arc::new(broadcast::channel::<()>(1).0),
         }
@@ -7768,7 +7617,6 @@ mod tests {
 
     #[test]
     fn test_app_state_identity() {
-        let (tx, _) = tokio::sync::mpsc::channel(1);
         let registry = Arc::new(crate::workspace::WorkspaceRegistry::new("salt".into()));
         let state = AppState {
             theme: Arc::new("dark".into()),
@@ -7790,7 +7638,6 @@ mod tests {
             access_attempts: Arc::new(std::sync::Mutex::new(std::collections::HashMap::new())),
             markdown_diff_cache: Arc::new(Mutex::new(MarkdownDiffCache::default())),
             print_collapsed_content: false,
-            shutdown_tx: tx,
             #[cfg(debug_assertions)]
             dev_reload_tx: Arc::new(broadcast::channel::<()>(1).0),
         };

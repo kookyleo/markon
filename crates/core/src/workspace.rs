@@ -132,7 +132,7 @@ impl WorkspaceEntry {
 /// because it's built from [`WorkspaceEntry`] state, but its only public
 /// contract is the wire format — see `crate::server::api` for the canonical
 /// re-export.
-#[derive(Clone, Serialize, Deserialize)]
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq)]
 pub struct WorkspaceInfo {
     pub id: String,
     /// Workspace **serving root** — what `/{id}/…` resolves under. For
@@ -737,8 +737,15 @@ fn directory_live_reload_path(root: &Path, path: &Path) -> Option<String> {
 
 #[derive(Clone, serde::Serialize, serde::Deserialize)]
 pub struct ServerLock {
+    /// Web TCP port. Kept for building browser/QR URLs; the management plane no
+    /// longer rides on it (that moved to the control socket below).
     pub port: u16,
-    pub token: String,
+    /// Control-socket identifier the running server bound: a filesystem path on
+    /// unix (`~/.markon/control.sock`), a namespaced pipe name on Windows.
+    /// Privileged clients (CLI/GUI) connect here for management/admin. Empty when
+    /// read from a pre-split lock file — callers fall back to the default socket.
+    #[serde(default)]
+    pub control_socket: String,
     /// Bind host the daemon was started with (e.g. `0.0.0.0`). Lets a CLI that
     /// registers a workspace into an already-running daemon reproduce the same
     /// reachable/featured URLs. `#[serde(default)]` keeps old lock files (which
@@ -829,6 +836,20 @@ impl ServerLock {
         });
     }
     pub fn is_alive(&self) -> bool {
+        // Prefer the control socket: it is the authoritative "server is up"
+        // signal now that management lives there, and a same-user connect proves
+        // both liveness and that we may drive it. This must hold on every platform
+        // — on Windows the named pipe *is* the management channel, so probe it too
+        // rather than inferring liveness solely from a (recyclable) TCP port.
+        if !self.control_socket.is_empty()
+            && crate::control::transport::probe(&crate::control::ControlSocketName::from_raw(
+                self.control_socket.clone(),
+            ))
+        {
+            return true;
+        }
+        // Fallback: probe the web TCP port (also the only probe on platforms
+        // where a cheap synchronous socket connect isn't wired up here).
         let connect_host = if crate::net::host_is_wildcard_v6(&self.host) {
             "::1"
         } else if crate::net::host_is_wildcard_v4(&self.host) {
@@ -1010,21 +1031,23 @@ mod tests {
     }
 
     #[test]
-    fn server_lock_host_defaults_when_absent() {
-        // Old lock files predate the `host` field; they must still deserialize.
+    fn server_lock_optional_fields_default_when_absent() {
+        // Pre-split lock files predate `control_socket` (and the older ones the
+        // `host` field, plus a now-removed `token`); they must still deserialize,
+        // ignoring unknown keys and defaulting the missing ones.
         let old = r#"{"port":6419,"token":"abc"}"#;
         let lock: ServerLock = serde_json::from_str(old).unwrap();
         assert_eq!(lock.port, 6419);
-        assert_eq!(lock.token, "abc");
+        assert_eq!(lock.control_socket, "");
         assert_eq!(lock.host, "");
         assert_eq!(lock.advertised_host, None);
     }
 
     #[test]
-    fn server_lock_host_round_trips() {
+    fn server_lock_round_trips() {
         let lock = ServerLock {
             port: 6419,
-            token: "tok".into(),
+            control_socket: "/home/u/.markon/control.sock".into(),
             host: "0.0.0.0".into(),
             advertised_host: Some("192.168.1.20".into()),
         };
@@ -1032,7 +1055,7 @@ mod tests {
         let back: ServerLock = serde_json::from_str(&json).unwrap();
         assert_eq!(back.host, "0.0.0.0");
         assert_eq!(back.port, 6419);
-        assert_eq!(back.token, "tok");
+        assert_eq!(back.control_socket, "/home/u/.markon/control.sock");
         assert_eq!(back.advertised_host.as_deref(), Some("192.168.1.20"));
     }
 

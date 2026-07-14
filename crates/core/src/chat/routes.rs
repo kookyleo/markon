@@ -808,7 +808,6 @@ mod tests {
         let db = Arc::new(Mutex::new(conn));
         let storage = ChatStorage::new(db.clone());
 
-        let (shutdown_tx, _) = mpsc::channel(1);
         let state = AppState {
             theme: Arc::new("dark".into()),
             tera: Arc::new(Tera::default()),
@@ -829,7 +828,6 @@ mod tests {
             access_attempts: Arc::new(std::sync::Mutex::new(std::collections::HashMap::new())),
             markdown_diff_cache: Arc::new(Mutex::new(crate::server::MarkdownDiffCache::default())),
             print_collapsed_content: false,
-            shutdown_tx,
             #[cfg(debug_assertions)]
             dev_reload_tx: Arc::new(broadcast::channel::<()>(1).0),
         };

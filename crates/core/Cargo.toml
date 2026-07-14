@@ -84,6 +84,12 @@ bytes = "1"
 async-trait = "0.1"
 thiserror = "2"
 tracing.workspace = true
+# Cross-platform local IPC for the control plane (Unix domain socket / Windows
+# named pipe) driving the admin/management protocol. The `tokio` feature pulls
+# in the async LocalSocket listener + stream; framing is layered on top with
+# tokio-util's LengthDelimitedCodec.
+interprocess = { version = "2", features = ["tokio"] }
+tokio-util = { version = "0.7", features = ["codec"] }
 
 [dependencies.supramark-markdown]
 version = "0.1.2"

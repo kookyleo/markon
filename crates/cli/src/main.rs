@@ -7,7 +7,6 @@ use markon_core::settings::AppSettings;
 use markon_core::workspace::{
     expand_and_canonicalize, hash_access_code, ServerLock, WorkspaceFlags, WorkspaceRegistry,
 };
-use serde::{Deserialize, Serialize};
 use std::io::IsTerminal;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
@@ -672,71 +671,149 @@ async fn shutdown_server(server: &RunningServer) -> Result<(), Box<dyn std::erro
     Ok(())
 }
 
-#[derive(Serialize)]
-struct AdminBootstrapRequest<'a> {
-    mode: &'a str,
-    redirect: &'a str,
-}
-
-#[derive(Deserialize)]
-struct AdminBootstrapResponse {
-    path: String,
-    nonce: Option<String>,
-    code: Option<String>,
-}
-
-async fn request_admin_bootstrap(
-    port: u16,
-    token: &str,
-    mode: &str,
-    redirect: &str,
-) -> Result<AdminBootstrapResponse, Box<dyn std::error::Error>> {
-    Ok(reqwest::Client::new()
-        .post(format!("http://127.0.0.1:{port}/api/admin/bootstrap"))
-        .header("X-Markon-Token", token)
-        .json(&AdminBootstrapRequest { mode, redirect })
-        .send()
-        .await?
-        .error_for_status()?
-        .json()
-        .await?)
-}
-
 async fn admin_browser_command(
     server: &RunningServer,
     command: AdminCommands,
 ) -> Result<(), Box<dyn std::error::Error>> {
-    let port = server.port();
-    let token = server.token();
     let workspaces = server.list_workspaces().await?;
     let redirect = workspaces
         .first()
         .map(|workspace| server::workspace_url_path(&workspace.id, None))
         .unwrap_or_else(|| "/".to_string());
-    let base = format!("http://127.0.0.1:{port}");
     match command {
         AdminCommands::Open => {
-            let bootstrap = request_admin_bootstrap(port, token, "url", &redirect).await?;
-            let nonce = bootstrap.nonce.ok_or("server did not return a nonce")?;
-            let url = format!(
-                "{}#nonce={nonce}",
-                server::build_workspace_url(&base, &bootstrap.path)
-            );
+            // The control socket mints the one-time bootstrap URL server-side
+            // (nonce + the server's own featured base) and hands it back whole.
+            let url = server.admin_bootstrap(&redirect).await?;
             open::that(&url)?;
             println!("Administrator session opened in your browser.");
         }
         AdminCommands::Code => {
-            let bootstrap = request_admin_bootstrap(port, token, "code", &redirect).await?;
-            let code = bootstrap
-                .code
-                .ok_or("server did not return a pairing code")?;
-            let url = server::build_workspace_url(&base, &bootstrap.path);
-            println!("Open: {url}");
-            println!("One-time administrator code: {code}");
-            println!("Expires in 5 minutes and is invalidated after 5 failed attempts.");
+            // Pairing-code bootstrap was an HTTP-era capability. The control
+            // protocol carries only the one-time URL, so code mode is no longer
+            // served here; the same-machine `open` flow supersedes it.
+            return Err("`markon admin code` is no longer supported; use \
+                        `markon admin open` to start an administrator session"
+                .into());
         }
     }
     Ok(())
+}
+
+/// Inputs for forwarding the just-opened workspace to an already-running server
+/// and reporting it (access summary + best-effort browser open). Shared by the
+/// "attach to a live daemon" path and the "spawn a daemon, then attach" path so
+/// both render identically.
+struct ForwardPlan<'a> {
+    ws_root: &'a Path,
+    flags: WorkspaceFlags,
+    initial_path: Option<&'a str>,
+    /// `Some(hash)` only when the CLI passed `--collaborator-access-code`; the
+    /// running server then updates the workspace's collaborator hash to it.
+    collaborator_hash_if_set: Option<&'a str>,
+    configured_host: &'a str,
+    advertised_host: &'a str,
+    entry: Option<&'a str>,
+    open_browser_target: Option<&'a str>,
+}
+
+/// Register (or refresh) the workspace on the running `server` over the control
+/// socket, print the access summary, and best-effort open the browser. The bind
+/// host/port come from the daemon's discovery lock so the printed URLs match what
+/// the daemon actually serves.
+async fn forward_to_running_server(
+    server: &RunningServer,
+    lock_host: &str,
+    lock_port: u16,
+    plan: &ForwardPlan<'_>,
+) {
+    match server
+        .add_or_update_workspace(
+            &plan.ws_root.to_string_lossy(),
+            plan.flags,
+            plan.collaborator_hash_if_set,
+        )
+        .await
+    {
+        Ok(workspace_id) => {
+            // Prefer the running daemon's actual bind host (recorded in the
+            // lock); fall back to our own resolved host for locks written before
+            // the field existed.
+            let bind_host = if lock_host.trim().is_empty() {
+                plan.configured_host.to_string()
+            } else {
+                lock_host.to_string()
+            };
+            let summary = build_workspace_access_summary(
+                plan.ws_root,
+                plan.flags,
+                &bind_host,
+                plan.advertised_host,
+                lock_port,
+                &workspace_id,
+                plan.initial_path,
+                plan.entry,
+            );
+            print_workspace_access_summary(&summary);
+            if let Some(base_option) = plan.open_browser_target {
+                let redirect = server::workspace_url_path(&workspace_id, plan.initial_path);
+                // The daemon mints the one-time bootstrap URL (nonce + its own
+                // featured base) over the control socket.
+                match server.admin_bootstrap(&redirect).await {
+                    Ok(boot_url) => {
+                        let browser_url = if base_option == "local" {
+                            boot_url
+                        } else {
+                            // Re-home the bootstrap onto the requested custom
+                            // base, preserving its nonce fragment.
+                            let fragment = boot_url
+                                .split_once('#')
+                                .map(|(_, frag)| frag)
+                                .unwrap_or("");
+                            let bootstrap =
+                                server::build_workspace_url(base_option, "/_/admin/bootstrap");
+                            if fragment.is_empty() {
+                                bootstrap
+                            } else {
+                                format!("{bootstrap}#{fragment}")
+                            }
+                        };
+                        if let Err(e) = open::that(&browser_url) {
+                            tracing::warn!("best-effort browser open failed: {e}");
+                        }
+                    }
+                    Err(e) => tracing::warn!("failed to create browser admin session: {e}"),
+                }
+            }
+        }
+        Err(e) => tracing::error!("failed to add workspace to running server: {e}"),
+    }
+}
+
+/// After spawning the daemon, wait for it to publish its discovery lock and for
+/// its control socket to accept a connection, returning the live lock.
+///
+/// This is a bounded *connectability* poll: it returns the instant the socket
+/// answers and gives up after a deadline. It is deliberately NOT a fixed-duration
+/// "coordination" sleep — a live connect is the real readiness signal, so the
+/// forward that follows can never race the daemon's bind.
+#[cfg(unix)]
+async fn wait_for_running_server() -> Option<ServerLock> {
+    use std::time::{Duration, Instant};
+    let deadline = Instant::now() + Duration::from_secs(10);
+    loop {
+        if let Some(lock) = ServerLock::read() {
+            if lock.is_alive() {
+                return Some(lock);
+            }
+        }
+        if Instant::now() >= deadline {
+            return None;
+        }
+        // Short backoff between connectability probes (a retry cadence, not a
+        // guessed "the daemon should be up by now" delay).
+        tokio::time::sleep(Duration::from_millis(20)).await;
+    }
 }
 
 fn init_tracing() {
@@ -774,17 +851,16 @@ async fn main() {
             return;
         }
 
-        // Workspace-management commands talk to the running server.
+        // Workspace-management commands talk to the running server over its
+        // privileged control socket (recorded in the lock).
         let lock = ServerLock::read();
-        let (port, token, lock_host) = match lock {
-            Some(ref l) if l.is_alive() => (l.port, l.token.clone(), l.host.clone()),
+        let (lock_host, server) = match lock {
+            Some(ref l) if l.is_alive() => (l.host.clone(), RunningServer::from_lock(l)),
             _ => {
                 eprintln!("Error: No running Markon server found.");
                 return;
             }
         };
-
-        let server = RunningServer::new(port, token);
         let res = match cmd {
             Commands::Admin { command } => admin_browser_command(&server, command).await,
             Commands::Ls { format } => {
@@ -913,72 +989,26 @@ async fn main() {
 
     if let Some(lock) = ServerLock::read() {
         if lock.is_alive() {
-            let server = RunningServer::from_lock(lock.clone());
-            match server
-                .add_or_update_workspace(
-                    &ws_root.to_string_lossy(),
+            let server = RunningServer::from_lock(&lock);
+            forward_to_running_server(
+                &server,
+                &lock.host,
+                lock.port,
+                &ForwardPlan {
+                    ws_root: &ws_root,
                     flags,
-                    false,
-                    None,
-                    cli.collaborator_access_code
+                    initial_path: initial_path.as_deref(),
+                    collaborator_hash_if_set: cli
+                        .collaborator_access_code
                         .as_ref()
                         .map(|_| workspace_collaborator_access_code_hash.as_str()),
-                    None,
-                )
-                .await
-            {
-                Ok(workspace_id) => {
-                    // Prefer the running daemon's actual bind host (recorded in
-                    // the lock); fall back to our own resolved host for locks
-                    // written before the field existed.
-                    let bind_host = if lock.host.trim().is_empty() {
-                        configured_host.clone()
-                    } else {
-                        lock.host.clone()
-                    };
-                    let active_advertised_host =
-                        lock.advertised_host.as_deref().unwrap_or(&advertised_host);
-                    let summary = build_workspace_access_summary(
-                        &ws_root,
-                        flags,
-                        &bind_host,
-                        active_advertised_host,
-                        lock.port,
-                        &workspace_id,
-                        initial_path.as_deref(),
-                        cli.entry.as_deref(),
-                    );
-                    print_workspace_access_summary(&summary);
-                    if let Some(base_option) = open_browser_target.as_deref() {
-                        let base = if base_option == "local" {
-                            server::featured_base_url(&bind_host, active_advertised_host, lock.port)
-                        } else {
-                            base_option.to_string()
-                        };
-                        let redirect =
-                            server::workspace_url_path(&workspace_id, initial_path.as_deref());
-                        match request_admin_bootstrap(lock.port, &lock.token, "url", &redirect)
-                            .await
-                        {
-                            Ok(bootstrap) => {
-                                if let Some(nonce) = bootstrap.nonce {
-                                    let browser_url = format!(
-                                        "{}#nonce={nonce}",
-                                        server::build_workspace_url(&base, &bootstrap.path)
-                                    );
-                                    if let Err(e) = open::that(&browser_url) {
-                                        tracing::warn!("best-effort browser open failed: {e}");
-                                    }
-                                } else {
-                                    tracing::warn!("server returned no browser bootstrap nonce");
-                                }
-                            }
-                            Err(e) => tracing::warn!("failed to create browser admin session: {e}"),
-                        }
-                    }
-                }
-                Err(e) => tracing::error!("failed to add workspace to running server: {e}"),
-            }
+                    configured_host: &configured_host,
+                    advertised_host: &advertised_host,
+                    entry: cli.entry.as_deref(),
+                    open_browser_target: open_browser_target.as_deref(),
+                },
+            )
+            .await;
             return;
         }
     }
@@ -989,7 +1019,6 @@ async fn main() {
         args.push("--daemon-internal".to_string());
 
         use std::process::Stdio;
-        let id = markon_core::workspace::hash_id(&ws_root, &effective_salt);
         let current_exe = std::env::current_exe().expect("Failed to get current executable");
         let mut command = std::process::Command::new(current_exe);
         command
@@ -1003,22 +1032,42 @@ async fn main() {
                 &workspace_collaborator_access_code_hash,
             );
         }
-        let res = command.spawn();
 
-        match res {
+        match command.spawn() {
             Ok(_) => {
-                let summary = build_workspace_access_summary(
-                    &ws_root,
-                    flags,
-                    &configured_host,
-                    &advertised_host,
-                    cli.port,
-                    &id,
-                    initial_path.as_deref(),
-                    cli.entry.as_deref(),
-                );
                 println!("Starting Markon server in background...");
-                print_workspace_access_summary(&summary);
+                // Readiness handshake: the daemon binds TCP + the control socket
+                // and writes its discovery lock asynchronously. Poll for the lock
+                // and the socket's connectability (bounded), then drive the
+                // workspace in over the socket — exactly the same forward the
+                // "already-running" path takes above, so output is identical.
+                match wait_for_running_server().await {
+                    Some(lock) => {
+                        let server = RunningServer::from_lock(&lock);
+                        forward_to_running_server(
+                            &server,
+                            &lock.host,
+                            lock.port,
+                            &ForwardPlan {
+                                ws_root: &ws_root,
+                                flags,
+                                initial_path: initial_path.as_deref(),
+                                collaborator_hash_if_set: cli
+                                    .collaborator_access_code
+                                    .as_ref()
+                                    .map(|_| workspace_collaborator_access_code_hash.as_str()),
+                                configured_host: &configured_host,
+                                advertised_host: &advertised_host,
+                                entry: cli.entry.as_deref(),
+                                open_browser_target: open_browser_target.as_deref(),
+                            },
+                        )
+                        .await;
+                    }
+                    None => {
+                        eprintln!("Error: the Markon server did not become ready in time.");
+                    }
+                }
                 return;
             }
             Err(e) => {
@@ -1069,7 +1118,13 @@ async fn main() {
             }
         })
         .collect();
-    if !loaded_explicit_workspace {
+    // The daemon child (`--daemon-internal`) is a bare server: its parent drives
+    // the explicitly-opened workspace in over the control socket after the
+    // readiness handshake, so the child must not also embed it (that would race
+    // the forward and double-open the browser). Persisted workspaces are still
+    // restored above. In every other tail (spawn-fallback foreground, non-unix)
+    // this process serves in the foreground and owns the explicit workspace.
+    if !loaded_explicit_workspace && !cli.daemon_internal {
         initial_workspaces.push(ws_init);
     }
 
@@ -1110,7 +1165,13 @@ async fn main() {
         port: cli.port,
         theme: "auto".to_string(),
         qr: cli.entry,
-        open_browser: open_browser_target,
+        // The daemon child never opens the browser itself — its parent does, over
+        // the control socket, after forwarding the workspace.
+        open_browser: if cli.daemon_internal {
+            None
+        } else {
+            open_browser_target
+        },
         shared_annotation: initial_workspaces.iter().any(|w| w.flags.shared_annotation),
         db_path,
         salt: Some(effective_salt),
