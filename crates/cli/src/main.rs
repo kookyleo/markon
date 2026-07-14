@@ -13,6 +13,7 @@ use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 
 mod feedback;
+mod tui;
 
 fn get_available_hosts() -> Vec<(String, String)> {
     available_bind_hosts()
@@ -104,9 +105,10 @@ enum Commands {
     },
     /// List all active workspaces in the running server.
     Ls {
-        /// Output format.
-        #[arg(long, value_enum, default_value_t = WorkspaceListFormat::Cards)]
-        format: WorkspaceListFormat,
+        /// Output format. Omit on an interactive terminal to launch the
+        /// interactive browser; omit when piped/redirected for static cards.
+        #[arg(long, value_enum)]
+        format: Option<WorkspaceListFormat>,
     },
     /// Remove a workspace from the running server by ID or index.
     Detach {
@@ -237,6 +239,25 @@ impl CliColors {
     }
 }
 
+/// Whether an interactive full-screen TUI should launch for a bare `markon ls`.
+///
+/// Requires both stdin and stdout to be real terminals AND a usable `TERM`
+/// (set and not `dumb`), mirroring [`CliColors::detect`]'s capability gate — a
+/// whole-screen alternate-screen app is far more invasive than color, so a
+/// dumb/limited terminal (or `TERM` unset) falls back to static cards instead
+/// of emitting alternate-screen / cursor-hide escapes as literal garbage.
+/// `MARKON_NO_TUI` is an explicit escape hatch for PTY environments that
+/// report a terminal but should stay non-interactive.
+fn tui_enabled() -> bool {
+    if std::env::var_os("MARKON_NO_TUI").is_some() {
+        return false;
+    }
+    let term_ok = std::env::var("TERM")
+        .map(|term| term != "dumb")
+        .unwrap_or(false);
+    term_ok && std::io::stdin().is_terminal() && std::io::stdout().is_terminal()
+}
+
 fn display_workspace_path(path: &Path) -> String {
     if let Some(home) = std::env::var_os("HOME") {
         let home = std::path::PathBuf::from(home);
@@ -251,31 +272,60 @@ fn display_workspace_path(path: &Path) -> String {
     path.to_string_lossy().to_string()
 }
 
-/// One row per workspace flag: (enabled, card label, tag label). Single source
-/// of truth for flag order and naming across the card and table renderings.
+/// One row per workspace flag: (enabled, card label, tag label, form label).
+/// Single source of truth for flag order and naming across the card and table
+/// renderings and the interactive TUI edit form. The form label is the short,
+/// state-independent name the TUI shows next to its checkboxes (no "(ready)"
+/// suffix, which only makes sense for a read-only view).
 fn workspace_flag_entries(
     flags: WorkspaceFlags,
     search_ready: bool,
-) -> [(bool, &'static str, &'static str); 6] {
+) -> [(bool, &'static str, &'static str, &'static str); 6] {
     let (search_card, search_tag) = if flags.enable_search && search_ready {
         ("Search (ready)", "Search ready")
     } else {
         ("Search", "Search")
     };
     [
-        (flags.enable_search, search_card, search_tag),
-        (flags.enable_viewed, "Viewed tracking", "Viewed"),
-        (flags.enable_edit, "Edit", "Edit"),
-        (flags.enable_live, "Live", "Live"),
-        (flags.enable_chat, "Chat", "Chat"),
-        (flags.shared_annotation, "Shared notes", "Shared notes"),
+        (flags.enable_search, search_card, search_tag, "Search"),
+        (
+            flags.enable_viewed,
+            "Viewed tracking",
+            "Viewed",
+            "Viewed tracking",
+        ),
+        (flags.enable_edit, "Edit", "Edit", "Edit"),
+        (flags.enable_live, "Live", "Live", "Live"),
+        (flags.enable_chat, "Chat", "Chat", "Chat"),
+        (
+            flags.shared_annotation,
+            "Shared notes",
+            "Shared notes",
+            "Shared notes",
+        ),
     ]
+}
+
+/// Mutable, ordered accessor over the six workspace flags. Indexed identically
+/// to [`workspace_flag_entries`], so the TUI edit form can toggle "row N"
+/// without a second, drift-prone index→field map: display order and toggle
+/// order share one definition.
+fn workspace_flag_mut(flags: &mut WorkspaceFlags, idx: usize) -> &mut bool {
+    match idx {
+        0 => &mut flags.enable_search,
+        1 => &mut flags.enable_viewed,
+        2 => &mut flags.enable_edit,
+        3 => &mut flags.enable_live,
+        4 => &mut flags.enable_chat,
+        5 => &mut flags.shared_annotation,
+        other => panic!("workspace flag index {other} out of range (0..6)"),
+    }
 }
 
 fn format_workspace_flags(flags: WorkspaceFlags, search_ready: bool, colors: CliColors) -> String {
     workspace_flag_entries(flags, search_ready)
         .into_iter()
-        .map(|(enabled, card_label, _)| {
+        .map(|(enabled, card_label, _, _)| {
             let plain = format!("[{}] {card_label}", if enabled { "x" } else { " " });
             if enabled {
                 colors.enabled_flag(&plain)
@@ -290,8 +340,8 @@ fn format_workspace_flags(flags: WorkspaceFlags, search_ready: bool, colors: Cli
 fn format_workspace_feature_tags(flags: WorkspaceFlags, search_ready: bool) -> String {
     let features: Vec<&str> = workspace_flag_entries(flags, search_ready)
         .into_iter()
-        .filter(|(enabled, _, _)| *enabled)
-        .map(|(_, _, tag_label)| tag_label)
+        .filter(|(enabled, _, _, _)| *enabled)
+        .map(|(_, _, tag_label, _)| tag_label)
         .collect();
     if features.is_empty() {
         "-".to_string()
@@ -773,7 +823,14 @@ async fn main() {
     init_tracing();
     let cli = Cli::parse();
     let cli_entry = cli.entry.clone();
-    println!("Markon v{}", env!("CARGO_PKG_VERSION"));
+    // Suppress the version banner when we're about to enter the full-screen
+    // browser: it would flash on the primary screen just before EnterAlternateScreen
+    // and remain as the only on-screen residue after LeaveAlternateScreen on quit.
+    let launching_tui =
+        matches!(&cli.command, Some(Commands::Ls { format: None })) && tui_enabled();
+    if !launching_tui {
+        println!("Markon v{}", env!("CARGO_PKG_VERSION"));
+    }
 
     // Handle subcommands.
     if let Some(cmd) = cli.command {
@@ -821,14 +878,64 @@ async fn main() {
                 } else {
                     lock_host.clone()
                 };
-                list_workspaces(
-                    &bind_host,
-                    &advertised_host,
-                    &server,
-                    format,
-                    cli_entry.as_deref(),
-                )
-                .await
+                match format {
+                    // Explicit --format cards|table: static render, byte-for-byte
+                    // as before.
+                    Some(fmt) => {
+                        list_workspaces(
+                            &bind_host,
+                            &advertised_host,
+                            &server,
+                            fmt,
+                            cli_entry.as_deref(),
+                        )
+                        .await
+                    }
+                    // Bare `markon ls` on a capable interactive terminal → the
+                    // full-screen browser. `launching_tui` folds in the TTY +
+                    // capability gate (and the banner was suppressed above).
+                    None if launching_tui => {
+                        let port = server.port();
+                        // Hop onto a blocking-pool thread: the TUI loop is
+                        // synchronous crossterm, and control calls run via
+                        // Handle::block_on there (legal only off a runtime core
+                        // worker — see tui::ls::run). spawn_blocking parks a pool
+                        // thread while the multi-thread runtime's core workers keep
+                        // driving the IO reactor the async transport needs.
+                        let handle = tokio::runtime::Handle::current();
+                        let tui_server = server.clone();
+                        let tui_entry = cli_entry.clone();
+                        let join = tokio::task::spawn_blocking(move || {
+                            tui::ls::run(
+                                tui_server,
+                                handle,
+                                bind_host,
+                                advertised_host,
+                                port,
+                                tui_entry,
+                            )
+                        })
+                        .await;
+                        match join {
+                            Ok(inner) => inner.map_err(|e| -> Box<dyn std::error::Error> { e }),
+                            Err(join_err) => {
+                                Err(format!("interactive browser task failed: {join_err}").into())
+                            }
+                        }
+                    }
+                    // Bare `markon ls` piped / redirected / non-capable terminal →
+                    // today's default static cards.
+                    None => {
+                        list_workspaces(
+                            &bind_host,
+                            &advertised_host,
+                            &server,
+                            WorkspaceListFormat::Cards,
+                            cli_entry.as_deref(),
+                        )
+                        .await
+                    }
+                }
             }
             Commands::Detach { target } => detach_workspace(&server, &target).await,
             Commands::Set {
