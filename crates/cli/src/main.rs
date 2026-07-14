@@ -970,10 +970,11 @@ async fn main() {
         // Workspace-management commands talk to the running server over its
         // privileged control socket (recorded in the lock).
         let lock = ServerLock::read();
-        let (lock_host, lock_advertised, server) = match lock {
+        let (lock_host, lock_advertised, lock_entry, server) = match lock {
             Some(ref l) if l.is_alive() => (
                 l.host.clone(),
                 l.advertised_host.clone(),
+                l.entry.clone(),
                 RunningServer::from_lock(l),
             ),
             _ => {
@@ -996,6 +997,11 @@ async fn main() {
                 } else {
                     lock_host.clone()
                 };
+                // Public entry prefix for the printed/QR URLs: this invocation's
+                // own `--entry`/`--qr` wins; otherwise inherit the one the running
+                // daemon was started with (recorded in the lock), so a bare
+                // `markon ls` shows the daemon's public URLs instead of loopback.
+                let effective_entry = cli_entry.clone().or_else(|| lock_entry.clone());
                 match format {
                     // Explicit --format cards|table: static render, byte-for-byte
                     // as before.
@@ -1005,7 +1011,7 @@ async fn main() {
                             &advertised_host,
                             &server,
                             fmt,
-                            cli_entry.as_deref(),
+                            effective_entry.as_deref(),
                         )
                         .await
                     }
@@ -1022,7 +1028,7 @@ async fn main() {
                         // driving the IO reactor the async transport needs.
                         let handle = tokio::runtime::Handle::current();
                         let tui_server = server.clone();
-                        let tui_entry = cli_entry.clone();
+                        let tui_entry = effective_entry.clone();
                         let join = tokio::task::spawn_blocking(move || {
                             tui::ls::run(
                                 tui_server,
@@ -1049,7 +1055,7 @@ async fn main() {
                             &advertised_host,
                             &server,
                             WorkspaceListFormat::Cards,
-                            cli_entry.as_deref(),
+                            effective_entry.as_deref(),
                         )
                         .await
                     }
@@ -1170,6 +1176,10 @@ async fn main() {
                 .advertised_host
                 .clone()
                 .unwrap_or_else(|| advertised_host.clone());
+            // Same reasoning for the public entry prefix: this invocation's own
+            // `--entry`/`--qr` wins, else inherit the running daemon's (from the
+            // lock) so the printed/QR URLs match what it actually serves under.
+            let effective_entry = cli.entry.clone().or_else(|| lock.entry.clone());
             forward_to_running_server(
                 &server,
                 &lock.host,
@@ -1183,7 +1193,7 @@ async fn main() {
                         .map(|_| workspace_collaborator_access_code_hash.as_str()),
                     configured_host: &configured_host,
                     advertised_host: &effective_advertised,
-                    entry: cli.entry.as_deref(),
+                    entry: effective_entry.as_deref(),
                     open_browser_target: open_browser_target.as_deref(),
                 },
             )

@@ -1374,6 +1374,10 @@ pub async fn start(config: ServerConfig) -> Result<(), String> {
             host: host.clone(),
             advertised_host: Some(advertised_host.clone()),
             service_version: env!("CARGO_PKG_VERSION").to_string(),
+            // Record the public entry prefix (`--entry`/`--qr`) so a later
+            // `markon ls`/GUI that attaches without its own entry can reproduce
+            // the daemon's featured/QR URLs instead of falling back to loopback.
+            entry: qr.clone(),
             owner: owner_nonce.clone(),
         })
         .write()
