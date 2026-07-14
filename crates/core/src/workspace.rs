@@ -132,7 +132,7 @@ impl WorkspaceEntry {
 /// because it's built from [`WorkspaceEntry`] state, but its only public
 /// contract is the wire format — see `crate::server::api` for the canonical
 /// re-export.
-#[derive(Serialize)]
+#[derive(Serialize, Deserialize)]
 pub struct WorkspaceInfo {
     pub id: String,
     /// Workspace **serving root** — what `/{id}/…` resolves under. For
@@ -148,7 +148,7 @@ pub struct WorkspaceInfo {
     pub ephemeral: bool,
     /// `Some(filename)` only when ephemeral, for callers that want to display
     /// or re-derive the URL. Omitted from the wire format when None.
-    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub single_file: Option<String>,
     /// Per-workspace collaborator access-code hash (empty = inherit the server code).
     #[serde(default, skip_serializing_if = "String::is_empty")]
