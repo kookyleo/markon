@@ -1922,12 +1922,15 @@ async fn unlock_handler(
 /// broadcast amplification from a hostile peer; real annotations are tiny.
 const MAX_WS_MSG_BYTES: usize = 256 * 1024;
 
-/// Conservative Content-Security-Policy. `'unsafe-inline'` is required because
-/// the templates ship inline `<script>`/`<style>` and inject `styles_css`; even
-/// so this blocks **external** script/style loads, plugins, framing and base
-/// hijacking, so an injection can't pull in a remote payload or be clickjacked.
-/// `img/media-src *` keeps cross-origin images in user docs working. The full
-/// fix for inline injection is HTML sanitisation (see security review H-1).
+/// Conservative Content-Security-Policy. Untrusted markdown is sanitised at the
+/// source (raw HTML is scrubbed and link/image schemes are allow-listed in
+/// `markdown.rs`), which removes the injected-inline-handler / `javascript:`
+/// vector. `'unsafe-inline'` remains only because first-party templates ship
+/// inline `<script>`/`<style>` and inject `styles_css`; dropping it would need
+/// per-request nonces on every inline block. Even with it, this still blocks
+/// **external** script/style loads, plugins, framing and base hijacking, so an
+/// injection can't pull in a remote payload or be clickjacked. `img/media-src *`
+/// keeps cross-origin images in user docs working.
 const SECURITY_CSP: &str = "default-src 'self'; \
 script-src 'self' 'unsafe-inline'; \
 style-src 'self' 'unsafe-inline'; \
