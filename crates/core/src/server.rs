@@ -1977,6 +1977,20 @@ frame-ancestors 'self'";
 /// Attach hardening headers to every response (CSP + nosniff + frame options).
 async fn security_headers(req: axum::extract::Request, next: axum::middleware::Next) -> Response {
     let mut resp = next.run(req).await;
+
+    // A bare status-only 404 has no Content-Type. Combined with `nosniff`,
+    // Mobile Safari treats that top-level response as an unknown download.
+    // Keep the body empty so the browser owns the error presentation, but
+    // identify it as text. Responses that already declare a type are left
+    // untouched.
+    if resp.status() == StatusCode::NOT_FOUND && !resp.headers().contains_key(header::CONTENT_TYPE)
+    {
+        resp.headers_mut().insert(
+            header::CONTENT_TYPE,
+            axum::http::HeaderValue::from_static("text/plain; charset=utf-8"),
+        );
+    }
+
     let h = resp.headers_mut();
     h.insert(
         axum::http::header::X_CONTENT_TYPE_OPTIONS,
@@ -7114,6 +7128,71 @@ mod tests {
 
     fn loopback() -> SocketAddr {
         SocketAddr::new(IpAddr::V4(Ipv4Addr::LOCALHOST), 1618)
+    }
+
+    #[tokio::test]
+    async fn headerless_not_found_is_browser_safe_and_bodyless() {
+        let app = Router::new()
+            .fallback(|| async { StatusCode::NOT_FOUND })
+            .layer(axum::middleware::from_fn(security_headers));
+
+        let response = app
+            .oneshot(
+                axum::http::Request::builder()
+                    .uri("/")
+                    .body(axum::body::Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), StatusCode::NOT_FOUND);
+        assert_eq!(
+            response.headers().get(header::CONTENT_TYPE).unwrap(),
+            "text/plain; charset=utf-8"
+        );
+        assert_eq!(
+            response
+                .headers()
+                .get(header::X_CONTENT_TYPE_OPTIONS)
+                .unwrap(),
+            "nosniff"
+        );
+        assert!(response
+            .headers()
+            .get(header::CONTENT_DISPOSITION)
+            .is_none());
+        assert!(response_bytes(response).await.is_empty());
+    }
+
+    #[tokio::test]
+    async fn not_found_preserves_an_explicit_content_type() {
+        let app = Router::new()
+            .fallback(|| async {
+                (
+                    StatusCode::NOT_FOUND,
+                    [(header::CONTENT_TYPE, "application/problem+json")],
+                    "{}",
+                )
+            })
+            .layer(axum::middleware::from_fn(security_headers));
+
+        let response = app
+            .oneshot(
+                axum::http::Request::builder()
+                    .uri("/missing")
+                    .body(axum::body::Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), StatusCode::NOT_FOUND);
+        assert_eq!(
+            response.headers().get(header::CONTENT_TYPE).unwrap(),
+            "application/problem+json"
+        );
+        assert_eq!(response_text(response).await, "{}");
     }
 
     fn lan_peer() -> SocketAddr {
