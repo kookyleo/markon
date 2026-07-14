@@ -8,7 +8,8 @@ mod server_manager;
 
 use markon_core::settings::{AppSettings, WorkspaceSettings};
 use markon_core::workspace::{expand_and_canonicalize, WorkspaceFlags};
-use server_manager::ServerManager;
+use markon_core::control::RunningServer;
+use server_manager::{ServerBackend, ServerManager};
 use std::path::{Path, PathBuf};
 use std::sync::{
     atomic::{AtomicBool, AtomicU64, Ordering},
@@ -92,7 +93,9 @@ fn install_exe_window_icon(window: &tauri::WebviewWindow) {
 
 pub struct AppState {
     pub settings: Arc<Mutex<AppSettings>>,
-    pub server: Mutex<ServerManager>,
+    /// Either an in-process server we own, or a controller handle attached to a
+    /// server another process already had running. See `ServerBackend`.
+    pub server: Mutex<ServerBackend>,
     /// UNIX-millis of the most recent file/folder open intent (RunEvent::Opened).
     /// A paired Reopen Apple Event arrives right after Opened; we suppress that
     /// one so an "Open With" doesn't *also* adopt the front Finder folder. Stored
@@ -333,50 +336,83 @@ fn handle_open_path(app: &tauri::AppHandle, path: &Path) {
     };
 
     let state = app.state::<AppState>();
-    let server = state.server.lock().unwrap();
 
-    if !server.is_running() {
-        tracing::warn!("server not running, cannot open path");
-        return;
-    }
-
-    let (flags, browser_base) = {
+    // Single-file workspaces follow the user's defaults for every flag. Search
+    // is safe here: the embedded registry builds a file-scoped index (only the
+    // pinned file, no parent WalkDir), so there's no sibling leakage.
+    let flags = {
         let settings = state.settings.lock().unwrap();
-        // Single-file workspaces follow the user's defaults for every flag.
-        // Search is safe here: the registry builds a file-scoped index (only
-        // the pinned file, no parent WalkDir), so there's no sibling leakage.
-        (
-            markon_core::workspace::WorkspaceFlags {
-                enable_search: settings.default_search,
-                enable_viewed: settings.default_viewed,
-                enable_edit: settings.default_edit,
-                enable_live: settings.default_live,
-                enable_chat: settings.default_chat,
-                shared_annotation: settings.default_shared_annotation,
-            },
+        markon_core::workspace::WorkspaceFlags {
+            enable_search: settings.default_search,
+            enable_viewed: settings.default_viewed,
+            enable_edit: settings.default_edit,
+            enable_live: settings.default_live,
+            enable_chat: settings.default_chat,
+            shared_annotation: settings.default_shared_annotation,
+        }
+    };
+
+    // Resolve what to open. Embedded builds an admin-bootstrapped URL in place.
+    // Remote forwards over HTTP: its add API has no single_file parameter, so
+    // the parent directory becomes the workspace and we still deep-link to the
+    // file — no admin session, since bootstrap belongs to the owning process.
+    enum OpenPlan {
+        Ready(String),
+        Remote(RunningServer, String, String),
+    }
+    let plan = {
+        let backend = state.server.lock().unwrap();
+        if !backend.is_running() {
+            tracing::warn!("server not running, cannot open path");
+            return;
+        }
+        let browser_base = {
+            let settings = state.settings.lock().unwrap();
             markon_core::server::featured_base_url(
                 &settings.host,
                 &settings.advertised_host,
-                server.port(),
-            ),
-        )
+                backend.port(),
+            )
+        };
+        match &*backend {
+            ServerBackend::Embedded(m) => {
+                // `registry.add` is idempotent on (path, single_file) and fires
+                // the persist hook, mirroring the entry into AppSettings.
+                let id = m.registry.add(markon_core::workspace::WorkspaceConfig {
+                    path: ws_root,
+                    flags,
+                    single_file,
+                    collaborator_access_code_hash: String::new(),
+                    alias: String::new(),
+                });
+                let workspace_path =
+                    markon_core::server::workspace_url_path(&id, rel_path.as_deref());
+                OpenPlan::Ready(m.admin_url(&browser_base, &workspace_path))
+            }
+            ServerBackend::Remote(r) => {
+                OpenPlan::Remote(r.clone(), ws_root.to_string_lossy().to_string(), browser_base)
+            }
+        }
     };
 
-    // `registry.add` is idempotent on (path, single_file) and triggers the
-    // persist hook, which mirrors both directory and temporary single-file
-    // workspaces into AppSettings.
-    let id = server
-        .registry
-        .add(markon_core::workspace::WorkspaceConfig {
-            path: ws_root,
-            flags,
-            single_file,
-            collaborator_access_code_hash: String::new(),
-            alias: String::new(),
-        });
-    let workspace_path = markon_core::server::workspace_url_path(&id, rel_path.as_deref());
-    let url = server.admin_url(&browser_base, &workspace_path);
-    drop(server);
+    let url = match plan {
+        OpenPlan::Ready(url) => url,
+        OpenPlan::Remote(remote, path_str, browser_base) => {
+            match tauri::async_runtime::block_on(remote.add_or_update_workspace(
+                &path_str, flags, None,
+            )) {
+                Ok(id) => {
+                    let workspace_path =
+                        markon_core::server::workspace_url_path(&id, rel_path.as_deref());
+                    markon_core::server::build_workspace_url(&browser_base, &workspace_path)
+                }
+                Err(e) => {
+                    tracing::warn!(path = %path_str, "failed to open path on remote server: {e}");
+                    return;
+                }
+            }
+        }
+    };
 
     let _ = open::that(url);
 
@@ -752,20 +788,64 @@ fn main() {
             #[cfg(target_os = "windows")]
             commands::sync_shell_context_menu(&language_init);
 
+            // Snapshot the persisted workspaces before `settings` is moved into
+            // the shared Arc — needed to forward them if we attach to a remote.
+            // Single-file/ephemeral entries are skipped: the remote add API has
+            // no single_file parameter, and they're pruned at startup anyway.
+            let workspaces_to_forward: Vec<(String, WorkspaceFlags, Option<String>)> = settings
+                .workspaces
+                .iter()
+                .filter(|w| w.single_file.is_none())
+                .map(|w| {
+                    (
+                        w.path.clone(),
+                        w.flags,
+                        (!w.collaborator_access_code_hash.is_empty())
+                            .then(|| w.collaborator_access_code_hash.clone()),
+                    )
+                })
+                .collect();
+
             let settings_arc = Arc::new(Mutex::new(settings));
             let persist_hook = AppSettings::persist_hook(settings_arc.clone());
+
+            // One-server-per-machine: if a server is already up, attach to it as
+            // a controller (Remote) and forward our workspaces instead of
+            // binding a competing server. Otherwise own an Embedded one.
+            let backend = match RunningServer::discover() {
+                Some(remote) => {
+                    tracing::info!(
+                        port = remote.port(),
+                        "attaching to already-running markon server (remote mode)"
+                    );
+                    let remote_for_forward = remote.clone();
+                    tauri::async_runtime::block_on(async move {
+                        for (path, flags, hash) in workspaces_to_forward {
+                            if let Err(e) = remote_for_forward
+                                .add_or_update_workspace(&path, flags, hash.as_deref())
+                                .await
+                            {
+                                tracing::warn!(%path, "failed to forward workspace to remote: {e}");
+                            }
+                        }
+                    });
+                    ServerBackend::Remote(remote)
+                }
+                None => {
+                    let mut manager = ServerManager::new();
+                    if let Err(e) = manager.start(config, Some(persist_hook)) {
+                        tracing::error!("server failed to start: {e}");
+                    }
+                    ServerBackend::Embedded(manager)
+                }
+            };
             let state = AppState {
                 settings: settings_arc,
-                server: Mutex::new(ServerManager::new()),
+                server: Mutex::new(backend),
                 last_file_open_ms: AtomicU64::new(0),
                 tray_resident: Arc::new(AtomicBool::new(tray_resident_init)),
                 pending_new_workspace: AtomicBool::new(false),
             };
-            let mut server = state.server.lock().unwrap();
-            if let Err(e) = server.start(config, Some(persist_hook)) {
-                tracing::error!("server failed to start: {e}");
-            }
-            drop(server);
             app.manage(state);
 
             #[cfg(target_os = "macos")]
@@ -899,6 +979,8 @@ fn main() {
             commands::update_workspace,
             commands::remove_workspace,
             commands::get_workspaces,
+            commands::reconnect,
+            commands::start_local_server,
             commands::open_url,
             commands::get_bind_hosts,
             commands::get_server_status,

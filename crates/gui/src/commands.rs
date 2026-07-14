@@ -1,10 +1,14 @@
+use crate::server_manager::{ServerBackend, ServerManager};
 use crate::AppState;
 use markon_core::chat::{config::ProviderKind, models};
+use markon_core::control::{ControlError, RunningServer};
 use markon_core::i18n;
 use markon_core::net::{available_bind_hosts, host_in_list, BindHostOption};
 use markon_core::server;
 use markon_core::settings::{AppSettings, PortMode};
-use markon_core::workspace::{expand_and_canonicalize, WorkspaceConfig, WorkspaceFlags};
+use markon_core::workspace::{
+    expand_and_canonicalize, WorkspaceConfig, WorkspaceFlags, WorkspaceInfo,
+};
 use serde::Deserialize;
 use std::path::PathBuf;
 use std::sync::atomic::Ordering;
@@ -20,14 +24,59 @@ const MARKON_REPO: &str = "kookyleo/markon";
 fn server_status_payload(state: &State<AppState>) -> serde_json::Value {
     let server = state.server.lock().unwrap();
     let bind_host = state.settings.lock().unwrap().host.clone();
-    let hosts = available_bind_hosts();
-    let host_available = host_in_list(&bind_host, &hosts);
+    let is_remote = server.is_remote();
+    // In remote mode this GUI doesn't bind anything, so the local bind-host
+    // availability check is meaningless — report available so no stale banner
+    // shows. The frontend keys off `mode` to render the connection state.
+    let host_available = if is_remote {
+        true
+    } else {
+        host_in_list(&bind_host, &available_bind_hosts())
+    };
     serde_json::json!({
         "running": server.is_running(),
         "error": server.last_error(),
         "host": bind_host,
         "port": server.port(),
         "host_available": host_available,
+        "mode": server.mode(),
+    })
+}
+
+/// Distinguishable error prefix for a failed remote-control call, so the
+/// frontend can surface the reconnect / start-local recovery affordances.
+fn remote_err(e: ControlError) -> String {
+    format!("remote-server-error: {e}")
+}
+
+/// ONE mapping from a `WorkspaceInfo` to the workspace-panel JSON, shared by the
+/// embedded (in-process registry) and remote (control API) list paths so every
+/// field the panel reads stays identical across both modes.
+fn workspace_panel_json(info: WorkspaceInfo, browser_base: &str) -> serde_json::Value {
+    let url = server::build_workspace_url(
+        browser_base,
+        &server::workspace_url_path(&info.id, None),
+    );
+    serde_json::json!({
+        "id": info.id,
+        "path": info.path,
+        "url": url,
+        "enable_search": info.flags.enable_search,
+        "enable_viewed": info.flags.enable_viewed,
+        "enable_edit": info.flags.enable_edit,
+        "enable_live": info.flags.enable_live,
+        "enable_chat": info.flags.enable_chat,
+        "shared_annotation": info.flags.shared_annotation,
+        // Non-zero iff a per-workspace collaborator access code is set. The
+        // stored value is the full 64-hex digest, so this is only a set/not-set
+        // signal (the panel draws a fixed dot count); not the digest itself.
+        "collaborator_access_code_len": info.collaborator_access_code_hash.chars().count(),
+        "search_ready": info.search_ready,
+        // Lets the Settings UI filter out Open-With single-file workspaces.
+        "ephemeral": info.ephemeral,
+        "single_file": info.single_file,
+        // Optional short display name (empty = none).
+        "alias": info.alias,
     })
 }
 
@@ -140,7 +189,13 @@ fn restart_server_and_broadcast(
     let settings = state.settings.lock().unwrap().clone();
     let config = settings.to_server_config(effective_port(&settings));
     let persist = AppSettings::persist_hook(state.settings.clone());
-    let start_result = state.server.lock().unwrap().start(config, Some(persist));
+    // Only an embedded server has a lifecycle we own. In remote mode there is
+    // nothing to (re)start — the settings that would rebind a server don't
+    // apply to a server another process is running; just re-broadcast status.
+    let start_result = match &mut *state.server.lock().unwrap() {
+        ServerBackend::Embedded(m) => m.start(config, Some(persist)),
+        ServerBackend::Remote(_) => Ok(()),
+    };
     // Always broadcast — even on failure UI needs the new (host, error) so
     // the banner state and toast don't lag the persisted settings.
     let _ = app.emit("server-status-changed", server_status_payload(state));
@@ -244,7 +299,10 @@ fn is_example_workspace_path(path: &str) -> bool {
 }
 
 #[tauri::command]
-pub fn add_workspace(path: String, state: State<AppState>) -> Result<serde_json::Value, String> {
+pub async fn add_workspace(
+    path: String,
+    state: State<'_, AppState>,
+) -> Result<serde_json::Value, String> {
     let canonical = expand_and_canonicalize(&path).map_err(|e| format!("Invalid path: {e}"))?;
     let flags = {
         let settings = state.settings.lock().unwrap();
@@ -257,16 +315,39 @@ pub fn add_workspace(path: String, state: State<AppState>) -> Result<serde_json:
             shared_annotation: settings.default_shared_annotation,
         }
     };
-    let server = state.server.lock().unwrap();
-    let id = server.registry.add(WorkspaceConfig {
-        path: canonical,
-        flags,
-        single_file: None,
-        collaborator_access_code_hash: String::new(),
-        alias: String::new(),
-    });
-    let port = server.port();
-    drop(server);
+    // Embedded: add to the in-process registry under the lock. Remote: clone the
+    // handle out, drop the (non-Send) guard, then await the control call.
+    enum Dispatch {
+        Embedded(String, u16),
+        Remote(RunningServer),
+    }
+    let dispatch = {
+        let backend = state.server.lock().unwrap();
+        match &*backend {
+            ServerBackend::Embedded(m) => {
+                let id = m.registry.add(WorkspaceConfig {
+                    path: canonical.clone(),
+                    flags,
+                    single_file: None,
+                    collaborator_access_code_hash: String::new(),
+                    alias: String::new(),
+                });
+                Dispatch::Embedded(id, m.port())
+            }
+            ServerBackend::Remote(r) => Dispatch::Remote(r.clone()),
+        }
+    };
+    let (id, port) = match dispatch {
+        Dispatch::Embedded(id, port) => (id, port),
+        Dispatch::Remote(remote) => {
+            let path_str = canonical.to_string_lossy().to_string();
+            let id = remote
+                .add_or_update_workspace(&path_str, flags, None)
+                .await
+                .map_err(remote_err)?;
+            (id, remote.port())
+        }
+    };
     let url = server::build_workspace_url(
         &browser_base_url_for_state(&state, port),
         &server::workspace_url_path(&id, None),
@@ -307,9 +388,9 @@ pub struct UpdateWorkspaceRequest {
 /// Update a workspace's feature flags in place. `registry.update_flags` fires
 /// the persist hook, so the change is written to settings and survives restart.
 #[tauri::command]
-pub fn update_workspace(
+pub async fn update_workspace(
     request: UpdateWorkspaceRequest,
-    state: State<AppState>,
+    state: State<'_, AppState>,
 ) -> Result<(), String> {
     let flags = flags_from_params(
         request.enable_search,
@@ -319,26 +400,60 @@ pub fn update_workspace(
         request.enable_chat,
         request.shared_annotation,
     );
-    let server = state.server.lock().unwrap();
-    if !server.registry.update_flags(&request.id, flags) {
-        return Err(format!("Workspace {} not found", request.id));
-    }
-    Ok(())
+    let remote = {
+        let backend = state.server.lock().unwrap();
+        match &*backend {
+            ServerBackend::Embedded(m) => {
+                if !m.registry.update_flags(&request.id, flags) {
+                    return Err(format!("Workspace {} not found", request.id));
+                }
+                return Ok(());
+            }
+            ServerBackend::Remote(r) => r.clone(),
+        }
+    };
+    remote
+        .update_flags(&request.id, flags)
+        .await
+        .map_err(remote_err)
 }
 
 #[tauri::command]
-pub fn remove_workspace(id: String, state: State<AppState>) -> Result<(), String> {
-    let server = state.server.lock().unwrap();
-    let is_example = server
-        .registry
-        .info_list()
+pub async fn remove_workspace(id: String, state: State<'_, AppState>) -> Result<(), String> {
+    // `is_example` gates persisting the "example hidden" onboarding flag, so the
+    // bundled sample doesn't re-appear after the user removes it.
+    let remote = {
+        let backend = state.server.lock().unwrap();
+        match &*backend {
+            ServerBackend::Embedded(m) => {
+                let is_example = m
+                    .registry
+                    .info_list()
+                    .into_iter()
+                    .find(|info| info.id == id)
+                    .is_some_and(|info| is_example_workspace_path(&info.path));
+                if !m.registry.remove(&id) {
+                    return Err(format!("Workspace {id} not found"));
+                }
+                drop(backend);
+                if is_example {
+                    let mut settings = state.settings.lock().unwrap();
+                    settings.example_workspace_hidden = true;
+                    settings.save()?;
+                }
+                return Ok(());
+            }
+            ServerBackend::Remote(r) => r.clone(),
+        }
+    };
+    let is_example = remote
+        .list_workspaces()
+        .await
+        .map_err(remote_err)?
         .into_iter()
         .find(|info| info.id == id)
         .is_some_and(|info| is_example_workspace_path(&info.path));
-    if !server.registry.remove(&id) {
-        return Err(format!("Workspace {id} not found"));
-    }
-    drop(server);
+    remote.remove_workspace(&id).await.map_err(remote_err)?;
     if is_example {
         let mut settings = state.settings.lock().unwrap();
         settings.example_workspace_hidden = true;
@@ -347,47 +462,34 @@ pub fn remove_workspace(id: String, state: State<AppState>) -> Result<(), String
     Ok(())
 }
 
-/// List all active workspaces with their IDs and URLs.
+/// List all active workspaces with their IDs and URLs. Works in both modes via
+/// the shared `workspace_panel_json` mapping over `WorkspaceInfo`.
 #[tauri::command]
-pub fn get_workspaces(state: State<AppState>) -> Vec<serde_json::Value> {
-    let (port, workspaces) = {
-        let server = state.server.lock().unwrap();
-        (server.port(), server.registry.info_list())
+pub async fn get_workspaces(
+    state: State<'_, AppState>,
+) -> Result<Vec<serde_json::Value>, String> {
+    enum Dispatch {
+        Embedded(u16, Vec<WorkspaceInfo>),
+        Remote(RunningServer, u16),
+    }
+    let dispatch = {
+        let backend = state.server.lock().unwrap();
+        match &*backend {
+            ServerBackend::Embedded(m) => Dispatch::Embedded(m.port(), m.registry.info_list()),
+            ServerBackend::Remote(r) => Dispatch::Remote(r.clone(), r.port()),
+        }
+    };
+    let (port, infos) = match dispatch {
+        Dispatch::Embedded(port, infos) => (port, infos),
+        Dispatch::Remote(remote, port) => {
+            (port, remote.list_workspaces().await.map_err(remote_err)?)
+        }
     };
     let browser_base = browser_base_url_for_state(&state, port);
-    workspaces
+    Ok(infos
         .into_iter()
-        .map(|info| {
-            let url = server::build_workspace_url(
-                &browser_base,
-                &server::workspace_url_path(&info.id, None),
-            );
-            serde_json::json!({
-                "id": info.id,
-                "path": info.path,
-                "url": url,
-                "enable_search": info.flags.enable_search,
-                "enable_viewed": info.flags.enable_viewed,
-                "enable_edit": info.flags.enable_edit,
-                "enable_live": info.flags.enable_live,
-                "enable_chat": info.flags.enable_chat,
-                "shared_annotation": info.flags.shared_annotation,
-                // Non-zero iff a per-workspace collaborator access code is set.
-                // The stored value is now the full 64-hex digest (not truncated
-                // to the code length), so this is only a "set / not set" signal;
-                // the panel renders a fixed number of • for any set code and no
-                // longer reveals the real length. Not the digest itself.
-                "collaborator_access_code_len": info.collaborator_access_code_hash.chars().count(),
-                "search_ready": info.search_ready,
-                // Surfaced so the Settings UI can filter out Open-With
-                // single-file workspaces (see `ui/index.html: refreshWorkspaces`).
-                "ephemeral": info.ephemeral,
-                "single_file": info.single_file,
-                // Optional short display name (empty = none).
-                "alias": info.alias,
-            })
-        })
-        .collect()
+        .map(|info| workspace_panel_json(info, &browser_base))
+        .collect())
 }
 
 /// Set (or clear, with an empty string) a workspace's alias. Per-workspace and
@@ -398,16 +500,19 @@ pub fn set_alias(
     alias: String,
     state: State<AppState>,
 ) -> Result<(), String> {
-    if state
-        .server
-        .lock()
-        .unwrap()
-        .registry
-        .set_alias(&workspace_id, alias.trim())
-    {
-        Ok(())
-    } else {
-        Err("workspace not found".into())
+    match &*state.server.lock().unwrap() {
+        ServerBackend::Embedded(m) => {
+            if m.registry.set_alias(&workspace_id, alias.trim()) {
+                Ok(())
+            } else {
+                Err("workspace not found".into())
+            }
+        }
+        // The control API has no alias endpoint, so an alias can't be pushed to
+        // a server another process is running.
+        ServerBackend::Remote(_) => {
+            Err("setting an alias is not supported while connected to an external server".into())
+        }
     }
 }
 
@@ -416,16 +521,20 @@ pub fn open_url(url: String, state: State<AppState>) -> Result<(), String> {
     let server = state.server.lock().unwrap();
     let base = browser_base_url_for_state(&state, server.port());
     let markon_prefix = format!("{}/", base.trim_end_matches('/'));
-    let target = if url.starts_with(&markon_prefix) {
-        let parsed = url::Url::parse(&url).map_err(|error| error.to_string())?;
-        let mut redirect = parsed.path().to_string();
-        if let Some(query) = parsed.query() {
-            redirect.push('?');
-            redirect.push_str(query);
+    // Only an embedded server can mint a one-time admin bootstrap (its
+    // AdminBootstrapStore). For a remote server, bootstrap belongs to the owning
+    // process, so open the plain URL (no admin session) instead of rewriting.
+    let target = match &*server {
+        ServerBackend::Embedded(m) if url.starts_with(&markon_prefix) => {
+            let parsed = url::Url::parse(&url).map_err(|error| error.to_string())?;
+            let mut redirect = parsed.path().to_string();
+            if let Some(query) = parsed.query() {
+                redirect.push('?');
+                redirect.push_str(query);
+            }
+            m.admin_url(&base, &redirect)
         }
-        server.admin_url(&base, &redirect)
-    } else {
-        url
+        _ => url,
     };
     drop(server);
     open::that(target).map_err(|e| e.to_string())
@@ -664,38 +773,60 @@ pub async fn list_chat_models(
 /// on the registry. An empty `code` clears. The plaintext is hashed here
 /// (salted) and never stored.
 #[tauri::command]
-pub fn set_collaborator_access_code(
+pub async fn set_collaborator_access_code(
     workspace_id: Option<String>,
     code: String,
     app: tauri::AppHandle,
-    state: State<AppState>,
+    state: State<'_, AppState>,
 ) -> Result<(), String> {
     let salt = state.settings.lock().unwrap().salt.clone();
-    let code = code.trim();
-    markon_core::workspace::validate_access_code(code)?;
+    let code = code.trim().to_string();
+    markon_core::workspace::validate_access_code(&code)?;
     let hash = if code.is_empty() {
         String::new()
     } else {
-        markon_core::workspace::hash_access_code(&salt, code)
+        // The shared per-install salt makes this digest valid on a server
+        // another process started, so a remote set works without re-hashing.
+        markon_core::workspace::hash_access_code(&salt, &code)
     };
     match workspace_id {
         Some(id) if !id.is_empty() => {
-            // Per-workspace: live update on the shared registry (persists via
-            // the registry's persist hook). No restart needed.
-            if state
-                .server
-                .lock()
-                .unwrap()
-                .registry
-                .set_collaborator_access_code(&id, &hash)
-            {
-                Ok(())
-            } else {
-                Err("workspace not found".into())
-            }
+            // Per-workspace: live update. Embedded mutates the shared registry
+            // (persists via its hook); remote pushes over the control API.
+            let remote = {
+                let backend = state.server.lock().unwrap();
+                match &*backend {
+                    ServerBackend::Embedded(m) => {
+                        return if m.registry.set_collaborator_access_code(&id, &hash) {
+                            Ok(())
+                        } else {
+                            Err("workspace not found".into())
+                        };
+                    }
+                    ServerBackend::Remote(r) => r.clone(),
+                }
+            };
+            // Always send the hash (even the empty string) so clearing works:
+            // `Some("")` reaches the server and resets the code, whereas `None`
+            // would serialize to `{}` and leave the existing code untouched.
+            remote
+                .set_access_code(&id, Some(hash.as_str()))
+                .await
+                .map_err(remote_err)
         }
         _ => {
-            // Server-level: persist + restart so the new AppState carries it.
+            // Server-level code. Embedded persists + restarts so the new
+            // AppState carries it. A remote server has no control API for its
+            // server-level code — that needs the owning process's own restart —
+            // so it's unsupported here (the UI disables the editor in remote
+            // mode; this guards the command path too).
+            if state.server.lock().unwrap().is_remote() {
+                return Err(
+                    "the server-level access code can't be changed while connected to an \
+                     external server; set it on that server, or start a local server"
+                        .into(),
+                );
+            }
             {
                 let mut s = state.settings.lock().unwrap();
                 s.collaborator_access_code_hash = hash;
@@ -704,6 +835,73 @@ pub fn set_collaborator_access_code(
             restart_server_and_broadcast(&app, &state)
         }
     }
+}
+
+/// Re-probe for a running server and, if one is up, (re)attach as a controller
+/// (Remote mode), forwarding this install's persisted directory workspaces. Used
+/// to recover after a remote server was restarted or briefly unreachable. Errors
+/// when no server is found (the frontend then offers "start a local server").
+#[tauri::command]
+pub async fn reconnect(
+    app: tauri::AppHandle,
+    state: State<'_, AppState>,
+) -> Result<serde_json::Value, String> {
+    let Some(remote) = RunningServer::discover() else {
+        return Err("no running markon server found".into());
+    };
+    let to_forward: Vec<(String, WorkspaceFlags, Option<String>)> = {
+        let s = state.settings.lock().unwrap();
+        s.workspaces
+            .iter()
+            .filter(|w| w.single_file.is_none())
+            .map(|w| {
+                (
+                    w.path.clone(),
+                    w.flags,
+                    (!w.collaborator_access_code_hash.is_empty())
+                        .then(|| w.collaborator_access_code_hash.clone()),
+                )
+            })
+            .collect()
+    };
+    for (path, flags, hash) in to_forward {
+        if let Err(e) = remote
+            .add_or_update_workspace(&path, flags, hash.as_deref())
+            .await
+        {
+            tracing::warn!(%path, "failed to forward workspace on reconnect: {e}");
+        }
+    }
+    let port = remote.port();
+    *state.server.lock().unwrap() = ServerBackend::Remote(remote);
+    let _ = app.emit("server-status-changed", server_status_payload(&state));
+    Ok(serde_json::json!({ "mode": "remote", "port": port }))
+}
+
+/// Transition to owning an in-process (Embedded) server, starting one from the
+/// current settings. Used when the user wants their own server after a remote
+/// died (no auto-takeover). Dropping any prior Remote handle does NOT stop the
+/// remote — only Embedded owns a lifecycle.
+#[tauri::command]
+pub fn start_local_server(
+    app: tauri::AppHandle,
+    state: State<AppState>,
+) -> Result<(), String> {
+    // Enforce the single-server invariant at the command, not just the UI: if a
+    // server is live (e.g. a different daemon came up while we were
+    // disconnected), starting our own would clobber the machine lock and orphan
+    // it. Refuse and steer the user to reconnect.
+    if RunningServer::discover().is_some() {
+        return Err("a markon server is already running — use Reconnect instead of starting a second one".into());
+    }
+    let settings = state.settings.lock().unwrap().clone();
+    let config = settings.to_server_config(effective_port(&settings));
+    let persist = AppSettings::persist_hook(state.settings.clone());
+    let mut manager = ServerManager::new();
+    let result = manager.start(config, Some(persist));
+    *state.server.lock().unwrap() = ServerBackend::Embedded(manager);
+    let _ = app.emit("server-status-changed", server_status_payload(&state));
+    result
 }
 
 #[tauri::command]

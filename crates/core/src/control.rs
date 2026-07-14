@@ -131,6 +131,10 @@ impl RunningServer {
             .into_iter()
             .find(|w| w.path == path);
         if let Some(existing) = existing {
+            // Mirror the embedded registry's `add`, which refreshes the flags of
+            // an already-registered identity: re-adding the same path applies the
+            // supplied flags in both backends so they stay observably identical.
+            self.update_flags(&existing.id, flags).await?;
             if let Some(hash) = collaborator_access_code_hash {
                 self.set_access_code(&existing.id, Some(hash)).await?;
             }
