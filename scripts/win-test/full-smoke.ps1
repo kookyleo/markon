@@ -60,22 +60,50 @@ function Stop-MarkonProcesses {
     Remove-Item $script:LockPath -Force -ErrorAction SilentlyContinue
 }
 
-# Run a `markon` CLI subcommand to completion and fail on a non-zero exit. The
-# management subcommands (ls / set / detach / shutdown) speak the control socket
-# — a Windows named pipe — so a clean exit is itself an end-to-end pipe check.
-function Invoke-MarkonCli($CliArgs, $WorkDir = $null) {
-    $params = @{
-        FilePath = $script:CliExe
-        ArgumentList = $CliArgs
-        Wait = $true
-        PassThru = $true
-        NoNewWindow = $true
+# Run a `markon` CLI subcommand to completion, capture its output, and fail on a
+# non-zero exit. The management subcommands (ls / set / detach / shutdown) speak
+# the control socket — a Windows named pipe — and the CLI now exits non-zero when
+# such an op fails, so a clean exit is a real end-to-end pipe check. Returns the
+# combined stdout/stderr text (callers parse it, e.g. for the server URL).
+#
+# Output is captured to files, NOT via a `& cli | Out-String` pipe: `markon <dir>`
+# fires a best-effort browser open that spawns a grandchild process which inherits
+# the stdout handle, so a pipe capture would block on EOF until that grandchild
+# exits (it may linger indefinitely). We WaitForExit on the direct child only, then
+# read the files — with a hard timeout so a genuine hang surfaces as a failure.
+function Invoke-MarkonCli($CliArgs, $TimeoutSec = 60) {
+    $outFile = [System.IO.Path]::GetTempFileName()
+    $errFile = [System.IO.Path]::GetTempFileName()
+    try {
+        $p = Start-Process -FilePath $script:CliExe -ArgumentList $CliArgs -NoNewWindow -PassThru `
+            -RedirectStandardOutput $outFile -RedirectStandardError $errFile
+        # Touch .Handle so the Process object caches it — without this, a
+        # Start-Process -PassThru object returns $null from .ExitCode after exit.
+        $null = $p.Handle
+        if (-not $p.WaitForExit($TimeoutSec * 1000)) {
+            Stop-Process -Id $p.Id -Force -ErrorAction SilentlyContinue
+            throw ("markon " + ($CliArgs -join ' ') + " timed out after ${TimeoutSec}s")
+        }
+        $out = ((Get-Content $outFile -Raw -ErrorAction SilentlyContinue) + "`n" +
+                (Get-Content $errFile -Raw -ErrorAction SilentlyContinue))
+        if ($p.ExitCode -ne 0) {
+            throw ("markon " + ($CliArgs -join ' ') + " failed (exit $($p.ExitCode)): " + $out.Trim())
+        }
+        return $out
+    } finally {
+        Remove-Item $outFile, $errFile -Force -ErrorAction SilentlyContinue
     }
-    if ($WorkDir) { $params["WorkingDirectory"] = $WorkDir }
-    $p = Start-Process @params
-    if ($p.ExitCode -ne 0) {
-        throw ("markon " + ($CliArgs -join ' ') + " failed with exit code " + $p.ExitCode)
+}
+
+# Parse the first workspace id (8 hex chars) out of `markon ls` — used by the GUI
+# smoke, which doesn't spawn the server itself and so has no spawn URL to read.
+function Get-FirstWorkspaceId {
+    $out = Invoke-MarkonCli @("ls", "--format", "table")
+    $m = [regex]::Match($out, '\b([0-9a-fA-F]{8})\b')
+    if (-not $m.Success) {
+        throw "Could not parse a workspace id from `markon ls`: $out"
     }
+    return $m.Groups[1].Value
 }
 
 function Wait-Until($Name, [scriptblock]$Predicate, [int]$TimeoutSec = 30) {
@@ -134,63 +162,20 @@ function Invoke-Json($Method, $Uri, $Token, $Body = $null) {
     return ($resp.Content | ConvertFrom-Json)
 }
 
-function ConvertTo-Array($Value) {
-    if ($null -eq $Value) {
-        return @()
-    }
-    $propNames = @($Value.PSObject.Properties | ForEach-Object { $_.Name })
-    if (($propNames -contains "value") -and ($propNames -contains "Count")) {
-        return @($Value.value)
-    }
-    return @($Value)
-}
-
 function Invoke-Text($Uri) {
     return (Invoke-WebRequest -Uri $Uri -UseBasicParsing -TimeoutSec 15).Content
 }
 
-function Send-WsText($Ws, [string]$Text) {
-    $bytes = [System.Text.Encoding]::UTF8.GetBytes($Text)
-    $seg = [System.ArraySegment[byte]]::new($bytes, 0, $bytes.Length)
-    $Ws.SendAsync($seg, [System.Net.WebSockets.WebSocketMessageType]::Text, $true, [System.Threading.CancellationToken]::None).GetAwaiter().GetResult()
-}
+function Test-HttpSurface($Base, $Id, $ExpectedEphemeral) {
+    # The web/data plane is tokenless: management (incl. the workspace list) moved
+    # to the control socket, so the caller supplies the workspace id (from the
+    # spawn URL, or `markon ls`) instead of a removed GET /api/workspaces.
+    Assert-True ($Id) "Workspace id missing"
 
-function Receive-WsText($Ws, [int]$TimeoutSec = 10) {
-    $buffer = New-Object byte[] 16384
-    $ms = New-Object System.IO.MemoryStream
-    $cts = [System.Threading.CancellationTokenSource]::new()
-    $cts.CancelAfter([TimeSpan]::FromSeconds($TimeoutSec))
-    do {
-        $seg = [System.ArraySegment[byte]]::new($buffer, 0, $buffer.Length)
-        $result = $Ws.ReceiveAsync($seg, $cts.Token).GetAwaiter().GetResult()
-        if ($result.Count -gt 0) {
-            $ms.Write($buffer, 0, $result.Count)
-        }
-    } while (-not $result.EndOfMessage)
-    return [System.Text.Encoding]::UTF8.GetString($ms.ToArray())
-}
+    $dirPage = Invoke-Text "$Base/$Id/"
+    Assert-True ($dirPage -match "README\.md") "Workspace root did not render/redirect to README.md"
 
-function Test-HttpSurface($Base, $ExpectedEphemeral) {
-    # The web/data plane is tokenless: management moved to the control socket
-    # (named pipe on Windows), so nothing here carries X-Markon-Token anymore.
-    $workspaces = ConvertTo-Array (Invoke-Json "GET" "$Base/api/workspaces" $null)
-    Assert-True ($workspaces.Count -ge 1) "No workspaces returned"
-    $ws = $workspaces | Select-Object -First 1
-    $id = $ws.id
-    Assert-True ($id) "Workspace id missing"
-    if ($ExpectedEphemeral) {
-        Assert-True ($ws.ephemeral -eq $true) "Expected GUI file-open workspace to be ephemeral"
-        Assert-True ($ws.single_file -eq "README.md") "Expected single_file README.md"
-    }
-
-    $dirPage = Invoke-Text "$Base/$id/"
-    if ($ExpectedEphemeral) {
-        Assert-True ($dirPage -match "README\.md") "Ephemeral root did not redirect/render README.md"
-    } else {
-        Assert-True ($dirPage -match "README\.md") "Directory listing missing README.md"
-    }
-
-    $mdPage = Invoke-Text "$Base/$id/README.md"
+    $mdPage = Invoke-Text "$Base/$Id/README.md"
     Assert-True ($mdPage -match "Markon Windows Smoke") "Markdown route did not render expected heading"
     Assert-True ($mdPage -match "alpha beta gamma") "Markdown route did not render expected content"
 
@@ -214,49 +199,49 @@ graph TD; A-->B;
     Assert-True ($icon.StatusCode -eq 200) "Static favicon endpoint failed"
 
     if (-not $ExpectedEphemeral) {
+        # Search readiness has no management endpoint anymore — poll the workspace
+        # search route itself until the index answers with a hit.
+        # Wrap the response in @() and filter nulls before .Count: PowerShell
+        # unwraps a single-element result to a scalar (a PSCustomObject has no
+        # .Count), and an empty body deserializes to $null.
+        $searchUrl = "$Base/_/$Id/search?q=alpha"
         Wait-Until "search index" {
-            $state = ConvertTo-Array (Invoke-Json "GET" "$Base/api/workspaces" $null)
-            return (($state | Where-Object { $_.id -eq $id }).search_ready -eq $true)
+            try {
+                $hits = @(Invoke-Json "GET" $searchUrl $null | Where-Object { $null -ne $_ })
+                return ($hits.Count -ge 1)
+            } catch {
+                return $false
+            }
         } 45
-        $searchUrl = "$Base/_/$id/search?q=alpha"
-        $search = ConvertTo-Array (Invoke-Json "GET" $searchUrl $null)
-        Assert-True ($search.Count -ge 1) "Search did not return README.md hit"
+        $hits = @(Invoke-Json "GET" $searchUrl $null | Where-Object { $null -ne $_ })
+        Assert-True ($hits.Count -ge 1) "Search did not return README.md hit"
 
+        # Save requires the per-workspace save token the page embeds for the
+        # editor (as <meta name="save-token">), sent back as X-Markon-Token. A
+        # loopback peer is NOT auto-trusted for writes, so scrape it from the page.
+        $mt = [regex]::Match($mdPage, '<meta name="save-token" content="([^"]+)"')
+        Assert-True ($mt.Success) "Page did not embed a save-token (is edit enabled on this workspace?)"
+        $saveToken = $mt.Groups[1].Value
         $saveBody = @{
-            workspace_id = $id
+            workspace_id = $Id
             file_path = "README.md"
             content = "# Markon Windows Smoke`n`nupdated alpha beta gamma"
         }
-        $save = Invoke-Json "POST" "$Base/api/save" $null $saveBody
+        $save = Invoke-Json "POST" "$Base/api/save" $saveToken $saveBody
         Assert-True ($save.success -eq $true) "Save API failed: $($save.message)"
-        $updated = Invoke-Text "$Base/$id/README.md"
+        $updated = Invoke-Text "$Base/$Id/README.md"
         Assert-True ($updated -match "updated alpha beta gamma") "Saved markdown content not served"
 
-        # NOTE: add/update/remove-workspace management no longer lives on the web
+        # NOTE 1: add/update/remove-workspace management no longer lives on the web
         # plane — it moved to the control socket. Invoke-CliSmoke exercises it
         # through the `markon` ls/set/shutdown subcommands (which speak the named
         # pipe), so it isn't re-tested here.
-
-        $wsClient = [System.Net.WebSockets.ClientWebSocket]::new()
-        $wsClient.ConnectAsync([Uri]"ws://127.0.0.1:$($Base.Split(':')[-1])/_/ws", [System.Threading.CancellationToken]::None).GetAwaiter().GetResult()
-        Send-WsText $wsClient "README.md"
-        $initial = Receive-WsText $wsClient
-        Assert-True ($initial -match "all_annotations") "WebSocket did not send initial annotations"
-        Receive-WsText $wsClient | Out-Null
-        Send-WsText $wsClient (@{
-            type = "new_annotation"
-            annotation = @{
-                id = "win-smoke-annotation"
-                text = "hello"
-            }
-            op_id = "win-smoke-op"
-        } | ConvertTo-Json -Depth 10 -Compress)
-        $echo = Receive-WsText $wsClient
-        Assert-True ($echo -match "win-smoke-annotation") "WebSocket annotation echo missing"
-        $wsClient.Dispose()
+        # NOTE 2: the collaboration WebSocket (/_/{id}/ws) requires the access
+        # cookie from the unlock handshake even on loopback; that browser-auth flow
+        # is orthogonal to the service split and not simulated here.
     } else {
         try {
-            Invoke-WebRequest -Uri "$Base/$id/sibling.md" -UseBasicParsing -TimeoutSec 15 | Out-Null
+            Invoke-WebRequest -Uri "$Base/$Id/sibling.md" -UseBasicParsing -TimeoutSec 15 | Out-Null
             throw "Expected sibling.md to be hidden in single-file mode"
         } catch {
             if ($_.Exception.Response.StatusCode.value__ -ne 404) {
@@ -280,29 +265,39 @@ function Invoke-CliSmoke {
     Stop-MarkonProcesses
     # `markon <dir>` locates markond.exe beside it, spawns it windowless with the
     # config on a per-user temp file, waits for readiness, forwards the workspace
-    # over the control named pipe, then returns — markond keeps serving. No
-    # --daemon-internal, no management token: those are gone with the split.
-    Invoke-MarkonCli @("--port", "0", "--host", "127.0.0.1", $workspace) $workspace
+    # over the control named pipe, then prints the served URL and returns — markond
+    # keeps serving. No --daemon-internal, no management token: gone with the split.
+    $spawnOut = Invoke-MarkonCli @("--port", "0", "--host", "127.0.0.1", $workspace)
+    # The printed URL carries both the ephemeral port and this workspace's id, so
+    # we target the workspace under test directly (not a 1-based index that stale
+    # persisted entries could shift).
+    $m = [regex]::Match($spawnOut, 'http://127\.0\.0\.1:(\d+)/([0-9a-fA-F]{8})/')
+    Assert-True ($m.Success) "Could not parse the server URL from spawn output: $spawnOut"
+    $port = $m.Groups[1].Value
+    $id = $m.Groups[2].Value
+    $base = "http://127.0.0.1:$port"
 
+    # Wait for the web port to accept connections before probing it.
     $lock = Wait-MarkonLock 30
-    $base = "http://127.0.0.1:$($lock.port)"
+    Assert-True ("$($lock.port)" -eq $port) "Lock port $($lock.port) disagrees with spawn URL port $port"
 
     # Turn on the features the data-plane assertions rely on, over the control
-    # pipe (exercises its write path). Targets are 1-based indices from `markon ls`.
+    # pipe (exercises its write path). Target by id so stale workspaces can't shift
+    # the selection.
     foreach ($feature in @("search", "viewed", "edit", "live", "shared")) {
-        Invoke-MarkonCli @("set", "1", $feature, "on")
+        Invoke-MarkonCli @("set", $id, $feature, "on") | Out-Null
     }
     # Listing round-trips the pipe read path.
-    Invoke-MarkonCli @("ls", "--format", "table")
+    Invoke-MarkonCli @("ls", "--format", "table") | Out-Null
 
-    Test-HttpSurface $base $false
+    Test-HttpSurface $base $id $false
 
     # Shut the service down over the pipe, then confirm the web port is released.
-    Invoke-MarkonCli @("shutdown")
+    Invoke-MarkonCli @("shutdown") | Out-Null
     Wait-Until "service shutdown" {
         try {
             $client = New-Object System.Net.Sockets.TcpClient
-            $iar = $client.BeginConnect("127.0.0.1", [int]$lock.port, $null, $null)
+            $iar = $client.BeginConnect("127.0.0.1", [int]$port, $null, $null)
             $ok = $iar.AsyncWaitHandle.WaitOne(300, $false)
             if ($ok) { $client.EndConnect($iar) }
             $client.Close()
@@ -353,7 +348,10 @@ function Invoke-GuiSmoke {
         schtasks.exe /Run /TN $task | Out-Null
         $lock = Wait-MarkonLock 45
         $base = "http://127.0.0.1:$($lock.port)"
-        Test-HttpSurface $base $true
+        # The GUI spawns the server itself, so there's no spawn URL to read here —
+        # take the workspace id from the control socket via `markon ls`.
+        $id = Get-FirstWorkspaceId
+        Test-HttpSurface $base $id $true
         Test-ContextMenuRegistry $GuiExe
     } finally {
         schtasks.exe /Delete /TN $task /F 2>$null | Out-Null
@@ -367,6 +365,19 @@ try {
     if (Test-Path $script:SettingsPath) {
         $script:SettingsBackup = Join-Path ([System.IO.Path]::GetTempPath()) ("markon-settings-" + [guid]::NewGuid().ToString("N") + ".json")
         Copy-Item $script:SettingsPath $script:SettingsBackup -Force
+        # Start each run from an empty workspace list so entries persisted by a
+        # prior (or crashed) run don't linger in the shared service and shift the
+        # workspace under test. Salt and every other setting are preserved; the
+        # whole file is restored from the backup in the finally block.
+        try {
+            $s = Get-Content $script:SettingsPath -Raw | ConvertFrom-Json
+            $s.workspaces = @()
+            # WriteAllText, NOT Set-Content -Encoding UTF8: PS 5.1 would prepend a
+            # UTF-8 BOM that serde_json rejects ("expected value at line 1 column 1").
+            [System.IO.File]::WriteAllText($script:SettingsPath, ($s | ConvertTo-Json -Depth 30))
+        } catch {
+            Write-Host "warning: could not reset persisted workspaces: $($_.Exception.Message)"
+        }
     }
 
     Invoke-Step "environment" {
