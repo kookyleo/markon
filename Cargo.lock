@@ -3629,7 +3629,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "markon"
+name = "markon-cli"
 version = "0.15.14"
 dependencies = [
  "clap",
@@ -3729,6 +3729,17 @@ dependencies = [
  "tracing-subscriber",
  "url",
  "windows-sys 0.60.2",
+]
+
+[[package]]
+name = "markond"
+version = "0.15.14"
+dependencies = [
+ "markon-core",
+ "serde_json",
+ "tokio",
+ "tracing",
+ "tracing-subscriber",
 ]
 
 [[package]]

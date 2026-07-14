@@ -1,6 +1,8 @@
 use clap::Parser;
 use dialoguer::Select;
 use markon_core::control::RunningServer;
+#[cfg(unix)]
+use markon_core::daemon::{DaemonConfig, DaemonWorkspace};
 use markon_core::net::{available_bind_hosts, BindHostKind};
 use markon_core::server::{self, ServerConfig, WorkspaceInit};
 use markon_core::settings::AppSettings;
@@ -12,9 +14,6 @@ use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 
 mod feedback;
-
-const DAEMON_COLLABORATOR_ACCESS_CODE_HASH_ENV: &str =
-    "MARKON_DAEMON_COLLABORATOR_ACCESS_CODE_HASH";
 
 fn get_available_hosts() -> Vec<(String, String)> {
     available_bind_hosts()
@@ -95,10 +94,6 @@ struct Cli {
     /// collapsed bodies and mark them with a placeholder.
     #[arg(long, action = clap::ArgAction::SetTrue)]
     print_collapsed_content: bool,
-
-    /// Internal flag for daemonization.
-    #[arg(long, hide = true)]
-    daemon_internal: bool,
 }
 
 #[derive(clap::Subcommand, Debug)]
@@ -337,42 +332,6 @@ fn resolve_workspace_collaborator_hash(
             }
         })
         .unwrap_or_else(|| saved_collaborator_hash.to_string())
-}
-
-fn resolve_workspace_collaborator_hash_from_env_or_cli(
-    saved_collaborator_hash: &str,
-    collaborator_access_code: Option<&str>,
-    salt: &str,
-) -> String {
-    if let Ok(daemon_collaborator_hash) = std::env::var(DAEMON_COLLABORATOR_ACCESS_CODE_HASH_ENV) {
-        return daemon_collaborator_hash;
-    }
-
-    resolve_workspace_collaborator_hash(saved_collaborator_hash, collaborator_access_code, salt)
-}
-
-#[cfg(any(unix, test))]
-fn daemon_args_without_access_codes<I>(args: I) -> Vec<String>
-where
-    I: IntoIterator<Item = String>,
-{
-    let mut out = Vec::new();
-    let mut skip_next = false;
-    for arg in args {
-        if skip_next {
-            skip_next = false;
-            continue;
-        }
-        if arg == "--collaborator-access-code" {
-            skip_next = true;
-            continue;
-        }
-        if arg.starts_with("--collaborator-access-code=") {
-            continue;
-        }
-        out.push(arg);
-    }
-    out
 }
 
 fn pad_right(text: &str, width: usize) -> String {
@@ -816,6 +775,134 @@ async fn wait_for_running_server() -> Option<ServerLock> {
     }
 }
 
+/// Locate the `markond` service binary. The CLI spawns it rather than
+/// re-exec'ing itself, so the two binaries must be found side by side.
+///
+/// Search order:
+///   1. sibling of the current executable (the normal install / dev layout,
+///      where `markon` and `markond` land in the same directory), and
+///   2. `target/debug` / `target/release` under the current working directory
+///      (dev fallback for `cargo run -p markon-cli`, whose exe may live elsewhere).
+#[cfg(unix)]
+fn locate_markond() -> Result<PathBuf, String> {
+    const BIN: &str = "markond";
+    let mut checked: Vec<PathBuf> = Vec::new();
+
+    if let Ok(exe) = std::env::current_exe() {
+        if let Some(dir) = exe.parent() {
+            let candidate = dir.join(BIN);
+            if candidate.is_file() {
+                return Ok(candidate);
+            }
+            checked.push(candidate);
+        }
+    }
+
+    for profile in ["debug", "release"] {
+        let candidate = PathBuf::from("target").join(profile).join(BIN);
+        if candidate.is_file() {
+            return Ok(candidate);
+        }
+        checked.push(candidate);
+    }
+
+    Err(format!(
+        "could not find the '{BIN}' service binary (looked in: {}). \
+         Ensure markon and markond are installed side by side.",
+        checked
+            .iter()
+            .map(|p| p.display().to_string())
+            .collect::<Vec<_>>()
+            .join(", ")
+    ))
+}
+
+/// Write `config` to a fresh `0600` temp file so the collaborator access-code
+/// hash never appears in argv or the environment. Returns the file path;
+/// `markond` deletes it after reading.
+#[cfg(unix)]
+fn write_daemon_config(config: &DaemonConfig) -> Result<PathBuf, String> {
+    use std::io::Write;
+    use std::os::unix::fs::OpenOptionsExt;
+
+    let json = serde_json::to_vec(config).map_err(|e| format!("serialize daemon config: {e}"))?;
+    // Unique, unpredictable name in the per-user temp dir; 0600 from creation
+    // so the secret-bearing file is never briefly world-readable.
+    let name = format!(
+        "markond-config-{}-{}.json",
+        std::process::id(),
+        uuid_like_suffix()
+    );
+    let path = std::env::temp_dir().join(name);
+    let mut file = std::fs::OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .mode(0o600)
+        .open(&path)
+        .map_err(|e| format!("create daemon config file {}: {e}", path.display()))?;
+    file.write_all(&json)
+        .map_err(|e| format!("write daemon config file: {e}"))?;
+    Ok(path)
+}
+
+/// Small non-cryptographic suffix to keep the temp filename unique without a
+/// uuid dependency. Combined with the pid and the 0600 mode this is only about
+/// avoiding collisions, not secrecy (the file contents carry the secret).
+#[cfg(unix)]
+fn uuid_like_suffix() -> u128 {
+    use std::time::{SystemTime, UNIX_EPOCH};
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|d| d.as_nanos())
+        .unwrap_or(0)
+}
+
+/// Project one resolved [`WorkspaceInit`] onto its declarative
+/// [`DaemonWorkspace`] wire form for the config handoff.
+#[cfg(unix)]
+fn workspace_init_to_daemon(w: &WorkspaceInit) -> DaemonWorkspace {
+    DaemonWorkspace {
+        path: w.path.clone(),
+        flags: w.flags,
+        initial_path: w.initial_path.clone(),
+        single_file: w.single_file.clone(),
+        collaborator_access_code_hash: w.collaborator_access_code_hash.clone(),
+        alias: w.alias.clone(),
+    }
+}
+
+/// Locate `markond`, write `config` to a 0600 file, and spawn
+/// `markond --config <path>` fully detached. Ownership of the config file
+/// passes to the daemon, which deletes it after reading; on spawn failure the
+/// CLI removes it so no secret-bearing file is orphaned.
+///
+/// Returns the config file path on success. The daemon normally unlinks it right
+/// after reading, but if it dies before that read (loader/exec failure, OOM,
+/// immediate signal) the file would linger in the shared temp dir. The caller
+/// therefore keeps the path and removes it as a bounded safety net once the
+/// readiness handshake resolves (success or timeout).
+#[cfg(unix)]
+fn spawn_markond(config: &DaemonConfig) -> Result<PathBuf, String> {
+    use std::process::Stdio;
+
+    let markond = locate_markond()?;
+    let config_path = write_daemon_config(config)?;
+    let spawn_result = std::process::Command::new(&markond)
+        .arg("--config")
+        .arg(&config_path)
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .spawn();
+    match spawn_result {
+        Ok(_) => Ok(config_path),
+        Err(e) => {
+            let _ = std::fs::remove_file(&config_path);
+            Err(format!("spawn {}: {e}", markond.display()))
+        }
+    }
+}
+
 fn init_tracing() {
     tracing_subscriber::fmt()
         .with_env_filter(
@@ -957,14 +1044,13 @@ async fn main() {
             std::process::exit(1);
         }
     }
-    let workspace_collaborator_access_code_hash =
-        resolve_workspace_collaborator_hash_from_env_or_cli(
-            saved_workspace
-                .map(|w| w.collaborator_access_code_hash.as_str())
-                .unwrap_or_default(),
-            cli.collaborator_access_code.as_deref(),
-            &effective_salt,
-        );
+    let workspace_collaborator_access_code_hash = resolve_workspace_collaborator_hash(
+        saved_workspace
+            .map(|w| w.collaborator_access_code_hash.as_str())
+            .unwrap_or_default(),
+        cli.collaborator_access_code.as_deref(),
+        &effective_salt,
+    );
     let ws_init = WorkspaceInit {
         collaborator_access_code_hash: workspace_collaborator_access_code_hash.clone(),
         ..ws_init
@@ -1013,35 +1099,115 @@ async fn main() {
         }
     }
 
-    #[cfg(unix)]
-    if !cli.daemon_internal {
-        let mut args = daemon_args_without_access_codes(std::env::args().skip(1));
-        args.push("--daemon-internal".to_string());
-
-        use std::process::Stdio;
-        let current_exe = std::env::current_exe().expect("Failed to get current executable");
-        let mut command = std::process::Command::new(current_exe);
-        command
-            .args(&args)
-            .stdin(Stdio::null())
-            .stdout(Stdio::null())
-            .stderr(Stdio::null());
-        if cli.collaborator_access_code.is_some() {
-            command.env(
-                DAEMON_COLLABORATOR_ACCESS_CODE_HASH_ENV,
-                &workspace_collaborator_access_code_hash,
+    // Startup cleanup of temporary single-file workspaces, shared by the daemon
+    // and foreground paths. Persist immediately so a freshly spawned markond
+    // loads the already-pruned state.
+    let removed = settings.prune_single_file_workspaces_for_startup();
+    if removed > 0 {
+        if let Err(e) = settings.save() {
+            tracing::warn!(
+                removed,
+                "failed to persist startup cleanup of temporary workspaces: {e}"
             );
         }
+    }
 
-        match command.spawn() {
-            Ok(_) => {
+    // Restore persisted workspaces so a cold start doesn't immediately drop them
+    // when the persist hook fires. The explicitly-opened workspace keeps its
+    // persisted feature flags; only explicit CLI access-code args update its
+    // access hashes. The explicit workspace itself is NOT embedded here — it is
+    // forwarded to the server over the control socket after readiness, so it is
+    // never opened twice (which would race the forward and double-open the
+    // browser). The foreground fallback adds it directly below.
+    let mut loaded_explicit_workspace = false;
+    let restored_workspaces: Vec<WorkspaceInit> = settings
+        .workspaces
+        .iter()
+        .filter(|w| !w.path.is_empty())
+        .map(|w| {
+            let explicit = w.single_file.is_none() && workspace_path_matches(&w.path, &ws_root);
+            if explicit {
+                loaded_explicit_workspace = true;
+            }
+            WorkspaceInit {
+                path: PathBuf::from(&w.path),
+                flags: w.flags,
+                initial_path: if explicit {
+                    initial_path.clone()
+                } else {
+                    w.single_file.clone()
+                },
+                single_file: w.single_file.clone(),
+                collaborator_access_code_hash: if explicit {
+                    workspace_collaborator_access_code_hash.clone()
+                } else {
+                    w.collaborator_access_code_hash.clone()
+                },
+                alias: w.alias.clone(),
+            }
+        })
+        .collect();
+
+    let language = settings.effective_web_language();
+    let shortcuts_json = settings.render_shortcuts_json();
+    let styles_css = settings.render_styles_css();
+    let default_chat_mode = settings.default_chat_mode.clone();
+    let editor_theme = settings.web_editor_theme.clone();
+    let collaborator_access_code_hash = settings.collaborator_access_code_hash.clone();
+    let db_path = settings.db_path.clone();
+    // CLI flag forces inclusion; otherwise inherit the persisted preference so
+    // GUI-set values still apply when launching from the command line.
+    let print_collapsed_content = cli.print_collapsed_content || settings.print_collapsed_content;
+
+    // --- Daemon path (unix): spawn the standalone `markond` service. ---
+    // The CLI is now a pure shell: it resolves a declarative DaemonConfig,
+    // writes it to a 0600 file (secrets live in the file, never argv/env), spawns
+    // `markond --config <path>` detached, then drives the explicitly-opened
+    // workspace in over the control socket — identical to the already-running
+    // path above.
+    #[cfg(unix)]
+    {
+        let daemon_config = DaemonConfig {
+            // The daemon must not prompt: use the non-interactive resolved host.
+            host: configured_host.clone(),
+            advertised_host: advertised_host.clone(),
+            trusted_hosts: trusted_hosts.clone(),
+            port: cli.port,
+            theme: "auto".to_string(),
+            qr: cli.entry.clone(),
+            // The daemon never opens the browser itself — the CLI does, over the
+            // control socket, after forwarding the workspace.
+            open_browser: None,
+            db_path: db_path.clone(),
+            salt: Some(effective_salt.clone()),
+            workspaces: restored_workspaces
+                .iter()
+                .map(workspace_init_to_daemon)
+                .collect(),
+            language: language.clone(),
+            shortcuts_json: shortcuts_json.clone(),
+            styles_css: styles_css.clone(),
+            default_chat_mode: default_chat_mode.clone(),
+            editor_theme: editor_theme.clone(),
+            collaborator_access_code_hash: collaborator_access_code_hash.clone(),
+            print_collapsed_content,
+        };
+
+        match spawn_markond(&daemon_config) {
+            Ok(config_path) => {
                 println!("Starting Markon server in background...");
-                // Readiness handshake: the daemon binds TCP + the control socket
-                // and writes its discovery lock asynchronously. Poll for the lock
-                // and the socket's connectability (bounded), then drive the
-                // workspace in over the socket — exactly the same forward the
+                // Readiness handshake: markond binds TCP + the control socket and
+                // writes its discovery lock asynchronously. Poll for the lock and
+                // the socket's connectability (bounded), then drive the workspace
+                // in over the socket — exactly the same forward the
                 // "already-running" path takes above, so output is identical.
-                match wait_for_running_server().await {
+                let ready = wait_for_running_server().await;
+                // Bounded cleanup: the daemon unlinks its config after reading,
+                // but if it died before that read the 0600 secret file would be
+                // orphaned in the shared temp dir. Remove it once the handshake
+                // resolves either way (no-op if the daemon already unlinked it).
+                let _ = std::fs::remove_file(&config_path);
+                match ready {
                     Some(lock) => {
                         let server = RunningServer::from_lock(&lock);
                         forward_to_running_server(
@@ -1071,79 +1237,22 @@ async fn main() {
                 return;
             }
             Err(e) => {
-                tracing::warn!("failed to daemonize: {e}; falling back to foreground");
+                tracing::warn!("failed to spawn markond: {e}; falling back to foreground");
             }
         }
     }
 
-    let removed = settings.prune_single_file_workspaces_for_startup();
-    if removed > 0 {
-        if let Err(e) = settings.save() {
-            tracing::warn!(
-                removed,
-                "failed to persist startup cleanup of temporary workspaces: {e}"
-            );
-        }
-    }
-
-    // Restore persisted workspaces so a daemon cold-start doesn't immediately
-    // drop them when the persist hook fires. The explicitly-opened workspace
-    // keeps its persisted feature flags; only explicit CLI access-code args
-    // update its access hashes.
-    let mut loaded_explicit_workspace = false;
-    let mut initial_workspaces: Vec<WorkspaceInit> = settings
-        .workspaces
-        .iter()
-        .filter(|w| !w.path.is_empty())
-        .map(|w| {
-            let explicit = w.single_file.is_none() && workspace_path_matches(&w.path, &ws_root);
-            if explicit {
-                loaded_explicit_workspace = true;
-            }
-            WorkspaceInit {
-                path: PathBuf::from(&w.path),
-                flags: w.flags,
-                initial_path: if explicit {
-                    initial_path.clone()
-                } else {
-                    w.single_file.clone()
-                },
-                single_file: w.single_file.clone(),
-                collaborator_access_code_hash: if explicit {
-                    workspace_collaborator_access_code_hash.clone()
-                } else {
-                    w.collaborator_access_code_hash.clone()
-                },
-                alias: w.alias.clone(),
-            }
-        })
-        .collect();
-    // The daemon child (`--daemon-internal`) is a bare server: its parent drives
-    // the explicitly-opened workspace in over the control socket after the
-    // readiness handshake, so the child must not also embed it (that would race
-    // the forward and double-open the browser). Persisted workspaces are still
-    // restored above. In every other tail (spawn-fallback foreground, non-unix)
-    // this process serves in the foreground and owns the explicit workspace.
-    if !loaded_explicit_workspace && !cli.daemon_internal {
+    // --- Foreground path (non-unix, or spawn fallback). ---
+    // This process serves in the foreground and owns the explicit workspace.
+    let mut initial_workspaces = restored_workspaces;
+    if !loaded_explicit_workspace {
         initial_workspaces.push(ws_init);
     }
 
-    let language = settings.effective_web_language();
-    let shortcuts_json = settings.render_shortcuts_json();
-    let styles_css = settings.render_styles_css();
-    let default_chat_mode = settings.default_chat_mode.clone();
-    let editor_theme = settings.web_editor_theme.clone();
-    let collaborator_access_code_hash = settings.collaborator_access_code_hash.clone();
-    let db_path = settings.db_path.clone();
-    // CLI flag forces inclusion; otherwise inherit the persisted preference so
-    // GUI-set values still apply when launching from the command line.
-    let print_collapsed_content = cli.print_collapsed_content || settings.print_collapsed_content;
-
     let settings = Arc::new(Mutex::new(settings));
 
-    // Share one registry with a persist hook so HTTP API mutations
-    // (e.g. `markon <dir>` into the running daemon) land in settings.json
-    // exactly like GUI-initiated changes do.
+    // Share one registry with a persist hook so control-socket mutations land in
+    // settings.json exactly like GUI-initiated changes do.
     let registry = Arc::new(WorkspaceRegistry::new(effective_salt.clone()));
     registry.set_persist_hook(AppSettings::persist_hook(settings.clone()));
 
@@ -1165,13 +1274,7 @@ async fn main() {
         port: cli.port,
         theme: "auto".to_string(),
         qr: cli.entry,
-        // The daemon child never opens the browser itself — its parent does, over
-        // the control socket, after forwarding the workspace.
-        open_browser: if cli.daemon_internal {
-            None
-        } else {
-            open_browser_target
-        },
+        open_browser: open_browser_target,
         shared_annotation: initial_workspaces.iter().any(|w| w.flags.shared_annotation),
         db_path,
         salt: Some(effective_salt),
@@ -1474,21 +1577,5 @@ mod tests {
         let guest = resolve_workspace_collaborator_hash(&saved_guest, Some(""), "salt");
 
         assert!(guest.is_empty());
-    }
-
-    #[test]
-    fn daemon_args_strip_plaintext_access_codes() {
-        let args = daemon_args_without_access_codes(
-            [
-                "--collaborator-access-code=guest secret",
-                "--host",
-                "0.0.0.0",
-                "README.md",
-            ]
-            .into_iter()
-            .map(String::from),
-        );
-
-        assert_eq!(args, ["--host", "0.0.0.0", "README.md"]);
     }
 }

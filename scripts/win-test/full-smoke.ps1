@@ -368,7 +368,7 @@ try {
         Invoke-Step "frontend build" { Invoke-Native "npm run build" { npm run build } }
         Invoke-Step "frontend tests" { Invoke-Native "npm test" { npm test } }
         Invoke-Step "cargo tests" { Invoke-Native "cargo test" { cargo test --workspace --exclude xtask } }
-        Invoke-Step "debug binaries" { Invoke-Native "cargo build" { cargo build -p markon -p markon-gui } }
+        Invoke-Step "debug binaries" { Invoke-Native "cargo build" { cargo build -p markon-cli -p markond -p markon-gui } }
     }
 
     Invoke-Step "CLI HTTP/API/WebSocket smoke" { Invoke-CliSmoke }
