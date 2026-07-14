@@ -6,9 +6,9 @@ mod reopen_origin;
 mod server_manager;
 // settings moved to markon_core::settings
 
+use markon_core::control::RunningServer;
 use markon_core::settings::{AppSettings, WorkspaceSettings};
 use markon_core::workspace::{expand_and_canonicalize, WorkspaceFlags};
-use markon_core::control::RunningServer;
 use server_manager::{ServerBackend, ServerManager};
 use std::path::{Path, PathBuf};
 use std::sync::{
@@ -353,12 +353,12 @@ fn handle_open_path(app: &tauri::AppHandle, path: &Path) {
     };
 
     // Resolve what to open. Embedded builds an admin-bootstrapped URL in place.
-    // Remote forwards over HTTP: its add API has no single_file parameter, so
-    // the parent directory becomes the workspace and we still deep-link to the
-    // file — no admin session, since bootstrap belongs to the owning process.
+    // Remote forwards the same root + single-file scope over the management API,
+    // preserving the filesystem capability boundary. It opens without an admin
+    // session because bootstrap ownership stays with the server process.
     enum OpenPlan {
         Ready(String),
-        Remote(RunningServer, String, String),
+        Remote(RunningServer, String, Option<String>, String),
     }
     let plan = {
         let backend = state.server.lock().unwrap();
@@ -366,22 +366,23 @@ fn handle_open_path(app: &tauri::AppHandle, path: &Path) {
             tracing::warn!("server not running, cannot open path");
             return;
         }
-        let browser_base = {
+        let (configured_host, advertised_host) = {
             let settings = state.settings.lock().unwrap();
-            markon_core::server::featured_base_url(
-                &settings.host,
-                &settings.advertised_host,
-                backend.port(),
-            )
+            (settings.host.clone(), settings.advertised_host.clone())
         };
         match &*backend {
             ServerBackend::Embedded(m) => {
+                let browser_base = markon_core::server::featured_base_url(
+                    &configured_host,
+                    &advertised_host,
+                    m.port(),
+                );
                 // `registry.add` is idempotent on (path, single_file) and fires
                 // the persist hook, mirroring the entry into AppSettings.
                 let id = m.registry.add(markon_core::workspace::WorkspaceConfig {
                     path: ws_root,
                     flags,
-                    single_file,
+                    single_file: single_file.clone(),
                     collaborator_access_code_hash: String::new(),
                     alias: String::new(),
                 });
@@ -390,16 +391,37 @@ fn handle_open_path(app: &tauri::AppHandle, path: &Path) {
                 OpenPlan::Ready(m.admin_url(&browser_base, &workspace_path))
             }
             ServerBackend::Remote(r) => {
-                OpenPlan::Remote(r.clone(), ws_root.to_string_lossy().to_string(), browser_base)
+                let bind_host = if r.bind_host().trim().is_empty() {
+                    &configured_host
+                } else {
+                    r.bind_host()
+                };
+                let active_advertised_host = r.advertised_host().unwrap_or(&advertised_host);
+                let browser_base = markon_core::server::featured_base_url(
+                    bind_host,
+                    active_advertised_host,
+                    r.port(),
+                );
+                OpenPlan::Remote(
+                    r.clone(),
+                    ws_root.to_string_lossy().to_string(),
+                    single_file.clone(),
+                    browser_base,
+                )
             }
         }
     };
 
     let url = match plan {
         OpenPlan::Ready(url) => url,
-        OpenPlan::Remote(remote, path_str, browser_base) => {
+        OpenPlan::Remote(remote, path_str, single_file, browser_base) => {
             match tauri::async_runtime::block_on(remote.add_or_update_workspace(
-                &path_str, flags, None,
+                &path_str,
+                flags,
+                true,
+                single_file.as_deref(),
+                None,
+                None,
             )) {
                 Ok(id) => {
                     let workspace_path =
@@ -499,7 +521,7 @@ fn persist_settings_window_size(app: &tauri::AppHandle, window: &tauri::WebviewW
     let mut settings = state.settings.lock().unwrap();
     settings.window_width = Some(logical.width);
     settings.window_height = Some(logical.height);
-    settings.save().ok();
+    settings.save_preserving_server_owned_state().ok();
 }
 
 fn configure_settings_window(app: &tauri::AppHandle, window: &tauri::WebviewWindow) {
@@ -790,21 +812,9 @@ fn main() {
 
             // Snapshot the persisted workspaces before `settings` is moved into
             // the shared Arc — needed to forward them if we attach to a remote.
-            // Single-file/ephemeral entries are skipped: the remote add API has
-            // no single_file parameter, and they're pruned at startup anyway.
-            let workspaces_to_forward: Vec<(String, WorkspaceFlags, Option<String>)> = settings
-                .workspaces
-                .iter()
-                .filter(|w| w.single_file.is_none())
-                .map(|w| {
-                    (
-                        w.path.clone(),
-                        w.flags,
-                        (!w.collaborator_access_code_hash.is_empty())
-                            .then(|| w.collaborator_access_code_hash.clone()),
-                    )
-                })
-                .collect();
+            // The management API carries `single_file` explicitly, preserving
+            // the same narrow filesystem capability as the embedded registry.
+            let workspaces_to_forward = settings.workspaces.clone();
 
             let settings_arc = Arc::new(Mutex::new(settings));
             let persist_hook = AppSettings::persist_hook(settings_arc.clone());
@@ -820,12 +830,20 @@ fn main() {
                     );
                     let remote_for_forward = remote.clone();
                     tauri::async_runtime::block_on(async move {
-                        for (path, flags, hash) in workspaces_to_forward {
+                        for workspace in workspaces_to_forward {
                             if let Err(e) = remote_for_forward
-                                .add_or_update_workspace(&path, flags, hash.as_deref())
+                                .add_or_update_workspace(
+                                    &workspace.path,
+                                    workspace.flags,
+                                    true,
+                                    workspace.single_file.as_deref(),
+                                    (!workspace.collaborator_access_code_hash.is_empty())
+                                        .then_some(workspace.collaborator_access_code_hash.as_str()),
+                                    Some(&workspace.alias),
+                                )
                                 .await
                             {
-                                tracing::warn!(%path, "failed to forward workspace to remote: {e}");
+                                tracing::warn!(path = %workspace.path, "failed to forward workspace to remote: {e}");
                             }
                         }
                     });

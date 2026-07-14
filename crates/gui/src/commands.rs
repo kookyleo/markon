@@ -23,8 +23,14 @@ const MARKON_REPO: &str = "kookyleo/markon";
 /// a network change). Mirrored by `get_server_status` for cold reads.
 fn server_status_payload(state: &State<AppState>) -> serde_json::Value {
     let server = state.server.lock().unwrap();
-    let bind_host = state.settings.lock().unwrap().host.clone();
+    let configured_host = state.settings.lock().unwrap().host.clone();
     let is_remote = server.is_remote();
+    let bind_host = match &*server {
+        ServerBackend::Remote(remote) if !remote.bind_host().trim().is_empty() => {
+            remote.bind_host().to_string()
+        }
+        _ => configured_host,
+    };
     // In remote mode this GUI doesn't bind anything, so the local bind-host
     // availability check is meaningless — report available so no stale banner
     // shows. The frontend keys off `mode` to render the connection state.
@@ -53,10 +59,8 @@ fn remote_err(e: ControlError) -> String {
 /// embedded (in-process registry) and remote (control API) list paths so every
 /// field the panel reads stays identical across both modes.
 fn workspace_panel_json(info: WorkspaceInfo, browser_base: &str) -> serde_json::Value {
-    let url = server::build_workspace_url(
-        browser_base,
-        &server::workspace_url_path(&info.id, None),
-    );
+    let url =
+        server::build_workspace_url(browser_base, &server::workspace_url_path(&info.id, None));
     serde_json::json!({
         "id": info.id,
         "path": info.path,
@@ -245,7 +249,7 @@ pub fn save_settings(
     #[cfg(target_os = "windows")]
     sync_shell_context_menu(&settings.language);
 
-    settings.save()?;
+    settings.save_preserving_server_owned_state()?;
     *state.settings.lock().unwrap() = settings;
     restart_server_and_broadcast(&app, &state)
 }
@@ -280,12 +284,21 @@ fn update_tray_language(app: &tauri::AppHandle, language: &str) {
 // to settings.json happens via the persist hook wired at server startup,
 // so CLI (HTTP API) and GUI (Tauri API) paths share a single flow.
 
-fn browser_base_url_for_state(state: &State<AppState>, port: u16) -> String {
+fn browser_base_url_for_state(
+    state: &State<AppState>,
+    port: u16,
+    server_bind_host: Option<&str>,
+    server_advertised_host: Option<&str>,
+) -> String {
     let (bind_host, advertised_host) = {
         let s = state.settings.lock().unwrap();
         (s.host.clone(), s.advertised_host.clone())
     };
-    server::featured_base_url(&bind_host, &advertised_host, port)
+    let bind_host = server_bind_host
+        .filter(|host| !host.trim().is_empty())
+        .unwrap_or(&bind_host);
+    let advertised_host = server_advertised_host.unwrap_or(&advertised_host);
+    server::featured_base_url(bind_host, advertised_host, port)
 }
 
 fn is_example_workspace_path(path: &str) -> bool {
@@ -337,21 +350,24 @@ pub async fn add_workspace(
             ServerBackend::Remote(r) => Dispatch::Remote(r.clone()),
         }
     };
-    let (id, port) = match dispatch {
-        Dispatch::Embedded(id, port) => (id, port),
+    let (id, browser_base) = match dispatch {
+        Dispatch::Embedded(id, port) => (id, browser_base_url_for_state(&state, port, None, None)),
         Dispatch::Remote(remote) => {
             let path_str = canonical.to_string_lossy().to_string();
             let id = remote
-                .add_or_update_workspace(&path_str, flags, None)
+                .add_or_update_workspace(&path_str, flags, true, None, None, None)
                 .await
                 .map_err(remote_err)?;
-            (id, remote.port())
+            let browser_base = browser_base_url_for_state(
+                &state,
+                remote.port(),
+                Some(remote.bind_host()),
+                remote.advertised_host(),
+            );
+            (id, browser_base)
         }
     };
-    let url = server::build_workspace_url(
-        &browser_base_url_for_state(&state, port),
-        &server::workspace_url_path(&id, None),
-    );
+    let url = server::build_workspace_url(&browser_base, &server::workspace_url_path(&id, None));
     Ok(serde_json::json!({ "id": id, "url": url }))
 }
 
@@ -439,7 +455,7 @@ pub async fn remove_workspace(id: String, state: State<'_, AppState>) -> Result<
                 if is_example {
                     let mut settings = state.settings.lock().unwrap();
                     settings.example_workspace_hidden = true;
-                    settings.save()?;
+                    settings.save_preserving_server_owned_state()?;
                 }
                 return Ok(());
             }
@@ -454,10 +470,14 @@ pub async fn remove_workspace(id: String, state: State<'_, AppState>) -> Result<
         .find(|info| info.id == id)
         .is_some_and(|info| is_example_workspace_path(&info.path));
     remote.remove_workspace(&id).await.map_err(remote_err)?;
-    if is_example {
+    let infos = remote.list_workspaces().await.map_err(remote_err)?;
+    {
         let mut settings = state.settings.lock().unwrap();
-        settings.example_workspace_hidden = true;
-        settings.save()?;
+        settings.sync_from_workspace_infos(infos);
+        if is_example {
+            settings.example_workspace_hidden = true;
+            settings.save_preserving_server_owned_state()?;
+        }
     }
     Ok(())
 }
@@ -465,9 +485,7 @@ pub async fn remove_workspace(id: String, state: State<'_, AppState>) -> Result<
 /// List all active workspaces with their IDs and URLs. Works in both modes via
 /// the shared `workspace_panel_json` mapping over `WorkspaceInfo`.
 #[tauri::command]
-pub async fn get_workspaces(
-    state: State<'_, AppState>,
-) -> Result<Vec<serde_json::Value>, String> {
+pub async fn get_workspaces(state: State<'_, AppState>) -> Result<Vec<serde_json::Value>, String> {
     enum Dispatch {
         Embedded(u16, Vec<WorkspaceInfo>),
         Remote(RunningServer, u16),
@@ -479,13 +497,29 @@ pub async fn get_workspaces(
             ServerBackend::Remote(r) => Dispatch::Remote(r.clone(), r.port()),
         }
     };
-    let (port, infos) = match dispatch {
-        Dispatch::Embedded(port, infos) => (port, infos),
+    let (port, infos, server_bind_host, server_advertised_host) = match dispatch {
+        Dispatch::Embedded(port, infos) => (port, infos, None, None),
         Dispatch::Remote(remote, port) => {
-            (port, remote.list_workspaces().await.map_err(remote_err)?)
+            let infos = remote.list_workspaces().await.map_err(remote_err)?;
+            state
+                .settings
+                .lock()
+                .unwrap()
+                .sync_from_workspace_infos(infos.clone());
+            (
+                port,
+                infos,
+                Some(remote.bind_host().to_string()),
+                remote.advertised_host().map(str::to_string),
+            )
         }
     };
-    let browser_base = browser_base_url_for_state(&state, port);
+    let browser_base = browser_base_url_for_state(
+        &state,
+        port,
+        server_bind_host.as_deref(),
+        server_advertised_host.as_deref(),
+    );
     Ok(infos
         .into_iter()
         .map(|info| workspace_panel_json(info, &browser_base))
@@ -495,31 +529,39 @@ pub async fn get_workspaces(
 /// Set (or clear, with an empty string) a workspace's alias. Per-workspace and
 /// live — updates the shared registry (persists via its hook), no restart.
 #[tauri::command]
-pub fn set_alias(
+pub async fn set_alias(
     workspace_id: String,
     alias: String,
-    state: State<AppState>,
+    state: State<'_, AppState>,
 ) -> Result<(), String> {
-    match &*state.server.lock().unwrap() {
-        ServerBackend::Embedded(m) => {
-            if m.registry.set_alias(&workspace_id, alias.trim()) {
-                Ok(())
-            } else {
-                Err("workspace not found".into())
+    let remote = {
+        let backend = state.server.lock().unwrap();
+        match &*backend {
+            ServerBackend::Embedded(m) => {
+                return if m.registry.set_alias(&workspace_id, alias.trim()) {
+                    Ok(())
+                } else {
+                    Err("workspace not found".into())
+                };
             }
+            ServerBackend::Remote(remote) => remote.clone(),
         }
-        // The control API has no alias endpoint, so an alias can't be pushed to
-        // a server another process is running.
-        ServerBackend::Remote(_) => {
-            Err("setting an alias is not supported while connected to an external server".into())
-        }
-    }
+    };
+    remote
+        .set_alias(&workspace_id, alias.trim())
+        .await
+        .map_err(remote_err)
 }
 
 #[tauri::command]
 pub fn open_url(url: String, state: State<AppState>) -> Result<(), String> {
     let server = state.server.lock().unwrap();
-    let base = browser_base_url_for_state(&state, server.port());
+    let (remote_host, remote_advertised_host) = match &*server {
+        ServerBackend::Remote(remote) => (Some(remote.bind_host()), remote.advertised_host()),
+        ServerBackend::Embedded(_) => (None, None),
+    };
+    let base =
+        browser_base_url_for_state(&state, server.port(), remote_host, remote_advertised_host);
     let markon_prefix = format!("{}/", base.trim_end_matches('/'));
     // Only an embedded server can mint a one-time admin bootstrap (its
     // AdminBootstrapStore). For a remote server, bootstrap belongs to the owning
@@ -838,9 +880,10 @@ pub async fn set_collaborator_access_code(
 }
 
 /// Re-probe for a running server and, if one is up, (re)attach as a controller
-/// (Remote mode), forwarding this install's persisted directory workspaces. Used
-/// to recover after a remote server was restarted or briefly unreachable. Errors
-/// when no server is found (the frontend then offers "start a local server").
+/// (Remote mode), forwarding this install's persisted workspaces with their
+/// directory/single-file scopes intact. Used to recover after a remote server
+/// was restarted or briefly unreachable. Errors when no server is found (the
+/// frontend then offers "start a local server").
 #[tauri::command]
 pub async fn reconnect(
     app: tauri::AppHandle,
@@ -849,29 +892,34 @@ pub async fn reconnect(
     let Some(remote) = RunningServer::discover() else {
         return Err("no running markon server found".into());
     };
-    let to_forward: Vec<(String, WorkspaceFlags, Option<String>)> = {
+    // TCP reachability alone is not identity: a stale lock's port may have been
+    // reused by an unrelated process. Authenticate one management request
+    // before switching the GUI into Remote mode.
+    remote.list_workspaces().await.map_err(remote_err)?;
+    let to_forward = {
         let s = state.settings.lock().unwrap();
-        s.workspaces
-            .iter()
-            .filter(|w| w.single_file.is_none())
-            .map(|w| {
-                (
-                    w.path.clone(),
-                    w.flags,
-                    (!w.collaborator_access_code_hash.is_empty())
-                        .then(|| w.collaborator_access_code_hash.clone()),
-                )
-            })
-            .collect()
+        s.workspaces.clone()
     };
-    for (path, flags, hash) in to_forward {
-        if let Err(e) = remote
-            .add_or_update_workspace(&path, flags, hash.as_deref())
+    for workspace in to_forward {
+        remote
+            .add_or_update_workspace(
+                &workspace.path,
+                workspace.flags,
+                true,
+                workspace.single_file.as_deref(),
+                (!workspace.collaborator_access_code_hash.is_empty())
+                    .then_some(workspace.collaborator_access_code_hash.as_str()),
+                Some(&workspace.alias),
+            )
             .await
-        {
-            tracing::warn!(%path, "failed to forward workspace on reconnect: {e}");
-        }
+            .map_err(remote_err)?;
     }
+    let infos = remote.list_workspaces().await.map_err(remote_err)?;
+    state
+        .settings
+        .lock()
+        .unwrap()
+        .sync_from_workspace_infos(infos);
     let port = remote.port();
     *state.server.lock().unwrap() = ServerBackend::Remote(remote);
     let _ = app.emit("server-status-changed", server_status_payload(&state));
@@ -883,16 +931,16 @@ pub async fn reconnect(
 /// died (no auto-takeover). Dropping any prior Remote handle does NOT stop the
 /// remote — only Embedded owns a lifecycle.
 #[tauri::command]
-pub fn start_local_server(
-    app: tauri::AppHandle,
-    state: State<AppState>,
-) -> Result<(), String> {
+pub fn start_local_server(app: tauri::AppHandle, state: State<AppState>) -> Result<(), String> {
     // Enforce the single-server invariant at the command, not just the UI: if a
     // server is live (e.g. a different daemon came up while we were
     // disconnected), starting our own would clobber the machine lock and orphan
     // it. Refuse and steer the user to reconnect.
     if RunningServer::discover().is_some() {
-        return Err("a markon server is already running — use Reconnect instead of starting a second one".into());
+        return Err(
+            "a markon server is already running — use Reconnect instead of starting a second one"
+                .into(),
+        );
     }
     let settings = state.settings.lock().unwrap().clone();
     let config = settings.to_server_config(effective_port(&settings));
@@ -913,7 +961,7 @@ pub fn set_tray_resident(
     state.tray_resident.store(value, Ordering::Relaxed);
     let mut settings = state.settings.lock().unwrap();
     settings.tray_resident = value;
-    settings.save()?;
+    settings.save_preserving_server_owned_state()?;
     drop(settings);
     if let Some(tray) = app.tray_by_id("main") {
         tray.set_visible(value).map_err(|e| e.to_string())?;

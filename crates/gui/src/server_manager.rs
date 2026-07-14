@@ -104,6 +104,20 @@ impl ServerManager {
         self.stop();
         self.last_error = None;
 
+        // Re-check at the ownership boundary, not only during app boot. A
+        // daemon may have appeared between discovery and this start (or while
+        // an embedded server was being restarted); binding another port would
+        // violate the one-server invariant and replace its discovery lock.
+        if let Some(remote) = RunningServer::discover() {
+            let message = format!(
+                "a markon server is already running on port {}; reconnect instead",
+                remote.port()
+            );
+            self.last_error = Some(message.clone());
+            self.port = 0;
+            return Err(message);
+        }
+
         // Use the salt the caller put into ServerConfig (GUI: per-install random
         // salt from AppSettings). Fall back to a port-derived constant only for
         // callers that didn't set one — preserves the original CLI behavior.

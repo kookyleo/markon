@@ -132,7 +132,7 @@ impl WorkspaceEntry {
 /// because it's built from [`WorkspaceEntry`] state, but its only public
 /// contract is the wire format — see `crate::server::api` for the canonical
 /// re-export.
-#[derive(Serialize, Deserialize)]
+#[derive(Clone, Serialize, Deserialize)]
 pub struct WorkspaceInfo {
     pub id: String,
     /// Workspace **serving root** — what `/{id}/…` resolves under. For
@@ -735,7 +735,7 @@ fn directory_live_reload_path(root: &Path, path: &Path) -> Option<String> {
     Some(path_to_forward_slash(rel))
 }
 
-#[derive(serde::Serialize, serde::Deserialize)]
+#[derive(Clone, serde::Serialize, serde::Deserialize)]
 pub struct ServerLock {
     pub port: u16,
     pub token: String,
@@ -746,6 +746,10 @@ pub struct ServerLock {
     /// which callers treat as loopback.
     #[serde(default)]
     pub host: String,
+    /// Advertised host active in the owning server process. `None` denotes a
+    /// legacy lock file; `Some("")` is the valid automatic-LAN selection.
+    #[serde(default)]
+    pub advertised_host: Option<String>,
 }
 impl ServerLock {
     pub(crate) fn path() -> PathBuf {
@@ -755,11 +759,10 @@ impl ServerLock {
             .join("server.lock")
     }
     pub(crate) fn write(&self) -> std::io::Result<()> {
-        let path = Self::path();
-        if let Some(parent) = path.parent() {
-            std::fs::create_dir_all(parent)?;
-        }
-        write_file_user_private(&path, serde_json::to_string(self).unwrap().as_bytes())
+        Self::with_write_lock(|| {
+            let path = Self::path();
+            write_file_user_private(&path, serde_json::to_string(self).unwrap().as_bytes())
+        })
     }
     pub fn read() -> Option<Self> {
         let path = Self::path();
@@ -783,8 +786,47 @@ impl ServerLock {
             }
         }
     }
-    pub(crate) fn remove() {
-        let _ = std::fs::remove_file(Self::path());
+    fn with_write_lock<T>(operation: impl FnOnce() -> std::io::Result<T>) -> std::io::Result<T> {
+        let path = Self::path();
+        let parent = path.parent().unwrap_or_else(|| Path::new("."));
+        std::fs::create_dir_all(parent)?;
+        let lock_path = parent.join("server.write.lock");
+        let mut options = std::fs::OpenOptions::new();
+        options.read(true).write(true).create(true);
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::OpenOptionsExt;
+            options.mode(0o600);
+        }
+        let lock = options.open(lock_path)?;
+        lock.lock()?;
+        let result = operation();
+        let unlock_result = lock.unlock();
+        match result {
+            Ok(value) => {
+                unlock_result?;
+                Ok(value)
+            }
+            Err(error) => Err(error),
+        }
+    }
+
+    /// Remove the discovery file only if it still belongs to this server. A
+    /// newer process may have replaced it; unconditional cleanup would then
+    /// make the live server undiscoverable. The sidecar lock makes the
+    /// compare-and-remove transaction race-free against `write()`.
+    pub(crate) fn remove_if_owned(token: &str) {
+        let _ = Self::with_write_lock(|| {
+            let owned = Self::read().is_some_and(|lock| lock.token == token);
+            if owned {
+                match std::fs::remove_file(Self::path()) {
+                    Ok(()) => {}
+                    Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+                    Err(error) => return Err(error),
+                }
+            }
+            Ok(())
+        });
     }
     pub fn is_alive(&self) -> bool {
         let connect_host = if crate::net::host_is_wildcard_v6(&self.host) {
@@ -975,6 +1017,7 @@ mod tests {
         assert_eq!(lock.port, 6419);
         assert_eq!(lock.token, "abc");
         assert_eq!(lock.host, "");
+        assert_eq!(lock.advertised_host, None);
     }
 
     #[test]
@@ -983,12 +1026,14 @@ mod tests {
             port: 6419,
             token: "tok".into(),
             host: "0.0.0.0".into(),
+            advertised_host: Some("192.168.1.20".into()),
         };
         let json = serde_json::to_string(&lock).unwrap();
         let back: ServerLock = serde_json::from_str(&json).unwrap();
         assert_eq!(back.host, "0.0.0.0");
         assert_eq!(back.port, 6419);
         assert_eq!(back.token, "tok");
+        assert_eq!(back.advertised_host.as_deref(), Some("192.168.1.20"));
     }
 
     /// Block until the entry's search index is populated (it's built on a

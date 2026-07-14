@@ -1,5 +1,5 @@
 use crate::server::{ServerConfig, WorkspaceInit};
-use crate::workspace::{generate_token, PersistHook, WorkspaceFlags, WorkspaceRegistry};
+use crate::workspace::{generate_token, PersistHook, WorkspaceFlags, WorkspaceInfo};
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex, OnceLock};
@@ -358,6 +358,62 @@ impl AppSettings {
         home.join(".markon").join("settings.json")
     }
 
+    fn settings_write_lock_path_at(home: &Path) -> PathBuf {
+        home.join(".markon").join("settings.write.lock")
+    }
+
+    /// Serialize read/merge/write transactions across the GUI and a daemon.
+    /// Atomic rename prevents torn JSON, but by itself does not prevent two
+    /// processes with stale in-memory snapshots from overwriting each other's
+    /// fields. This sidecar lock closes that lost-update window.
+    fn with_settings_write_lock<T>(
+        home: &Path,
+        operation: impl FnOnce() -> Result<T, String>,
+    ) -> Result<T, String> {
+        let path = Self::settings_write_lock_path_at(home);
+        if let Some(parent) = path.parent() {
+            std::fs::create_dir_all(parent).map_err(|error| error.to_string())?;
+        }
+        let mut options = std::fs::OpenOptions::new();
+        options.read(true).write(true).create(true);
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::OpenOptionsExt;
+            options.mode(0o600);
+        }
+        let lock = options.open(&path).map_err(|error| error.to_string())?;
+        lock.lock().map_err(|error| error.to_string())?;
+        let result = operation();
+        let unlock_result = lock.unlock().map_err(|error| error.to_string());
+        match result {
+            Ok(value) => {
+                unlock_result?;
+                Ok(value)
+            }
+            Err(error) => Err(error),
+        }
+    }
+
+    /// Read a complete settings snapshot for a locked merge. A malformed file
+    /// is never overwritten here: it may be the last recoverable source of the
+    /// persistent salt/workspace identities.
+    fn read_for_locked_merge_at(home: &Path) -> Result<Option<Self>, String> {
+        let path = Self::settings_path_at(home);
+        let raw = match std::fs::read_to_string(&path) {
+            Ok(raw) => raw,
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(None),
+            Err(error) => return Err(error.to_string()),
+        };
+        let mut settings = serde_json::from_str::<Self>(&raw).map_err(|error| {
+            format!(
+                "refusing to overwrite malformed settings {}: {error}",
+                path.display()
+            )
+        })?;
+        settings.normalize();
+        Ok(Some(settings))
+    }
+
     pub fn example_workspace_path_at(home: &Path) -> PathBuf {
         home.join(".markon").join("example")
     }
@@ -530,7 +586,7 @@ impl AppSettings {
             self.web_editor_theme = "follow".to_string();
         }
     }
-    pub(crate) fn save_at(&self, home: &Path) -> Result<(), String> {
+    fn save_at_unlocked(&self, home: &Path) -> Result<(), String> {
         let p = Self::settings_path_at(home);
         if let Some(parent) = p.parent() {
             let _ = std::fs::create_dir_all(parent);
@@ -546,6 +602,10 @@ impl AppSettings {
         Ok(())
     }
 
+    pub(crate) fn save_at(&self, home: &Path) -> Result<(), String> {
+        Self::with_settings_write_lock(home, || self.save_at_unlocked(home))
+    }
+
     /// True when at least one chat provider has an api_key set. Used to
     /// gate the "plaintext key on disk" warning so we don't spam users
     /// who haven't configured chat at all.
@@ -557,6 +617,32 @@ impl AppSettings {
     pub fn save(&self) -> Result<(), String> {
         let home = dirs::home_dir().expect("HOME directory required");
         self.save_at(&home)
+    }
+
+    /// Save GUI-owned preferences while the live server registry remains
+    /// authoritative for workspace membership/flags and its global access-code
+    /// hash. This applies both to an embedded server and to an attached daemon.
+    /// Merge those fields from disk under the cross-process write lock before
+    /// replacing the file, and update this in-memory snapshot to the result.
+    pub fn save_preserving_server_owned_state(&mut self) -> Result<(), String> {
+        let home = dirs::home_dir().expect("HOME directory required");
+        self.save_preserving_server_owned_state_at(&home)
+    }
+
+    pub(crate) fn save_preserving_server_owned_state_at(
+        &mut self,
+        home: &Path,
+    ) -> Result<(), String> {
+        Self::with_settings_write_lock(home, || {
+            if let Some(latest) = Self::read_for_locked_merge_at(home)? {
+                self.workspaces = latest.workspaces;
+                self.collaborator_access_code_hash = latest.collaborator_access_code_hash;
+                if !latest.salt.is_empty() {
+                    self.salt = latest.salt;
+                }
+            }
+            self.save_at_unlocked(home)
+        })
     }
     pub fn to_server_config(&self, port: u16) -> ServerConfig {
         let initial_workspaces: Vec<WorkspaceInit> = self
@@ -622,10 +708,32 @@ impl AppSettings {
     /// GUI both wire this so workspace changes initiated from either side
     /// end up with the same persistent state.
     pub fn persist_hook(settings: Arc<Mutex<AppSettings>>) -> PersistHook {
+        let home = dirs::home_dir().expect("HOME directory required");
+        Self::persist_hook_at(settings, home)
+    }
+
+    fn persist_hook_at(settings: Arc<Mutex<AppSettings>>, home: PathBuf) -> PersistHook {
         Arc::new(move |reg| {
             let mut s = settings.lock().unwrap();
-            s.sync_from_registry(reg);
-            let _ = s.save();
+            let infos = reg.info_list();
+            let result = Self::with_settings_write_lock(&home, || {
+                // A controller GUI may have changed non-workspace preferences
+                // since this server loaded its own snapshot. Start from the
+                // newest complete file, then overlay only the registry-owned
+                // workspace state so neither process loses the other's fields.
+                let mut merged =
+                    Self::read_for_locked_merge_at(&home)?.unwrap_or_else(|| s.clone());
+                if merged.salt.is_empty() {
+                    merged.salt = s.salt.clone();
+                }
+                merged.sync_from_workspace_infos(infos.clone());
+                merged.save_at_unlocked(&home)?;
+                *s = merged;
+                Ok(())
+            });
+            if let Err(error) = result {
+                tracing::warn!(%error, "failed to persist workspace registry");
+            }
         })
     }
 
@@ -650,12 +758,11 @@ impl AppSettings {
         before - self.workspaces.len()
     }
 
-    /// Overwrite `workspaces` with the current registry contents, including
-    /// temporary single-file entries. Their startup retention is controlled by
-    /// `auto_remove_single_file_workspaces`.
-    pub(crate) fn sync_from_registry(&mut self, registry: &WorkspaceRegistry) {
-        self.workspaces = registry
-            .info_list()
+    /// Refresh only the fields owned by the live server registry. Attached GUI
+    /// controllers use this after a remote list call to keep their in-memory
+    /// snapshot aligned without writing the file a second time.
+    pub fn sync_from_workspace_infos(&mut self, infos: Vec<WorkspaceInfo>) {
+        self.workspaces = infos
             .into_iter()
             .map(|info| WorkspaceSettings {
                 path: info.path,
@@ -765,7 +872,7 @@ impl AppSettings {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::workspace::{hash_id, WorkspaceConfig};
+    use crate::workspace::{hash_id, WorkspaceConfig, WorkspaceRegistry};
 
     /// Self-cleaning tempdir; each test gets an isolated `home` so they can
     /// run in parallel without touching the real `HOME` env var.
@@ -1197,7 +1304,7 @@ mod tests {
         });
 
         let mut s = AppSettings::default();
-        s.sync_from_registry(&reg);
+        s.sync_from_workspace_infos(reg.info_list());
 
         assert_eq!(s.workspaces.len(), 2);
         assert_eq!(s.workspaces[0].path, ws_path.to_string_lossy());
@@ -1440,5 +1547,71 @@ mod tests {
         let config = s2.to_server_config(6419);
         assert_eq!(config.advertised_host, "192.168.1.20");
         assert_eq!(config.trusted_hosts, ["https://md.example.com"]);
+    }
+
+    #[test]
+    fn attached_gui_and_daemon_merge_settings_without_lost_updates() {
+        let home = TempHome::new("settings-merge");
+        let old_root = home.path().join("old");
+        let live_root = home.path().join("live");
+        std::fs::create_dir_all(&old_root).unwrap();
+        std::fs::create_dir_all(&live_root).unwrap();
+
+        let base = AppSettings {
+            salt: "persistent-salt".into(),
+            collaborator_access_code_hash: "server-hash".into(),
+            workspaces: vec![WorkspaceSettings {
+                path: old_root.to_string_lossy().into_owned(),
+                flags: WorkspaceFlags::default(),
+                ..WorkspaceSettings::default()
+            }],
+            ..AppSettings::default()
+        };
+        base.save_at(home.path()).unwrap();
+
+        // The daemon owns the live registry and writes it through its persist
+        // hook. Its in-memory settings snapshot starts with the old workspace.
+        let daemon_settings = Arc::new(Mutex::new(base.clone()));
+        let registry = WorkspaceRegistry::new(base.salt.clone());
+        registry.set_persist_hook(AppSettings::persist_hook_at(
+            daemon_settings.clone(),
+            home.path().to_path_buf(),
+        ));
+        let id = registry.add(WorkspaceConfig {
+            path: live_root.clone(),
+            flags: WorkspaceFlags::default(),
+            single_file: None,
+            collaborator_access_code_hash: String::new(),
+            alias: String::new(),
+        });
+
+        // A stale controller snapshot changes a GUI-owned preference. Its save
+        // must retain the daemon's current workspace/global-code/salt fields.
+        let mut gui_settings = base.clone();
+        gui_settings.theme = "dark".into();
+        gui_settings.workspaces = base.workspaces.clone();
+        gui_settings.collaborator_access_code_hash = "stale-hash".into();
+        gui_settings
+            .save_preserving_server_owned_state_at(home.path())
+            .unwrap();
+        let after_gui = AppSettings::load_at(home.path());
+        assert_eq!(after_gui.theme, "dark");
+        assert_eq!(after_gui.salt, "persistent-salt");
+        assert_eq!(after_gui.collaborator_access_code_hash, "server-hash");
+        assert_eq!(after_gui.workspaces.len(), 1);
+        assert_eq!(after_gui.workspaces[0].path, live_root.to_string_lossy());
+
+        // A later daemon mutation starts from the newest file, overlays only
+        // registry state, and therefore cannot roll the GUI preference back.
+        let flags = WorkspaceFlags {
+            enable_search: true,
+            ..WorkspaceFlags::default()
+        };
+        assert!(registry.update_flags(&id, flags));
+        let final_settings = AppSettings::load_at(home.path());
+        assert_eq!(final_settings.theme, "dark");
+        assert_eq!(final_settings.salt, "persistent-salt");
+        assert_eq!(final_settings.workspaces[0].flags, flags);
+        assert_eq!(daemon_settings.lock().unwrap().theme, "dark");
     }
 }

@@ -913,14 +913,17 @@ async fn main() {
 
     if let Some(lock) = ServerLock::read() {
         if lock.is_alive() {
-            let server = RunningServer::new(lock.port, lock.token.clone());
+            let server = RunningServer::from_lock(lock.clone());
             match server
                 .add_or_update_workspace(
                     &ws_root.to_string_lossy(),
                     flags,
+                    false,
+                    None,
                     cli.collaborator_access_code
                         .as_ref()
                         .map(|_| workspace_collaborator_access_code_hash.as_str()),
+                    None,
                 )
                 .await
             {
@@ -933,11 +936,13 @@ async fn main() {
                     } else {
                         lock.host.clone()
                     };
+                    let active_advertised_host =
+                        lock.advertised_host.as_deref().unwrap_or(&advertised_host);
                     let summary = build_workspace_access_summary(
                         &ws_root,
                         flags,
                         &bind_host,
-                        &advertised_host,
+                        active_advertised_host,
                         lock.port,
                         &workspace_id,
                         initial_path.as_deref(),
@@ -946,7 +951,7 @@ async fn main() {
                     print_workspace_access_summary(&summary);
                     if let Some(base_option) = open_browser_target.as_deref() {
                         let base = if base_option == "local" {
-                            server::featured_base_url(&bind_host, &advertised_host, lock.port)
+                            server::featured_base_url(&bind_host, active_advertised_host, lock.port)
                         } else {
                             base_option.to_string()
                         };

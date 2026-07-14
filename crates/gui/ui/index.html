@@ -1038,11 +1038,11 @@
                server or attaches to one another process already started.
                Populated by applyServerMode() from get_server_status.mode. -->
           <div id="server-mode-row" class="pref-row" style="display:none">
-            <span class="pref-label">Server</span>
+            <span class="pref-label" data-i18n="server.mode.label"></span>
             <div class="pref-control" style="font-size:12px;line-height:1.5;max-width:400px">
               <span id="server-mode-text"></span>
-              <button type="button" class="btn" id="server-reconnect-btn" style="margin-left:8px;display:none">Reconnect</button>
-              <button type="button" class="btn" id="server-start-local-btn" style="margin-left:8px;display:none">Start local server</button>
+              <button type="button" class="btn" id="server-reconnect-btn" data-i18n="server.action.reconnect" style="margin-left:8px;display:none"></button>
+              <button type="button" class="btn" id="server-start-local-btn" data-i18n="server.action.start_local" style="margin-left:8px;display:none"></button>
             </div>
           </div>
           <div class="pref-row">
@@ -1511,6 +1511,7 @@
   // Server-level access-code editing is only possible in embedded mode; the
   // control API can't change a remote server's own server-level code.
   let globalServerMode = 'embedded';
+  let globalServerPort = null;
 
   // ── Tab navigation ──────────────────────────────────────────────────────
   function activateTab(name) {
@@ -1877,8 +1878,11 @@
     // runs — there's no control API to change it — so show a note instead of an
     // editor. Per-workspace codes still work (each card has its own editor).
     if (globalServerMode !== 'embedded') {
-      collaboratorWrap.innerHTML =
-        `<span style="font-size:12px;color:var(--text-dim,#888)">Unavailable while connected to an external server</span>`;
+      collaboratorWrap.innerHTML = '';
+      const note = document.createElement('span');
+      note.style.cssText = 'font-size:12px;color:var(--text-2)';
+      note.textContent = T('server.global_code.remote_unavailable');
+      collaboratorWrap.appendChild(note);
       return;
     }
     collaboratorWrap.innerHTML = accessCodeEditorHTML();
@@ -2625,6 +2629,7 @@
     if (document.getElementById('webstyles-list')?.children.length) {
       renderWebStyles();
     }
+    applyServerMode(globalServerMode, globalServerPort);
   }
 
   // Populate language dropdowns from i18n meta.
@@ -2797,14 +2802,18 @@
   function applyServerMode(mode, port) {
     const prev = globalServerMode;
     globalServerMode = mode;
+    globalServerPort = port ?? globalServerPort;
     const row  = document.getElementById('server-mode-row');
     const text = document.getElementById('server-mode-text');
     const reconnectBtn  = document.getElementById('server-reconnect-btn');
     const startLocalBtn = document.getElementById('server-start-local-btn');
     if (!row || !text) return;
     row.style.display = '';
+    const portText = globalServerPort
+      ? ` (${T('server.mode.port').replace('{port}', String(globalServerPort))})`
+      : '';
     if (mode === 'remote') {
-      text.textContent = `Connected to a running markon${port ? ` (port ${port})` : ''}`;
+      text.textContent = `${T('server.mode.remote')}${portText}`;
       text.style.color = '';
       reconnectBtn.style.display  = '';
       // Never offer "start local server" while the remote is still alive:
@@ -2812,12 +2821,12 @@
       // Only the 'disconnected' state may start a local server.
       startLocalBtn.style.display = 'none';
     } else if (mode === 'disconnected') {
-      text.textContent = 'Lost connection to the running markon';
-      text.style.color = '#d93025';
+      text.textContent = T('server.mode.disconnected');
+      text.style.color = 'var(--danger)';
       reconnectBtn.style.display  = '';
       startLocalBtn.style.display = '';
     } else {
-      text.textContent = `Running own server${port ? ` (port ${port})` : ''}`;
+      text.textContent = `${T('server.mode.embedded')}${portText}`;
       text.style.color = '';
       reconnectBtn.style.display  = 'none';
       startLocalBtn.style.display = 'none';

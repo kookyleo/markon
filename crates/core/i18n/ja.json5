@@ -28,6 +28,14 @@
     "advertised.hint": "0.0.0.0 にバインドした際、リンクや QR コードに表示する LAN アドレス。",
     "bind.bind_failed": "サーバ起動に失敗：{error}",
     "bind.save_failed": "保存に失敗：{error}",
+    "server.mode.label": "サーバー",
+    "server.mode.remote": "実行中の Markon に接続しています",
+    "server.mode.embedded": "ローカルサーバーを実行しています",
+    "server.mode.disconnected": "実行中の Markon との接続が切れました",
+    "server.mode.port": "ポート {port}",
+    "server.action.reconnect": "再接続",
+    "server.action.start_local": "ローカルサーバーを起動",
+    "server.global_code.remote_unavailable": "外部サーバーへの接続中はグローバルアクセスコードを設定できません",
 
     // ── General — Appearance ─────────────────────────────────
     "sec.appearance": "外観",
