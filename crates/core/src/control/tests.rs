@@ -125,6 +125,33 @@ async fn control_round_trips_every_method() {
     assert_eq!(same_id, id);
     assert_eq!(h.client.list_workspaces().await.unwrap()[0].flags, flags);
 
+    // set_alias — renames the workspace over the socket.
+    h.client.set_alias(&id, "My Docs").await.unwrap();
+    assert_eq!(h.client.list_workspaces().await.unwrap()[0].alias, "My Docs");
+    // Empty string clears the alias.
+    h.client.set_alias(&id, "").await.unwrap();
+    assert!(h.client.list_workspaces().await.unwrap()[0].alias.is_empty());
+
+    // add_single_file — registers a temporary single-file workspace under the
+    // same parent dir. It coexists with the dir workspace (distinct id) and the
+    // listed entry carries its single_file name and is marked ephemeral.
+    std::fs::write(dir.path().join("note.md"), "# note\n").unwrap();
+    let sf_id = h
+        .client
+        .add_single_file(&dir_path, "note.md", flags, "")
+        .await
+        .unwrap();
+    assert_ne!(sf_id, id);
+    let listed = h.client.list_workspaces().await.unwrap();
+    assert_eq!(listed.len(), 2);
+    let sf = listed.iter().find(|w| w.id == sf_id).unwrap();
+    assert_eq!(sf.single_file.as_deref(), Some("note.md"));
+    assert!(sf.ephemeral);
+    // Detach the single-file entry again so the remainder of the round-trip sees
+    // just the directory workspace.
+    h.client.remove_workspace(&sf_id).await.unwrap();
+    assert_eq!(h.client.list_workspaces().await.unwrap().len(), 1);
+
     // admin_bootstrap — routed through the injected issuer.
     let url = h.client.admin_bootstrap("/workspace/").await.unwrap();
     assert_eq!(url, "http://127.0.0.1:7000/workspace/#nonce=abc");
@@ -161,6 +188,9 @@ async fn control_maps_server_errors() {
         .set_access_code("deadbeef", Some("x"))
         .await
         .unwrap_err();
+    assert!(matches!(err, ControlError::Server(_)), "got {err:?}");
+
+    let err = h.client.set_alias("deadbeef", "x").await.unwrap_err();
     assert!(matches!(err, ControlError::Server(_)), "got {err:?}");
 
     h.teardown().await;

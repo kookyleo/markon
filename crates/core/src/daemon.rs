@@ -20,7 +20,7 @@ use crate::server::{ServerConfig, WorkspaceInit};
 use crate::workspace::WorkspaceFlags;
 
 /// One initial workspace, declarative subset of [`WorkspaceInit`].
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct DaemonWorkspace {
     pub path: PathBuf,
     #[serde(default)]
@@ -54,7 +54,7 @@ impl From<DaemonWorkspace> for WorkspaceInit {
 /// reconstruct its runtime configuration. Fields that are runtime handles in
 /// `ServerConfig` (bound_listener, registry, management_token, admin_bootstraps)
 /// are intentionally absent — `markond` builds them itself.
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct DaemonConfig {
     pub host: String,
     #[serde(default)]
@@ -134,6 +134,169 @@ impl ServerConfig {
             collaborator_access_code_hash: cfg.collaborator_access_code_hash,
             print_collapsed_content: cfg.print_collapsed_content,
         }
+    }
+}
+
+/// Locate the `markond` service binary. A front-end (`markon` CLI, GUI) spawns
+/// it rather than re-exec'ing itself, so the two binaries must be found side by
+/// side.
+///
+/// Search order:
+///   1. sibling of the current executable (the normal install / dev layout,
+///      where the front-end and `markond` land in the same directory), and
+///   2. `target/debug` / `target/release` under the current working directory
+///      (dev fallback for `cargo run`, whose exe may live elsewhere).
+#[cfg(unix)]
+pub fn locate_markond() -> std::io::Result<PathBuf> {
+    const BIN: &str = "markond";
+    let mut checked: Vec<PathBuf> = Vec::new();
+
+    if let Ok(exe) = std::env::current_exe() {
+        if let Some(dir) = exe.parent() {
+            let candidate = dir.join(BIN);
+            if candidate.is_file() {
+                return Ok(candidate);
+            }
+            checked.push(candidate);
+        }
+    }
+
+    for profile in ["debug", "release"] {
+        let candidate = PathBuf::from("target").join(profile).join(BIN);
+        if candidate.is_file() {
+            return Ok(candidate);
+        }
+        checked.push(candidate);
+    }
+
+    Err(std::io::Error::new(
+        std::io::ErrorKind::NotFound,
+        format!(
+            "could not find the '{BIN}' service binary (looked in: {}). \
+             Ensure the markon front-end and markond are installed side by side.",
+            checked
+                .iter()
+                .map(|p| p.display().to_string())
+                .collect::<Vec<_>>()
+                .join(", ")
+        ),
+    ))
+}
+
+/// Write `config` to a fresh `0600` temp file so the collaborator access-code
+/// hash never appears in argv or the environment. Returns the file path;
+/// `markond` deletes it after reading.
+#[cfg(unix)]
+fn write_daemon_config(config: &DaemonConfig) -> std::io::Result<PathBuf> {
+    use std::io::Write;
+    use std::os::unix::fs::OpenOptionsExt;
+
+    let json = serde_json::to_vec(config)
+        .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))?;
+    // Unique, unpredictable name in the per-user temp dir; 0600 from creation so
+    // the secret-bearing file is never briefly world-readable.
+    let name = format!("markond-config-{}-{}.json", std::process::id(), temp_suffix());
+    let path = std::env::temp_dir().join(name);
+    let mut file = std::fs::OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .mode(0o600)
+        .open(&path)?;
+    file.write_all(&json)?;
+    Ok(path)
+}
+
+/// Small non-cryptographic suffix to keep the temp filename unique without a
+/// uuid dependency. Combined with the pid and the 0600 mode this is only about
+/// avoiding collisions, not secrecy (the file contents carry the secret).
+#[cfg(unix)]
+fn temp_suffix() -> u128 {
+    use std::time::{SystemTime, UNIX_EPOCH};
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|d| d.as_nanos())
+        .unwrap_or(0)
+}
+
+/// Bounded readiness poll: wait until the just-spawned daemon publishes its
+/// discovery lock and that lock reports a live control socket, returning it.
+///
+/// This is a *connectability* poll (the lock's liveness probe prefers the
+/// control socket), not a fixed-duration "coordination" sleep — it returns the
+/// instant the socket answers and gives up after the deadline, so a forward that
+/// follows can never race the daemon's bind.
+#[cfg(unix)]
+async fn wait_for_ready() -> Option<crate::workspace::ServerLock> {
+    use std::time::{Duration, Instant};
+    let deadline = Instant::now() + Duration::from_secs(10);
+    loop {
+        if let Some(lock) = crate::workspace::ServerLock::read() {
+            if lock.is_alive() {
+                return Some(lock);
+            }
+        }
+        if Instant::now() >= deadline {
+            return None;
+        }
+        // Short backoff between connectability probes (a retry cadence, not a
+        // guessed "the daemon should be up by now" delay).
+        tokio::time::sleep(Duration::from_millis(20)).await;
+    }
+}
+
+/// Locate `markond`, write `config` to a `0600` temp file (so the collaborator
+/// access-code hash never appears in argv/env), spawn `markond --config <path>`
+/// fully detached, then wait (bounded) for it to become ready and return a
+/// [`RunningServer`](crate::control::RunningServer) connected to its control
+/// socket. This is the one spawn path shared by every front-end.
+///
+/// Ownership of the config file passes to the daemon, which unlinks it after
+/// reading. As a safety net against a daemon that dies before that read (loader/
+/// exec failure, OOM, immediate signal) — which would orphan the secret-bearing
+/// file in the shared temp dir — this helper also removes the file once the
+/// readiness handshake resolves (success or timeout); the removal is a no-op when
+/// the daemon already unlinked it.
+///
+/// Errors: [`ErrorKind::NotFound`](std::io::ErrorKind::NotFound) when `markond`
+/// can't be located, the spawn error's kind when the process can't be launched,
+/// or [`ErrorKind::TimedOut`](std::io::ErrorKind::TimedOut) when the daemon never
+/// became ready. Callers wanting to fall back to running in the foreground can
+/// distinguish a spawn failure from a readiness timeout by the error kind.
+#[cfg(unix)]
+pub async fn spawn_and_connect(
+    config: DaemonConfig,
+) -> std::io::Result<crate::control::RunningServer> {
+    use std::process::Stdio;
+
+    let markond = locate_markond()?;
+    let config_path = write_daemon_config(&config)?;
+    if let Err(e) = std::process::Command::new(&markond)
+        .arg("--config")
+        .arg(&config_path)
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .spawn()
+    {
+        // Spawn failed before the daemon could take ownership of the config file;
+        // remove it so no secret-bearing file is orphaned.
+        let _ = std::fs::remove_file(&config_path);
+        return Err(std::io::Error::new(
+            e.kind(),
+            format!("spawn {}: {e}", markond.display()),
+        ));
+    }
+
+    let ready = wait_for_ready().await;
+    // Bounded cleanup of the 0600 secret file once the handshake resolves either
+    // way (no-op if the daemon already unlinked it after reading).
+    let _ = std::fs::remove_file(&config_path);
+    match ready {
+        Some(lock) => Ok(crate::control::RunningServer::from_lock(&lock)),
+        None => Err(std::io::Error::new(
+            std::io::ErrorKind::TimedOut,
+            "the markon server did not become ready in time",
+        )),
     }
 }
 

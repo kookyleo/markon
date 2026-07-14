@@ -24,13 +24,23 @@ pub enum ControlRequest {
     /// Register a workspace at `path` with `flags`. The collaborator hash is
     /// already salted by the caller; an empty string means "no per-workspace
     /// code" (inherit the server-level code).
+    ///
+    /// `single_file` is `Some(name)` for a temporary Open-With single-file
+    /// workspace rooted at `path` (the file's parent dir) that exposes only
+    /// `name`; `None` for an ordinary directory workspace. It mirrors
+    /// [`crate::workspace::WorkspaceConfig::single_file`] so a front-end can
+    /// register either kind over the socket exactly like the in-process add.
     AddWorkspace {
         path: String,
         flags: WorkspaceFlags,
         collaborator_access_code_hash: String,
+        #[serde(default)]
+        single_file: Option<String>,
     },
     /// Replace a workspace's feature flags wholesale.
     UpdateFlags { id: String, flags: WorkspaceFlags },
+    /// Set (or clear, with an empty string) a workspace's display alias.
+    SetAlias { id: String, alias: String },
     /// Detach a workspace by id.
     RemoveWorkspace { id: String },
     /// Set (`Some(hash)`) or leave (`None`) a workspace's collaborator access

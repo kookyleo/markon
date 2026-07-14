@@ -155,15 +155,18 @@ pub fn dispatch(req: ControlRequest, ctx: &ControlContext) -> ControlResponse {
             path,
             flags,
             collaborator_access_code_hash,
+            single_file,
         } => {
             let path = match expand_and_canonicalize(&path) {
                 Ok(p) => p,
                 Err(e) => return ControlResponse::Err(format!("invalid path: {e}")),
             };
+            // Same call the in-process add makes: `single_file` selects a
+            // temporary single-file workspace vs. an ordinary directory one.
             let id = ctx.registry.add(WorkspaceConfig {
                 path,
                 flags,
-                single_file: None,
+                single_file,
                 collaborator_access_code_hash,
                 alias: String::new(),
             });
@@ -171,6 +174,13 @@ pub fn dispatch(req: ControlRequest, ctx: &ControlContext) -> ControlResponse {
         }
         ControlRequest::UpdateFlags { id, flags } => {
             if ctx.registry.update_flags(&id, flags) {
+                ControlResponse::Ok
+            } else {
+                ControlResponse::Err(format!("no such workspace: {id}"))
+            }
+        }
+        ControlRequest::SetAlias { id, alias } => {
+            if ctx.registry.set_alias(&id, &alias) {
                 ControlResponse::Ok
             } else {
                 ControlResponse::Err(format!("no such workspace: {id}"))

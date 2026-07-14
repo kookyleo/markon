@@ -53,6 +53,9 @@ pub struct RunningServer {
     /// The server's web TCP port (for building browser URLs). `0` when unknown —
     /// e.g. a socket-only handle built directly in a test.
     web_port: u16,
+    /// The server's bind host (from the discovery lock), for building the
+    /// printed / opened URLs. Empty when unknown (a socket-only handle).
+    web_host: String,
 }
 
 impl RunningServer {
@@ -63,6 +66,7 @@ impl RunningServer {
         Self {
             socket,
             web_port: 0,
+            web_host: String::new(),
         }
     }
 
@@ -79,6 +83,7 @@ impl RunningServer {
         Self {
             socket,
             web_port: lock.port,
+            web_host: lock.host.clone(),
         }
     }
 
@@ -99,6 +104,46 @@ impl RunningServer {
     /// handle was built without a known port (see [`RunningServer::new`]).
     pub fn port(&self) -> u16 {
         self.web_port
+    }
+
+    /// The server's bind host, for building browser/QR URLs. Empty if this handle
+    /// was built without a known host (see [`RunningServer::new`]).
+    pub fn host(&self) -> &str {
+        &self.web_host
+    }
+
+    /// Best-effort liveness probe, mirroring
+    /// [`ServerLock::is_alive`](crate::workspace::ServerLock::is_alive): `true`
+    /// while this server still answers on its control socket or its web TCP port.
+    ///
+    /// A respawn uses this to wait for a shut-down daemon to fully release *both*
+    /// before starting a replacement — `shutdown()` returns as soon as the daemon
+    /// ACKs the request, long before it frees the port and removes its discovery
+    /// lock, so the replacement would otherwise race the old process for the fixed
+    /// port (`EADDRINUSE`) or latch the stale lock during readiness polling.
+    pub fn is_reachable(&self) -> bool {
+        // The control socket is the authoritative "server is up" signal; a
+        // same-user connect proves liveness. A missing/stale socket refuses.
+        if !self.socket.as_str().is_empty() && transport::probe(&self.socket) {
+            return true;
+        }
+        // Fall back to the web TCP port so we only report "down" once the port is
+        // actually free — the daemon removes its lock before the listener drops,
+        // so the socket probe alone can't guarantee the port was released.
+        if self.web_port == 0 {
+            return false;
+        }
+        let connect_host = if crate::net::host_is_wildcard_v6(&self.web_host) {
+            "::1"
+        } else if crate::net::host_is_wildcard_v4(&self.web_host) || self.web_host.is_empty() {
+            "127.0.0.1"
+        } else {
+            self.web_host.as_str()
+        };
+        let Ok(addr) = crate::net::bind_socket_addr(connect_host, self.web_port) else {
+            return false;
+        };
+        std::net::TcpStream::connect_timeout(&addr, std::time::Duration::from_millis(500)).is_ok()
     }
 
     async fn call(&self, req: ControlRequest) -> Result<ControlResponse, ControlError> {
@@ -129,6 +174,33 @@ impl RunningServer {
                 path: path.to_string(),
                 flags,
                 collaborator_access_code_hash: collaborator_access_code_hash.to_string(),
+                single_file: None,
+            })
+            .await?
+        {
+            ControlResponse::WorkspaceId(id) => Ok(id),
+            _ => Err(ControlError::Unexpected),
+        }
+    }
+
+    /// Register a temporary single-file (Open-With) workspace, returning its id.
+    /// `path` is the file's parent directory and `single_file` the file name; the
+    /// resulting workspace exposes only that file (plus locally referenced
+    /// assets). Mirrors the in-process single-file add so both backends behave
+    /// identically. The collaborator hash is already salted (empty = inherit).
+    pub async fn add_single_file(
+        &self,
+        path: &str,
+        single_file: &str,
+        flags: WorkspaceFlags,
+        collaborator_access_code_hash: &str,
+    ) -> Result<String, ControlError> {
+        match self
+            .call(ControlRequest::AddWorkspace {
+                path: path.to_string(),
+                flags,
+                collaborator_access_code_hash: collaborator_access_code_hash.to_string(),
+                single_file: Some(single_file.to_string()),
             })
             .await?
         {
@@ -171,6 +243,20 @@ impl RunningServer {
             .call(ControlRequest::UpdateFlags {
                 id: id.to_string(),
                 flags,
+            })
+            .await?
+        {
+            ControlResponse::Ok => Ok(()),
+            _ => Err(ControlError::Unexpected),
+        }
+    }
+
+    /// Set (or clear, with an empty string) a workspace's display alias.
+    pub async fn set_alias(&self, id: &str, alias: &str) -> Result<(), ControlError> {
+        match self
+            .call(ControlRequest::SetAlias {
+                id: id.to_string(),
+                alias: alias.to_string(),
             })
             .await?
         {

@@ -749,114 +749,6 @@ async fn forward_to_running_server(
     }
 }
 
-/// After spawning the daemon, wait for it to publish its discovery lock and for
-/// its control socket to accept a connection, returning the live lock.
-///
-/// This is a bounded *connectability* poll: it returns the instant the socket
-/// answers and gives up after a deadline. It is deliberately NOT a fixed-duration
-/// "coordination" sleep — a live connect is the real readiness signal, so the
-/// forward that follows can never race the daemon's bind.
-#[cfg(unix)]
-async fn wait_for_running_server() -> Option<ServerLock> {
-    use std::time::{Duration, Instant};
-    let deadline = Instant::now() + Duration::from_secs(10);
-    loop {
-        if let Some(lock) = ServerLock::read() {
-            if lock.is_alive() {
-                return Some(lock);
-            }
-        }
-        if Instant::now() >= deadline {
-            return None;
-        }
-        // Short backoff between connectability probes (a retry cadence, not a
-        // guessed "the daemon should be up by now" delay).
-        tokio::time::sleep(Duration::from_millis(20)).await;
-    }
-}
-
-/// Locate the `markond` service binary. The CLI spawns it rather than
-/// re-exec'ing itself, so the two binaries must be found side by side.
-///
-/// Search order:
-///   1. sibling of the current executable (the normal install / dev layout,
-///      where `markon` and `markond` land in the same directory), and
-///   2. `target/debug` / `target/release` under the current working directory
-///      (dev fallback for `cargo run -p markon-cli`, whose exe may live elsewhere).
-#[cfg(unix)]
-fn locate_markond() -> Result<PathBuf, String> {
-    const BIN: &str = "markond";
-    let mut checked: Vec<PathBuf> = Vec::new();
-
-    if let Ok(exe) = std::env::current_exe() {
-        if let Some(dir) = exe.parent() {
-            let candidate = dir.join(BIN);
-            if candidate.is_file() {
-                return Ok(candidate);
-            }
-            checked.push(candidate);
-        }
-    }
-
-    for profile in ["debug", "release"] {
-        let candidate = PathBuf::from("target").join(profile).join(BIN);
-        if candidate.is_file() {
-            return Ok(candidate);
-        }
-        checked.push(candidate);
-    }
-
-    Err(format!(
-        "could not find the '{BIN}' service binary (looked in: {}). \
-         Ensure markon and markond are installed side by side.",
-        checked
-            .iter()
-            .map(|p| p.display().to_string())
-            .collect::<Vec<_>>()
-            .join(", ")
-    ))
-}
-
-/// Write `config` to a fresh `0600` temp file so the collaborator access-code
-/// hash never appears in argv or the environment. Returns the file path;
-/// `markond` deletes it after reading.
-#[cfg(unix)]
-fn write_daemon_config(config: &DaemonConfig) -> Result<PathBuf, String> {
-    use std::io::Write;
-    use std::os::unix::fs::OpenOptionsExt;
-
-    let json = serde_json::to_vec(config).map_err(|e| format!("serialize daemon config: {e}"))?;
-    // Unique, unpredictable name in the per-user temp dir; 0600 from creation
-    // so the secret-bearing file is never briefly world-readable.
-    let name = format!(
-        "markond-config-{}-{}.json",
-        std::process::id(),
-        uuid_like_suffix()
-    );
-    let path = std::env::temp_dir().join(name);
-    let mut file = std::fs::OpenOptions::new()
-        .write(true)
-        .create_new(true)
-        .mode(0o600)
-        .open(&path)
-        .map_err(|e| format!("create daemon config file {}: {e}", path.display()))?;
-    file.write_all(&json)
-        .map_err(|e| format!("write daemon config file: {e}"))?;
-    Ok(path)
-}
-
-/// Small non-cryptographic suffix to keep the temp filename unique without a
-/// uuid dependency. Combined with the pid and the 0600 mode this is only about
-/// avoiding collisions, not secrecy (the file contents carry the secret).
-#[cfg(unix)]
-fn uuid_like_suffix() -> u128 {
-    use std::time::{SystemTime, UNIX_EPOCH};
-    SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .map(|d| d.as_nanos())
-        .unwrap_or(0)
-}
-
 /// Project one resolved [`WorkspaceInit`] onto its declarative
 /// [`DaemonWorkspace`] wire form for the config handoff.
 #[cfg(unix)]
@@ -868,38 +760,6 @@ fn workspace_init_to_daemon(w: &WorkspaceInit) -> DaemonWorkspace {
         single_file: w.single_file.clone(),
         collaborator_access_code_hash: w.collaborator_access_code_hash.clone(),
         alias: w.alias.clone(),
-    }
-}
-
-/// Locate `markond`, write `config` to a 0600 file, and spawn
-/// `markond --config <path>` fully detached. Ownership of the config file
-/// passes to the daemon, which deletes it after reading; on spawn failure the
-/// CLI removes it so no secret-bearing file is orphaned.
-///
-/// Returns the config file path on success. The daemon normally unlinks it right
-/// after reading, but if it dies before that read (loader/exec failure, OOM,
-/// immediate signal) the file would linger in the shared temp dir. The caller
-/// therefore keeps the path and removes it as a bounded safety net once the
-/// readiness handshake resolves (success or timeout).
-#[cfg(unix)]
-fn spawn_markond(config: &DaemonConfig) -> Result<PathBuf, String> {
-    use std::process::Stdio;
-
-    let markond = locate_markond()?;
-    let config_path = write_daemon_config(config)?;
-    let spawn_result = std::process::Command::new(&markond)
-        .arg("--config")
-        .arg(&config_path)
-        .stdin(Stdio::null())
-        .stdout(Stdio::null())
-        .stderr(Stdio::null())
-        .spawn();
-    match spawn_result {
-        Ok(_) => Ok(config_path),
-        Err(e) => {
-            let _ = std::fs::remove_file(&config_path);
-            Err(format!("spawn {}: {e}", markond.display()))
-        }
     }
 }
 
@@ -1193,47 +1053,40 @@ async fn main() {
             print_collapsed_content,
         };
 
-        match spawn_markond(&daemon_config) {
-            Ok(config_path) => {
-                println!("Starting Markon server in background...");
-                // Readiness handshake: markond binds TCP + the control socket and
-                // writes its discovery lock asynchronously. Poll for the lock and
-                // the socket's connectability (bounded), then drive the workspace
-                // in over the socket — exactly the same forward the
-                // "already-running" path takes above, so output is identical.
-                let ready = wait_for_running_server().await;
-                // Bounded cleanup: the daemon unlinks its config after reading,
-                // but if it died before that read the 0600 secret file would be
-                // orphaned in the shared temp dir. Remove it once the handshake
-                // resolves either way (no-op if the daemon already unlinked it).
-                let _ = std::fs::remove_file(&config_path);
-                match ready {
-                    Some(lock) => {
-                        let server = RunningServer::from_lock(&lock);
-                        forward_to_running_server(
-                            &server,
-                            &lock.host,
-                            lock.port,
-                            &ForwardPlan {
-                                ws_root: &ws_root,
-                                flags,
-                                initial_path: initial_path.as_deref(),
-                                collaborator_hash_if_set: cli
-                                    .collaborator_access_code
-                                    .as_ref()
-                                    .map(|_| workspace_collaborator_access_code_hash.as_str()),
-                                configured_host: &configured_host,
-                                advertised_host: &advertised_host,
-                                entry: cli.entry.as_deref(),
-                                open_browser_target: open_browser_target.as_deref(),
-                            },
-                        )
-                        .await;
-                    }
-                    None => {
-                        eprintln!("Error: the Markon server did not become ready in time.");
-                    }
-                }
+        println!("Starting Markon server in background...");
+        // Spawn markond and drive the explicitly-opened workspace in over the
+        // control socket — exactly the same forward the "already-running" path
+        // takes above, so output is identical. The shared helper writes the 0600
+        // config, spawns detached, waits (bounded) for readiness, and hands back
+        // a connected handle (with the daemon's bind host/port for URL building).
+        match markon_core::daemon::spawn_and_connect(daemon_config).await {
+            Ok(server) => {
+                forward_to_running_server(
+                    &server,
+                    server.host(),
+                    server.port(),
+                    &ForwardPlan {
+                        ws_root: &ws_root,
+                        flags,
+                        initial_path: initial_path.as_deref(),
+                        collaborator_hash_if_set: cli
+                            .collaborator_access_code
+                            .as_ref()
+                            .map(|_| workspace_collaborator_access_code_hash.as_str()),
+                        configured_host: &configured_host,
+                        advertised_host: &advertised_host,
+                        entry: cli.entry.as_deref(),
+                        open_browser_target: open_browser_target.as_deref(),
+                    },
+                )
+                .await;
+                return;
+            }
+            // Readiness timeout is a hard error (the daemon spawned but never came
+            // up); any other error means we couldn't spawn it at all, so fall back
+            // to running the server in the foreground.
+            Err(e) if e.kind() == std::io::ErrorKind::TimedOut => {
+                eprintln!("Error: the Markon server did not become ready in time.");
                 return;
             }
             Err(e) => {
