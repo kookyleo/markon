@@ -36,6 +36,11 @@ docs/.vitepress/cache/
 # them from the local build, so tracking any of them only adds noise.
 crates/gui/gen/schemas/*-schema.json
 
+# The markond service binary is staged here (named with the target triple) by
+# the release workflow before `tauri build` bundles it as an externalBin
+# sidecar. It's a per-target build artifact, never committed.
+crates/gui/binaries/
+
 # Claude Code local overrides
 .claude/
 

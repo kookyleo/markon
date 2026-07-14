@@ -12,6 +12,8 @@ $script:StartedProcesses = @()
 $script:LockPath = Join-Path $env:USERPROFILE ".markon\server.lock"
 $script:SettingsPath = Join-Path $env:USERPROFILE ".markon\settings.json"
 $script:SettingsBackup = $null
+$script:CliExe = Join-Path $RepoRoot "target\debug\markon.exe"
+$script:ServiceExe = Join-Path $RepoRoot "target\debug\markond.exe"
 
 function Add-Result($Name, $Status, $Detail) {
     $script:Results += [pscustomobject]@{
@@ -49,11 +51,31 @@ function Assert-True($Condition, $Message) {
 }
 
 function Stop-MarkonProcesses {
-    Get-Process markon, markon-gui -ErrorAction SilentlyContinue | ForEach-Object {
+    # markond is the background service the CLI/GUI now spawn; kill it too so a
+    # previous run's daemon never lingers holding the port or the control pipe.
+    Get-Process markon, markon-gui, markond -ErrorAction SilentlyContinue | ForEach-Object {
         Stop-Process -Id $_.Id -Force -ErrorAction SilentlyContinue
     }
     Start-Sleep -Milliseconds 500
     Remove-Item $script:LockPath -Force -ErrorAction SilentlyContinue
+}
+
+# Run a `markon` CLI subcommand to completion and fail on a non-zero exit. The
+# management subcommands (ls / set / detach / shutdown) speak the control socket
+# — a Windows named pipe — so a clean exit is itself an end-to-end pipe check.
+function Invoke-MarkonCli($CliArgs, $WorkDir = $null) {
+    $params = @{
+        FilePath = $script:CliExe
+        ArgumentList = $CliArgs
+        Wait = $true
+        PassThru = $true
+        NoNewWindow = $true
+    }
+    if ($WorkDir) { $params["WorkingDirectory"] = $WorkDir }
+    $p = Start-Process @params
+    if ($p.ExitCode -ne 0) {
+        throw ("markon " + ($CliArgs -join ' ') + " failed with exit code " + $p.ExitCode)
+    }
 }
 
 function Wait-Until($Name, [scriptblock]$Predicate, [int]$TimeoutSec = 30) {
@@ -148,8 +170,10 @@ function Receive-WsText($Ws, [int]$TimeoutSec = 10) {
     return [System.Text.Encoding]::UTF8.GetString($ms.ToArray())
 }
 
-function Test-HttpSurface($Base, $Token, $ExpectedEphemeral) {
-    $workspaces = ConvertTo-Array (Invoke-Json "GET" "$Base/api/workspaces" $Token)
+function Test-HttpSurface($Base, $ExpectedEphemeral) {
+    # The web/data plane is tokenless: management moved to the control socket
+    # (named pipe on Windows), so nothing here carries X-Markon-Token anymore.
+    $workspaces = ConvertTo-Array (Invoke-Json "GET" "$Base/api/workspaces" $null)
     Assert-True ($workspaces.Count -ge 1) "No workspaces returned"
     $ws = $workspaces | Select-Object -First 1
     $id = $ws.id
@@ -179,7 +203,7 @@ graph TD; A-->B;
 ```
 '@
     }
-    $preview = Invoke-Json "POST" "$Base/api/preview" $Token $previewBody
+    $preview = Invoke-Json "POST" "$Base/api/preview" $null $previewBody
     Assert-True ($preview.html -match "Preview") "Preview API did not render markdown"
     Assert-True ($preview.html -match "markon-diagram") "Preview API did not render Mermaid server-side"
     Assert-True ($preview.html -match "<svg") "Preview API Mermaid output did not include SVG"
@@ -191,11 +215,11 @@ graph TD; A-->B;
 
     if (-not $ExpectedEphemeral) {
         Wait-Until "search index" {
-            $state = ConvertTo-Array (Invoke-Json "GET" "$Base/api/workspaces" $Token)
+            $state = ConvertTo-Array (Invoke-Json "GET" "$Base/api/workspaces" $null)
             return (($state | Where-Object { $_.id -eq $id }).search_ready -eq $true)
         } 45
         $searchUrl = "$Base/_/$id/search?q=alpha"
-        $search = ConvertTo-Array (Invoke-Json "GET" $searchUrl $Token)
+        $search = ConvertTo-Array (Invoke-Json "GET" $searchUrl $null)
         Assert-True ($search.Count -ge 1) "Search did not return README.md hit"
 
         $saveBody = @{
@@ -203,41 +227,15 @@ graph TD; A-->B;
             file_path = "README.md"
             content = "# Markon Windows Smoke`n`nupdated alpha beta gamma"
         }
-        $save = Invoke-Json "POST" "$Base/api/save" $Token $saveBody
+        $save = Invoke-Json "POST" "$Base/api/save" $null $saveBody
         Assert-True ($save.success -eq $true) "Save API failed: $($save.message)"
         $updated = Invoke-Text "$Base/$id/README.md"
         Assert-True ($updated -match "updated alpha beta gamma") "Saved markdown content not served"
 
-        $extraDir = Join-Path ([System.IO.Path]::GetTempPath()) ("markon-extra-" + [guid]::NewGuid().ToString("N"))
-        New-Item -ItemType Directory -Path $extraDir -Force | Out-Null
-        Set-Content -Path (Join-Path $extraDir "extra.md") -Value "# extra" -Encoding UTF8
-        $addBody = @{
-            path = $extraDir
-            enable_search = $false
-            enable_viewed = $false
-            enable_edit = $false
-            enable_live = $false
-            enable_chat = $false
-            shared_annotation = $false
-        }
-        $added = Invoke-Json "POST" "$Base/api/workspace" $Token $addBody
-        Assert-True ($added.id) "Management add workspace returned no id"
-        $updateBody = @{
-            enable_search = $true
-            enable_viewed = $true
-            enable_edit = $true
-            enable_live = $true
-            enable_chat = $false
-            shared_annotation = $true
-        }
-        Invoke-Json "PUT" "$Base/api/workspace/$($added.id)" $Token $updateBody | Out-Null
-        $afterUpdate = ConvertTo-Array (Invoke-Json "GET" "$Base/api/workspaces" $Token)
-        $updatedWs = $afterUpdate | Where-Object { $_.id -eq $added.id } | Select-Object -First 1
-        Assert-True ($updatedWs.enable_edit -eq $true) "Management update workspace did not persist flags"
-        Invoke-Json "DELETE" "$Base/api/workspace/$($added.id)" $Token | Out-Null
-        $afterDelete = ConvertTo-Array (Invoke-Json "GET" "$Base/api/workspaces" $Token)
-        Assert-True (-not ($afterDelete | Where-Object { $_.id -eq $added.id })) "Management delete workspace failed"
-        Remove-Item $extraDir -Recurse -Force -ErrorAction SilentlyContinue
+        # NOTE: add/update/remove-workspace management no longer lives on the web
+        # plane — it moved to the control socket. Invoke-CliSmoke exercises it
+        # through the `markon` ls/set/shutdown subcommands (which speak the named
+        # pipe), so it isn't re-tested here.
 
         $wsClient = [System.Net.WebSockets.ClientWebSocket]::new()
         $wsClient.ConnectAsync([Uri]"ws://127.0.0.1:$($Base.Split(':')[-1])/_/ws", [System.Threading.CancellationToken]::None).GetAwaiter().GetResult()
@@ -274,27 +272,45 @@ function Invoke-CliSmoke {
     Set-Content -Path (Join-Path $workspace "README.md") -Value "# Markon Windows Smoke`n`nalpha beta gamma" -Encoding UTF8
     Set-Content -Path (Join-Path $workspace "notes.txt") -Value "not indexed" -Encoding UTF8
 
-    $cli = Join-Path $RepoRoot "target\debug\markon.exe"
-    Assert-True (Test-Path $cli) "CLI binary missing: $cli"
+    Assert-True (Test-Path $script:CliExe) "CLI binary missing: $script:CliExe"
+    # markond must sit beside markon.exe — that's how locate_markond() finds the
+    # service to spawn (and how the GUI bundles it as an externalBin sidecar).
+    Assert-True (Test-Path $script:ServiceExe) "Service binary missing beside CLI: $script:ServiceExe"
 
     Stop-MarkonProcesses
-    $args = @(
-        "--daemon-internal",
-        "--port", "0",
-        "--host", "127.0.0.1",
-        "--enable-search",
-        "--enable-viewed",
-        "--enable-edit",
-        "--enable-live",
-        "--shared-annotation"
-    )
-    $p = Start-Process -FilePath $cli -ArgumentList $args -WorkingDirectory $workspace -WindowStyle Hidden -PassThru
-    $script:StartedProcesses += $p
+    # `markon <dir>` locates markond.exe beside it, spawns it windowless with the
+    # config on a per-user temp file, waits for readiness, forwards the workspace
+    # over the control named pipe, then returns — markond keeps serving. No
+    # --daemon-internal, no management token: those are gone with the split.
+    Invoke-MarkonCli @("--port", "0", "--host", "127.0.0.1", $workspace) $workspace
+
     $lock = Wait-MarkonLock 30
     $base = "http://127.0.0.1:$($lock.port)"
-    Test-HttpSurface $base $lock.token $false
-    Invoke-Json "POST" "$base/api/shutdown" $lock.token | Out-Null
-    Wait-Until "CLI server exit" { return $p.HasExited } 15
+
+    # Turn on the features the data-plane assertions rely on, over the control
+    # pipe (exercises its write path). Targets are 1-based indices from `markon ls`.
+    foreach ($feature in @("search", "viewed", "edit", "live", "shared")) {
+        Invoke-MarkonCli @("set", "1", $feature, "on")
+    }
+    # Listing round-trips the pipe read path.
+    Invoke-MarkonCli @("ls", "--format", "table")
+
+    Test-HttpSurface $base $false
+
+    # Shut the service down over the pipe, then confirm the web port is released.
+    Invoke-MarkonCli @("shutdown")
+    Wait-Until "service shutdown" {
+        try {
+            $client = New-Object System.Net.Sockets.TcpClient
+            $iar = $client.BeginConnect("127.0.0.1", [int]$lock.port, $null, $null)
+            $ok = $iar.AsyncWaitHandle.WaitOne(300, $false)
+            if ($ok) { $client.EndConnect($iar) }
+            $client.Close()
+            return (-not $ok)
+        } catch {
+            return $true
+        }
+    } 15
     Remove-Item $workspace -Recurse -Force -ErrorAction SilentlyContinue
 }
 
@@ -337,7 +353,7 @@ function Invoke-GuiSmoke {
         schtasks.exe /Run /TN $task | Out-Null
         $lock = Wait-MarkonLock 45
         $base = "http://127.0.0.1:$($lock.port)"
-        Test-HttpSurface $base $lock.token $true
+        Test-HttpSurface $base $true
         Test-ContextMenuRegistry $GuiExe
     } finally {
         schtasks.exe /Delete /TN $task /F 2>$null | Out-Null

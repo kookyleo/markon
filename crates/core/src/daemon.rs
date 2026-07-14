@@ -146,14 +146,16 @@ impl ServerConfig {
 ///      where the front-end and `markond` land in the same directory), and
 ///   2. `target/debug` / `target/release` under the current working directory
 ///      (dev fallback for `cargo run`, whose exe may live elsewhere).
-#[cfg(unix)]
 pub fn locate_markond() -> std::io::Result<PathBuf> {
-    const BIN: &str = "markond";
+    // `EXE_SUFFIX` is `.exe` on Windows and empty elsewhere, so the same lookup
+    // finds `markond` on unix and `markond.exe` on Windows.
+    let bin = format!("markond{}", std::env::consts::EXE_SUFFIX);
+    let bin = bin.as_str();
     let mut checked: Vec<PathBuf> = Vec::new();
 
     if let Ok(exe) = std::env::current_exe() {
         if let Some(dir) = exe.parent() {
-            let candidate = dir.join(BIN);
+            let candidate = dir.join(bin);
             if candidate.is_file() {
                 return Ok(candidate);
             }
@@ -162,7 +164,7 @@ pub fn locate_markond() -> std::io::Result<PathBuf> {
     }
 
     for profile in ["debug", "release"] {
-        let candidate = PathBuf::from("target").join(profile).join(BIN);
+        let candidate = PathBuf::from("target").join(profile).join(bin);
         if candidate.is_file() {
             return Ok(candidate);
         }
@@ -172,7 +174,7 @@ pub fn locate_markond() -> std::io::Result<PathBuf> {
     Err(std::io::Error::new(
         std::io::ErrorKind::NotFound,
         format!(
-            "could not find the '{BIN}' service binary (looked in: {}). \
+            "could not find the '{bin}' service binary (looked in: {}). \
              Ensure the markon front-end and markond are installed side by side.",
             checked
                 .iter()
@@ -186,22 +188,27 @@ pub fn locate_markond() -> std::io::Result<PathBuf> {
 /// Write `config` to a fresh `0600` temp file so the collaborator access-code
 /// hash never appears in argv or the environment. Returns the file path;
 /// `markond` deletes it after reading.
-#[cfg(unix)]
 fn write_daemon_config(config: &DaemonConfig) -> std::io::Result<PathBuf> {
     use std::io::Write;
-    use std::os::unix::fs::OpenOptionsExt;
 
     let json = serde_json::to_vec(config)
         .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))?;
-    // Unique, unpredictable name in the per-user temp dir; 0600 from creation so
-    // the secret-bearing file is never briefly world-readable.
+    // Unique, unpredictable name in the per-user temp dir.
     let name = format!("markond-config-{}-{}.json", std::process::id(), temp_suffix());
     let path = std::env::temp_dir().join(name);
-    let mut file = std::fs::OpenOptions::new()
-        .write(true)
-        .create_new(true)
-        .mode(0o600)
-        .open(&path)?;
+
+    let mut options = std::fs::OpenOptions::new();
+    options.write(true).create_new(true);
+    // On unix the shared temp dir is world-traversable, so set 0600 from creation
+    // — the secret-bearing file is never briefly world-readable. On Windows
+    // `temp_dir()` resolves to the per-user `%TEMP%`, whose default ACL already
+    // restricts the file to the owning user, so `create_new` alone is enough.
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::OpenOptionsExt;
+        options.mode(0o600);
+    }
+    let mut file = options.open(&path)?;
     file.write_all(&json)?;
     Ok(path)
 }
@@ -209,7 +216,6 @@ fn write_daemon_config(config: &DaemonConfig) -> std::io::Result<PathBuf> {
 /// Small non-cryptographic suffix to keep the temp filename unique without a
 /// uuid dependency. Combined with the pid and the 0600 mode this is only about
 /// avoiding collisions, not secrecy (the file contents carry the secret).
-#[cfg(unix)]
 fn temp_suffix() -> u128 {
     use std::time::{SystemTime, UNIX_EPOCH};
     SystemTime::now()
@@ -225,7 +231,6 @@ fn temp_suffix() -> u128 {
 /// control socket), not a fixed-duration "coordination" sleep — it returns the
 /// instant the socket answers and gives up after the deadline, so a forward that
 /// follows can never race the daemon's bind.
-#[cfg(unix)]
 async fn wait_for_ready() -> Option<crate::workspace::ServerLock> {
     use std::time::{Duration, Instant};
     let deadline = Instant::now() + Duration::from_secs(10);
@@ -262,7 +267,6 @@ async fn wait_for_ready() -> Option<crate::workspace::ServerLock> {
 /// or [`ErrorKind::TimedOut`](std::io::ErrorKind::TimedOut) when the daemon never
 /// became ready. Callers wanting to fall back to running in the foreground can
 /// distinguish a spawn failure from a readiness timeout by the error kind.
-#[cfg(unix)]
 pub async fn spawn_and_connect(
     config: DaemonConfig,
 ) -> std::io::Result<crate::control::RunningServer> {
@@ -270,14 +274,27 @@ pub async fn spawn_and_connect(
 
     let markond = locate_markond()?;
     let config_path = write_daemon_config(&config)?;
-    if let Err(e) = std::process::Command::new(&markond)
+
+    let mut command = std::process::Command::new(&markond);
+    command
         .arg("--config")
         .arg(&config_path)
         .stdin(Stdio::null())
         .stdout(Stdio::null())
-        .stderr(Stdio::null())
-        .spawn()
+        .stderr(Stdio::null());
+    // markond is a console binary; when a GUI (which has no console) spawns it,
+    // Windows would otherwise allocate a fresh console window. CREATE_NO_WINDOW
+    // runs it windowless. Lifecycle independence needs nothing extra: a Windows
+    // child is not tied to the parent's lifetime, so not waiting on it already
+    // lets it outlive the front-end.
+    #[cfg(windows)]
     {
+        use std::os::windows::process::CommandExt;
+        const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+        command.creation_flags(CREATE_NO_WINDOW);
+    }
+
+    if let Err(e) = command.spawn() {
         // Spawn failed before the daemon could take ownership of the config file;
         // remove it so no secret-bearing file is orphaned.
         let _ = std::fs::remove_file(&config_path);

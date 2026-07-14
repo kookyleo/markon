@@ -13,7 +13,7 @@ Markon 的用户数据**独立于进程**,持久在 `~/.markon/`:
 |---|---|---|
 | `settings.json` | 配置、workspace 列表、**salt** | — |
 | `annotation.sqlite` | 批注、已读状态、chat 线程 | 见 §2 / §4 |
-| `server.lock` | 运行中 daemon 的端口 + 管理 token | — |
+| `server.lock` | 运行中服务的 Web 端口 + 控制套接字路径 + 绑定 host | — |
 
 进程(CLI / GUI / daemon)重启、版本升级,都**不得**使既有 workspace URL 失效,
 也**不得**丢失上述数据。下面四条是保证这一点的不变量。
@@ -56,9 +56,10 @@ Markon 的用户数据**独立于进程**,持久在 `~/.markon/`:
   这样不会占用用户文件名空间,也能在视觉上明确区分“内容 URL”和“工具 URL”。
 - **全局系统空间**:`/_/...`。静态资源、unlock、dev reload 等不属于某个文件路径的系统能力
   放在这里。`/_/ws/{workspace_id}` 仅保留为工作区配置变更通知通道,不是协作数据通道。
-- **JSON / 管理 API**:`/api/...`。CLI/GUI 管理、保存、chat agent 等程序接口保持在 API
-  命名空间内,并由各自 capability token / admin session / same-origin gate 控制。TCP 来源地址
-  只用于限流与缩小原生管理 API 的暴露面,不得作为管理员身份。
+- **JSON / 数据 API**:`/api/...`。保存、chat agent、preview 等**面向浏览器**的程序接口保持在
+  API 命名空间内,并由各自 capability token / admin session / same-origin gate 控制。
+  **workspace 管理操作(增删改 workspace、改别名、设访问码、shutdown)已整体移出 TCP**,改走
+  本地控制套接字(见 [D-2](#d-2-管理面移出-tcp走本地控制套接字2026-07)),TCP 上不再暴露任何管理端点。
 - **废弃路径**:`/{workspace_id}/_/...` 与旧 `/search?ws=...` 不提供兼容;
   旧协作通道 `/_/ws` 同样不提供兼容;
   这类路径要么按用户文件路径处理,要么返回 404。新链接必须使用 `/_/{workspace_id}/...`。
@@ -125,8 +126,8 @@ Markon 的用户数据**独立于进程**,持久在 `~/.markon/`:
 **正交的应用层控制(markon 确实提供)**:
 - **显式 capability 分权**(授权层):浏览器默认是 Viewer / Collaborator;只有持有短期、
   `HttpOnly` Admin session 的页面才能改功能开关 / 别名、执行 git commit/checkout、增删文件。
-  TCP peer 即使是 loopback 也不会自动成为管理员。原生 CLI / GUI 使用仅存于 0600 lock file /
-  原生进程内的 management token,不把它注入页面。
+  TCP peer 即使是 loopback 也不会自动成为管理员。原生 CLI / GUI 的管理员身份不再依赖任何 token,
+  而是由「连到本地控制套接字」这一事实本身赋予(套接字的文件权限 / ACL 即认证,见 [D-2](#d-2-管理面移出-tcp走本地控制套接字2026-07))。
 - **管理员 bootstrap**:`markon admin open` 通过 URL fragment 传递 256-bit、60 秒、一次性 nonce;
   `markon admin code` 提供 5 分钟、最多 5 次尝试的手动配对码。两者只兑换同一种 12 小时
   Admin session,服务重启即失效。fragment 在发起兑换前从地址栏 / 历史中清除。
@@ -140,3 +141,44 @@ Markon 的用户数据**独立于进程**,持久在 `~/.markon/`:
 
 **按访问方式的推荐**:`localhost` → 无需任何加密;内网 IP 自用 → Tailscale(或纯本地、
 零依赖时用可选自签名);公网域名 → 反代 + Let's Encrypt。
+
+### D-2. 管理面移出 TCP,走本地控制套接字(2026-07)
+
+**决策:把 core 拆成一个独立的服务进程 `markond`,`markon`(CLI)与 `markon-gui` 都退化为
+「运行于本机的特权客户端」;两者不再内嵌 core,只通过一条本地控制套接字驱动服务。管理 /
+管理员操作整体离开 TCP。**
+
+**进程与两个平面**:
+- **`markond`** = 唯一持有 core 的服务进程(`crates/markond`)。它同时监听两个 listener:
+  - **控制面(control plane)**:一条本地套接字 —— unix 上是 `~/.markon/control.sock`(0600),
+    Windows 上是命名管道(named pipe),由 `interprocess` crate 统一抽象。协议是**长度前缀分帧的
+    JSON**(`tokio_util::codec::LengthDelimitedCodec` + serde_json),**不是 HTTP**。
+  - **数据面(data plane)**:TCP + HTTP/axum,照旧服务浏览器 / 局域网(§1.1 的 URL 契约、
+    访问码门禁、Host/Origin 边界都在这一面)。
+- **`markon` / `markon-gui`** = 平级的特权本地壳子。二者都能在没有服务时**拉起** `markond`,
+  也能**挂接**到已在运行的实例;服务是**独立生命周期**的,壳子退出不会停掉它。
+
+**权限 = 你从哪个 listener 进来**。连到控制套接字 ⇒ 特权管理员客户端,**无需任何 token**——
+套接字的文件权限(unix 0600 / Windows 命名管道 ACL)本身就是认证。从 TCP 进来 ⇒ 公开浏览器,
+继续受访问码 / same-origin / Host allowlist 约束。原先那套 `X-Markon-Token` + `require_local_and_token`
+的 loopback 管理端点因此**整体删除**。
+
+**理由**:
+- 管理面一旦离开 TCP,DNS rebinding / loopback+token 泄露 / 原生管理 API 暴露面这一整类攻击面
+  对控制面**直接消失**——它根本不在网络上。数据面只保留浏览器本就需要的那些端点。
+- 「壳子 / 服务」分离让 CLI 与 GUI 共享同一个后台服务与同一份 workspace 注册表:一处打开、
+  两处可见,不再各起一个 server 抢机器锁。
+- 权限绑定在「通信通道」而非「请求内容」上,判定简单且不可伪造:没有本机套接字访问权,就拿不到
+  管理员身份。
+
+**机密传递**:壳子拉起 `markond` 时,把含 salt / 协作者访问码 hash 的 `DaemonConfig` 写进一个
+**0600 临时文件**(Windows 靠 per-user `%TEMP%` 的 ACL),以 `markond --config <path>` 传入;
+机密**绝不进 argv / 环境变量**。`markond` 读取后即删除该文件,壳子在就绪握手结束后再兜底删一次。
+
+**打包**:GUI 通过 Tauri 的 `externalBin`(sidecar)把 `markond` 与自身打进同一个 app bundle,
+放在主程序旁边;`daemon::locate_markond` 以「与当前可执行文件同目录」为首选查找位置,因此 CLI 与
+GUI 都能就近找到并拉起服务。
+
+**跨平台边界**:控制套接字与拉起逻辑(`daemon::spawn_and_connect`)都已跨平台;Windows 的命名管道
+路径与拉起行为需在真实 Windows 上跑 `scripts/win-test/full-smoke.ps1` 验证(该脚本通过 `markon`
+的 `ls` / `set` / `shutdown` 子命令间接压测命名管道)。

@@ -159,9 +159,8 @@ async fn forward_persisted(remote: &RunningServer, settings: &Arc<Mutex<AppSetti
 }
 
 /// Spawn a fresh `markond` from the current settings (workspaces baked into the
-/// config). Unix-only: the service-split spawn path
-/// ([`markon_core::daemon::spawn_and_connect`]) is `#[cfg(unix)]`.
-#[cfg(unix)]
+/// config), on every platform ([`markon_core::daemon::spawn_and_connect`] is
+/// cross-platform).
 async fn spawn_service(settings: &Arc<Mutex<AppSettings>>) -> ServiceConnection {
     let config = {
         let s = settings.lock().unwrap();
@@ -177,17 +176,6 @@ async fn spawn_service(settings: &Arc<Mutex<AppSettings>>) -> ServiceConnection 
             ServiceConnection::detached(format!("remote-server-error: {e}"))
         }
     }
-}
-
-#[cfg(not(unix))]
-async fn spawn_service(settings: &Arc<Mutex<AppSettings>>) -> ServiceConnection {
-    let _ = settings;
-    tracing::error!(
-        "no running markon service found and spawning markond is not supported on this platform"
-    );
-    ServiceConnection::detached(
-        "remote-server-error: no running markon service found".to_string(),
-    )
 }
 
 /// Boot / reconnect path: attach to an already-running service (forwarding this

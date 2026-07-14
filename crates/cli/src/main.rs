@@ -1,7 +1,6 @@
 use clap::Parser;
 use dialoguer::Select;
 use markon_core::control::RunningServer;
-#[cfg(unix)]
 use markon_core::daemon::{DaemonConfig, DaemonWorkspace};
 use markon_core::net::{available_bind_hosts, BindHostKind};
 use markon_core::server::{self, ServerConfig, WorkspaceInit};
@@ -751,7 +750,6 @@ async fn forward_to_running_server(
 
 /// Project one resolved [`WorkspaceInit`] onto its declarative
 /// [`DaemonWorkspace`] wire form for the config handoff.
-#[cfg(unix)]
 fn workspace_init_to_daemon(w: &WorkspaceInit) -> DaemonWorkspace {
     DaemonWorkspace {
         path: w.path.clone(),
@@ -805,7 +803,7 @@ async fn main() {
             Some(ref l) if l.is_alive() => (l.host.clone(), RunningServer::from_lock(l)),
             _ => {
                 eprintln!("Error: No running Markon server found.");
-                return;
+                std::process::exit(1);
             }
         };
         let res = match cmd {
@@ -841,7 +839,12 @@ async fn main() {
         };
 
         if let Err(e) = res {
+            // Exit non-zero so scripts / CI (and the Windows smoke harness, which
+            // drives these subcommands to prove the control socket works) can tell
+            // a failed management op — e.g. a broken control-socket round-trip —
+            // from a successful one.
             eprintln!("Error: {e}");
+            std::process::exit(1);
         }
         return;
     }
@@ -1019,13 +1022,13 @@ async fn main() {
     // GUI-set values still apply when launching from the command line.
     let print_collapsed_content = cli.print_collapsed_content || settings.print_collapsed_content;
 
-    // --- Daemon path (unix): spawn the standalone `markond` service. ---
+    // --- Daemon path: spawn the standalone `markond` service. ---
     // The CLI is now a pure shell: it resolves a declarative DaemonConfig,
     // writes it to a 0600 file (secrets live in the file, never argv/env), spawns
     // `markond --config <path>` detached, then drives the explicitly-opened
     // workspace in over the control socket — identical to the already-running
-    // path above.
-    #[cfg(unix)]
+    // path above. Falls through to the foreground path only if the spawn itself
+    // fails (not a readiness timeout, which is a hard error).
     {
         let daemon_config = DaemonConfig {
             // The daemon must not prompt: use the non-interactive resolved host.
@@ -1087,7 +1090,7 @@ async fn main() {
             // to running the server in the foreground.
             Err(e) if e.kind() == std::io::ErrorKind::TimedOut => {
                 eprintln!("Error: the Markon server did not become ready in time.");
-                return;
+                std::process::exit(1);
             }
             Err(e) => {
                 tracing::warn!("failed to spawn markond: {e}; falling back to foreground");
@@ -1095,8 +1098,10 @@ async fn main() {
         }
     }
 
-    // --- Foreground path (non-unix, or spawn fallback). ---
-    // This process serves in the foreground and owns the explicit workspace.
+    // --- Foreground path (spawn fallback). ---
+    // Reached only when spawning `markond` failed outright (the daemon binary is
+    // missing or the OS refused to launch it); this process then serves in the
+    // foreground and owns the explicit workspace.
     let mut initial_workspaces = restored_workspaces;
     if !loaded_explicit_workspace {
         initial_workspaces.push(ws_init);
