@@ -966,6 +966,16 @@ pub struct ServerLock {
     /// versions.
     #[serde(default)]
     pub service_version: String,
+    /// Public entry URL prefix (`--entry` / `--qr`) the owning server was
+    /// started with — a full `scheme://host[/path]` prefix used to build the
+    /// featured / QR URLs when a reverse proxy or domain fronts the server.
+    /// `None` on a legacy lock predating the field; `Some` records the running
+    /// daemon's entry so a controller that got no `--entry` of its own (a bare
+    /// `markon ls`) still shows the same public URLs the daemon advertises,
+    /// instead of falling back to the loopback address. `#[serde(default)]`
+    /// keeps old lock files readable.
+    #[serde(default)]
+    pub entry: Option<String>,
     /// Per-instance ownership nonce. NOT a secret (management no longer rides the
     /// lock — it moved to the control socket) and never used for authentication;
     /// it exists only so `remove_if_owned` can tell "my
@@ -1328,6 +1338,7 @@ mod tests {
         assert_eq!(lock.host, "");
         assert_eq!(lock.advertised_host, None);
         assert_eq!(lock.service_version, "");
+        assert_eq!(lock.entry, None);
     }
 
     #[test]
@@ -1338,6 +1349,7 @@ mod tests {
             host: "0.0.0.0".into(),
             advertised_host: Some("192.168.1.20".into()),
             service_version: "1.2.3".into(),
+            entry: Some("https://md.example.com/".into()),
             owner: "owner-nonce".into(),
         };
         let json = serde_json::to_string(&lock).unwrap();
@@ -1347,6 +1359,7 @@ mod tests {
         assert_eq!(back.control_socket, "/home/u/.markon/control.sock");
         assert_eq!(back.advertised_host.as_deref(), Some("192.168.1.20"));
         assert_eq!(back.service_version, "1.2.3");
+        assert_eq!(back.entry.as_deref(), Some("https://md.example.com/"));
         assert_eq!(back.owner, "owner-nonce");
     }
 

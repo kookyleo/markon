@@ -291,6 +291,7 @@ mod tests {
             control_socket: "test-control".into(),
             host: "127.0.0.1".into(),
             advertised_host: Some(String::new()),
+            entry: None,
             service_version: version.into(),
             owner: "test-owner".into(),
         })

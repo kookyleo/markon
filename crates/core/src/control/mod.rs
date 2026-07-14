@@ -66,6 +66,12 @@ pub struct RunningServer {
     /// `markond` package version from the discovery lock. Empty for a legacy
     /// daemon that predates versioned discovery.
     service_version: String,
+    /// The public entry URL prefix (`--entry`/`--qr`) active in the *owning*
+    /// server process (from the lock). A controller that got no `--entry` of its
+    /// own uses this to build featured/QR URLs against the daemon's public
+    /// address instead of loopback. `None` for a socket-only handle or a
+    /// pre-field lock.
+    web_entry: Option<String>,
 }
 
 impl RunningServer {
@@ -79,6 +85,7 @@ impl RunningServer {
             web_host: String::new(),
             web_advertised_host: None,
             service_version: String::new(),
+            web_entry: None,
         }
     }
 
@@ -98,6 +105,7 @@ impl RunningServer {
             web_host: lock.host.clone(),
             web_advertised_host: lock.advertised_host.clone(),
             service_version: lock.service_version.clone(),
+            web_entry: lock.entry.clone(),
         }
     }
 
@@ -138,6 +146,14 @@ impl RunningServer {
     /// Version of the discovered service, or an empty string for legacy locks.
     pub fn service_version(&self) -> &str {
         &self.service_version
+    }
+
+    /// The public entry URL prefix (`--entry`/`--qr`) the *owning* server was
+    /// started with, or `None` when this handle predates the field or was built
+    /// socket-only. A controller with no `--entry` of its own prefers this so
+    /// featured / QR URLs point at the daemon's public address, not loopback.
+    pub fn entry(&self) -> Option<&str> {
+        self.web_entry.as_deref()
     }
 
     /// Best-effort liveness probe, mirroring
