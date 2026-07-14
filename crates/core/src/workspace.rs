@@ -187,7 +187,8 @@ pub fn hash_id(path: &Path, salt: &str) -> String {
 /// Minimum length (in characters) for a newly set collaborator access code.
 /// Empty means "clear the code" and is always allowed; a non-empty code shorter
 /// than this is rejected at the set-code entry points (GUI / CLI). Existing
-/// stored codes are never re-validated, so an upgrade can't lock anyone out.
+/// full-width hashes are not re-validated; legacy truncated hashes deliberately
+/// fail closed and must be replaced by a local administrator.
 pub const MIN_ACCESS_CODE_LEN: usize = 8;
 
 /// Validate a would-be access code before hashing. `Ok(())` for the empty
@@ -216,8 +217,10 @@ pub fn validate_access_code(code: &str) -> Result<(), String> {
 /// which capped the effective strength at 4·N bits and let any string sharing
 /// the same leading N hex chars unlock — so a short code was far weaker than it
 /// looked. Storing the full digest removes both problems; the panel now shows a
-/// fixed "code is set" marker instead of the real length. [`access_code_matches`]
-/// still accepts the old truncated hashes, so upgrades need no re-set.
+/// fixed "code is set" marker instead of the real length. Legacy truncated
+/// hashes cannot be migrated safely without the plaintext code: accepting them
+/// would preserve the prefix-collision vulnerability, so verification rejects
+/// them and requires a local administrator to set a new code.
 ///
 /// An empty `code` hashes to the empty string, preserving the "no code stored"
 /// sentinel that setters and [`access_code_matches`] treat as "gate disabled".
@@ -238,23 +241,16 @@ fn access_code_digest(salt: &str, code: &str) -> String {
     h.finalize().iter().map(|b| format!("{b:02x}")).collect()
 }
 
-/// Verify a submitted access code against a stored hash. Accepts both schemes:
-/// the current full 64-hex-char digest (see [`hash_access_code`]) and the legacy
-/// length-truncated form (leading N hex chars, N = code length) written by
-/// builds before full-digest storage — so codes set by older builds keep
-/// unlocking after an upgrade instead of silently never matching.
+/// Verify a submitted access code against the current full 64-hex-char digest
+/// (see [`hash_access_code`]). Legacy length-truncated hashes deliberately fail
+/// closed: continuing to compare only their prefix would keep the exact
+/// collision weakness this format change removes.
 pub fn access_code_matches(salt: &str, code: &str, stored: &str) -> bool {
     if stored.is_empty() {
         return false;
     }
     let full = access_code_digest(salt, code);
-    // Current format: full digest, exact compare.
-    if stored.len() == full.len() && ct_eq(full.as_bytes(), stored.as_bytes()) {
-        return true;
-    }
-    // Legacy truncated format: stored is the leading `stored.len()` hex chars.
-    let n = code.chars().count().min(full.len());
-    stored.len() == n && ct_eq(&full.as_bytes()[..n], stored.as_bytes())
+    ct_eq(full.as_bytes(), stored.as_bytes())
 }
 
 /// Constant-time byte comparison (length leak is fine — lengths aren't secret).
@@ -861,12 +857,14 @@ mod tests {
     }
 
     #[test]
-    fn access_code_matches_legacy_truncated_hash() {
+    fn access_code_rejects_legacy_truncated_hash() {
         // Builds before full-digest storage kept only the leading N hex chars
-        // (N = code length). Those codes must keep unlocking after an upgrade.
+        // (N = code length). Accepting them would retain the prefix-collision
+        // vulnerability, so they fail closed until an administrator resets the
+        // code locally.
         let full = access_code_digest("s", "test1234");
         let legacy = full[..8].to_string();
-        assert!(access_code_matches("s", "test1234", &legacy));
+        assert!(!access_code_matches("s", "test1234", &legacy));
         assert!(!access_code_matches("s", "wrongone", &legacy));
     }
 

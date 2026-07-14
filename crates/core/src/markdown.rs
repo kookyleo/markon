@@ -1794,12 +1794,68 @@ fn strip_html_tags(value: &str) -> String {
 /// only untrusted raw fragments do — so there is no risk of silently dropping
 /// first-party markup.
 const RAW_HTML_ALLOWED_TAGS: &[&str] = &[
-    "a", "abbr", "b", "bdi", "bdo", "blockquote", "br", "caption", "cite",
-    "code", "col", "colgroup", "dd", "del", "details", "dfn", "div", "dl", "dt",
-    "em", "figcaption", "figure", "h1", "h2", "h3", "h4", "h5", "h6", "hr", "i",
-    "img", "ins", "kbd", "li", "mark", "ol", "p", "pre", "q", "rp", "rt", "ruby",
-    "s", "samp", "small", "span", "strong", "sub", "summary", "sup", "table",
-    "tbody", "td", "tfoot", "th", "thead", "time", "tr", "u", "ul", "var", "wbr",
+    "a",
+    "abbr",
+    "b",
+    "bdi",
+    "bdo",
+    "blockquote",
+    "br",
+    "caption",
+    "cite",
+    "code",
+    "col",
+    "colgroup",
+    "dd",
+    "del",
+    "details",
+    "dfn",
+    "div",
+    "dl",
+    "dt",
+    "em",
+    "figcaption",
+    "figure",
+    "h1",
+    "h2",
+    "h3",
+    "h4",
+    "h5",
+    "h6",
+    "hr",
+    "i",
+    "img",
+    "ins",
+    "kbd",
+    "li",
+    "mark",
+    "ol",
+    "p",
+    "pre",
+    "q",
+    "rp",
+    "rt",
+    "ruby",
+    "s",
+    "samp",
+    "small",
+    "span",
+    "strong",
+    "sub",
+    "summary",
+    "sup",
+    "table",
+    "tbody",
+    "td",
+    "tfoot",
+    "th",
+    "thead",
+    "time",
+    "tr",
+    "u",
+    "ul",
+    "var",
+    "wbr",
 ];
 
 /// Attributes whose value carries a URL and must pass [`url_scheme_is_safe`].
@@ -2324,7 +2380,10 @@ mod assets_tests {
         let html = render_html_only("<a href=\"javascript:alert(1)\">click</a>");
         assert!(!html.contains("javascript:"), "html: {html}");
         // The tag survives (inert), just without the dangerous href.
-        assert!(html.contains("<a>") || html.contains("<a >"), "html: {html}");
+        assert!(
+            html.contains("<a>") || html.contains("<a >"),
+            "html: {html}"
+        );
     }
 
     #[test]
