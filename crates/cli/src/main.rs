@@ -799,8 +799,12 @@ async fn main() {
         // Workspace-management commands talk to the running server over its
         // privileged control socket (recorded in the lock).
         let lock = ServerLock::read();
-        let (lock_host, server) = match lock {
-            Some(ref l) if l.is_alive() => (l.host.clone(), RunningServer::from_lock(l)),
+        let (lock_host, lock_advertised, server) = match lock {
+            Some(ref l) if l.is_alive() => (
+                l.host.clone(),
+                l.advertised_host.clone(),
+                RunningServer::from_lock(l),
+            ),
             _ => {
                 eprintln!("Error: No running Markon server found.");
                 std::process::exit(1);
@@ -809,9 +813,13 @@ async fn main() {
         let res = match cmd {
             Commands::Admin { command } => admin_browser_command(&server, command).await,
             Commands::Ls { format } => {
-                // Reproduce the daemon's reachable URLs: bind host from the
-                // lock, advertised preference from the shared global config.
-                let advertised_host = AppSettings::load().advertised_host;
+                // Reproduce the daemon's reachable URLs: bind host and advertised
+                // host both come from the lock (what the *owning* daemon actually
+                // serves under), falling back to the shared global config only for
+                // a pre-field lock that didn't record its advertised host.
+                let advertised_host = lock_advertised
+                    .clone()
+                    .unwrap_or_else(|| AppSettings::load().advertised_host);
                 let bind_host = if lock_host.trim().is_empty() {
                     "127.0.0.1".to_string()
                 } else {
@@ -939,6 +947,15 @@ async fn main() {
     if let Some(lock) = ServerLock::read() {
         if lock.is_alive() {
             let server = RunningServer::from_lock(&lock);
+            // The daemon we're attaching to may have been started (by a prior CLI
+            // or the GUI) with a different `--entry`, so the featured/QR host it
+            // actually serves under is the one recorded in the lock — prefer it
+            // over this invocation's own preference. `None` (a pre-field lock)
+            // falls back to our configured advertised host.
+            let effective_advertised = lock
+                .advertised_host
+                .clone()
+                .unwrap_or_else(|| advertised_host.clone());
             forward_to_running_server(
                 &server,
                 &lock.host,
@@ -952,7 +969,7 @@ async fn main() {
                         .as_ref()
                         .map(|_| workspace_collaborator_access_code_hash.as_str()),
                     configured_host: &configured_host,
-                    advertised_host: &advertised_host,
+                    advertised_host: &effective_advertised,
                     entry: cli.entry.as_deref(),
                     open_browser_target: open_browser_target.as_deref(),
                 },

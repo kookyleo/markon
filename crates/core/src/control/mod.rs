@@ -56,6 +56,11 @@ pub struct RunningServer {
     /// The server's bind host (from the discovery lock), for building the
     /// printed / opened URLs. Empty when unknown (a socket-only handle).
     web_host: String,
+    /// The advertised host active in the *owning* server process (from the lock).
+    /// A controller (GUI/CLI) attached to a daemon another process started with a
+    /// different `--entry` must build featured/QR URLs from this, not its own
+    /// preference. `None` for a socket-only handle or a pre-field lock.
+    web_advertised_host: Option<String>,
 }
 
 impl RunningServer {
@@ -67,6 +72,7 @@ impl RunningServer {
             socket,
             web_port: 0,
             web_host: String::new(),
+            web_advertised_host: None,
         }
     }
 
@@ -84,6 +90,7 @@ impl RunningServer {
             socket,
             web_port: lock.port,
             web_host: lock.host.clone(),
+            web_advertised_host: lock.advertised_host.clone(),
         }
     }
 
@@ -110,6 +117,15 @@ impl RunningServer {
     /// was built without a known host (see [`RunningServer::new`]).
     pub fn host(&self) -> &str {
         &self.web_host
+    }
+
+    /// The advertised host active in the *owning* server process (from the lock),
+    /// or `None` when this handle predates the field or was built socket-only. A
+    /// controller must prefer this over its own `--entry` preference when building
+    /// featured / QR URLs, so the address it prints matches the address the daemon
+    /// actually serves under.
+    pub fn advertised_host(&self) -> Option<&str> {
+        self.web_advertised_host.as_deref()
     }
 
     /// Best-effort liveness probe, mirroring

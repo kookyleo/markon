@@ -303,15 +303,22 @@ fn update_tray_language(app: &tauri::AppHandle, language: &str) {
 // to settings.json happens via the persist hook wired at server startup,
 // so CLI (HTTP API) and GUI (Tauri API) paths share a single flow.
 
-/// Build the featured browser/QR base URL for the *attached daemon*. The bind
-/// host comes from the running service's discovery lock
-/// ([`RunningServer::host`]) — NOT the GUI's own `settings.host`, which can
-/// differ when the GUI attached to a daemon another process (a CLI, or a prior
-/// GUI) started with a different host. `daemon_host` empty (a socket-only handle
-/// or a pre-split lock) falls back to the configured host. The advertised-host
-/// preference is only in our settings, so it is still read from there.
-fn browser_base_url_for_state(state: &State<AppState>, daemon_host: &str, port: u16) -> String {
-    let (fallback_host, advertised_host) = {
+/// Build the featured browser/QR base URL for the *attached daemon*. Both the
+/// bind host and the advertised host come from the running service's discovery
+/// lock ([`RunningServer::host`] / [`RunningServer::advertised_host`]) — NOT the
+/// GUI's own settings, which can differ when the GUI attached to a daemon
+/// another process (a CLI, or a prior GUI) started with a different `--host` /
+/// `--entry`. The GUI's `settings.host` / `settings.advertised_host` are only a
+/// fallback for a socket-only handle or a pre-split lock, where the daemon
+/// didn't record its own values (`daemon_host` empty / `daemon_advertised`
+/// `None`).
+fn browser_base_url_for_state(
+    state: &State<AppState>,
+    daemon_host: &str,
+    daemon_advertised: Option<&str>,
+    port: u16,
+) -> String {
+    let (fallback_host, fallback_advertised) = {
         let s = state.settings.lock().unwrap();
         (s.host.clone(), s.advertised_host.clone())
     };
@@ -319,6 +326,10 @@ fn browser_base_url_for_state(state: &State<AppState>, daemon_host: &str, port: 
         fallback_host
     } else {
         daemon_host.to_string()
+    };
+    let advertised_host = match daemon_advertised {
+        Some(h) => h.to_string(),
+        None => fallback_advertised,
     };
     server::featured_base_url(&bind_host, &advertised_host, port)
 }
@@ -359,7 +370,7 @@ pub async fn add_workspace(
         .map_err(remote_err)?;
     let port = remote.port();
     let url = server::build_workspace_url(
-        &browser_base_url_for_state(&state, remote.host(), port),
+        &browser_base_url_for_state(&state, remote.host(), remote.advertised_host(), port),
         &server::workspace_url_path(&id, None),
     );
     Ok(serde_json::json!({ "id": id, "url": url }))
@@ -448,7 +459,8 @@ pub async fn get_workspaces(
     let remote = require_service(&state)?;
     let port = remote.port();
     let infos = remote.list_workspaces().await.map_err(remote_err)?;
-    let browser_base = browser_base_url_for_state(&state, remote.host(), port);
+    let browser_base =
+        browser_base_url_for_state(&state, remote.host(), remote.advertised_host(), port);
     Ok(infos
         .into_iter()
         .map(|info| workspace_panel_json(info, &browser_base))
@@ -477,7 +489,15 @@ pub async fn open_url(url: String, state: State<'_, AppState>) -> Result<(), Str
         let server = state.server.lock().unwrap();
         let handle = server.handle();
         let daemon_host = handle.as_ref().map(|r| r.host().to_string()).unwrap_or_default();
-        let base = browser_base_url_for_state(&state, &daemon_host, server.port());
+        let daemon_advertised = handle
+            .as_ref()
+            .and_then(|r| r.advertised_host().map(str::to_string));
+        let base = browser_base_url_for_state(
+            &state,
+            &daemon_host,
+            daemon_advertised.as_deref(),
+            server.port(),
+        );
         (handle, base)
     };
     let markon_prefix = format!("{}/", base.trim_end_matches('/'));
