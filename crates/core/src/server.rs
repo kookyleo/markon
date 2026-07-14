@@ -893,6 +893,21 @@ pub async fn start(config: ServerConfig) -> Result<(), String> {
         }
     }
 
+    if !collaborator_access_code_hash.is_empty() && collaborator_access_code_hash.len() != 64 {
+        tracing::warn!(
+            "legacy truncated server collaborator access-code hash rejected; reset the code locally"
+        );
+    }
+    for workspace in registry.list() {
+        let access_code_hash = workspace.collaborator_access_code_hash();
+        if !access_code_hash.is_empty() && access_code_hash.len() != 64 {
+            tracing::warn!(
+                workspace_id = %workspace.id,
+                "legacy truncated workspace collaborator access-code hash rejected; reset the code locally"
+            );
+        }
+    }
+
     let token = Arc::new(management_token.unwrap_or_else(generate_token));
     let admin_bootstraps = admin_bootstraps.unwrap_or_else(|| Arc::new(AdminBootstrapStore::new()));
     let allowed_hosts = Arc::new(build_allowed_hosts(
@@ -970,6 +985,19 @@ pub async fn start(config: ServerConfig) -> Result<(), String> {
             require_local_save_origin,
         ));
 
+    // Preview API: stateless "text in, HTML out" for the editor's live preview.
+    // The origin layer rejects browser cross-site requests; the handler also
+    // requires a workspace-scoped preview capability, because Origin is
+    // spoofable by non-browser LAN clients. A tight body limit bounds
+    // per-request work, and the handler offloads rendering to a blocking pool.
+    let preview = Router::new()
+        .route("/api/preview", post(preview_handler))
+        .layer(axum::extract::DefaultBodyLimit::max(PREVIEW_BODY_LIMIT))
+        .layer(axum::middleware::from_fn_with_state(
+            state.clone(),
+            require_local_save_origin,
+        ));
+
     let app = Router::new()
         // Static assets (literal prefix beats /{workspace_id}/ param)
         .route("/favicon.ico", get(serve_favicon))
@@ -983,7 +1011,6 @@ pub async fn start(config: ServerConfig) -> Result<(), String> {
         .route("/_/ws/{workspace_id}", get(config_ws_handler))
         // Read-only public APIs
         .route("/_/{workspace_id}/search", get(workspace_search_handler))
-        .route("/api/preview", post(preview_handler))
         // Access-code gate: unlock endpoint (not itself gated).
         .route("/_/unlock", post(unlock_handler))
         // Workspace content routes
@@ -1078,7 +1105,8 @@ pub async fn start(config: ServerConfig) -> Result<(), String> {
         // Everything else → 404
         .fallback(|| async { StatusCode::NOT_FOUND })
         .merge(mgmt)
-        .merge(save);
+        .merge(save)
+        .merge(preview);
 
     // Dev-only live-reload: esbuild's watch onEnd hook POSTs the trigger,
     // server fans it out as an SSE event, the webview reloads. cfg gate keeps
@@ -1414,6 +1442,27 @@ fn workspace_save_token(secret: &str, workspace_id: &str) -> String {
     admin_auth::auth_tag(secret, b"markon-save-workspace\0", workspace_id)
 }
 
+/// Derive a browser preview capability for exactly one workspace. Keep this
+/// domain-separated from the save capability: a read-only page may render an
+/// export preview without gaining permission to write workspace files.
+fn workspace_preview_token(secret: &str, workspace_id: &str) -> String {
+    admin_auth::auth_tag(secret, b"markon-preview-workspace\0", workspace_id)
+}
+
+fn request_token_matches(
+    headers: &axum::http::HeaderMap,
+    capability_token: &str,
+    management_token: &str,
+) -> bool {
+    headers
+        .get("X-Markon-Token")
+        .and_then(|value| value.to_str().ok())
+        .is_some_and(|token| {
+            ct_eq(token.as_bytes(), capability_token.as_bytes())
+                || ct_eq(token.as_bytes(), management_token.as_bytes())
+        })
+}
+
 /// Build the `Set-Cookie` value carrying the unlocked scopes until `exp`.
 fn make_access_cookie(secret: &str, scopes: &[(String, String)], exp: u64, secure: bool) -> String {
     // payload grammar (before hex): "<exp>|<scope>=<hash>|<scope>=<hash>…"
@@ -1487,7 +1536,9 @@ fn access_cookie_scopes(secret: &str, cookie_header: Option<&str>) -> Vec<(Strin
 
 /// The workspace id a request targets, for access-gating. `None` means the
 /// route isn't workspace-scoped (static assets, mgmt, unlock, preview) and is
-/// allowed through the gate.
+/// allowed through the access-code gate. (`/api/preview` is not access-gated but
+/// carries its own origin + workspace-capability guards — see the `preview`
+/// router and handler.)
 fn decoded_workspace_id(segment: &str) -> Option<String> {
     let decoded = urlencoding::decode(segment).ok()?;
     (decoded.len() == 8 && decoded.bytes().all(|byte| byte.is_ascii_hexdigit()))
@@ -1908,12 +1959,15 @@ async fn unlock_handler(
 /// broadcast amplification from a hostile peer; real annotations are tiny.
 const MAX_WS_MSG_BYTES: usize = 256 * 1024;
 
-/// Conservative Content-Security-Policy. `'unsafe-inline'` is required because
-/// the templates ship inline `<script>`/`<style>` and inject `styles_css`; even
-/// so this blocks **external** script/style loads, plugins, framing and base
-/// hijacking, so an injection can't pull in a remote payload or be clickjacked.
-/// `img/media-src *` keeps cross-origin images in user docs working. The full
-/// fix for inline injection is HTML sanitisation (see security review H-1).
+/// Conservative Content-Security-Policy. Untrusted markdown is sanitised at the
+/// source (raw HTML is scrubbed and link/image schemes are allow-listed in
+/// `markdown.rs`), which removes the injected-inline-handler / `javascript:`
+/// vector. `'unsafe-inline'` remains only because first-party templates ship
+/// inline `<script>`/`<style>` and inject `styles_css`; dropping it would need
+/// per-request nonces on every inline block. Even with it, this still blocks
+/// **external** script/style loads, plugins, framing and base hijacking, so an
+/// injection can't pull in a remote payload or be clickjacked. `img/media-src *`
+/// keeps cross-origin images in user docs working.
 const SECURITY_CSP: &str = "default-src 'self'; \
 script-src 'self' 'unsafe-inline'; \
 style-src 'self' 'unsafe-inline'; \
@@ -4854,6 +4908,10 @@ fn render_git_diff_page(
     context.insert("title", &format!("Markdiff · {}", diff.range));
     context.insert("workspace_id", workspace_id);
     context.insert(
+        "preview_token",
+        &workspace_preview_token(&state.save_token, workspace_id),
+    );
+    context.insert(
         "diff",
         &git_diff_template(
             root,
@@ -5859,6 +5917,11 @@ fn coalesce_markdown_block_ops(ops: Vec<MarkdownBlockOp>) -> Vec<MarkdownDiffBlo
 /// highlight preview and fall back to raw bytes (the browser shows plain text).
 const MAX_TEXT_PREVIEW_BYTES: u64 = 2 * 1024 * 1024;
 
+/// Request-body cap for `POST /api/preview`. The live editor preview never
+/// needs the global 2 MB default; a smaller ceiling bounds the per-request
+/// render cost (defense in depth behind the same-origin guard).
+const PREVIEW_BODY_LIMIT: usize = 512 * 1024;
+
 /// If `path` is a small UTF-8 text/code file, return its contents plus a
 /// language hint (extension, or file name for extension-less files) for the
 /// highlighted preview. Returns `None` for images, media, binaries and
@@ -6015,6 +6078,10 @@ fn render_markdown_file(
             context.insert("title", &title);
             context.insert("file_path", file_path);
             context.insert("workspace_id", workspace_id);
+            context.insert(
+                "preview_token",
+                &workspace_preview_token(&state.save_token, workspace_id),
+            );
             insert_workspace_header_context(&mut context, ws, root);
             context.insert("version", env!("CARGO_PKG_VERSION"));
             context.insert("content", &rendered.html);
@@ -6694,15 +6761,8 @@ async fn save_file_handler(
     headers: axum::http::HeaderMap,
     Json(payload): Json<SaveFileRequest>,
 ) -> impl IntoResponse {
-    let supplied_token = headers
-        .get("X-Markon-Token")
-        .and_then(|value| value.to_str().ok());
     let scoped_token = workspace_save_token(&state.save_token, &payload.workspace_id);
-    let token_valid = supplied_token.is_some_and(|token| {
-        ct_eq(token.as_bytes(), scoped_token.as_bytes())
-            || ct_eq(token.as_bytes(), state.management_token.as_bytes())
-    });
-    if !token_valid {
+    if !request_token_matches(&headers, &scoped_token, &state.management_token) {
         return StatusCode::UNAUTHORIZED.into_response();
     }
 
@@ -6813,6 +6873,7 @@ async fn save_file_handler(
 
 #[derive(Deserialize)]
 struct PreviewRequest {
+    workspace_id: String,
     content: String,
 }
 
@@ -6825,10 +6886,30 @@ struct PreviewResponse {
 
 async fn preview_handler(
     State(state): State<AppState>,
+    headers: axum::http::HeaderMap,
     Json(payload): Json<PreviewRequest>,
 ) -> impl IntoResponse {
-    let renderer = default_markdown_engine(&state.theme);
-    let rendered = MarkdownEngine::render(&renderer, &payload.content);
+    let scoped_token = workspace_preview_token(&state.save_token, &payload.workspace_id);
+    if !request_token_matches(&headers, &scoped_token, &state.management_token) {
+        return StatusCode::UNAUTHORIZED.into_response();
+    }
+
+    // Markdown rendering (syntect highlight + AST walk) is CPU-bound; run it on
+    // the blocking pool so a large document can't stall a runtime worker.
+    let theme = state.theme.clone();
+    let content = payload.content;
+    let rendered = match tokio::task::spawn_blocking(move || {
+        let renderer = default_markdown_engine(&theme);
+        MarkdownEngine::render(&renderer, &content)
+    })
+    .await
+    {
+        Ok(rendered) => rendered,
+        Err(e) => {
+            tracing::error!(error = %e, "preview render task failed");
+            return StatusCode::INTERNAL_SERVER_ERROR.into_response();
+        }
+    };
     Json(PreviewResponse {
         html: rendered.html,
         has_mermaid: rendered.has_mermaid,
@@ -7152,6 +7233,140 @@ mod tests {
             Some("example.local:1618"),
         );
         assert!(check_ws_origin(&h, &loopback()));
+    }
+
+    #[tokio::test]
+    async fn preview_route_requires_origin_and_scoped_capability() {
+        use axum::body::Body;
+        use axum::http::Request;
+
+        let registry = Arc::new(WorkspaceRegistry::new("preview-guard-test".into()));
+        let state = test_state(registry);
+        let workspace_id = "deadbeef";
+        let preview_token = workspace_preview_token(&state.save_token, workspace_id);
+        let save_token = workspace_save_token(&state.save_token, workspace_id);
+        assert_ne!(preview_token, save_token);
+        let app = Router::new()
+            .route("/api/preview", post(preview_handler))
+            .layer(axum::extract::DefaultBodyLimit::max(PREVIEW_BODY_LIMIT))
+            .layer(axum::middleware::from_fn_with_state(
+                state.clone(),
+                require_local_save_origin,
+            ))
+            .with_state(state);
+
+        let build = |origin: Option<&str>,
+                     host: &str,
+                     peer: SocketAddr,
+                     token: Option<&str>,
+                     content: String| {
+            let mut b = Request::builder()
+                .method("POST")
+                .uri("/api/preview")
+                .header("host", host)
+                .header("content-type", "application/json");
+            if let Some(o) = origin {
+                b = b.header("origin", o);
+            }
+            if let Some(token) = token {
+                b = b.header("X-Markon-Token", token);
+            }
+            let mut req = b
+                .body(Body::from(
+                    json!({ "workspace_id": workspace_id, "content": content }).to_string(),
+                ))
+                .unwrap();
+            req.extensions_mut()
+                .insert(axum::extract::ConnectInfo(peer));
+            req
+        };
+
+        // Cross-site page from the LAN → rejected.
+        let resp = app
+            .clone()
+            .oneshot(build(
+                Some("http://evil.example.com"),
+                "192.168.1.13:6419",
+                lan_peer(),
+                Some(&preview_token),
+                "# hi".into(),
+            ))
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), StatusCode::FORBIDDEN);
+
+        // Anonymous LAN device (no Origin, not loopback) → rejected even with a
+        // valid token, because browser capabilities do not replace the origin
+        // boundary.
+        let resp = app
+            .clone()
+            .oneshot(build(
+                None,
+                "192.168.1.13:6419",
+                lan_peer(),
+                Some(&preview_token),
+                "# hi".into(),
+            ))
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), StatusCode::FORBIDDEN);
+
+        // A LAN client can spoof a matching Origin, so origin alone is not an
+        // authentication boundary.
+        let resp = app
+            .clone()
+            .oneshot(build(
+                Some("http://192.168.1.13:6419"),
+                "192.168.1.13:6419",
+                lan_peer(),
+                None,
+                "# hi".into(),
+            ))
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), StatusCode::UNAUTHORIZED);
+
+        // Save and preview capabilities are deliberately not interchangeable.
+        let resp = app
+            .clone()
+            .oneshot(build(
+                Some("http://127.0.0.1:6419"),
+                "127.0.0.1:6419",
+                loopback(),
+                Some(&save_token),
+                "# hi".into(),
+            ))
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), StatusCode::UNAUTHORIZED);
+
+        // Same-origin editor page with its workspace-scoped preview capability
+        // is allowed.
+        let resp = app
+            .clone()
+            .oneshot(build(
+                Some("http://127.0.0.1:6419"),
+                "127.0.0.1:6419",
+                loopback(),
+                Some(&preview_token),
+                "# hi".into(),
+            ))
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), StatusCode::OK);
+
+        // Capability possession does not bypass the route-specific body cap.
+        let resp = app
+            .oneshot(build(
+                Some("http://127.0.0.1:6419"),
+                "127.0.0.1:6419",
+                loopback(),
+                Some(&preview_token),
+                "x".repeat(PREVIEW_BODY_LIMIT),
+            ))
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), StatusCode::PAYLOAD_TOO_LARGE);
     }
 
     #[test]
@@ -7829,7 +8044,9 @@ mod tests {
         let state = test_state(registry);
         let token_a = workspace_save_token(&state.save_token, &id_a);
         let token_b = workspace_save_token(&state.save_token, &id_b);
+        let preview_token_b = workspace_preview_token(&state.save_token, &id_b);
         assert_ne!(token_a, token_b);
+        assert_ne!(token_b, preview_token_b);
 
         let app = Router::new()
             .route("/api/save", post(save_file_handler))
@@ -7861,6 +8078,17 @@ mod tests {
         let denied = app
             .clone()
             .oneshot(request(&token_a, "stolen"))
+            .await
+            .unwrap();
+        assert_eq!(denied.status(), StatusCode::UNAUTHORIZED);
+        assert_eq!(
+            std::fs::read_to_string(root_b.path().join("b.md")).unwrap(),
+            "workspace b"
+        );
+
+        let denied = app
+            .clone()
+            .oneshot(request(&preview_token_b, "preview escalation"))
             .await
             .unwrap();
         assert_eq!(denied.status(), StatusCode::UNAUTHORIZED);
@@ -8561,6 +8789,7 @@ mod tests {
             on.contains(r#"name="save-token""#),
             "remote collaborator with the edit flag must receive the save token"
         );
+        assert!(on.contains(r#"name="preview-token""#));
         assert!(on.contains(r#"<meta name="enable-chat" content="true">"#));
 
         // both OFF → no save token and no chat for the same remote peer.
@@ -8585,6 +8814,10 @@ mod tests {
         assert!(
             !off.contains(r#"name="save-token""#),
             "no edit flag → no save token even on a readable page"
+        );
+        assert!(
+            off.contains(r#"name="preview-token""#),
+            "read-only pages still need the separate preview capability for export mode"
         );
         assert!(off.contains(r#"<meta name="enable-chat" content="false">"#));
     }

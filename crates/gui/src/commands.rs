@@ -372,11 +372,11 @@ pub fn get_workspaces(state: State<AppState>) -> Vec<serde_json::Value> {
                 "enable_live": info.flags.enable_live,
                 "enable_chat": info.flags.enable_chat,
                 "shared_annotation": info.flags.shared_annotation,
-                // Length of the per-workspace collaborator access code, 0 =
-                // none. The stored hash length equals the code length (see
-                // workspace::hash_access_code), so the panel both detects "code
-                // set" and renders that many • in the indicator token. Not the
-                // digest itself.
+                // Non-zero iff a per-workspace collaborator access code is set.
+                // The stored value is now the full 64-hex digest (not truncated
+                // to the code length), so this is only a "set / not set" signal;
+                // the panel renders a fixed number of • for any set code and no
+                // longer reveals the real length. Not the digest itself.
                 "collaborator_access_code_len": info.collaborator_access_code_hash.chars().count(),
                 "search_ready": info.search_ready,
                 // Surfaced so the Settings UI can filter out Open-With
@@ -672,6 +672,7 @@ pub fn set_collaborator_access_code(
 ) -> Result<(), String> {
     let salt = state.settings.lock().unwrap().salt.clone();
     let code = code.trim();
+    markon_core::workspace::validate_access_code(code)?;
     let hash = if code.is_empty() {
         String::new()
     } else {

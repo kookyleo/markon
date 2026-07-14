@@ -1489,9 +1489,10 @@
   const esc = (s) => String(s).replace(/[&<>"]/g, (c) =>
     ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]);
 
-  // Length of the server-level access code (0 = none) — seeded by loadSettings
-  // from the stored hash's length (which equals the code length), used to draw
-  // the right number of • in the widget's "code is set" token.
+  // "Is the server-level access code set?" as a length (0 = none, >0 = set) —
+  // seeded by loadSettings from the stored hash. The digest length no longer
+  // encodes the code length, so this is only a set/not-set flag; the widget
+  // draws a fixed CODE_SET_DOTS marker for any set code.
   let globalCollaboratorCodeLen = 0;
 
   // ── Tab navigation ──────────────────────────────────────────────────────
@@ -1746,12 +1747,16 @@
   // One reusable editor for both the global (server-level) code and each
   // workspace's code. The input is plaintext (you see what you type — no mask,
   // no eye, no clear). A set code is shown only via the *placeholder*: at rest
-  // it's `n` • dots (n = the code's length; we only store the salted hash, so
-  // the real code can't be displayed), and on focus it switches to "Set a new
+  // it's a fixed run of • dots (CODE_SET_DOTS; we store only the salted digest
+  // and don't expose the real length), and on focus it switches to "Set a new
   // code…". The value itself is always empty until you type, so there's no
   // token to select/replace. A single ✓ Apply button appears on focus; Apply
   // persists (empty Apply on a set code clears it). Esc / a click outside
   // discards the edit. (`prompt()` is unusable — the WKWebView drops it.)
+  // Fixed number of • shown at rest for ANY set code. The real code length is
+  // no longer stored (we keep only the full salted digest), so the marker is a
+  // constant "code is set" hint rather than a per-character reveal.
+  const CODE_SET_DOTS = 6;
   const AC_CHECK_SVG = '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>';
   function accessCodeEditorHTML(inset) {
     return `
@@ -1781,7 +1786,9 @@
     const input    = root.querySelector('.ac-input');
     const applyBtn = root.querySelector('.ac-apply');
     let codeLen = opts.len | 0;
-    const restPlaceholder = () => codeLen > 0 ? '•'.repeat(codeLen) : T('access.code.ph');
+    // A set code shows a FIXED number of dots (not its real length): we only
+    // store the full salted digest, and the length is deliberately not exposed.
+    const restPlaceholder = () => codeLen > 0 ? '•'.repeat(CODE_SET_DOTS) : T('access.code.ph');
     function syncBtns() {
       // Apply commits: a typed code sets it; an empty Apply on a set code clears
       // it. Disabled only when there's nothing to do (empty + no code).

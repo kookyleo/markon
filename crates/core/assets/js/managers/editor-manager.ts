@@ -63,6 +63,12 @@ export interface EditorSaveResponse {
     message?: string;
 }
 
+/** Request body sent to POST /api/preview. */
+export interface EditorPreviewRequest {
+    workspace_id: string;
+    content: string;
+}
+
 /** Response shape from POST /api/preview. */
 export interface EditorPreviewResponse {
     html: string;
@@ -801,11 +807,20 @@ export class EditorManager {
         if (!this.#previewPane || !this.#textarea) return;
 
         const content = this.#textarea.value;
+        const workspaceId = Meta.get(CONFIG.META_TAGS.WORKSPACE_ID) ?? '';
+        const token = Meta.get('preview-token') ?? '';
+        const body: EditorPreviewRequest = {
+            workspace_id: workspaceId,
+            content,
+        };
         try {
             const response = await fetch('/api/preview', {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ content }),
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-Markon-Token': token,
+                },
+                body: JSON.stringify(body),
             });
             if (!response.ok) return;
             const result = (await response.json()) as EditorPreviewResponse;

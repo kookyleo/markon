@@ -201,8 +201,10 @@ describe('EditorManager', () => {
 
     it('preview path uses server-rendered diagram HTML without client Mermaid', async () => {
         seedOriginalMarkdown('```mermaid\ngraph TD; A-->B\n```');
+        seedMeta('workspace-id', 'ws-42');
+        seedMeta('preview-token', 'preview-abc');
 
-        const fetchMock = vi.fn(async (url: string) => {
+        const fetchMock = vi.fn(async (url: string, _init?: RequestInit) => {
             if (url === '/api/preview') {
                 return {
                     ok: true,
@@ -232,5 +234,16 @@ describe('EditorManager', () => {
         await Promise.resolve();
 
         expect(document.querySelector('.markon-diagram svg')).toBeTruthy();
+        const previewCalls = (fetchMock as unknown as ReturnType<typeof vi.fn>).mock.calls.filter(
+            (c: unknown[]) => c[0] === '/api/preview',
+        );
+        expect(previewCalls.length).toBeGreaterThan(0);
+        const init = itemAt(previewCalls, 0)[1] as RequestInit;
+        const headers = init.headers as Record<string, string>;
+        expect(headers['X-Markon-Token']).toBe('preview-abc');
+        expect(JSON.parse(init.body as string)).toEqual({
+            workspace_id: 'ws-42',
+            content: '```mermaid\ngraph TD; A-->B\n```',
+        });
     });
 });

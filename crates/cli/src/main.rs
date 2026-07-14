@@ -990,6 +990,12 @@ async fn main() {
             settings.salt.clone()
         }
     });
+    if let Some(code) = cli.collaborator_access_code.as_deref() {
+        if let Err(e) = markon_core::workspace::validate_access_code(code) {
+            eprintln!("Error: {e}");
+            std::process::exit(1);
+        }
+    }
     let workspace_collaborator_access_code_hash =
         resolve_workspace_collaborator_hash_from_env_or_cli(
             saved_workspace
