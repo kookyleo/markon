@@ -28,6 +28,14 @@
     "advertised.auto": "自动（第一个局域网地址）",
     "advertised.hint": "绑定 0.0.0.0 时，链接与二维码中展示哪个局域网地址。",
     "bind.save_failed": "保存失败：{error}",
+    "server.mode.label": "服务",
+    "server.mode.remote": "已连接到正在运行的 Markon",
+    "server.mode.embedded": "正在运行本地服务",
+    "server.mode.disconnected": "与正在运行的 Markon 连接已断开",
+    "server.mode.port": "端口 {port}",
+    "server.action.reconnect": "重新连接",
+    "server.action.start_local": "启动本地服务",
+    "server.global_code.remote_unavailable": "连接外部服务时不可设置全局访问码",
 
     // ── 全局设置 — 外观 ──────────────────────────────────────
     "sec.appearance": "外观",

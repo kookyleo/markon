@@ -967,6 +967,10 @@ pub async fn start(config: ServerConfig) -> Result<(), String> {
             "/api/workspace/{id}/access",
             axum::routing::put(update_workspace_access_handler),
         )
+        .route(
+            "/api/workspace/{id}/alias",
+            axum::routing::put(handle_workspace_update_alias),
+        )
         .route("/api/workspaces", get(list_workspaces_handler))
         .route("/api/admin/bootstrap", post(create_admin_bootstrap_handler))
         .route("/api/shutdown", post(shutdown_handler))
@@ -1177,18 +1181,23 @@ pub async fn start(config: ServerConfig) -> Result<(), String> {
             port: addr.port(),
             token: token.as_ref().clone(),
             host: host.clone(),
+            advertised_host: Some(advertised_host.clone()),
         })
         .write()
         {
             tracing::warn!("failed to write lock file: {e}");
         }
-        struct LockGuard;
+        struct LockGuard {
+            token: String,
+        }
         impl Drop for LockGuard {
             fn drop(&mut self) {
-                ServerLock::remove();
+                ServerLock::remove_if_owned(&self.token);
             }
         }
-        LockGuard
+        LockGuard {
+            token: token.as_ref().clone(),
+        }
     };
 
     // Helper: build a full URL from a base option string.
@@ -3466,7 +3475,11 @@ struct AddWorkspaceRequest {
     #[serde(flatten)]
     flags: WorkspaceFlags,
     #[serde(default)]
+    single_file: Option<String>,
+    #[serde(default)]
     collaborator_access_code_hash: String,
+    #[serde(default)]
+    alias: String,
 }
 
 #[derive(Deserialize)]
@@ -3493,12 +3506,25 @@ async fn add_workspace_handler(
         Ok(p) => p,
         Err(e) => return (StatusCode::BAD_REQUEST, format!("Invalid path: {e}")).into_response(),
     };
+    if let Some(single_file) = req.single_file.as_deref() {
+        let mut components = FsPath::new(single_file).components();
+        let exactly_one_normal_component =
+            matches!(components.next(), Some(std::path::Component::Normal(_)))
+                && components.next().is_none();
+        if !exactly_one_normal_component {
+            return (
+                StatusCode::BAD_REQUEST,
+                "single_file must be one workspace-relative file name",
+            )
+                .into_response();
+        }
+    }
     let id = state.workspace_registry.add(WorkspaceConfig {
         path,
         flags: req.flags,
-        single_file: None,
+        single_file: req.single_file,
         collaborator_access_code_hash: req.collaborator_access_code_hash,
-        alias: String::new(),
+        alias: req.alias,
     });
     Json(AddWorkspaceResponse { id }).into_response()
 }
@@ -6979,6 +7005,73 @@ mod tests {
             collaborator_access_code_hash: String::new(),
             ..Default::default()
         })
+    }
+
+    #[tokio::test]
+    async fn management_add_preserves_single_file_capability_and_alias() {
+        use axum::body::Body;
+        use axum::http::Request;
+
+        let root = tempfile::tempdir().unwrap();
+        std::fs::write(root.path().join("note.md"), "# note").unwrap();
+        std::fs::write(root.path().join("secret.md"), "secret").unwrap();
+        let registry = Arc::new(WorkspaceRegistry::new("single-file-api".into()));
+        let app = Router::new()
+            .route("/api/workspace", post(add_workspace_handler))
+            .with_state(test_state(registry.clone()));
+
+        let response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/api/workspace")
+                    .header("content-type", "application/json")
+                    .body(Body::from(
+                        json!({
+                            "path": root.path(),
+                            "single_file": "note.md",
+                            "alias": "Pinned note"
+                        })
+                        .to_string(),
+                    ))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::OK);
+        let body = to_bytes(response.into_body(), usize::MAX).await.unwrap();
+        let id = serde_json::from_slice::<serde_json::Value>(&body).unwrap()["id"]
+            .as_str()
+            .unwrap()
+            .to_string();
+        let info = registry
+            .info_list()
+            .into_iter()
+            .find(|info| info.id == id)
+            .unwrap();
+        assert!(info.ephemeral);
+        assert_eq!(info.single_file.as_deref(), Some("note.md"));
+        assert_eq!(info.alias, "Pinned note");
+        let entry = registry.get(&id).unwrap();
+        assert!(entry.fs.resolve_served("note.md").is_ok());
+        assert!(entry.fs.resolve_served("secret.md").is_err());
+
+        let invalid = app
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/api/workspace")
+                    .header("content-type", "application/json")
+                    .body(Body::from(
+                        json!({ "path": root.path(), "single_file": "../secret.md" }).to_string(),
+                    ))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(invalid.status(), StatusCode::BAD_REQUEST);
+        assert_eq!(registry.info_list().len(), 1);
     }
 
     async fn spawn_collaboration_test_server(

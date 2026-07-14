@@ -28,6 +28,14 @@
     "advertised.auto": "Auto (first LAN address)",
     "advertised.hint": "Which LAN address to show in links and QR codes when bound to 0.0.0.0.",
     "bind.save_failed": "Save failed: {error}",
+    "server.mode.label": "Server",
+    "server.mode.remote": "Connected to a running Markon",
+    "server.mode.embedded": "Running own server",
+    "server.mode.disconnected": "Lost connection to the running Markon",
+    "server.mode.port": "port {port}",
+    "server.action.reconnect": "Reconnect",
+    "server.action.start_local": "Start local server",
+    "server.global_code.remote_unavailable": "Unavailable while connected to an external server",
 
     // ── General — Appearance ─────────────────────────────────
     "sec.appearance": "Appearance",

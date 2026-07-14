@@ -1,5 +1,6 @@
 use clap::Parser;
 use dialoguer::Select;
+use markon_core::control::RunningServer;
 use markon_core::net::{available_bind_hosts, BindHostKind};
 use markon_core::server::{self, ServerConfig, WorkspaceInit};
 use markon_core::settings::AppSettings;
@@ -184,16 +185,6 @@ struct WorkspaceAccessSummary {
     featured_url: String,
     public_url: Option<String>,
     qr_url: Option<String>,
-}
-
-#[derive(Debug, Deserialize)]
-struct WorkspaceListEntry {
-    id: String,
-    path: String,
-    #[serde(flatten)]
-    flags: WorkspaceFlags,
-    #[serde(default)]
-    search_ready: bool,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -485,37 +476,15 @@ fn print_workspace_access_summary(summary: &WorkspaceAccessSummary) {
     }
 }
 
-/// Fetch the running server's workspace list (GET /api/workspaces).
-async fn fetch_workspaces(
-    client: &reqwest::Client,
-    port: u16,
-    token: &str,
-) -> Result<Vec<WorkspaceListEntry>, Box<dyn std::error::Error>> {
-    Ok(client
-        .get(format!("http://127.0.0.1:{port}/api/workspaces"))
-        .header("X-Markon-Token", token)
-        .send()
-        .await?
-        .error_for_status()?
-        .json()
-        .await?)
-}
-
 async fn list_workspaces(
     bind_host: &str,
     advertised_host: &str,
-    port: u16,
-    token: &str,
+    server: &RunningServer,
     format: WorkspaceListFormat,
     entry: Option<&str>,
 ) -> Result<(), Box<dyn std::error::Error>> {
-    // Must use the async reqwest client. reqwest::blocking::Client::new()
-    // spins up its own internal tokio runtime; constructing it from inside
-    // an outer tokio runtime (we run under #[tokio::main]) panics on drop
-    // with "Cannot drop a runtime in a context where blocking is not
-    // allowed". Same applies to every other CLI -> server HTTP call below.
-    let client = reqwest::Client::new();
-    let workspaces = fetch_workspaces(&client, port, token).await?;
+    let port = server.port();
+    let workspaces = server.list_workspaces().await?;
 
     if workspaces.is_empty() {
         println!("No active workspaces.");
@@ -629,12 +598,10 @@ async fn list_workspaces(
 }
 
 async fn detach_workspace(
-    port: u16,
-    token: &str,
+    server: &RunningServer,
     target: &str,
 ) -> Result<(), Box<dyn std::error::Error>> {
-    let client = reqwest::Client::new();
-    let workspaces = fetch_workspaces(&client, port, token).await?;
+    let workspaces = server.list_workspaces().await?;
 
     let id = if let Ok(idx) = target.parse::<usize>() {
         if idx == 0 || idx > workspaces.len() {
@@ -645,12 +612,7 @@ async fn detach_workspace(
         target
     };
 
-    client
-        .delete(format!("http://127.0.0.1:{port}/api/workspace/{id}"))
-        .header("X-Markon-Token", token)
-        .send()
-        .await?
-        .error_for_status()?;
+    server.remove_workspace(id).await?;
 
     println!("Workspace '{id}' detached.");
     Ok(())
@@ -660,8 +622,7 @@ async fn detach_workspace(
 /// Fetches the current flags, flips the requested one, and PUTs the full set
 /// back (the mgmt endpoint replaces flags wholesale).
 async fn set_workspace_feature(
-    port: u16,
-    token: &str,
+    server: &RunningServer,
     target: &str,
     feature: &str,
     value: &str,
@@ -671,8 +632,7 @@ async fn set_workspace_feature(
         "off" | "false" | "0" | "no" | "disable" | "disabled" => false,
         other => return Err(format!("Invalid value '{other}' — use on or off").into()),
     };
-    let client = reqwest::Client::new();
-    let workspaces = fetch_workspaces(&client, port, token).await?;
+    let workspaces = server.list_workspaces().await?;
     let entry = if let Ok(idx) = target.parse::<usize>() {
         if idx == 0 || idx > workspaces.len() {
             return Err(format!("Index {idx} out of range (1-{})", workspaces.len()).into());
@@ -700,25 +660,13 @@ async fn set_workspace_feature(
             .into())
         }
     }
-    client
-        .put(format!("http://127.0.0.1:{port}/api/workspace/{id}"))
-        .header("X-Markon-Token", token)
-        .json(&flags)
-        .send()
-        .await?
-        .error_for_status()?;
+    server.update_flags(&id, flags).await?;
     println!("{id}: {feature} = {}", if on { "on" } else { "off" });
     Ok(())
 }
 
-async fn shutdown_server(port: u16, token: &str) -> Result<(), Box<dyn std::error::Error>> {
-    let client = reqwest::Client::new();
-    client
-        .post(format!("http://127.0.0.1:{port}/api/shutdown"))
-        .header("X-Markon-Token", token)
-        .send()
-        .await?
-        .error_for_status()?;
+async fn shutdown_server(server: &RunningServer) -> Result<(), Box<dyn std::error::Error>> {
+    server.shutdown().await?;
 
     println!("Markon server is shutting down.");
     Ok(())
@@ -755,12 +703,12 @@ async fn request_admin_bootstrap(
 }
 
 async fn admin_browser_command(
-    port: u16,
-    token: &str,
+    server: &RunningServer,
     command: AdminCommands,
 ) -> Result<(), Box<dyn std::error::Error>> {
-    let client = reqwest::Client::new();
-    let workspaces = fetch_workspaces(&client, port, token).await?;
+    let port = server.port();
+    let token = server.token();
+    let workspaces = server.list_workspaces().await?;
     let redirect = workspaces
         .first()
         .map(|workspace| server::workspace_url_path(&workspace.id, None))
@@ -789,69 +737,6 @@ async fn admin_browser_command(
         }
     }
     Ok(())
-}
-
-async fn add_or_update_workspace(
-    port: u16,
-    token: &str,
-    ws_path: &str,
-    flags: WorkspaceFlags,
-    collaborator_access_code_hash: Option<&str>,
-) -> Result<String, Box<dyn std::error::Error>> {
-    let client = reqwest::Client::new();
-
-    // Mirrors the server's AddWorkspaceRequest so a new WorkspaceFlags field is
-    // carried automatically. The collaborator hash is already salted on the CLI
-    // side and is optional: omitted means "inherit global/no change".
-    #[derive(Serialize)]
-    struct AddWorkspaceBody<'a> {
-        path: &'a str,
-        #[serde(flatten)]
-        flags: WorkspaceFlags,
-        #[serde(default, skip_serializing_if = "str::is_empty")]
-        collaborator_access_code_hash: &'a str,
-    }
-
-    #[derive(Serialize)]
-    struct WorkspaceAccessBody<'a> {
-        #[serde(skip_serializing_if = "Option::is_none")]
-        collaborator_access_code_hash: Option<&'a str>,
-    }
-
-    // Check if this path is already a registered workspace.
-    let workspaces = fetch_workspaces(&client, port, token).await?;
-
-    if let Some(existing) = workspaces.iter().find(|w| w.path == ws_path) {
-        let id = &existing.id;
-        if collaborator_access_code_hash.is_some() {
-            client
-                .put(format!("http://127.0.0.1:{port}/api/workspace/{id}/access"))
-                .header("X-Markon-Token", token)
-                .json(&WorkspaceAccessBody {
-                    collaborator_access_code_hash,
-                })
-                .send()
-                .await?
-                .error_for_status()?;
-        }
-        return Ok(id.clone());
-    }
-
-    let resp: serde_json::Value = client
-        .post(format!("http://127.0.0.1:{port}/api/workspace"))
-        .header("X-Markon-Token", token)
-        .json(&AddWorkspaceBody {
-            path: ws_path,
-            flags,
-            collaborator_access_code_hash: collaborator_access_code_hash.unwrap_or_default(),
-        })
-        .send()
-        .await?
-        .error_for_status()?
-        .json()
-        .await?;
-    let id = resp["id"].as_str().ok_or("no id in response")?;
-    Ok(id.to_string())
 }
 
 fn init_tracing() {
@@ -899,8 +784,9 @@ async fn main() {
             }
         };
 
+        let server = RunningServer::new(port, token);
         let res = match cmd {
-            Commands::Admin { command } => admin_browser_command(port, &token, command).await,
+            Commands::Admin { command } => admin_browser_command(&server, command).await,
             Commands::Ls { format } => {
                 // Reproduce the daemon's reachable URLs: bind host from the
                 // lock, advertised preference from the shared global config.
@@ -913,20 +799,19 @@ async fn main() {
                 list_workspaces(
                     &bind_host,
                     &advertised_host,
-                    port,
-                    &token,
+                    &server,
                     format,
                     cli_entry.as_deref(),
                 )
                 .await
             }
-            Commands::Detach { target } => detach_workspace(port, &token, &target).await,
+            Commands::Detach { target } => detach_workspace(&server, &target).await,
             Commands::Set {
                 target,
                 feature,
                 value,
-            } => set_workspace_feature(port, &token, &target, &feature, &value).await,
-            Commands::Shutdown => shutdown_server(port, &token).await,
+            } => set_workspace_feature(&server, &target, &feature, &value).await,
+            Commands::Shutdown => shutdown_server(&server).await,
             Commands::Bug { .. } | Commands::Idea { .. } | Commands::Ask { .. } => {
                 unreachable!("handled above")
             }
@@ -1028,16 +913,19 @@ async fn main() {
 
     if let Some(lock) = ServerLock::read() {
         if lock.is_alive() {
-            match add_or_update_workspace(
-                lock.port,
-                &lock.token,
-                &ws_root.to_string_lossy(),
-                flags,
-                cli.collaborator_access_code
-                    .as_ref()
-                    .map(|_| workspace_collaborator_access_code_hash.as_str()),
-            )
-            .await
+            let server = RunningServer::from_lock(lock.clone());
+            match server
+                .add_or_update_workspace(
+                    &ws_root.to_string_lossy(),
+                    flags,
+                    false,
+                    None,
+                    cli.collaborator_access_code
+                        .as_ref()
+                        .map(|_| workspace_collaborator_access_code_hash.as_str()),
+                    None,
+                )
+                .await
             {
                 Ok(workspace_id) => {
                     // Prefer the running daemon's actual bind host (recorded in
@@ -1048,11 +936,13 @@ async fn main() {
                     } else {
                         lock.host.clone()
                     };
+                    let active_advertised_host =
+                        lock.advertised_host.as_deref().unwrap_or(&advertised_host);
                     let summary = build_workspace_access_summary(
                         &ws_root,
                         flags,
                         &bind_host,
-                        &advertised_host,
+                        active_advertised_host,
                         lock.port,
                         &workspace_id,
                         initial_path.as_deref(),
@@ -1061,7 +951,7 @@ async fn main() {
                     print_workspace_access_summary(&summary);
                     if let Some(base_option) = open_browser_target.as_deref() {
                         let base = if base_option == "local" {
-                            server::featured_base_url(&bind_host, &advertised_host, lock.port)
+                            server::featured_base_url(&bind_host, active_advertised_host, lock.port)
                         } else {
                             base_option.to_string()
                         };

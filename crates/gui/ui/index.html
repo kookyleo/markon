@@ -1034,6 +1034,17 @@
             <span class="pref-label"></span>
             <div class="pref-control" style="color:#d93025;font-size:12px;line-height:1.4;max-width:380px"></div>
           </div>
+          <!-- One-server-per-machine: this GUI either runs its own embedded
+               server or attaches to one another process already started.
+               Populated by applyServerMode() from get_server_status.mode. -->
+          <div id="server-mode-row" class="pref-row" style="display:none">
+            <span class="pref-label" data-i18n="server.mode.label"></span>
+            <div class="pref-control" style="font-size:12px;line-height:1.5;max-width:400px">
+              <span id="server-mode-text"></span>
+              <button type="button" class="btn" id="server-reconnect-btn" data-i18n="server.action.reconnect" style="margin-left:8px;display:none"></button>
+              <button type="button" class="btn" id="server-start-local-btn" data-i18n="server.action.start_local" style="margin-left:8px;display:none"></button>
+            </div>
+          </div>
           <div class="pref-row">
             <span class="pref-label">
               <span data-i18n="pref.collaborator_access_code"></span><span class="pref-info" data-i18n-title="pref.collaborator_access_code.hint" tabindex="0">&#9432;</span>
@@ -1495,6 +1506,13 @@
   // draws a fixed CODE_SET_DOTS marker for any set code.
   let globalCollaboratorCodeLen = 0;
 
+  // Backend mode: 'embedded' (we own the server), 'remote' (attached to a
+  // server another process started), or 'disconnected' (a remote call failed).
+  // Server-level access-code editing is only possible in embedded mode; the
+  // control API can't change a remote server's own server-level code.
+  let globalServerMode = 'embedded';
+  let globalServerPort = null;
+
   // ── Tab navigation ──────────────────────────────────────────────────────
   function activateTab(name) {
     const item = document.querySelector(`.nav-item[data-tab="${name}"]`);
@@ -1856,6 +1874,17 @@
     // Don't tear down a widget mid-edit (e.g. language switched while typing);
     // labels catch up on the next rebuild.
     if (collaboratorWrap.querySelector('.ac-editor.editing')) return;
+    // In remote mode the server-level code lives on the server another process
+    // runs — there's no control API to change it — so show a note instead of an
+    // editor. Per-workspace codes still work (each card has its own editor).
+    if (globalServerMode !== 'embedded') {
+      collaboratorWrap.innerHTML = '';
+      const note = document.createElement('span');
+      note.style.cssText = 'font-size:12px;color:var(--text-2)';
+      note.textContent = T('server.global_code.remote_unavailable');
+      collaboratorWrap.appendChild(note);
+      return;
+    }
     collaboratorWrap.innerHTML = accessCodeEditorHTML();
     const collaboratorCtl = wireAccessCode(collaboratorWrap.querySelector('.ac-editor'), {
       len: globalCollaboratorCodeLen,
@@ -2050,7 +2079,17 @@
 
   // ── Workspace list ──────────────────────────────────────────────────────
   async function refreshWorkspaces() {
-    const all = await invoke('get_workspaces');
+    let all;
+    try {
+      all = await invoke('get_workspaces');
+    } catch (e) {
+      // A remote server going away surfaces here — show the recovery banner
+      // (reconnect / start-local) rather than leaving a stale list.
+      if (String(e).includes('remote-server-error')) {
+        applyServerMode('disconnected');
+      }
+      return;
+    }
     // Single-file (Open-With) workspaces ARE listed now — surfaced as dashed
     // "single file" cards so they can be configured/shared like any workspace.
     // They stay transient (not persisted): they vanish when the app exits.
@@ -2590,6 +2629,7 @@
     if (document.getElementById('webstyles-list')?.children.length) {
       renderWebStyles();
     }
+    applyServerMode(globalServerMode, globalServerPort);
   }
 
   // Populate language dropdowns from i18n meta.
@@ -2753,9 +2793,71 @@
     if (typeof status?.host_available === 'boolean') {
       updateBindWarning(status.host, status.host_available);
     }
+    if (status?.mode) applyServerMode(status.mode, status.port);
+  }
+
+  // Reflect the backend mode (embedded / remote / disconnected) in the Server
+  // section: a status line, the reconnect / start-local buttons, and whether
+  // the server-level access-code editor is available.
+  function applyServerMode(mode, port) {
+    const prev = globalServerMode;
+    globalServerMode = mode;
+    globalServerPort = port ?? globalServerPort;
+    const row  = document.getElementById('server-mode-row');
+    const text = document.getElementById('server-mode-text');
+    const reconnectBtn  = document.getElementById('server-reconnect-btn');
+    const startLocalBtn = document.getElementById('server-start-local-btn');
+    if (!row || !text) return;
+    row.style.display = '';
+    const portText = globalServerPort
+      ? ` (${T('server.mode.port').replace('{port}', String(globalServerPort))})`
+      : '';
+    if (mode === 'remote') {
+      text.textContent = `${T('server.mode.remote')}${portText}`;
+      text.style.color = '';
+      reconnectBtn.style.display  = '';
+      // Never offer "start local server" while the remote is still alive:
+      // a second server would clobber the machine lock and orphan the remote.
+      // Only the 'disconnected' state may start a local server.
+      startLocalBtn.style.display = 'none';
+    } else if (mode === 'disconnected') {
+      text.textContent = T('server.mode.disconnected');
+      text.style.color = 'var(--danger)';
+      reconnectBtn.style.display  = '';
+      startLocalBtn.style.display = '';
+    } else {
+      text.textContent = `${T('server.mode.embedded')}${portText}`;
+      text.style.color = '';
+      reconnectBtn.style.display  = 'none';
+      startLocalBtn.style.display = 'none';
+    }
+    // The global access-code editor's availability depends on the mode — rebuild
+    // it when the mode actually changed (and no edit is in progress).
+    if (prev !== mode) renderGlobalAccessCode();
+  }
+
+  async function doReconnect() {
+    try {
+      const res = await invoke('reconnect');
+      applyServerMode(res?.mode || 'remote', res?.port);
+      await refreshWorkspaces();
+    } catch (e) {
+      toast(String(e), 'err');
+    }
+  }
+  async function doStartLocalServer() {
+    try {
+      await invoke('start_local_server');
+      await refreshServerStatus();
+      await refreshWorkspaces();
+    } catch (e) {
+      toast(String(e), 'err');
+    }
   }
 
   function setupBindHostListeners() {
+    document.getElementById('server-reconnect-btn')?.addEventListener('click', doReconnect);
+    document.getElementById('server-start-local-btn')?.addEventListener('click', doStartLocalServer);
     const ev = window.__TAURI__?.event;
     if (!ev?.listen) return;
     // Native File ▸ New Workspace (⌘N). The accelerator is registered on the
@@ -2781,6 +2883,7 @@
       if (typeof payload.host_available === 'boolean') {
         updateBindWarning(payload.host, payload.host_available);
       }
+      if (payload.mode) applyServerMode(payload.mode, payload.port);
     });
   }
 

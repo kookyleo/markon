@@ -1,7 +1,72 @@
 use markon_core::admin_auth::AdminBootstrapStore;
+use markon_core::control::RunningServer;
 use markon_core::server::{self, ServerConfig};
 use markon_core::workspace::{PersistHook, WorkspaceRegistry};
 use std::sync::Arc;
+
+/// Where this GUI's workspace commands are actually served from.
+///
+/// The machine invariant is "one markon server". On boot the GUI probes for an
+/// already-running server (see `RunningServer::discover`): if one is up it
+/// attaches as a *controller* (`Remote`) and drives that server's registry over
+/// its loopback management API instead of binding a second server; otherwise it
+/// owns an in-process `Embedded` server. Every registry-touching command
+/// dispatches on this enum so both modes behave identically to the frontend.
+pub enum ServerBackend {
+    Embedded(ServerManager),
+    /// Attached to a server another process started. We do NOT own its
+    /// lifecycle — dropping this (app quit) must not stop that server, which is
+    /// why `RunningServer` has no `Drop` that shuts anything down.
+    Remote(RunningServer),
+}
+
+impl ServerBackend {
+    /// Port the browser should hit — the embedded server's bound port, or the
+    /// remote server's loopback port.
+    pub fn port(&self) -> u16 {
+        match self {
+            ServerBackend::Embedded(m) => m.port(),
+            ServerBackend::Remote(r) => r.port(),
+        }
+    }
+
+    /// Whether a server is reachable. A remote is assumed live (discovery
+    /// TCP-probed it; a dead remote surfaces as a per-command error instead).
+    pub fn is_running(&self) -> bool {
+        match self {
+            ServerBackend::Embedded(m) => m.is_running(),
+            ServerBackend::Remote(_) => true,
+        }
+    }
+
+    pub fn last_error(&self) -> Option<String> {
+        match self {
+            ServerBackend::Embedded(m) => m.last_error(),
+            ServerBackend::Remote(_) => None,
+        }
+    }
+
+    pub fn is_remote(&self) -> bool {
+        matches!(self, ServerBackend::Remote(_))
+    }
+
+    /// Clone the remote handle so an async command can drop the (non-Send) lock
+    /// guard before awaiting the HTTP call. `None` in embedded mode.
+    pub fn remote(&self) -> Option<RunningServer> {
+        match self {
+            ServerBackend::Remote(r) => Some(r.clone()),
+            ServerBackend::Embedded(_) => None,
+        }
+    }
+
+    /// `"remote"` when attached to another process's server, else `"embedded"`.
+    pub fn mode(&self) -> &'static str {
+        match self {
+            ServerBackend::Embedded(_) => "embedded",
+            ServerBackend::Remote(_) => "remote",
+        }
+    }
+}
 
 pub struct ServerManager {
     abort_tx: Option<tokio::sync::oneshot::Sender<()>>,
@@ -38,6 +103,20 @@ impl ServerManager {
     ) -> Result<(), String> {
         self.stop();
         self.last_error = None;
+
+        // Re-check at the ownership boundary, not only during app boot. A
+        // daemon may have appeared between discovery and this start (or while
+        // an embedded server was being restarted); binding another port would
+        // violate the one-server invariant and replace its discovery lock.
+        if let Some(remote) = RunningServer::discover() {
+            let message = format!(
+                "a markon server is already running on port {}; reconnect instead",
+                remote.port()
+            );
+            self.last_error = Some(message.clone());
+            self.port = 0;
+            return Err(message);
+        }
 
         // Use the salt the caller put into ServerConfig (GUI: per-install random
         // salt from AppSettings). Fall back to a port-derived constant only for
