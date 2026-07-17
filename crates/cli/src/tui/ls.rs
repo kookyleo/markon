@@ -3,7 +3,10 @@
 //! flag editing, detach) lives here; the terminal guard, frame/widget helpers,
 //! and key decoder come from the parent module.
 
-use super::{read_action, Action, Frame, TerminalGuard, ERROR_COLOR};
+use super::{
+    read_action, Action, Frame, TerminalGuard, ACTION_COLOR, ENABLED_COLOR, ERROR_COLOR,
+    HEADING_COLOR, INFO_COLOR, LINK_COLOR, MUTED_COLOR, WARNING_COLOR,
+};
 use markon_core::control::RunningServer;
 use markon_core::server;
 use markon_core::workspace::{WorkspaceFlags, WorkspaceInfo};
@@ -74,7 +77,6 @@ pub fn run(
         edit_flags: WorkspaceFlags::default(),
         edit_cursor: 0,
         status: None,
-        show_help: false,
     };
 
     // From here on the guard owns raw-mode restoration and the inline viewport
@@ -96,10 +98,9 @@ struct App {
     /// nothing is sent until save.
     edit_flags: WorkspaceFlags,
     edit_cursor: usize,
-    /// Transient message shown below the current screen. Errors are red;
-    /// successful operations remain neutral instead of looking like failures.
+    /// Transient message shown below the current screen. Errors are red and
+    /// successful operations are green.
     status: Option<Status>,
-    show_help: bool,
 }
 
 impl App {
@@ -189,7 +190,6 @@ impl App {
                     }
                 }
             }
-            Action::Char('?') => self.show_help = !self.show_help,
             Action::Char('q') | Action::Esc => return false,
             _ => {}
         }
@@ -204,19 +204,19 @@ impl App {
                 self.edit_cursor = self.edit_cursor.saturating_sub(1);
             }
             Action::Down | Action::Char('j') => {
-                self.edit_cursor = (self.edit_cursor + 1).min(FLAG_COUNT - 1);
+                self.edit_cursor = (self.edit_cursor + 1).min(SUBMIT_INDEX);
             }
-            Action::Space => {
+            Action::Space | Action::Enter if self.edit_cursor < FLAG_COUNT => {
                 let field = crate::workspace_flag_mut(&mut self.edit_flags, self.edit_cursor);
                 *field = !*field;
             }
-            // Enter / s submit the working copy (AskUserQuestion-style: Enter is
-            // "confirm", Space toggles a row).
-            Action::Enter | Action::Char('s') => return self.save_edit(),
-            Action::Char('?') => self.show_help = !self.show_help,
-            // Esc backs out; q is reserved as "quit app" on List only, so it is
-            // inert here (the footer directs the user to Esc).
-            Action::Esc => {
+            // `s` is the global Submit shortcut. Enter activates only the
+            // explicit Submit row when the cursor is past the feature toggles.
+            Action::Char('s') => return self.save_edit(),
+            Action::Enter if self.edit_cursor == SUBMIT_INDEX => return self.save_edit(),
+            // Left/Esc back out; q is reserved as "quit app" on List only, so
+            // it remains inert here.
+            Action::Left | Action::Esc => {
                 self.status = None;
                 self.screen = Screen::List;
             }
@@ -286,21 +286,24 @@ impl App {
 
     fn draw_list(&self, terminal: &mut TerminalGuard) -> io::Result<()> {
         let mut frame = Frame::new()?;
-        frame.line(format!("Workspaces ({})", self.workspaces.len()));
+        frame.heading(
+            format!("Workspaces ({})", self.workspaces.len()),
+            HEADING_COLOR,
+        );
         frame.blank();
 
         if self.workspaces.is_empty() {
             frame.line("No active workspaces.");
             frame.blank();
-            frame.line("q quit · ? help");
+            frame.line("q/esc quit");
             self.push_status(&mut frame);
             return frame.render(terminal);
         }
 
         // Keep the selected row visible while reserving terminal rows for the
-        // URL, help, and status. Without a viewport, moving below the physical
+        // URL, footer, and status. Without a viewport, moving below the physical
         // screen made the cursor and mutation feedback disappear.
-        let fixed_rows = 6 + usize::from(self.show_help) + usize::from(self.status.is_some()) * 2;
+        let fixed_rows = 6 + usize::from(self.status.is_some()) * 2;
         let visible_rows = frame
             .height()
             .saturating_sub(fixed_rows)
@@ -322,18 +325,22 @@ impl App {
                 features,
                 ws.id
             );
-            frame.selectable(row, i == self.selected);
+            if i == self.selected {
+                frame.selectable_colored(row, true, ACTION_COLOR);
+            } else {
+                frame.selectable(row, false);
+            }
         }
 
         frame.blank();
         if let Some(url) = self.selected_url() {
-            frame.line(format!("URL: {url}"));
+            frame.line_colored(format!("URL: {url}"), LINK_COLOR);
         }
         frame.blank();
-        frame.line("↑/↓ move · e edit · d detach · o open · q quit · ? help");
-        if self.show_help {
-            frame.line("aliases: k/j move · enter edit · ctrl-c quit");
-        }
+        frame.line_colored(
+            "↑/↓ move · enter/e edit · d detach · o open · q/esc quit",
+            MUTED_COLOR,
+        );
         self.push_status(&mut frame);
         frame.render(terminal)
     }
@@ -347,9 +354,9 @@ impl App {
             ),
             None => (String::from("(none)"), String::new()),
         };
-        frame.line(format!("Edit: {name}"));
+        frame.heading(format!("Edit: {name}"), HEADING_COLOR);
         if !path.is_empty() {
-            frame.line(path);
+            frame.line_colored(path, MUTED_COLOR);
         }
         frame.blank();
 
@@ -360,14 +367,24 @@ impl App {
                 .into_iter()
                 .enumerate()
         {
-            frame.checkbox(enabled, form_label, i == self.edit_cursor);
+            let selected = i == self.edit_cursor;
+            let color = if selected {
+                ACTION_COLOR
+            } else if enabled {
+                ENABLED_COLOR
+            } else {
+                MUTED_COLOR
+            };
+            frame.checkbox_colored(enabled, form_label, selected, color);
         }
 
         frame.blank();
-        frame.line("↑/↓ move · space toggle · enter save · esc cancel · ? help");
-        if self.show_help {
-            frame.line("aliases: k/j move · s save · ctrl-c quit");
-        }
+        frame.selectable_colored("Submit", self.edit_cursor == SUBMIT_INDEX, ACTION_COLOR);
+        frame.blank();
+        frame.line_colored(
+            "↑/↓ move · space/enter toggle · s submit · ←/esc back",
+            MUTED_COLOR,
+        );
         self.push_status(&mut frame);
         frame.render(terminal)
     }
@@ -378,11 +395,11 @@ impl App {
             .selected_ws()
             .map(display_name)
             .unwrap_or_else(|| String::from("(none)"));
-        frame.line(format!("Detach \"{name}\"?"));
+        frame.heading(format!("Detach \"{name}\"?"), WARNING_COLOR);
         frame.blank();
         frame.line("y = yes    n = no");
         frame.blank();
-        frame.line("y detach · n cancel");
+        frame.line_colored("y detach · n cancel", MUTED_COLOR);
         self.push_status(&mut frame);
         frame.render(terminal)
     }
@@ -391,7 +408,7 @@ impl App {
         match &self.status {
             Some(Status::Info(message)) => {
                 frame.blank();
-                frame.line(message);
+                frame.line_colored(message, INFO_COLOR);
             }
             Some(Status::Error(message)) => {
                 frame.blank();
@@ -403,8 +420,10 @@ impl App {
 }
 
 /// Number of editable feature flags — the row count of the Edit form and the
-/// clamp bound for its cursor. Matches [`crate::workspace_flag_entries`].
+/// first six cursor positions. Matches [`crate::workspace_flag_entries`].
 const FLAG_COUNT: usize = 6;
+/// Final Edit-form cursor position. Enter submits only when this row is selected.
+const SUBMIT_INDEX: usize = FLAG_COUNT;
 
 fn viewport_start(selected: usize, total: usize, visible: usize) -> usize {
     if visible == 0 || total <= visible {

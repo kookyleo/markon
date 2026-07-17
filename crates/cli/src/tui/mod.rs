@@ -199,6 +199,7 @@ struct FrameLine {
     text: String,
     reverse: bool,
     color: Option<Color>,
+    bold: bool,
 }
 
 /// An inline frame built up as plain-text lines, then painted into rows owned by
@@ -230,6 +231,7 @@ impl Frame {
             text: text.into(),
             reverse: false,
             color: None,
+            bold: false,
         });
     }
 
@@ -250,6 +252,17 @@ impl Frame {
             text: text.into(),
             reverse: false,
             color: Some(color),
+            bold: false,
+        });
+    }
+
+    /// Append a bold line in the given semantic foreground color.
+    pub fn heading(&mut self, text: impl Into<String>, color: Color) {
+        self.lines.push(FrameLine {
+            text: text.into(),
+            reverse: false,
+            color: Some(color),
+            bold: true,
         });
     }
 
@@ -259,14 +272,30 @@ impl Frame {
             text: text.into(),
             reverse: selected,
             color: None,
+            bold: false,
         });
     }
 
-    /// Widget: a checkbox row — `[x] label` / `[ ] label`, reverse-video when
-    /// `selected`. The label is plain text; the box glyph is composed here.
-    pub fn checkbox(&mut self, checked: bool, label: impl AsRef<str>, selected: bool) {
+    /// Widget: a colored selectable row.
+    pub fn selectable_colored(&mut self, text: impl Into<String>, selected: bool, color: Color) {
+        self.lines.push(FrameLine {
+            text: text.into(),
+            reverse: selected,
+            color: Some(color),
+            bold: false,
+        });
+    }
+
+    /// Widget: a colored checkbox row.
+    pub fn checkbox_colored(
+        &mut self,
+        checked: bool,
+        label: impl AsRef<str>,
+        selected: bool,
+        color: Color,
+    ) {
         let text = format!("[{}] {}", if checked { 'x' } else { ' ' }, label.as_ref());
-        self.selectable(text, selected);
+        self.selectable_colored(text, selected, color);
     }
 
     /// Paint this frame into the inline viewport and flush.
@@ -306,6 +335,9 @@ impl Frame {
                 queue!(out, Print("\r\n"))?;
             }
             let text = truncate_to_width(&line.text, self.width);
+            if line.bold {
+                queue!(out, SetAttribute(crossterm::style::Attribute::Bold))?;
+            }
             if line.reverse {
                 queue!(out, SetAttribute(crossterm::style::Attribute::Reverse))?;
             }
@@ -316,7 +348,7 @@ impl Frame {
             if line.color.is_some() {
                 queue!(out, ResetColor)?;
             }
-            if line.reverse {
+            if line.reverse || line.bold {
                 queue!(out, SetAttribute(crossterm::style::Attribute::Reset))?;
             }
         }
@@ -364,7 +396,14 @@ fn truncate_to_width(text: &str, width: usize) -> String {
     }
 }
 
-/// Red — the status-line color for a surfaced control-socket error.
+/// Semantic terminal colors shared by every TUI screen.
+pub const HEADING_COLOR: Color = Color::Cyan;
+pub const ACTION_COLOR: Color = Color::Cyan;
+pub const LINK_COLOR: Color = Color::Cyan;
+pub const ENABLED_COLOR: Color = Color::Green;
+pub const MUTED_COLOR: Color = Color::DarkGrey;
+pub const INFO_COLOR: Color = Color::Green;
+pub const WARNING_COLOR: Color = Color::Yellow;
 pub const ERROR_COLOR: Color = Color::Red;
 
 #[cfg(test)]
