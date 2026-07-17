@@ -1,5 +1,8 @@
 use serde::{Deserialize, Serialize};
+#[cfg(test)]
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::{
+    collections::BTreeSet,
     path::{Path, PathBuf},
     sync::{Arc, Mutex, MutexGuard},
 };
@@ -13,7 +16,9 @@ use tantivy::{
 };
 use tantivy_jieba::JiebaTokenizer;
 
-use crate::workspace_fs::WorkspaceFs;
+use crate::workspace_fs::{WorkspaceFs, WorkspaceRelPath};
+
+const INDEX_DOCUMENT_BATCH_SIZE: usize = 64;
 
 /// Query string for `GET /_/{workspace_id}/search?q=…`.
 #[derive(Deserialize)]
@@ -40,35 +45,42 @@ pub struct SearchIndex {
     field_content: Field,
     start_dir: PathBuf,
     workspace_fs: Arc<WorkspaceFs>,
+    #[cfg(test)]
+    commit_count: AtomicUsize,
 }
 
 impl SearchIndex {
     /// Build an empty index whose schema/tokenizer/reader/writer are wired up
-    /// but which holds no documents yet. `start_dir` is the prefix that
-    /// `rel_path` strips, so stored `path` values stay relative and consistent
-    /// across [`Self::new`], [`Self::new_single_file`], and `update_file`.
+    /// but which holds no documents yet. Every stored path is supplied as a
+    /// normalized workspace route, keeping initial and incremental keys
+    /// consistent across directory and single-file scopes.
     fn empty(workspace_fs: Arc<WorkspaceFs>) -> tantivy::Result<Self> {
         // Build schema
         let mut schema_builder = Schema::builder();
 
-        let text_options = TextOptions::default()
-            .set_indexing_options(
-                TextFieldIndexing::default()
-                    .set_tokenizer("jieba")
-                    .set_index_option(IndexRecordOption::WithFreqsAndPositions),
-            )
-            .set_stored();
+        let indexed_text_options = TextOptions::default().set_indexing_options(
+            TextFieldIndexing::default()
+                .set_tokenizer("jieba")
+                .set_index_option(IndexRecordOption::WithFreqsAndPositions),
+        );
+        let stored_text_options = indexed_text_options.clone().set_stored();
 
         // Use STRING for path field - indexed but not tokenized, so we can delete by exact match
         let field_path = schema_builder.add_text_field("path", STRING | STORED);
-        let field_file_name = schema_builder.add_text_field("file_name", text_options.clone());
-        let field_title = schema_builder.add_text_field("title", text_options.clone());
-        let field_content = schema_builder.add_text_field("content", text_options);
+        let field_file_name =
+            schema_builder.add_text_field("file_name", stored_text_options.clone());
+        let field_title = schema_builder.add_text_field("title", stored_text_options);
+        // Full Markdown remains indexed for search, but is intentionally not
+        // STORED in Tantivy. Search snippets read at most the returned hits
+        // through WorkspaceFs, avoiding a second full-text copy in RAM.
+        let field_content = schema_builder.add_text_field("content", indexed_text_options);
 
         let schema = schema_builder.build();
 
-        // Create index in RAM
-        let index = Index::create_in_ram(schema);
+        // Keep the ephemeral index in an automatically-cleaned temporary
+        // MmapDirectory. Committed segments can be paged by the OS instead of
+        // forcing the entire workspace index to remain in process RAM.
+        let index = Index::create_from_tempdir(schema)?;
 
         // Register jieba + a LowerCaser so search is case-insensitive for Latin
         // text (CJK has no case, so jieba's output is unaffected). The same
@@ -93,6 +105,8 @@ impl SearchIndex {
             field_content,
             start_dir: workspace_fs.ambient_root().to_path_buf(),
             workspace_fs,
+            #[cfg(test)]
+            commit_count: AtomicUsize::new(0),
         })
     }
 
@@ -132,42 +146,64 @@ impl SearchIndex {
         })
     }
 
-    fn index_workspace(&self) -> tantivy::Result<()> {
-        use rayon::prelude::*;
+    fn commit(&self, writer: &mut IndexWriter) -> tantivy::Result<()> {
+        writer.commit()?;
+        #[cfg(test)]
+        self.commit_count.fetch_add(1, Ordering::Relaxed);
+        Ok(())
+    }
 
-        tracing::info!("indexing markdown files in {:?}", self.start_dir);
-
-        let paths: Vec<(String, PathBuf)> = self
-            .workspace_fs
+    fn workspace_markdown_files(&self) -> Vec<(WorkspaceRelPath, PathBuf)> {
+        self.workspace_fs
             .content_files(usize::MAX)
             .into_iter()
             .filter(|(rel, _)| rel.as_path().extension().is_some_and(|ext| ext == "md"))
-            .map(|(rel, path)| (rel.as_route(), path))
-            .collect();
+            .collect()
+    }
 
-        // Stage 1: parallel CPU-bound work. Each worker reads its file
-        // and builds the TantivyDocument without ever touching the
-        // writer lock, so rayon's parallelism is no longer serialised
-        // on a single mutex. Unreadable files are silently skipped, as
-        // before.
-        let docs: Vec<TantivyDocument> = paths
-            .par_iter()
-            .filter_map(|(rel, path)| {
-                let content = self.workspace_fs.read_content_to_string(rel).ok()?;
-                Some(self.build_document(path, &content))
-            })
-            .collect();
+    /// Read and tokenize a bounded group of files in parallel, then hand the
+    /// documents to the single Tantivy writer. Keeping only one small batch of
+    /// Markdown bodies alive avoids a workspace-sized memory spike during
+    /// initial indexing or an ignore-rule rebuild.
+    fn add_documents(
+        &self,
+        writer: &mut IndexWriter,
+        files: &[(WorkspaceRelPath, PathBuf)],
+    ) -> tantivy::Result<()> {
+        use rayon::prelude::*;
 
-        // Stage 2: serial write phase. Acquire the writer lock exactly
-        // once, batch every add_document, then commit. The guard is
-        // dropped at the end of the block, before reload(), so
-        // concurrent readers are not blocked any longer than needed.
-        {
-            let mut writer = self.writer()?;
+        for batch in files.chunks(INDEX_DOCUMENT_BATCH_SIZE) {
+            let docs: Vec<TantivyDocument> = batch
+                .par_iter()
+                .filter_map(|(rel, path)| {
+                    let relative_path = rel.as_route();
+                    let content = self
+                        .workspace_fs
+                        .read_content_to_string(&relative_path)
+                        .ok()?;
+                    Some(self.build_document(&relative_path, path, &content))
+                })
+                .collect();
             for doc in docs {
                 writer.add_document(doc)?;
             }
-            writer.commit()?;
+        }
+        Ok(())
+    }
+
+    fn index_workspace(&self) -> tantivy::Result<()> {
+        tracing::info!("indexing markdown files in {:?}", self.start_dir);
+
+        // Snapshot only paths up front; Markdown bodies are read later in
+        // bounded parallel batches so the entire workspace is never buffered.
+        let files = self.workspace_markdown_files();
+
+        // Acquire the writer once and commit the complete build once. The guard
+        // is dropped before reload(), so searches remain lock-free.
+        {
+            let mut writer = self.writer()?;
+            self.add_documents(&mut writer, &files)?;
+            self.commit(&mut writer)?;
         }
 
         self.reader.reload()?;
@@ -176,24 +212,20 @@ impl SearchIndex {
         Ok(())
     }
 
-    /// Path relative to `start_dir`, as stored in the `path` field and
-    /// used as the delete term for updates and removals.
-    fn rel_path(&self, path: &Path) -> String {
-        path.strip_prefix(&self.start_dir)
-            .unwrap_or(path)
-            .to_string_lossy()
-            .to_string()
+    fn replace_all(&self, files: &[(WorkspaceRelPath, PathBuf)]) -> tantivy::Result<()> {
+        {
+            let mut writer = self.writer()?;
+            writer.delete_all_documents()?;
+            self.add_documents(&mut writer, files)?;
+            self.commit(&mut writer)?;
+        }
+        self.reader.reload()?;
+        Ok(())
     }
 
-    /// Build a TantivyDocument for `path` with `content`. Pure CPU
-    /// work — does not touch the writer. Safe to call from rayon
-    /// workers in parallel.
-    fn build_document(&self, path: &Path, content: &str) -> TantivyDocument {
-        let relative_path = self
-            .workspace_fs
-            .route_for_path(path)
-            .unwrap_or_else(|| self.rel_path(path));
-
+    /// Build a TantivyDocument for an already-authorized route. Pure CPU work
+    /// — does not touch the writer and is safe to call from rayon workers.
+    fn build_document(&self, relative_path: &str, path: &Path, content: &str) -> TantivyDocument {
         let file_name = path
             .file_stem()
             .and_then(|s| s.to_str())
@@ -208,7 +240,7 @@ impl SearchIndex {
             .unwrap_or_else(|| file_name.clone());
 
         let mut doc = TantivyDocument::default();
-        doc.add_text(self.field_path, &relative_path);
+        doc.add_text(self.field_path, relative_path);
         doc.add_text(self.field_file_name, &file_name);
         doc.add_text(self.field_title, &title);
         doc.add_text(self.field_content, content);
@@ -251,8 +283,11 @@ impl SearchIndex {
                 .unwrap_or("")
                 .to_string();
 
-            let snippet = snippet_generator.snippet_from_doc(&retrieved_doc);
-            let snippet_html = snippet.to_html();
+            let snippet_html = self
+                .workspace_fs
+                .read_content_to_string(&file_path)
+                .map(|content| snippet_generator.snippet(&content).to_html())
+                .unwrap_or_default();
 
             results.push(SearchResult {
                 file_path,
@@ -265,55 +300,113 @@ impl SearchIndex {
         Ok(results)
     }
 
-    pub fn update_file(&self, path: &Path) -> tantivy::Result<()> {
-        let authorized = match self.workspace_fs.resolve_content_input(path) {
-            Ok(path) => path,
-            Err(_) => return Ok(()),
-        };
-        if authorized.extension().is_none_or(|ext| ext != "md") {
+    /// Reconcile a debounced batch of watcher paths against the filesystem's
+    /// current state. Every route is deleted first, then visible/readable
+    /// Markdown files are re-added, so creates, modifications, removals, and
+    /// both sides of renames converge correctly in one commit + reader reload.
+    ///
+    /// `content_files_for_routes` applies the same ignore policy as the initial
+    /// workspace walk. An ignored file is therefore deleted if an older build
+    /// or an earlier race ever placed it in the index.
+    pub(crate) fn reconcile_files(&self, paths: &[PathBuf]) -> tantivy::Result<()> {
+        let routes: BTreeSet<_> = paths
+            .iter()
+            .filter(|path| path.extension().is_some_and(|ext| ext == "md"))
+            .filter_map(|path| self.workspace_fs.lexical_route(path))
+            .collect();
+        if routes.is_empty() {
             return Ok(());
         }
 
-        let relative_path = self
-            .workspace_fs
-            .route_for_path(&authorized)
-            .unwrap_or_else(|| self.rel_path(&authorized));
-        let content = match self.workspace_fs.read_content_to_string(&relative_path) {
-            Ok(content) => content,
-            Err(_) => return Ok(()),
-        };
-        let doc = self.build_document(&authorized, &content);
-
-        // Delete and re-add in same transaction
-        {
-            let mut writer = self.writer()?;
-            let term = Term::from_field_text(self.field_path, &relative_path);
-            writer.delete_term(term);
-            writer.add_document(doc)?;
-            writer.commit()?;
+        let files = self.workspace_fs.content_files_for_routes(&routes);
+        let visible_routes: BTreeSet<_> = files.iter().map(|(route, _)| route.clone()).collect();
+        let searcher = self.reader.searcher();
+        let mut affected_routes = BTreeSet::new();
+        for route in &routes {
+            let term = Term::from_field_text(self.field_path, &route.as_route());
+            if visible_routes.contains(route) || searcher.doc_freq(&term)? > 0 {
+                affected_routes.insert(route.clone());
+            }
+        }
+        // Watchers observe ignored/hidden paths too. If none of those routes is
+        // visible or already indexed, avoid creating an empty Tantivy segment.
+        if affected_routes.is_empty() {
+            return Ok(());
         }
 
-        // Reload reader to see the changes
+        {
+            let mut writer = self.writer()?;
+            for route in &affected_routes {
+                writer.delete_term(Term::from_field_text(self.field_path, &route.as_route()));
+            }
+            self.add_documents(&mut writer, &files)?;
+            self.commit(&mut writer)?;
+        }
         self.reader.reload()?;
 
-        tracing::debug!("updated index: {}", relative_path);
+        tracing::debug!("reconciled {} search-index routes", routes.len());
         Ok(())
     }
 
+    /// Rebuild from the shared capability/ignore walk. Used only when an ignore
+    /// rule or directory topology changes, where per-file reconciliation cannot
+    /// determine every route that became visible or hidden.
+    pub(crate) fn rebuild(&self) -> tantivy::Result<()> {
+        let files = self.workspace_markdown_files();
+        self.replace_all(&files)?;
+        tracing::debug!("rebuilt search index");
+        Ok(())
+    }
+
+    /// Rebuild only when the visible Markdown route set has changed.
+    ///
+    /// Directory watchers also report topology changes inside paths excluded by
+    /// user `.gitignore` rules. Walking the authorized route set is cheap
+    /// compared with deleting and re-tokenizing the entire Tantivy index, and
+    /// lets those otherwise-empty batches remain true no-ops.
+    pub(crate) fn rebuild_if_routes_changed(&self) -> tantivy::Result<()> {
+        let files = self.workspace_markdown_files();
+        let searcher = self.reader.searcher();
+        let mut routes_match = searcher.num_docs() == files.len() as u64;
+        if routes_match {
+            for (route, _) in &files {
+                let term = Term::from_field_text(self.field_path, &route.as_route());
+                if searcher.doc_freq(&term)? != 1 {
+                    routes_match = false;
+                    break;
+                }
+            }
+        }
+        if routes_match {
+            tracing::debug!("search index route set unchanged; skipped rebuild");
+            return Ok(());
+        }
+
+        self.replace_all(&files)?;
+        tracing::debug!("rebuilt search index after route-set change");
+        Ok(())
+    }
+
+    pub fn update_file(&self, path: &Path) -> tantivy::Result<()> {
+        self.reconcile_files(&[path.to_path_buf()])
+    }
+
     pub fn delete_file(&self, path: &Path) -> tantivy::Result<()> {
-        let relative_path = self.rel_path(path);
+        let Some(route) = self.workspace_fs.lexical_route(path) else {
+            return Ok(());
+        };
 
         {
             let mut writer = self.writer()?;
-            let term = Term::from_field_text(self.field_path, &relative_path);
+            let term = Term::from_field_text(self.field_path, &route.as_route());
             writer.delete_term(term);
-            writer.commit()?;
+            self.commit(&mut writer)?;
         }
 
         // Reload reader to see the changes
         self.reader.reload()?;
 
-        tracing::debug!("removed from index: {}", relative_path);
+        tracing::debug!("removed from index: {}", route.as_route());
         Ok(())
     }
 }
@@ -495,6 +588,39 @@ mod tests {
     }
 
     #[test]
+    fn test_content_is_indexed_not_stored_and_snippet_reads_current_file() {
+        let temp_dir = TempDir::new().unwrap();
+        let file_path = temp_dir.path().join("snippet.md");
+        fs::write(
+            &file_path,
+            "# Snippet\nneedle appears beside the original body.",
+        )
+        .unwrap();
+
+        let index = SearchIndex::new(temp_dir.path()).unwrap();
+        assert!(
+            !index
+                .index
+                .schema()
+                .get_field_entry(index.field_content)
+                .is_stored(),
+            "Markdown bodies must not be duplicated in Tantivy's stored fields"
+        );
+
+        // Leave the index deliberately stale while changing the file. The hit
+        // still comes from the indexed term, but its snippet must be generated
+        // from the current capability-scoped file content.
+        fs::write(
+            &file_path,
+            "# Snippet\nneedle appears beside the fresh on-disk body.",
+        )
+        .unwrap();
+        let results = index.search("needle", 10).unwrap();
+        assert_eq!(results.len(), 1);
+        assert!(results[0].snippet.contains("fresh on-disk body"));
+    }
+
+    #[test]
     fn test_ignore_non_markdown_files() {
         let temp_dir = TempDir::new().unwrap();
         let dir_path = temp_dir.path();
@@ -631,6 +757,165 @@ mod tests {
         assert!(results.is_empty());
     }
 
+    #[test]
+    fn test_incremental_update_respects_ignore_rules() {
+        let temp_dir = TempDir::new().unwrap();
+        let ignored_path = temp_dir.path().join("secret.md");
+        fs::create_dir(temp_dir.path().join(".git")).unwrap();
+        fs::write(temp_dir.path().join(".gitignore"), "secret.md\n").unwrap();
+        fs::write(&ignored_path, "# Secret\ninitial-private-token").unwrap();
+        fs::write(
+            temp_dir.path().join("visible.md"),
+            "# Visible\npublic-token",
+        )
+        .unwrap();
+
+        let index = SearchIndex::new(temp_dir.path()).unwrap();
+        assert!(index
+            .search("initial-private-token", 10)
+            .unwrap()
+            .is_empty());
+
+        // Regression for #49: the old watcher path bypassed the ignore walker
+        // and inserted an ignored file after its first modification.
+        fs::write(&ignored_path, "# Secret\nmodified-private-token").unwrap();
+        let commits_before = index.commit_count.load(Ordering::Relaxed);
+        index.update_file(&ignored_path).unwrap();
+        assert!(
+            index
+                .search("modified-private-token", 10)
+                .unwrap()
+                .is_empty(),
+            "an ignored file must remain absent after an incremental update"
+        );
+        assert_eq!(
+            index.commit_count.load(Ordering::Relaxed),
+            commits_before,
+            "an ignored file that was never indexed must not create an empty commit"
+        );
+        assert_eq!(index.search("public-token", 10).unwrap().len(), 1);
+    }
+
+    #[test]
+    fn test_incremental_update_respects_ignored_and_hidden_parents() {
+        let temp_dir = TempDir::new().unwrap();
+        let ignored_dir = temp_dir.path().join("private");
+        let hidden_dir = temp_dir.path().join(".hidden");
+        fs::create_dir(temp_dir.path().join(".git")).unwrap();
+        fs::create_dir_all(&ignored_dir).unwrap();
+        fs::create_dir_all(&hidden_dir).unwrap();
+        fs::write(temp_dir.path().join(".gitignore"), "private/\n").unwrap();
+        let ignored = ignored_dir.join("ignored.md");
+        let hidden = hidden_dir.join("hidden.md");
+        fs::write(&ignored, "# Private\nignored-parent-token").unwrap();
+        fs::write(&hidden, "# Hidden\nhidden-parent-token").unwrap();
+
+        let index = SearchIndex::new(temp_dir.path()).unwrap();
+        index
+            .reconcile_files(&[ignored.clone(), hidden.clone()])
+            .unwrap();
+
+        assert!(index.search("ignored-parent-token", 10).unwrap().is_empty());
+        assert!(index.search("hidden-parent-token", 10).unwrap().is_empty());
+    }
+
+    #[test]
+    fn test_rebuild_applies_new_ignore_rules() {
+        let temp_dir = TempDir::new().unwrap();
+        let secret_path = temp_dir.path().join("secret.md");
+        fs::write(&secret_path, "# Secret\nnewly-ignored-token").unwrap();
+        let index = SearchIndex::new(temp_dir.path()).unwrap();
+        assert_eq!(index.search("newly-ignored-token", 10).unwrap().len(), 1);
+
+        fs::create_dir(temp_dir.path().join(".git")).unwrap();
+        fs::write(temp_dir.path().join(".gitignore"), "secret.md\n").unwrap();
+        index.rebuild().unwrap();
+        assert!(
+            index.search("newly-ignored-token", 10).unwrap().is_empty(),
+            "changing ignore rules must remove documents already in the index"
+        );
+    }
+
+    #[test]
+    fn test_rebuild_if_routes_changed_skips_ignored_directory_churn() {
+        let temp_dir = TempDir::new().unwrap();
+        fs::create_dir(temp_dir.path().join(".git")).unwrap();
+        fs::write(temp_dir.path().join(".gitignore"), "generated/\n").unwrap();
+        fs::write(
+            temp_dir.path().join("visible.md"),
+            "# Visible\nstable-token",
+        )
+        .unwrap();
+        let index = SearchIndex::new(temp_dir.path()).unwrap();
+        let commits_before = index.commit_count.load(Ordering::Relaxed);
+
+        fs::create_dir_all(temp_dir.path().join("generated").join("nested")).unwrap();
+        fs::write(
+            temp_dir
+                .path()
+                .join("generated")
+                .join("nested")
+                .join("ignored.md"),
+            "# Ignored\nprivate-token",
+        )
+        .unwrap();
+        index.rebuild_if_routes_changed().unwrap();
+
+        assert_eq!(
+            index.commit_count.load(Ordering::Relaxed),
+            commits_before,
+            "ignored directory churn must not rebuild an unchanged index"
+        );
+        assert_eq!(index.search("stable-token", 10).unwrap().len(), 1);
+        assert!(index.search("private-token", 10).unwrap().is_empty());
+    }
+
+    #[test]
+    fn test_reconcile_batch_deduplicates_paths_and_commits_once() {
+        let temp_dir = TempDir::new().unwrap();
+        let first = temp_dir.path().join("first.md");
+        let second = temp_dir.path().join("second.md");
+        fs::write(&first, "# First\nold-first-token").unwrap();
+        fs::write(&second, "# Second\nold-second-token").unwrap();
+        let index = SearchIndex::new(temp_dir.path()).unwrap();
+        let commits_before = index.commit_count.load(Ordering::Relaxed);
+
+        fs::write(&first, "# First\nnew-first-token").unwrap();
+        fs::write(&second, "# Second\nnew-second-token").unwrap();
+        index
+            .reconcile_files(&[first.clone(), first.clone(), second.clone()])
+            .unwrap();
+
+        assert_eq!(
+            index.commit_count.load(Ordering::Relaxed),
+            commits_before + 1,
+            "one watcher batch must produce exactly one Tantivy commit"
+        );
+        assert_eq!(index.search("new-first-token", 10).unwrap().len(), 1);
+        assert_eq!(index.search("new-second-token", 10).unwrap().len(), 1);
+        assert!(index.search("old-first-token", 10).unwrap().is_empty());
+        assert!(index.search("old-second-token", 10).unwrap().is_empty());
+    }
+
+    #[test]
+    fn test_reconcile_batch_handles_rename_as_delete_plus_add() {
+        let temp_dir = TempDir::new().unwrap();
+        let old_path = temp_dir.path().join("old.md");
+        let new_path = temp_dir.path().join("new.md");
+        fs::write(&old_path, "# Rename\nrename-token").unwrap();
+        let index = SearchIndex::new(temp_dir.path()).unwrap();
+
+        fs::rename(&old_path, &new_path).unwrap();
+        index
+            .reconcile_files(&[old_path.clone(), new_path.clone()])
+            .unwrap();
+
+        let results = index.search("rename-token", 10).unwrap();
+        assert_eq!(results.len(), 1);
+        assert_eq!(results[0].file_path, "new.md");
+        assert_eq!(index.reader.searcher().num_docs(), 1);
+    }
+
     /// Stress the parallel parse -> serial write pipeline with enough
     /// files that rayon will fan out across multiple workers. Verifies
     /// every doc lands in the index and that content from arbitrary
@@ -640,7 +925,7 @@ mod tests {
         let temp_dir = TempDir::new().unwrap();
         let dir_path = temp_dir.path();
 
-        const N: usize = 50;
+        const N: usize = INDEX_DOCUMENT_BATCH_SIZE * 2 + 2;
         for i in 0..N {
             // Vary body size so workers spend different amounts of
             // CPU per file. Each file embeds its own unique marker
@@ -664,7 +949,7 @@ mod tests {
         // Probe a handful of unique markers to prove the content of
         // individual docs survived the parse -> write split, not just
         // the document count.
-        for i in [0usize, 7, 23, 49] {
+        for i in [0usize, 7, 65, N - 1] {
             let needle = format!("marker_token_{i}");
             let results = index.search(&needle, 10).unwrap();
             assert_eq!(
@@ -676,7 +961,7 @@ mod tests {
         }
 
         // Title-based search still works across the parallel pipeline.
-        let results = index.search("Doc", 100).unwrap();
+        let results = index.search("Doc", N + 1).unwrap();
         assert_eq!(results.len(), N);
     }
 

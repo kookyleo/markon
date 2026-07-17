@@ -4,10 +4,13 @@ use crate::markdown::extract_referenced_assets_for_file;
 use crate::search::SearchIndex;
 use crate::workspace_fs::WorkspaceFs;
 use arc_swap::ArcSwapOption;
-use notify::{EventKind, RecursiveMode, Watcher};
+use notify::{
+    event::{CreateKind, ModifyKind, RemoveKind},
+    EventKind, RecursiveMode, Watcher,
+};
 use serde::{Deserialize, Serialize};
 use std::{
-    collections::{HashMap, HashSet},
+    collections::{BTreeSet, HashMap, HashSet},
     path::{Path, PathBuf},
     sync::{
         atomic::{AtomicBool, Ordering},
@@ -20,6 +23,9 @@ const LIVE_RELOAD_EXTENSIONS: &[&str] = &[
     "md", "markdown", "png", "jpg", "jpeg", "gif", "webp", "avif", "svg", "css", "js",
 ];
 const LIVE_RELOAD_IGNORED_DIRS: &[&str] = &[".git", "node_modules", "target"];
+const WATCH_STOP_POLL: std::time::Duration = std::time::Duration::from_millis(500);
+const WATCH_DEBOUNCE: std::time::Duration = std::time::Duration::from_millis(250);
+const WATCH_MAX_BATCH_DELAY: std::time::Duration = std::time::Duration::from_secs(1);
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct WorkspaceFlags {
@@ -563,15 +569,18 @@ fn refresh_allowed_assets(entry: &WorkspaceEntry, file_name: &str) {
     entry.fs.replace_assets(new_set);
 }
 
-/// Shared scaffold for the notify-based watchers below: spawn a thread that
-/// owns the channel and watcher, forward Ok events, and run `on_event` for
-/// each one. The thread exits (dropping the watcher) when the watch cannot
-/// be established, the channel closes, or `stopped` is set (workspace removed).
+/// Shared scaffold for the notify-based watchers below. Events are collected
+/// until 250ms of quiet, with a one-second maximum batch latency, before the
+/// callback runs once. This absorbs the duplicate/multi-stage events emitted by
+/// editors and prevents git operations from causing one search commit per path.
+///
+/// The thread exits (dropping the watcher) when the watch cannot be established,
+/// the channel closes, or `stopped` is set (workspace removed).
 fn spawn_watch_thread(
     root: PathBuf,
     mode: RecursiveMode,
     stopped: Arc<AtomicBool>,
-    mut on_event: impl FnMut(notify::Event) + Send + 'static,
+    mut on_events: impl FnMut(Vec<notify::Event>) + Send + 'static,
 ) {
     std::thread::spawn(move || {
         let (tx, rx) = std::sync::mpsc::channel();
@@ -588,17 +597,40 @@ fn spawn_watch_thread(
         // Poll with a timeout rather than a bare `recv()` so the thread wakes
         // periodically to observe `stopped` even when no filesystem events
         // arrive. A removed workspace would otherwise block here forever,
-        // leaking the OS thread and the in-RAM search index it pins.
+        // leaking the OS thread and the search index it pins.
         loop {
             if stopped.load(Ordering::Relaxed) {
                 return;
             }
-            match rx.recv_timeout(std::time::Duration::from_millis(500)) {
-                Ok(event) => {
+            match rx.recv_timeout(WATCH_STOP_POLL) {
+                Ok(first) => {
+                    let started = std::time::Instant::now();
+                    let mut events = vec![first];
+                    let mut disconnected = false;
+                    loop {
+                        if stopped.load(Ordering::Relaxed) {
+                            return;
+                        }
+                        let remaining = WATCH_MAX_BATCH_DELAY.saturating_sub(started.elapsed());
+                        if remaining.is_zero() {
+                            break;
+                        }
+                        match rx.recv_timeout(WATCH_DEBOUNCE.min(remaining)) {
+                            Ok(event) => events.push(event),
+                            Err(std::sync::mpsc::RecvTimeoutError::Timeout) => break,
+                            Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => {
+                                disconnected = true;
+                                break;
+                            }
+                        }
+                    }
                     if stopped.load(Ordering::Relaxed) {
                         return;
                     }
-                    on_event(event);
+                    on_events(events);
+                    if disconnected {
+                        return;
+                    }
                 }
                 Err(std::sync::mpsc::RecvTimeoutError::Timeout) => continue,
                 Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => return,
@@ -622,51 +654,59 @@ fn spawn_single_file_watcher(root: PathBuf, entry: Arc<WorkspaceEntry>, file_nam
         root.clone(),
         RecursiveMode::NonRecursive,
         stopped,
-        move |event: notify::Event| {
-            for path in event.paths {
-                let Ok(rel) = path.strip_prefix(&root) else {
+        move |events: Vec<notify::Event>| {
+            let mut pinned_changed = false;
+            let mut broadcast_paths = BTreeSet::new();
+
+            for event in events {
+                let is_create_or_modify =
+                    matches!(event.kind, EventKind::Create(_) | EventKind::Modify(_));
+                let is_mutation = is_create_or_modify || matches!(event.kind, EventKind::Remove(_));
+                if !is_mutation {
                     continue;
-                };
-                let rel_str = rel.to_string_lossy().to_string();
-                let touched_pinned = path == target;
-                let touched_asset = entry.fs.is_asset(rel);
-                if !(touched_pinned || touched_asset) {
-                    continue;
                 }
-                let mut should_broadcast = false;
-                match event.kind {
-                    EventKind::Create(_) | EventKind::Modify(_) => {
-                        if touched_pinned {
-                            refresh_allowed_assets(&entry, &file_name);
-                            // Keep the file-scoped search index in sync. No-op
-                            // when search is disabled (no index loaded).
-                            if let Some(idx) = entry.search_index.load_full() {
-                                let _ = idx.update_file(&target);
-                            }
-                        }
-                        should_broadcast = true;
+                for path in event.paths {
+                    let Ok(rel) = path.strip_prefix(&root) else {
+                        continue;
+                    };
+                    let touched_pinned = path == target;
+                    let touched_asset = entry.fs.is_asset(rel);
+                    if !(touched_pinned || touched_asset) {
+                        continue;
                     }
-                    // Don't broadcast for Remove: the file just went away,
-                    // reloading would 404 the tab.
-                    EventKind::Remove(_) if touched_pinned => {
-                        entry.fs.clear_assets();
-                        if let Some(idx) = entry.search_index.load_full() {
-                            let _ = idx.delete_file(&target);
-                        }
+                    pinned_changed |= touched_pinned;
+                    if is_create_or_modify {
+                        broadcast_paths.insert(rel.to_string_lossy().to_string());
                     }
-                    _ => {}
                 }
-                if should_broadcast {
-                    let file_payload = serde_json::json!({
-                        "type": "file_changed",
-                        "workspace_id": entry.id,
-                        "path": rel_str,
-                    })
-                    .to_string();
-                    let _ = entry.events_tx.send(WorkspaceEvent::Workspace {
-                        payload: file_payload,
-                    });
+            }
+
+            if pinned_changed {
+                if target.is_file() {
+                    refresh_allowed_assets(&entry, &file_name);
+                } else {
+                    // Don't broadcast for a final removal: the file just went
+                    // away and reloading would 404 the tab.
+                    entry.fs.clear_assets();
+                    broadcast_paths.remove(&file_name);
                 }
+                if let Some(idx) = entry.search_index.load_full() {
+                    if let Err(error) = idx.reconcile_files(std::slice::from_ref(&target)) {
+                        tracing::warn!("single-file search index update failed: {error}");
+                    }
+                }
+            }
+
+            for rel_str in broadcast_paths {
+                let file_payload = serde_json::json!({
+                    "type": "file_changed",
+                    "workspace_id": entry.id,
+                    "path": rel_str,
+                })
+                .to_string();
+                let _ = entry.events_tx.send(WorkspaceEvent::Workspace {
+                    payload: file_payload,
+                });
             }
         },
     );
@@ -686,34 +726,170 @@ fn spawn_directory_watcher(root: PathBuf, entry: Arc<WorkspaceEntry>) {
         root.clone(),
         RecursiveMode::Recursive,
         stopped,
-        move |event: notify::Event| {
-            let event_kind = event.kind;
-            for path in event.paths {
-                match &event_kind {
-                    EventKind::Create(_) | EventKind::Modify(_) => {
-                        if let Some(idx) = entry.search_index.load_full() {
-                            let _ = idx.update_file(&path);
-                        }
+        move |events: Vec<notify::Event>| {
+            let search_changes = coalesce_search_changes(&root, &events);
+            if let Some(idx) = entry.search_index.load_full() {
+                let result = if search_changes.rebuild {
+                    if search_changes.paths.is_empty() {
+                        idx.rebuild_if_routes_changed()
+                    } else {
+                        idx.rebuild()
                     }
-                    EventKind::Remove(_) => {
-                        if let Some(idx) = entry.search_index.load_full() {
-                            let _ = idx.delete_file(&path);
-                        }
+                } else {
+                    idx.reconcile_files(&search_changes.paths)
+                };
+                if let Err(error) = result {
+                    tracing::warn!("directory search index update failed: {error}");
+                }
+            }
+
+            let mut broadcast_paths = BTreeSet::new();
+            for event in events {
+                if !matches!(
+                    event.kind,
+                    EventKind::Create(_) | EventKind::Modify(_) | EventKind::Remove(_)
+                ) {
+                    continue;
+                }
+                for path in event.paths {
+                    if let Some(rel_str) = directory_live_reload_path(&root, &path) {
+                        broadcast_paths.insert(rel_str);
                     }
-                    _ => continue,
                 }
-                if let Some(rel_str) = directory_live_reload_path(&root, &path) {
-                    let payload = serde_json::json!({
-                        "type": "file_changed",
-                        "workspace_id": entry.id,
-                        "path": rel_str,
-                    })
-                    .to_string();
-                    let _ = entry.events_tx.send(WorkspaceEvent::Workspace { payload });
-                }
+            }
+            for rel_str in broadcast_paths {
+                let payload = serde_json::json!({
+                    "type": "file_changed",
+                    "workspace_id": entry.id,
+                    "path": rel_str,
+                })
+                .to_string();
+                let _ = entry.events_tx.send(WorkspaceEvent::Workspace { payload });
             }
         },
     );
+}
+
+#[derive(Debug, Default, PartialEq, Eq)]
+struct SearchChangeBatch {
+    paths: Vec<PathBuf>,
+    rebuild: bool,
+}
+
+/// Collapse notify's often-repeated events into the smallest search operation.
+/// Ordinary Markdown paths are reconciled once. Ignore-rule or directory
+/// topology changes require a full rebuild because they may affect paths that
+/// did not themselves emit an event.
+fn coalesce_search_changes(root: &Path, events: &[notify::Event]) -> SearchChangeBatch {
+    let mut paths = BTreeSet::new();
+    let mut rebuild = false;
+
+    for event in events {
+        if event.need_rescan() {
+            rebuild = true;
+        }
+        if !matches!(
+            event.kind,
+            EventKind::Create(_) | EventKind::Modify(_) | EventKind::Remove(_)
+        ) {
+            continue;
+        }
+        let relevant_paths: Vec<_> = event
+            .paths
+            .iter()
+            .filter(|path| !is_search_event_path_ignored(root, path))
+            .collect();
+        if relevant_paths.is_empty() {
+            continue;
+        }
+
+        let explicit_directory_event = matches!(
+            event.kind,
+            EventKind::Create(CreateKind::Folder) | EventKind::Remove(RemoveKind::Folder)
+        );
+        let created_directory = matches!(
+            event.kind,
+            EventKind::Create(CreateKind::Any | CreateKind::Other)
+        ) && relevant_paths.iter().any(|path| path.is_dir());
+        // Some backends cannot identify a removed entry's type. Extensionless
+        // removals may be directories, and a rebuild is the only way to remove
+        // every indexed descendant after the path no longer exists.
+        let ambiguous_removed_directory =
+            matches!(
+                event.kind,
+                EventKind::Remove(RemoveKind::Any | RemoveKind::Other)
+            ) && relevant_paths.iter().any(|path| path.extension().is_none());
+        // The old side of a renamed directory no longer exists, so `is_dir`
+        // alone cannot identify it. Extensionless rename paths conservatively
+        // request a rebuild; Markdown file renames stay on the batch fast path.
+        let renamed_directory = matches!(event.kind, EventKind::Modify(ModifyKind::Name(_)))
+            && relevant_paths.iter().any(|path| path.extension().is_none());
+        rebuild |= explicit_directory_event
+            || created_directory
+            || ambiguous_removed_directory
+            || renamed_directory;
+
+        for path in relevant_paths {
+            let rel = path.strip_prefix(root).unwrap_or(path);
+            if is_search_ignore_file(rel) {
+                rebuild = true;
+            }
+            if path.extension().is_some_and(|ext| ext == "md") {
+                paths.insert(path.clone());
+            }
+        }
+    }
+
+    SearchChangeBatch {
+        paths: paths.into_iter().collect(),
+        rebuild,
+    }
+}
+
+/// notify watches the raw tree, while search uses the standard ignore walker.
+/// Drop paths that the shared walker excludes intrinsically before they can
+/// trigger an empty commit or a full rebuild. Explicit ignore-rule files are
+/// retained because changing them can alter visibility elsewhere.
+fn is_search_event_path_ignored(root: &Path, path: &Path) -> bool {
+    let rel = path.strip_prefix(root).unwrap_or(path);
+    let components: Vec<_> = rel.components().map(|part| part.as_os_str()).collect();
+    let retained_rule_suffix = if components.last().is_some_and(|name| {
+        *name == std::ffi::OsStr::new(".gitignore") || *name == std::ffi::OsStr::new(".ignore")
+    }) {
+        1
+    } else if components.ends_with(&[
+        std::ffi::OsStr::new(".git"),
+        std::ffi::OsStr::new("info"),
+        std::ffi::OsStr::new("exclude"),
+    ]) {
+        3
+    } else {
+        0
+    };
+    components[..components.len().saturating_sub(retained_rule_suffix)]
+        .iter()
+        .any(|component| {
+            let name = component.to_string_lossy();
+            name.starts_with('.')
+                || LIVE_RELOAD_IGNORED_DIRS
+                    .iter()
+                    .any(|ignored| name.eq_ignore_ascii_case(ignored))
+        })
+}
+
+fn is_search_ignore_file(rel: &Path) -> bool {
+    if rel
+        .file_name()
+        .is_some_and(|name| name == ".gitignore" || name == ".ignore")
+    {
+        return true;
+    }
+    let components: Vec<_> = rel.components().map(|part| part.as_os_str()).collect();
+    components.ends_with(&[
+        std::ffi::OsStr::new(".git"),
+        std::ffi::OsStr::new("info"),
+        std::ffi::OsStr::new("exclude"),
+    ])
 }
 
 fn directory_live_reload_path(root: &Path, path: &Path) -> Option<String> {
@@ -987,6 +1163,76 @@ mod tests {
         assert!(directory_live_reload_path(root, &root.join("target").join("x.css")).is_none());
         assert!(directory_live_reload_path(root, &root.join("README")).is_none());
         assert!(directory_live_reload_path(root, &root.join("notes.txt")).is_none());
+    }
+
+    #[test]
+    fn search_change_batch_deduplicates_markdown_paths() {
+        let root = Path::new("/repo");
+        let first = root.join("docs").join("a.md");
+        let second = root.join("docs").join("b.md");
+        let modify_kind = EventKind::Modify(ModifyKind::Data(notify::event::DataChange::Content));
+        let events = vec![
+            notify::Event::new(modify_kind).add_path(first.clone()),
+            notify::Event::new(modify_kind).add_path(first.clone()),
+            notify::Event::new(EventKind::Create(CreateKind::File)).add_path(second.clone()),
+        ];
+
+        let batch = coalesce_search_changes(root, &events);
+        assert!(!batch.rebuild);
+        assert_eq!(batch.paths, vec![first, second]);
+    }
+
+    #[test]
+    fn search_change_batch_rebuilds_for_ignore_and_directory_changes() {
+        let root = Path::new("/repo");
+        let ignore_event = notify::Event::new(EventKind::Modify(ModifyKind::Data(
+            notify::event::DataChange::Content,
+        )))
+        .add_path(root.join("docs").join(".gitignore"));
+        let directory_event = notify::Event::new(EventKind::Remove(RemoveKind::Folder))
+            .add_path(root.join("old-docs"));
+
+        assert!(coalesce_search_changes(root, &[ignore_event]).rebuild);
+        assert!(coalesce_search_changes(root, &[directory_event]).rebuild);
+        assert!(is_search_ignore_file(Path::new(".git/info/exclude")));
+        assert!(!is_search_ignore_file(Path::new(".git/index")));
+    }
+
+    #[test]
+    fn search_change_batch_drops_intrinsically_ignored_paths() {
+        let root = Path::new("/repo");
+        let ignored_file = root.join("node_modules").join("pkg").join("README.md");
+        let hidden_file = root.join(".cache").join("generated.md");
+        let ignored_directory = root.join("target").join("generated-docs");
+        let events = vec![
+            notify::Event::new(EventKind::Modify(ModifyKind::Data(
+                notify::event::DataChange::Content,
+            )))
+            .add_path(ignored_file),
+            notify::Event::new(EventKind::Create(CreateKind::File)).add_path(hidden_file),
+            notify::Event::new(EventKind::Create(CreateKind::Folder)).add_path(ignored_directory),
+        ];
+
+        assert_eq!(
+            coalesce_search_changes(root, &events),
+            SearchChangeBatch::default()
+        );
+        assert!(is_search_event_path_ignored(
+            root,
+            &root.join(".hidden").join("note.md")
+        ));
+        assert!(!is_search_event_path_ignored(
+            root,
+            &root.join("docs").join(".gitignore")
+        ));
+        assert!(!is_search_event_path_ignored(
+            root,
+            &root.join(".git").join("info").join("exclude")
+        ));
+        assert!(is_search_event_path_ignored(
+            root,
+            &root.join("node_modules").join("pkg").join(".gitignore")
+        ));
     }
 
     /// Regression for #32: the workspace list must be deterministically ordered
