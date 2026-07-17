@@ -48,9 +48,18 @@ for TARGET in "${TARGETS[@]}"; do
     x86_64-apple-darwin)  ARCH="x86_64" ;;
   esac
 
-  echo "Building .app for $TARGET (release)..."
+  echo "Building markond sidecar for $TARGET (release)..."
   rustup target add "$TARGET" >/dev/null 2>&1 || true
-  APPLE_SIGNING_IDENTITY="-" cargo tauri build --bundles app --target "$TARGET"
+  cargo build --release -p markond --target "$TARGET"
+  mkdir -p "$GUI_DIR/binaries"
+  cp "$REPO_ROOT/target/$TARGET/release/markond" \
+     "$GUI_DIR/binaries/markond-$TARGET"
+
+  echo "Building .app for $TARGET (release)..."
+  APPLE_SIGNING_IDENTITY="-" cargo tauri build \
+    --bundles app \
+    --target "$TARGET" \
+    --config tauri.sidecar.conf.json
 
   APP="$REPO_ROOT/target/$TARGET/release/bundle/macos/Markon.app"
   if [[ ! -d "$APP" ]]; then
@@ -64,10 +73,17 @@ for TARGET in "${TARGETS[@]}"; do
     echo "Markon executable not found at $APP_BIN" >&2
     exit 1
   fi
-  if otool -L "$APP_BIN" | grep -qi graphviz; then
-    echo "Unexpected Graphviz dynamic-library dependency in $APP_BIN" >&2
+  SIDECAR_BIN="$APP/Contents/MacOS/markond"
+  if [[ ! -x "$SIDECAR_BIN" ]]; then
+    echo "markond sidecar not found at $SIDECAR_BIN" >&2
     exit 1
   fi
+  for BIN in "$APP_BIN" "$SIDECAR_BIN"; do
+    if otool -L "$BIN" | grep -qi graphviz; then
+      echo "Unexpected Graphviz dynamic-library dependency in $BIN" >&2
+      exit 1
+    fi
+  done
 
   DMG_NAME="Markon_${VERSION}_${ARCH}.dmg"
   DMG_PATH="$DMG_OUT/$DMG_NAME"
