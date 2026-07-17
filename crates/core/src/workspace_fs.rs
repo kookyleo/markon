@@ -7,7 +7,7 @@
 
 use cap_std::ambient_authority;
 use cap_std::fs::Dir;
-use std::collections::{BTreeMap, HashMap, HashSet};
+use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 use std::path::{Component, Path, PathBuf};
 use std::sync::{Arc, RwLock};
 
@@ -284,6 +284,86 @@ impl WorkspaceFs {
                 .into_iter()
                 .collect(),
             WorkspaceScope::Directory => self.walk_authorized(limit, |_| true),
+        }
+    }
+
+    /// Convert a watcher-supplied path into a lexical workspace route without
+    /// requiring the target to still exist. This is deliberately separate from
+    /// [`Self::route_for_path`], which canonicalizes and therefore cannot
+    /// represent a path after a remove/rename event.
+    pub(crate) fn lexical_route(&self, path: &Path) -> Option<WorkspaceRelPath> {
+        let rel = if path.is_absolute() {
+            path.strip_prefix(&self.ambient_root)
+                .or_else(|_| path.strip_prefix(&self.canonical_root))
+                .ok()?
+        } else {
+            path
+        };
+        WorkspaceRelPath::parse(rel).ok()
+    }
+
+    /// Resolve only the requested routes that are currently visible under the
+    /// same standard ignore rules as [`Self::content_files`].
+    ///
+    /// Directory workspaces start at the workspace root so ignored/hidden
+    /// parent directories are evaluated exactly like the initial full walk.
+    /// A filter prunes every branch that is not an ancestor of a candidate, so
+    /// an incremental save does not rescan unrelated workspace subtrees.
+    pub(crate) fn content_files_for_routes(
+        &self,
+        routes: &BTreeSet<WorkspaceRelPath>,
+    ) -> Vec<(WorkspaceRelPath, PathBuf)> {
+        match &self.scope {
+            WorkspaceScope::SingleFile { document, .. } => {
+                if !routes.contains(&document.route) {
+                    return Vec::new();
+                }
+                self.resolve_scoped(&document.route, &document.target)
+                    .ok()
+                    .filter(|abs| abs.is_file())
+                    .map(|abs| (document.route.clone(), abs))
+                    .into_iter()
+                    .collect()
+            }
+            WorkspaceScope::Directory => {
+                let candidates: BTreeSet<PathBuf> = routes
+                    .iter()
+                    .map(|route| self.canonical_root.join(route.as_path()))
+                    .filter(|path| path.is_file())
+                    .collect();
+                if candidates.is_empty() {
+                    return Vec::new();
+                }
+
+                let root = self.canonical_root.clone();
+                let mut relevant_paths = BTreeSet::new();
+                for candidate in &candidates {
+                    for ancestor in candidate.ancestors() {
+                        if !ancestor.starts_with(&root) {
+                            break;
+                        }
+                        relevant_paths.insert(ancestor.to_path_buf());
+                        if ancestor == root {
+                            break;
+                        }
+                    }
+                }
+                let mut walker = default_walker(&root);
+                walker.filter_entry(move |entry| relevant_paths.contains(entry.path()));
+                walker
+                    .build()
+                    .filter_map(Result::ok)
+                    .filter(|entry| entry.path().is_file())
+                    .filter(|entry| candidates.contains(entry.path()))
+                    .filter_map(|entry| {
+                        let rel = entry.path().strip_prefix(&self.canonical_root).ok()?;
+                        let route = WorkspaceRelPath::parse(rel).ok()?;
+                        let target = self.canonicalize_rel(&route).ok()?;
+                        let absolute = self.absolute(&target);
+                        absolute.is_file().then_some((route, absolute))
+                    })
+                    .collect()
+            }
         }
     }
 
