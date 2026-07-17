@@ -46,13 +46,10 @@ function replaceDocument(view: EditorView, content: string): void {
 
 /** Stub jsdom-missing APIs the EditorManager touches. */
 function stubGlobals(): void {
-    if (!('confirm' in window)) {
-        // jsdom often omits `confirm`; provide a default that says "ok".
-        Object.defineProperty(window, 'confirm', { value: vi.fn(() => true), writable: true, configurable: true });
-    }
-    if (!('alert' in window)) {
-        Object.defineProperty(window, 'alert', { value: vi.fn(), writable: true, configurable: true });
-    }
+    // jsdom exposes alert/confirm placeholders that only print
+    // "Not implemented", so replace them even when the properties exist.
+    Object.defineProperty(window, 'confirm', { value: vi.fn(() => true), writable: true, configurable: true });
+    Object.defineProperty(window, 'alert', { value: vi.fn(), writable: true, configurable: true });
 }
 
 describe('EditorManager', () => {
@@ -101,6 +98,20 @@ describe('EditorManager', () => {
         expect(mgr.isDirty()).toBe(false);
     });
 
+    it('coalesces concurrent open() calls into one editor session', async () => {
+        seedOriginalMarkdown('# hello');
+        const mgr = new EditorManager('docs/test.md');
+
+        await Promise.all([
+            mgr.open(),
+            mgr.open({ line: 1 }),
+        ]);
+
+        expect(document.querySelectorAll('.editor-modal')).toHaveLength(1);
+        expect(document.querySelectorAll('.cm-editor')).toHaveLength(1);
+        expect(mgr.isOpen()).toBe(true);
+    });
+
     it('save() POSTs to /api/save with the canonical body shape and X-Markon-Token header', async () => {
         seedOriginalMarkdown('# hello');
         seedMeta('workspace-id', 'ws-42');
@@ -137,6 +148,57 @@ describe('EditorManager', () => {
             file_path: 'docs/test.md',
             content: '# changed',
         });
+    });
+
+    it('keeps edits made during save dirty and coalesces concurrent saves', async () => {
+        seedOriginalMarkdown('# initial');
+        let resolveSave!: (response: {
+            ok: boolean;
+            status: number;
+            text: () => Promise<string>;
+            json: () => Promise<{ success: boolean }>;
+        }) => void;
+        const fetchMock = vi.fn((url: string, _init?: RequestInit) => {
+            if (url === '/api/save') {
+                return new Promise(resolve => {
+                    resolveSave = resolve;
+                });
+            }
+            return Promise.resolve({
+                ok: true,
+                status: 200,
+                text: async () => '',
+                json: async () => ({ html: '' }),
+            });
+        }) as unknown as typeof fetch;
+        vi.stubGlobal('fetch', fetchMock);
+
+        const mgr = new EditorManager('docs/test.md');
+        await mgr.open();
+        const view = getEditorView();
+        replaceDocument(view, '# sent');
+
+        const firstSave = mgr.save();
+        const duplicateSave = mgr.save();
+
+        replaceDocument(view, '# typed while saving');
+        resolveSave({
+            ok: true,
+            status: 200,
+            text: async () => '',
+            json: async () => ({ success: true }),
+        });
+        await Promise.all([firstSave, duplicateSave]);
+
+        const saveCalls = (fetchMock as unknown as ReturnType<typeof vi.fn>).mock.calls.filter(
+            (call: unknown[]) => call[0] === '/api/save',
+        );
+        expect(saveCalls).toHaveLength(1);
+        expect(JSON.parse((itemAt(saveCalls, 0)[1] as RequestInit).body as string).content)
+            .toBe('# sent');
+        expect(view.state.doc.toString()).toBe('# typed while saving');
+        expect(mgr.isDirty()).toBe(true);
+        expect(document.querySelector<HTMLElement>('.editor-save-btn')?.style.display).toBe('block');
     });
 
     it('input events flip isDirty true and revert clears it back to false', async () => {
@@ -179,6 +241,13 @@ describe('EditorManager', () => {
             cursor: 10,
             expected: '- [x] done\n- [ ] ',
             caret: 17,
+        },
+        {
+            label: 'an ordered marker beyond Number.MAX_SAFE_INTEGER',
+            source: '9007199254740992. # heading',
+            cursor: 18,
+            expected: '9007199254740992. \n9007199254740993. # heading',
+            caret: 37,
         },
     ])('Enter continues $label and moves the caret atomically', async ({ source, cursor, expected, caret }) => {
         seedOriginalMarkdown(source);
@@ -232,6 +301,28 @@ describe('EditorManager', () => {
         // A second editor instance restores the saved preference.
         const split = document.querySelector<HTMLElement>('.editor-split');
         expect(split?.classList.contains('editor-layout-full')).toBe(true);
+    });
+
+    it('resets the narrow-screen tab to Edit when an export editor reopens', async () => {
+        Object.defineProperty(window, 'innerWidth', { value: 600, configurable: true, writable: true });
+        vi.stubGlobal('fetch', vi.fn(async () => ({
+            ok: true,
+            status: 200,
+            text: async () => '',
+            json: async () => ({ html: '' }),
+        })));
+        const mgr = new EditorManager('a.md');
+
+        await mgr.open({ mode: 'export', content: 'first' });
+        document.querySelector<HTMLButtonElement>('.editor-tab-preview')?.click();
+        expect(document.querySelector('.editor-tab-preview')?.classList.contains('active')).toBe(true);
+        mgr.close();
+
+        await mgr.open({ mode: 'export', content: 'second' });
+        expect(document.querySelector('.editor-tab-edit')?.classList.contains('active')).toBe(true);
+        expect(document.querySelector<HTMLElement>('.editor-pane-source')?.style.display).toBe('flex');
+        expect(document.querySelector<HTMLElement>('.editor-pane-preview')?.style.display).toBe('none');
+        mgr.close();
     });
 
     it('Escape key triggers close()', async () => {
@@ -329,5 +420,65 @@ describe('EditorManager', () => {
             workspace_id: 'ws-42',
             content: '```mermaid\ngraph TD; A-->B\n```',
         });
+    });
+
+    it('ignores a stale preview response that arrives after a newer render', async () => {
+        seedOriginalMarkdown('preview-old-session');
+        const pending: Array<{
+            content: string;
+            resolve: (response: {
+                ok: boolean;
+                status: number;
+                json: () => Promise<{ html: string }>;
+            }) => void;
+        }> = [];
+        const fetchMock = vi.fn((url: string, init?: RequestInit) => {
+            if (url !== '/api/preview') {
+                return Promise.resolve({
+                    ok: true,
+                    status: 200,
+                    json: async () => ({ success: true }),
+                });
+            }
+            const content = JSON.parse(init?.body as string).content as string;
+            return new Promise(resolve => {
+                pending.push({ content, resolve });
+            });
+        }) as unknown as typeof fetch;
+        vi.stubGlobal('fetch', fetchMock);
+
+        const mgr = new EditorManager('a.md');
+        await mgr.open();
+        await vi.waitFor(() => {
+            expect(pending.filter(request => request.content.startsWith('preview-'))).toHaveLength(1);
+        });
+
+        replaceDocument(getEditorView(), 'preview-new-session');
+        await vi.waitFor(() => {
+            expect(pending.filter(request => request.content.startsWith('preview-'))).toHaveLength(2);
+        });
+        const sessionRequests = pending.filter(request => request.content.startsWith('preview-'));
+        const newest = itemAt(sessionRequests, 1);
+        expect(newest.content).toBe('preview-new-session');
+        newest.resolve({
+            ok: true,
+            status: 200,
+            json: async () => ({ html: '<p id="new-preview">new</p>' }),
+        });
+        await vi.waitFor(() => {
+            expect(document.querySelector('#new-preview')?.textContent).toBe('new');
+        });
+
+        const stale = itemAt(sessionRequests, 0);
+        stale.resolve({
+            ok: true,
+            status: 200,
+            json: async () => ({ html: '<p id="old-preview">old</p>' }),
+        });
+        await Promise.resolve();
+        await Promise.resolve();
+
+        expect(document.querySelector('#new-preview')?.textContent).toBe('new');
+        expect(document.querySelector('#old-preview')).toBeNull();
     });
 });

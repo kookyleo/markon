@@ -225,14 +225,12 @@
     --mk-editor-btn-disabled-fg:  var(--markon-fg-subtle);
     /* markdown syntax — light (GitHub-light, preserves the prior light editor) */
     --mk-editor-syn-header:       #0550ae;
-    --mk-editor-syn-header-text:  #0a3069;
     --mk-editor-syn-bold:         #8250df;
     --mk-editor-syn-italic:       #cf222e;
     --mk-editor-syn-code:         #a40e26;
     --mk-editor-syn-code-bg:      rgba(175, 184, 193, 0.2);
     --mk-editor-syn-fence:        #57606a;
     --mk-editor-syn-link:         #0969da;
-    --mk-editor-syn-image:        #8250df;
     --mk-editor-syn-quote:        #1a7f37;
     --mk-editor-syn-list:         #8250df;
     --mk-editor-syn-hr:           #57606a;
@@ -427,14 +425,12 @@ html[data-theme="dark"] {
        The chrome vars need no dark entries: they reference page tokens
        that already switch in this block. */
     --mk-editor-syn-header:       #79c0ff;
-    --mk-editor-syn-header-text:  #7ee787;
     --mk-editor-syn-bold:         #d2a8ff;
     --mk-editor-syn-italic:       #ff7b72;
     --mk-editor-syn-code:         #ffa657;
     --mk-editor-syn-code-bg:      rgba(255, 255, 255, 0.1);
     --mk-editor-syn-fence:        #8b949e;
     --mk-editor-syn-link:         #58a6ff;
-    --mk-editor-syn-image:        #d2a8ff;
     --mk-editor-syn-quote:        #7ee787;
     --mk-editor-syn-list:         #d2a8ff;
     --mk-editor-syn-hr:           #8b949e;
@@ -471,14 +467,12 @@ html[data-editor-theme="vscode-dark"] {
     --mk-editor-btn-disabled-bg:  #4d4d4d;
     --mk-editor-btn-disabled-fg:  #808080;
     --mk-editor-syn-header:       #569cd6;
-    --mk-editor-syn-header-text:  #4ec9b0;
     --mk-editor-syn-bold:         #dcdcaa;
     --mk-editor-syn-italic:       #ce9178;
     --mk-editor-syn-code:         #d16969;
     --mk-editor-syn-code-bg:      rgba(255, 255, 255, 0.1);
     --mk-editor-syn-fence:        #808080;
     --mk-editor-syn-link:         #3794ff;
-    --mk-editor-syn-image:        #c586c0;
     --mk-editor-syn-quote:        #6a9955;
     --mk-editor-syn-list:         #dcdcaa;
     --mk-editor-syn-hr:           #808080;

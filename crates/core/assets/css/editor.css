@@ -1766,7 +1766,7 @@ body.workspace-spotlight-open {
 
 /* ============================================================
    EDITOR MODAL
-   Minimalist Markdown source editor with line numbers
+   CodeMirror-powered Markdown source editor
    ============================================================ */
 
 .editor-modal {
@@ -1900,12 +1900,6 @@ body.workspace-spotlight-open {
 .editor-tab.active {
     color: var(--mk-editor-chrome-fg-strong);
     border-bottom-color: var(--mk-editor-accent);
-}
-
-.editor-container {
-    display: flex;
-    height: 100%;
-    overflow: hidden;
 }
 
 /* CodeMirror owns text input, selection, line numbers, history, incremental

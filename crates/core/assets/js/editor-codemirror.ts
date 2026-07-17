@@ -62,7 +62,7 @@ const continueEmptyMarkdownList: StateCommand = ({ state, dispatch }) => {
     const task = match[4] === undefined ? '' : '[ ] ';
     const marker = ordered === undefined
         ? bullet
-        : `${Number.parseInt(ordered, 10) + 1}.`;
+        : `${BigInt(ordered) + 1n}.`;
     if (!marker) return false;
 
     const insert = `\n${indent}${marker} ${task}`;

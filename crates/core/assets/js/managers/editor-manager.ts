@@ -86,6 +86,8 @@ export class EditorManager {
     #baselineDoc: CodeMirrorText | null = null;
     #previewPane: HTMLElement | null = null;
     #previewDebounceId: ReturnType<typeof setTimeout> | null = null;
+    #previewAbort: AbortController | null = null;
+    #previewRevision = 0;
     #mathRendererPromise: Promise<void> | null = null;
     /** narrow-screen tab state */
     #activeTab: EditorTab = 'edit';
@@ -101,6 +103,12 @@ export class EditorManager {
     #onBack: (() => void) | null = null;
     /** Aborts the document/window listeners installed while the modal is open. */
     #listenerAbort: AbortController | null = null;
+    /** Coalesces callers while the lazy editor runtime is loading. */
+    #openingPromise: Promise<void> | null = null;
+    /** Prevents overlapping writes from completing out of order. */
+    #savePromise: Promise<void> | null = null;
+    /** Invalidates async work when an editor session closes or is superseded. */
+    #sessionId = 0;
 
     #listenerOptions(extra: AddEventListenerOptions = {}): AddEventListenerOptions {
         const signal = this.#listenerAbort?.signal;
@@ -117,17 +125,43 @@ export class EditorManager {
         return this.#isDirty;
     }
 
-    /** Is the editor modal currently open (DOM mounted)? */
+    /** Is the editor open or still loading its lazy runtime? */
     isOpen(): boolean {
-        return this.#editorModal !== null;
+        return this.#editorModal !== null || this.#openingPromise !== null;
     }
 
     /**
      * Open the editor.
      */
     async open(options: EditorOpenOptions = {}): Promise<void> {
+        if (this.#editorModal) {
+            this.#applyOpenTarget(options);
+            return;
+        }
+
+        const pendingOpen = this.#openingPromise;
+        if (pendingOpen) {
+            await pendingOpen;
+            if (this.#editorModal) this.#applyOpenTarget(options);
+            return;
+        }
+
+        const sessionId = ++this.#sessionId;
+        const openingPromise = this.#openSession(options, sessionId);
+        this.#openingPromise = openingPromise;
+        try {
+            await openingPromise;
+        } finally {
+            if (this.#openingPromise === openingPromise) {
+                this.#openingPromise = null;
+            }
+        }
+    }
+
+    async #openSession(options: EditorOpenOptions, sessionId: number): Promise<void> {
         this.#mode = options.mode ?? 'edit';
         this.#onBack = options.onBack ?? null;
+        this.#activeTab = 'edit';
 
         let content: string | null;
         if (this.#mode === 'export') {
@@ -137,6 +171,7 @@ export class EditorManager {
             this.#exportFileName = toMarkdownFilename(options.exportFileName);
         } else {
             content = await this.#fetchCurrentContent();
+            if (sessionId !== this.#sessionId) return;
             if (content === null) {
                 Logger.error('EditorManager', 'Failed to fetch file content');
                 alert('Failed to load file content. Please ensure edit feature is enabled.');
@@ -150,10 +185,12 @@ export class EditorManager {
         try {
             ({ createMarkdownEditor } = await import('../editor-codemirror'));
         } catch (error) {
+            if (sessionId !== this.#sessionId) return;
             Logger.error('EditorManager', 'Failed to load editor runtime:', error);
             alert('Failed to initialize the Markdown editor.');
             return;
         }
+        if (sessionId !== this.#sessionId) return;
 
         // Create editor UI
         this.#createEditorUI(content, createMarkdownEditor);
@@ -162,7 +199,12 @@ export class EditorManager {
         // full-screen editor.
         document.documentElement.classList.add('markon-scroll-lock');
 
-        // If line number provided, jump to that line
+        this.#applyOpenTarget(options);
+
+        Logger.log('EditorManager', `Editor opened (${this.#mode} mode)`);
+    }
+
+    #applyOpenTarget(options: EditorOpenOptions): void {
         if (options.line && options.line > 0) {
             this.#gotoLine(options.line);
         } else if (options.selectedText?.trim()) {
@@ -170,88 +212,136 @@ export class EditorManager {
         } else {
             this.#focusEditor();
         }
-
-        Logger.log('EditorManager', `Editor opened (${this.#mode} mode)`);
     }
 
     /**
      * Close the editor.
      */
     close(): void {
-        if (this.#editorModal) {
-            // In `edit` mode, unsaved changes risk data loss → confirm. In
-            // `export` mode the buffer is a throwaway copy, so just close.
-            if (this.#mode === 'edit' && this.#isDirty) {
-                const confirmClose = confirm('You have unsaved changes. Close anyway?');
-                if (!confirmClose) return;
+        if (!this.#editorModal) {
+            if (this.#openingPromise) {
+                ++this.#sessionId;
+                this.#openingPromise = null;
             }
-
-            // Clean up event listeners
-            document.removeEventListener('keydown', this.#handleEscapeKey);
-            if (this.#scrollSyncCleanup) {
-                this.#scrollSyncCleanup();
-                this.#scrollSyncCleanup = null;
-            }
-            // Remove the document/window listeners (divider drag, resize
-            // handlers) installed by the editor UI.
-            this.#listenerAbort?.abort();
-            this.#listenerAbort = null;
-            // Closing mid-drag aborts the mouseup listener that would have
-            // restored these — reset them here so the page stays usable.
-            document.body.style.cursor = '';
-            document.body.style.userSelect = '';
-
-            if (this.#previewDebounceId !== null) {
-                clearTimeout(this.#previewDebounceId);
-                this.#previewDebounceId = null;
-            }
-            const wasExport = this.#mode === 'export';
-            this.#editorView?.destroy();
-            this.#editorView = null;
-            this.#editorModal.remove();
-            this.#editorModal = null;
-            document.documentElement.classList.remove('markon-scroll-lock');
-            this.#saveButton = null;
-            this.#closeButton = null;
-            this.#previewPane = null;
-            this.#isDirty = false;
-            this.#baselineDoc = null;
-
-            // Edit mode reloads to re-render the just-saved file; export mode
-            // is a non-destructive overlay, so leave the page as-is.
-            if (!wasExport) {
-                window.location.reload();
-            }
-
-            Logger.log('EditorManager', 'Editor closed');
+            return;
         }
+
+        // In `edit` mode, unsaved changes risk data loss → confirm. In
+        // `export` mode the buffer is a throwaway copy, so just close.
+        if (this.#mode === 'edit' && this.#isDirty) {
+            const confirmClose = confirm('You have unsaved changes. Close anyway?');
+            if (!confirmClose) return;
+        }
+
+        ++this.#sessionId;
+        this.#openingPromise = null;
+        this.#savePromise = null;
+        this.#previewAbort?.abort();
+        this.#previewAbort = null;
+        ++this.#previewRevision;
+
+        // Clean up event listeners
+        document.removeEventListener('keydown', this.#handleEscapeKey);
+        if (this.#scrollSyncCleanup) {
+            this.#scrollSyncCleanup();
+            this.#scrollSyncCleanup = null;
+        }
+        // Remove the document/window listeners (divider drag, resize
+        // handlers) installed by the editor UI.
+        this.#listenerAbort?.abort();
+        this.#listenerAbort = null;
+        // Closing mid-drag aborts the mouseup listener that would have
+        // restored these — reset them here so the page stays usable.
+        document.body.style.cursor = '';
+        document.body.style.userSelect = '';
+
+        if (this.#previewDebounceId !== null) {
+            clearTimeout(this.#previewDebounceId);
+            this.#previewDebounceId = null;
+        }
+        const wasExport = this.#mode === 'export';
+        this.#editorView?.destroy();
+        this.#editorView = null;
+        this.#editorModal.remove();
+        this.#editorModal = null;
+        document.documentElement.classList.remove('markon-scroll-lock');
+        this.#saveButton = null;
+        this.#closeButton = null;
+        this.#previewPane = null;
+        this.#isDirty = false;
+        this.#baselineDoc = null;
+        this.#activeTab = 'edit';
+        this.#onBack = null;
+
+        // Edit mode reloads to re-render the just-saved file; export mode
+        // is a non-destructive overlay, so leave the page as-is.
+        if (!wasExport) {
+            window.location.reload();
+        }
+
+        Logger.log('EditorManager', 'Editor closed');
     }
 
     /**
      * Save the file.
      */
     async save(): Promise<void> {
-        if (!this.#editorView) return;
+        const editorView = this.#editorView;
+        if (!editorView) return;
 
-        const content = this.#editorView.state.doc.toString();
+        const savedDoc = editorView.state.doc;
+        const content = savedDoc.toString();
 
         // Export mode: "Save" means download a local .md, never hit the server.
         if (this.#mode === 'export') {
             downloadTextFile(this.#exportFileName, content);
             if (this.#saveButton) flashText(this.#saveButton, _t('web.export.downloaded'));
-            this.#baselineDoc = this.#editorView.state.doc;
+            this.#baselineDoc = savedDoc;
             this.#isDirty = false;
             return;
         }
 
-        const success = await this.#saveToServer(content);
+        const pendingSave = this.#savePromise;
+        if (pendingSave) {
+            await pendingSave;
+            return;
+        }
 
-        if (success) {
-            // Saved content becomes the new baseline; further edits compare against it
-            this.#baselineDoc = this.#editorView.state.doc;
-            this.#isDirty = false;
+        const sessionId = this.#sessionId;
+        const savePromise = this.#savePersistentDocument(content, savedDoc, sessionId);
+        this.#savePromise = savePromise;
+        try {
+            await savePromise;
+        } finally {
+            if (this.#savePromise === savePromise) {
+                this.#savePromise = null;
+            }
+        }
+    }
+
+    async #savePersistentDocument(
+        content: string,
+        savedDoc: CodeMirrorText,
+        sessionId: number,
+    ): Promise<void> {
+        this.#setSaving(true);
+        try {
+            const success = await this.#saveToServer(content);
+            if (!success || sessionId !== this.#sessionId) return;
+
+            const editorView = this.#editorView;
+            if (!editorView) return;
+
+            // Only the document sent to the server becomes the baseline. Edits
+            // made while the request was in flight must remain visibly dirty.
+            this.#baselineDoc = savedDoc;
+            this.#isDirty = !editorView.state.doc.eq(savedDoc);
             this.#updateSaveButtonState();
             this.#updateTitleDirtyIndicator();
+        } finally {
+            if (sessionId === this.#sessionId) {
+                this.#setSaving(false);
+            }
         }
     }
 
@@ -272,8 +362,6 @@ export class EditorManager {
 
     async #saveToServer(content: string): Promise<boolean> {
         try {
-            this.#setSaving(true);
-
             const workspaceId = Meta.get(CONFIG.META_TAGS.WORKSPACE_ID) ?? '';
             const token = Meta.get('save-token') ?? '';
             const body: EditorSaveRequest = {
@@ -312,8 +400,6 @@ export class EditorManager {
             const message = error instanceof Error ? error.message : String(error);
             alert(`Error saving file: ${message}`);
             return false;
-        } finally {
-            this.#setSaving(false);
         }
     }
 
@@ -376,9 +462,7 @@ export class EditorManager {
             <div class="editor-body">
                 <div class="editor-split">
                     <div class="editor-pane editor-pane-source">
-                        <div class="editor-container">
-                            <div class="editor-codemirror"></div>
-                        </div>
+                        <div class="editor-codemirror"></div>
                     </div>
                     <div class="editor-split-divider" title="Drag to resize"></div>
                     <div class="editor-pane editor-pane-preview">
@@ -720,6 +804,11 @@ export class EditorManager {
      * Schedule a preview pane update with debounce
      */
     #schedulePreviewUpdate(delay = 150): void {
+        // A document change makes any in-flight render stale immediately,
+        // even before the replacement request leaves the debounce window.
+        this.#previewAbort?.abort();
+        this.#previewAbort = null;
+        ++this.#previewRevision;
         if (this.#previewDebounceId !== null) {
             clearTimeout(this.#previewDebounceId);
         }
@@ -733,11 +822,18 @@ export class EditorManager {
      * Update the preview pane by calling /api/preview
      */
     async #updatePreview(): Promise<void> {
-        if (!this.#previewPane || !this.#editorView) return;
+        const previewPane = this.#previewPane;
+        const editorView = this.#editorView;
+        if (!previewPane || !editorView) return;
 
-        const content = this.#editorView.state.doc.toString();
+        const content = editorView.state.doc.toString();
         const workspaceId = Meta.get(CONFIG.META_TAGS.WORKSPACE_ID) ?? '';
         const token = Meta.get('preview-token') ?? '';
+        const sessionId = this.#sessionId;
+        const revision = ++this.#previewRevision;
+        this.#previewAbort?.abort();
+        const abort = new AbortController();
+        this.#previewAbort = abort;
         const body: EditorPreviewRequest = {
             workspace_id: workspaceId,
             content,
@@ -750,28 +846,39 @@ export class EditorManager {
                     'X-Markon-Token': token,
                 },
                 body: JSON.stringify(body),
+                signal: abort.signal,
             });
             if (!response.ok) return;
             const result = (await response.json()) as EditorPreviewResponse;
-            this.#previewPane.innerHTML = result.html;
+            if (
+                abort.signal.aborted
+                || revision !== this.#previewRevision
+                || sessionId !== this.#sessionId
+                || previewPane !== this.#previewPane
+            ) return;
+            previewPane.innerHTML = result.html;
 
             if (result.has_math) {
-                this.#renderMath();
+                this.#renderMath(previewPane, sessionId);
             }
         } catch (err) {
+            if (abort.signal.aborted) return;
             Logger.warn('EditorManager', 'Preview update failed:', err);
+        } finally {
+            if (this.#previewAbort === abort) {
+                this.#previewAbort = null;
+            }
         }
     }
 
-    #renderMath(): void {
-        if (!this.#previewPane) return;
+    #renderMath(previewPane: HTMLElement, sessionId: number): void {
         if (window.markonRenderMath) {
-            window.markonRenderMath(this.#previewPane);
+            window.markonRenderMath(previewPane);
             return;
         }
         void this.#loadMathRenderer().then(() => {
-            if (this.#previewPane) {
-                window.markonRenderMath?.(this.#previewPane);
+            if (sessionId === this.#sessionId && previewPane === this.#previewPane) {
+                window.markonRenderMath?.(previewPane);
             }
         });
     }
