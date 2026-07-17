@@ -3,13 +3,12 @@
 mod commands;
 #[cfg(target_os = "macos")]
 mod reopen_origin;
-mod server_manager;
+mod service;
 // settings moved to markon_core::settings
 
-use markon_core::control::RunningServer;
 use markon_core::settings::{AppSettings, WorkspaceSettings};
 use markon_core::workspace::{expand_and_canonicalize, WorkspaceFlags};
-use server_manager::{ServerBackend, ServerManager};
+use service::ServiceConnection;
 use std::path::{Path, PathBuf};
 use std::sync::{
     atomic::{AtomicBool, AtomicU64, Ordering},
@@ -93,9 +92,10 @@ fn install_exe_window_icon(window: &tauri::WebviewWindow) {
 
 pub struct AppState {
     pub settings: Arc<Mutex<AppSettings>>,
-    /// Either an in-process server we own, or a controller handle attached to a
-    /// server another process already had running. See `ServerBackend`.
-    pub server: Mutex<ServerBackend>,
+    /// The GUI's connection to the independent `markond` service. The GUI is a
+    /// pure frontend — it never runs the server in-process — so this is either
+    /// attached to a live service or detached. See [`ServiceConnection`].
+    pub server: Mutex<ServiceConnection>,
     /// UNIX-millis of the most recent file/folder open intent (RunEvent::Opened).
     /// A paired Reopen Apple Event arrives right after Opened; we suppress that
     /// one so an "Open With" doesn't *also* adopt the front Finder folder. Stored
@@ -338,8 +338,8 @@ fn handle_open_path(app: &tauri::AppHandle, path: &Path) {
     let state = app.state::<AppState>();
 
     // Single-file workspaces follow the user's defaults for every flag. Search
-    // is safe here: the embedded registry builds a file-scoped index (only the
-    // pinned file, no parent WalkDir), so there's no sibling leakage.
+    // is safe here: the service builds a file-scoped index (only the pinned
+    // file, no parent WalkDir), so there's no sibling leakage.
     let flags = {
         let settings = state.settings.lock().unwrap();
         markon_core::workspace::WorkspaceFlags {
@@ -352,87 +352,39 @@ fn handle_open_path(app: &tauri::AppHandle, path: &Path) {
         }
     };
 
-    // Resolve what to open. Embedded builds an admin-bootstrapped URL in place.
-    // Remote forwards the same root + single-file scope over the management API,
-    // preserving the filesystem capability boundary. It opens without an admin
-    // session because bootstrap ownership stays with the server process.
-    enum OpenPlan {
-        Ready(String),
-        Remote(RunningServer, String, Option<String>, String),
-    }
-    let plan = {
-        let backend = state.server.lock().unwrap();
-        if !backend.is_running() {
-            tracing::warn!("server not running, cannot open path");
+    // Pure frontend: register the workspace on the service over its control
+    // socket, then mint a one-time admin-bootstrap URL so the local browser
+    // lands with an admin session — the same treatment `open_url` gives.
+    // Directories register the whole tree; files use the single-file add so only
+    // the pinned file (plus its assets) is reachable.
+    let Some(remote) = state.server.lock().unwrap().handle() else {
+        tracing::warn!("not connected to the markon service, cannot open path");
+        return;
+    };
+    let path_str = ws_root.to_string_lossy().to_string();
+    let id = tauri::async_runtime::block_on(async {
+        match &single_file {
+            Some(file_name) => {
+                remote
+                    .add_single_file(&path_str, file_name, flags, "")
+                    .await
+            }
+            None => remote.add_or_update_workspace(&path_str, flags, None).await,
+        }
+    });
+    let id = match id {
+        Ok(id) => id,
+        Err(e) => {
+            tracing::warn!(path = %path_str, "failed to open path on the markon service: {e}");
             return;
         }
-        let (configured_host, advertised_host) = {
-            let settings = state.settings.lock().unwrap();
-            (settings.host.clone(), settings.advertised_host.clone())
-        };
-        match &*backend {
-            ServerBackend::Embedded(m) => {
-                let browser_base = markon_core::server::featured_base_url(
-                    &configured_host,
-                    &advertised_host,
-                    m.port(),
-                );
-                // `registry.add` is idempotent on (path, single_file) and fires
-                // the persist hook, mirroring the entry into AppSettings.
-                let id = m.registry.add(markon_core::workspace::WorkspaceConfig {
-                    path: ws_root,
-                    flags,
-                    single_file: single_file.clone(),
-                    collaborator_access_code_hash: String::new(),
-                    alias: String::new(),
-                });
-                let workspace_path =
-                    markon_core::server::workspace_url_path(&id, rel_path.as_deref());
-                OpenPlan::Ready(m.admin_url(&browser_base, &workspace_path))
-            }
-            ServerBackend::Remote(r) => {
-                let bind_host = if r.bind_host().trim().is_empty() {
-                    &configured_host
-                } else {
-                    r.bind_host()
-                };
-                let active_advertised_host = r.advertised_host().unwrap_or(&advertised_host);
-                let browser_base = markon_core::server::featured_base_url(
-                    bind_host,
-                    active_advertised_host,
-                    r.port(),
-                );
-                OpenPlan::Remote(
-                    r.clone(),
-                    ws_root.to_string_lossy().to_string(),
-                    single_file.clone(),
-                    browser_base,
-                )
-            }
-        }
     };
-
-    let url = match plan {
-        OpenPlan::Ready(url) => url,
-        OpenPlan::Remote(remote, path_str, single_file, browser_base) => {
-            match tauri::async_runtime::block_on(remote.add_or_update_workspace(
-                &path_str,
-                flags,
-                true,
-                single_file.as_deref(),
-                None,
-                None,
-            )) {
-                Ok(id) => {
-                    let workspace_path =
-                        markon_core::server::workspace_url_path(&id, rel_path.as_deref());
-                    markon_core::server::build_workspace_url(&browser_base, &workspace_path)
-                }
-                Err(e) => {
-                    tracing::warn!(path = %path_str, "failed to open path on remote server: {e}");
-                    return;
-                }
-            }
+    let redirect = markon_core::server::workspace_url_path(&id, rel_path.as_deref());
+    let url = match tauri::async_runtime::block_on(remote.admin_bootstrap(&redirect)) {
+        Ok(url) => url,
+        Err(e) => {
+            tracing::warn!("failed to mint admin bootstrap for opened path: {e}");
+            return;
         }
     };
 
@@ -799,7 +751,6 @@ fn main() {
                 }
             }
             ensure_example_workspace(app, &mut settings);
-            let config = settings.to_server_config(commands::effective_port(&settings));
 
             let tray_resident_init = settings.tray_resident;
             let language_init = settings.language.clone();
@@ -810,56 +761,21 @@ fn main() {
             #[cfg(target_os = "windows")]
             commands::sync_shell_context_menu(&language_init);
 
-            // Snapshot the persisted workspaces before `settings` is moved into
-            // the shared Arc — needed to forward them if we attach to a remote.
-            // The management API carries `single_file` explicitly, preserving
-            // the same narrow filesystem capability as the embedded registry.
-            let workspaces_to_forward = settings.workspaces.clone();
-
             let settings_arc = Arc::new(Mutex::new(settings));
-            let persist_hook = AppSettings::persist_hook(settings_arc.clone());
 
-            // One-server-per-machine: if a server is already up, attach to it as
-            // a controller (Remote) and forward our workspaces instead of
-            // binding a competing server. Otherwise own an Embedded one.
-            let backend = match RunningServer::discover() {
-                Some(remote) => {
-                    tracing::info!(
-                        port = remote.port(),
-                        "attaching to already-running markon server (remote mode)"
-                    );
-                    let remote_for_forward = remote.clone();
-                    tauri::async_runtime::block_on(async move {
-                        for workspace in workspaces_to_forward {
-                            if let Err(e) = remote_for_forward
-                                .add_or_update_workspace(
-                                    &workspace.path,
-                                    workspace.flags,
-                                    true,
-                                    workspace.single_file.as_deref(),
-                                    (!workspace.collaborator_access_code_hash.is_empty())
-                                        .then_some(workspace.collaborator_access_code_hash.as_str()),
-                                    Some(&workspace.alias),
-                                )
-                                .await
-                            {
-                                tracing::warn!(path = %workspace.path, "failed to forward workspace to remote: {e}");
-                            }
-                        }
-                    });
-                    ServerBackend::Remote(remote)
-                }
-                None => {
-                    let mut manager = ServerManager::new();
-                    if let Err(e) = manager.start(config, Some(persist_hook)) {
-                        tracing::error!("server failed to start: {e}");
-                    }
-                    ServerBackend::Embedded(manager)
-                }
-            };
+            // Pure frontend boot: discover an already-running `markond` and
+            // forward our persisted workspaces, or spawn one (workspaces baked
+            // into its config). Either way the GUI ends up with a connected
+            // service handle. The service is independent — quitting the GUI never
+            // stops `markond` (there is no Drop that shuts it down).
+            let connection =
+                tauri::async_runtime::block_on(service::attach_or_spawn(&settings_arc));
+            if let Some(err) = connection.last_error() {
+                tracing::error!("could not connect to a markon service on boot: {err}");
+            }
             let state = AppState {
                 settings: settings_arc,
-                server: Mutex::new(backend),
+                server: Mutex::new(connection),
                 last_file_open_ms: AtomicU64::new(0),
                 tray_resident: Arc::new(AtomicBool::new(tray_resident_init)),
                 pending_new_workspace: AtomicBool::new(false),
@@ -998,7 +914,6 @@ fn main() {
             commands::remove_workspace,
             commands::get_workspaces,
             commands::reconnect,
-            commands::start_local_server,
             commands::open_url,
             commands::get_bind_hosts,
             commands::get_server_status,

@@ -171,6 +171,23 @@ jobs:
         shell: bash
         run: npm install && npm run build
 
+      # The GUI ships markond as a Tauri externalBin sidecar so the app can spawn
+      # the service beside its own executable. Build markond for this target and
+      # stage it under crates/gui/binaries/ with the target-triple suffix Tauri
+      # expects (it strips the suffix and drops the binary next to the app exe at
+      # bundle time, where locate_markond() finds it).
+      - name: Build and stage markond sidecar
+        shell: bash
+        run: |
+          set -euo pipefail
+          cargo build --release -p markond --target ${{ matrix.target }}
+          mkdir -p crates/gui/binaries
+          EXT=""
+          case "${{ matrix.target }}" in *windows*) EXT=".exe" ;; esac
+          cp "target/${{ matrix.target }}/release/markond${EXT}" \
+             "crates/gui/binaries/markond-${{ matrix.target }}${EXT}"
+          echo "Staged sidecar: crates/gui/binaries/markond-${{ matrix.target }}${EXT}"
+
       - name: Build installer
         if: ${{ !startsWith(matrix.platform, 'ubuntu-') }}
         uses: tauri-apps/tauri-action@v0
@@ -184,7 +201,10 @@ jobs:
           # do NOT let the matrix create releases itself (that races).
           releaseId: ${{ needs.create-release.outputs.release_id }}
           includeUpdaterJson: false
-          args: ${{ matrix.args }}
+          # --config merges the externalBin (markond sidecar) in at bundle time
+          # only. Keeping it out of the base tauri.conf.json lets plain
+          # `cargo build`/dev/CI builds succeed without the staged binary.
+          args: ${{ matrix.args }} --config tauri.sidecar.conf.json
 
       - name: Build Linux installer
         if: startsWith(matrix.platform, 'ubuntu-')
@@ -195,7 +215,10 @@ jobs:
           set -euo pipefail
           npm install -g @tauri-apps/cli@v2
           cd crates/gui
-          tauri --verbose build ${{ matrix.args }}
+          # --config merges the markond externalBin sidecar in at bundle time
+          # only (see the tauri-action step above for why it's not in the base
+          # config).
+          tauri --verbose build ${{ matrix.args }} --config tauri.sidecar.conf.json
 
       - name: Verify Graphviz static linkage (macOS / Linux)
         if: runner.os != 'Windows'

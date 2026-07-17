@@ -244,6 +244,26 @@ jobs:
         if: steps.token.outputs.skip != 'true'
         run: sleep 30
 
+      - name: Publish markond (background service)
+        if: steps.token.outputs.skip != 'true'
+        env:
+          CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
+        run: |
+          # markond is the daemon the `markon` CLI spawns; it must ship next to
+          # markon so `cargo install` users get both binaries.
+          cargo publish -p markond || {
+            code=$?
+            if cargo search markond --limit 1 | grep -q "^markond "; then
+              CURRENT=$(cargo search markond --limit 1 | head -1 | sed -E 's/.*"([^"]+)".*/\1/')
+              TARGET=$(grep -m1 '^version = "' Cargo.toml | sed -E 's/.*"([^"]+)".*/\1/')
+              if [ "$CURRENT" = "$TARGET" ]; then
+                echo "markond@$TARGET already on crates.io — OK"
+                exit 0
+              fi
+            fi
+            exit $code
+          }
+
       - name: Publish markon (CLI)
         if: steps.token.outputs.skip != 'true'
         env:

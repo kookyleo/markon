@@ -132,7 +132,7 @@ impl WorkspaceEntry {
 /// because it's built from [`WorkspaceEntry`] state, but its only public
 /// contract is the wire format — see `crate::server::api` for the canonical
 /// re-export.
-#[derive(Clone, Serialize, Deserialize)]
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq)]
 pub struct WorkspaceInfo {
     pub id: String,
     /// Workspace **serving root** — what `/{id}/…` resolves under. For
@@ -737,8 +737,15 @@ fn directory_live_reload_path(root: &Path, path: &Path) -> Option<String> {
 
 #[derive(Clone, serde::Serialize, serde::Deserialize)]
 pub struct ServerLock {
+    /// Web TCP port. Kept for building browser/QR URLs; the management plane no
+    /// longer rides on it (that moved to the control socket below).
     pub port: u16,
-    pub token: String,
+    /// Control-socket identifier the running server bound: a filesystem path on
+    /// unix (`~/.markon/control.sock`), a namespaced pipe name on Windows.
+    /// Privileged clients (CLI/GUI) connect here for management/admin. Empty when
+    /// read from a pre-split lock file — callers fall back to the default socket.
+    #[serde(default)]
+    pub control_socket: String,
     /// Bind host the daemon was started with (e.g. `0.0.0.0`). Lets a CLI that
     /// registers a workspace into an already-running daemon reproduce the same
     /// reachable/featured URLs. `#[serde(default)]` keeps old lock files (which
@@ -750,6 +757,13 @@ pub struct ServerLock {
     /// legacy lock file; `Some("")` is the valid automatic-LAN selection.
     #[serde(default)]
     pub advertised_host: Option<String>,
+    /// Per-instance ownership nonce. NOT a secret (management no longer rides the
+    /// lock — it moved to the control socket) and never used for authentication;
+    /// it exists only so [`remove_if_owned`](Self::remove_if_owned) can tell "my
+    /// lock" from one a newer server already replaced, keeping cleanup race-safe.
+    /// `#[serde(default)]` keeps pre-nonce lock files readable (empty nonce).
+    #[serde(default)]
+    pub owner: String,
 }
 impl ServerLock {
     pub(crate) fn path() -> PathBuf {
@@ -815,9 +829,9 @@ impl ServerLock {
     /// newer process may have replaced it; unconditional cleanup would then
     /// make the live server undiscoverable. The sidecar lock makes the
     /// compare-and-remove transaction race-free against `write()`.
-    pub(crate) fn remove_if_owned(token: &str) {
+    pub(crate) fn remove_if_owned(owner: &str) {
         let _ = Self::with_write_lock(|| {
-            let owned = Self::read().is_some_and(|lock| lock.token == token);
+            let owned = Self::read().is_some_and(|lock| lock.owner == owner);
             if owned {
                 match std::fs::remove_file(Self::path()) {
                     Ok(()) => {}
@@ -829,6 +843,20 @@ impl ServerLock {
         });
     }
     pub fn is_alive(&self) -> bool {
+        // Prefer the control socket: it is the authoritative "server is up"
+        // signal now that management lives there, and a same-user connect proves
+        // both liveness and that we may drive it. This must hold on every platform
+        // — on Windows the named pipe *is* the management channel, so probe it too
+        // rather than inferring liveness solely from a (recyclable) TCP port.
+        if !self.control_socket.is_empty()
+            && crate::control::transport::probe(&crate::control::ControlSocketName::from_raw(
+                self.control_socket.clone(),
+            ))
+        {
+            return true;
+        }
+        // Fallback: probe the web TCP port (also the only probe on platforms
+        // where a cheap synchronous socket connect isn't wired up here).
         let connect_host = if crate::net::host_is_wildcard_v6(&self.host) {
             "::1"
         } else if crate::net::host_is_wildcard_v4(&self.host) {
@@ -1010,30 +1038,34 @@ mod tests {
     }
 
     #[test]
-    fn server_lock_host_defaults_when_absent() {
-        // Old lock files predate the `host` field; they must still deserialize.
+    fn server_lock_optional_fields_default_when_absent() {
+        // Pre-split lock files predate `control_socket` (and the older ones the
+        // `host` field, plus a now-removed `token`); they must still deserialize,
+        // ignoring unknown keys and defaulting the missing ones.
         let old = r#"{"port":6419,"token":"abc"}"#;
         let lock: ServerLock = serde_json::from_str(old).unwrap();
         assert_eq!(lock.port, 6419);
-        assert_eq!(lock.token, "abc");
+        assert_eq!(lock.control_socket, "");
         assert_eq!(lock.host, "");
         assert_eq!(lock.advertised_host, None);
     }
 
     #[test]
-    fn server_lock_host_round_trips() {
+    fn server_lock_round_trips() {
         let lock = ServerLock {
             port: 6419,
-            token: "tok".into(),
+            control_socket: "/home/u/.markon/control.sock".into(),
             host: "0.0.0.0".into(),
             advertised_host: Some("192.168.1.20".into()),
+            owner: "owner-nonce".into(),
         };
         let json = serde_json::to_string(&lock).unwrap();
         let back: ServerLock = serde_json::from_str(&json).unwrap();
         assert_eq!(back.host, "0.0.0.0");
         assert_eq!(back.port, 6419);
-        assert_eq!(back.token, "tok");
+        assert_eq!(back.control_socket, "/home/u/.markon/control.sock");
         assert_eq!(back.advertised_host.as_deref(), Some("192.168.1.20"));
+        assert_eq!(back.owner, "owner-nonce");
     }
 
     /// Block until the entry's search index is populated (it's built on a

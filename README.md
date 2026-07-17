@@ -66,18 +66,21 @@ The macOS app is ad-hoc signed and the Windows installer is not code-signed, so 
 
 ### CLI
 
-Install the published CLI with Cargo:
+Install the published CLI with Cargo. Install `markond` too — it is the
+background service the `markon` command spawns and must sit beside it on `PATH`
+(without it, `markon` falls back to serving in the foreground):
 
 ```bash
-cargo install markon
+cargo install markon markond
 ```
 
-Or install it from a checkout:
+Or install both from a checkout:
 
 ```bash
 git clone https://github.com/kookyleo/markon.git
 cd markon
-cargo install --path crates/cli
+cargo install --path crates/markond   # background service
+cargo install --path crates/cli       # `markon` command
 ```
 
 ## Quick Start
@@ -281,9 +284,10 @@ scripts/build-dmg.sh
 
 | Path | Ownership |
 | --- | --- |
-| `crates/core` | HTTP server, renderer, search, persistence, Git, chat, browser assets |
-| `crates/cli` | CLI and daemon lifecycle |
-| `crates/gui` | Tauri 2 desktop shell and settings UI |
+| `crates/core` | HTTP server, renderer, search, persistence, Git, chat, control-socket protocol, browser assets |
+| `crates/markond` | Background service process — the only holder of the core; serves the web (TCP) and control (local socket) planes |
+| `crates/cli` | `markon` CLI — a privileged local client that spawns/attaches to `markond` over the control socket |
+| `crates/gui` | Tauri 2 desktop shell and settings UI — a pure frontend over the same control socket |
 | `crates/xtask` | Build-time maintenance helpers |
 | `docs` | VitePress documentation |
 | `example` | Rendering and end-to-end fixtures |
