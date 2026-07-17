@@ -453,6 +453,17 @@ fn resolve_workspace_list_base(
     }
 }
 
+fn rehome_admin_bootstrap_url(base: &str, redirect: &str, issued_url: &str) -> String {
+    let initial_route = redirect
+        .split_once('#')
+        .map_or(redirect, |(route, _fragment)| route);
+    let target = server::build_workspace_url(base, initial_route);
+    match issued_url.split_once('#').map(|(_, fragment)| fragment) {
+        Some(fragment) if !fragment.is_empty() => format!("{target}#{fragment}"),
+        _ => target,
+    }
+}
+
 fn print_workspace_access_summary(summary: &WorkspaceAccessSummary) {
     let colors = CliColors::detect();
     println!(
@@ -770,17 +781,9 @@ async fn forward_to_running_server(
                         let browser_url = if base_option == "local" {
                             boot_url
                         } else {
-                            // Re-home the bootstrap onto the requested custom
-                            // base, preserving its nonce fragment.
-                            let fragment =
-                                boot_url.split_once('#').map(|(_, frag)| frag).unwrap_or("");
-                            let bootstrap =
-                                server::build_workspace_url(base_option, "/_/admin/bootstrap");
-                            if fragment.is_empty() {
-                                bootstrap
-                            } else {
-                                format!("{bootstrap}#{fragment}")
-                            }
+                            // Re-home the final target onto the requested custom
+                            // base while preserving the one-time fragment.
+                            rehome_admin_bootstrap_url(base_option, &redirect, &boot_url)
                         };
                         if let Err(e) = open::that(&browser_url) {
                             tracing::warn!("best-effort browser open failed: {e}");
@@ -1296,6 +1299,26 @@ mod tests {
                 command: AdminCommands::Code
             })
         ));
+    }
+
+    #[test]
+    fn custom_base_admin_bootstrap_still_starts_at_final_target() {
+        assert_eq!(
+            rehome_admin_bootstrap_url(
+                "https://md.example.com/root/",
+                "/workspace/file.md?mode=preview",
+                "http://127.0.0.1:6419/workspace/file.md?mode=preview#bootstrap_nonce=abc"
+            ),
+            "https://md.example.com/root/workspace/file.md?mode=preview#bootstrap_nonce=abc"
+        );
+        assert_eq!(
+            rehome_admin_bootstrap_url(
+                "https://md.example.com",
+                "/workspace/file.md#heading",
+                "http://127.0.0.1:6419/workspace/file.md#bootstrap_nonce=abc"
+            ),
+            "https://md.example.com/workspace/file.md#bootstrap_nonce=abc"
+        );
     }
 
     #[test]

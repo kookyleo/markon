@@ -353,8 +353,8 @@ fn handle_open_path(app: &tauri::AppHandle, path: &Path) {
     };
 
     // Pure frontend: register the workspace on the service over its control
-    // socket, then mint a one-time admin-bootstrap URL so the local browser
-    // lands with an admin session — the same treatment `open_url` gives.
+    // socket, then mint the final page URL with a one-time admin fragment so
+    // the local browser upgrades in place — the same treatment `open_url` gives.
     // Directories register the whole tree; files use the single-file add so only
     // the pinned file (plus its assets) is reachable.
     let Some(remote) = state.server.lock().unwrap().handle() else {

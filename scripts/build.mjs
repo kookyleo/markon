@@ -156,6 +156,15 @@ async function build() {
     format: 'iife',
     target: ['es2022'],
   };
+  // Parser-blocking bootstrap controller shared by every HTML shell. It must
+  // run before first paint so the unauthenticated render never flashes.
+  const adminSessionBootOpts = {
+    ...shared,
+    entryPoints: [resolve(srcDir, 'admin-session-boot.ts')],
+    outfile: resolve(outDir, 'admin-session-boot.js'),
+    format: 'iife',
+    target: ['es2022'],
+  };
   const gitRefsOpts = {
     ...shared,
     entryPoints: [resolve(srcDir, 'git-refs.ts')],
@@ -212,6 +221,7 @@ async function build() {
     const ctxLayoutPage = await esbuild.context(layoutPageOpts);
     const ctxAccessGate = await esbuild.context(accessGateOpts);
     const ctxAdminBootstrap = await esbuild.context(adminBootstrapOpts);
+    const ctxAdminSessionBoot = await esbuild.context(adminSessionBootOpts);
     const ctxGitRefs = await esbuild.context(gitRefsOpts);
     const ctxPageShortcuts = await esbuild.context(pageShortcutsOpts);
     const ctxMathRender = await esbuild.context(mathRenderOpts);
@@ -227,6 +237,7 @@ async function build() {
     await ctxLayoutPage.watch();
     await ctxAccessGate.watch();
     await ctxAdminBootstrap.watch();
+    await ctxAdminSessionBoot.watch();
     await ctxGitRefs.watch();
     await ctxPageShortcuts.watch();
     await ctxMathRender.watch();
@@ -245,6 +256,7 @@ async function build() {
       esbuild.build(layoutPageOpts),
       esbuild.build(accessGateOpts),
       esbuild.build(adminBootstrapOpts),
+      esbuild.build(adminSessionBootOpts),
       esbuild.build(gitRefsOpts),
       esbuild.build(pageShortcutsOpts),
       esbuild.build(mathRenderOpts),
