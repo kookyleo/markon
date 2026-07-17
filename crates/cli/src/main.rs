@@ -105,8 +105,8 @@ enum Commands {
     },
     /// List all active workspaces in the running server.
     Ls {
-        /// Output format. Omit on an interactive terminal to launch the
-        /// interactive browser; omit when piped/redirected for static cards.
+        /// Output format. Omit on an interactive terminal to launch the inline
+        /// workspace browser; omit when piped/redirected for static cards.
         #[arg(long, value_enum)]
         format: Option<WorkspaceListFormat>,
     },
@@ -239,15 +239,13 @@ impl CliColors {
     }
 }
 
-/// Whether an interactive full-screen TUI should launch for a bare `markon ls`.
+/// Whether the inline interactive workspace browser should launch for a bare
+/// `markon ls`.
 ///
-/// Requires both stdin and stdout to be real terminals AND a usable `TERM`
-/// (set and not `dumb`), mirroring [`CliColors::detect`]'s capability gate — a
-/// whole-screen alternate-screen app is far more invasive than color, so a
-/// dumb/limited terminal (or `TERM` unset) falls back to static cards instead
-/// of emitting alternate-screen / cursor-hide escapes as literal garbage.
-/// `MARKON_NO_TUI` is an explicit escape hatch for PTY environments that
-/// report a terminal but should stay non-interactive.
+/// Requires stdin and stdout to be real terminals plus a usable `TERM` because
+/// the browser reads keys in raw mode and redraws its own inline viewport.
+/// Redirected, dumb, or explicitly opted-out environments keep the static card
+/// output and never receive cursor-control escapes.
 fn tui_enabled() -> bool {
     if std::env::var_os("MARKON_NO_TUI").is_some() {
         return false;
@@ -307,9 +305,7 @@ fn workspace_flag_entries(
 }
 
 /// Mutable, ordered accessor over the six workspace flags. Indexed identically
-/// to [`workspace_flag_entries`], so the TUI edit form can toggle "row N"
-/// without a second, drift-prone index→field map: display order and toggle
-/// order share one definition.
+/// to [`workspace_flag_entries`] so display and toggle order cannot drift.
 fn workspace_flag_mut(flags: &mut WorkspaceFlags, idx: usize) -> &mut bool {
     match idx {
         0 => &mut flags.enable_search,
@@ -826,14 +822,9 @@ async fn main() {
     init_tracing();
     let cli = Cli::parse();
     let cli_entry = cli.entry.clone();
-    // Suppress the version banner when we're about to enter the full-screen
-    // browser: it would flash on the primary screen just before EnterAlternateScreen
-    // and remain as the only on-screen residue after LeaveAlternateScreen on quit.
     let launching_tui =
         matches!(&cli.command, Some(Commands::Ls { format: None })) && tui_enabled();
-    if !launching_tui {
-        println!("Markon v{}", env!("CARGO_PKG_VERSION"));
-    }
+    println!("Markon v{}", env!("CARGO_PKG_VERSION"));
 
     // Handle subcommands.
     if let Some(cmd) = cli.command {
@@ -882,8 +873,6 @@ async fn main() {
                     lock_host.clone()
                 };
                 match format {
-                    // Explicit --format cards|table: static render, byte-for-byte
-                    // as before.
                     Some(fmt) => {
                         list_workspaces(
                             &bind_host,
@@ -894,17 +883,11 @@ async fn main() {
                         )
                         .await
                     }
-                    // Bare `markon ls` on a capable interactive terminal → the
-                    // full-screen browser. `launching_tui` folds in the TTY +
-                    // capability gate (and the banner was suppressed above).
                     None if launching_tui => {
                         let port = server.port();
-                        // Hop onto a blocking-pool thread: the TUI loop is
-                        // synchronous crossterm, and control calls run via
-                        // Handle::block_on there (legal only off a runtime core
-                        // worker — see tui::ls::run). spawn_blocking parks a pool
-                        // thread while the multi-thread runtime's core workers keep
-                        // driving the IO reactor the async transport needs.
+                        // Crossterm's input loop is synchronous. Keep it on the
+                        // blocking pool while Tokio's core workers continue to
+                        // drive control-socket IO used by edit/detach actions.
                         let handle = tokio::runtime::Handle::current();
                         let tui_server = server.clone();
                         let tui_entry = cli_entry.clone();
@@ -926,8 +909,6 @@ async fn main() {
                             }
                         }
                     }
-                    // Bare `markon ls` piped / redirected / non-capable terminal →
-                    // today's default static cards.
                     None => {
                         list_workspaces(
                             &bind_host,

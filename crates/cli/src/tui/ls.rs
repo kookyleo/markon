@@ -77,9 +77,10 @@ pub fn run(
         show_help: false,
     };
 
-    // From here on the guard owns terminal restoration on every exit path.
-    let _guard = TerminalGuard::new()?;
-    app.event_loop()?;
+    // From here on the guard owns raw-mode restoration and the inline viewport
+    // on every exit path.
+    let mut terminal = TerminalGuard::new()?;
+    app.event_loop(&mut terminal)?;
     Ok(())
 }
 
@@ -102,9 +103,9 @@ struct App {
 }
 
 impl App {
-    fn event_loop(&mut self) -> io::Result<()> {
+    fn event_loop(&mut self, terminal: &mut TerminalGuard) -> io::Result<()> {
         loop {
-            self.draw()?;
+            self.draw(terminal)?;
             let action = read_action();
             // Ctrl-C and a read error are global, screen-independent exits so we
             // always unwind through the terminal guard.
@@ -275,15 +276,15 @@ impl App {
 
     // --- rendering -------------------------------------------------------
 
-    fn draw(&self) -> io::Result<()> {
+    fn draw(&self, terminal: &mut TerminalGuard) -> io::Result<()> {
         match self.screen {
-            Screen::List => self.draw_list(),
-            Screen::Edit => self.draw_edit(),
-            Screen::ConfirmDetach => self.draw_confirm(),
+            Screen::List => self.draw_list(terminal),
+            Screen::Edit => self.draw_edit(terminal),
+            Screen::ConfirmDetach => self.draw_confirm(terminal),
         }
     }
 
-    fn draw_list(&self) -> io::Result<()> {
+    fn draw_list(&self, terminal: &mut TerminalGuard) -> io::Result<()> {
         let mut frame = Frame::new()?;
         frame.line(format!("Workspaces ({})", self.workspaces.len()));
         frame.blank();
@@ -293,7 +294,7 @@ impl App {
             frame.blank();
             frame.line("q quit · ? help");
             self.push_status(&mut frame);
-            return frame.render();
+            return frame.render(terminal);
         }
 
         // Keep the selected row visible while reserving terminal rows for the
@@ -334,10 +335,10 @@ impl App {
             frame.line("aliases: k/j move · enter edit · ctrl-c quit");
         }
         self.push_status(&mut frame);
-        frame.render()
+        frame.render(terminal)
     }
 
-    fn draw_edit(&self) -> io::Result<()> {
+    fn draw_edit(&self, terminal: &mut TerminalGuard) -> io::Result<()> {
         let mut frame = Frame::new()?;
         let (name, path) = match self.selected_ws() {
             Some(ws) => (
@@ -368,10 +369,10 @@ impl App {
             frame.line("aliases: k/j move · s save · ctrl-c quit");
         }
         self.push_status(&mut frame);
-        frame.render()
+        frame.render(terminal)
     }
 
-    fn draw_confirm(&self) -> io::Result<()> {
+    fn draw_confirm(&self, terminal: &mut TerminalGuard) -> io::Result<()> {
         let mut frame = Frame::new()?;
         let name = self
             .selected_ws()
@@ -383,7 +384,7 @@ impl App {
         frame.blank();
         frame.line("y detach · n cancel");
         self.push_status(&mut frame);
-        frame.render()
+        frame.render(terminal)
     }
 
     fn push_status(&self, frame: &mut Frame) {

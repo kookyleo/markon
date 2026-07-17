@@ -1,14 +1,12 @@
 //! Reusable terminal-UI layer for interactive CLI subcommands.
 //!
-//! This module is the **generic** half of the pilot: nothing here references
-//! workspaces, flags, or any `markon`-specific type. A future `tui/set.rs` (or
-//! any other interactive screen) reuses exactly this surface:
+//! This module is the generic terminal layer: nothing here references
+//! workspaces, flags, or any `markon`-specific type.
 //!
-//! - [`TerminalGuard`] — panic-safe RAII enter/leave of raw mode + the alternate
-//!   screen, plus a panic hook so a crash prints a legible backtrace on the
-//!   normal screen instead of a staircased mess wiped by teardown.
-//! - [`Frame`] — a full-redraw frame helper (Clear + MoveTo + flush) with a
-//!   width-aware, escape-free truncating line writer.
+//! - [`TerminalGuard`] — panic-safe RAII enter/leave of raw mode. It deliberately
+//!   stays in the normal screen buffer so shell history remains visible.
+//! - [`Frame`] — an inline viewport renderer that reserves rows below the
+//!   invoking command and redraws only those rows.
 //! - selectable-list, checkbox, and confirm helpers on [`Frame`] — the reusable
 //!   widgets the screens compose.
 //! - [`read_action`] — the shared key→action decoder, filtering key-release /
@@ -21,11 +19,8 @@ pub mod ls;
 
 use crossterm::event::{self, Event, KeyCode, KeyEventKind, KeyModifiers};
 use crossterm::style::{Color, Print, ResetColor, SetAttribute, SetForegroundColor};
-use crossterm::terminal::{
-    self, disable_raw_mode, enable_raw_mode, Clear, ClearType, EnterAlternateScreen,
-    LeaveAlternateScreen,
-};
-use crossterm::{cursor, queue, QueueableCommand};
+use crossterm::terminal::{self, disable_raw_mode, enable_raw_mode, Clear, ClearType};
+use crossterm::{cursor, queue};
 use std::io::{self, Write};
 use std::panic::PanicHookInfo;
 use std::sync::Arc;
@@ -33,41 +28,42 @@ use unicode_width::{UnicodeWidthChar, UnicodeWidthStr};
 
 type PanicHook = Box<dyn Fn(&PanicHookInfo<'_>) + Sync + Send + 'static>;
 
-/// RAII guard that puts the terminal into full-screen raw mode on construction
-/// and *always* restores it on drop — normal return, `?`-early-return, and panic
-/// unwind alike.
+/// RAII guard that enters raw mode without changing screen buffers and always
+/// restores the cursor, line position, raw mode, and panic hook on drop.
 ///
 /// The construction order matters for the "always restored" guarantee: the guard
-/// value is built (with both state flags cleared) **before** the first fallible
-/// terminal call, and each flag is set only after its step succeeds. So if
-/// `enable_raw_mode` succeeds but entering the alternate screen fails, the
-/// already-constructed guard still drops and disables raw mode — there is no
-/// partial-init window where raw mode is on but no guard exists.
+/// value is built before the first fallible terminal call and each state flag is
+/// set only after its step succeeds.
 pub struct TerminalGuard {
     raw_enabled: bool,
-    alt_active: bool,
+    cursor_hidden: bool,
+    /// Rows currently owned by the inline viewport. The cursor rests on the
+    /// final row after every render.
+    rendered_lines: u16,
     /// The panic hook that was installed before us, wrapped so both our
     /// terminal-restoring hook and `Drop` can reach it. Restored on drop.
     prev_hook: Option<Arc<PanicHook>>,
 }
 
 impl TerminalGuard {
-    /// Enter raw mode + the alternate screen, hiding the cursor, and install a
-    /// terminal-restoring panic hook. Returns an error (having already restored)
-    /// if any step fails.
+    /// Enter raw mode in the normal screen buffer, hide the cursor, and install
+    /// a terminal-restoring panic hook.
     pub fn new() -> io::Result<Self> {
-        // Install the panic hook first so a panic during setup still restores the
-        // terminal before printing. The hook best-effort leaves raw mode / the
-        // alternate screen, then delegates to the previous hook on the normal
-        // screen where the backtrace renders legibly (raw mode suppresses the
-        // CR translation that otherwise staircases each line).
+        // Install the panic hook first so a panic during setup or rendering still
+        // restores a legible terminal before delegating to the previous hook.
         let prev = Arc::new(std::panic::take_hook());
         {
             let prev = prev.clone();
             std::panic::set_hook(Box::new(move |info| {
                 let _ = disable_raw_mode();
                 let mut out = io::stdout();
-                let _ = queue!(out, LeaveAlternateScreen, cursor::Show);
+                let _ = queue!(
+                    out,
+                    ResetColor,
+                    SetAttribute(crossterm::style::Attribute::Reset),
+                    cursor::Show,
+                    cursor::MoveToNextLine(1)
+                );
                 let _ = out.flush();
                 prev(info);
             }));
@@ -76,7 +72,8 @@ impl TerminalGuard {
         // Construct the guard up front so any error below still drops it.
         let mut guard = TerminalGuard {
             raw_enabled: false,
-            alt_active: false,
+            cursor_hidden: false,
+            rendered_lines: 0,
             prev_hook: Some(prev),
         };
 
@@ -84,12 +81,10 @@ impl TerminalGuard {
         guard.raw_enabled = true;
 
         let mut out = io::stdout();
-        out.queue(EnterAlternateScreen)?;
-        // EnterAlternateScreen is now queued and may already have reached a
-        // partially failing writer. Mark it active before any later fallible
-        // cursor/flush step so Drop always queues LeaveAlternateScreen.
-        guard.alt_active = true;
-        out.queue(cursor::Hide)?;
+        queue!(out, cursor::Hide)?;
+        // The hide command may already have reached a partially failing writer;
+        // mark it active before flush so Drop always attempts to show the cursor.
+        guard.cursor_hidden = true;
         out.flush()?;
 
         Ok(guard)
@@ -100,9 +95,20 @@ impl Drop for TerminalGuard {
     fn drop(&mut self) {
         // Best-effort restore; ignore errors — there is nothing useful to do if
         // the terminal itself is gone.
-        if self.alt_active {
+        if self.cursor_hidden || self.rendered_lines > 0 {
             let mut out = io::stdout();
-            let _ = queue!(out, cursor::Show, LeaveAlternateScreen);
+            let _ = queue!(
+                out,
+                ResetColor,
+                SetAttribute(crossterm::style::Attribute::Reset),
+                cursor::Show
+            );
+            if self.rendered_lines > 0 {
+                // The cursor rests on the last viewport row. Leave the rendered
+                // TUI in scrollback and put the next shell prompt immediately
+                // below it.
+                let _ = queue!(out, cursor::MoveToNextLine(1));
+            }
             let _ = out.flush();
         }
         if self.raw_enabled {
@@ -195,9 +201,9 @@ struct FrameLine {
     color: Option<Color>,
 }
 
-/// A full-screen frame built up as plain-text lines, then painted in one pass
-/// (Clear + per-line MoveTo + flush). Lines past the terminal height are dropped
-/// so tiny terminals truncate instead of panicking or scrolling.
+/// An inline frame built up as plain-text lines, then painted into rows owned by
+/// [`TerminalGuard`]. Lines past the terminal height are dropped so a large
+/// workspace list remains navigable within one terminal-height viewport.
 pub struct Frame {
     width: usize,
     height: u16,
@@ -209,7 +215,10 @@ impl Frame {
     pub fn new() -> io::Result<Self> {
         let (cols, rows) = terminal::size().unwrap_or((80, 24));
         Ok(Frame {
-            width: cols.max(1) as usize,
+            // Leave the final column unused: printing exactly the terminal width
+            // can trigger an implicit wrap, which would move an inline viewport
+            // by an extra row and break relative redraw bookkeeping.
+            width: cols.saturating_sub(1).max(1) as usize,
             height: rows.max(1),
             lines: Vec::new(),
         })
@@ -260,15 +269,42 @@ impl Frame {
         self.selectable(text, selected);
     }
 
-    /// Paint the whole frame in one pass and flush.
-    pub fn render(&self) -> io::Result<()> {
+    /// Paint this frame into the inline viewport and flush.
+    ///
+    /// The first render reserves enough rows below the invoking command. Later
+    /// renders rewind only over the previously-owned rows, clear those rows one
+    /// by one, and repaint them. No alternate screen or full-screen clear is
+    /// emitted, so everything above the command remains in normal scrollback.
+    pub fn render(&self, terminal: &mut TerminalGuard) -> io::Result<()> {
         let mut out = io::stdout();
-        queue!(out, Clear(ClearType::All), cursor::MoveTo(0, 0))?;
-        for (i, line) in self.lines.iter().enumerate() {
-            if i as u16 >= self.height {
-                break;
+        let current_lines = self.lines.len().min(self.height as usize).max(1) as u16;
+        let (growth, extent) = inline_redraw_geometry(terminal.rendered_lines, current_lines);
+
+        // Extend the viewport at its bottom before rewinding. Newlines may
+        // naturally scroll older shell output upward, but never discard it.
+        for _ in 0..growth {
+            queue!(out, Print("\r\n"))?;
+        }
+        if extent > 1 {
+            queue!(out, cursor::MoveUp(extent - 1))?;
+        }
+        queue!(out, cursor::MoveToColumn(0))?;
+
+        // Clear exactly the rows this viewport owns, not the terminal screen.
+        for row in 0..extent {
+            queue!(out, Clear(ClearType::CurrentLine))?;
+            if row + 1 < extent {
+                queue!(out, cursor::MoveToNextLine(1))?;
             }
-            queue!(out, cursor::MoveTo(0, i as u16))?;
+        }
+        if extent > 1 {
+            queue!(out, cursor::MoveUp(extent - 1))?;
+        }
+
+        for (i, line) in self.lines.iter().take(current_lines as usize).enumerate() {
+            if i > 0 {
+                queue!(out, Print("\r\n"))?;
+            }
             let text = truncate_to_width(&line.text, self.width);
             if line.reverse {
                 queue!(out, SetAttribute(crossterm::style::Attribute::Reverse))?;
@@ -284,8 +320,22 @@ impl Frame {
                 queue!(out, SetAttribute(crossterm::style::Attribute::Reset))?;
             }
         }
+        // Update before flush: if the writer partially fails, Drop still knows
+        // the furthest row it may need to step past before returning to the shell.
+        terminal.rendered_lines = current_lines;
         out.flush()
     }
+}
+
+/// Number of new rows to append at the viewport bottom and total rows to rewind
+/// and clear before a redraw.
+fn inline_redraw_geometry(previous: u16, current: u16) -> (u16, u16) {
+    let growth = if previous == 0 {
+        current.saturating_sub(1)
+    } else {
+        current.saturating_sub(previous)
+    };
+    (growth, previous.max(current))
 }
 
 /// Truncate `text` to at most `width` display columns. Workspace aliases and
@@ -319,7 +369,15 @@ pub const ERROR_COLOR: Color = Color::Red;
 
 #[cfg(test)]
 mod tests {
-    use super::truncate_to_width;
+    use super::{inline_redraw_geometry, truncate_to_width};
+
+    #[test]
+    fn inline_viewport_grows_and_shrinks_without_touching_other_rows() {
+        assert_eq!(inline_redraw_geometry(0, 8), (7, 8));
+        assert_eq!(inline_redraw_geometry(8, 10), (2, 10));
+        assert_eq!(inline_redraw_geometry(10, 6), (0, 10));
+        assert_eq!(inline_redraw_geometry(6, 6), (0, 6));
+    }
 
     #[test]
     fn truncates_by_terminal_columns() {
