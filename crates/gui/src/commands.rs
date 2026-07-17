@@ -259,7 +259,10 @@ pub async fn save_settings(
     #[cfg(target_os = "windows")]
     sync_shell_context_menu(&settings.language);
 
-    settings.save()?;
+    // Merge daemon-owned fields again under the cross-process write lock. The
+    // earlier read prepared the comparison, but a control-socket mutation may
+    // have landed between that read and this write.
+    settings.save_preserving_server_owned_state()?;
     *state.settings.lock().unwrap() = settings;
 
     if need_respawn {
@@ -445,7 +448,7 @@ pub async fn remove_workspace(id: String, state: State<'_, AppState>) -> Result<
     if is_example {
         let mut settings = state.settings.lock().unwrap();
         settings.example_workspace_hidden = true;
-        settings.save()?;
+        settings.save_preserving_server_owned_state()?;
     }
     Ok(())
 }
@@ -457,6 +460,11 @@ pub async fn get_workspaces(state: State<'_, AppState>) -> Result<Vec<serde_json
     let remote = require_service(&state)?;
     let port = remote.port();
     let infos = remote.list_workspaces().await.map_err(remote_err)?;
+    state
+        .settings
+        .lock()
+        .unwrap()
+        .sync_from_workspace_infos(infos.clone());
     let browser_base =
         browser_base_url_for_state(&state, remote.host(), remote.advertised_host(), port);
     Ok(infos
@@ -789,8 +797,7 @@ pub async fn set_collaborator_access_code(
             // service (it's a daemon-config field, not a live control endpoint).
             {
                 let mut s = state.settings.lock().unwrap();
-                s.collaborator_access_code_hash = hash;
-                s.save()?;
+                s.save_collaborator_access_code(hash)?;
             }
             respawn_service_and_broadcast(&app, &state).await
         }
@@ -825,7 +832,7 @@ pub fn set_tray_resident(
     state.tray_resident.store(value, Ordering::Relaxed);
     let mut settings = state.settings.lock().unwrap();
     settings.tray_resident = value;
-    settings.save()?;
+    settings.save_preserving_server_owned_state()?;
     drop(settings);
     if let Some(tray) = app.tray_by_id("main") {
         tray.set_visible(value).map_err(|e| e.to_string())?;

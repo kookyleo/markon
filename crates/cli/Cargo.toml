@@ -1,5 +1,5 @@
 [package]
-name = "markon-cli"
+name = "markon"
 version.workspace = true
 edition.workspace = true
 authors.workspace = true

@@ -141,46 +141,42 @@ impl ServerConfig {
 /// it rather than re-exec'ing itself, so the two binaries must be found side by
 /// side.
 ///
-/// Search order:
-///   1. sibling of the current executable (the normal install / dev layout,
-///      where the front-end and `markond` land in the same directory), and
-///   2. `target/debug` / `target/release` under the current working directory
-///      (dev fallback for `cargo run`, whose exe may live elsewhere).
+/// The service must be a sibling of the current executable. This is the normal
+/// Cargo install, development, and GUI-sidecar layout. Deliberately do not search
+/// `target/*` under the current working directory: an installed `markon` invoked
+/// inside an unrelated checkout must never execute that checkout's arbitrary
+/// `target/debug/markond` binary.
 pub fn locate_markond() -> std::io::Result<PathBuf> {
     // `EXE_SUFFIX` is `.exe` on Windows and empty elsewhere, so the same lookup
     // finds `markond` on unix and `markond.exe` on Windows.
     let bin = format!("markond{}", std::env::consts::EXE_SUFFIX);
     let bin = bin.as_str();
-    let mut checked: Vec<PathBuf> = Vec::new();
-
-    if let Ok(exe) = std::env::current_exe() {
-        if let Some(dir) = exe.parent() {
-            let candidate = dir.join(bin);
-            if candidate.is_file() {
-                return Ok(candidate);
-            }
-            checked.push(candidate);
-        }
-    }
-
-    for profile in ["debug", "release"] {
-        let candidate = PathBuf::from("target").join(profile).join(bin);
-        if candidate.is_file() {
-            return Ok(candidate);
-        }
-        checked.push(candidate);
+    let exe = std::env::current_exe().map_err(|error| {
+        std::io::Error::new(
+            error.kind(),
+            format!("could not resolve the current executable: {error}"),
+        )
+    })?;
+    let dir = exe.parent().ok_or_else(|| {
+        std::io::Error::new(
+            std::io::ErrorKind::NotFound,
+            format!(
+                "current executable has no parent directory: {}",
+                exe.display()
+            ),
+        )
+    })?;
+    let candidate = dir.join(bin);
+    if candidate.is_file() {
+        return Ok(candidate);
     }
 
     Err(std::io::Error::new(
         std::io::ErrorKind::NotFound,
         format!(
-            "could not find the '{bin}' service binary (looked in: {}). \
+            "could not find the '{bin}' service binary beside the current executable (looked in: {}). \
              Ensure the markon front-end and markond are installed side by side.",
-            checked
-                .iter()
-                .map(|p| p.display().to_string())
-                .collect::<Vec<_>>()
-                .join(", ")
+            candidate.display()
         ),
     ))
 }

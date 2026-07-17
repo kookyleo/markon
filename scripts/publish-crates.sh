@@ -15,10 +15,10 @@
 #   4. cargo publish -p markon-core (lib, must go first)
 #   5. Wait for crates.io index propagation
 #   6. cargo publish -p markond (bin, depends on markon-core from registry)
-#   7. cargo publish -p markon-cli (bin, depends on markon-core from registry)
+#   7. cargo publish -p markon (bin, depends on markon-core from registry)
 #
 # markond is the background service the `markon` CLI spawns; it MUST be published
-# alongside markon-cli so `cargo install` users get both binaries side by side,
+# alongside markon so `cargo install` users get both binaries side by side,
 # otherwise the CLI can't background itself and falls back to foreground.
 #
 # Note: markon-gui is marked publish = false and is distributed via GitHub Release.
@@ -38,7 +38,7 @@ fi
 
 # Read the workspace version for the step banner
 VER=$(grep -m1 '^version = "' Cargo.toml | sed -E 's/version = "(.*)"/\1/')
-step "Publishing markon-core@$VER, markond@$VER and markon-cli@$VER to crates.io"
+step "Publishing markon-core@$VER, markond@$VER and markon@$VER to crates.io"
 
 # Build the frontend bundle BEFORE any cargo compile. markon-core's build.rs
 # and rust_embed require assets/dist/ (gitignored), so clippy/test/package all
@@ -73,8 +73,8 @@ step "cargo publish -p markond"
 cargo publish -p markond || fail "markond publish failed"
 
 # --- Publish cli ---
-step "cargo publish -p markon-cli"
-cargo publish -p markon-cli || fail "markon-cli publish failed"
+step "cargo publish -p markon"
+cargo publish -p markon || fail "markon publish failed"
 
-printf '\n\033[1;32m✓ Published markon-core@%s, markond@%s and markon-cli@%s\033[0m\n' "$VER" "$VER" "$VER"
-echo "Check: https://crates.io/crates/markon-core  https://crates.io/crates/markond  https://crates.io/crates/markon-cli"
+printf '\n\033[1;32m✓ Published markon-core@%s, markond@%s and markon@%s\033[0m\n' "$VER" "$VER" "$VER"
+echo "Check: https://crates.io/crates/markon-core  https://crates.io/crates/markond  https://crates.io/crates/markon"

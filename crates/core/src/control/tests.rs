@@ -30,11 +30,18 @@ async fn harness() -> Harness {
     let (shutdown_tx, shutdown_rx) = mpsc::channel(1);
     let admin: AdminBootstrapFn =
         Arc::new(|redirect: &str| Ok(format!("http://127.0.0.1:7000{redirect}#nonce=abc")));
+    let admin_code: AdminBootstrapCodeFn = Arc::new(|_redirect: &str| {
+        Ok((
+            "http://127.0.0.1:7000/_/admin".to_string(),
+            "123456".to_string(),
+        ))
+    });
 
     let ctx = ControlContext {
         registry: registry.clone(),
         shutdown: Some(shutdown_tx),
         admin_bootstrap: Some(admin),
+        admin_bootstrap_code: Some(admin_code),
     };
 
     // Bind synchronously (awaited) so the socket exists before any connect.
@@ -148,6 +155,36 @@ async fn control_round_trips_every_method() {
     let sf = listed.iter().find(|w| w.id == sf_id).unwrap();
     assert_eq!(sf.single_file.as_deref(), Some("note.md"));
     assert!(sf.ephemeral);
+    // Replaying persisted metadata must match on (path, single_file), not just
+    // the parent path, and must preserve alias/access-code fields.
+    let scoped_flags = WorkspaceFlags {
+        enable_chat: true,
+        ..Default::default()
+    };
+    let scoped_hash = "b".repeat(64);
+    let replayed_id = h
+        .client
+        .add_or_update_workspace_scoped(
+            &dir_path,
+            scoped_flags,
+            Some("note.md"),
+            Some(&scoped_hash),
+            Some("Pinned note"),
+        )
+        .await
+        .unwrap();
+    assert_eq!(replayed_id, sf_id);
+    let replayed = h
+        .client
+        .list_workspaces()
+        .await
+        .unwrap()
+        .into_iter()
+        .find(|workspace| workspace.id == sf_id)
+        .unwrap();
+    assert_eq!(replayed.flags, scoped_flags);
+    assert_eq!(replayed.collaborator_access_code_hash, scoped_hash);
+    assert_eq!(replayed.alias, "Pinned note");
     // Detach the single-file entry again so the remainder of the round-trip sees
     // just the directory workspace.
     h.client.remove_workspace(&sf_id).await.unwrap();
@@ -156,6 +193,9 @@ async fn control_round_trips_every_method() {
     // admin_bootstrap — routed through the injected issuer.
     let url = h.client.admin_bootstrap("/workspace/").await.unwrap();
     assert_eq!(url, "http://127.0.0.1:7000/workspace/#nonce=abc");
+    let (manual_url, code) = h.client.admin_bootstrap_code("/workspace/").await.unwrap();
+    assert_eq!(manual_url, "http://127.0.0.1:7000/_/admin");
+    assert_eq!(code, "123456");
 
     // remove_workspace — detaches; list goes empty.
     h.client.remove_workspace(&id).await.unwrap();

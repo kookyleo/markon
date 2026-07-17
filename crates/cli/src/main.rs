@@ -647,12 +647,10 @@ async fn admin_browser_command(
             println!("Administrator session opened in your browser.");
         }
         AdminCommands::Code => {
-            // Pairing-code bootstrap was an HTTP-era capability. The control
-            // protocol carries only the one-time URL, so code mode is no longer
-            // served here; the same-machine `open` flow supersedes it.
-            return Err("`markon admin code` is no longer supported; use \
-                        `markon admin open` to start an administrator session"
-                .into());
+            let (url, code) = server.admin_bootstrap_code(&redirect).await?;
+            println!("Open: {url}");
+            println!("One-time administrator code: {code}");
+            println!("Expires in 5 minutes and is invalidated after 5 failed attempts.");
         }
     }
     Ok(())

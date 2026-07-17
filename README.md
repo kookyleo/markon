@@ -71,7 +71,7 @@ background service the `markon` command spawns and must sit beside it on `PATH`
 (without it, `markon` falls back to serving in the foreground):
 
 ```bash
-cargo install markon-cli markond
+cargo install markon markond
 ```
 
 Or install both from a checkout:

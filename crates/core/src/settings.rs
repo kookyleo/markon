@@ -629,6 +629,29 @@ impl AppSettings {
         self.save_preserving_server_owned_state_at(&home)
     }
 
+    /// Atomically update the daemon-owned global collaborator access-code hash
+    /// while preserving every other field from the newest on-disk snapshot.
+    /// The GUI keeps a long-lived settings copy, so a plain `save()` here could
+    /// resurrect workspaces the daemon removed or drop ones it just added.
+    pub fn save_collaborator_access_code(&mut self, hash: String) -> Result<(), String> {
+        let home = dirs::home_dir().expect("HOME directory required");
+        self.save_collaborator_access_code_at(&home, hash)
+    }
+
+    fn save_collaborator_access_code_at(
+        &mut self,
+        home: &Path,
+        hash: String,
+    ) -> Result<(), String> {
+        Self::with_settings_write_lock(home, || {
+            let mut merged = Self::read_for_locked_merge_at(home)?.unwrap_or_else(|| self.clone());
+            merged.collaborator_access_code_hash = hash;
+            merged.save_at_unlocked(home)?;
+            *self = merged;
+            Ok(())
+        })
+    }
+
     pub(crate) fn save_preserving_server_owned_state_at(
         &mut self,
         home: &Path,
@@ -1613,5 +1636,43 @@ mod tests {
         assert_eq!(final_settings.salt, "persistent-salt");
         assert_eq!(final_settings.workspaces[0].flags, flags);
         assert_eq!(daemon_settings.lock().unwrap().theme, "dark");
+    }
+
+    #[test]
+    fn global_access_code_update_preserves_newest_workspace_state() {
+        let home = TempHome::new("access-code-merge");
+        let current = AppSettings {
+            salt: "persistent-salt".into(),
+            theme: "light".into(),
+            workspaces: vec![WorkspaceSettings {
+                path: "/live/docs".into(),
+                alias: "Live".into(),
+                ..WorkspaceSettings::default()
+            }],
+            ..AppSettings::default()
+        };
+        current.save_at(home.path()).unwrap();
+
+        // Simulate the GUI's stale boot snapshot: it has neither the live
+        // workspace nor the newest preference, and must update only the hash.
+        let mut stale = AppSettings {
+            salt: "stale-salt".into(),
+            theme: "dark".into(),
+            workspaces: vec![],
+            ..AppSettings::default()
+        };
+        stale
+            .save_collaborator_access_code_at(home.path(), "new-hash".into())
+            .unwrap();
+
+        let saved = AppSettings::load_at(home.path());
+        assert_eq!(saved.collaborator_access_code_hash, "new-hash");
+        assert_eq!(saved.salt, "persistent-salt");
+        assert_eq!(saved.theme, "light");
+        assert_eq!(saved.workspaces.len(), 1);
+        assert_eq!(saved.workspaces[0].path, "/live/docs");
+        assert_eq!(stale.collaborator_access_code_hash, "new-hash");
+        assert_eq!(stale.salt, "persistent-salt");
+        assert_eq!(stale.workspaces[0].path, "/live/docs");
     }
 }

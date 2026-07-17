@@ -36,6 +36,8 @@ pub enum ControlRequest {
         collaborator_access_code_hash: String,
         #[serde(default)]
         single_file: Option<String>,
+        #[serde(default)]
+        alias: String,
     },
     /// Replace a workspace's feature flags wholesale.
     UpdateFlags { id: String, flags: WorkspaceFlags },
@@ -52,6 +54,9 @@ pub enum ControlRequest {
     /// Mint a one-time administrator bootstrap URL that redirects to `redirect`
     /// after the browser exchanges it for an admin session.
     AdminBootstrap { redirect: String },
+    /// Mint a one-time administrator pairing code and return the manual-entry
+    /// URL. This preserves the non-browser-launching `markon admin code` flow.
+    AdminBootstrapCode { redirect: String },
     /// Ask the running server to exit.
     Shutdown,
 }
@@ -67,6 +72,9 @@ pub enum ControlResponse {
     WorkspaceId(String),
     /// A URL (answer to `AdminBootstrap`).
     Url(String),
+    /// Manual administrator bootstrap details (answer to
+    /// `AdminBootstrapCode`).
+    AdminCode { url: String, code: String },
     /// A data-less success.
     Ok,
     /// A failure, carrying a human-readable reason.

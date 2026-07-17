@@ -1179,11 +1179,20 @@ pub async fn start(config: ServerConfig) -> Result<(), String> {
             build_workspace_url(&admin_base, "/_/admin/bootstrap")
         ))
     });
+    let admin_bootstraps_for_code = admin_bootstraps.clone();
+    let admin_code_base = local_base.clone();
+    let admin_bootstrap_code_fn: crate::control::AdminBootstrapCodeFn =
+        Arc::new(move |redirect: &str| {
+            let code = admin_bootstraps_for_code.issue_code(redirect);
+            let url = build_workspace_url(&admin_code_base, "/_/admin");
+            Ok((url, code))
+        });
 
     let control_ctx = crate::control::ControlContext {
         registry: control_registry,
         shutdown: Some(control_shutdown_tx),
         admin_bootstrap: Some(admin_bootstrap_fn),
+        admin_bootstrap_code: Some(admin_bootstrap_code_fn),
     };
     let (control_stop_tx, control_stop_rx) = tokio::sync::oneshot::channel::<()>();
     let control_task = tokio::spawn(async move {
@@ -6876,6 +6885,7 @@ mod tests {
             registry: registry.clone(),
             shutdown: None,
             admin_bootstrap: None,
+            admin_bootstrap_code: None,
         };
         let add = |single_file: Option<&str>| {
             dispatch(
@@ -6884,6 +6894,7 @@ mod tests {
                     flags: WorkspaceFlags::default(),
                     collaborator_access_code_hash: String::new(),
                     single_file: single_file.map(str::to_string),
+                    alias: String::new(),
                 },
                 &ctx,
             )

@@ -128,34 +128,52 @@ pub fn daemon_config_from_settings(settings: &AppSettings, port: u16) -> DaemonC
     }
 }
 
-/// Forward this install's persisted **directory** workspaces to an already-
-/// running service. Single-file/ephemeral entries are skipped (they're pruned at
-/// startup and have no place on a shared service). Failures are logged, not
-/// fatal: one bad path shouldn't block attaching.
-async fn forward_persisted(remote: &RunningServer, settings: &Arc<Mutex<AppSettings>>) {
-    let to_forward: Vec<(String, WorkspaceFlags, Option<String>)> = {
-        let s = settings.lock().unwrap();
-        s.workspaces
-            .iter()
-            .filter(|w| w.single_file.is_none())
-            .map(|w| {
-                (
-                    w.path.clone(),
-                    w.flags,
-                    (!w.collaborator_access_code_hash.is_empty())
-                        .then(|| w.collaborator_access_code_hash.clone()),
-                )
-            })
-            .collect()
-    };
-    for (path, flags, hash) in to_forward {
+/// Forward every workspace that remains persisted after startup pruning to an
+/// already-running service. When automatic single-file cleanup is disabled,
+/// those entries are durable by contract and must be replayed with their exact
+/// `(path, single_file)` identity, alias, flags, and access-code hash.
+async fn forward_persisted(
+    remote: &RunningServer,
+    settings: &Arc<Mutex<AppSettings>>,
+) -> Result<(), String> {
+    // Authenticate the discovered control endpoint before declaring the GUI
+    // connected. A pre-split lock can still point at a live web port but has no
+    // compatible control listener.
+    remote.list_workspaces().await.map_err(|e| e.to_string())?;
+
+    // Read the cross-process source of truth immediately before replaying it;
+    // the GUI's boot snapshot may lag mutations a daemon just persisted.
+    let persisted = AppSettings::load();
+    let to_forward: Vec<(String, WorkspaceFlags, Option<String>, String, String)> = persisted
+        .workspaces
+        .into_iter()
+        .map(|w| {
+            (
+                w.path,
+                w.flags,
+                w.single_file,
+                w.collaborator_access_code_hash,
+                w.alias,
+            )
+        })
+        .collect();
+    for (path, flags, single_file, hash, alias) in to_forward {
         if let Err(e) = remote
-            .add_or_update_workspace(&path, flags, hash.as_deref())
+            .add_or_update_workspace_scoped(
+                &path,
+                flags,
+                single_file.as_deref(),
+                Some(&hash),
+                Some(&alias),
+            )
             .await
         {
             tracing::warn!(%path, "failed to forward workspace to the markon service: {e}");
         }
     }
+    let infos = remote.list_workspaces().await.map_err(|e| e.to_string())?;
+    settings.lock().unwrap().sync_from_workspace_infos(infos);
+    Ok(())
 }
 
 /// Spawn a fresh `markond` from the current settings (workspaces baked into the
@@ -187,8 +205,13 @@ pub async fn attach_or_spawn(settings: &Arc<Mutex<AppSettings>>) -> ServiceConne
             port = remote.port(),
             "attached to the running markon service"
         );
-        forward_persisted(&remote, settings).await;
-        return ServiceConnection::attached(remote);
+        return match forward_persisted(&remote, settings).await {
+            Ok(()) => ServiceConnection::attached(remote),
+            Err(error) => {
+                tracing::warn!(%error, "discovered markon service has no usable control endpoint");
+                ServiceConnection::detached(format!("remote-server-error: {error}"))
+            }
+        };
     }
     spawn_service(settings).await
 }

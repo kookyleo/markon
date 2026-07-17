@@ -33,6 +33,10 @@ use crate::workspace::{expand_and_canonicalize, WorkspaceConfig, WorkspaceRegist
 /// forever.
 const CONNECTION_READ_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(5);
 
+/// Preserve the old HTTP management client's bounded request behavior. A
+/// connected but wedged service must not hang a CLI command or the GUI forever.
+const CLIENT_REQUEST_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(10);
+
 /// Backoff applied after a failed `accept()` so a persistent error (e.g. `EMFILE`
 /// under FD exhaustion) can't spin a core in a tight retry loop.
 const ACCEPT_ERROR_BACKOFF: std::time::Duration = std::time::Duration::from_millis(100);
@@ -127,11 +131,17 @@ pub struct ControlContext {
     /// `AdminBootstrap` is unsupported. Wiring the real issuer (which needs the
     /// server's public base URL) is out of scope for stage 1.
     pub admin_bootstrap: Option<AdminBootstrapFn>,
+    /// Mint a manual-entry admin URL and pairing code. `None` means the older
+    /// URL-only bootstrap flow is the only supported mode.
+    pub admin_bootstrap_code: Option<AdminBootstrapCodeFn>,
 }
 
 /// Given a redirect path, return the full one-time admin bootstrap URL (or an
 /// error message).
 pub type AdminBootstrapFn = Arc<dyn Fn(&str) -> Result<String, String> + Send + Sync>;
+
+/// Given a redirect path, return `(manual_entry_url, one_time_code)`.
+pub type AdminBootstrapCodeFn = Arc<dyn Fn(&str) -> Result<(String, String), String> + Send + Sync>;
 
 impl ControlContext {
     /// A context backed only by a registry — `Shutdown` and `AdminBootstrap`
@@ -141,6 +151,7 @@ impl ControlContext {
             registry,
             shutdown: None,
             admin_bootstrap: None,
+            admin_bootstrap_code: None,
         }
     }
 }
@@ -156,6 +167,7 @@ pub fn dispatch(req: ControlRequest, ctx: &ControlContext) -> ControlResponse {
             flags,
             collaborator_access_code_hash,
             single_file,
+            alias,
         } => {
             let path = match expand_and_canonicalize(&path) {
                 Ok(p) => p,
@@ -183,7 +195,7 @@ pub fn dispatch(req: ControlRequest, ctx: &ControlContext) -> ControlResponse {
                 flags,
                 single_file,
                 collaborator_access_code_hash,
-                alias: String::new(),
+                alias,
             });
             ControlResponse::WorkspaceId(id)
         }
@@ -228,6 +240,13 @@ pub fn dispatch(req: ControlRequest, ctx: &ControlContext) -> ControlResponse {
                 Err(e) => ControlResponse::Err(e),
             },
             None => ControlResponse::Err("admin bootstrap unsupported".to_string()),
+        },
+        ControlRequest::AdminBootstrapCode { redirect } => match &ctx.admin_bootstrap_code {
+            Some(issue) => match issue(&redirect) {
+                Ok((url, code)) => ControlResponse::AdminCode { url, code },
+                Err(e) => ControlResponse::Err(e),
+            },
+            None => ControlResponse::Err("admin code bootstrap unsupported".to_string()),
         },
         ControlRequest::Shutdown => match &ctx.shutdown {
             Some(tx) => {
@@ -410,6 +429,15 @@ async fn handle_connection(stream: Stream, ctx: &ControlContext) -> io::Result<(
 /// Open a fresh connection to the control socket, send one request, and read the
 /// single response. Used by the client ([`super::RunningServer`]).
 pub(super) async fn request(
+    name: &ControlSocketName,
+    req: &ControlRequest,
+) -> io::Result<ControlResponse> {
+    tokio::time::timeout(CLIENT_REQUEST_TIMEOUT, request_inner(name, req))
+        .await
+        .map_err(|_| io::Error::new(io::ErrorKind::TimedOut, "control request timed out"))?
+}
+
+async fn request_inner(
     name: &ControlSocketName,
     req: &ControlRequest,
 ) -> io::Result<ControlResponse> {

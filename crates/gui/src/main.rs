@@ -473,7 +473,7 @@ fn persist_settings_window_size(app: &tauri::AppHandle, window: &tauri::WebviewW
     let mut settings = state.settings.lock().unwrap();
     settings.window_width = Some(logical.width);
     settings.window_height = Some(logical.height);
-    settings.save().ok();
+    settings.save_preserving_server_owned_state().ok();
 }
 
 fn configure_settings_window(app: &tauri::AppHandle, window: &tauri::WebviewWindow) {

@@ -21,10 +21,11 @@ pub mod transport;
 
 pub use proto::{ControlRequest, ControlResponse};
 pub use transport::{
-    bind, dispatch, serve, AdminBootstrapFn, ControlContext, ControlServer, ControlSocketName,
+    bind, dispatch, serve, AdminBootstrapCodeFn, AdminBootstrapFn, ControlContext, ControlServer,
+    ControlSocketName,
 };
 
-use crate::workspace::{WorkspaceFlags, WorkspaceInfo};
+use crate::workspace::{expand_and_canonicalize, WorkspaceFlags, WorkspaceInfo};
 
 /// Error talking to a running server's control socket.
 #[derive(Debug, thiserror::Error)]
@@ -191,6 +192,7 @@ impl RunningServer {
                 flags,
                 collaborator_access_code_hash: collaborator_access_code_hash.to_string(),
                 single_file: None,
+                alias: String::new(),
             })
             .await?
         {
@@ -217,6 +219,7 @@ impl RunningServer {
                 flags,
                 collaborator_access_code_hash: collaborator_access_code_hash.to_string(),
                 single_file: Some(single_file.to_string()),
+                alias: String::new(),
             })
             .await?
         {
@@ -234,11 +237,33 @@ impl RunningServer {
         flags: WorkspaceFlags,
         collaborator_access_code_hash: Option<&str>,
     ) -> Result<String, ControlError> {
+        self.add_or_update_workspace_scoped(path, flags, None, collaborator_access_code_hash, None)
+            .await
+    }
+
+    /// Register a directory or single-file workspace while preserving its full
+    /// persisted identity and metadata. GUI attach/reconnect uses this to replay
+    /// the settings snapshot without collapsing a single-file workspace into its
+    /// parent directory or dropping its alias.
+    pub async fn add_or_update_workspace_scoped(
+        &self,
+        path: &str,
+        flags: WorkspaceFlags,
+        single_file: Option<&str>,
+        collaborator_access_code_hash: Option<&str>,
+        alias: Option<&str>,
+    ) -> Result<String, ControlError> {
+        // The server stores canonical roots. Normalize before matching so macOS
+        // `/var` -> `/private/var`, symlinks, and `..` cannot make an existing
+        // identity look new and bypass the explicit metadata updates below.
+        let canonical_path = expand_and_canonicalize(path)
+            .map(|value| value.to_string_lossy().into_owned())
+            .unwrap_or_else(|_| path.to_string());
         let existing = self
             .list_workspaces()
             .await?
             .into_iter()
-            .find(|w| w.path == path);
+            .find(|w| w.path == canonical_path && w.single_file.as_deref() == single_file);
         if let Some(existing) = existing {
             // Mirror the embedded registry's `add`, which refreshes the flags of
             // an already-registered identity: re-adding the same path applies the
@@ -247,10 +272,26 @@ impl RunningServer {
             if let Some(hash) = collaborator_access_code_hash {
                 self.set_access_code(&existing.id, Some(hash)).await?;
             }
+            if let Some(alias) = alias {
+                self.set_alias(&existing.id, alias).await?;
+            }
             return Ok(existing.id);
         }
-        self.add_workspace(path, flags, collaborator_access_code_hash.unwrap_or(""))
-            .await
+        match self
+            .call(ControlRequest::AddWorkspace {
+                path: canonical_path,
+                flags,
+                collaborator_access_code_hash: collaborator_access_code_hash
+                    .unwrap_or("")
+                    .to_string(),
+                single_file: single_file.map(str::to_string),
+                alias: alias.unwrap_or("").to_string(),
+            })
+            .await?
+        {
+            ControlResponse::WorkspaceId(id) => Ok(id),
+            _ => Err(ControlError::Unexpected),
+        }
     }
 
     /// Replace a workspace's feature flags wholesale.
@@ -320,6 +361,22 @@ impl RunningServer {
             .await?
         {
             ControlResponse::Url(url) => Ok(url),
+            _ => Err(ControlError::Unexpected),
+        }
+    }
+
+    /// Mint a one-time administrator pairing code and its manual-entry URL.
+    pub async fn admin_bootstrap_code(
+        &self,
+        redirect: &str,
+    ) -> Result<(String, String), ControlError> {
+        match self
+            .call(ControlRequest::AdminBootstrapCode {
+                redirect: redirect.to_string(),
+            })
+            .await?
+        {
+            ControlResponse::AdminCode { url, code } => Ok((url, code)),
             _ => Err(ControlError::Unexpected),
         }
     }
