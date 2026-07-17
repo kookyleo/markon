@@ -43,11 +43,21 @@ async function build() {
   await rm(outDir, { recursive: true, force: true });
   await mkdir(outDir, { recursive: true });
 
-  const mainOpts = {
+  // The document app and diff annotations both lazy-load the editor runtime.
+  // Build them together so esbuild owns each shared chunk exactly once.
+  const appEsmOpts = {
     ...shared,
-    entryPoints: [resolve(srcDir, 'main.ts')],
-    outfile: resolve(outDir, 'main.js'),
+    entryPoints: [
+      resolve(srcDir, 'main.ts'),
+      resolve(srcDir, 'diff-annotations.ts'),
+    ],
+    outdir: outDir,
+    entryNames: '[name]',
+    // Stable names prevent stale chunks from accumulating under --watch.
+    // Production keeps content hashes for cache-safe lazy loading.
+    chunkNames: watch ? 'chunks/[name]' : 'chunks/[name]-[hash]',
     format: 'esm',
+    splitting: true,
     target: ['es2022'],
     plugins: watch ? [makeReloadPlugin('main')] : [],
   };
@@ -72,14 +82,6 @@ async function build() {
     ...shared,
     entryPoints: [resolve(srcDir, 'markdown-diff.ts')],
     outfile: resolve(outDir, 'markdown-diff.js'),
-    format: 'esm',
-    target: ['es2022'],
-    // main.ts owns the dev reload EventSource.
-  };
-  const diffAnnotationsOpts = {
-    ...shared,
-    entryPoints: [resolve(srcDir, 'diff-annotations.ts')],
-    outfile: resolve(outDir, 'diff-annotations.js'),
     format: 'esm',
     target: ['es2022'],
     // main.ts owns the dev reload EventSource.
@@ -198,11 +200,10 @@ async function build() {
   );
 
   if (watch) {
-    const ctxMain = await esbuild.context(mainOpts);
+    const ctxAppEsm = await esbuild.context(appEsmOpts);
     const ctxViewed = await esbuild.context(viewedOpts);
     const ctxWorkspaceDiff = await esbuild.context(workspaceDiffOpts);
     const ctxMarkdownDiff = await esbuild.context(markdownDiffOpts);
-    const ctxDiffAnnotations = await esbuild.context(diffAnnotationsOpts);
     const ctxDiffFileCreate = await esbuild.context(diffFileCreateOpts);
     const ctxDiffRefPicker = await esbuild.context(diffRefPickerOpts);
     const ctxDiffShortcuts = await esbuild.context(diffShortcutsOpts);
@@ -214,11 +215,10 @@ async function build() {
     const ctxGitRefs = await esbuild.context(gitRefsOpts);
     const ctxPageShortcuts = await esbuild.context(pageShortcutsOpts);
     const ctxMathRender = await esbuild.context(mathRenderOpts);
-    await ctxMain.watch();
+    await ctxAppEsm.watch();
     await ctxViewed.watch();
     await ctxWorkspaceDiff.watch();
     await ctxMarkdownDiff.watch();
-    await ctxDiffAnnotations.watch();
     await ctxDiffFileCreate.watch();
     await ctxDiffRefPicker.watch();
     await ctxDiffShortcuts.watch();
@@ -233,11 +233,10 @@ async function build() {
     console.log('[build] watching…');
   } else {
     await Promise.all([
-      esbuild.build(mainOpts),
+      esbuild.build(appEsmOpts),
       esbuild.build(viewedOpts),
       esbuild.build(workspaceDiffOpts),
       esbuild.build(markdownDiffOpts),
-      esbuild.build(diffAnnotationsOpts),
       esbuild.build(diffFileCreateOpts),
       esbuild.build(diffRefPickerOpts),
       esbuild.build(diffShortcutsOpts),

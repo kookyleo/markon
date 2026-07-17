@@ -1766,7 +1766,7 @@ body.workspace-spotlight-open {
 
 /* ============================================================
    EDITOR MODAL
-   Minimalist Markdown source editor with line numbers
+   CodeMirror-powered Markdown source editor
    ============================================================ */
 
 .editor-modal {
@@ -1902,156 +1902,157 @@ body.workspace-spotlight-open {
     border-bottom-color: var(--mk-editor-accent);
 }
 
-.editor-container {
-    display: flex;
-    height: 100%;
-    overflow: hidden;
-}
-
-/* Line numbers gutter */
-.editor-line-numbers {
-    flex-shrink: 0;
-    width: 50px;
-    overflow-y: hidden;
-    overflow-x: hidden;
-    background-color: var(--mk-editor-gutter-bg);
-    border-right: 1px solid var(--mk-editor-gutter-border);
-    padding: 0;
-    user-select: none;
-    text-align: right;
-    font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
-    font-size: 14px;
-    line-height: 1.6;
-    color: var(--mk-editor-gutter-fg);
-}
-
-.editor-line-number {
-    padding-right: 12px;
-    height: 22.4px; /* Match line-height of textarea (14px * 1.6) */
-}
-
-/* Text container (holds both highlight layer and textarea) */
-.editor-text-container {
+/* CodeMirror owns text input, selection, line numbers, history, incremental
+   Markdown parsing and viewport rendering. Keep visual decisions in Markon's
+   editor tokens so every preset continues to work without component colours. */
+.editor-codemirror {
     flex: 1;
-    position: relative;
+    min-width: 0;
+    min-height: 0;
     height: 100%;
     overflow: hidden;
+    background-color: var(--mk-editor-bg);
 }
 
-/* Highlight layer (background, with syntax coloring) */
-.editor-highlight-layer {
-    position: absolute;
-    top: 0;
-    left: 0;
-    right: 0;
-    bottom: 0;
-    margin: 0;
-    padding: 0 0 0 12px;
-    font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
-    font-size: 14px;
-    line-height: 1.6;
-    white-space: pre-wrap;
-    word-wrap: break-word;
-    overflow-y: auto;
-    overflow-x: auto;
-    pointer-events: none;
+.editor-codemirror .cm-editor {
+    height: 100%;
     background-color: var(--mk-editor-bg);
     color: var(--mk-editor-fg);
-    tab-size: 4;
-    scrollbar-width: none; /* Firefox */
-}
-
-.editor-highlight-layer::-webkit-scrollbar {
-    display: none; /* Chrome/Safari */
-}
-
-.editor-highlight-layer code {
-    display: block;
-    font-family: inherit;
-    font-size: inherit;
-    line-height: inherit;
-    white-space: inherit;
-    word-wrap: inherit;
-}
-
-/* Textarea (foreground, transparent) */
-.editor-textarea {
-    position: absolute;
-    top: 0;
-    left: 0;
-    right: 0;
-    bottom: 0;
-    background-color: transparent;
-    color: transparent;
-    caret-color: var(--mk-editor-caret);
-    border: none;
     outline: none;
+}
+
+.editor-codemirror .cm-editor.cm-focused {
+    outline: none;
+}
+
+.editor-codemirror .cm-scroller {
+    overflow: auto;
     font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
     font-size: 14px;
     line-height: 1.6;
-    padding: 0 0 0 12px;
-    resize: none;
     tab-size: 4;
-    overflow-y: auto;
-    overflow-x: auto;
 }
 
-.editor-textarea::selection {
+.editor-codemirror .cm-content {
+    min-height: 100%;
+    padding: 0;
+    caret-color: var(--mk-editor-caret);
+}
+
+.editor-codemirror .cm-line {
+    padding: 0 12px;
+}
+
+.editor-codemirror .cm-gutters {
+    min-height: 100%;
+    background-color: var(--mk-editor-gutter-bg);
+    color: var(--mk-editor-gutter-fg);
+    border-right: 1px solid var(--mk-editor-gutter-border);
+}
+
+.editor-codemirror .cm-gutterElement {
+    padding: 0 12px 0 8px;
+}
+
+.editor-codemirror .cm-activeLine,
+.editor-codemirror .cm-activeLineGutter {
+    background-color: color-mix(in srgb, var(--mk-editor-accent) 8%, transparent);
+}
+
+.editor-codemirror .cm-cursor,
+.editor-codemirror .cm-dropCursor {
+    border-left-color: var(--mk-editor-caret);
+}
+
+.editor-codemirror .cm-selectionBackground,
+.editor-codemirror .cm-content ::selection {
     background-color: var(--mk-editor-selection);
-    color: transparent;
 }
 
-/* Markdown syntax highlighting — colours come from the active editor
-   preset (--mk-editor-syn-*; follow-page tracks data-theme). */
-.md-header {
+.editor-codemirror .cm-matchingBracket {
+    background-color: color-mix(in srgb, var(--mk-editor-accent) 18%, transparent);
+    outline: 1px solid var(--mk-editor-accent);
+}
+
+.editor-codemirror .cm-searchMatch {
+    background-color: color-mix(in srgb, var(--markon-warning) 28%, transparent);
+    outline: 1px solid color-mix(in srgb, var(--markon-warning) 70%, transparent);
+}
+
+.editor-codemirror .cm-searchMatch.cm-searchMatch-selected {
+    background-color: color-mix(in srgb, var(--mk-editor-accent) 24%, transparent);
+    outline-color: var(--mk-editor-accent);
+}
+
+.editor-codemirror .cm-panels,
+.editor-codemirror .cm-tooltip {
+    background-color: var(--mk-editor-header-bg);
+    color: var(--mk-editor-chrome-fg-strong);
+    border-color: var(--mk-editor-header-border);
+}
+
+.editor-codemirror .cm-panels input,
+.editor-codemirror .cm-panels button {
+    background-color: var(--mk-editor-bg);
+    color: var(--mk-editor-fg);
+    border: 1px solid var(--mk-editor-gutter-border);
+}
+
+.editor-codemirror .cm-foldPlaceholder {
+    background-color: var(--mk-editor-gutter-bg);
+    color: var(--mk-editor-gutter-fg);
+    border-color: var(--mk-editor-gutter-border);
+}
+
+/* Markdown syntax highlighting supplied through a stable CodeMirror
+   tagHighlighter. The parser updates these ranges incrementally. */
+.editor-codemirror .mk-cm-heading {
     color: var(--mk-editor-syn-header);
     font-weight: bold;
 }
 
-.md-header-text {
-    color: var(--mk-editor-syn-header-text);
-    font-weight: bold;
-}
-
-.md-bold {
+.editor-codemirror .mk-cm-strong {
     color: var(--mk-editor-syn-bold);
     font-weight: bold;
 }
 
-.md-italic {
+.editor-codemirror .mk-cm-emphasis {
     color: var(--mk-editor-syn-italic);
     font-style: italic;
 }
 
-.md-code {
+.editor-codemirror .mk-cm-code {
     color: var(--mk-editor-syn-code);
     background-color: var(--mk-editor-syn-code-bg);
 }
 
-.md-code-fence {
-    color: var(--mk-editor-syn-fence);
-}
-
-.md-link {
+.editor-codemirror .mk-cm-link {
     color: var(--mk-editor-syn-link);
+    text-decoration: underline;
+    text-underline-offset: 2px;
 }
 
-.md-image {
-    color: var(--mk-editor-syn-image);
-}
-
-.md-quote {
+.editor-codemirror .mk-cm-quote,
+.editor-codemirror .mk-cm-comment {
     color: var(--mk-editor-syn-quote);
 }
 
-.md-list {
+.editor-codemirror .mk-cm-list {
     color: var(--mk-editor-syn-list);
 }
 
-.md-hr {
+.editor-codemirror .mk-cm-separator {
     color: var(--mk-editor-syn-hr);
 }
 
+.editor-codemirror .mk-cm-meta {
+    color: var(--mk-editor-syn-fence);
+}
+
+.editor-codemirror .mk-cm-invalid {
+    color: var(--markon-danger);
+    text-decoration: underline wavy;
+}
 
 .editor-save-btn {
     background-color: var(--mk-editor-btn-bg);
