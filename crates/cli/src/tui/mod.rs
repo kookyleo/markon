@@ -29,6 +29,7 @@ use crossterm::{cursor, queue, QueueableCommand};
 use std::io::{self, Write};
 use std::panic::PanicHookInfo;
 use std::sync::Arc;
+use unicode_width::{UnicodeWidthChar, UnicodeWidthStr};
 
 type PanicHook = Box<dyn Fn(&PanicHookInfo<'_>) + Sync + Send + 'static>;
 
@@ -84,9 +85,12 @@ impl TerminalGuard {
 
         let mut out = io::stdout();
         out.queue(EnterAlternateScreen)?;
+        // EnterAlternateScreen is now queued and may already have reached a
+        // partially failing writer. Mark it active before any later fallible
+        // cursor/flush step so Drop always queues LeaveAlternateScreen.
+        guard.alt_active = true;
         out.queue(cursor::Hide)?;
         out.flush()?;
-        guard.alt_active = true;
 
         Ok(guard)
     }
@@ -225,6 +229,12 @@ impl Frame {
         self.line(String::new());
     }
 
+    /// Number of terminal rows available to this frame. Screens use this to
+    /// keep the current selection and status/footer inside the viewport.
+    pub fn height(&self) -> usize {
+        self.height as usize
+    }
+
     /// Append a line in the given foreground color (e.g. a red status line).
     pub fn line_colored(&mut self, text: impl Into<String>, color: Color) {
         self.lines.push(FrameLine {
@@ -278,20 +288,27 @@ impl Frame {
     }
 }
 
-/// Truncate `text` to at most `width` display columns. Width is approximated by
-/// `char` count, which is exact for the ASCII the screens emit; the important
-/// property is that `text` is escape-free, so no truncation ever splits an ANSI
-/// sequence or counts escape bytes as columns.
+/// Truncate `text` to at most `width` display columns. Workspace aliases and
+/// paths may contain CJK or other wide Unicode characters, so byte/char counts
+/// are insufficient: use terminal column widths and reserve one column for the
+/// ellipsis. Text is escape-free, so no truncation can split an ANSI sequence.
 fn truncate_to_width(text: &str, width: usize) -> String {
-    if text.chars().count() <= width {
+    if UnicodeWidthStr::width(text) <= width {
         text.to_string()
     } else if width == 0 {
         String::new()
     } else {
-        // Reserve the last column for an ellipsis marker so the reader sees the
-        // line was cut.
-        let keep = width.saturating_sub(1);
-        let mut out: String = text.chars().take(keep).collect();
+        let keep_width = width.saturating_sub(1);
+        let mut used = 0;
+        let mut out = String::new();
+        for ch in text.chars() {
+            let char_width = UnicodeWidthChar::width(ch).unwrap_or(0);
+            if used + char_width > keep_width {
+                break;
+            }
+            out.push(ch);
+            used += char_width;
+        }
         out.push('…');
         out
     }
@@ -299,3 +316,17 @@ fn truncate_to_width(text: &str, width: usize) -> String {
 
 /// Red — the status-line color for a surfaced control-socket error.
 pub const ERROR_COLOR: Color = Color::Red;
+
+#[cfg(test)]
+mod tests {
+    use super::truncate_to_width;
+
+    #[test]
+    fn truncates_by_terminal_columns() {
+        assert_eq!(truncate_to_width("abcdef", 4), "abc…");
+        assert_eq!(truncate_to_width("你好", 4), "你好");
+        assert_eq!(truncate_to_width("你好", 3), "你…");
+        assert_eq!(truncate_to_width("你好", 1), "…");
+        assert_eq!(truncate_to_width("abc", 0), "");
+    }
+}

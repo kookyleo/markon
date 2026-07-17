@@ -19,6 +19,11 @@ enum Screen {
     ConfirmDetach,
 }
 
+enum Status {
+    Info(String),
+    Error(String),
+}
+
 /// Entry point for the interactive browser. Runs on a blocking-pool thread (see
 /// the `spawn_blocking` in `main`), where [`Handle::block_on`] is legal for the
 /// async control calls.
@@ -90,8 +95,9 @@ struct App {
     /// nothing is sent until save.
     edit_flags: WorkspaceFlags,
     edit_cursor: usize,
-    /// Transient message shown as a colored status line (control errors, etc.).
-    status: Option<String>,
+    /// Transient message shown below the current screen. Errors are red;
+    /// successful operations remain neutral instead of looking like failures.
+    status: Option<Status>,
     show_help: bool,
 }
 
@@ -156,10 +162,8 @@ impl App {
             Action::Up | Action::Char('k') => {
                 self.selected = self.selected.saturating_sub(1);
             }
-            Action::Down | Action::Char('j') => {
-                if !self.workspaces.is_empty() {
-                    self.selected = (self.selected + 1).min(self.workspaces.len() - 1);
-                }
+            Action::Down | Action::Char('j') if !self.workspaces.is_empty() => {
+                self.selected = (self.selected + 1).min(self.workspaces.len() - 1);
             }
             Action::Char('e') | Action::Enter => {
                 if let Some(ws) = self.selected_ws() {
@@ -169,17 +173,18 @@ impl App {
                     self.screen = Screen::Edit;
                 }
             }
-            Action::Char('d') => {
-                if self.selected_ws().is_some() {
-                    self.status = None;
-                    self.screen = Screen::ConfirmDetach;
-                }
+            Action::Char('d') if self.selected_ws().is_some() => {
+                self.status = None;
+                self.screen = Screen::ConfirmDetach;
             }
             Action::Char('o') => {
                 if let Some(url) = self.selected_url() {
                     match open::that(&url) {
-                        Ok(()) => self.status = Some(format!("opened {url}")),
-                        Err(e) => self.status = Some(format!("failed to open browser: {e}")),
+                        Ok(()) => self.status = Some(Status::Info(format!("opened {url}"))),
+                        Err(e) => {
+                            self.status =
+                                Some(Status::Error(format!("failed to open browser: {e}")))
+                        }
                     }
                 }
             }
@@ -231,13 +236,13 @@ impl App {
             Ok(()) => {
                 self.screen = Screen::List;
                 if let Err(e) = self.refresh() {
-                    self.status = Some(e);
+                    self.status = Some(Status::Error(e));
                 } else {
-                    self.status = Some(format!("saved {name}"));
+                    self.status = Some(Status::Info(format!("saved {name}")));
                 }
             }
             // Stay on Edit and surface the error; the working copy is preserved.
-            Err(e) => self.status = Some(e.to_string()),
+            Err(e) => self.status = Some(Status::Error(e.to_string())),
         }
         true
     }
@@ -246,21 +251,21 @@ impl App {
 
     fn handle_confirm(&mut self, action: Action) -> bool {
         match action {
-            Action::Char('y') => {
+            Action::Char('y') | Action::Char('Y') => {
                 if let Some(ws) = self.selected_ws() {
                     let id = ws.id.clone();
                     let name = display_name(ws);
                     match self.handle.block_on(self.server.remove_workspace(&id)) {
                         Ok(()) => match self.refresh() {
-                            Ok(()) => self.status = Some(format!("detached {name}")),
-                            Err(e) => self.status = Some(e),
+                            Ok(()) => self.status = Some(Status::Info(format!("detached {name}"))),
+                            Err(e) => self.status = Some(Status::Error(e)),
                         },
-                        Err(e) => self.status = Some(e.to_string()),
+                        Err(e) => self.status = Some(Status::Error(e.to_string())),
                     }
                 }
                 self.screen = Screen::List;
             }
-            Action::Char('n') | Action::Esc => {
+            Action::Char('n') | Action::Char('N') | Action::Esc => {
                 self.screen = Screen::List;
             }
             _ => {}
@@ -291,7 +296,22 @@ impl App {
             return frame.render();
         }
 
-        for (i, ws) in self.workspaces.iter().enumerate() {
+        // Keep the selected row visible while reserving terminal rows for the
+        // URL, help, and status. Without a viewport, moving below the physical
+        // screen made the cursor and mutation feedback disappear.
+        let fixed_rows = 6 + usize::from(self.show_help) + usize::from(self.status.is_some()) * 2;
+        let visible_rows = frame
+            .height()
+            .saturating_sub(fixed_rows)
+            .min(self.workspaces.len());
+        let start = viewport_start(self.selected, self.workspaces.len(), visible_rows);
+        for (i, ws) in self
+            .workspaces
+            .iter()
+            .enumerate()
+            .skip(start)
+            .take(visible_rows)
+        {
             let marker = if i == self.selected { "> " } else { "  " };
             let features = crate::format_workspace_feature_tags(ws.flags, ws.search_ready);
             let row = format!(
@@ -367,9 +387,16 @@ impl App {
     }
 
     fn push_status(&self, frame: &mut Frame) {
-        if let Some(status) = self.status.as_deref() {
-            frame.blank();
-            frame.line_colored(status, ERROR_COLOR);
+        match &self.status {
+            Some(Status::Info(message)) => {
+                frame.blank();
+                frame.line(message);
+            }
+            Some(Status::Error(message)) => {
+                frame.blank();
+                frame.line_colored(message, ERROR_COLOR);
+            }
+            None => {}
         }
     }
 }
@@ -377,6 +404,17 @@ impl App {
 /// Number of editable feature flags — the row count of the Edit form and the
 /// clamp bound for its cursor. Matches [`crate::workspace_flag_entries`].
 const FLAG_COUNT: usize = 6;
+
+fn viewport_start(selected: usize, total: usize, visible: usize) -> usize {
+    if visible == 0 || total <= visible {
+        0
+    } else {
+        selected
+            .saturating_add(1)
+            .saturating_sub(visible)
+            .min(total - visible)
+    }
+}
 
 /// User-visible name for a workspace row: the alias when set, else the shortened
 /// path. Ephemeral single-file workspaces join their serving root with the file
@@ -392,4 +430,19 @@ fn display_name(ws: &WorkspaceInfo) -> String {
         _ => base.to_path_buf(),
     };
     crate::display_workspace_path(&path)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::viewport_start;
+
+    #[test]
+    fn viewport_keeps_selection_visible() {
+        assert_eq!(viewport_start(0, 10, 4), 0);
+        assert_eq!(viewport_start(3, 10, 4), 0);
+        assert_eq!(viewport_start(4, 10, 4), 1);
+        assert_eq!(viewport_start(9, 10, 4), 6);
+        assert_eq!(viewport_start(9, 10, 0), 0);
+        assert_eq!(viewport_start(2, 3, 4), 0);
+    }
 }
