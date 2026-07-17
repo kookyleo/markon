@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { EditorView } from '@codemirror/view';
 import { ExportManager } from './export-manager';
 import type { Annotation, AnnotationManager } from './annotation-manager';
 
@@ -43,11 +44,14 @@ describe('ExportManager', () => {
     });
 
     afterEach(() => {
+        document.querySelectorAll<HTMLElement>('.cm-editor').forEach(dom => {
+            EditorView.findFromDOM(dom)?.destroy();
+        });
         logSpy.mockRestore();
         vi.restoreAllMocks();
     });
 
-    it('opens the editable Markdown export directly without the selection step', () => {
+    it('opens the editable Markdown export directly without the selection step', async () => {
         const note = annotation('with-note', 'keep me');
         const plain = annotation('highlight-only', null);
         const manager = makeManager([note, plain]);
@@ -60,9 +64,13 @@ describe('ExportManager', () => {
         expect(exportManager.open()).toBe(true);
 
         expect(document.querySelector('.export-modal')).toBeNull();
-        expect(document.querySelector('.editor-modal-export')).toBeTruthy();
+        await vi.waitFor(() => {
+            expect(document.querySelector('.editor-modal-export')).toBeTruthy();
+        });
         expect(document.querySelector('.editor-back-btn')).toBeNull();
-        expect(document.querySelector<HTMLTextAreaElement>('.editor-textarea')?.value)
+        const editorDom = document.querySelector<HTMLElement>('.cm-editor');
+        expect(editorDom).toBeTruthy();
+        expect(editorDom ? EditorView.findFromDOM(editorDom)?.state.doc.toString() : null)
             .toBe('"quoted"\n> note\n');
 
         const format = manager.formatAsMarkdown as unknown as ReturnType<typeof vi.fn>;

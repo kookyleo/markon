@@ -1,8 +1,11 @@
 /**
  * EditorManager - Markdown source editor
- * Provides minimalist in-browser editing functionality with line numbers
+ * Provides a CodeMirror-powered in-browser Markdown editor
  */
 
+import type { Text as CodeMirrorText } from '@codemirror/state';
+import type { EditorView } from '@codemirror/view';
+import type { CreateMarkdownEditor } from '../editor-codemirror';
 import { CONFIG, i18n } from '../core/config';
 import { Logger } from '../core/utils';
 import { Meta } from '../services/dom';
@@ -15,33 +18,6 @@ const _t = (key: string, ...args: unknown[]): string => i18n.t(key, ...args);
 
 const SPLIT_KEY = 'markon.editor.split';
 const LAYOUT_KEY = 'markon.editor.layout'; // 'split' | 'full'
-/** Textarea line height in px — keep in sync with css/editor.css
- *  `.editor-line-number` (height: 22.4px = 14px font * 1.6 line-height). */
-const LINE_HEIGHT = 22.4;
-
-/**
- * Return the marker that should be inserted after Enter at `cursor`, or null
- * when the current line is not a Markdown list item. Matching only the text
- * before the caret also handles splitting `1. existing text` immediately after
- * the marker: the existing text moves behind the newly inserted `2. `.
- */
-function markdownListContinuation(value: string, cursor: number): string | null {
-    const lineStart = value.lastIndexOf('\n', Math.max(0, cursor - 1)) + 1;
-    const beforeCursor = value.slice(lineStart, cursor);
-    const match = beforeCursor.match(/^([\t ]*)(?:(\d+)\.|([-+*]))(?:[\t ]+|$)(?:\[([ xX])\][\t ]+)?/);
-    if (!match) return null;
-
-    const indent = match[1] ?? '';
-    const ordered = match[2];
-    const bullet = match[3];
-    const task = match[4] !== undefined ? '[ ] ' : '';
-    if (ordered !== undefined) {
-        const next = Number.parseInt(ordered, 10) + 1;
-        if (!Number.isSafeInteger(next)) return null;
-        return `\n${indent}${next}. ${task}`;
-    }
-    return bullet === undefined ? null : `\n${indent}${bullet} ${task}`;
-}
 
 /** Layout mode for the split-pane editor. */
 export type EditorLayout = 'split' | 'full';
@@ -102,14 +78,12 @@ export interface EditorPreviewResponse {
 export class EditorManager {
     #filePath: string;
     #editorModal: HTMLElement | null = null;
-    #textarea: HTMLTextAreaElement | null = null;
-    #lineNumbers: HTMLElement | null = null;
-    #highlightLayer: HTMLElement | null = null;
+    #editorView: EditorView | null = null;
     #saveButton: HTMLButtonElement | null = null;
     #closeButton: HTMLButtonElement | null = null;
     #isDirty = false;
-    /** last-saved (or initially loaded) content for dirty comparison */
-    #baselineContent = '';
+    /** Last-saved (or initially loaded) persistent document for dirty comparison. */
+    #baselineDoc: CodeMirrorText | null = null;
     #previewPane: HTMLElement | null = null;
     #previewDebounceId: ReturnType<typeof setTimeout> | null = null;
     #mathRendererPromise: Promise<void> | null = null;
@@ -170,13 +144,20 @@ export class EditorManager {
             }
         }
 
-        // Capture the loaded content as the dirty-comparison baseline
-        this.#baselineContent = content;
+        // CodeMirror is intentionally a lazy chunk so read-only page loads do
+        // not pay the editor engine's download/parse cost.
+        let createMarkdownEditor: CreateMarkdownEditor;
+        try {
+            ({ createMarkdownEditor } = await import('../editor-codemirror'));
+        } catch (error) {
+            Logger.error('EditorManager', 'Failed to load editor runtime:', error);
+            alert('Failed to initialize the Markdown editor.');
+            return;
+        }
 
         // Create editor UI
-        this.#createEditorUI(content);
+        this.#createEditorUI(content, createMarkdownEditor);
         this.#setupEventListeners();
-        this.#updateLineNumbers();
         // Lock the background page so the wheel can't scroll it behind the
         // full-screen editor.
         document.documentElement.classList.add('markon-scroll-lock');
@@ -225,16 +206,16 @@ export class EditorManager {
                 this.#previewDebounceId = null;
             }
             const wasExport = this.#mode === 'export';
+            this.#editorView?.destroy();
+            this.#editorView = null;
             this.#editorModal.remove();
             this.#editorModal = null;
             document.documentElement.classList.remove('markon-scroll-lock');
-            this.#textarea = null;
-            this.#lineNumbers = null;
             this.#saveButton = null;
             this.#closeButton = null;
             this.#previewPane = null;
             this.#isDirty = false;
-            this.#baselineContent = '';
+            this.#baselineDoc = null;
 
             // Edit mode reloads to re-render the just-saved file; export mode
             // is a non-destructive overlay, so leave the page as-is.
@@ -250,15 +231,15 @@ export class EditorManager {
      * Save the file.
      */
     async save(): Promise<void> {
-        if (!this.#textarea) return;
+        if (!this.#editorView) return;
 
-        const content = this.#textarea.value;
+        const content = this.#editorView.state.doc.toString();
 
         // Export mode: "Save" means download a local .md, never hit the server.
         if (this.#mode === 'export') {
             downloadTextFile(this.#exportFileName, content);
             if (this.#saveButton) flashText(this.#saveButton, _t('web.export.downloaded'));
-            this.#baselineContent = content;
+            this.#baselineDoc = this.#editorView.state.doc;
             this.#isDirty = false;
             return;
         }
@@ -267,7 +248,7 @@ export class EditorManager {
 
         if (success) {
             // Saved content becomes the new baseline; further edits compare against it
-            this.#baselineContent = content;
+            this.#baselineDoc = this.#editorView.state.doc;
             this.#isDirty = false;
             this.#updateSaveButtonState();
             this.#updateTitleDirtyIndicator();
@@ -350,7 +331,7 @@ export class EditorManager {
         }
     }
 
-    #createEditorUI(content: string): void {
+    #createEditorUI(content: string, createMarkdownEditor: CreateMarkdownEditor): void {
         const isExport = this.#mode === 'export';
         const fileName = isExport ? this.#exportFileName : this.#filePath;
         // Export mode swaps the file-bound Save for a Copy + Download pair and
@@ -396,11 +377,7 @@ export class EditorManager {
                 <div class="editor-split">
                     <div class="editor-pane editor-pane-source">
                         <div class="editor-container">
-                            <div class="editor-line-numbers"></div>
-                            <div class="editor-text-container">
-                                <pre class="editor-highlight-layer"><code></code></pre>
-                                <textarea class="editor-textarea" spellcheck="false"></textarea>
-                            </div>
+                            <div class="editor-codemirror"></div>
                         </div>
                     </div>
                     <div class="editor-split-divider" title="Drag to resize"></div>
@@ -413,16 +390,18 @@ export class EditorManager {
 
         document.body.appendChild(modal);
         this.#editorModal = modal;
-        this.#textarea = modal.querySelector<HTMLTextAreaElement>('.editor-textarea');
-        this.#lineNumbers = modal.querySelector<HTMLElement>('.editor-line-numbers');
-        this.#highlightLayer = modal.querySelector<HTMLElement>('.editor-highlight-layer code');
         this.#saveButton = modal.querySelector<HTMLButtonElement>('.editor-save-btn');
         this.#closeButton = modal.querySelector<HTMLButtonElement>('.editor-close');
         this.#previewPane = modal.querySelector<HTMLElement>('.editor-preview-content');
 
-        // Set textarea content (no HTML escaping needed for textarea.value)
-        if (this.#textarea) {
-            this.#textarea.value = content;
+        const editorHost = modal.querySelector<HTMLElement>('.editor-codemirror');
+        if (editorHost) {
+            this.#editorView = createMarkdownEditor(editorHost, content, {
+                onDocumentChanged: doc => this.#handleDocumentChanged(doc),
+                onSave: () => { void this.save(); },
+                onSelectionChanged: () => this.#refreshCopyLabel(),
+            });
+            this.#baselineDoc = this.#editorView.state.doc;
         }
 
         // Restore saved split position
@@ -436,9 +415,6 @@ export class EditorManager {
 
         // Setup narrow-screen tabs
         this.#setupTabs();
-
-        // Initialize syntax highlighting
-        this.#updateSyntaxHighlight();
 
         // Initial preview render
         this.#schedulePreviewUpdate(0);
@@ -461,33 +437,27 @@ export class EditorManager {
             void this.save();
         });
 
-        // Export-mode Copy button. Label + payload follow the textarea
+        // Export-mode Copy button. Label + payload follow the editor
         // selection: nothing selected → "Copy text" copies the whole buffer;
         // a selection → "Copy selection" copies just that range.
         const copyBtn = this.#editorModal?.querySelector<HTMLButtonElement>('.editor-copy-btn');
-        const hasSelection = (): boolean =>
-            !!this.#textarea && this.#textarea.selectionStart !== this.#textarea.selectionEnd;
-        const refreshCopyLabel = (): void => {
-            if (copyBtn) {
-                copyBtn.textContent = _t(hasSelection() ? 'web.export.copyselection' : 'web.export.copytext');
-            }
-        };
         copyBtn?.addEventListener('click', () => {
-            const ta = this.#textarea;
-            if (!ta || !copyBtn) return;
-            const content = hasSelection()
-                ? ta.value.slice(ta.selectionStart, ta.selectionEnd)
-                : ta.value;
+            const view = this.#editorView;
+            if (!view || !copyBtn) return;
+            const selection = view.state.selection.main;
+            const content = selection.empty
+                ? view.state.doc.toString()
+                : view.state.sliceDoc(selection.from, selection.to);
             void copyText(content).then(ok => {
                 copyBtn.textContent = _t(ok ? 'web.export.copied' : 'web.export.failed');
                 copyBtn.classList.add('is-flashing');
                 window.setTimeout(() => {
                     copyBtn.classList.remove('is-flashing');
-                    refreshCopyLabel();
+                    this.#refreshCopyLabel();
                 }, 1500);
             });
         });
-        refreshCopyLabel();
+        this.#refreshCopyLabel();
 
         // Export-mode Back button: close this overlay and return to the caller.
         this.#editorModal
@@ -498,91 +468,8 @@ export class EditorManager {
                 back?.();
             });
 
-        if (!this.#textarea) return;
-        const textarea = this.#textarea;
-
-        // Keep the Copy button label (Copy text / Copy selection) in sync with
-        // the current textarea selection.
-        ['select', 'keyup', 'mouseup'].forEach(ev =>
-            textarea.addEventListener(ev, refreshCopyLabel));
-
-        // Ctrl+S / Cmd+S to save
-        textarea.addEventListener('keydown', (e: KeyboardEvent) => {
-            if ((e.ctrlKey || e.metaKey) && e.key === 's') {
-                e.preventDefault();
-                void this.save();
-                return;
-            }
-
-            // WebKit can leave the textarea selection at the pre-split offset
-            // when Return follows an otherwise empty Markdown list marker. A
-            // later keystroke then lands back on the previous line even though
-            // the mirrored highlight layer shows a new blank line (#60).
-            // Perform list continuation as one explicit edit so the value and
-            // caret move atomically. Modified Enter and IME composition keep
-            // their native behavior.
-            if (
-                e.key === 'Enter'
-                && !e.isComposing
-                && !e.shiftKey
-                && !e.ctrlKey
-                && !e.metaKey
-                && !e.altKey
-                && textarea.selectionStart === textarea.selectionEnd
-            ) {
-                const continuation = markdownListContinuation(
-                    textarea.value,
-                    textarea.selectionStart,
-                );
-                if (continuation !== null) {
-                    e.preventDefault();
-                    textarea.setRangeText(
-                        continuation,
-                        textarea.selectionStart,
-                        textarea.selectionEnd,
-                        'end',
-                    );
-                    textarea.dispatchEvent(new Event('input', { bubbles: true }));
-                }
-            }
-        });
-
         // Esc to close
         document.addEventListener('keydown', this.#handleEscapeKey);
-
-        // Sync scroll between textarea, line numbers, and highlight layer
-        textarea.addEventListener('scroll', () => {
-            if (this.#lineNumbers) {
-                this.#lineNumbers.scrollTop = textarea.scrollTop;
-            }
-            if (this.#highlightLayer && this.#highlightLayer.parentElement) {
-                this.#highlightLayer.parentElement.scrollTop = textarea.scrollTop;
-                this.#highlightLayer.parentElement.scrollLeft = textarea.scrollLeft;
-            }
-        });
-
-        // Coalesce expensive updates to one per animation frame: typing-storm
-        // inputs fire 5-10× per frame, but we only need to repaint once.
-        let rafId: number | null = null;
-        let lastLineCount = -1;
-        textarea.addEventListener('input', () => {
-            // Compare against baseline so reverting edits clears the dirty state
-            this.#isDirty = textarea.value !== this.#baselineContent;
-            this.#updateSaveButtonState();
-            this.#updateTitleDirtyIndicator();
-            if (rafId !== null) return;
-            rafId = requestAnimationFrame(() => {
-                rafId = null;
-                const lines = textarea.value.split('\n').length;
-                if (lines !== lastLineCount) {
-                    lastLineCount = lines;
-                    this.#updateLineNumbers();
-                }
-                this.#updateSyntaxHighlight();
-            });
-            // Schedule preview update with debounce
-            this.#schedulePreviewUpdate(150);
-        });
     }
 
     #handleEscapeKey = (e: KeyboardEvent): void => {
@@ -591,11 +478,29 @@ export class EditorManager {
         }
     };
 
+    #handleDocumentChanged(doc: CodeMirrorText): void {
+        // Text.eq compares CodeMirror's persistent tree directly, avoiding a
+        // full document string allocation on every keystroke.
+        this.#isDirty = this.#baselineDoc === null || !doc.eq(this.#baselineDoc);
+        this.#updateSaveButtonState();
+        this.#updateTitleDirtyIndicator();
+        this.#schedulePreviewUpdate(150);
+    }
+
+    #refreshCopyLabel(): void {
+        const copyBtn = this.#editorModal?.querySelector<HTMLButtonElement>('.editor-copy-btn');
+        const selection = this.#editorView?.state.selection.main;
+        if (copyBtn) {
+            copyBtn.textContent = _t(selection && !selection.empty
+                ? 'web.export.copyselection'
+                : 'web.export.copytext');
+        }
+    }
+
     #focusEditor(): void {
-        if (this.#textarea) {
-            this.#textarea.focus();
-            // Move cursor to beginning
-            this.#textarea.setSelectionRange(0, 0);
+        if (this.#editorView) {
+            this.#editorView.focus();
+            this.#editorView.dispatch({ selection: { anchor: 0 } });
         }
     }
 
@@ -636,49 +541,28 @@ export class EditorManager {
         }
     }
 
-    #updateLineNumbers(): void {
-        if (!this.#textarea || !this.#lineNumbers) return;
-
-        // Numbering is sequential, so existing nodes never change — append
-        // the missing tail or trim the surplus instead of rebuilding all
-        // lines on every line-count change.
-        const lines = this.#textarea.value.split('\n').length;
-        const container = this.#lineNumbers;
-        while (container.childElementCount > lines) {
-            container.lastElementChild?.remove();
-        }
-        for (let num = container.childElementCount + 1; num <= lines; num++) {
-            const div = document.createElement('div');
-            div.className = 'editor-line-number';
-            div.textContent = String(num);
-            container.appendChild(div);
-        }
-    }
-
     /**
      * Find and select text in the editor with fuzzy matching for Markdown syntax
      */
     #selectText(searchText: string): void {
-        if (!this.#textarea) return;
+        if (!this.#editorView) return;
 
-        const content = this.#textarea.value;
+        const content = this.#editorView.state.doc.toString();
 
         // Try multiple search strategies
         const result = this.#findTextInSource(content, searchText);
 
         if (result !== -1) {
             // Found the text, select it
-            this.#textarea.focus();
-
             // Find the actual length in source (may include Markdown syntax)
             const actualLength = this.#findActualLength(content, result, searchText);
-            this.#textarea.setSelectionRange(result, result + actualLength);
+            this.#editorView.focus();
+            this.#editorView.dispatch({
+                selection: { anchor: result, head: result + actualLength },
+                scrollIntoView: true,
+            });
 
-            // Scroll to the selection
-            const beforeText = content.substring(0, result);
-            const lineNumber = beforeText.split('\n').length;
-            this.#scrollToLine(lineNumber);
-
+            const lineNumber = this.#editorView.state.doc.lineAt(result).number;
             Logger.log('EditorManager', `Selected text at index ${result}, line ${lineNumber}`);
         } else {
             // Text not found, just focus at the beginning
@@ -692,29 +576,17 @@ export class EditorManager {
      * Jump to a specific line number in the editor
      */
     #gotoLine(lineNum: number): void {
-        if (!this.#textarea) return;
-        const lines = this.#textarea.value.split('\n');
-        const targetLine = Math.min(lineNum, lines.length);
-        const pos = lines.slice(0, targetLine - 1).reduce((sum, l) => sum + l.length + 1, 0);
-        const endPos = pos + (lines[targetLine - 1] || '').length;
+        if (!this.#editorView) return;
+        const doc = this.#editorView.state.doc;
+        const targetLine = Math.min(lineNum, doc.lines);
+        const line = doc.line(targetLine);
 
-        this.#textarea.focus();
-        this.#textarea.setSelectionRange(pos, endPos);
-
-        this.#scrollToLine(targetLine);
+        this.#editorView.focus();
+        this.#editorView.dispatch({
+            selection: { anchor: line.from, head: line.to },
+            scrollIntoView: true,
+        });
         Logger.log('EditorManager', `Jumped to line ${targetLine}`);
-    }
-
-    /**
-     * Scroll the textarea so `lineNumber` sits near the top (2 lines of
-     * context above), keeping the line-number gutter in sync.
-     */
-    #scrollToLine(lineNumber: number): void {
-        if (!this.#textarea) return;
-        this.#textarea.scrollTop = Math.max(0, (lineNumber - 3) * LINE_HEIGHT);
-        if (this.#lineNumbers) {
-            this.#lineNumbers.scrollTop = this.#textarea.scrollTop;
-        }
     }
 
     /**
@@ -861,9 +733,9 @@ export class EditorManager {
      * Update the preview pane by calling /api/preview
      */
     async #updatePreview(): Promise<void> {
-        if (!this.#previewPane || !this.#textarea) return;
+        if (!this.#previewPane || !this.#editorView) return;
 
-        const content = this.#textarea.value;
+        const content = this.#editorView.state.doc.toString();
         const workspaceId = Meta.get(CONFIG.META_TAGS.WORKSPACE_ID) ?? '';
         const token = Meta.get('preview-token') ?? '';
         const body: EditorPreviewRequest = {
@@ -1035,6 +907,7 @@ export class EditorManager {
                     if (this.#activeTab === 'edit') {
                         sourcePane.style.display = 'flex';
                         previewPane.style.display = 'none';
+                        this.#editorView?.requestMeasure();
                     } else {
                         sourcePane.style.display = 'none';
                         previewPane.style.display = 'flex';
@@ -1085,6 +958,7 @@ export class EditorManager {
         this.#editorModal.querySelectorAll<HTMLElement>('.editor-layout-btn').forEach(btn => {
             btn.classList.toggle('active', btn.dataset['layout'] === mode);
         });
+        this.#editorView?.requestMeasure();
     }
 
     /**
@@ -1135,9 +1009,8 @@ export class EditorManager {
         // Only run in split mode on wide screens
         if (this.#layout !== 'split' || window.innerWidth <= 768) return;
 
-        // Source side scrolls on the textarea itself, not on .editor-pane-source
-        // (which is overflow:hidden). Preview side scrolls on .editor-pane-preview.
-        const sourceEl = this.#textarea;
+        // CodeMirror owns the source scroll container; preview scrolls on its pane.
+        const sourceEl = this.#editorView?.scrollDOM;
         const previewPane = this.#editorModal?.querySelector<HTMLElement>('.editor-pane-preview');
         if (!sourceEl || !previewPane) return;
 
@@ -1163,51 +1036,5 @@ export class EditorManager {
             sourceEl.removeEventListener('scroll', onSourceScroll);
             previewPane.removeEventListener('scroll', onPreviewScroll);
         };
-    }
-
-    /**
-     * Update syntax highlighting
-     */
-    #updateSyntaxHighlight(): void {
-        if (!this.#textarea || !this.#highlightLayer) return;
-
-        const text = this.#textarea.value;
-        const highlighted = this.#highlightMarkdown(text);
-        this.#highlightLayer.innerHTML = highlighted + '\n';
-    }
-
-    /**
-     * Simple Markdown syntax highlighting
-     */
-    #highlightMarkdown(text: string): string {
-        // Escape HTML first
-        let out = Text.escape(text);
-
-        // Apply syntax highlighting (order matters!)
-        out = out
-            // Headers (h1-h6)
-            .replace(/^(#{1,6})\s+(.+)$/gm, '<span class="md-header">$1</span> <span class="md-header-text">$2</span>')
-            // Bold **text** or __text__
-            .replace(/(\*\*|__)(.*?)\1/g, '<span class="md-bold">$1$2$1</span>')
-            // Italic *text* or _text_
-            .replace(/(\*|_)(.*?)\1/g, '<span class="md-italic">$1$2$1</span>')
-            // Inline code `code`
-            .replace(/`([^`]+)`/g, '<span class="md-code">`$1`</span>')
-            // Links [text](url)
-            .replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<span class="md-link">[$1]($2)</span>')
-            // Images ![alt](url)
-            .replace(/!\[([^\]]*)\]\(([^)]+)\)/g, '<span class="md-image">![$1]($2)</span>')
-            // Blockquotes
-            .replace(/^(&gt;+)\s+(.+)$/gm, '<span class="md-quote">$1 $2</span>')
-            // Unordered lists
-            .replace(/^([\s]*)([-*+])\s+(.+)$/gm, '$1<span class="md-list">$2</span> $3')
-            // Ordered lists
-            .replace(/^([\s]*)(\d+\.)\s+(.+)$/gm, '$1<span class="md-list">$2</span> $3')
-            // Horizontal rules
-            .replace(/^([-*_]{3,})$/gm, '<span class="md-hr">$1</span>')
-            // Code blocks ```
-            .replace(/^```(\w*)$/gm, '<span class="md-code-fence">```$1</span>');
-
-        return out;
     }
 }

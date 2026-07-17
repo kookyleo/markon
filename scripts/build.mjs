@@ -46,8 +46,11 @@ async function build() {
   const mainOpts = {
     ...shared,
     entryPoints: [resolve(srcDir, 'main.ts')],
-    outfile: resolve(outDir, 'main.js'),
+    outdir: outDir,
+    entryNames: '[name]',
+    chunkNames: 'chunks/[name]-[hash]',
     format: 'esm',
+    splitting: true,
     target: ['es2022'],
     plugins: watch ? [makeReloadPlugin('main')] : [],
   };
@@ -79,8 +82,11 @@ async function build() {
   const diffAnnotationsOpts = {
     ...shared,
     entryPoints: [resolve(srcDir, 'diff-annotations.ts')],
-    outfile: resolve(outDir, 'diff-annotations.js'),
+    outdir: outDir,
+    entryNames: '[name]',
+    chunkNames: 'chunks/[name]-[hash]',
     format: 'esm',
+    splitting: true,
     target: ['es2022'],
     // main.ts owns the dev reload EventSource.
   };

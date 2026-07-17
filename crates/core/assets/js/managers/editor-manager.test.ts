@@ -1,4 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
+import { EditorView } from '@codemirror/view';
 import { EditorManager } from './editor-manager';
 
 /**
@@ -25,6 +26,22 @@ function itemAt<T>(items: ArrayLike<T>, index: number): T {
     expect(item).toBeDefined();
     if (item === undefined) throw new Error(`Missing item at index ${index}`);
     return item;
+}
+
+function getEditorView(): EditorView {
+    const dom = document.querySelector<HTMLElement>('.cm-editor');
+    expect(dom).toBeTruthy();
+    if (!dom) throw new Error('CodeMirror editor not found');
+    const view = EditorView.findFromDOM(dom);
+    expect(view).toBeTruthy();
+    if (!view) throw new Error('CodeMirror view not found');
+    return view;
+}
+
+function replaceDocument(view: EditorView, content: string): void {
+    view.dispatch({
+        changes: { from: 0, to: view.state.doc.length, insert: content },
+    });
 }
 
 /** Stub jsdom-missing APIs the EditorManager touches. */
@@ -65,6 +82,9 @@ describe('EditorManager', () => {
     });
 
     afterEach(() => {
+        document.querySelectorAll<HTMLElement>('.cm-editor').forEach(dom => {
+            EditorView.findFromDOM(dom)?.destroy();
+        });
         logSpy.mockRestore();
         warnSpy.mockRestore();
         errorSpy.mockRestore();
@@ -98,8 +118,7 @@ describe('EditorManager', () => {
         await mgr.open();
 
         // Edit the buffer so save() has something to send.
-        const ta = document.querySelector<HTMLTextAreaElement>('.editor-textarea')!;
-        ta.value = '# changed';
+        replaceDocument(getEditorView(), '# changed');
         await mgr.save();
 
         // The first /api/save call (preview calls go to /api/preview).
@@ -124,14 +143,11 @@ describe('EditorManager', () => {
         seedOriginalMarkdown('hello');
         const mgr = new EditorManager('a.md');
         await mgr.open();
-        const ta = document.querySelector<HTMLTextAreaElement>('.editor-textarea')!;
-
-        ta.value = 'hello!';
-        ta.dispatchEvent(new Event('input'));
+        const view = getEditorView();
+        replaceDocument(view, 'hello!');
         expect(mgr.isDirty()).toBe(true);
 
-        ta.value = 'hello'; // back to baseline
-        ta.dispatchEvent(new Event('input'));
+        replaceDocument(view, 'hello'); // back to baseline
         expect(mgr.isDirty()).toBe(false);
     });
 
@@ -168,29 +184,29 @@ describe('EditorManager', () => {
         seedOriginalMarkdown(source);
         const mgr = new EditorManager('a.md');
         await mgr.open();
-        const ta = document.querySelector<HTMLTextAreaElement>('.editor-textarea')!;
-        ta.setSelectionRange(cursor, cursor);
+        const view = getEditorView();
+        view.dispatch({ selection: { anchor: cursor } });
 
         const enter = new KeyboardEvent('keydown', {
             key: 'Enter',
             bubbles: true,
             cancelable: true,
         });
-        ta.dispatchEvent(enter);
+        view.contentDOM.dispatchEvent(enter);
 
         expect(enter.defaultPrevented).toBe(true);
-        expect(ta.value).toBe(expected);
-        expect(ta.selectionStart).toBe(caret);
-        expect(ta.selectionEnd).toBe(caret);
+        expect(view.state.doc.toString()).toBe(expected);
+        expect(view.state.selection.main.anchor).toBe(caret);
+        expect(view.state.selection.main.head).toBe(caret);
         expect(mgr.isDirty()).toBe(true);
     });
 
-    it('modified Enter keeps the browser native behavior', async () => {
+    it('modified Enter keeps CodeMirror standard newline behavior', async () => {
         seedOriginalMarkdown('- item');
         const mgr = new EditorManager('a.md');
         await mgr.open();
-        const ta = document.querySelector<HTMLTextAreaElement>('.editor-textarea')!;
-        ta.setSelectionRange(ta.value.length, ta.value.length);
+        const view = getEditorView();
+        view.dispatch({ selection: { anchor: view.state.doc.length } });
 
         const enter = new KeyboardEvent('keydown', {
             key: 'Enter',
@@ -198,12 +214,11 @@ describe('EditorManager', () => {
             bubbles: true,
             cancelable: true,
         });
-        ta.dispatchEvent(enter);
+        view.contentDOM.dispatchEvent(enter);
 
-        expect(enter.defaultPrevented).toBe(false);
-        // jsdom does not apply the browser's native key action; unchanged text
-        // confirms that the list continuation handler stayed out of the way.
-        expect(ta.value).toBe('- item');
+        expect(enter.defaultPrevented).toBe(true);
+        expect(view.state.doc.toString()).toBe('- item\n');
+        expect(mgr.isDirty()).toBe(true);
     });
 
     it('layout toggle persists "full" to localStorage and loads it back', async () => {
@@ -237,9 +252,7 @@ describe('EditorManager', () => {
 
         const mgr = new EditorManager('a.md');
         await mgr.open();
-        const ta = document.querySelector<HTMLTextAreaElement>('.editor-textarea')!;
-        ta.value = 'changed';
-        ta.dispatchEvent(new Event('input'));
+        replaceDocument(getEditorView(), 'changed');
         expect(mgr.isDirty()).toBe(true);
 
         mgr.close();
