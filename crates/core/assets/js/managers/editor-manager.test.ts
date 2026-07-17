@@ -135,6 +135,77 @@ describe('EditorManager', () => {
         expect(mgr.isDirty()).toBe(false);
     });
 
+    it.each([
+        {
+            label: 'an empty ordered marker before existing text',
+            source: '1. # heading',
+            cursor: 3,
+            expected: '1. \n2. # heading',
+            caret: 7,
+        },
+        {
+            label: 'an empty unordered marker',
+            source: '-',
+            cursor: 1,
+            expected: '-\n- ',
+            caret: 4,
+        },
+        {
+            label: 'a populated ordered item',
+            source: '9. item',
+            cursor: 7,
+            expected: '9. item\n10. ',
+            caret: 12,
+        },
+        {
+            label: 'a checked task item',
+            source: '- [x] done',
+            cursor: 10,
+            expected: '- [x] done\n- [ ] ',
+            caret: 17,
+        },
+    ])('Enter continues $label and moves the caret atomically', async ({ source, cursor, expected, caret }) => {
+        seedOriginalMarkdown(source);
+        const mgr = new EditorManager('a.md');
+        await mgr.open();
+        const ta = document.querySelector<HTMLTextAreaElement>('.editor-textarea')!;
+        ta.setSelectionRange(cursor, cursor);
+
+        const enter = new KeyboardEvent('keydown', {
+            key: 'Enter',
+            bubbles: true,
+            cancelable: true,
+        });
+        ta.dispatchEvent(enter);
+
+        expect(enter.defaultPrevented).toBe(true);
+        expect(ta.value).toBe(expected);
+        expect(ta.selectionStart).toBe(caret);
+        expect(ta.selectionEnd).toBe(caret);
+        expect(mgr.isDirty()).toBe(true);
+    });
+
+    it('modified Enter keeps the browser native behavior', async () => {
+        seedOriginalMarkdown('- item');
+        const mgr = new EditorManager('a.md');
+        await mgr.open();
+        const ta = document.querySelector<HTMLTextAreaElement>('.editor-textarea')!;
+        ta.setSelectionRange(ta.value.length, ta.value.length);
+
+        const enter = new KeyboardEvent('keydown', {
+            key: 'Enter',
+            shiftKey: true,
+            bubbles: true,
+            cancelable: true,
+        });
+        ta.dispatchEvent(enter);
+
+        expect(enter.defaultPrevented).toBe(false);
+        // jsdom does not apply the browser's native key action; unchanged text
+        // confirms that the list continuation handler stayed out of the way.
+        expect(ta.value).toBe('- item');
+    });
+
     it('layout toggle persists "full" to localStorage and loads it back', async () => {
         seedOriginalMarkdown('x');
         const mgr = new EditorManager('a.md');

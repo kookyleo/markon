@@ -19,6 +19,30 @@ const LAYOUT_KEY = 'markon.editor.layout'; // 'split' | 'full'
  *  `.editor-line-number` (height: 22.4px = 14px font * 1.6 line-height). */
 const LINE_HEIGHT = 22.4;
 
+/**
+ * Return the marker that should be inserted after Enter at `cursor`, or null
+ * when the current line is not a Markdown list item. Matching only the text
+ * before the caret also handles splitting `1. existing text` immediately after
+ * the marker: the existing text moves behind the newly inserted `2. `.
+ */
+function markdownListContinuation(value: string, cursor: number): string | null {
+    const lineStart = value.lastIndexOf('\n', Math.max(0, cursor - 1)) + 1;
+    const beforeCursor = value.slice(lineStart, cursor);
+    const match = beforeCursor.match(/^([\t ]*)(?:(\d+)\.|([-+*]))(?:[\t ]+|$)(?:\[([ xX])\][\t ]+)?/);
+    if (!match) return null;
+
+    const indent = match[1] ?? '';
+    const ordered = match[2];
+    const bullet = match[3];
+    const task = match[4] !== undefined ? '[ ] ' : '';
+    if (ordered !== undefined) {
+        const next = Number.parseInt(ordered, 10) + 1;
+        if (!Number.isSafeInteger(next)) return null;
+        return `\n${indent}${next}. ${task}`;
+    }
+    return bullet === undefined ? null : `\n${indent}${bullet} ${task}`;
+}
+
 /** Layout mode for the split-pane editor. */
 export type EditorLayout = 'split' | 'full';
 
@@ -487,6 +511,39 @@ export class EditorManager {
             if ((e.ctrlKey || e.metaKey) && e.key === 's') {
                 e.preventDefault();
                 void this.save();
+                return;
+            }
+
+            // WebKit can leave the textarea selection at the pre-split offset
+            // when Return follows an otherwise empty Markdown list marker. A
+            // later keystroke then lands back on the previous line even though
+            // the mirrored highlight layer shows a new blank line (#60).
+            // Perform list continuation as one explicit edit so the value and
+            // caret move atomically. Modified Enter and IME composition keep
+            // their native behavior.
+            if (
+                e.key === 'Enter'
+                && !e.isComposing
+                && !e.shiftKey
+                && !e.ctrlKey
+                && !e.metaKey
+                && !e.altKey
+                && textarea.selectionStart === textarea.selectionEnd
+            ) {
+                const continuation = markdownListContinuation(
+                    textarea.value,
+                    textarea.selectionStart,
+                );
+                if (continuation !== null) {
+                    e.preventDefault();
+                    textarea.setRangeText(
+                        continuation,
+                        textarea.selectionStart,
+                        textarea.selectionEnd,
+                        'end',
+                    );
+                    textarea.dispatchEvent(new Event('input', { bubbles: true }));
+                }
             }
         });
 
