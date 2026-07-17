@@ -46,19 +46,20 @@ fn remote_err(e: ControlError) -> String {
 /// Clone out the live service handle, or fail with a reconnect-triggering error
 /// when the GUI is currently detached from `markond`.
 fn require_service(state: &State<AppState>) -> Result<RunningServer, String> {
-    state.server.lock().unwrap().handle().ok_or_else(|| {
-        "remote-server-error: not connected to the markon service".to_string()
-    })
+    state
+        .server
+        .lock()
+        .unwrap()
+        .handle()
+        .ok_or_else(|| "remote-server-error: not connected to the markon service".to_string())
 }
 
 /// ONE mapping from a `WorkspaceInfo` to the workspace-panel JSON, shared by the
 /// embedded (in-process registry) and remote (control API) list paths so every
 /// field the panel reads stays identical across both modes.
 fn workspace_panel_json(info: WorkspaceInfo, browser_base: &str) -> serde_json::Value {
-    let url = server::build_workspace_url(
-        browser_base,
-        &server::workspace_url_path(&info.id, None),
-    );
+    let url =
+        server::build_workspace_url(browser_base, &server::workspace_url_path(&info.id, None));
     serde_json::json!({
         "id": info.id,
         "path": info.path,
@@ -243,8 +244,7 @@ pub async fn save_settings(
             let current = state.settings.lock().unwrap();
             let mut baseline = current.clone();
             baseline.workspaces = settings.workspaces.clone();
-            baseline.collaborator_access_code_hash =
-                settings.collaborator_access_code_hash.clone();
+            baseline.collaborator_access_code_hash = settings.collaborator_access_code_hash.clone();
             baseline.trusted_hosts = settings.trusted_hosts.clone();
             baseline.example_workspace_hidden = settings.example_workspace_hidden;
             baseline.salt = settings.salt.clone();
@@ -453,9 +453,7 @@ pub async fn remove_workspace(id: String, state: State<'_, AppState>) -> Result<
 /// List all active workspaces with their IDs and URLs over the service's
 /// control socket, mapped through the shared `workspace_panel_json`.
 #[tauri::command]
-pub async fn get_workspaces(
-    state: State<'_, AppState>,
-) -> Result<Vec<serde_json::Value>, String> {
+pub async fn get_workspaces(state: State<'_, AppState>) -> Result<Vec<serde_json::Value>, String> {
     let remote = require_service(&state)?;
     let port = remote.port();
     let infos = remote.list_workspaces().await.map_err(remote_err)?;
@@ -488,7 +486,10 @@ pub async fn open_url(url: String, state: State<'_, AppState>) -> Result<(), Str
     let (remote, base) = {
         let server = state.server.lock().unwrap();
         let handle = server.handle();
-        let daemon_host = handle.as_ref().map(|r| r.host().to_string()).unwrap_or_default();
+        let daemon_host = handle
+            .as_ref()
+            .map(|r| r.host().to_string())
+            .unwrap_or_default();
         let daemon_advertised = handle
             .as_ref()
             .and_then(|r| r.advertised_host().map(str::to_string));
@@ -512,7 +513,10 @@ pub async fn open_url(url: String, state: State<'_, AppState>) -> Result<(), Str
                 redirect.push('?');
                 redirect.push_str(query);
             }
-            remote.admin_bootstrap(&redirect).await.map_err(remote_err)?
+            remote
+                .admin_bootstrap(&redirect)
+                .await
+                .map_err(remote_err)?
         }
         _ => url,
     };

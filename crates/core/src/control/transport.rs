@@ -337,7 +337,9 @@ pub fn bind(name: &ControlSocketName) -> io::Result<ControlServer> {
         }
     }
 
-    let listener = ListenerOptions::new().name(name.to_name()?).create_tokio()?;
+    let listener = ListenerOptions::new()
+        .name(name.to_name()?)
+        .create_tokio()?;
 
     #[cfg(unix)]
     {
@@ -398,8 +400,8 @@ async fn handle_connection(stream: Stream, ctx: &ControlContext) -> io::Result<(
         Ok(req) => dispatch(req, ctx),
         Err(e) => ControlResponse::Err(format!("malformed request: {e}")),
     };
-    let bytes = serde_json::to_vec(&response)
-        .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))?;
+    let bytes =
+        serde_json::to_vec(&response).map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))?;
     framed.send(Bytes::from(bytes)).await?;
     framed.flush().await?;
     Ok(())

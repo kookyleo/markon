@@ -2008,7 +2008,6 @@ async fn require_same_origin(
     next.run(req).await
 }
 
-
 /// Save API origin guard. The handler validates the workspace-scoped token
 /// after decoding the request body, because the target workspace is part of
 /// that body. Local CLI/tooling callers may omit Origin only from loopback.

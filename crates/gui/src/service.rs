@@ -183,7 +183,10 @@ async fn spawn_service(settings: &Arc<Mutex<AppSettings>>) -> ServiceConnection 
 /// connection is what the GUI drives; `markond` outlives the GUI.
 pub async fn attach_or_spawn(settings: &Arc<Mutex<AppSettings>>) -> ServiceConnection {
     if let Some(remote) = RunningServer::discover() {
-        tracing::info!(port = remote.port(), "attached to the running markon service");
+        tracing::info!(
+            port = remote.port(),
+            "attached to the running markon service"
+        );
         forward_persisted(&remote, settings).await;
         return ServiceConnection::attached(remote);
     }

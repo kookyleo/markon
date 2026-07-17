@@ -194,7 +194,11 @@ fn write_daemon_config(config: &DaemonConfig) -> std::io::Result<PathBuf> {
     let json = serde_json::to_vec(config)
         .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))?;
     // Unique, unpredictable name in the per-user temp dir.
-    let name = format!("markond-config-{}-{}.json", std::process::id(), temp_suffix());
+    let name = format!(
+        "markond-config-{}-{}.json",
+        std::process::id(),
+        temp_suffix()
+    );
     let path = std::env::temp_dir().join(name);
 
     let mut options = std::fs::OpenOptions::new();

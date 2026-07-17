@@ -79,11 +79,7 @@ async fn control_round_trips_every_method() {
         enable_edit: true,
         ..Default::default()
     };
-    let id = h
-        .client
-        .add_workspace(&dir_path, flags, "")
-        .await
-        .unwrap();
+    let id = h.client.add_workspace(&dir_path, flags, "").await.unwrap();
     let listed = h.client.list_workspaces().await.unwrap();
     assert_eq!(listed.len(), 1);
     assert_eq!(listed[0].id, id);
@@ -127,10 +123,15 @@ async fn control_round_trips_every_method() {
 
     // set_alias — renames the workspace over the socket.
     h.client.set_alias(&id, "My Docs").await.unwrap();
-    assert_eq!(h.client.list_workspaces().await.unwrap()[0].alias, "My Docs");
+    assert_eq!(
+        h.client.list_workspaces().await.unwrap()[0].alias,
+        "My Docs"
+    );
     // Empty string clears the alias.
     h.client.set_alias(&id, "").await.unwrap();
-    assert!(h.client.list_workspaces().await.unwrap()[0].alias.is_empty());
+    assert!(h.client.list_workspaces().await.unwrap()[0]
+        .alias
+        .is_empty());
 
     // add_single_file — registers a temporary single-file workspace under the
     // same parent dir. It coexists with the dir workspace (distinct id) and the
@@ -201,8 +202,12 @@ async fn control_transport_error_when_no_server() {
     // Point a client at a socket nobody is serving: connect fails as a transport
     // error, not a panic.
     let tmp = tempfile::TempDir::new().unwrap();
-    let name =
-        ControlSocketName::from_raw(tmp.path().join("absent.sock").to_string_lossy().into_owned());
+    let name = ControlSocketName::from_raw(
+        tmp.path()
+            .join("absent.sock")
+            .to_string_lossy()
+            .into_owned(),
+    );
     let client = RunningServer::new(name);
     let err = client.list_workspaces().await.unwrap_err();
     assert!(matches!(err, ControlError::Transport(_)), "got {err:?}");

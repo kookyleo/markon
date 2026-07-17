@@ -724,10 +724,8 @@ async fn forward_to_running_server(
                         } else {
                             // Re-home the bootstrap onto the requested custom
                             // base, preserving its nonce fragment.
-                            let fragment = boot_url
-                                .split_once('#')
-                                .map(|(_, frag)| frag)
-                                .unwrap_or("");
+                            let fragment =
+                                boot_url.split_once('#').map(|(_, frag)| frag).unwrap_or("");
                             let bootstrap =
                                 server::build_workspace_url(base_option, "/_/admin/bootstrap");
                             if fragment.is_empty() {
