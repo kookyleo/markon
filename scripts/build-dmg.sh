@@ -48,12 +48,14 @@ for TARGET in "${TARGETS[@]}"; do
     x86_64-apple-darwin)  ARCH="x86_64" ;;
   esac
 
-  echo "Building markond sidecar for $TARGET (release)..."
+  echo "Building markon CLI and markond sidecars for $TARGET (release)..."
   rustup target add "$TARGET" >/dev/null 2>&1 || true
-  cargo build --release -p markond --target "$TARGET"
+  cargo build --release -p markon -p markond --target "$TARGET"
   mkdir -p "$GUI_DIR/binaries"
   cp "$REPO_ROOT/target/$TARGET/release/markond" \
      "$GUI_DIR/binaries/markond-$TARGET"
+  cp "$REPO_ROOT/target/$TARGET/release/markon" \
+     "$GUI_DIR/binaries/markon-$TARGET"
 
   echo "Building .app for $TARGET (release)..."
   APPLE_SIGNING_IDENTITY="-" cargo tauri build \
@@ -73,12 +75,17 @@ for TARGET in "${TARGETS[@]}"; do
     echo "Markon executable not found at $APP_BIN" >&2
     exit 1
   fi
-  SIDECAR_BIN="$APP/Contents/MacOS/markond"
-  if [[ ! -x "$SIDECAR_BIN" ]]; then
-    echo "markond sidecar not found at $SIDECAR_BIN" >&2
+  SERVICE_BIN="$APP/Contents/MacOS/markond"
+  if [[ ! -x "$SERVICE_BIN" ]]; then
+    echo "markond sidecar not found at $SERVICE_BIN" >&2
     exit 1
   fi
-  for BIN in "$APP_BIN" "$SIDECAR_BIN"; do
+  CLI_BIN="$APP/Contents/MacOS/markon"
+  if [[ ! -x "$CLI_BIN" ]]; then
+    echo "markon CLI sidecar not found at $CLI_BIN" >&2
+    exit 1
+  fi
+  for BIN in "$APP_BIN" "$SERVICE_BIN" "$CLI_BIN"; do
     if otool -L "$BIN" | grep -qi graphviz; then
       echo "Unexpected Graphviz dynamic-library dependency in $BIN" >&2
       exit 1

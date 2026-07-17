@@ -103,22 +103,41 @@ chmod +x Markon_*.AppImage
 ### Cargo（推荐）
 
 ```bash
-cargo install markon
+cargo install markon markond
 ```
 
-这会从 [crates.io](https://crates.io/crates/markon) 下载并编译 `markon` 二进制到 `~/.cargo/bin/`。
+这会从 crates.io 下载并编译 `markon` 与同版本的后台服务 `markond` 到 `~/.cargo/bin/`。两者必须
+保持同版本并位于同一目录；桌面版更新不会自动覆盖 Cargo 安装的旧 CLI。
 
 ### 从源码
 
 ```bash
 git clone https://github.com/kookyleo/markon.git
 cd markon
+cargo install --path crates/markond
 cargo install --path crates/cli
 ```
 
 ### 从 GitHub Releases
 
-桌面版的 `.dmg` / `.exe` / `.AppImage` 里已经捆绑了 `markon` CLI 二进制，你也可以直接从 Releases 拿预编译的 CLI 文件（如有发布）。
+桌面版的 `.dmg` / `.exe` / `.AppImage` 里捆绑了同版本的 `markon` CLI 与 `markond`。macOS
+应用不会在拖入 `/Applications` 时擅自修改 shell 的 `PATH`；可直接运行：
+
+```bash
+/Applications/Markon.app/Contents/MacOS/markon ls
+```
+
+如果 `~/.cargo/bin` 已在 PATH 中，可把命令链接到应用内的同版本二进制；以后更新桌面应用时，
+终端也会自动使用新版：
+
+```bash
+mkdir -p ~/.cargo/bin
+ln -sfn /Applications/Markon.app/Contents/MacOS/markon ~/.cargo/bin/markon
+ln -sfn /Applications/Markon.app/Contents/MacOS/markond ~/.cargo/bin/markond
+```
+
+若 PATH 中已有 Cargo 安装的 `markon`，请用上面的 Cargo 命令同时升级 `markon` 和 `markond`，
+或改用这组符号链接，避免终端继续命中旧版本。
 
 ## 验证安装
 

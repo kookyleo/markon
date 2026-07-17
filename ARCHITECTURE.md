@@ -175,9 +175,10 @@ Markon 的用户数据**独立于进程**,持久在 `~/.markon/`:
 **0600 临时文件**(Windows 靠 per-user `%TEMP%` 的 ACL),以 `markond --config <path>` 传入;
 机密**绝不进 argv / 环境变量**。`markond` 读取后即删除该文件,壳子在就绪握手结束后再兜底删一次。
 
-**打包**:GUI 通过 Tauri 的 `externalBin`(sidecar)把 `markond` 与自身打进同一个 app bundle,
-放在主程序旁边;`daemon::locate_markond` 以「与当前可执行文件同目录」为首选查找位置,因此 CLI 与
-GUI 都能就近找到并拉起服务。
+**打包**:GUI 通过 Tauri 的 `externalBin`(sidecar)把 `markon` CLI、`markond` 与自身打进同一个
+app bundle,放在主程序旁边;`daemon::locate_markond` 以「与当前可执行文件同目录」为首选查找位置,
+因此 bundle 内的 CLI 与 GUI 都能就近找到并拉起同版本服务。桌面安装器不得只更新 GUI / daemon
+而遗漏 CLI,否则 shell 中的旧 CLI 会与新控制协议发生版本分裂。
 
 **跨平台边界**:控制套接字与拉起逻辑(`daemon::spawn_and_connect`)都已跨平台;Windows 的命名管道
 路径与拉起行为需在真实 Windows 上跑 `scripts/win-test/full-smoke.ps1` 验证(该脚本通过 `markon`

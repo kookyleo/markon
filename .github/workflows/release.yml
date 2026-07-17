@@ -171,22 +171,23 @@ jobs:
         shell: bash
         run: npm install && npm run build
 
-      # The GUI ships markond as a Tauri externalBin sidecar so the app can spawn
-      # the service beside its own executable. Build markond for this target and
-      # stage it under crates/gui/binaries/ with the target-triple suffix Tauri
-      # expects (it strips the suffix and drops the binary next to the app exe at
-      # bundle time, where locate_markond() finds it).
-      - name: Build and stage markond sidecar
+      # The GUI ships both the CLI and markond as Tauri externalBin sidecars.
+      # Build them for this target and stage them under crates/gui/binaries/ with
+      # the target-triple suffix Tauri expects (it strips the suffix and drops
+      # both binaries next to the app executable at bundle time).
+      - name: Build and stage CLI and service sidecars
         shell: bash
         run: |
           set -euo pipefail
-          cargo build --release -p markond --target ${{ matrix.target }}
+          cargo build --release -p markon -p markond --target ${{ matrix.target }}
           mkdir -p crates/gui/binaries
           EXT=""
           case "${{ matrix.target }}" in *windows*) EXT=".exe" ;; esac
           cp "target/${{ matrix.target }}/release/markond${EXT}" \
              "crates/gui/binaries/markond-${{ matrix.target }}${EXT}"
-          echo "Staged sidecar: crates/gui/binaries/markond-${{ matrix.target }}${EXT}"
+          cp "target/${{ matrix.target }}/release/markon${EXT}" \
+             "crates/gui/binaries/markon-${{ matrix.target }}${EXT}"
+          echo "Staged sidecars: markon${EXT}, markond${EXT}"
 
       - name: Build installer
         if: ${{ !startsWith(matrix.platform, 'ubuntu-') }}
@@ -201,7 +202,7 @@ jobs:
           # do NOT let the matrix create releases itself (that races).
           releaseId: ${{ needs.create-release.outputs.release_id }}
           includeUpdaterJson: false
-          # --config merges the externalBin (markond sidecar) in at bundle time
+          # --config merges the externalBin (CLI and service sidecars) in at bundle time
           # only. Keeping it out of the base tauri.conf.json lets plain
           # `cargo build`/dev/CI builds succeed without the staged binary.
           args: ${{ matrix.args }} --config tauri.sidecar.conf.json
@@ -215,7 +216,7 @@ jobs:
           set -euo pipefail
           npm install -g @tauri-apps/cli@v2
           cd crates/gui
-          # --config merges the markond externalBin sidecar in at bundle time
+          # --config merges the CLI and service externalBin sidecars in at bundle time
           # only (see the tauri-action step above for why it's not in the base
           # config).
           tauri --verbose build ${{ matrix.args }} --config tauri.sidecar.conf.json
@@ -225,30 +226,28 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          binary="target/${{ matrix.target }}/release/markon-gui"
-          if [ ! -x "$binary" ]; then
-            echo "Markon executable not found: $binary" >&2
-            exit 1
-          fi
-          case "${{ matrix.target }}" in
-            *-apple-darwin) dependencies="$(otool -L "$binary")" ;;
-            *-linux-gnu) dependencies="$(ldd "$binary")" ;;
-            *) echo "Unsupported dependency-inspection target" >&2; exit 1 ;;
-          esac
-          printf '%s\n' "$dependencies"
-          if grep -qi graphviz <<<"$dependencies"; then
-            echo "Unexpected Graphviz dynamic-library dependency" >&2
-            exit 1
-          fi
+          for name in markon-gui markon markond; do
+            binary="target/${{ matrix.target }}/release/$name"
+            if [ ! -x "$binary" ]; then
+              echo "Markon executable not found: $binary" >&2
+              exit 1
+            fi
+            case "${{ matrix.target }}" in
+              *-apple-darwin) dependencies="$(otool -L "$binary")" ;;
+              *-linux-gnu) dependencies="$(ldd "$binary")" ;;
+              *) echo "Unsupported dependency-inspection target" >&2; exit 1 ;;
+            esac
+            printf '%s\n' "$dependencies"
+            if grep -qi graphviz <<<"$dependencies"; then
+              echo "Unexpected Graphviz dynamic-library dependency in $binary" >&2
+              exit 1
+            fi
+          done
 
       - name: Verify Graphviz static linkage (Windows)
         if: runner.os == 'Windows'
         shell: powershell
         run: |
-          $binary = "target\${{ matrix.target }}\release\markon-gui.exe"
-          if (-not (Test-Path $binary)) {
-            throw "Markon executable not found: $binary"
-          }
           $vswhere = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe"
           $installation = & $vswhere -latest -products "*" -prerelease -property installationPath
           if (-not $installation) {
@@ -261,10 +260,16 @@ jobs:
           if (-not $dumpbin) {
             throw "dumpbin not found for $targetArch"
           }
-          $dependencies = & $dumpbin.FullName /DEPENDENTS $binary | Out-String
-          Write-Output $dependencies
-          if ($dependencies -match "(?i)graphviz") {
-            throw "Unexpected Graphviz DLL dependency"
+          foreach ($name in @("markon-gui", "markon", "markond")) {
+            $binary = "target\${{ matrix.target }}\release\$($name).exe"
+            if (-not (Test-Path $binary)) {
+              throw "Markon executable not found: $binary"
+            }
+            $dependencies = & $dumpbin.FullName /DEPENDENTS $binary | Out-String
+            Write-Output $dependencies
+            if ($dependencies -match "(?i)graphviz") {
+              throw "Unexpected Graphviz DLL dependency in $binary"
+            }
           }
 
       - name: Upload Linux installer artifacts
