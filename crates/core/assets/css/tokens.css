@@ -172,12 +172,19 @@
     --markon-shadow-modal: 0 8px 24px rgba(0, 0, 0, 0.14);  /* full modals */
 
     /* ── Modal frame component ───────────────────────────────
-       Shared shell for floating popups. The outer rim is translucent; the
-       inner surface is opaque. Component-specific accent colors belong on
-       --markon-modal-surface-border, not the outer rim. */
+       Shared shell for floating popups. A cool translucent rim separates the
+       glass from both light and dark page content; the inner surface stays
+       opaque. Component-specific status colors belong on
+       --markon-modal-surface-border. */
     --markon-modal-frame-inset: 6px;
     --markon-modal-frame-radius: calc(var(--markon-radius-lg) + var(--markon-modal-frame-inset));
-    --markon-modal-border-neutral: color-mix(in srgb, var(--markon-border-emphasis) 86%, var(--markon-bg-overlay));
+    --markon-modal-frame-border: color-mix(in srgb, var(--markon-accent) 46%, transparent);
+    --markon-modal-frame-glass-start: color-mix(in srgb, var(--markon-accent) 28%, transparent);
+    --markon-modal-frame-glass-end: color-mix(in srgb, var(--markon-accent) 12%, transparent);
+    --markon-modal-frame-highlight: color-mix(in srgb, var(--markon-fg-on-emphasis) 72%, transparent);
+    --markon-modal-frame-glow: color-mix(in srgb, var(--markon-accent) 20%, transparent);
+    --markon-modal-frame-ring: color-mix(in srgb, var(--markon-accent) 18%, transparent);
+    --markon-modal-border-neutral: color-mix(in srgb, var(--markon-accent) 14%, var(--markon-border-emphasis));
     --markon-modal-border-accent: color-mix(in srgb, var(--markon-accent) 18%, var(--markon-modal-border-neutral));
     --markon-modal-border-success: color-mix(in srgb, var(--markon-success) 22%, var(--markon-modal-border-neutral));
     --markon-modal-border-danger: color-mix(in srgb, var(--markon-danger) 22%, var(--markon-modal-border-neutral));
@@ -258,18 +265,19 @@
 .markon-live-container.expanded {
     position: relative;
     padding: var(--markon-modal-frame-inset);
-    border: 1px solid color-mix(in srgb, var(--markon-fg-on-emphasis) 52%, transparent);
+    border: 1px solid var(--markon-modal-frame-border);
     border-radius: var(--markon-modal-frame-radius);
     background:
         linear-gradient(
             135deg,
-            color-mix(in srgb, var(--markon-fg-on-emphasis) 58%, transparent),
-            color-mix(in srgb, var(--markon-fg-on-emphasis) 24%, transparent)
+            var(--markon-modal-frame-glass-start),
+            var(--markon-modal-frame-glass-end)
         );
     background-clip: padding-box;
     box-shadow:
-        inset 0 1px 0 color-mix(in srgb, var(--markon-fg-on-emphasis) 76%, transparent),
-        inset 0 0 18px color-mix(in srgb, var(--markon-fg-on-emphasis) 34%, transparent),
+        inset 0 1px 0 var(--markon-modal-frame-highlight),
+        inset 0 0 18px var(--markon-modal-frame-glow),
+        0 0 0 1px var(--markon-modal-frame-ring),
         var(--markon-shadow-modal);
     box-sizing: border-box;
     color: var(--markon-fg-default);
@@ -395,6 +403,12 @@ html[data-theme="dark"] {
     --markon-fg-muted-hover: color-mix(in srgb, var(--markon-fg-muted) 60%, white);
     --markon-accent-muted:   color-mix(in srgb, var(--markon-accent) 15%, transparent);
     --markon-bg-hover:       rgba(255, 255, 255, 0.06);
+    --markon-modal-frame-border: color-mix(in srgb, var(--markon-accent) 42%, transparent);
+    --markon-modal-frame-glass-start: color-mix(in srgb, var(--markon-accent) 22%, transparent);
+    --markon-modal-frame-glass-end: color-mix(in srgb, var(--markon-accent) 10%, transparent);
+    --markon-modal-frame-highlight: color-mix(in srgb, var(--markon-fg-on-emphasis) 44%, transparent);
+    --markon-modal-frame-glow: color-mix(in srgb, var(--markon-accent) 18%, transparent);
+    --markon-modal-frame-ring: color-mix(in srgb, var(--markon-accent) 16%, transparent);
 
     /* ── Code syntax palette (dark) — GitHub-dark, high contrast ──── */
     --markon-code-comment:  var(--markon-fg-muted);
