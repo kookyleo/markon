@@ -28,8 +28,11 @@ async fn harness() -> Harness {
 
     let registry = Arc::new(WorkspaceRegistry::new("test-salt".into()));
     let (shutdown_tx, shutdown_rx) = mpsc::channel(1);
-    let admin: AdminBootstrapFn =
-        Arc::new(|redirect: &str| Ok(format!("http://127.0.0.1:7000{redirect}#nonce=abc")));
+    let admin: AdminBootstrapFn = Arc::new(|redirect: &str| {
+        Ok(format!(
+            "http://127.0.0.1:7000{redirect}#bootstrap_nonce=abc"
+        ))
+    });
     let admin_code: AdminBootstrapCodeFn = Arc::new(|_redirect: &str| {
         Ok((
             "http://127.0.0.1:7000/_/admin".to_string(),
@@ -192,7 +195,7 @@ async fn control_round_trips_every_method() {
 
     // admin_bootstrap — routed through the injected issuer.
     let url = h.client.admin_bootstrap("/workspace/").await.unwrap();
-    assert_eq!(url, "http://127.0.0.1:7000/workspace/#nonce=abc");
+    assert_eq!(url, "http://127.0.0.1:7000/workspace/#bootstrap_nonce=abc");
     let (manual_url, code) = h.client.admin_bootstrap_code("/workspace/").await.unwrap();
     assert_eq!(manual_url, "http://127.0.0.1:7000/_/admin");
     assert_eq!(code, "123456");

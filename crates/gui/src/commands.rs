@@ -510,9 +510,9 @@ pub async fn open_url(url: String, state: State<'_, AppState>) -> Result<(), Str
         (handle, base)
     };
     let markon_prefix = format!("{}/", base.trim_end_matches('/'));
-    // A markon URL is opened through a one-time administrator bootstrap minted by
-    // the service over the control socket, so the local browser lands with an
-    // admin session. Non-markon URLs (and the detached case) open as-is.
+    // A markon URL is opened with a one-time administrator fragment minted by
+    // the service over the control socket, so the local browser upgrades the
+    // final page in place. Non-markon URLs (and the detached case) open as-is.
     let target = match remote {
         Some(remote) if url.starts_with(&markon_prefix) => {
             let parsed = url::Url::parse(&url).map_err(|error| error.to_string())?;

@@ -517,6 +517,19 @@ pub fn build_workspace_url(base: &str, workspace_path: &str) -> String {
     format!("{}{}", base.trim_end_matches('/'), suffix)
 }
 
+fn build_admin_bootstrap_url(base: &str, redirect: &str, nonce: &str) -> String {
+    // The fragment is replaced by the final page after the exchange, so keep
+    // any original heading only in the server-side redirect. A literal '#'
+    // cannot be part of the HTTP route used for the initial document request.
+    let initial_route = redirect
+        .split_once('#')
+        .map_or(redirect, |(route, _fragment)| route);
+    format!(
+        "{}#bootstrap_nonce={nonce}",
+        build_workspace_url(base, initial_route)
+    )
+}
+
 fn canonicalize_route_path(path: &FsPath) -> std::io::Result<PathBuf> {
     // `std::fs::canonicalize` returns verbatim (`\\?\`) paths on Windows.
     // Workspace roots are stored through `dunce`, so route containment checks
@@ -1168,16 +1181,14 @@ pub async fn start(config: ServerConfig) -> Result<(), String> {
     })?;
     let control_socket_path = control_server.name().as_str().to_string();
 
-    // Admin bootstrap over the control socket mints a one-time browser URL
-    // against the web plane's featured base (the same URL a local browser uses).
+    // Admin bootstrap over the control socket opens the final page with a
+    // one-time fragment capability. The page exchanges it without exposing the
+    // nonce to the initial HTTP request, then reloads in place as administrator.
     let admin_bootstraps_for_control = admin_bootstraps.clone();
     let admin_base = local_base.clone();
     let admin_bootstrap_fn: crate::control::AdminBootstrapFn = Arc::new(move |redirect: &str| {
         let nonce = admin_bootstraps_for_control.issue_url(redirect);
-        Ok(format!(
-            "{}#nonce={nonce}",
-            build_workspace_url(&admin_base, "/_/admin/bootstrap")
-        ))
+        Ok(build_admin_bootstrap_url(&admin_base, redirect, &nonce))
     });
     let admin_bootstraps_for_code = admin_bootstraps.clone();
     let admin_code_base = local_base.clone();
@@ -1278,8 +1289,7 @@ pub async fn start(config: ServerConfig) -> Result<(), String> {
         };
         let redirect = first_workspace_url_path.as_deref().unwrap_or("/");
         let nonce = admin_bootstraps.issue_url(redirect);
-        let bootstrap = build_workspace_url(&base, "/_/admin/bootstrap");
-        let url = format!("{bootstrap}#nonce={nonce}");
+        let url = build_admin_bootstrap_url(&base, redirect, &nonce);
         if let Err(e) = open::that(&url) {
             tracing::warn!("best-effort browser open failed: {e}");
         }
@@ -7788,6 +7798,28 @@ mod tests {
         assert_eq!(r.all[2].url, "http://10.0.0.5:6419");
         // No advertised preference → first interface is featured (not localhost).
         assert_eq!(r.featured, "http://192.168.1.20:6419");
+    }
+
+    #[test]
+    fn admin_bootstrap_url_starts_at_final_route_with_fragment_nonce() {
+        assert_eq!(
+            build_admin_bootstrap_url(
+                "http://192.168.1.20:6419/",
+                "/workspace/file.md?mode=preview",
+                "abc123"
+            ),
+            "http://192.168.1.20:6419/workspace/file.md?mode=preview#bootstrap_nonce=abc123"
+        );
+        // The original heading remains in the server-side redirect stored with
+        // the nonce; it must not displace the bootstrap fragment in the first URL.
+        assert_eq!(
+            build_admin_bootstrap_url(
+                "http://127.0.0.1:6419",
+                "/workspace/file.md#heading",
+                "abc123"
+            ),
+            "http://127.0.0.1:6419/workspace/file.md#bootstrap_nonce=abc123"
+        );
     }
 
     #[test]
