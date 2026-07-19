@@ -237,7 +237,7 @@ export const CONFIG = {
         STRIKETHROUGH: 's',
     },
 
-    // Block-level tags (used when judging selection boundaries).
+    // Structural blocks used to split cross-block annotation anchors.
     BLOCK_TAGS: ['P', 'DIV', 'LI', 'H1', 'H2', 'H3', 'H4', 'H5', 'H6', 'BLOCKQUOTE', 'PRE', 'TD', 'TH'],
 };
 

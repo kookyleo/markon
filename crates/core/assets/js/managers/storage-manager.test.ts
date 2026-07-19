@@ -221,6 +221,43 @@ describe('StorageManager', () => {
             expect(annos).toEqual([b]);
         });
 
+        it('round-trips version 2 fragment anchors without a schema migration', async () => {
+            const m = new StorageManager('cross-block.md', false);
+            const annotation = makeAnno({
+                id: 'cross',
+                text: 'Heading\nBody',
+                anchor: {
+                    position: 0,
+                    exact: 'HeadingBody',
+                    prefix: '',
+                    suffix: '',
+                    version: 2,
+                    fragments: [
+                        {
+                            position: 0,
+                            exact: 'Heading',
+                            prefix: '',
+                            suffix: 'Body',
+                            blockTag: 'H2',
+                        },
+                        {
+                            position: 7,
+                            exact: 'Body',
+                            prefix: 'Heading',
+                            suffix: '',
+                            blockTag: 'P',
+                        },
+                    ],
+                },
+            });
+
+            await m.saveAnnotation(annotation);
+            expect(await m.loadAnnotations()).toEqual([annotation]);
+            expect(JSON.parse(localStorage.getItem('markon-annotations-cross-block.md')!)).toEqual([
+                annotation,
+            ]);
+        });
+
         it('viewed-state save/load/clear round-trip in local mode', async () => {
             const m = new StorageManager('foo.md', false);
             expect(await m.loadViewedState()).toEqual({});

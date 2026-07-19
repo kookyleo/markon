@@ -125,6 +125,32 @@ describe('NoteManager', () => {
         expect(ids).toEqual(['dup', 'other']);
     });
 
+    it('renders one note card and activates every fragment of a cross-block note', () => {
+        const root = setupBody(`
+            <h2><span class="has-note" data-annotation-id="cross">Heading</span></h2>
+            <p><span class="has-note" data-annotation-id="cross">Body</span></p>
+            <li><span class="has-note" data-annotation-id="cross">Item</span></li>
+        `);
+        const manager = new NoteManager(
+            fakeAnnotationManager([
+                makeAnno({ id: 'cross', text: 'Heading\nBody\nItem', note: 'one target' }),
+            ]),
+            root,
+        );
+
+        manager.render();
+        expect(document.querySelectorAll('.note-card-margin[data-annotation-id="cross"]')).toHaveLength(1);
+
+        manager.setActive('cross');
+        const fragments = root.querySelectorAll<HTMLElement>(
+            '.has-note[data-annotation-id="cross"]',
+        );
+        expect(fragments).toHaveLength(3);
+        fragments.forEach(fragment => {
+            expect(fragment.classList.contains('highlight-active')).toBe(true);
+        });
+    });
+
     it('escapes note HTML so attacker-controlled content cannot inject markup', () => {
         const root = setupBody(`<p><span class="has-note" data-annotation-id="x">y</span></p>`);
         const annos = [makeAnno({ id: 'x', note: '<img src=x onerror=alert(1)>' })];

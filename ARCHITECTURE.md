@@ -76,6 +76,9 @@ Markon 的用户数据**独立于进程**,持久在 `~/.markon/`:
   **文件路径是否不变**,与版本号、与 URL 是否变化**都无关**。
 - **库位置**:默认 `~/.markon/annotation.sqlite`,可由 `MARKON_SQLITE_PATH` 环境变量或
   settings 的 `db_path` 覆盖(`server.rs`)。
+- **批注内容兼容**:`annotations.data` 是完整 Annotation JSON。锚点新增能力只能以可选字段扩展;
+  当前 `anchor.version = 2` 追加有序 `fragments`,同时保留原 `position / exact / prefix /
+  suffix` 平面锚点。读取端必须继续接受没有 `version / fragments` 的历史批注,不得要求数据库迁移。
 - **建表用 `IF NOT EXISTS`**,升级不重建、不清空。
 - **红线**:不得更改 `file_path` 的语义 / 规范化方式;不得 DROP 或重命名既有列;不得变更
   默认库路径。schema 演进**只能**加表,或加 nullable / 带默认值的新列。

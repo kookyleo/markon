@@ -55,15 +55,13 @@ function itemAt<T>(items: ArrayLike<T>, index: number): T {
 }
 
 describe('PopoverManager', () => {
-    let logSpy: ReturnType<typeof vi.spyOn>;
-
     beforeEach(() => {
-        logSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
+        vi.spyOn(console, 'log').mockImplementation(() => {});
         localStorage.clear();
     });
 
     afterEach(() => {
-        logSpy.mockRestore();
+        vi.restoreAllMocks();
         document.body.innerHTML = '';
         localStorage.clear();
     });
@@ -176,6 +174,86 @@ describe('PopoverManager', () => {
         expect(popover?.querySelector('[data-action="chat"]')).not.toBeNull();
     });
 
+    it('preserves a cross-block selection and offers annotation actions', () => {
+        const { body, textNode } = setupBody();
+        const second = document.createElement('p');
+        second.textContent = 'Second paragraph.';
+        body.appendChild(second);
+        const secondText = second.firstChild!;
+        const range = document.createRange();
+        range.setStart(textNode, 6);
+        range.setEnd(secondText, 6);
+        range.getBoundingClientRect = () =>
+            ({
+                left: 100,
+                right: 300,
+                top: 200,
+                bottom: 300,
+                width: 200,
+                height: 100,
+                x: 100,
+                y: 200,
+                toJSON() {
+                    return this;
+                },
+            });
+        const removeAllRanges = vi.fn();
+        const addRange = vi.fn();
+        vi.spyOn(window, 'getSelection').mockReturnValue({
+            rangeCount: 1,
+            toString: () => range.toString(),
+            getRangeAt: () => range,
+            removeAllRanges,
+            addRange,
+        } as unknown as Selection);
+
+        const manager = new PopoverManager(body);
+        const event = new MouseEvent('mouseup', { bubbles: true });
+        Object.defineProperty(event, 'target', { value: second, configurable: true });
+        manager.handleSelection(event);
+
+        expect(manager.isVisible()).toBe(true);
+        expect(manager.getCurrentSelection()?.toString()).toBe(range.toString());
+        expect(document.querySelector('[data-action="highlight-yellow"]')).not.toBeNull();
+        expect(document.querySelector('[data-action="add-note"]')).not.toBeNull();
+        expect(removeAllRanges).not.toHaveBeenCalled();
+        expect(addRange).not.toHaveBeenCalled();
+    });
+
+    it('keeps native cross-scope selection while suppressing Markon actions', () => {
+        const { body, textNode, paragraph } = setupBody();
+        const second = document.createElement('p');
+        second.textContent = 'Second paragraph.';
+        body.appendChild(second);
+        const range = document.createRange();
+        range.setStart(textNode, 0);
+        range.setEnd(second.firstChild!, 6);
+        const removeAllRanges = vi.fn();
+        const addRange = vi.fn();
+        vi.spyOn(window, 'getSelection').mockReturnValue({
+            rangeCount: 1,
+            toString: () => range.toString(),
+            getRangeAt: () => range,
+            removeAllRanges,
+            addRange,
+        } as unknown as Selection);
+        const manager = new PopoverManager(body, {
+            selectionScope: (node) =>
+                (node.nodeType === Node.ELEMENT_NODE ? node as Element : node.parentElement)
+                    ?.closest('p') ?? null,
+        });
+        manager.hide();
+
+        const event = new MouseEvent('mouseup', { bubbles: true });
+        Object.defineProperty(event, 'target', { value: paragraph, configurable: true });
+        manager.handleSelection(event);
+
+        expect(manager.isVisible()).toBe(false);
+        expect(removeAllRanges).not.toHaveBeenCalled();
+        expect(addRange).not.toHaveBeenCalled();
+        expect(range.toString()).toContain('Second');
+    });
+
     it('saved offset from localStorage is applied on show()', () => {
         localStorage.setItem('markon-popover-offset', JSON.stringify({ dx: 30, dy: 40 }));
         const { body, textNode } = setupBody();
@@ -232,9 +310,11 @@ describe('PopoverManager', () => {
 
         const range = rangeOver(oldText, 12);
         const selection = {
+            rangeCount: 1,
             toString: () => 'deleted old',
             getRangeAt: () => range,
             removeAllRanges: () => {},
+            addRange: () => {},
         } as unknown as Selection;
         vi.spyOn(window, 'getSelection').mockReturnValue(selection);
 
@@ -243,6 +323,42 @@ describe('PopoverManager', () => {
         m.handleSelection(ev);
         expect(showSpy).not.toHaveBeenCalled();
         expect(m.isVisible()).toBe(false);
+    });
+
+    it('keeps a native selection that crosses rejected diff content', () => {
+        const { body, textNode, paragraph } = setupBody();
+        const oldParagraph = document.createElement('p');
+        oldParagraph.className = 'old-side';
+        oldParagraph.textContent = 'Deleted text';
+        const currentParagraph = document.createElement('p');
+        currentParagraph.textContent = 'Current tail';
+        body.append(oldParagraph, currentParagraph);
+
+        const range = document.createRange();
+        range.setStart(textNode, 6);
+        range.setEnd(currentParagraph.firstChild!, 7);
+        const removeAllRanges = vi.fn();
+        const addRange = vi.fn();
+        vi.spyOn(window, 'getSelection').mockReturnValue({
+            rangeCount: 1,
+            toString: () => range.toString(),
+            getRangeAt: () => range,
+            removeAllRanges,
+            addRange,
+        } as unknown as Selection);
+
+        const manager = new PopoverManager(body, {
+            reject: (node) => !!node.parentElement?.closest('.old-side'),
+        });
+        manager.hide();
+        const event = new MouseEvent('mouseup', { bubbles: true });
+        Object.defineProperty(event, 'target', { value: paragraph, configurable: true });
+        manager.handleSelection(event);
+
+        expect(manager.isVisible()).toBe(false);
+        expect(range.toString()).toContain('Deleted text');
+        expect(removeAllRanges).not.toHaveBeenCalled();
+        expect(addRange).not.toHaveBeenCalled();
     });
 
     it('handleHighlightClick ignores a detached (re-rendered-away) element', () => {

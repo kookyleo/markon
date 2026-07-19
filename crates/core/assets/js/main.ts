@@ -618,7 +618,7 @@ export class MarkonApp {
             return;
         } else if (action === 'edit') {
             if (!selection) return;
-            const selectedText = selection.toString().trim();
+            const selectedText = annotationManager.textForRange(selection).trim();
             if (!this.#editorManager) {
                 this.#editorManager = new EditorManager(this.#filePath);
                 window.editorManager = this.#editorManager;
@@ -627,7 +627,7 @@ export class MarkonApp {
             return; // Don't clear selection until editor opens
         } else if (action === 'chat') {
             if (!selection) return;
-            const selectedText = selection.toString().trim();
+            const selectedText = annotationManager.textForRange(selection).trim();
             if (window.chatManager && selectedText) {
                 window.chatManager.openWithSelection({
                     text: selectedText,
@@ -908,12 +908,8 @@ export class MarkonApp {
                 if (annotation) {
                     document.querySelector('.note-popup')?.remove();
 
-                    const highlightElement = this.#markdownBody?.querySelector<HTMLElement>(
-                        `[data-annotation-id="${annotationId}"]`,
-                    );
-                    if (highlightElement) {
-                        const range = document.createRange();
-                        range.selectNodeContents(highlightElement);
+                    const range = this.#annotationManager.rangeForAnnotation(annotation);
+                    if (range) {
                         this.#showNoteInputModal(range, annotation);
                     }
                 }

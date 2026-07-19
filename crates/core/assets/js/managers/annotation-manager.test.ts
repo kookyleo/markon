@@ -98,6 +98,8 @@ describe('AnnotationManager', () => {
         expect(anno.anchor.exact).toBe('hello');
         expect(anno.anchor.position).toBe(0);
         expect(anno.anchor.suffix.startsWith(' world')).toBe(true);
+        expect(anno.anchor.version).toBe(2);
+        expect(anno.anchor.fragments?.map(fragment => fragment.exact)).toEqual(['hello']);
         expect(anno.text).toBe('hello');
         expect(anno.note).toBeNull();
         expect(typeof anno.createdAt).toBe('number');
@@ -202,6 +204,30 @@ describe('AnnotationManager', () => {
         const wrap = article.querySelector<HTMLElement>('[data-annotation-id]');
         expect(wrap?.classList.contains('has-note')).toBe(true);
         expect(wrap?.dataset['note']).toBe('a note');
+    });
+
+    it('keeps legacy flat anchors readable without a migration', () => {
+        const article = setupArticle('<p>legacy annotation</p>');
+        const mgr = new AnnotationManager(makeStorage(), article);
+        const legacy: Annotation = {
+            id: 'anno-legacy',
+            type: 'highlight-orange',
+            tagName: 'span',
+            anchor: {
+                position: 0,
+                exact: 'legacy',
+                prefix: '',
+                suffix: ' annotation',
+            },
+            text: 'legacy',
+            note: null,
+            createdAt: 1,
+        };
+
+        mgr.applyToDOM([legacy]);
+        expect(article.querySelector('[data-annotation-id="anno-legacy"]')?.textContent).toBe(
+            'legacy',
+        );
     });
 
     it('delete() removes from internal list, calls storage, and emits a change', async () => {
@@ -324,6 +350,115 @@ describe('AnnotationManager', () => {
         // The middle text Text node `+` should still be passed through (in
         // wrapper form now). Reference kept for clarity.
         void middle;
+    });
+
+    it('creates one annotation across heading, paragraph, and list items', () => {
+        const article = setupArticle(
+            '<h2>Heading<span class="section-actions">Print</span></h2>' +
+            '<p>Body text</p><ul><li>One</li><li>Two</li></ul>',
+        );
+        const mgr = new AnnotationManager(makeStorage(), article);
+        const heading = article.querySelector('h2')!.firstChild!;
+        const items = article.querySelectorAll('li');
+        const lastItem = itemAt(items, 1).firstChild!;
+        const range = document.createRange();
+        range.setStart(heading, 0);
+        range.setEnd(lastItem, lastItem.textContent?.length ?? 0);
+
+        const anno = mgr.createAnnotation(range, 'has-note', 'span', 'covers a section');
+        expect(anno.anchor.fragments?.map(fragment => fragment.exact)).toEqual([
+            'Heading',
+            'Body text',
+            'One',
+            'Two',
+        ]);
+        expect(anno.text).toBe('Heading\nBody text\nOne\nTwo');
+        expect(mgr.textForRange(range)).toBe('Heading\nBody text\nOne\nTwo');
+
+        mgr.applyToDOM([anno]);
+        const wrappers = article.querySelectorAll<HTMLElement>(
+            `[data-annotation-id="${anno.id}"]`,
+        );
+        expect(Array.from(wrappers).map(wrapper => wrapper.textContent)).toEqual([
+            'Heading',
+            'Body text',
+            'One',
+            'Two',
+        ]);
+        expect(article.querySelector('.section-actions [data-annotation-id]')).toBeNull();
+        expect(article.textContent).toBe('HeadingPrintBody textOneTwo');
+
+        const restored = mgr.rangeForAnnotation(anno);
+        expect(restored?.toString()).toBe('HeadingPrintBody textOneTwo');
+        expect(restored?.startContainer.textContent).toBe('Heading');
+        expect(restored?.endContainer.textContent).toBe('Two');
+
+        expect(mgr.formatAnnotation(anno)).toBe(
+            '> Heading\n> Body text\n> One\n> Two\n\ncovers a section\n',
+        );
+
+        mgr.removeFromDOM(anno.id);
+        expect(article.querySelectorAll('[data-annotation-id]')).toHaveLength(0);
+        expect(article.textContent).toBe('HeadingPrintBody textOneTwo');
+    });
+
+    it('creates one ordered annotation across table cells', () => {
+        const article = setupArticle(
+            '<table><thead><tr><th>Name</th><th>Status</th></tr></thead>' +
+            '<tbody><tr><td>Alpha</td><td>Ready</td></tr></tbody></table>',
+        );
+        const mgr = new AnnotationManager(makeStorage(), article);
+        const first = article.querySelector('th')!.firstChild!;
+        const last = article.querySelectorAll('td')[1]!.firstChild!;
+        const range = document.createRange();
+        range.setStart(first, 0);
+        range.setEnd(last, last.textContent?.length ?? 0);
+
+        const annotation = mgr.createAnnotation(range, 'highlight-green', 'span');
+        expect(annotation.anchor.fragments?.map(fragment => [
+            fragment.blockTag,
+            fragment.exact,
+        ])).toEqual([
+            ['TH', 'Name'],
+            ['TH', 'Status'],
+            ['TD', 'Alpha'],
+            ['TD', 'Ready'],
+        ]);
+        expect(annotation.text).toBe('Name\nStatus\nAlpha\nReady');
+
+        mgr.applyToDOM([annotation]);
+        expect(
+            Array.from(
+                article.querySelectorAll<HTMLElement>(
+                    `[data-annotation-id="${annotation.id}"]`,
+                ),
+            ).map(element => element.textContent),
+        ).toEqual(['Name', 'Status', 'Alpha', 'Ready']);
+    });
+
+    it('does not absorb content inserted between anchored fragments', () => {
+        const article = setupArticle('<p>Alpha</p><p>Omega</p>');
+        const mgr = new AnnotationManager(makeStorage(), article);
+        const paragraphs = article.querySelectorAll('p');
+        const range = document.createRange();
+        range.setStart(itemAt(paragraphs, 0).firstChild!, 0);
+        range.setEnd(itemAt(paragraphs, 1).firstChild!, 5);
+        const annotation = mgr.createAnnotation(range, 'highlight-yellow', 'span');
+
+        const inserted = document.createElement('p');
+        inserted.textContent = 'Inserted later';
+        itemAt(paragraphs, 1).before(inserted);
+        mgr.applyToDOM([annotation]);
+
+        expect(
+            Array.from(
+                article.querySelectorAll<HTMLElement>(
+                    `[data-annotation-id="${annotation.id}"]`,
+                ),
+            ).map(element => element.textContent),
+        ).toEqual(['Alpha', 'Omega']);
+        expect(inserted.querySelector('[data-annotation-id]')).toBeNull();
+        expect(inserted.textContent).toBe('Inserted later');
     });
 
     it('removeFromDOM restores the original DOM when the range crossed <code>', () => {

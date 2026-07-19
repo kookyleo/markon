@@ -61,6 +61,12 @@ class DiffAnnotationCoordinator {
             enableChat: false,
             enableNote: true,
             reject: NEW_SIDE_REJECT,
+            selectionScope: (node) => {
+                const section = sectionForNode(node);
+                if (!section) return null;
+                const root = newSideRootFor(section);
+                return root.contains(node) ? root : null;
+            },
         });
         this.#popover.onAction((action, data) => {
             void this.#handleAction(action, data);
@@ -352,9 +358,9 @@ class DiffAnnotationCoordinator {
                 const el = this.#pane.querySelector<HTMLElement>(`[data-annotation-id="${id}"]`);
                 const section = el ? el.closest<HTMLElement>('.md-diff-file-section[data-abs-path]') : null;
                 if (el && section) {
-                    const range = document.createRange();
-                    range.selectNodeContents(el);
-                    this.#showNoteInputModal(ctx, section, range, anno);
+                    ctx.annotationManager.setRoot(newSideRootFor(section));
+                    const range = ctx.annotationManager.rangeForAnnotation(anno);
+                    if (range) this.#showNoteInputModal(ctx, section, range, anno);
                 }
             }
             e.stopPropagation();

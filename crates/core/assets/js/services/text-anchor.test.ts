@@ -1,5 +1,9 @@
 import { describe, it, expect, afterEach } from 'vitest';
 import { TextAnchoring } from './text-anchor';
+import {
+    ANNOTATION_CHROME_REJECT,
+    annotationBlockFor,
+} from './annotation-target';
 
 function makeRoot(html: string): HTMLElement {
     const d = document.createElement('div');
@@ -66,5 +70,111 @@ describe('TextAnchoring', () => {
         const a = TextAnchoring.describe(root, rangeAt(root, 6, 16));
         root.innerHTML = '<p>Alpha delta.</p>'; // "beta gamma " removed
         expect(TextAnchoring.anchor(root, a)).toBeNull();
+    });
+
+    it('captures and re-anchors one ordered fragment per structural block', () => {
+        const root = makeRoot(
+            '<h2>Heading</h2><p>First <em>body</em>.</p><ul><li>One</li><li>Two</li></ul>',
+        );
+        const range = rangeAt(root, 0, root.textContent?.length ?? 0);
+        const legacy = TextAnchoring.describe(root, range);
+        const anchor = {
+            ...legacy,
+            version: 2 as const,
+            fragments: TextAnchoring.describeFragments(
+                root,
+                range,
+                undefined,
+                (node) => annotationBlockFor(node, root),
+            ),
+        };
+
+        expect(anchor.fragments.map(fragment => fragment.exact)).toEqual([
+            'Heading',
+            'First body.',
+            'One',
+            'Two',
+        ]);
+        expect(anchor.fragments.map(fragment => fragment.blockTag)).toEqual([
+            'H2',
+            'P',
+            'LI',
+            'LI',
+        ]);
+        expect(TextAnchoring.quote(anchor)).toBe('Heading\nFirst body.\nOne\nTwo');
+
+        root.innerHTML =
+            '<h2><span>Heading</span></h2><p>First <strong>body</strong>.</p>' +
+            '<ul><li><em>One</em></li><li>Two</li></ul>';
+        const back = TextAnchoring.anchor(root, anchor);
+        expect(back?.toString()).toBe('HeadingFirst body.OneTwo');
+        expect(back?.startContainer.textContent).toBe('Heading');
+        expect(back?.endContainer.textContent).toBe('Two');
+    });
+
+    it('omits Markon chrome from cross-block fragments and displayed quote', () => {
+        const root = makeRoot(
+            '<h2>Heading<span class="section-actions">Print</span></h2><p>Body</p>',
+        );
+        const range = rangeAt(root, 0, root.textContent?.length ?? 0);
+        const fragments = TextAnchoring.describeFragments(
+            root,
+            range,
+            ANNOTATION_CHROME_REJECT,
+            (node) => annotationBlockFor(node, root),
+        );
+        const anchor = {
+            ...TextAnchoring.describe(root, range),
+            version: 2 as const,
+            fragments,
+        };
+
+        expect(fragments.map(fragment => fragment.exact)).toEqual(['Heading', 'Body']);
+        expect(TextAnchoring.quote(anchor)).toBe('Heading\nBody');
+    });
+
+    it('treats a missing middle fragment as an orphaned annotation', () => {
+        const root = makeRoot('<p>Alpha</p><p>Beta</p><p>Gamma</p>');
+        const range = rangeAt(root, 0, root.textContent?.length ?? 0);
+        const anchor = {
+            ...TextAnchoring.describe(root, range),
+            version: 2 as const,
+            fragments: TextAnchoring.describeFragments(
+                root,
+                range,
+                undefined,
+                (node) => annotationBlockFor(node, root),
+            ),
+        };
+
+        root.innerHTML = '<p>Alpha</p><p>Changed</p><p>Gamma</p>';
+        expect(TextAnchoring.anchor(root, anchor)).toBeNull();
+    });
+
+    it('matches repeated fragments as one ordered sequence', () => {
+        const root = makeRoot('<ul><li>TODO</li><li>TODO</li><li>Done</li></ul>');
+        const range = rangeAt(root, 0, root.textContent?.length ?? 0);
+        const fragments = TextAnchoring.describeFragments(
+            root,
+            range,
+            undefined,
+            (node) => annotationBlockFor(node, root),
+        ).map(fragment => ({ ...fragment, prefix: '', suffix: '', position: 0 }));
+        const anchor = {
+            ...TextAnchoring.describe(root, range),
+            version: 2 as const,
+            fragments,
+        };
+
+        // With position/context disabled, independent lookup would resolve both
+        // TODO fragments to the first occurrence. Sequence matching must use
+        // two distinct, ordered occurrences.
+        const back = TextAnchoring.anchor(root, anchor, undefined, {
+            ignorePosition: true,
+            blockFor: (node) => annotationBlockFor(node, root),
+        });
+        expect(back?.toString()).toBe('TODOTODODone');
+        expect(back?.startContainer).toBe(root.querySelectorAll('li')[0]?.firstChild);
+        expect(back?.endContainer).toBe(root.querySelectorAll('li')[2]?.firstChild);
     });
 });

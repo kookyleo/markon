@@ -13,6 +13,11 @@
 import { Ids, Logger } from '../core/utils';
 import { Identity, type Author } from '../core/identity';
 import { TextAnchoring, type TextAnchor, type RejectFn } from '../services/text-anchor';
+import {
+    ANNOTATION_CHROME_REJECT,
+    annotationBlockFor,
+    combineRejects,
+} from '../services/annotation-target';
 
 /**
  * Annotation type union, matching the values produced by `main.js`:
@@ -62,12 +67,12 @@ export interface Annotation {
     type: AnnotationType;
     /** HTML tag used to wrap the range. */
     tagName: AnnotationTagName;
-    /** Content anchor — re-finds the quoted text in the rendered body (exact
-     *  quote + surrounding context + position hint). Replaces DOM/XPath
-     *  anchoring; survives re-renders and moderate edits. */
+    /** Content anchor — re-finds the quoted text in the rendered body. Version
+     *  2 carries ordered structural fragments while retaining the original flat
+     *  selector for backward compatibility. */
     anchor: TextAnchor;
-    /** Original selected text. Mirrors `anchor.exact`; kept as the canonical
-     *  display/export field consumed widely downstream. */
+    /** Original selected text for display/export. Cross-block selections insert
+     *  line breaks between structural fragments. */
     text: string;
     /** Optional attached note body. `null` when absent. */
     note: string | null;
@@ -111,10 +116,11 @@ export class AnnotationManager {
     #storage: AnnotationStorage;
     #markdownBody: HTMLElement;
     #onChange: AnnotationChangeCallback | null = null;
-    /** Optional text-node predicate scoping anchoring to a subset of the root
-     *  (the new side of a rendered diff). When set it is threaded through every
-     *  describe/anchor and into the wrap walker; absent → whole-root behavior. */
-    #reject: RejectFn | undefined;
+    /** Optional surface boundary, such as the new side of a rendered diff. */
+    #surfaceReject: RejectFn | undefined;
+    /** New anchors additionally omit Markon-injected controls from their text
+     *  stream. Legacy anchors keep their original stream for compatibility. */
+    #contentReject: RejectFn;
 
     /**
      * @param storage      annotation persistence strategy
@@ -127,7 +133,8 @@ export class AnnotationManager {
     constructor(storage: AnnotationStorage, markdownBody: HTMLElement, reject?: RejectFn) {
         this.#storage = storage;
         this.#markdownBody = markdownBody;
-        this.#reject = reject;
+        this.#surfaceReject = reject;
+        this.#contentReject = combineRejects(ANNOTATION_CHROME_REJECT, reject);
     }
 
     /** Rebind the root after a DOM rebuild (the diff view rebuilds the whole
@@ -435,22 +442,87 @@ export class AnnotationManager {
         tagName: AnnotationTagName,
         note: string | null = null,
     ): Annotation {
-        const anchor = TextAnchoring.describe(this.#markdownBody, range, this.#reject);
+        const anchor = this.#anchorForRange(range);
 
         return {
             id: `anno-${Ids.uuid()}`,
             type,
             tagName,
             anchor,
-            text: anchor.exact,
+            text: TextAnchoring.quote(anchor),
             note,
             createdAt: Date.now(),
             author: Identity.author(),
         };
     }
 
+    /** Clean, structure-aware text for Edit/Chat and other range consumers.
+     *  Markon-injected controls are omitted and block boundaries become line
+     *  breaks, matching the annotation's persisted display text. */
+    textForRange(range: Range): string {
+        return TextAnchoring.quote(this.#anchorForRange(range));
+    }
+
+    #anchorForRange(range: Range): TextAnchor {
+        // Preserve the original flat text selector as a compatibility fallback
+        // for older clients, then add the clean per-block selectors used by
+        // current clients. No database migration is needed: `anchor` is stored
+        // inside the existing annotation JSON blob.
+        return {
+            ...TextAnchoring.describe(this.#markdownBody, range, this.#surfaceReject),
+            version: 2,
+            fragments: this.#describeFragments(range),
+        };
+    }
+
+    #describeFragments(range: Range) {
+        return TextAnchoring.describeFragments(
+            this.#markdownBody,
+            range,
+            this.#contentReject,
+            (node) => annotationBlockFor(node, this.#markdownBody),
+        );
+    }
+
+    #rejectForAnnotation(anno: Annotation): RejectFn | undefined {
+        return anno.anchor.version === 2 && anno.anchor.fragments?.length
+            ? this.#contentReject
+            : this.#surfaceReject;
+    }
+
+    #anchorOptions() {
+        return {
+            ignorePosition: !!this.#surfaceReject,
+            blockFor: (node: Node) => annotationBlockFor(node, this.#markdownBody),
+        };
+    }
+
     onChange(callback: AnnotationChangeCallback): void {
         this.#onChange = callback;
+    }
+
+    /** Resolve every independently anchored structural fragment. */
+    rangesForAnnotation(anno: Annotation): Range[] {
+        return TextAnchoring.ranges(
+            this.#markdownBody,
+            anno.anchor,
+            this.#rejectForAnnotation(anno),
+            this.#anchorOptions(),
+        );
+    }
+
+    /** Resolve an annotation's complete live range, including all structural
+     *  fragments. Used for editing a cross-block note from any one of its
+     *  wrappers; DOM application uses the independent ranges above. */
+    rangeForAnnotation(anno: Annotation): Range | null {
+        const ranges = this.rangesForAnnotation(anno);
+        const first = ranges[0];
+        const last = ranges.at(-1);
+        if (!first || !last) return null;
+        const combined = document.createRange();
+        combined.setStart(first.startContainer, first.startOffset);
+        combined.setEnd(last.endContainer, last.endOffset);
+        return combined;
     }
 
     #applyAnnotation(anno: Annotation): void {
@@ -467,13 +539,9 @@ export class AnnotationManager {
         // In scoped (diff new-side) mode the absolute char offset of a quote
         // differs from the full-document position captured elsewhere, so ignore
         // the position tiebreak — context alone disambiguates across views.
-        const range = TextAnchoring.anchor(
-            this.#markdownBody,
-            anno.anchor,
-            this.#reject,
-            this.#reject ? { ignorePosition: true } : undefined,
-        );
-        if (!range) {
+        const reject = this.#rejectForAnnotation(anno);
+        const ranges = this.rangesForAnnotation(anno);
+        if (ranges.length === 0) {
             Logger.warn('AnnotationManager', `Anchor text not found (orphaned): ${anno.id}`);
             return;
         }
@@ -483,7 +551,11 @@ export class AnnotationManager {
             // calling extractContents() + insertNode(), which would slice
             // inline elements (e.g. <code>) at the range boundary and leave
             // empty shells behind after unwrap. See #wrapRange.
-            this.#wrapRange(range, anno);
+            // Apply from the end so splitText/wrapper insertion never disturbs
+            // a later fragment's yet-to-be-used boundaries.
+            for (const range of ranges.reverse()) {
+                this.#wrapRange(range, anno, reject);
+            }
         } catch (error) {
             Logger.error('AnnotationManager', `Failed to apply annotation ${anno.id}:`, error);
         }
@@ -500,7 +572,7 @@ export class AnnotationManager {
      * fine: `removeFromDOM` / `clearDOM` already query by id and unwrap
      * every match.
      */
-    #wrapRange(range: Range, anno: Annotation): void {
+    #wrapRange(range: Range, anno: Annotation, reject?: RejectFn): void {
         // Snapshot endpoints up front: splitText below mutates the tree, and
         // we don't want `range.startContainer` shifting under us.
         const startContainer = range.startContainer;
@@ -520,7 +592,6 @@ export class AnnotationManager {
         // anchor stream skipped), and wrapping it would pull deleted text into
         // the highlight and corrupt the tree on unwrap. Skipping it here keeps
         // the wrap confined to the new side.
-        const reject = this.#reject;
         const targets: { node: Text; start: number; end: number }[] = [];
         const walker = document.createTreeWalker(
             root,

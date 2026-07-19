@@ -9,8 +9,11 @@
 
 import { CONFIG, i18n } from '../core/config';
 import { Logger } from '../core/utils';
-import { DOM } from '../services/dom';
 import { Text } from '../services/text';
+import {
+    ANNOTATION_CHROME_REJECT,
+    rangeIntersectsRejected,
+} from '../services/annotation-target';
 import { DraggableManager } from '../components/draggable';
 import { Position } from '../services/position';
 
@@ -49,11 +52,15 @@ export interface PopoverManagerOptions {
      *  document view). The rendered diff keeps it on; a future read-only surface
      *  can pass `false` to drop note creation entirely. */
     enableNote?: boolean;
-    /** Optional predicate marking a text/element node as non-annotatable chrome
-     *  (e.g. `NEW_SIDE_REJECT` on the diff: old/deleted text). When a selection
-     *  begins inside a rejected node the toolbar is suppressed — the old side is
-     *  not a live file, so it must never be annotated. */
+    /** Optional predicate marking a text/element node as non-annotatable content
+     *  (e.g. `NEW_SIDE_REJECT` on the diff: old/deleted text). When any selected
+     *  text is rejected, the toolbar is suppressed without changing the native
+     *  browser selection. */
     reject?: (node: Node) => boolean;
+    /** Resolve the annotation root a node belongs to. Both range endpoints must
+     *  resolve to the same root. The normal document defaults to markdownBody;
+     *  the rendered diff supplies one root per file. */
+    selectionScope?: (node: Node) => Node | null;
 }
 
 interface SavedOffset {
@@ -80,6 +87,7 @@ export class PopoverManager {
     #enableChat: boolean;
     #enableNote: boolean;
     #reject: ((node: Node) => boolean) | undefined;
+    #selectionScope: ((node: Node) => Node | null) | undefined;
 
     constructor(markdownBody: HTMLElement, options: PopoverManagerOptions = {}) {
         this.#markdownBody = markdownBody;
@@ -87,6 +95,7 @@ export class PopoverManager {
         this.#enableChat = options.enableChat ?? false;
         this.#enableNote = options.enableNote ?? true;
         this.#reject = options.reject;
+        this.#selectionScope = options.selectionScope;
         this.#createElement();
     }
 
@@ -157,7 +166,7 @@ export class PopoverManager {
         }
 
         const selection = window.getSelection();
-        if (!selection) return;
+        if (!selection || selection.rangeCount === 0) return;
         const selectedText = selection.toString().trim();
 
         // Nothing is selected — hide the popover.
@@ -168,81 +177,60 @@ export class PopoverManager {
             return;
         }
 
-        // Confirm the selection lives inside the markdown body.
         const range = selection.getRangeAt(0);
-        const container = range.commonAncestorContainer;
-        const element: Element | null =
-            container.nodeType === 3 ? container.parentElement : (container as Element);
+        const startElement =
+            range.startContainer.nodeType === Node.ELEMENT_NODE
+                ? (range.startContainer as Element)
+                : range.startContainer.parentElement;
+        const endElement =
+            range.endContainer.nodeType === Node.ELEMENT_NODE
+                ? (range.endContainer as Element)
+                : range.endContainer.parentElement;
 
-        if (!element || !this.#markdownBody.contains(element)) {
-            return;
-        }
-
-        // Skip floating UI elements.
-        if (this.#shouldSkipElement(element)) {
-            return;
-        }
-
-        // Old/deleted (non-annotatable) side of the diff — hide and bail. The
-        // start node is the disambiguator: a quote that begins in deleted text
-        // must never become an annotation.
-        if (this.#isRejected(range.startContainer)) {
+        // Both endpoints must be real document content. Invalid app actions
+        // never rewrite or collapse the browser selection; native copy remains
+        // available.
+        if (
+            !startElement ||
+            !endElement ||
+            !this.#markdownBody.contains(range.startContainer) ||
+            !this.#markdownBody.contains(range.endContainer)
+        ) {
             this.hide();
             return;
         }
 
-        // Detect a selection that spans multiple block-level elements.
-        if (this.#spansMultipleBlocks(range)) {
-            Logger.log('PopoverManager', 'Selection spans multiple blocks, trimming to first block');
-            const trimmed = this.#trimToFirstBlock(range);
-            if (trimmed) {
-                // Bail out when the trimmed range has no usable text content.
-                const trimmedText = trimmed.toString().trim();
-                if (trimmedText.length === 0) {
-                    Logger.log('PopoverManager', 'Trimmed selection has no text content, hiding');
-                    this.hide();
-                    return;
-                }
-
-                // Re-check whether the trimmed range starts inside a UI element.
-                // We inspect the range's start node rather than its commonAncestorContainer.
-                const startContainer = trimmed.startContainer;
-                const startElement: Element | null =
-                    startContainer.nodeType === 3 ? startContainer.parentElement : (startContainer as Element);
-                if (!startElement) {
-                    this.hide();
-                    return;
-                }
-                if (this.#shouldSkipElement(startElement)) {
-                    Logger.log('PopoverManager', 'Trimmed selection starts in UI element, hiding');
-                    this.hide();
-                    return;
-                }
-                if (this.#isRejected(trimmed.startContainer)) {
-                    Logger.log('PopoverManager', 'Trimmed selection starts in non-annotatable side, hiding');
-                    this.hide();
-                    return;
-                }
-
-                selection.removeAllRanges();
-                selection.addRange(trimmed);
-
-                // Check whether the trimmed range falls inside an existing highlight.
-                const isHighlightedTrimmed = startElement.closest(CONFIG.SELECTORS.HIGHLIGHT_CLASSES);
-                this.show(trimmed, isHighlightedTrimmed);
-            }
+        if (
+            ANNOTATION_CHROME_REJECT(range.startContainer) ||
+            ANNOTATION_CHROME_REJECT(range.endContainer)
+        ) {
+            this.hide();
             return;
         }
 
-        // Check whether the selection already lies inside a highlight.
-        const isHighlighted = element.closest(CONFIG.SELECTORS.HIGHLIGHT_CLASSES);
+        const startScope = this.#selectionScope?.(range.startContainer) ?? this.#markdownBody;
+        const endScope = this.#selectionScope?.(range.endContainer) ?? this.#markdownBody;
+        if (!startScope || startScope !== endScope) {
+            this.hide();
+            return;
+        }
+
+        // Surface exclusions (old/deleted diff text) disable Markon actions but
+        // leave native selection/copy untouched.
+        if (rangeIntersectsRejected(range, this.#reject)) {
+            this.hide();
+            return;
+        }
+
+        const startHighlight = startElement.closest(CONFIG.SELECTORS.HIGHLIGHT_CLASSES);
+        const endHighlight = endElement.closest(CONFIG.SELECTORS.HIGHLIGHT_CLASSES);
+        const sameAnnotation =
+            startHighlight?.getAttribute('data-annotation-id') &&
+            startHighlight.getAttribute('data-annotation-id') ===
+                endHighlight?.getAttribute('data-annotation-id');
+        const isHighlighted = sameAnnotation ? startHighlight : null;
 
         this.show(range, isHighlighted);
-    }
-
-    /** True when `node` is non-annotatable chrome per the injected predicate. */
-    #isRejected(node: Node | null): boolean {
-        return !!node && !!this.#reject?.(node);
     }
 
     handleHighlightClick(highlightedElement: Element): void {
@@ -433,49 +421,6 @@ export class PopoverManager {
             (time ? `<span class="popover-author-time">${time}</span>` : '') +
             '</span><span class="popover-separator">|</span>'
         );
-    }
-
-    #shouldSkipElement(element: Element): boolean {
-        if (
-            element.closest('.selection-popover') ||
-            element.closest('.note-input-modal') ||
-            element.closest('.note-card-margin') ||
-            element.closest('.note-popup') ||
-            element.closest('.confirm-dialog') ||
-            element.closest('.md-diff-ui') ||
-            element.closest('.viewed-checkbox') ||
-            element.closest('.viewed-checkbox-label') ||
-            element.closest('.viewed-text') ||
-            element.closest('.viewed-toolbar') ||
-            element.closest('.section-toggle-btn')
-        ) {
-            return true;
-        }
-        return false;
-    }
-
-    #spansMultipleBlocks(range: Range): boolean {
-        const startBlock = DOM.getBlockParent(range.startContainer, this.#markdownBody);
-        const endBlock = DOM.getBlockParent(range.endContainer, this.#markdownBody);
-
-        return startBlock !== endBlock && !!startBlock && !!endBlock;
-    }
-
-    #trimToFirstBlock(range: Range): Range | null {
-        const startBlock = DOM.getBlockParent(range.startContainer, this.#markdownBody);
-        if (!startBlock) return null;
-
-        const lastTextNode = DOM.findLastTextNode(startBlock);
-        if (!lastTextNode) return null;
-
-        try {
-            const newRange = range.cloneRange();
-            newRange.setEnd(lastTextNode, lastTextNode.length);
-            return newRange;
-        } catch (error) {
-            Logger.warn('PopoverManager', 'Failed to trim selection:', error);
-            return null;
-        }
     }
 
     /**
