@@ -34,6 +34,10 @@ describe('ExportManager', () => {
         document.head.innerHTML = '';
         localStorage.clear();
         logSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
+        // Export tests assert buffer/content behavior, not focus. Prevent
+        // CodeMirror from scheduling its hard-coded delayed focus update after
+        // this short test has already torn down jsdom (a full-suite race).
+        vi.spyOn(HTMLElement.prototype, 'focus').mockImplementation(() => {});
         vi.stubGlobal('fetch', vi.fn(async () => ({
             ok: true,
             status: 200,
