@@ -66,7 +66,12 @@ pub(crate) struct WorkspaceFs {
     ambient_root: PathBuf,
     /// Canonical path paired with `root`. Used for all authorized I/O paths.
     canonical_root: PathBuf,
-    root: Option<Arc<Dir>>,
+    /// Capability handle for `canonical_root`. A workspace may be registered
+    /// just before an external application finishes materializing its path
+    /// (notably macOS Open-With for files staged in another app's cache). Keep
+    /// the empty state recoverable instead of turning that short race into a
+    /// permanent 404 for the lifetime of the daemon.
+    root: RwLock<Option<Arc<Dir>>>,
     scope: WorkspaceScope,
 }
 
@@ -85,8 +90,7 @@ pub(crate) enum WorkspaceFsError {
 impl WorkspaceFs {
     pub(crate) fn new(root: PathBuf, single_file: Option<&str>) -> Self {
         let ambient_root = root;
-        let canonical_root =
-            dunce::canonicalize(&ambient_root).unwrap_or_else(|_| ambient_root.clone());
+        let canonical_root = canonicalize_root_allow_missing(&ambient_root);
         let dir = Dir::open_ambient_dir(&canonical_root, ambient_authority())
             .ok()
             .map(Arc::new);
@@ -112,7 +116,7 @@ impl WorkspaceFs {
         Self {
             ambient_root,
             canonical_root,
-            root: dir,
+            root: RwLock::new(dir),
             scope,
         }
     }
@@ -125,6 +129,13 @@ impl WorkspaceFs {
     /// integrations. It is not an authorization decision.
     pub(crate) fn ambient_root(&self) -> &Path {
         &self.ambient_root
+    }
+
+    /// Canonical root captured when the workspace capability was registered.
+    /// Recovery helpers use this to ensure a path that appears later has not
+    /// been redirected somewhere else.
+    pub(crate) fn capability_root(&self) -> &Path {
+        &self.canonical_root
     }
 
     pub(crate) fn replace_assets(&self, assets: HashSet<String>) {
@@ -428,10 +439,31 @@ impl WorkspaceFs {
         WorkspaceRelPath::parse(canonical)
     }
 
-    fn root_dir(&self) -> Result<&Dir, WorkspaceFsError> {
-        self.root
-            .as_deref()
-            .ok_or_else(|| WorkspaceFsError::Io("workspace root is not open".to_string()))
+    /// Return the capability root, opening it lazily if it was unavailable
+    /// during registration. The double check avoids replacing a handle another
+    /// request installed while this request was opening the same directory.
+    fn root_dir(&self) -> Result<Arc<Dir>, WorkspaceFsError> {
+        if let Some(root) = self
+            .root
+            .read()
+            .expect("workspace root lock poisoned")
+            .clone()
+        {
+            return Ok(root);
+        }
+
+        // The path may have appeared as a symlink after registration. Never
+        // let lazy recovery silently move an existing workspace capability to
+        // a different canonical root.
+        let current_root = dunce::canonicalize(&self.ambient_root).map_err(map_io_error)?;
+        if current_root != self.canonical_root {
+            return Err(WorkspaceFsError::Denied);
+        }
+        let opened = Arc::new(
+            Dir::open_ambient_dir(&current_root, ambient_authority()).map_err(map_io_error)?,
+        );
+        let mut root = self.root.write().expect("workspace root lock poisoned");
+        Ok(root.get_or_insert_with(|| opened.clone()).clone())
     }
 
     fn content_target(
@@ -473,6 +505,33 @@ impl WorkspaceFs {
     }
 }
 
+/// Canonicalize the existing prefix of a workspace root while preserving a
+/// not-yet-materialized suffix. This matters on macOS where `/var` resolves to
+/// `/private/var`: simply falling back to the lexical path would make a valid
+/// late-created directory look like a capability retarget once it appears.
+fn canonicalize_root_allow_missing(path: &Path) -> PathBuf {
+    if let Ok(canonical) = dunce::canonicalize(path) {
+        return canonical;
+    }
+
+    let mut ancestor = path;
+    let mut missing = Vec::new();
+    while let Some(name) = ancestor.file_name() {
+        missing.push(name.to_os_string());
+        let Some(parent) = ancestor.parent() else {
+            break;
+        };
+        ancestor = parent;
+        if let Ok(mut canonical) = dunce::canonicalize(ancestor) {
+            for component in missing.iter().rev() {
+                canonical.push(component);
+            }
+            return canonical;
+        }
+    }
+    path.to_path_buf()
+}
+
 fn map_io_error(error: std::io::Error) -> WorkspaceFsError {
     match error.kind() {
         std::io::ErrorKind::NotFound => WorkspaceFsError::NotFound,
@@ -506,6 +565,48 @@ mod tests {
             Err(WorkspaceFsError::Denied)
         ));
         assert!(fs.directory_root().is_none());
+    }
+
+    #[test]
+    fn workspace_registered_before_root_exists_recovers_lazily() {
+        let temp = tempfile::TempDir::new().unwrap();
+        let root = temp.path().join("incoming-cache-entry");
+        let fs = WorkspaceFs::new(root.clone(), Some("note.md"));
+
+        assert!(matches!(
+            fs.resolve_served("note.md"),
+            Err(WorkspaceFsError::NotFound)
+        ));
+
+        std::fs::create_dir(&root).unwrap();
+        std::fs::write(root.join("note.md"), "ready").unwrap();
+        std::fs::write(root.join("sibling.md"), "private").unwrap();
+
+        assert_eq!(
+            fs.read_content_to_string("note.md").unwrap(),
+            "ready".to_string()
+        );
+        assert!(fs.resolve_served("note.md").unwrap().is_file());
+        assert!(matches!(
+            fs.resolve_served("sibling.md"),
+            Err(WorkspaceFsError::Denied)
+        ));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn lazy_root_recovery_rejects_late_symlink_retargeting() {
+        let temp = tempfile::TempDir::new().unwrap();
+        let outside = tempfile::TempDir::new().unwrap();
+        let root = temp.path().join("incoming-cache-entry");
+        let fs = WorkspaceFs::new(root.clone(), Some("note.md"));
+        std::fs::write(outside.path().join("note.md"), "outside").unwrap();
+        std::os::unix::fs::symlink(outside.path(), &root).unwrap();
+
+        assert!(matches!(
+            fs.resolve_served("note.md"),
+            Err(WorkspaceFsError::Denied)
+        ));
     }
 
     #[test]

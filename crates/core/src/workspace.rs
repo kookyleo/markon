@@ -390,8 +390,21 @@ impl WorkspaceRegistry {
         let id = hash_id(&identity, &self.salt);
         // Idempotent: same identity registered twice just updates flags on the
         // existing entry instead of spawning a second indexer thread.
-        if self.inner.read().unwrap().contains_key(&id) {
+        if let Some(entry) = self.inner.read().unwrap().get(&id).cloned() {
             self.update_flags(&id, config.flags);
+            // A temporary Open-With path may have been registered before its
+            // source application finished materializing the file. Re-opening
+            // the same identity must refresh the file-derived capability state
+            // instead of preserving the empty asset allowlist forever.
+            if let Some(name) = config.single_file.as_deref() {
+                refresh_allowed_assets(&entry, name);
+                if let Some(index) = entry.search_index.load_full() {
+                    let file = config.path.join(name);
+                    if let Err(error) = index.reconcile_files(std::slice::from_ref(&file)) {
+                        tracing::warn!(%error, "failed to refresh reopened single-file workspace");
+                    }
+                }
+            }
             self.notify_persist();
             return id;
         }
@@ -574,10 +587,12 @@ fn refresh_allowed_assets(entry: &WorkspaceEntry, file_name: &str) {
 /// callback runs once. This absorbs the duplicate/multi-stage events emitted by
 /// editors and prevents git operations from causing one search commit per path.
 ///
-/// The thread exits (dropping the watcher) when the watch cannot be established,
-/// the channel closes, or `stopped` is set (workspace removed).
+/// If the root is still being materialized, establishing the watch is retried
+/// until it appears. The thread exits (dropping the watcher) when the channel
+/// closes or `stopped` is set (workspace removed).
 fn spawn_watch_thread(
     root: PathBuf,
+    expected_root: PathBuf,
     mode: RecursiveMode,
     stopped: Arc<AtomicBool>,
     mut on_events: impl FnMut(Vec<notify::Event>) + Send + 'static,
@@ -591,8 +606,16 @@ fn spawn_watch_thread(
         }) else {
             return;
         };
-        if watcher.watch(&root, mode).is_err() {
-            return;
+        loop {
+            if stopped.load(Ordering::Relaxed) {
+                return;
+            }
+            let root_matches =
+                dunce::canonicalize(&root).is_ok_and(|current| current == expected_root);
+            if root_matches && watcher.watch(&root, mode).is_ok() {
+                break;
+            }
+            std::thread::sleep(WATCH_STOP_POLL);
         }
         // Poll with a timeout rather than a bare `recv()` so the thread wakes
         // periodically to observe `stopped` even when no filesystem events
@@ -649,9 +672,11 @@ fn spawn_watch_thread(
 /// minimum viable scope is the parent directory — non-recursive.
 fn spawn_single_file_watcher(root: PathBuf, entry: Arc<WorkspaceEntry>, file_name: String) {
     let target = root.join(&file_name);
+    let expected_root = entry.fs.capability_root().to_path_buf();
     let stopped = entry.stopped.clone();
     spawn_watch_thread(
         root.clone(),
+        expected_root,
         RecursiveMode::NonRecursive,
         stopped,
         move |events: Vec<notify::Event>| {
@@ -721,9 +746,11 @@ fn spawn_search_indexer(entry: Arc<WorkspaceEntry>) {
 }
 
 fn spawn_directory_watcher(root: PathBuf, entry: Arc<WorkspaceEntry>) {
+    let expected_root = entry.fs.capability_root().to_path_buf();
     let stopped = entry.stopped.clone();
     spawn_watch_thread(
         root.clone(),
+        expected_root,
         RecursiveMode::Recursive,
         stopped,
         move |events: Vec<notify::Event>| {
@@ -1371,6 +1398,41 @@ mod tests {
             1,
             "pinned file should be searchable"
         );
+    }
+
+    #[test]
+    fn reopening_single_file_refreshes_late_materialized_assets() {
+        let temp_dir = tempfile::TempDir::new().unwrap();
+        let root = temp_dir.path().join("incoming-cache-entry");
+        let registry = WorkspaceRegistry::new("test-salt".into());
+        let config = || WorkspaceConfig {
+            path: root.clone(),
+            flags: WorkspaceFlags::default(),
+            single_file: Some("note.md".into()),
+            collaborator_access_code_hash: String::new(),
+            ..Default::default()
+        };
+
+        let id = registry.add(config());
+        let entry = registry.get(&id).unwrap();
+        assert!(matches!(
+            entry.fs.resolve_served("note.md"),
+            Err(crate::workspace_fs::WorkspaceFsError::NotFound)
+        ));
+
+        std::fs::create_dir(&root).unwrap();
+        std::fs::write(root.join("note.md"), "![diagram](diagram.svg)").unwrap();
+        std::fs::write(root.join("diagram.svg"), "<svg/>").unwrap();
+        std::fs::write(root.join("private.md"), "private").unwrap();
+
+        assert_eq!(registry.add(config()), id);
+        assert!(entry.fs.resolve_served("note.md").is_ok());
+        assert!(entry.fs.resolve_served("diagram.svg").is_ok());
+        assert!(matches!(
+            entry.fs.resolve_served("private.md"),
+            Err(crate::workspace_fs::WorkspaceFsError::Denied)
+        ));
+        assert!(registry.remove(&id));
     }
 
     /// The search toggle must work for single-file workspaces too: turning it
