@@ -18,16 +18,150 @@ use markon_core::daemon::DaemonConfig;
 use markon_core::server::{self, ServerConfig};
 use markon_core::settings::AppSettings;
 use markon_core::workspace::WorkspaceRegistry;
+use std::io::Write;
 
-fn init_tracing() {
-    tracing_subscriber::fmt()
-        .with_env_filter(
-            tracing_subscriber::EnvFilter::try_from_default_env()
-                .unwrap_or_else(|_| tracing_subscriber::EnvFilter::new("info")),
-        )
-        .with_target(false)
-        .compact()
-        .init();
+const LOG_MAX_BYTES: u64 = 2 * 1024 * 1024;
+const LOG_BACKUPS: usize = 3;
+
+fn rotated_log_path(path: &std::path::Path, index: usize) -> PathBuf {
+    path.with_file_name(format!(
+        "{}.{}",
+        path.file_name()
+            .and_then(|name| name.to_str())
+            .unwrap_or("markond.log"),
+        index
+    ))
+}
+
+fn rotate_log(path: &std::path::Path, backups: usize) -> std::io::Result<()> {
+    for index in (1..=backups).rev() {
+        let source = if index == 1 {
+            path.to_path_buf()
+        } else {
+            rotated_log_path(path, index - 1)
+        };
+        let target = rotated_log_path(path, index);
+        if target.exists() {
+            std::fs::remove_file(&target)?;
+        }
+        if source.exists() {
+            std::fs::rename(source, target)?;
+        }
+    }
+    Ok(())
+}
+
+fn open_append_file(path: &std::path::Path) -> std::io::Result<std::fs::File> {
+    let mut options = std::fs::OpenOptions::new();
+    options.create(true).append(true);
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::OpenOptionsExt;
+        options.mode(0o600);
+    }
+    options.open(path)
+}
+
+struct RollingLogWriter {
+    path: PathBuf,
+    // `Option` lets rotation take and close the current handle before renaming
+    // it. Unix permits renaming an open file, but Windows does not.
+    file: Option<std::fs::File>,
+    bytes_written: u64,
+    max_bytes: u64,
+    backups: usize,
+}
+
+impl RollingLogWriter {
+    fn open(path: PathBuf, max_bytes: u64, backups: usize) -> std::io::Result<Self> {
+        if path.metadata().map(|meta| meta.len()).unwrap_or(0) >= max_bytes {
+            rotate_log(&path, backups)?;
+        }
+        let file = open_append_file(&path)?;
+        let bytes_written = file.metadata()?.len();
+        Ok(Self {
+            path,
+            file: Some(file),
+            bytes_written,
+            max_bytes,
+            backups,
+        })
+    }
+
+    fn rotate(&mut self) -> std::io::Result<()> {
+        if let Some(mut file) = self.file.take() {
+            file.flush()?;
+        }
+        let rotation = rotate_log(&self.path, self.backups);
+        let reopened = open_append_file(&self.path);
+        match reopened {
+            Ok(file) => {
+                self.bytes_written = file.metadata()?.len();
+                self.file = Some(file);
+                rotation
+            }
+            Err(error) => Err(error),
+        }
+    }
+
+    fn file_mut(&mut self) -> std::io::Result<&mut std::fs::File> {
+        self.file
+            .as_mut()
+            .ok_or_else(|| std::io::Error::other("rolling log file is unavailable"))
+    }
+}
+
+impl Write for RollingLogWriter {
+    fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
+        if self.bytes_written >= self.max_bytes {
+            self.rotate()?;
+        }
+        let remaining = (self.max_bytes - self.bytes_written) as usize;
+        let written = self.file_mut()?.write(&buf[..buf.len().min(remaining)])?;
+        self.bytes_written += written as u64;
+        Ok(written)
+    }
+
+    fn flush(&mut self) -> std::io::Result<()> {
+        self.file_mut()?.flush()
+    }
+}
+
+fn open_log_writer() -> std::io::Result<(PathBuf, RollingLogWriter)> {
+    let log_dir = dirs::home_dir()
+        .ok_or_else(|| std::io::Error::other("HOME directory required"))?
+        .join(".markon")
+        .join("logs");
+    std::fs::create_dir_all(&log_dir)?;
+    let path = log_dir.join("markond.log");
+    let writer = RollingLogWriter::open(path.clone(), LOG_MAX_BYTES, LOG_BACKUPS)?;
+    Ok((path, writer))
+}
+
+fn init_tracing() -> Option<PathBuf> {
+    let filter = tracing_subscriber::EnvFilter::try_from_default_env()
+        .unwrap_or_else(|_| tracing_subscriber::EnvFilter::new("info"));
+    match open_log_writer() {
+        Ok((path, writer)) => {
+            tracing_subscriber::fmt()
+                .with_env_filter(filter)
+                .with_target(false)
+                .with_ansi(false)
+                .with_writer(Mutex::new(writer))
+                .compact()
+                .init();
+            Some(path)
+        }
+        Err(error) => {
+            tracing_subscriber::fmt()
+                .with_env_filter(filter)
+                .with_target(false)
+                .compact()
+                .init();
+            eprintln!("markond: failed to open persistent log: {error}");
+            None
+        }
+    }
 }
 
 /// Minimal arg parse: the only accepted form is `--config <path>` (or
@@ -51,13 +185,18 @@ fn parse_config_path() -> Result<PathBuf, String> {
 
 #[tokio::main]
 async fn main() -> ExitCode {
-    init_tracing();
+    let log_path = init_tracing();
+    tracing::info!(
+        version = env!("CARGO_PKG_VERSION"),
+        pid = std::process::id(),
+        log = %log_path.as_deref().unwrap_or_else(|| std::path::Path::new("stderr")).display(),
+        "markond starting"
+    );
 
     let config_path = match parse_config_path() {
         Ok(p) => p,
         Err(e) => {
-            eprintln!("markond: {e}");
-            eprintln!("usage: markond --config <path>");
+            tracing::error!(error = %e, "invalid markond invocation");
             return ExitCode::FAILURE;
         }
     };
@@ -65,10 +204,7 @@ async fn main() -> ExitCode {
     let raw = match std::fs::read(&config_path) {
         Ok(bytes) => bytes,
         Err(e) => {
-            eprintln!(
-                "markond: failed to read config file {}: {e}",
-                config_path.display()
-            );
+            tracing::error!(error = %e, "failed to read daemon config");
             return ExitCode::FAILURE;
         }
     };
@@ -84,10 +220,16 @@ async fn main() -> ExitCode {
     let daemon_config: DaemonConfig = match serde_json::from_slice(&raw) {
         Ok(cfg) => cfg,
         Err(e) => {
-            eprintln!("markond: failed to parse config file: {e}");
+            tracing::error!(error = %e, "failed to parse daemon config");
             return ExitCode::FAILURE;
         }
     };
+    tracing::info!(
+        host = %daemon_config.host,
+        port = daemon_config.port,
+        workspaces = daemon_config.workspaces.len(),
+        "daemon config loaded"
+    );
 
     let mut server_config = ServerConfig::from_daemon_config(daemon_config);
 
@@ -108,8 +250,31 @@ async fn main() -> ExitCode {
     server_config.registry = Some(registry);
 
     if let Err(e) = server::start(server_config).await {
-        eprintln!("markond: {e}");
+        tracing::error!(error = %e, "markon server exited with error");
         return ExitCode::FAILURE;
     }
+    tracing::info!("markond stopped");
     ExitCode::SUCCESS
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn rolling_log_stays_bounded_and_keeps_backups() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("markond.log");
+        std::fs::write(&path, vec![b'x'; 31]).unwrap();
+        std::fs::write(rotated_log_path(&path, 1), b"older").unwrap();
+
+        let mut writer = RollingLogWriter::open(path.clone(), 32, 3).unwrap();
+        writer.write_all(b"yz").unwrap();
+        writer.flush().unwrap();
+
+        assert_eq!(std::fs::read(&path).unwrap(), b"z");
+        assert_eq!(std::fs::read(rotated_log_path(&path, 1)).unwrap().len(), 32);
+        assert_eq!(std::fs::read(rotated_log_path(&path, 2)).unwrap(), b"older");
+        assert!(!rotated_log_path(&path, LOG_BACKUPS + 1).exists());
+    }
 }

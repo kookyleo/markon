@@ -20,6 +20,7 @@ use std::collections::{HashMap, HashSet, VecDeque};
 use std::fs;
 use std::path::{Path as FsPath, PathBuf};
 use std::sync::{Arc, Mutex};
+use std::time::{Duration, Instant};
 use tera::Tera;
 use tokio::net::TcpListener;
 use tokio::sync::{broadcast, mpsc};
@@ -155,10 +156,33 @@ struct AccessRequirement {
     scope: String,
 }
 
-#[derive(Clone, Debug, Default)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum DynamicInterfaceFamily {
+    V4,
+    V6,
+}
+
+#[derive(Debug)]
+struct DynamicInterfaceHosts {
+    names: HashSet<String>,
+    refreshed_at: Instant,
+}
+
+impl Default for DynamicInterfaceHosts {
+    fn default() -> Self {
+        Self {
+            names: HashSet::new(),
+            refreshed_at: Instant::now(),
+        }
+    }
+}
+
+#[derive(Debug, Default)]
 pub(crate) struct AllowedHosts {
     names: HashSet<String>,
     secure_names: HashSet<String>,
+    dynamic_family: Option<DynamicInterfaceFamily>,
+    dynamic_interfaces: Mutex<DynamicInterfaceHosts>,
 }
 
 impl AllowedHosts {
@@ -172,13 +196,69 @@ impl AllowedHosts {
     }
 
     fn allows_header(&self, host: Option<&str>) -> bool {
-        host.and_then(normalized_authority_host)
-            .is_some_and(|host| self.names.contains(&host))
+        let Some(host) = host.and_then(normalized_authority_host) else {
+            return false;
+        };
+        if self.names.contains(&host) {
+            return true;
+        }
+        if self.dynamic_family.is_none() {
+            return false;
+        }
+
+        // Wildcard listeners survive Wi-Fi/VPN changes. Refresh the concrete
+        // interface-IP allowlist on demand so a long-lived daemon accepts its
+        // machine's new address without weakening the DNS-rebinding boundary
+        // to arbitrary hostnames. The shared cache caps interface enumeration
+        // at once per second across all HTTP requests.
+        let mut dynamic = self
+            .dynamic_interfaces
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        if dynamic.refreshed_at.elapsed() >= Duration::from_secs(1) {
+            let refreshed = self.dynamic_names(&crate::net::available_bind_hosts());
+            if refreshed != dynamic.names {
+                tracing::info!(
+                    previous = ?dynamic.names,
+                    current = ?refreshed,
+                    "local interface addresses changed"
+                );
+                dynamic.names = refreshed;
+            }
+            dynamic.refreshed_at = Instant::now();
+        }
+        dynamic.names.contains(&host)
     }
 
     fn is_secure_header(&self, host: Option<&str>) -> bool {
         host.and_then(normalized_authority_host)
             .is_some_and(|host| self.secure_names.contains(&host))
+    }
+
+    fn dynamic_names(&self, hosts: &[crate::net::BindHostOption]) -> HashSet<String> {
+        use crate::net::BindHostKind;
+
+        let Some(family) = self.dynamic_family else {
+            return HashSet::new();
+        };
+        hosts
+            .iter()
+            .filter(|host| host.kind == BindHostKind::Interface)
+            .filter(|host| match family {
+                DynamicInterfaceFamily::V4 => crate::net::host_is_ipv4(&host.address),
+                DynamicInterfaceFamily::V6 => crate::net::host_is_ipv6(&host.address),
+            })
+            .filter_map(|host| normalized_configured_host(&host.address).map(|(name, _)| name))
+            .collect()
+    }
+
+    fn replace_dynamic_interfaces(&self, hosts: &[crate::net::BindHostOption]) {
+        let mut dynamic = self
+            .dynamic_interfaces
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        dynamic.names = self.dynamic_names(hosts);
+        dynamic.refreshed_at = Instant::now();
     }
 }
 
@@ -322,7 +402,7 @@ fn normalized_configured_host(value: &str) -> Option<(String, bool)> {
 fn build_allowed_hosts(
     bind_host: &str,
     advertised_host: &str,
-    port: u16,
+    _port: u16,
     trusted_hosts: &[String],
     external_bases: &[Option<String>],
 ) -> AllowedHosts {
@@ -330,11 +410,16 @@ fn build_allowed_hosts(
     for host in ["localhost", "127.0.0.1", "::1", bind_host, advertised_host] {
         allowed.insert(host);
     }
-    // A wildcard bind is reachable through each current interface address;
-    // reuse the URL enumerator so legitimate LAN Host headers remain valid.
-    for reachable in reachable_urls(bind_host, advertised_host, port).all {
-        allowed.insert(&reachable.url);
-    }
+    allowed.dynamic_family = if crate::net::host_is_wildcard_v4(bind_host) {
+        Some(DynamicInterfaceFamily::V4)
+    } else if crate::net::host_is_wildcard_v6(bind_host) {
+        Some(DynamicInterfaceFamily::V6)
+    } else {
+        None
+    };
+    // Seed the cache immediately; subsequent requests refresh it after the TTL
+    // so wildcard listeners track Wi-Fi/VPN address changes while running.
+    allowed.replace_dynamic_interfaces(&crate::net::available_bind_hosts());
     for host in trusted_hosts {
         allowed.insert(host);
     }
@@ -798,6 +883,14 @@ pub async fn start(config: ServerConfig) -> Result<(), String> {
         collaborator_access_code_hash,
         print_collapsed_content,
     } = config;
+    let startup_started = Instant::now();
+    tracing::info!(
+        version = env!("CARGO_PKG_VERSION"),
+        bind_host = %host,
+        configured_port = port,
+        workspaces = initial_workspaces.len(),
+        "markon server initializing"
+    );
 
     // Initialize Tera template engine from embedded resources.
     let mut tera = Tera::default();
@@ -1185,16 +1278,26 @@ pub async fn start(config: ServerConfig) -> Result<(), String> {
     // one-time fragment capability. The page exchanges it without exposing the
     // nonce to the initial HTTP request, then reloads in place as administrator.
     let admin_bootstraps_for_control = admin_bootstraps.clone();
-    let admin_base = local_base.clone();
+    let admin_bind_host = host.clone();
+    let admin_advertised_host = advertised_host.clone();
+    let admin_port = addr.port();
     let admin_bootstrap_fn: crate::control::AdminBootstrapFn = Arc::new(move |redirect: &str| {
         let nonce = admin_bootstraps_for_control.issue_url(redirect);
+        let admin_base = featured_base_url(&admin_bind_host, &admin_advertised_host, admin_port);
         Ok(build_admin_bootstrap_url(&admin_base, redirect, &nonce))
     });
     let admin_bootstraps_for_code = admin_bootstraps.clone();
-    let admin_code_base = local_base.clone();
+    let admin_code_bind_host = host.clone();
+    let admin_code_advertised_host = advertised_host.clone();
+    let admin_code_port = addr.port();
     let admin_bootstrap_code_fn: crate::control::AdminBootstrapCodeFn =
         Arc::new(move |redirect: &str| {
             let code = admin_bootstraps_for_code.issue_code(redirect);
+            let admin_code_base = featured_base_url(
+                &admin_code_bind_host,
+                &admin_code_advertised_host,
+                admin_code_port,
+            );
             let url = build_workspace_url(&admin_code_base, "/_/admin");
             Ok((url, code))
         });
@@ -1228,6 +1331,7 @@ pub async fn start(config: ServerConfig) -> Result<(), String> {
             control_socket: control_socket_path.clone(),
             host: host.clone(),
             advertised_host: Some(advertised_host.clone()),
+            service_version: env!("CARGO_PKG_VERSION").to_string(),
             owner: owner_nonce.clone(),
         })
         .write()
@@ -1244,6 +1348,13 @@ pub async fn start(config: ServerConfig) -> Result<(), String> {
         }
         LockGuard { owner: owner_nonce }
     };
+    tracing::info!(
+        bind = %addr,
+        featured_url = %local_base,
+        control_socket = %control_socket_path,
+        startup_ms = startup_started.elapsed().as_millis(),
+        "markon server ready"
+    );
 
     // Helper: build a full URL from a base option string.
     let make_url = |base_option: &str, ws_path: &Option<String>| -> String {
@@ -7952,6 +8063,25 @@ mod tests {
         assert!(!allowed.allows_header(Some("md.example.com.evil")));
         assert!(allowed.is_secure_header(Some("md.example.com")));
         assert!(!allowed.is_secure_header(Some("notes.local")));
+    }
+
+    #[test]
+    fn wildcard_allowed_hosts_follow_interface_address_changes() {
+        use crate::net::{BindHostKind, BindHostOption};
+
+        let allowed = build_allowed_hosts("0.0.0.0", "", 6419, &[], &[]);
+        allowed.replace_dynamic_interfaces(&sample_hosts());
+        assert!(allowed.allows_header(Some("192.168.1.20:6419")));
+
+        let changed = vec![BindHostOption {
+            address: "192.168.50.150".into(),
+            kind: BindHostKind::Interface,
+            interface: Some("en0".into()),
+        }];
+        allowed.replace_dynamic_interfaces(&changed);
+        assert!(!allowed.allows_header(Some("192.168.1.20:6419")));
+        assert!(allowed.allows_header(Some("192.168.50.150:6419")));
+        assert!(!allowed.allows_header(Some("attacker.example:6419")));
     }
 
     #[tokio::test]

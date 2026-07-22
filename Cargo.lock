@@ -3740,8 +3740,10 @@ dependencies = [
 name = "markond"
 version = "0.15.16"
 dependencies = [
+ "dirs",
  "markon-core",
  "serde_json",
+ "tempfile",
  "tokio",
  "tracing",
  "tracing-subscriber",

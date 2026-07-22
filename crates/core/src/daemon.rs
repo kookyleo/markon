@@ -236,7 +236,7 @@ async fn wait_for_ready() -> Option<crate::workspace::ServerLock> {
     let deadline = Instant::now() + Duration::from_secs(10);
     loop {
         if let Some(lock) = crate::workspace::ServerLock::read() {
-            if lock.is_alive() {
+            if lock.is_alive() && lock.service_version == env!("CARGO_PKG_VERSION") {
                 return Some(lock);
             }
         }

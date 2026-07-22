@@ -186,7 +186,11 @@ async fn spawn_service(settings: &Arc<Mutex<AppSettings>>) -> ServiceConnection 
     };
     match markon_core::daemon::spawn_and_connect(config).await {
         Ok(remote) => {
-            tracing::info!(port = remote.port(), "spawned the markon service");
+            tracing::info!(
+                port = remote.port(),
+                version = remote.service_version(),
+                "spawned the markon service"
+            );
             ServiceConnection::attached(remote)
         }
         Err(e) => {
@@ -201,8 +205,22 @@ async fn spawn_service(settings: &Arc<Mutex<AppSettings>>) -> ServiceConnection 
 /// connection is what the GUI drives; `markond` outlives the GUI.
 pub async fn attach_or_spawn(settings: &Arc<Mutex<AppSettings>>) -> ServiceConnection {
     if let Some(remote) = RunningServer::discover() {
+        let expected_version = env!("CARGO_PKG_VERSION");
+        if !service_version_is_current(&remote) {
+            tracing::info!(
+                running_version = if remote.service_version().is_empty() {
+                    "legacy"
+                } else {
+                    remote.service_version()
+                },
+                expected_version,
+                "replacing markon service after application upgrade"
+            );
+            return respawn(settings, Some(remote)).await;
+        }
         tracing::info!(
             port = remote.port(),
+            version = remote.service_version(),
             "attached to the running markon service"
         );
         return match forward_persisted(&remote, settings).await {
@@ -214,6 +232,10 @@ pub async fn attach_or_spawn(settings: &Arc<Mutex<AppSettings>>) -> ServiceConne
         };
     }
     spawn_service(settings).await
+}
+
+fn service_version_is_current(remote: &RunningServer) -> bool {
+    remote.service_version() == env!("CARGO_PKG_VERSION")
 }
 
 /// Reconfiguration path: RESPAWN the shared service. Shuts down the currently-
@@ -261,5 +283,33 @@ async fn wait_for_service_down(remote: &RunningServer) {
         }
         // Short retry cadence between reachability probes (not a guessed delay).
         tokio::time::sleep(Duration::from_millis(20)).await;
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use markon_core::workspace::ServerLock;
+
+    fn remote_with_version(version: &str) -> RunningServer {
+        RunningServer::from_lock(&ServerLock {
+            port: 6419,
+            control_socket: "test-control".into(),
+            host: "127.0.0.1".into(),
+            advertised_host: Some(String::new()),
+            service_version: version.into(),
+            owner: "test-owner".into(),
+        })
+    }
+
+    #[test]
+    fn discovered_service_version_distinguishes_current_and_legacy_daemons() {
+        assert!(service_version_is_current(&remote_with_version(env!(
+            "CARGO_PKG_VERSION"
+        ))));
+        assert!(!service_version_is_current(&remote_with_version("")));
+        assert!(!service_version_is_current(&remote_with_version(
+            "0.0.0-old"
+        )));
     }
 }

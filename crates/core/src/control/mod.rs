@@ -62,6 +62,9 @@ pub struct RunningServer {
     /// different `--entry` must build featured/QR URLs from this, not its own
     /// preference. `None` for a socket-only handle or a pre-field lock.
     web_advertised_host: Option<String>,
+    /// `markond` package version from the discovery lock. Empty for a legacy
+    /// daemon that predates versioned discovery.
+    service_version: String,
 }
 
 impl RunningServer {
@@ -74,6 +77,7 @@ impl RunningServer {
             web_port: 0,
             web_host: String::new(),
             web_advertised_host: None,
+            service_version: String::new(),
         }
     }
 
@@ -92,6 +96,7 @@ impl RunningServer {
             web_port: lock.port,
             web_host: lock.host.clone(),
             web_advertised_host: lock.advertised_host.clone(),
+            service_version: lock.service_version.clone(),
         }
     }
 
@@ -127,6 +132,11 @@ impl RunningServer {
     /// actually serves under.
     pub fn advertised_host(&self) -> Option<&str> {
         self.web_advertised_host.as_deref()
+    }
+
+    /// Version of the discovered service, or an empty string for legacy locks.
+    pub fn service_version(&self) -> &str {
+        &self.service_version
     }
 
     /// Best-effort liveness probe, mirroring

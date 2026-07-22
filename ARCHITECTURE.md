@@ -13,7 +13,7 @@ Markon 的用户数据**独立于进程**,持久在 `~/.markon/`:
 |---|---|---|
 | `settings.json` | 配置、workspace 列表、**salt** | — |
 | `annotation.sqlite` | 批注、已读状态、chat 线程 | 见 §2 / §4 |
-| `server.lock` | 运行中服务的 Web 端口 + 控制套接字路径 + 绑定 host | — |
+| `server.lock` | 运行中服务的 Web 端口 + 控制套接字路径 + 绑定 host + 服务版本 | — |
 
 进程(CLI / GUI / daemon)重启、版本升级,都**不得**使既有 workspace URL 失效,
 也**不得**丢失上述数据。下面四条是保证这一点的不变量。
@@ -181,6 +181,12 @@ Markon 的用户数据**独立于进程**,持久在 `~/.markon/`:
 **打包**:GUI 通过 Tauri 的 `externalBin`(sidecar)把 `markond` 与自身打进同一个 app bundle,
 放在主程序旁边;`daemon::locate_markond` 以「与当前可执行文件同目录」为首选查找位置,因此 CLI 与
 GUI 都能就近找到并拉起服务。
+
+**版本握手**:`server.lock.service_version` 标记拥有该 lock 的 `markond` 版本;旧 lock 缺字段时按
+空字符串读取。GUI 启动发现后台服务版本与自身不一致(含旧 lock)时,必须先通过控制套接字关闭旧
+服务、等待控制套接字与 Web 端口都释放,再拉起 app bundle 内同版本 sidecar。这样升级 GUI 不会
+继续复用旧进程中的旧路由、旧静态资源或启动时捕获的网络状态。该字段只用于临时进程发现,不参与
+workspace id、数据库或 settings 的任何持久化语义。
 
 **跨平台边界**:控制套接字与拉起逻辑(`daemon::spawn_and_connect`)都已跨平台;Windows 的命名管道
 路径与拉起行为需在真实 Windows 上跑 `scripts/win-test/full-smoke.ps1` 验证(该脚本通过 `markon`

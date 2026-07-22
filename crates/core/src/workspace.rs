@@ -960,6 +960,12 @@ pub struct ServerLock {
     /// legacy lock file; `Some("")` is the valid automatic-LAN selection.
     #[serde(default)]
     pub advertised_host: Option<String>,
+    /// Version of the `markond` process that owns this lock. A missing value is
+    /// a pre-version lock and intentionally forces a newly upgraded GUI to
+    /// replace the old daemon instead of attaching across protocol/assets
+    /// versions.
+    #[serde(default)]
+    pub service_version: String,
     /// Per-instance ownership nonce. NOT a secret (management no longer rides the
     /// lock — it moved to the control socket) and never used for authentication;
     /// it exists only so [`remove_if_owned`](Self::remove_if_owned) can tell "my
@@ -1321,6 +1327,7 @@ mod tests {
         assert_eq!(lock.control_socket, "");
         assert_eq!(lock.host, "");
         assert_eq!(lock.advertised_host, None);
+        assert_eq!(lock.service_version, "");
     }
 
     #[test]
@@ -1330,6 +1337,7 @@ mod tests {
             control_socket: "/home/u/.markon/control.sock".into(),
             host: "0.0.0.0".into(),
             advertised_host: Some("192.168.1.20".into()),
+            service_version: "1.2.3".into(),
             owner: "owner-nonce".into(),
         };
         let json = serde_json::to_string(&lock).unwrap();
@@ -1338,6 +1346,7 @@ mod tests {
         assert_eq!(back.port, 6419);
         assert_eq!(back.control_socket, "/home/u/.markon/control.sock");
         assert_eq!(back.advertised_host.as_deref(), Some("192.168.1.20"));
+        assert_eq!(back.service_version, "1.2.3");
         assert_eq!(back.owner, "owner-nonce");
     }
 
