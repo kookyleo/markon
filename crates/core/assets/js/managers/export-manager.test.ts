@@ -28,8 +28,10 @@ function itemAt<T>(items: ArrayLike<T>, index: number): T {
 
 describe('ExportManager', () => {
     let logSpy: ReturnType<typeof vi.spyOn>;
+    let activeManagers: ExportManager[];
 
     beforeEach(() => {
+        activeManagers = [];
         document.body.innerHTML = '';
         document.head.innerHTML = '';
         localStorage.clear();
@@ -48,6 +50,7 @@ describe('ExportManager', () => {
     });
 
     afterEach(() => {
+        activeManagers.forEach(manager => manager.close());
         document.querySelectorAll<HTMLElement>('.cm-editor').forEach(dom => {
             EditorView.findFromDOM(dom)?.destroy();
         });
@@ -64,6 +67,7 @@ describe('ExportManager', () => {
             getDocumentTitle: () => 'Review notes',
             getFilePath: () => '/tmp/review.md',
         });
+        activeManagers.push(exportManager);
 
         expect(exportManager.open()).toBe(true);
 
@@ -90,6 +94,7 @@ describe('ExportManager', () => {
             getDocumentTitle: () => 'Review notes',
             getFilePath: () => '/tmp/review.md',
         });
+        activeManagers.push(exportManager);
 
         expect(exportManager.open()).toBe(false);
         expect(document.querySelector('.export-modal')).toBeNull();
@@ -97,7 +102,7 @@ describe('ExportManager', () => {
         expect(manager.formatAsMarkdown).not.toHaveBeenCalled();
     });
 
-    it('exports only notes inside the requested heading section', () => {
+    it('exports only notes inside the requested heading section', async () => {
         const parentNote = annotation('parent-note', 'keep me');
         const childNote = annotation('child-note', 'keep me too');
         const outsideNote = annotation('outside-note', 'leave out');
@@ -110,8 +115,12 @@ describe('ExportManager', () => {
             getDocumentTitle: () => 'Review notes',
             getFilePath: () => '/tmp/review.md',
         });
+        activeManagers.push(exportManager);
 
         expect(exportManager.open('section-a')).toBe(true);
+        await vi.waitFor(() => {
+            expect(document.querySelector('.editor-modal-export')).toBeTruthy();
+        });
 
         expect(getAllInSection).toHaveBeenCalledWith('section-a');
         expect(manager.getAllInDocumentOrder).not.toHaveBeenCalled();
