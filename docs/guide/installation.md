@@ -149,6 +149,6 @@ cargo uninstall markon
 目录内主要文件：
 
 - `settings.json` — GUI 偏好与工作区列表
-- `annotation.sqlite` — 共享批注数据库（默认；可被 `MARKON_SQLITE_PATH` 覆盖）
+- `annotation.sqlite` — 个人/共享批注、已读状态与对话数据库（可被 `MARKON_SQLITE_PATH` 覆盖）
 
 这些文件卸载时不会自动删除，如需清理请手动移除。

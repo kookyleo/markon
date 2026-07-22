@@ -71,7 +71,18 @@ markon set abc12345 chat off # 通过 ID，关闭「AI 对话」
 - feature 名可选：`search`（搜索）/ `viewed`（已读追踪）/ `edit`（编辑）/ `live`（Live）/ `chat`（AI 对话）/ `shared`（共享批注）。
 - 最后一个参数是 `on` 或 `off`。
 
-> CLI 管理 API 同时要求本机连接与 0600 lock file 中的 management token。浏览器不会获得这个长期 token；其管理与结构性操作使用下面的短期 Admin session。详见[访问权限](/features/access)。
+> CLI 管理操作走当前用户专属的本地控制套接字，不通过 HTTP 暴露。浏览器管理与结构性操作使用下面的短期 Admin session。详见[访问权限](/features/access)。
+
+### 清理已关闭工作区的数据
+
+批注、已读状态和对话在移除工作区时不会自动删除，以便误移除或重新添加后仍可恢复。确认不再需要后可以先看统计，再显式清理：
+
+```bash
+markon cleanup       # 显示统计并交互确认
+markon cleanup --yes # 脚本中跳过确认
+```
+
+裸 `markon ls` 的交互界面也提供 `c data` 入口。清理只删除不属于任何活动工作区的数据；如果文件仍被另一个父目录工作区覆盖，则会保留。
 
 ### 打开管理员浏览器会话
 
@@ -183,7 +194,7 @@ markon --host 192.168.1.5    # 绑定到指定 IP
 
 ## 数据存储位置
 
-工作区启用 **共享批注** 或 **AI 对话** 后，SQLite 数据库默认存储在：
+个人批注、已读状态和 AI 对话统一存入 SQLite；是否开启 **共享批注** 只决定这些数据是否向协作者同步展示，不再切换存储位置。数据库默认位于：
 
 - **Linux/macOS**：`~/.markon/annotation.sqlite`
 - **Windows**：`%USERPROFILE%\.markon\annotation.sqlite`

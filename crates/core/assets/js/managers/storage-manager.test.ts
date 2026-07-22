@@ -2,41 +2,18 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import {
     StorageManager,
     LocalStorageStrategy,
-    SharedStorageStrategy,
 } from './storage-manager.js';
 import type { Annotation } from './annotation-manager.js';
 import type { WebSocketManager } from './websocket-manager.js';
-import type { WsOutbound } from './websocket-manager.js';
 
-/** Minimal WebSocketManager fake — just enough for SharedStorageStrategy. */
+/** Minimal WebSocketManager fake for HTTP-broadcast op-id correlation. */
 function makeFakeWs(connected: boolean) {
-    const sent: WsOutbound[] = [];
-    let counter = 0;
     const fake = {
         isConnected: () => connected,
-        send: vi.fn(async (msg: WsOutbound) => {
-            sent.push(msg);
-        }),
-        // SharedStorageStrategy routes through sendWithOpId; mirror its
-        // behaviour by attaching a synthetic id and recording the framed
-        // payload so tests can assert on it.
-        sendWithOpId: vi.fn(async (msg: WsOutbound): Promise<string> => {
-            counter += 1;
-            const opId = `op-${counter}`;
-            sent.push({ ...msg, op_id: opId } as WsOutbound);
-            return opId;
-        }),
         recordOutgoing: vi.fn(),
         isOwnEcho: vi.fn(() => false),
     };
-    return { fake: fake as unknown as WebSocketManager, sent };
-}
-
-/** Strip op_id from outbound payloads to keep existing expectations stable. */
-function withoutOpId(msg: WsOutbound): WsOutbound {
-    const copy = { ...msg } as Record<string, unknown>;
-    delete copy['op_id'];
-    return copy as WsOutbound;
+    return { fake: fake as unknown as WebSocketManager };
 }
 
 /** Build a fully-shaped Annotation for storage round-trip tests; only `id`
@@ -70,6 +47,7 @@ describe('StorageManager', () => {
         warnSpy.mockRestore();
         errorSpy.mockRestore();
         localStorage.clear();
+        vi.unstubAllGlobals();
     });
 
     describe('LocalStorageStrategy', () => {
@@ -96,90 +74,6 @@ describe('StorageManager', () => {
         });
     });
 
-    describe('SharedStorageStrategy', () => {
-        it('caches saved data and pushes viewed-state via WebSocket', async () => {
-            const { fake, sent } = makeFakeWs(true);
-            const s = new SharedStorageStrategy(fake);
-
-            await s.save('markon-viewed-foo.md', { h1: true });
-            expect(sent.map(withoutOpId)).toEqual([
-                { type: 'update_viewed_state', state: { h1: true } },
-            ]);
-
-            // Cache should be populated, so load returns the saved value.
-            expect(await s.load('markon-viewed-foo.md')).toEqual({ h1: true });
-        });
-
-        it('updateCache populates load() without a WS round-trip', async () => {
-            const { fake, sent } = makeFakeWs(true);
-            const s = new SharedStorageStrategy(fake);
-
-            const cached = makeAnno({ id: 'a' });
-            s.updateCache('markon-annotations-foo.md', [cached]);
-            expect(await s.load('markon-annotations-foo.md')).toEqual([cached]);
-            // No outbound messages should have been emitted.
-            expect(sent).toEqual([]);
-        });
-
-        it('saveSingleAnnotation emits new_annotation', async () => {
-            const { fake, sent } = makeFakeWs(true);
-            const s = new SharedStorageStrategy(fake);
-            const anno = makeAnno({ id: 'x1', text: 'hi' });
-            const opId = await s.saveSingleAnnotation(anno);
-            expect(opId).toMatch(/^op-/);
-            expect(sent.map(withoutOpId)).toEqual([
-                { type: 'new_annotation', annotation: anno },
-            ]);
-        });
-
-        it('deleteSingleAnnotation emits delete_annotation', async () => {
-            const { fake, sent } = makeFakeWs(true);
-            const s = new SharedStorageStrategy(fake);
-            const opId = await s.deleteSingleAnnotation('x1');
-            expect(opId).toMatch(/^op-/);
-            expect(sent.map(withoutOpId)).toEqual([
-                { type: 'delete_annotation', id: 'x1' },
-            ]);
-        });
-
-        it('delete() routes annotations vs viewed keys to different ws messages', async () => {
-            const { fake, sent } = makeFakeWs(true);
-            const s = new SharedStorageStrategy(fake);
-
-            await s.delete('markon-annotations-foo.md');
-            await s.delete('markon-viewed-foo.md');
-
-            expect(sent.map(withoutOpId)).toEqual([
-                { type: 'clear_annotations' },
-                { type: 'update_viewed_state', state: {} },
-            ]);
-        });
-
-        it('save() warns and skips network when ws is disconnected', async () => {
-            const { fake, sent } = makeFakeWs(false);
-            const s = new SharedStorageStrategy(fake);
-            await s.save('markon-viewed-foo.md', { h1: true });
-            expect(sent).toEqual([]);
-            expect(warnSpy).toHaveBeenCalled();
-            // But cache is still updated.
-            expect(await s.load('markon-viewed-foo.md')).toEqual({ h1: true });
-        });
-
-        it('clearCache(key) removes a single entry; clearCache() removes all', async () => {
-            const { fake } = makeFakeWs(true);
-            const s = new SharedStorageStrategy(fake);
-            s.updateCache('a', 1);
-            s.updateCache('b', 2);
-
-            s.clearCache('a');
-            expect(await s.load('a')).toBeNull();
-            expect(await s.load('b')).toBe(2);
-
-            s.clearCache();
-            expect(await s.load('b')).toBeNull();
-        });
-    });
-
     describe('StorageManager facade', () => {
         it('selects LocalStorageStrategy when not in shared mode', async () => {
             const m = new StorageManager('foo.md', false);
@@ -192,15 +86,78 @@ describe('StorageManager', () => {
             expect(await m.loadAnnotations()).toEqual([a, b]);
         });
 
-        it('selects SharedStorageStrategy when shared mode + ws given', async () => {
-            const { fake, sent } = makeFakeWs(true);
-            const m = new StorageManager('foo.md', true, fake);
+        it('persists through HTTP and records the shared broadcast op id', async () => {
+            const { fake } = makeFakeWs(true);
+            const fetchMock = vi.fn(async () => ({
+                ok: true,
+                status: 204,
+                text: async () => '',
+            }));
+            vi.stubGlobal('fetch', fetchMock);
+            const m = new StorageManager('foo.md', true, fake, 'abc123');
             expect(m.isSharedMode()).toBe(true);
 
             const anno = makeAnno({ id: 'x1' });
-            await m.saveAnnotation(anno);
-            expect(sent.map(withoutOpId)).toEqual([
-                { type: 'new_annotation', annotation: anno },
+            const opId = await m.saveAnnotation(anno);
+            expect(opId).toMatch(/^[0-9a-f]{16}$/);
+            expect(fake.recordOutgoing).toHaveBeenCalledWith(opId);
+            const [, init] = fetchMock.mock.calls[0] as unknown as [string, RequestInit];
+            expect(JSON.parse(init.body as string)).toMatchObject({
+                action: 'save_annotation',
+                path: 'foo.md',
+                annotation: anno,
+                op_id: opId,
+            });
+        });
+
+        it('merges legacy local annotations into SQLite then removes the origin copy', async () => {
+            const localOnly = makeAnno({ id: 'anno-local' });
+            const persisted = makeAnno({ id: 'anno-server' });
+            await StorageManager.saveLocalAnnotations('/docs/foo.md', [localOnly]);
+            const fetchMock = vi.fn(async (_url: string, init?: RequestInit) => {
+                if (!init?.method) {
+                    return {
+                        ok: true,
+                        status: 200,
+                        json: async () => ({ annotations: [persisted], viewed_state: {} }),
+                    };
+                }
+                return { ok: true, status: 204, text: async () => '' };
+            });
+            vi.stubGlobal('fetch', fetchMock);
+            const m = new StorageManager('/docs/foo.md', false, null, 'abc123');
+            expect(await m.loadAnnotations()).toEqual([persisted, localOnly]);
+            expect(fetchMock).toHaveBeenCalledTimes(2);
+            expect(localStorage.getItem('markon-annotations-/docs/foo.md')).toBeNull();
+        });
+
+        it('serializes SQLite mutations so a slow older viewed state cannot win', async () => {
+            let releaseFirst!: () => void;
+            const firstResponse = new Promise<void>((resolve) => { releaseFirst = resolve; });
+            const fetchMock = vi.fn(async (_url: string, _init?: RequestInit) => {
+                if (fetchMock.mock.calls.length === 1) await firstResponse;
+                return { ok: true, status: 204, text: async () => '' };
+            });
+            vi.stubGlobal('fetch', fetchMock);
+            const m = new StorageManager('/docs/foo.md', false, null, 'abc123');
+
+            const older = m.saveViewedState({ section: false });
+            await Promise.resolve();
+            const newer = m.saveViewedState({ section: true });
+            await Promise.resolve();
+            expect(fetchMock).toHaveBeenCalledTimes(1);
+
+            releaseFirst();
+            await older;
+            await newer;
+            expect(fetchMock).toHaveBeenCalledTimes(2);
+            const bodies = fetchMock.mock.calls.map(([, init]) => {
+                const parsed = JSON.parse(init?.body as string) as unknown;
+                return parsed as { state: Record<string, boolean> };
+            });
+            expect(bodies.map(body => body.state)).toEqual([
+                { section: false },
+                { section: true },
             ]);
         });
 

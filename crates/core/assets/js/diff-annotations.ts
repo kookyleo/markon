@@ -5,12 +5,13 @@
  * file path). Instead this lightweight coordinator runs ONE selection toolbar
  * over the whole rendered pane and fans every action out to a PER-FILE context,
  * keyed by the file's real canonical absolute path (`section.dataset['absPath']`).
- * That key is byte-identical to the normal file view's annotation key, so a
- * highlight made here lands in the same `localStorage` bucket as opening the
- * file directly — annotations are shared between the two surfaces.
+ * That key is byte-identical to the normal file view's SQLite key, so a
+ * highlight made here lands in the same canonical store as opening the file
+ * directly.
  *
- * Scope (per the agreed design): LOCAL storage only — no shared/WebSocket sync
- * on this page. Activated on rendered diffs whose file sections carry a
+ * This page persists through the document-state API but does not open one
+ * WebSocket per changed file; shared real-time fan-out remains on document
+ * pages. Activated on rendered diffs whose file sections carry a
  * canonical `data-abs-path`; only the NEW side is annotatable —
  * `NEW_SIDE_REJECT` keeps the old/deleted text out of selection, anchoring,
  * and wrapping.
@@ -129,7 +130,9 @@ class DiffAnnotationCoordinator {
     #contextFor(absPath: string, section: HTMLElement): PerFileContext {
         let ctx = this.#contexts.get(absPath);
         if (ctx) return ctx;
-        const storage = new StorageManager(absPath, false, null);
+        const workspaceId = Meta.get(CONFIG.META_TAGS.WORKSPACE_ID) ?? '';
+        const shared = Meta.flag(CONFIG.META_TAGS.SHARED_ANNOTATION);
+        const storage = new StorageManager(absPath, shared, null, workspaceId);
         const root = newSideRootFor(section);
         const annotationManager = new AnnotationManager(storage, root, NEW_SIDE_REJECT);
         const noteManager = new NoteManager(annotationManager, root, { marginCards: false });

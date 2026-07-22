@@ -134,6 +134,14 @@
     "pref.dbpath":"批注与已读状态的持久化存储 (SQLite)",
     "pref.dbpath.browse": "选择…",
     "pref.dbpath.clear":  "恢复默认",
+    "pref.data_cleanup": "已关闭工作区的数据",
+    "pref.data_cleanup.refresh": "刷新统计",
+    "pref.data_cleanup.run": "清理…",
+    "pref.data_cleanup.loading": "正在统计…",
+    "pref.data_cleanup.none": "没有废弃数据",
+    "pref.data_cleanup.stats": "{files} 个批注文件 · {annotations} 条批注 · {viewed} 条已读状态 · {threads} 个对话 / {messages} 条消息 · {bytes}",
+    "pref.data_cleanup.confirm": "永久删除不再属于任何活动工作区的数据？此操作无法撤销。",
+    "pref.data_cleanup.done": "已删除 {annotations} 条批注、{viewed} 条已读状态、{threads} 个对话和 {messages} 条消息。",
 
     // ── 自动更新状态 ─────────────────────────────────────────
     "update.checking": "检查中…",

@@ -12,7 +12,7 @@ use futures_util::{stream::StreamExt, SinkExt};
 use qrcode::render::unicode::Dense1x2;
 use qrcode::{EcLevel, QrCode};
 use rayon::prelude::*;
-use rusqlite::Connection;
+use rusqlite::{params, Connection};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use similar::{ChangeTag, TextDiff};
@@ -41,6 +41,7 @@ use crate::workspace::{
 use crate::workspace_fs::WorkspaceFs;
 
 const WORKSPACE_WS_ROUTE: &str = "/_/{workspace_id}/ws";
+const DOCUMENT_STATE_ROUTE: &str = "/_/{workspace_id}/data/document-state";
 
 /// Public wire-format types served by the (non-chat) HTTP surface.
 ///
@@ -593,6 +594,26 @@ pub fn featured_base_url(bind_host: &str, advertised_host: &str, port: u16) -> S
     reachable_urls(bind_host, advertised_host, port).featured
 }
 
+/// Stable browser origin for a same-machine control client. Wildcard IPv4
+/// binds always serve 127.0.0.1, so GUI/CLI launches must not follow whichever
+/// LAN address happens to be featured today. Specific interface binds cannot
+/// serve loopback and therefore keep their exact address as the fallback.
+pub fn local_browser_base_url(bind_host: &str, port: u16) -> String {
+    let host = bind_host.trim();
+    let address = if host.is_empty()
+        || host.eq_ignore_ascii_case("localhost")
+        || crate::net::host_is_wildcard_v4(host)
+        || crate::net::host_matches(host, "127.0.0.1")
+    {
+        "127.0.0.1"
+    } else if crate::net::host_is_wildcard_v6(host) || crate::net::host_matches(host, "::1") {
+        "::1"
+    } else {
+        host
+    };
+    format!("http://{}:{port}", crate::net::url_host_literal(address))
+}
+
 pub fn build_workspace_url(base: &str, workspace_path: &str) -> String {
     let suffix = if workspace_path.starts_with('/') {
         workspace_path.to_string()
@@ -782,11 +803,9 @@ pub fn print_compact_qr(data: &str) -> Result<(), Box<dyn std::error::Error>> {
 enum WebSocketMessage {
     #[serde(rename = "all_annotations")]
     AllAnnotations { annotations: Vec<serde_json::Value> },
-    // Mutating variants carry an optional `op_id` set by the originating
-    // client. The server treats it as opaque and round-trips it verbatim so
-    // the originator can recognise (and skip) its own echo. Old clients that
-    // don't send the field deserialize as `None` and serialize without it
-    // (`skip_serializing_if = Option::is_none`), preserving wire compat.
+    // Mutation broadcasts carry the optional `op_id` supplied to the HTTP
+    // document-state endpoint. The server treats it as opaque so the
+    // originator can recognise (and skip) its own WebSocket echo.
     #[serde(rename = "new_annotation")]
     NewAnnotation {
         annotation: serde_json::Value,
@@ -806,12 +825,6 @@ enum WebSocketMessage {
     },
     #[serde(rename = "viewed_state")]
     ViewedState {
-        state: serde_json::Value,
-        #[serde(default, skip_serializing_if = "Option::is_none")]
-        op_id: Option<String>,
-    },
-    #[serde(rename = "update_viewed_state")]
-    UpdateViewedState {
         state: serde_json::Value,
         #[serde(default, skip_serializing_if = "Option::is_none")]
         op_id: Option<String>,
@@ -1154,6 +1167,12 @@ pub async fn start(config: ServerConfig) -> Result<(), String> {
             get(handle_workspace_files_data),
         )
         .route(
+            DOCUMENT_STATE_ROUTE,
+            get(handle_document_state)
+                .post(handle_document_state_command)
+                .route_layer(axum::middleware::from_fn(require_same_origin)),
+        )
+        .route(
             "/_/{workspace_id}/files/dir",
             get(handle_workspace_dir_data),
         )
@@ -1231,6 +1250,7 @@ pub async fn start(config: ServerConfig) -> Result<(), String> {
     // Hardening headers (CSP / nosniff / frame options) on every response.
     let app = app.layer(axum::middleware::from_fn(security_headers));
 
+    let control_db = state.db.clone();
     let app = app.with_state(state);
 
     let listener = if let Some(std_listener) = bound_listener {
@@ -1279,11 +1299,10 @@ pub async fn start(config: ServerConfig) -> Result<(), String> {
     // nonce to the initial HTTP request, then reloads in place as administrator.
     let admin_bootstraps_for_control = admin_bootstraps.clone();
     let admin_bind_host = host.clone();
-    let admin_advertised_host = advertised_host.clone();
     let admin_port = addr.port();
     let admin_bootstrap_fn: crate::control::AdminBootstrapFn = Arc::new(move |redirect: &str| {
         let nonce = admin_bootstraps_for_control.issue_url(redirect);
-        let admin_base = featured_base_url(&admin_bind_host, &admin_advertised_host, admin_port);
+        let admin_base = local_browser_base_url(&admin_bind_host, admin_port);
         Ok(build_admin_bootstrap_url(&admin_base, redirect, &nonce))
     });
     let admin_bootstraps_for_code = admin_bootstraps.clone();
@@ -1304,6 +1323,7 @@ pub async fn start(config: ServerConfig) -> Result<(), String> {
 
     let control_ctx = crate::control::ControlContext {
         registry: control_registry,
+        db: control_db,
         shutdown: Some(control_shutdown_tx),
         admin_bootstrap: Some(admin_bootstrap_fn),
         admin_bootstrap_code: Some(admin_bootstrap_code_fn),
@@ -1394,7 +1414,7 @@ pub async fn start(config: ServerConfig) -> Result<(), String> {
 
     if let Some(ref base_opt) = open_browser {
         let base = if base_opt == "local" {
-            local_base.clone()
+            local_browser_base_url(&host, addr.port())
         } else {
             base_opt.to_string()
         };
@@ -2190,6 +2210,219 @@ async fn ws_handler(
         .into_response()
 }
 
+#[derive(Deserialize)]
+struct DocumentStateQuery {
+    path: String,
+}
+
+#[derive(Serialize)]
+struct DocumentStateResponse {
+    annotations: Vec<serde_json::Value>,
+    viewed_state: serde_json::Value,
+}
+
+#[derive(Deserialize)]
+#[serde(tag = "action", rename_all = "snake_case", deny_unknown_fields)]
+enum DocumentStateCommand {
+    SaveAnnotation {
+        path: String,
+        annotation: serde_json::Value,
+        #[serde(default)]
+        op_id: Option<String>,
+    },
+    DeleteAnnotation {
+        path: String,
+        id: String,
+        #[serde(default)]
+        op_id: Option<String>,
+    },
+    ClearAnnotations {
+        path: String,
+        #[serde(default)]
+        op_id: Option<String>,
+    },
+    SaveViewedState {
+        path: String,
+        state: serde_json::Value,
+        #[serde(default)]
+        op_id: Option<String>,
+    },
+}
+
+impl DocumentStateCommand {
+    fn path(&self) -> &str {
+        match self {
+            Self::SaveAnnotation { path, .. }
+            | Self::DeleteAnnotation { path, .. }
+            | Self::ClearAnnotations { path, .. }
+            | Self::SaveViewedState { path, .. } => path,
+        }
+    }
+}
+
+fn document_state_access_allowed(role: Option<AccessRole>, entry: &WorkspaceEntry) -> bool {
+    role == Some(AccessRole::Admin)
+        || entry
+            .shared_annotation
+            .load(std::sync::atomic::Ordering::Relaxed)
+}
+
+fn authorize_document_path(entry: &WorkspaceEntry, path: &str) -> Option<String> {
+    let requested = FsPath::new(path);
+    if path.is_empty() || path.len() > 4096 || path.contains('\0') || !requested.is_absolute() {
+        return None;
+    }
+    let authorized = entry.fs.resolve_content_input(requested).ok()?;
+    authorized
+        .is_file()
+        .then(|| authorized.to_string_lossy().into_owned())
+}
+
+async fn handle_document_state(
+    State(state): State<AppState>,
+    AxumPath(workspace_id): AxumPath<String>,
+    role: Option<Extension<AccessRole>>,
+    Query(query): Query<DocumentStateQuery>,
+) -> Response {
+    let Some(entry) = state.workspace_registry.get(&workspace_id) else {
+        return StatusCode::NOT_FOUND.into_response();
+    };
+    if !document_state_access_allowed(role.map(|Extension(role)| role), &entry) {
+        return StatusCode::FORBIDDEN.into_response();
+    }
+    let Some(file_path) = authorize_document_path(&entry, &query.path) else {
+        return StatusCode::NOT_FOUND.into_response();
+    };
+    let Some(db) = state.db else {
+        return StatusCode::SERVICE_UNAVAILABLE.into_response();
+    };
+    let annotations = load_annotations(db.clone(), file_path.clone()).await;
+    let viewed_state = load_viewed_state(db, file_path).await;
+    Json(DocumentStateResponse {
+        annotations,
+        viewed_state,
+    })
+    .into_response()
+}
+
+fn valid_annotation_id(id: &str) -> bool {
+    id.len() >= 6
+        && id.len() <= 69
+        && id.starts_with("anno-")
+        && id[5..]
+            .bytes()
+            .all(|byte| byte.is_ascii_alphanumeric() || byte == b'-')
+}
+
+async fn handle_document_state_command(
+    State(state): State<AppState>,
+    AxumPath(workspace_id): AxumPath<String>,
+    role: Option<Extension<AccessRole>>,
+    Json(command): Json<DocumentStateCommand>,
+) -> Response {
+    let Some(entry) = state.workspace_registry.get(&workspace_id) else {
+        return StatusCode::NOT_FOUND.into_response();
+    };
+    if !document_state_access_allowed(role.map(|Extension(role)| role), &entry) {
+        return StatusCode::FORBIDDEN.into_response();
+    }
+    let Some(file_path) = authorize_document_path(&entry, command.path()) else {
+        return StatusCode::NOT_FOUND.into_response();
+    };
+    let Some(db) = state.db.clone() else {
+        return StatusCode::SERVICE_UNAVAILABLE.into_response();
+    };
+    let shared = entry
+        .shared_annotation
+        .load(std::sync::atomic::Ordering::Relaxed);
+    let channel = format!("document:{file_path}");
+    let events = entry.events_tx.clone();
+
+    let outcome = tokio::task::spawn_blocking(move || -> Result<Vec<WebSocketMessage>, String> {
+        let conn = db
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        let mut broadcasts = Vec::new();
+        match command {
+            DocumentStateCommand::SaveAnnotation {
+                annotation,
+                op_id,
+                ..
+            } => {
+                let Some(id) = annotation["id"].as_str() else {
+                    return Err("annotation id is required".to_string());
+                };
+                if !valid_annotation_id(id) {
+                    return Err("invalid annotation id".to_string());
+                }
+                let data = serde_json::to_string(&annotation).map_err(|e| e.to_string())?;
+                if !upsert_annotation_for_file(&conn, id, &file_path, &data)
+                    .map_err(|e| e.to_string())?
+                {
+                    return Err("annotation id belongs to another document".to_string());
+                }
+                broadcasts.push(WebSocketMessage::NewAnnotation { annotation, op_id });
+            }
+            DocumentStateCommand::DeleteAnnotation { id, op_id, .. } => {
+                if !valid_annotation_id(&id) {
+                    return Err("invalid annotation id".to_string());
+                }
+                conn.execute(
+                    "DELETE FROM annotations WHERE id = ?1 AND file_path = ?2",
+                    params![id, file_path],
+                )
+                .map_err(|e| e.to_string())?;
+                broadcasts.push(WebSocketMessage::DeleteAnnotation { id, op_id });
+            }
+            DocumentStateCommand::ClearAnnotations { op_id, .. } => {
+                conn.execute(
+                    "DELETE FROM annotations WHERE file_path = ?1",
+                    [file_path.as_str()],
+                )
+                .map_err(|e| e.to_string())?;
+                broadcasts.push(WebSocketMessage::ClearAnnotations { op_id });
+            }
+            DocumentStateCommand::SaveViewedState {
+                state: viewed,
+                op_id,
+                ..
+            } => {
+                if !viewed.is_object() {
+                    return Err("viewed state must be an object".to_string());
+                }
+                let state_json = serde_json::to_string(&viewed).map_err(|e| e.to_string())?;
+                conn.execute(
+                    "INSERT OR REPLACE INTO viewed_state (file_path, state, updated_at) VALUES (?1, ?2, CURRENT_TIMESTAMP)",
+                    params![file_path, state_json],
+                )
+                .map_err(|e| e.to_string())?;
+                broadcasts.push(WebSocketMessage::ViewedState {
+                    state: viewed,
+                    op_id,
+                });
+            }
+        }
+        Ok(broadcasts)
+    })
+    .await;
+
+    match outcome {
+        Ok(Ok(broadcasts)) => {
+            if shared {
+                for message in broadcasts {
+                    broadcast_msg(&events, &channel, &message);
+                }
+            }
+            StatusCode::NO_CONTENT.into_response()
+        }
+        Ok(Err(error)) => (StatusCode::BAD_REQUEST, error).into_response(),
+        Err(error) => {
+            tracing::error!("document-state worker failed: {error}");
+            StatusCode::INTERNAL_SERVER_ERROR.into_response()
+        }
+    }
+}
+
 #[cfg(debug_assertions)]
 async fn dev_reload_stream(State(state): State<AppState>) -> impl IntoResponse {
     use axum::response::sse::{Event, KeepAlive, Sse};
@@ -2314,20 +2547,6 @@ fn workspace_event_payload(event: WorkspaceEvent, channel: &str) -> Option<Strin
     }
 }
 
-/// Side-effect plan computed inside the blocking SQLite worker. Returned to
-/// the async caller so the broadcast (which touches the tokio channel) stays
-/// on the runtime, not on the blocking pool.
-enum DbResult {
-    Broadcast(WebSocketMessage),
-    /// Clear-annotations side-effect: broadcast a `clear_annotations` plus a
-    /// reset `viewed_state` (both empty). Carries the originator's `op_id`
-    /// so it propagates to every fan-out frame for echo dedup.
-    BroadcastClear {
-        op_id: Option<String>,
-    },
-    None,
-}
-
 /// Insert or update an annotation only when an existing global id already
 /// belongs to this same document. The persisted schema intentionally keeps its
 /// historical global primary key, so the query itself must prevent a client on
@@ -2348,15 +2567,11 @@ fn upsert_annotation_for_file(
     .map(|changed| changed > 0)
 }
 
-async fn handle_client_msg(
-    db: Option<Arc<Mutex<Connection>>>,
-    entry: Arc<WorkspaceEntry>,
-    session: Arc<WsSession>,
-    msg: WebSocketMessage,
-) {
-    // Live is independently feature-gated and available to both document and
-    // surface sessions. Checking on every frame closes the small race between
-    // a runtime config update and the socket's config-change shutdown.
+fn handle_client_msg(entry: &WorkspaceEntry, session: &WsSession, msg: WebSocketMessage) {
+    // Browser persistence always goes through the document-state HTTP endpoint
+    // before any shared broadcast. WebSocket input is deliberately Live-only;
+    // annotation/viewed variants remain deserializable as outbound protocol
+    // messages but cannot form a second database mutation path.
     if let WebSocketMessage::LiveAction { data } = msg {
         if entry.enable_live.load(std::sync::atomic::Ordering::Relaxed) {
             broadcast_msg(
@@ -2365,136 +2580,6 @@ async fn handle_client_msg(
                 &WebSocketMessage::LiveAction { data },
             );
         }
-        return;
-    }
-
-    // Surface channels never have database capability. Annotation/viewed
-    // operations require both a document target and the server-side feature.
-    if !entry
-        .shared_annotation
-        .load(std::sync::atomic::Ordering::Relaxed)
-    {
-        return;
-    }
-    let WsSessionTarget::Document { file_path } = &session.target else {
-        return;
-    };
-    let file_path = file_path.clone();
-    let Some(db) = db else { return };
-
-    // One spawn_blocking per inbound message: take the lock exactly once,
-    // run whichever SQL the message requires, then return the broadcast plan
-    // for the async side to fan out.
-    let result = tokio::task::spawn_blocking(move || {
-        let conn = db.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
-        match msg {
-            WebSocketMessage::NewAnnotation { annotation, op_id } => {
-                let Some(id) = annotation["id"].as_str().map(str::to_owned) else {
-                    return DbResult::None;
-                };
-                let Ok(data) = serde_json::to_string(&annotation) else {
-                    return DbResult::None;
-                };
-                match upsert_annotation_for_file(
-                    &conn,
-                    id.as_str(),
-                    file_path.as_str(),
-                    data.as_str(),
-                ) {
-                    Ok(true) => {}
-                    Ok(false) => {
-                        tracing::warn!(
-                            annotation_id = %id,
-                            file_path = %file_path,
-                            "rejected annotation id already owned by another document"
-                        );
-                        return DbResult::None;
-                    }
-                    Err(e) => {
-                        tracing::error!(file_path = %file_path, "insert annotation failed: {e}");
-                        return DbResult::None;
-                    }
-                }
-                DbResult::Broadcast(WebSocketMessage::NewAnnotation { annotation, op_id })
-            }
-            WebSocketMessage::DeleteAnnotation { id, op_id } => {
-                if let Err(e) = conn.execute(
-                    "DELETE FROM annotations WHERE id = ?1 AND file_path = ?2",
-                    [id.as_str(), file_path.as_str()],
-                ) {
-                    tracing::error!(file_path = %file_path, "delete annotation failed: {e}");
-                    return DbResult::None;
-                }
-                DbResult::Broadcast(WebSocketMessage::DeleteAnnotation { id, op_id })
-            }
-            WebSocketMessage::ClearAnnotations { op_id } => {
-                tracing::info!(file_path = %file_path, "clearing annotations");
-                if let Err(e) = conn.execute(
-                    "DELETE FROM annotations WHERE file_path = ?1",
-                    [file_path.as_str()],
-                ) {
-                    tracing::error!(file_path = %file_path, "clear annotations failed: {e}");
-                }
-                if let Err(e) = conn.execute(
-                    "DELETE FROM viewed_state WHERE file_path = ?1",
-                    [file_path.as_str()],
-                ) {
-                    tracing::error!(file_path = %file_path, "clear viewed_state failed: {e}");
-                }
-                DbResult::BroadcastClear { op_id }
-            }
-            WebSocketMessage::UpdateViewedState {
-                state: viewed,
-                op_id,
-            } => {
-                let Ok(state_json) = serde_json::to_string(&viewed) else {
-                    return DbResult::None;
-                };
-                if let Err(e) = conn.execute(
-                    "INSERT OR REPLACE INTO viewed_state (file_path, state, updated_at) VALUES (?1, ?2, CURRENT_TIMESTAMP)",
-                    [file_path.as_str(), state_json.as_str()],
-                ) {
-                    tracing::error!(file_path = %file_path, "update viewed_state failed: {e}");
-                    return DbResult::None;
-                }
-                DbResult::Broadcast(WebSocketMessage::ViewedState {
-                    state: viewed,
-                    op_id,
-                })
-            }
-            _ => DbResult::None,
-        }
-    })
-    .await;
-
-    let result = match result {
-        Ok(r) => r,
-        Err(e) => {
-            tracing::error!("handle_client_msg join error: {e}");
-            return;
-        }
-    };
-
-    match result {
-        DbResult::Broadcast(out) => broadcast_msg(&entry.events_tx, &session.channel, &out),
-        DbResult::BroadcastClear { op_id } => {
-            broadcast_msg(
-                &entry.events_tx,
-                &session.channel,
-                &WebSocketMessage::ClearAnnotations {
-                    op_id: op_id.clone(),
-                },
-            );
-            broadcast_msg(
-                &entry.events_tx,
-                &session.channel,
-                &WebSocketMessage::ViewedState {
-                    state: serde_json::Value::Object(serde_json::Map::new()),
-                    op_id,
-                },
-            );
-        }
-        DbResult::None => {}
     }
 }
 
@@ -2574,7 +2659,7 @@ async fn handle_socket(socket: WebSocket, state: AppState, entry: Arc<WorkspaceE
             let Ok(msg) = serde_json::from_str::<WebSocketMessage>(&text) else {
                 continue;
             };
-            handle_client_msg(db.clone(), recv_entry.clone(), recv_session.clone(), msg).await;
+            handle_client_msg(&recv_entry, &recv_session, msg);
         }
     });
 
@@ -7018,6 +7103,7 @@ mod tests {
         let registry = Arc::new(WorkspaceRegistry::new("single-file-api".into()));
         let ctx = ControlContext {
             registry: registry.clone(),
+            db: None,
             shutdown: None,
             admin_bootstrap: None,
             admin_bootstrap_code: None,
@@ -7686,8 +7772,8 @@ mod tests {
         );
     }
 
-    #[tokio::test]
-    async fn ws_server_enforces_live_and_annotation_capabilities() {
+    #[test]
+    fn ws_input_is_live_only_and_never_mutates_annotations() {
         let root = tempfile::tempdir().unwrap();
         let document = root.path().join("note.md");
         fs::write(&document, "# note").unwrap();
@@ -7714,12 +7800,18 @@ mod tests {
         );
         let mut rx = entry.events_tx.subscribe();
         handle_client_msg(
-            None,
-            entry.clone(),
-            session,
+            &entry,
+            &session,
+            WebSocketMessage::NewAnnotation {
+                annotation: json!({ "id": "anno-ignored" }),
+                op_id: None,
+            },
+        );
+        handle_client_msg(
+            &entry,
+            &session,
             WebSocketMessage::LiveAction { data: json!({}) },
-        )
-        .await;
+        );
         assert!(matches!(
             rx.try_recv(),
             Err(tokio::sync::broadcast::error::TryRecvError::Empty)
@@ -7743,19 +7835,17 @@ mod tests {
             .unwrap(),
         );
         handle_client_msg(
-            None,
-            entry,
-            surface,
-            WebSocketMessage::NewAnnotation {
-                annotation: json!({ "id": "forbidden" }),
-                op_id: None,
+            &entry,
+            &surface,
+            WebSocketMessage::LiveAction {
+                data: json!({ "marker": "forwarded" }),
             },
-        )
-        .await;
-        assert!(matches!(
-            rx.try_recv(),
-            Err(tokio::sync::broadcast::error::TryRecvError::Empty)
-        ));
+        );
+        let WorkspaceEvent::Channel { channel, payload } = rx.try_recv().unwrap() else {
+            panic!("expected channel event");
+        };
+        assert_eq!(channel, surface.channel);
+        assert!(payload.contains("forwarded"), "{payload}");
     }
 
     #[test]
@@ -8342,6 +8432,120 @@ mod tests {
         .unwrap());
     }
 
+    #[tokio::test]
+    async fn document_state_is_always_sqlite_for_admin_and_shared_only_for_collaborators() {
+        let root = tempfile::tempdir().unwrap();
+        let file = root.path().join("note.md");
+        fs::write(&file, "# note").unwrap();
+        let registry = Arc::new(WorkspaceRegistry::new("document-state".into()));
+        let id = add_test_workspace(
+            &registry,
+            root.path().to_path_buf(),
+            WorkspaceFlags::default(),
+        );
+        let mut events = registry.get(&id).unwrap().events_tx.subscribe();
+        let conn = Connection::open_in_memory().unwrap();
+        conn.execute_batch(
+            "CREATE TABLE annotations (id TEXT PRIMARY KEY, file_path TEXT NOT NULL, data TEXT NOT NULL);
+             CREATE TABLE viewed_state (file_path TEXT PRIMARY KEY, state TEXT NOT NULL, updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP);",
+        )
+        .unwrap();
+        let mut state = test_state(registry.clone());
+        state.db = Some(Arc::new(Mutex::new(conn)));
+        let path = file.to_string_lossy().into_owned();
+        let annotation = serde_json::json!({
+            "id": "anno-admin",
+            "text": "note",
+            "anchor": { "position": 0, "exact": "note", "prefix": "", "suffix": "" },
+            "type": "highlight-yellow",
+            "tagName": "span",
+            "createdAt": 1
+        });
+
+        let denied = handle_document_state_command(
+            State(state.clone()),
+            AxumPath(id.clone()),
+            Some(Extension(AccessRole::Collaborator)),
+            Json(DocumentStateCommand::SaveAnnotation {
+                path: path.clone(),
+                annotation: annotation.clone(),
+                op_id: None,
+            }),
+        )
+        .await;
+        assert_eq!(denied.status(), StatusCode::FORBIDDEN);
+
+        let saved = handle_document_state_command(
+            State(state.clone()),
+            AxumPath(id.clone()),
+            Some(Extension(AccessRole::Admin)),
+            Json(DocumentStateCommand::SaveAnnotation {
+                path: path.clone(),
+                annotation,
+                op_id: None,
+            }),
+        )
+        .await;
+        assert_eq!(saved.status(), StatusCode::NO_CONTENT);
+        assert!(matches!(
+            events.try_recv(),
+            Err(tokio::sync::broadcast::error::TryRecvError::Empty)
+        ));
+        let loaded = handle_document_state(
+            State(state.clone()),
+            AxumPath(id.clone()),
+            Some(Extension(AccessRole::Admin)),
+            Query(DocumentStateQuery { path: path.clone() }),
+        )
+        .await;
+        assert_eq!(loaded.status(), StatusCode::OK);
+        let body = response_text(loaded).await;
+        assert!(body.contains("anno-admin"), "{body}");
+
+        let flags = WorkspaceFlags {
+            shared_annotation: true,
+            ..Default::default()
+        };
+        assert!(registry.update_flags(&id, flags));
+        let shared_annotation = serde_json::json!({
+            "id": "anno-shared",
+            "text": "shared note",
+            "anchor": { "position": 0, "exact": "note", "prefix": "", "suffix": "" },
+            "type": "highlight-yellow",
+            "tagName": "span",
+            "createdAt": 2
+        });
+        let shared_save = handle_document_state_command(
+            State(state.clone()),
+            AxumPath(id.clone()),
+            Some(Extension(AccessRole::Collaborator)),
+            Json(DocumentStateCommand::SaveAnnotation {
+                path: path.clone(),
+                annotation: shared_annotation,
+                op_id: Some("shared-op".to_string()),
+            }),
+        )
+        .await;
+        assert_eq!(shared_save.status(), StatusCode::NO_CONTENT);
+        match events.try_recv().unwrap() {
+            WorkspaceEvent::Channel { channel, payload } => {
+                let canonical = dunce::canonicalize(&file).unwrap();
+                assert_eq!(channel, format!("document:{}", canonical.to_string_lossy()));
+                assert!(payload.contains("anno-shared"), "{payload}");
+                assert!(payload.contains("shared-op"), "{payload}");
+            }
+            other => panic!("unexpected workspace event: {other:?}"),
+        }
+        let shared = handle_document_state(
+            State(state),
+            AxumPath(id),
+            Some(Extension(AccessRole::Collaborator)),
+            Query(DocumentStateQuery { path }),
+        )
+        .await;
+        assert_eq!(shared.status(), StatusCode::OK);
+    }
+
     #[test]
     fn access_cooldown_locks_after_threshold() {
         let state = test_state(Arc::new(WorkspaceRegistry::new("s".into())));
@@ -8754,6 +8958,15 @@ mod tests {
         let r = reachable_urls("127.0.0.1", "", 6419);
         assert_eq!(r.all.len(), 1);
         assert_eq!(r.featured, "http://127.0.0.1:6419");
+        assert_eq!(
+            local_browser_base_url("0.0.0.0", 6419),
+            "http://127.0.0.1:6419"
+        );
+        assert_eq!(local_browser_base_url("::", 6419), "http://[::1]:6419");
+        assert_eq!(
+            local_browser_base_url("198.51.100.7", 6419),
+            "http://198.51.100.7:6419"
+        );
     }
 
     #[cfg(target_os = "windows")]

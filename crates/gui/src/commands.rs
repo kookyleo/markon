@@ -306,35 +306,18 @@ fn update_tray_language(app: &tauri::AppHandle, language: &str) {
 // to settings.json happens via the persist hook wired at server startup,
 // so CLI (HTTP API) and GUI (Tauri API) paths share a single flow.
 
-/// Build the featured browser/QR base URL for the *attached daemon*. Both the
-/// bind host and the advertised host come from the running service's discovery
-/// lock ([`RunningServer::host`] / [`RunningServer::advertised_host`]) — NOT the
-/// GUI's own settings, which can differ when the GUI attached to a daemon
-/// another process (a CLI, or a prior GUI) started with a different `--host` /
-/// `--entry`. The GUI's `settings.host` / `settings.advertised_host` are only a
-/// fallback for a socket-only handle or a pre-split lock, where the daemon
-/// didn't record its own values (`daemon_host` empty / `daemon_advertised`
-/// `None`).
-fn browser_base_url_for_state(
-    state: &State<AppState>,
-    daemon_host: &str,
-    daemon_advertised: Option<&str>,
-    port: u16,
-) -> String {
-    let (fallback_host, fallback_advertised) = {
-        let s = state.settings.lock().unwrap();
-        (s.host.clone(), s.advertised_host.clone())
-    };
+/// Build the stable local browser base URL for the *attached daemon*. The bind
+/// host comes from the running service's discovery lock, not the GUI's possibly
+/// stale settings. Wildcard binds deliberately open through loopback; the
+/// advertised LAN address remains reserved for links shared with other devices.
+fn browser_base_url_for_state(state: &State<AppState>, daemon_host: &str, port: u16) -> String {
+    let fallback_host = state.settings.lock().unwrap().host.clone();
     let bind_host = if daemon_host.is_empty() {
         fallback_host
     } else {
         daemon_host.to_string()
     };
-    let advertised_host = match daemon_advertised {
-        Some(h) => h.to_string(),
-        None => fallback_advertised,
-    };
-    server::featured_base_url(&bind_host, &advertised_host, port)
+    server::local_browser_base_url(&bind_host, port)
 }
 
 fn is_example_workspace_path(path: &str) -> bool {
@@ -373,7 +356,7 @@ pub async fn add_workspace(
         .map_err(remote_err)?;
     let port = remote.port();
     let url = server::build_workspace_url(
-        &browser_base_url_for_state(&state, remote.host(), remote.advertised_host(), port),
+        &browser_base_url_for_state(&state, remote.host(), port),
         &server::workspace_url_path(&id, None),
     );
     Ok(serde_json::json!({ "id": id, "url": url }))
@@ -453,6 +436,26 @@ pub async fn remove_workspace(id: String, state: State<'_, AppState>) -> Result<
     Ok(())
 }
 
+#[tauri::command]
+pub async fn get_data_cleanup_stats(
+    state: State<'_, AppState>,
+) -> Result<markon_core::data_maintenance::DataCleanupStats, String> {
+    require_service(&state)?
+        .data_cleanup_stats()
+        .await
+        .map_err(remote_err)
+}
+
+#[tauri::command]
+pub async fn cleanup_orphaned_data(
+    state: State<'_, AppState>,
+) -> Result<markon_core::data_maintenance::DataCleanupResult, String> {
+    require_service(&state)?
+        .cleanup_orphaned_data()
+        .await
+        .map_err(remote_err)
+}
+
 /// List all active workspaces with their IDs and URLs over the service's
 /// control socket, mapped through the shared `workspace_panel_json`.
 #[tauri::command]
@@ -465,8 +468,7 @@ pub async fn get_workspaces(state: State<'_, AppState>) -> Result<Vec<serde_json
         .lock()
         .unwrap()
         .sync_from_workspace_infos(infos.clone());
-    let browser_base =
-        browser_base_url_for_state(&state, remote.host(), remote.advertised_host(), port);
+    let browser_base = browser_base_url_for_state(&state, remote.host(), port);
     Ok(infos
         .into_iter()
         .map(|info| workspace_panel_json(info, &browser_base))
@@ -498,15 +500,7 @@ pub async fn open_url(url: String, state: State<'_, AppState>) -> Result<(), Str
             .as_ref()
             .map(|r| r.host().to_string())
             .unwrap_or_default();
-        let daemon_advertised = handle
-            .as_ref()
-            .and_then(|r| r.advertised_host().map(str::to_string));
-        let base = browser_base_url_for_state(
-            &state,
-            &daemon_host,
-            daemon_advertised.as_deref(),
-            server.port(),
-        );
+        let base = browser_base_url_for_state(&state, &daemon_host, server.port());
         (handle, base)
     };
     let markon_prefix = format!("{}/", base.trim_end_matches('/'));

@@ -25,6 +25,7 @@ pub use transport::{
     ControlSocketName,
 };
 
+use crate::data_maintenance::{DataCleanupResult, DataCleanupStats};
 use crate::workspace::{expand_and_canonicalize, WorkspaceFlags, WorkspaceInfo};
 
 /// Error talking to a running server's control socket.
@@ -339,6 +340,22 @@ impl RunningServer {
             .await?
         {
             ControlResponse::Ok => Ok(()),
+            _ => Err(ControlError::Unexpected),
+        }
+    }
+
+    /// Inspect persistent rows outside all currently registered workspaces.
+    pub async fn data_cleanup_stats(&self) -> Result<DataCleanupStats, ControlError> {
+        match self.call(ControlRequest::DataCleanupStats).await? {
+            ControlResponse::DataCleanupStats(stats) => Ok(stats),
+            _ => Err(ControlError::Unexpected),
+        }
+    }
+
+    /// Permanently remove persistent rows outside all registered workspaces.
+    pub async fn cleanup_orphaned_data(&self) -> Result<DataCleanupResult, ControlError> {
+        match self.call(ControlRequest::CleanupOrphanedData).await? {
+            ControlResponse::DataCleanupResult(result) => Ok(result),
             _ => Err(ControlError::Unexpected),
         }
     }

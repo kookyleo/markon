@@ -167,16 +167,19 @@ describe('WebSocketManager', () => {
         const ws = itemAt(MockWS.instances, 0);
         // ws.sent[0] is the hello; subsequent entries are collaboration frames.
 
-        await m.send({ type: 'delete_annotation', id: 'abc' });
+        await m.send({ type: 'live_action', data: { action: 'focus', path: 'abc' } });
 
         expect(ws.sent.length).toBeGreaterThanOrEqual(2);
         const last = itemAt(ws.sent, ws.sent.length - 1);
-        expect(JSON.parse(last)).toEqual({ type: 'delete_annotation', id: 'abc' });
+        expect(JSON.parse(last)).toEqual({
+            type: 'live_action',
+            data: { action: 'focus', path: 'abc' },
+        });
     });
 
     it('send() is a no-op when not connected', async () => {
         const m = documentManager();
-        await m.send({ type: 'clear_annotations' });
+        await m.send({ type: 'live_action', data: { action: 'noop' } });
         // No socket should have been created — send happens before connect.
         expect(MockWS.instances.length).toBe(0);
         expect(warnSpy).toHaveBeenCalled();
@@ -268,25 +271,4 @@ describe('WebSocketManager', () => {
         expect(m.isOwnEcho('op-298')).toBe(true);
     });
 
-    it('sendWithOpId() tags the outgoing frame and records the id', async () => {
-        const m = documentManager();
-        await m.connect();
-        const ws = itemAt(MockWS.instances, 0);
-
-        const opId = await m.sendWithOpId({
-            type: 'new_annotation',
-            annotation: { id: 'anno-1' },
-        });
-
-        expect(opId).toMatch(/^[0-9a-f]{16}$/);
-        // ws.sent[0] is the hello; the mutation frame follows.
-        const rawFrame = itemAt(ws.sent, ws.sent.length - 1);
-        expect(rawFrame).toBeDefined();
-        const last = JSON.parse(String(rawFrame)) as Record<string, unknown>;
-        expect(last['type']).toBe('new_annotation');
-        expect(last['op_id']).toBe(opId);
-        // The same op_id is recognised as own echo (single-shot).
-        expect(m.isOwnEcho(opId)).toBe(true);
-        expect(m.isOwnEcho(opId)).toBe(false);
-    });
 });

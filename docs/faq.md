@@ -49,11 +49,14 @@ sudo apt install pkg-config libssl-dev  # Debian/Ubuntu
 
 ### 批注保存在哪？
 
-- **默认（本地模式）**：浏览器 LocalStorage，每个浏览器独立
-- **共享模式**：工作区启用「共享批注」后使用 SQLite 数据库
-  - macOS/Linux：`~/.markon/annotation.sqlite`
-  - Windows：`%USERPROFILE%\.markon\annotation.sqlite`
-  - 自定义：`MARKON_SQLITE_PATH=/path/to/db`
+批注和已读状态统一保存到 Markon 本机 SQLite；「共享批注」只控制是否向协作者实时同步和展示。
+
+- macOS/Linux：`~/.markon/annotation.sqlite`
+- Windows：`%USERPROFILE%\.markon\annotation.sqlite`
+- 自定义：`MARKON_SQLITE_PATH=/path/to/db`
+
+升级时，当前浏览器来源中旧版 LocalStorage 数据会自动合并进 SQLite。未持有管理员会话且工作区
+没有开启共享时，浏览器仍以 LocalStorage 作为私有降级，不会读取所有者的个人数据。
 
 ### 怎么让其他设备也能访问？
 

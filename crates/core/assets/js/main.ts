@@ -197,8 +197,8 @@ export class MarkonApp {
 
     /** Initialize storage. @private */
     async #initStorage(): Promise<void> {
-        // WebSocket is needed by either shared-annotation persistence or Live
-        // broadcast. Establish one connection in either case.
+        // WebSocket is needed by either shared-annotation fan-out or Live
+        // broadcast. SQLite persistence itself uses the HTTP state endpoint.
         if (this.#isSharedMode || this.#enableLive) {
             const workspaceId = Meta.get(CONFIG.META_TAGS.WORKSPACE_ID);
             if (!workspaceId) {
@@ -252,7 +252,17 @@ export class MarkonApp {
             this.#setupFileChangedHandler();
         }
 
-        this.#storage = new StorageManager(this.#filePath, this.#isSharedMode, this.#wsManager);
+        const workspaceId = Meta.get(CONFIG.META_TAGS.WORKSPACE_ID) ?? '';
+        this.#storage = new StorageManager(
+            this.#filePath,
+            this.#isSharedMode,
+            this.#wsManager,
+            workspaceId,
+        );
+        await window.viewedManager?.attachStorage(
+            this.#storage,
+            this.#isSharedMode ? this.#wsManager : null,
+        );
     }
 
     /**
@@ -283,7 +293,6 @@ export class MarkonApp {
         this.#annotationManager = new AnnotationManager(this.#storage, this.#markdownBody);
         this.#annotationManager.onChange(() => {
             this.#dispatchNotesCountChanged();
-            this.#mirrorSharedAnnotationsLocally();
         });
 
         this.#noteManager = new NoteManager(this.#annotationManager, this.#markdownBody);
@@ -330,23 +339,8 @@ export class MarkonApp {
     async #loadData(): Promise<void> {
         if (!this.#annotationManager) return;
         await this.#annotationManager.load();
-        if (this.#isSharedMode && this.#annotationManager.getAll().length === 0) {
-            const localAnnotations = await StorageManager.loadLocalAnnotations(this.#filePath);
-            if (localAnnotations.length > 0) {
-                this.#annotationManager.replaceAll(localAnnotations);
-                Logger.log(
-                    'MarkonApp',
-                    `Loaded ${localAnnotations.length} local annotations while waiting for shared sync`,
-                );
-            }
-        }
         Logger.log('MarkonApp', `Loaded ${this.#annotationManager.getAll().length} annotations`);
         this.#dispatchNotesCountChanged();
-    }
-
-    #mirrorSharedAnnotationsLocally(annotations = this.#annotationManager?.getAll() ?? []): void {
-        if (!this.#isSharedMode) return;
-        void StorageManager.saveLocalAnnotations(this.#filePath, annotations);
     }
 
     /** Apply to DOM. @private */
@@ -790,7 +784,7 @@ export class MarkonApp {
                 annotations.push(anno);
             });
 
-            const { merged, missingFromShared } = mergeAnnotationSnapshots(
+            const { merged } = mergeAnnotationSnapshots(
                 annotationManager.getAll(),
                 annotations,
             );
@@ -801,15 +795,6 @@ export class MarkonApp {
             noteManager.render();
             this.#dispatchNotesCountChanged();
 
-            if (missingFromShared.length > 0 && this.#storage) {
-                const storage = this.#storage;
-                void Promise.all(missingFromShared.map(anno => storage.saveAnnotation(anno)))
-                    .then((opIds) => {
-                        if (opIds.some(Boolean)) {
-                            showNotification(i18n.t('web.annot.sharedsynced'), { variant: 'success' });
-                        }
-                    });
-            }
         });
 
         ws.on('new_annotation', (message) => {
@@ -1062,11 +1047,11 @@ export class MarkonApp {
         });
     }
 
-    /** Update clear-button text to reflect local/shared mode. @private */
+    /** Update clear-button text to reflect personal/shared visibility. @private */
     #updateClearButtonText(): void {
         const clearButton = document.querySelector<HTMLElement>('.footer-clear-link');
         if (clearButton) {
-            const mode = this.#isSharedMode ? 'shared' : 'local';
+            const mode = this.#isSharedMode ? 'shared' : 'personal';
             clearButton.textContent = `Clear Annotations(${mode}) in this page`;
         }
     }
@@ -1409,12 +1394,7 @@ export class MarkonApp {
                     }
                 }
 
-                if (!this.#isSharedMode) {
-                    Logger.log('MarkonApp', 'Local mode: reloading page');
-                    location.reload();
-                } else {
-                    Logger.log('MarkonApp', 'Shared mode: clear complete, waiting for server sync');
-                }
+                if (!this.#isSharedMode) location.reload();
             },
             anchorElement,
             'Clear',

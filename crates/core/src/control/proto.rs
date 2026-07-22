@@ -11,6 +11,7 @@
 //! a named pipe is scoped to the current session on Windows). There is no token —
 //! privilege is "which listener you arrived on".
 
+use crate::data_maintenance::{DataCleanupResult, DataCleanupStats};
 use crate::workspace::{WorkspaceFlags, WorkspaceInfo};
 use serde::{Deserialize, Serialize};
 
@@ -45,6 +46,11 @@ pub enum ControlRequest {
     SetAlias { id: String, alias: String },
     /// Detach a workspace by id.
     RemoveWorkspace { id: String },
+    /// Inspect persistent rows that no longer belong to a registered workspace.
+    DataCleanupStats,
+    /// Permanently delete the rows reported by `DataCleanupStats` and reclaim
+    /// their free SQLite pages.
+    CleanupOrphanedData,
     /// Set (`Some(hash)`) or leave (`None`) a workspace's collaborator access
     /// code hash. The hash must already be salted with the shared install salt.
     SetAccessCode {
@@ -75,6 +81,10 @@ pub enum ControlResponse {
     /// Manual administrator bootstrap details (answer to
     /// `AdminBootstrapCode`).
     AdminCode { url: String, code: String },
+    /// Persistent-data cleanup preview.
+    DataCleanupStats(DataCleanupStats),
+    /// Result of an explicit persistent-data cleanup.
+    DataCleanupResult(DataCleanupResult),
     /// A data-less success.
     Ok,
     /// A failure, carrying a human-readable reason.

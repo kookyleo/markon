@@ -28,6 +28,10 @@ function wheel(target: Element, options: WheelEventInit): void {
     target.dispatchEvent(new WheelEvent('wheel', { bubbles: true, cancelable: true, ...options }));
 }
 
+function nextAnimationFrame(): Promise<void> {
+    return new Promise((resolve) => window.requestAnimationFrame(() => resolve()));
+}
+
 describe('VisualZoomManager', () => {
     let manager: VisualZoomManager;
 
@@ -149,6 +153,9 @@ describe('VisualZoomManager', () => {
         expect(document.querySelector('.markon-visual-zoom-overlay')).toBeNull();
 
         const trigger = document.querySelector<HTMLButtonElement>('.markon-diagram [data-visual-zoom-trigger]')!;
+        expect(trigger.parentElement).toBe(document.querySelector('.markon-diagram'));
+        manager.refresh();
+        expect(document.querySelectorAll('.markon-diagram > [data-visual-zoom-trigger]')).toHaveLength(1);
         click(trigger);
         const content = document.querySelector('.markon-visual-zoom-content-diagram');
         expect(content).not.toBeNull();
@@ -253,6 +260,42 @@ describe('VisualZoomManager', () => {
 
         click(document.querySelector<HTMLButtonElement>('.markon-visual-zoom-close')!);
         expect(document.querySelector('.markon-visual-zoom-overlay')).toBeNull();
+    });
+
+    it('adds glass surfaces only when transformed content overlaps viewer chrome', async () => {
+        const body = seedMarkdown('<img src="/assets/diagram.svg" alt="Architecture">');
+        manager = new VisualZoomManager(body);
+        manager.init();
+        click(document.querySelector<HTMLButtonElement>('[data-visual-zoom-trigger]')!);
+        await nextAnimationFrame();
+
+        const content = document.querySelector<HTMLElement>('.markon-visual-zoom-content')!;
+        const controls = document.querySelector<HTMLElement>('.markon-visual-zoom-controls')!;
+        const close = document.querySelector<HTMLElement>('.markon-visual-zoom-close')!;
+        let contentRect = new DOMRect(0, 0, 900, 600);
+        Object.defineProperty(content, 'getBoundingClientRect', {
+            configurable: true,
+            value: () => contentRect,
+        });
+        Object.defineProperty(controls, 'getBoundingClientRect', {
+            configurable: true,
+            value: () => new DOMRect(260, 530, 380, 48),
+        });
+        Object.defineProperty(close, 'getBoundingClientRect', {
+            configurable: true,
+            value: () => new DOMRect(850, 6, 30, 30),
+        });
+
+        window.dispatchEvent(new Event('resize'));
+        await nextAnimationFrame();
+        expect(controls.classList.contains('is-content-overlap')).toBe(true);
+        expect(close.classList.contains('is-content-overlap')).toBe(true);
+
+        contentRect = new DOMRect(100, 100, 100, 100);
+        window.dispatchEvent(new Event('resize'));
+        await nextAnimationFrame();
+        expect(controls.classList.contains('is-content-overlap')).toBe(false);
+        expect(close.classList.contains('is-content-overlap')).toBe(false);
     });
 
     it('reuses the global shortcuts panel and lets Escape close help before the viewer', () => {

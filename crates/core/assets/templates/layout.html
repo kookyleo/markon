@@ -535,6 +535,11 @@
             pointer-events: auto;
         }
 
+        .markon-diagram.markon-visual-zoom-host > .markon-visual-zoom-trigger {
+            top: 8px;
+            right: 8px;
+        }
+
         .markon-visual-zoom-trigger:hover,
         .markon-visual-zoom-trigger:focus-visible {
             color: var(--markon-fg-default);
@@ -569,8 +574,8 @@
             padding: 0;
             box-sizing: border-box;
             border: 1px solid transparent;
-            border-radius: 0;
-            background: transparent;
+            border-radius: var(--markon-radius-lg);
+            background-color: transparent;
             color: var(--markon-fg-muted);
             box-shadow: none;
             cursor: default;
@@ -578,7 +583,10 @@
             opacity: 0.72;
             transition:
                 color var(--markon-transition-fast),
-                opacity var(--markon-transition-fast);
+                opacity var(--markon-transition-fast),
+                border-color var(--markon-transition-fast),
+                background-color var(--markon-transition-fast),
+                box-shadow var(--markon-transition-fast);
         }
 
         .markon-visual-zoom-corner-button svg {
@@ -603,11 +611,33 @@
             display: inline-flex;
             align-items: center;
             gap: 10px;
+            padding: 7px 9px;
+            border: 1px solid transparent;
+            border-radius: var(--markon-modal-frame-radius);
+            box-sizing: border-box;
             transform: translateX(-50%);
+            background-color: transparent;
             color: var(--markon-fg-default);
+            box-shadow: none;
             font: 14px/1.2 var(--markon-ui-font);
             -webkit-user-select: none;
             user-select: none;
+            transition:
+                border-color var(--markon-transition-fast),
+                background-color var(--markon-transition-fast),
+                box-shadow var(--markon-transition-fast);
+        }
+
+        .markon-visual-zoom-corner-button.is-content-overlap,
+        .markon-visual-zoom-controls.is-content-overlap {
+            border-color: var(--markon-modal-border-neutral);
+            background-color: color-mix(in srgb, var(--markon-bg-overlay) 84%, transparent);
+            box-shadow:
+                inset 0 1px 0 color-mix(in srgb, var(--markon-fg-on-emphasis) 64%, transparent),
+                0 0 0 1px color-mix(in srgb, var(--markon-fg-on-emphasis) 24%, transparent),
+                var(--markon-shadow-pop);
+            backdrop-filter: blur(18px) saturate(1.35);
+            -webkit-backdrop-filter: blur(18px) saturate(1.35);
         }
 
         .markon-visual-zoom-scale {

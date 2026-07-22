@@ -912,6 +912,8 @@ fn main() {
             commands::add_workspace,
             commands::update_workspace,
             commands::remove_workspace,
+            commands::get_data_cleanup_stats,
+            commands::cleanup_orphaned_data,
             commands::get_workspaces,
             commands::reconnect,
             commands::open_url,

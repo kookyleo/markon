@@ -25,7 +25,10 @@ use tokio::sync::mpsc;
 use tokio_util::codec::{Framed, LengthDelimitedCodec};
 
 use super::proto::{ControlRequest, ControlResponse};
+use crate::data_maintenance::{cleanup_orphaned_data, data_cleanup_stats};
 use crate::workspace::{expand_and_canonicalize, WorkspaceConfig, WorkspaceRegistry};
+use rusqlite::Connection;
+use std::sync::Mutex;
 
 /// Maximum time a single accepted connection may take to deliver its one framed
 /// request. A client that connects and then stalls (or dribbles a partial length
@@ -124,6 +127,9 @@ fn default_socket_path() -> io::Result<PathBuf> {
 #[derive(Clone)]
 pub struct ControlContext {
     pub registry: Arc<WorkspaceRegistry>,
+    /// The running service's persistent store. Present in production; optional
+    /// for registry-only transport tests and minimal embedders.
+    pub db: Option<Arc<Mutex<Connection>>>,
     /// Signal channel the running server watches to exit (mirrors the HTTP
     /// `/api/shutdown` handler). `None` → `Shutdown` is unsupported.
     pub shutdown: Option<mpsc::Sender<()>>,
@@ -149,6 +155,7 @@ impl ControlContext {
     pub fn new(registry: Arc<WorkspaceRegistry>) -> Self {
         Self {
             registry,
+            db: None,
             shutdown: None,
             admin_bootstrap: None,
             admin_bootstrap_code: None,
@@ -218,6 +225,26 @@ pub fn dispatch(req: ControlRequest, ctx: &ControlContext) -> ControlResponse {
                 ControlResponse::Ok
             } else {
                 ControlResponse::Err(format!("no such workspace: {id}"))
+            }
+        }
+        ControlRequest::DataCleanupStats => {
+            let Some(db) = &ctx.db else {
+                return ControlResponse::Err("persistent data store unavailable".to_string());
+            };
+            let conn = db.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+            match data_cleanup_stats(&conn, &ctx.registry) {
+                Ok(stats) => ControlResponse::DataCleanupStats(stats),
+                Err(error) => ControlResponse::Err(error),
+            }
+        }
+        ControlRequest::CleanupOrphanedData => {
+            let Some(db) = &ctx.db else {
+                return ControlResponse::Err("persistent data store unavailable".to_string());
+            };
+            let mut conn = db.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+            match cleanup_orphaned_data(&mut conn, &ctx.registry) {
+                Ok(result) => ControlResponse::DataCleanupResult(result),
+                Err(error) => ControlResponse::Err(error),
             }
         }
         ControlRequest::SetAccessCode {

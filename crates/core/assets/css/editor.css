@@ -172,13 +172,19 @@
 
 .markdown-body .markon-diagram {
     margin: 16px 0;
-    overflow-x: auto;
+    width: 100%;
+    max-width: 100%;
+    min-width: 0;
+    overflow: hidden;
 }
 
 .markdown-body .markon-diagram-canvas {
-    display: inline-block;
+    display: block;
+    width: 100%;
     max-width: 100%;
+    box-sizing: border-box;
     padding: 12px;
+    overflow: hidden;
     border: 1px solid var(--markon-border-default);
     border-radius: var(--markon-radius-sm);
     background: var(--markon-bg-default);
@@ -186,8 +192,10 @@
 
 .markdown-body .markon-diagram svg {
     display: block;
+    width: auto;
     max-width: 100%;
     height: auto;
+    margin-inline: auto;
     overflow: visible;
 }
 

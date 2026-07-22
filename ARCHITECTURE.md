@@ -76,6 +76,14 @@ Markon 的用户数据**独立于进程**,持久在 `~/.markon/`:
   **文件路径是否不变**,与版本号、与 URL 是否变化**都无关**。
 - **库位置**:默认 `~/.markon/annotation.sqlite`,可由 `MARKON_SQLITE_PATH` 环境变量或
   settings 的 `db_path` 覆盖(`server.rs`)。
+- **SQLite 始终是管理员个人数据的权威存储**:是否开启 `shared_annotation` 只决定批注 / 已读
+  是否通过 WebSocket 向协作者广播和展示,不得再切换持久化后端。浏览器变更统一先经同源
+  document-state HTTP 接口写入 SQLite;WebSocket 不接受批注 / 已读写库请求,只承担广播输出。
+  浏览器 `localStorage` 只允许作为
+  旧版本迁移来源,或无管理员 / 共享权限时的浏览器私有降级;成功写入 SQLite 后应删除当前 origin
+  下的迁移副本。
+- **访问边界**:非共享状态下仅显式 Admin session 可读写 SQLite 中的个人批注 / 已读;开启共享后
+  Collaborator 才获得同一数据集的读取、写入和实时广播能力。loopback 本身仍不构成管理员身份。
 - **批注内容兼容**:`annotations.data` 是完整 Annotation JSON。锚点新增能力只能以可选字段扩展;
   当前 `anchor.version = 2` 追加有序 `fragments`,同时保留原 `position / exact / prefix /
   suffix` 平面锚点。读取端必须继续接受没有 `version / fragments` 的历史批注,不得要求数据库迁移。
@@ -108,6 +116,7 @@ Markon 的用户数据**独立于进程**,持久在 `~/.markon/`:
   1. `markon ls` 列出的每个 workspace id 与升级前**逐一一致**(URL 未变);
   2. 任一 workspace 的批注 / 已读在页面上仍可见(数据未丢);
   3. `settings.json` 的 `salt` 与升级前相同。
+  4. 切换本机网络/IP 后,GUI/CLI 仍以稳定 loopback origin 打开,同一路径的 SQLite 批注可见。
 
 ## 设计决策
 

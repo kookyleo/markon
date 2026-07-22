@@ -1293,6 +1293,16 @@
               <button class="btn" id="db_path_clear" data-i18n="pref.dbpath.clear" style="font-size:12px;display:none"></button>
             </div>
           </div>
+          <div class="pref-row" style="flex-wrap:wrap">
+            <div class="pref-label" style="flex:1;min-width:0">
+              <span data-i18n="pref.data_cleanup"></span>
+              <small id="data_cleanup_stats" class="db-path-val"></small>
+            </div>
+            <div class="pref-control">
+              <button class="btn" id="data_cleanup_refresh" data-i18n="pref.data_cleanup.refresh" style="font-size:12px"></button>
+              <button class="btn" id="data_cleanup_run" data-i18n="pref.data_cleanup.run" style="font-size:12px;color:var(--danger)"></button>
+            </div>
+          </div>
           <div class="pref-row">
             <div class="pref-label">
               <span data-i18n="pref.auto_remove_single_file_workspaces"></span>
@@ -1737,6 +1747,63 @@
     updateDbPathDisplay('');
     saveSettings();
   });
+
+  const formatBytes = (bytes) => {
+    if (bytes < 1024) return `${bytes} B`;
+    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+    return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+  };
+
+  async function refreshDataCleanupStats() {
+    const display = document.getElementById('data_cleanup_stats');
+    const run = document.getElementById('data_cleanup_run');
+    display.textContent = T('pref.data_cleanup.loading');
+    try {
+      const stats = await invoke('get_data_cleanup_stats');
+      const count = stats.orphaned_annotations + stats.orphaned_viewed_files
+        + stats.orphaned_chat_threads + stats.orphaned_chat_messages;
+      display.textContent = count === 0
+        ? `${T('pref.data_cleanup.none')} · ${formatBytes(stats.database_bytes)}`
+        : T('pref.data_cleanup.stats')
+            .replace('{files}', String(stats.orphaned_annotation_files))
+            .replace('{annotations}', String(stats.orphaned_annotations))
+            .replace('{viewed}', String(stats.orphaned_viewed_files))
+            .replace('{threads}', String(stats.orphaned_chat_threads))
+            .replace('{messages}', String(stats.orphaned_chat_messages))
+            .replace('{bytes}', formatBytes(stats.orphaned_payload_bytes));
+      run.disabled = count === 0;
+      return stats;
+    } catch (error) {
+      display.textContent = String(error);
+      run.disabled = true;
+      return null;
+    }
+  }
+
+  document.getElementById('data_cleanup_refresh').addEventListener('click', refreshDataCleanupStats);
+  document.getElementById('data_cleanup_run').addEventListener('click', async () => {
+    const stats = await refreshDataCleanupStats();
+    if (!stats) return;
+    const count = stats.orphaned_annotations + stats.orphaned_viewed_files
+      + stats.orphaned_chat_threads + stats.orphaned_chat_messages;
+    if (count === 0 || !window.confirm(T('pref.data_cleanup.confirm'))) return;
+    const button = document.getElementById('data_cleanup_run');
+    button.disabled = true;
+    try {
+      const result = await invoke('cleanup_orphaned_data');
+      const done = T('pref.data_cleanup.done')
+        .replace('{annotations}', String(result.deleted_annotations))
+        .replace('{viewed}', String(result.deleted_viewed_files))
+        .replace('{threads}', String(result.deleted_chat_threads))
+        .replace('{messages}', String(result.deleted_chat_messages));
+      toast(done);
+    } catch (error) {
+      document.getElementById('data_cleanup_stats').textContent = String(error);
+    } finally {
+      await refreshDataCleanupStats();
+    }
+  });
+  void refreshDataCleanupStats();
 
   // Wire change handlers: save + live-apply where applicable.
   ['port', 'host', 'advertised-host'].forEach(id =>
@@ -2604,6 +2671,7 @@
     // below — those can throw on the workspaces tab and abort applyI18n,
     // which previously left this tip empty.
     renderWorkspaceAddTip();
+    void refreshDataCleanupStats();
     // Feedback buttons (dynamic)
     ['bug', 'idea', 'ask'].forEach(kind => {
       const btn = document.getElementById(`btn-${kind}`);

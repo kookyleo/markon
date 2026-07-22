@@ -1,9 +1,7 @@
 //! SQLite-backed persistence for chat threads and messages.
 //!
-//! Reuses the existing `~/.markon/annotation.sqlite` connection (see
-//! [`crate::server`]) so users with `--shared-annotation` already have it
-//! open. When chat is enabled but shared-annotation is not, the server still
-//! opens the DB lazily — same path, same code path.
+//! Reuses the always-open `~/.markon/annotation.sqlite` connection (see
+//! [`crate::server`]) shared by personal/shared annotations and viewed state.
 //!
 //! Tables:
 //! ```sql
@@ -159,8 +157,7 @@ impl ChatStorage {
         .await?
     }
 
-    /// Idempotent table creation — invoked once at server startup if either
-    /// `shared_annotation` or any workspace's `enable_chat` is set. Runs
+    /// Idempotent table creation — invoked once at server startup. Runs
     /// synchronously because boot owns the `Connection` outright; only the
     /// per-request paths (which share the connection through `Arc<Mutex<…>>`)
     /// need to hop onto the blocking pool.

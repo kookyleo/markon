@@ -6,6 +6,7 @@ use super::*;
 use crate::control::transport::{bind, ControlContext};
 use crate::workspace::{WorkspaceFlags, WorkspaceRegistry};
 use std::sync::Arc;
+use std::sync::Mutex;
 use tokio::sync::{mpsc, oneshot};
 
 /// Bind a control server on a unique temp socket, spawn its accept loop, and
@@ -39,9 +40,17 @@ async fn harness() -> Harness {
             "123456".to_string(),
         ))
     });
+    let conn = rusqlite::Connection::open_in_memory().unwrap();
+    conn.execute_batch(
+        "CREATE TABLE annotations (id TEXT PRIMARY KEY, file_path TEXT NOT NULL, data TEXT NOT NULL);
+         CREATE TABLE viewed_state (file_path TEXT PRIMARY KEY, state TEXT NOT NULL, updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP);",
+    )
+    .unwrap();
+    crate::chat::storage::ChatStorage::init(&conn).unwrap();
 
     let ctx = ControlContext {
         registry: registry.clone(),
+        db: Some(Arc::new(Mutex::new(conn))),
         shutdown: Some(shutdown_tx),
         admin_bootstrap: Some(admin),
         admin_bootstrap_code: Some(admin_code),
@@ -199,6 +208,13 @@ async fn control_round_trips_every_method() {
     let (manual_url, code) = h.client.admin_bootstrap_code("/workspace/").await.unwrap();
     assert_eq!(manual_url, "http://127.0.0.1:7000/_/admin");
     assert_eq!(code, "123456");
+
+    // Persistent-data maintenance uses the same privileged control channel.
+    let stats = h.client.data_cleanup_stats().await.unwrap();
+    assert_eq!(stats.active_workspaces, 1);
+    assert_eq!(stats.orphaned_items(), 0);
+    let cleanup = h.client.cleanup_orphaned_data().await.unwrap();
+    assert_eq!(cleanup.before.orphaned_items(), 0);
 
     // remove_workspace — detaches; list goes empty.
     h.client.remove_workspace(&id).await.unwrap();

@@ -134,6 +134,14 @@
     "pref.dbpath":"Persistent storage for annotations and viewed state (SQLite)",
     "pref.dbpath.browse": "Browse…",
     "pref.dbpath.clear":  "Reset",
+    "pref.data_cleanup": "Closed-workspace data",
+    "pref.data_cleanup.refresh": "Refresh",
+    "pref.data_cleanup.run": "Clean up…",
+    "pref.data_cleanup.loading": "Calculating…",
+    "pref.data_cleanup.none": "No obsolete data",
+    "pref.data_cleanup.stats": "{files} annotation files · {annotations} annotations · {viewed} viewed records · {threads} chat threads / {messages} messages · {bytes}",
+    "pref.data_cleanup.confirm": "Permanently delete data that no longer belongs to any active workspace? This cannot be undone.",
+    "pref.data_cleanup.done": "Deleted {annotations} annotations, {viewed} viewed records, {threads} chat threads and {messages} messages.",
 
     // ── Auto-update status ───────────────────────────────────
     "update.checking": "Checking…",

@@ -134,6 +134,14 @@
     "pref.dbpath":"注釈と既読状態の永続化ストレージ (SQLite)",
     "pref.dbpath.browse": "参照…",
     "pref.dbpath.clear":  "リセット",
+    "pref.data_cleanup": "閉じたワークスペースのデータ",
+    "pref.data_cleanup.refresh": "再集計",
+    "pref.data_cleanup.run": "クリーンアップ…",
+    "pref.data_cleanup.loading": "集計中…",
+    "pref.data_cleanup.none": "不要なデータはありません",
+    "pref.data_cleanup.stats": "注釈ファイル {files} 件 · 注釈 {annotations} 件 · 既読 {viewed} 件 · チャット {threads} 件 / メッセージ {messages} 件 · {bytes}",
+    "pref.data_cleanup.confirm": "現在のワークスペースに属さないデータを完全に削除しますか？この操作は取り消せません。",
+    "pref.data_cleanup.done": "注釈 {annotations} 件、既読 {viewed} 件、チャット {threads} 件、メッセージ {messages} 件を削除しました。",
 
     // ── Auto-update status ───────────────────────────────────
     "update.checking": "確認中…",

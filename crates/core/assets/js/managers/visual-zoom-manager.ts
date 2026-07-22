@@ -104,6 +104,19 @@ function rectFromPoints(a: Point, b: Point): DOMRect {
     return new DOMRect(left, top, Math.abs(a.x - b.x), Math.abs(a.y - b.y));
 }
 
+function rectanglesOverlap(a: DOMRect, b: DOMRect): boolean {
+    return (
+        a.width > 0 &&
+        a.height > 0 &&
+        b.width > 0 &&
+        b.height > 0 &&
+        a.left < b.right &&
+        a.right > b.left &&
+        a.top < b.bottom &&
+        a.bottom > b.top
+    );
+}
+
 function label(key: string, fallback: string): string {
     const value = i18n.t(key);
     return value === key ? fallback : value;
@@ -219,8 +232,11 @@ export class VisualZoomManager {
     #stage: HTMLDivElement | null = null;
     #frame: HTMLDivElement | null = null;
     #content: HTMLDivElement | null = null;
+    #closeButton: HTMLButtonElement | null = null;
+    #controls: HTMLDivElement | null = null;
     #scaleLabel: HTMLSpanElement | null = null;
     #scaleInput: HTMLInputElement | null = null;
+    #chromeOverlapFrame: number | null = null;
     #scale = DEFAULT_SCALE;
     #pan: Point = { x: 0, y: 0 };
     #pointers = new Map<number, Point>();
@@ -314,6 +330,8 @@ export class VisualZoomManager {
         this.#stage = stage;
         this.#frame = frame;
         this.#content = content;
+        this.#closeButton = chrome.closeButton;
+        this.#controls = chrome.controls;
         document.body.classList.add('markon-visual-zoom-open');
 
         chrome.closeButton.addEventListener('click', this.#handleCloseClick);
@@ -328,6 +346,7 @@ export class VisualZoomManager {
         stage.addEventListener('pointercancel', this.#handlePointerUp);
         document.addEventListener('keydown', this.#handleDocumentKeydown, true);
         document.addEventListener('keyup', this.#handleDocumentKeyup, true);
+        window.addEventListener('resize', this.#handleWindowResize);
 
         this.#updateTransform();
         this.#fitSoon(visual.node);
@@ -346,8 +365,14 @@ export class VisualZoomManager {
         this.#stage = null;
         this.#frame = null;
         this.#content = null;
+        this.#closeButton = null;
+        this.#controls = null;
         this.#scaleLabel = null;
         this.#scaleInput = null;
+        if (this.#chromeOverlapFrame !== null) {
+            window.cancelAnimationFrame?.(this.#chromeOverlapFrame);
+            this.#chromeOverlapFrame = null;
+        }
         this.#pointers.clear();
         this.#drag = null;
         this.#pinch = null;
@@ -358,6 +383,7 @@ export class VisualZoomManager {
         document.body.classList.remove('markon-visual-zoom-open');
         document.removeEventListener('keydown', this.#handleDocumentKeydown, true);
         document.removeEventListener('keyup', this.#handleDocumentKeyup, true);
+        window.removeEventListener('resize', this.#handleWindowResize);
     }
 
     get isOpen(): boolean {
@@ -412,6 +438,10 @@ export class VisualZoomManager {
         event.preventDefault();
         event.stopPropagation();
         this.close();
+    };
+
+    #handleWindowResize = (): void => {
+        this.#scheduleChromeOverlapUpdate();
     };
 
     #handleControlsClick = (event: MouseEvent): void => {
@@ -1072,5 +1102,31 @@ export class VisualZoomManager {
         if (this.#scaleInput) {
             this.#scaleInput.value = scaleToSliderValue(this.#scale);
         }
+        this.#scheduleChromeOverlapUpdate();
+    }
+
+    #scheduleChromeOverlapUpdate(): void {
+        if (!this.#overlay || !this.#content || this.#chromeOverlapFrame !== null) return;
+        if (typeof window.requestAnimationFrame !== 'function') {
+            this.#updateChromeOverlap();
+            return;
+        }
+        this.#chromeOverlapFrame = window.requestAnimationFrame(() => {
+            this.#chromeOverlapFrame = null;
+            this.#updateChromeOverlap();
+        });
+    }
+
+    #updateChromeOverlap(): void {
+        if (!this.#content) return;
+        const contentRect = this.#content.getBoundingClientRect();
+        this.#controls?.classList.toggle(
+            'is-content-overlap',
+            rectanglesOverlap(contentRect, this.#controls.getBoundingClientRect()),
+        );
+        this.#closeButton?.classList.toggle(
+            'is-content-overlap',
+            rectanglesOverlap(contentRect, this.#closeButton.getBoundingClientRect()),
+        );
     }
 }

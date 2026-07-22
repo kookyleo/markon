@@ -28,45 +28,31 @@ export type WSStateValue = (typeof WSState)[keyof typeof WSState];
 // TODO(phase-3-typing): replace `unknown` annotation/state shapes once
 // annotation-manager exports proper `Annotation` and `ViewedState` types.
 //
-// Mutating variants may carry an opaque `op_id` set by the originating
-// client. The server round-trips it verbatim so the originator can recognise
-// (and skip) its own echo. Field is optional for back-compat with older
-// peers that don't emit it.
+// SQLite mutations may carry an opaque `op_id` in the server's outbound
+// broadcast so the HTTP originator can recognise (and skip) its own echo.
 export type WsInbound =
     | { type: 'all_annotations'; annotations: unknown[] }
     | { type: 'new_annotation'; annotation: unknown; op_id?: string | null }
     | { type: 'delete_annotation'; id: string; op_id?: string | null }
     | { type: 'clear_annotations'; op_id?: string | null }
     | { type: 'viewed_state'; state: Record<string, boolean>; op_id?: string | null }
-    | { type: 'update_viewed_state'; state: Record<string, boolean>; op_id?: string | null }
     | { type: 'live_action'; data: { action: string; [k: string]: unknown } }
     | { type: 'file_changed'; workspace_id: string; path: string };
 
 /**
- * Discriminated union of WebSocket messages sent to the server.
- * Mirrors the call sites in `storage-manager` and `collaboration-manager`.
- *
- * Mutating variants accept an optional `op_id`. Prefer `sendWithOpId()` to
- * have one generated and recorded for echo dedup automatically.
+ * WebSocket input is intentionally Live-only. Annotation/viewed mutations use
+ * the document-state HTTP endpoint and are broadcast back as `WsInbound`.
  */
 export type WsOutbound =
-    | { type: 'new_annotation'; annotation: unknown; op_id?: string }
-    | { type: 'delete_annotation'; id: string; op_id?: string }
-    | { type: 'clear_annotations'; op_id?: string }
-    | { type: 'update_viewed_state'; state: Record<string, boolean>; op_id?: string }
     | { type: 'live_action'; data: { action: string; [k: string]: unknown } };
-
-/** Outbound messages that participate in op_id-based echo dedup. */
-export type WsOutboundWithOpId = Exclude<WsOutbound, { type: 'live_action' }>;
 
 export type WsTarget =
     | { kind: 'document'; path: string }
     | { kind: 'surface'; key: string };
 
 /**
- * Generate a 64-bit (16 hex chars) random id, used to tag outgoing mutating
- * frames so the originator can recognise its own echo. The space is plenty
- * for in-session dedup; we don't need cryptographic uniqueness.
+ * Generate a 64-bit (16 hex chars) random id for correlating an HTTP mutation
+ * with its WebSocket broadcast. The space is plenty for in-session dedup.
  */
 export function makeOpId(): string {
     const a = (Math.random() * 0x100000000) >>> 0;
@@ -215,18 +201,6 @@ export class WebSocketManager {
         } catch (error) {
             Logger.error('WebSocket', 'Failed to send message:', error);
         }
-    }
-
-    /**
-     * Send a mutating message with an auto-generated `op_id`, recording it
-     * for echo dedup. Returns the id so the caller can stash it on an undo
-     * entry or otherwise correlate the round-trip.
-     */
-    async sendWithOpId(message: WsOutboundWithOpId): Promise<string> {
-        const opId = makeOpId();
-        this.recordOutgoing(opId);
-        await this.send({ ...message, op_id: opId });
-        return opId;
     }
 
     /**

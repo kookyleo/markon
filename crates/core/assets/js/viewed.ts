@@ -3,13 +3,16 @@
  *
  * Adds GitHub PR-style "Viewed" checkboxes to section headings.
  *  - Collapse / expand sections
- *  - Persist state to LocalStorage (local mode) or SQLite (shared mode)
+ *  - Persist state to SQLite when the owner/shared session permits it
  *  - Click collapsed heading to expand
  *  - Phase 3: Batch operations + TOC highlighting
  *
  * This module is bundled in IIFE format. Type imports below are erased at
  * compile time, so the bundled file remains import-free.
  */
+
+import type { StorageManager } from './managers/storage-manager';
+import type { WebSocketManager } from './managers/websocket-manager';
 
 const _t = (window.__MARKON_I18N__?.t) || ((k: string): string => k);
 
@@ -74,11 +77,6 @@ type NoteFocusReveal = {
  * standalone IIFE bundle, and to make it trivial to stub in tests.
  */
 interface OpIdAwareWs {
-    isConnected(): boolean;
-    sendWithOpId(message: {
-        type: 'update_viewed_state';
-        state: Record<string, boolean>;
-    }): Promise<string>;
     isOwnEcho(opId: string | null | undefined): boolean;
 }
 
@@ -90,10 +88,8 @@ export class SectionViewedManager {
     isSharedMode: boolean;
     ws: WebSocket | null;
     /**
-     * Optional op_id-aware send/dedup adapter (the main `WebSocketManager`).
-     * When present, outgoing `update_viewed_state` frames are tagged with an
-     * op_id and incoming `viewed_state` echoes from this tab are dropped.
-     * Falls back to the raw `ws` field when `null` for backward compat.
+     * Optional op_id-aware dedup adapter (the main `WebSocketManager`). HTTP
+     * persistence records outgoing ids there so matching WS echoes are dropped.
      */
     wsManager: OpIdAwareWs | null;
     filePath: string;
@@ -107,6 +103,7 @@ export class SectionViewedManager {
     private noteFocusReveal: NoteFocusReveal | null;
     private noteFocusRevealSeq: number;
     private preserveExpansionOnNextSharedState: boolean;
+    private storageManager: StorageManager | null;
 
     /** Latest WS handler — kept so we can detach it before re-attaching. */
     private _wsMessageHandler: ((event: MessageEvent) => void) | null;
@@ -129,6 +126,7 @@ export class SectionViewedManager {
         this.noteFocusReveal = null;
         this.noteFocusRevealSeq = 0;
         this.preserveExpansionOnNextSharedState = false;
+        this.storageManager = null;
 
         // Check if viewed feature is enabled
         const enableViewedMeta = document.querySelector('meta[name="enable-viewed"]');
@@ -145,7 +143,7 @@ export class SectionViewedManager {
     async init(): Promise<void> {
         this.loadCollapsedState();
 
-        // 1. Load saved viewed state (async for shared mode) — only if viewed is enabled.
+        // 1. Bootstrap legacy/offline viewed state; SQLite attaches immediately after.
         if (this.enableViewed) {
             await this.loadState();
         }
@@ -166,6 +164,21 @@ export class SectionViewedManager {
 
         // 5. Setup event listeners
         this.setupEventListeners();
+    }
+
+    /** Attach the canonical SQLite store after MarkonApp has initialized it. */
+    async attachStorage(storage: StorageManager, wsManager: WebSocketManager | null): Promise<void> {
+        await this.ready;
+        this.storageManager = storage;
+        this.wsManager = wsManager;
+        if (wsManager) {
+            this.ws = wsManager.getWebSocket();
+            this.setupWebSocketListeners();
+        }
+        this.viewedState = await storage.loadViewedState();
+        this.stateLoaded = true;
+        this.updateCheckboxes();
+        this.applyViewedState();
     }
 
     setupWebSocketListeners(): void {
@@ -941,31 +954,8 @@ export class SectionViewedManager {
     }
 
     async loadState(): Promise<void> {
-        if (this.isSharedMode) {
-            // Shared mode: state arrives via WebSocket.
-            return new Promise<void>((resolve) => {
-                if (this.stateLoaded) {
-                    resolve();
-                    return;
-                }
-
-                const timeout = setTimeout(() => {
-                    // Fall back to empty state after 500ms.
-                    this.viewedState = {};
-                    this.stateLoaded = true;
-                    resolve();
-                }, 500);
-
-                const checkInterval = setInterval(() => {
-                    if (this.stateLoaded) {
-                        clearTimeout(timeout);
-                        clearInterval(checkInterval);
-                        resolve();
-                    }
-                }, 50);
-            });
-        }
-        // Local mode: LocalStorage.
+        // Bootstrap from the current origin so legacy state remains visible
+        // until MarkonApp attaches SQLite and migrates it.
         const saved = localStorage.getItem(viewedStorageKey(this.filePath));
         this.viewedState = saved ? (JSON.parse(saved) as ViewedState) : {};
         this.stateLoaded = true;
@@ -985,30 +975,12 @@ export class SectionViewedManager {
     }
 
     saveState(): void {
-        if (this.isSharedMode) {
-            // Preferred path: route through the op_id-aware WebSocketManager
-            // so the next incoming `viewed_state` echo can be recognised and
-            // skipped. Falls back to the raw socket for tabs that haven't
-            // wired up the manager yet (e.g. legacy callers).
-            if (this.wsManager && this.wsManager.isConnected()) {
-                void this.wsManager.sendWithOpId({
-                    type: 'update_viewed_state',
-                    state: this.viewedState,
-                });
-                return;
-            }
-            if (this.ws && this.ws.readyState === WebSocket.OPEN) {
-                this.ws.send(
-                    JSON.stringify({
-                        type: 'update_viewed_state',
-                        state: this.viewedState,
-                    }),
-                );
-                return;
-            }
-            console.warn('[ViewedManager] Cannot save state - shared mode but no WebSocket connection');
+        if (this.storageManager) {
+            void this.storageManager.saveViewedState(this.viewedState);
             return;
         }
+        // Bootstrap/offline fallback before MarkonApp attaches SQLite. Never
+        // mutate persistent state through WebSocket.
         localStorage.setItem(viewedStorageKey(this.filePath), JSON.stringify(this.viewedState));
     }
 

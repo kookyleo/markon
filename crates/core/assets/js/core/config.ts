@@ -203,7 +203,6 @@ export const CONFIG = {
         DELETE_ANNOTATION: 'delete_annotation',
         CLEAR_ANNOTATIONS: 'clear_annotations',
         VIEWED_STATE: 'viewed_state',
-        UPDATE_VIEWED_STATE: 'update_viewed_state',
         LIVE_ACTION: 'live_action',
         FILE_CHANGED: 'file_changed',
     },

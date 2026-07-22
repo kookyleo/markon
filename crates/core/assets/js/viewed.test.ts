@@ -464,7 +464,7 @@ describe('SectionViewedManager', () => {
         expect(document.getElementById('h2-b')?.classList.contains('section-collapsed')).toBe(false);
     });
 
-    it('saveState in shared mode sends update_viewed_state through the WebSocket', () => {
+    it('saveState without attached SQLite uses local fallback, never WebSocket persistence', () => {
         seedMeta('file-path', 'docs/x.md');
         seedMeta('enable-viewed', 'true');
         buildArticle(['h2-a']);
@@ -478,9 +478,10 @@ describe('SectionViewedManager', () => {
         mgr.viewedState = { 'h2-a': true };
         mgr.saveState();
 
-        expect(send).toHaveBeenCalledTimes(1);
-        const payload = JSON.parse(itemAt(send.mock.calls, 0)[0] as string);
-        expect(payload).toEqual({ type: 'update_viewed_state', state: { 'h2-a': true } });
+        expect(send).not.toHaveBeenCalled();
+        expect(JSON.parse(localStorage.getItem('markon-viewed-docs/x.md') ?? '{}')).toEqual({
+            'h2-a': true,
+        });
     });
 
     it('markAllViewed and markAllUnviewed flip every section', async () => {

@@ -1,6 +1,7 @@
 pub mod chat;
 pub mod control;
 pub mod daemon;
+pub mod data_maintenance;
 pub mod git;
 pub mod i18n;
 pub mod net;

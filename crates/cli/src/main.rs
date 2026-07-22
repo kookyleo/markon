@@ -1,5 +1,5 @@
 use clap::Parser;
-use dialoguer::Select;
+use dialoguer::{Confirm, Select};
 use markon_core::control::RunningServer;
 use markon_core::daemon::{DaemonConfig, DaemonWorkspace};
 use markon_core::net::{available_bind_hosts, BindHostKind};
@@ -123,6 +123,12 @@ enum Commands {
         feature: String,
         /// on | off
         value: String,
+    },
+    /// Show and optionally remove data belonging to closed workspaces.
+    Cleanup {
+        /// Skip the confirmation prompt.
+        #[arg(long, short = 'y')]
+        yes: bool,
     },
     /// Shutdown the background Markon server.
     Shutdown,
@@ -440,16 +446,13 @@ fn build_workspace_access_summary(
 
 fn resolve_workspace_list_base(
     bind_host: &str,
-    advertised_host: &str,
+    _advertised_host: &str,
     port: u16,
     entry: Option<&str>,
 ) -> (String, bool) {
     match entry.filter(|base| *base != "missing") {
         Some(base) => (base.to_string(), true),
-        None => (
-            server::featured_base_url(bind_host, advertised_host, port),
-            false,
-        ),
+        None => (server::local_browser_base_url(bind_host, port), false),
     }
 }
 
@@ -690,6 +693,64 @@ async fn shutdown_server(server: &RunningServer) -> Result<(), Box<dyn std::erro
     Ok(())
 }
 
+fn format_data_bytes(bytes: u64) -> String {
+    if bytes < 1024 {
+        format!("{bytes} B")
+    } else if bytes < 1024 * 1024 {
+        format!("{:.1} KB", bytes as f64 / 1024.0)
+    } else {
+        format!("{:.1} MB", bytes as f64 / (1024.0 * 1024.0))
+    }
+}
+
+async fn cleanup_data(server: &RunningServer, yes: bool) -> Result<(), Box<dyn std::error::Error>> {
+    let stats = server.data_cleanup_stats().await?;
+    println!(
+        "Persistent data: {}",
+        format_data_bytes(stats.database_bytes)
+    );
+    println!(
+        "Obsolete: {} annotation files, {} annotations, {} viewed records, {} chat threads / {} messages ({})",
+        stats.orphaned_annotation_files,
+        stats.orphaned_annotations,
+        stats.orphaned_viewed_files,
+        stats.orphaned_chat_threads,
+        stats.orphaned_chat_messages,
+        format_data_bytes(stats.orphaned_payload_bytes),
+    );
+    if stats.orphaned_items() == 0 {
+        println!("Nothing to clean.");
+        return Ok(());
+    }
+
+    let confirmed = if yes {
+        true
+    } else if std::io::stdin().is_terminal() {
+        Confirm::new()
+            .with_prompt("Permanently delete data outside all active workspaces?")
+            .default(false)
+            .interact()?
+    } else {
+        return Err("cleanup requires confirmation; rerun with --yes".into());
+    };
+    if !confirmed {
+        println!("Cancelled.");
+        return Ok(());
+    }
+
+    let result = server.cleanup_orphaned_data().await?;
+    println!(
+        "Deleted {} annotations, {} viewed records, {} chat threads and {} messages. Database: {} → {}.",
+        result.deleted_annotations,
+        result.deleted_viewed_files,
+        result.deleted_chat_threads,
+        result.deleted_chat_messages,
+        format_data_bytes(result.before.database_bytes),
+        format_data_bytes(result.database_bytes_after),
+    );
+    Ok(())
+}
+
 async fn admin_browser_command(
     server: &RunningServer,
     command: AdminCommands,
@@ -702,7 +763,7 @@ async fn admin_browser_command(
     match command {
         AdminCommands::Open => {
             // The control socket mints the one-time bootstrap URL server-side
-            // (nonce + the server's own featured base) and hands it back whole.
+            // (nonce + the server's stable local base) and hands it back whole.
             let url = server.admin_bootstrap(&redirect).await?;
             open::that(&url)?;
             println!("Administrator session opened in your browser.");
@@ -775,7 +836,7 @@ async fn forward_to_running_server(
             if let Some(base_option) = plan.open_browser_target {
                 let redirect = server::workspace_url_path(&workspace_id, plan.initial_path);
                 // The daemon mints the one-time bootstrap URL (nonce + its own
-                // featured base) over the control socket.
+                // stable local base) over the control socket.
                 match server.admin_bootstrap(&redirect).await {
                     Ok(boot_url) => {
                         let browser_url = if base_option == "local" {
@@ -946,6 +1007,7 @@ async fn main() {
                 feature,
                 value,
             } => set_workspace_feature(&server, &target, &feature, &value).await,
+            Commands::Cleanup { yes } => cleanup_data(&server, yes).await,
             Commands::Shutdown => shutdown_server(&server).await,
             Commands::Bug { .. } | Commands::Idea { .. } | Commands::Ask { .. } => {
                 unreachable!("handled above")
@@ -1479,7 +1541,7 @@ mod tests {
     }
 
     #[test]
-    fn resolve_workspace_list_base_prefers_entry_then_featured() {
+    fn resolve_workspace_list_base_prefers_entry_then_stable_local_origin() {
         // --entry / public prefix takes precedence and marks use_entry_url.
         assert_eq!(
             resolve_workspace_list_base("0.0.0.0", "", 6419, Some("https://md.example.com")),
@@ -1493,6 +1555,12 @@ mod tests {
         // No entry, loopback bind → loopback base.
         assert_eq!(
             resolve_workspace_list_base("127.0.0.1", "", 5050, None),
+            ("http://127.0.0.1:5050".to_string(), false)
+        );
+        // Wildcard binds still open locally on a stable origin instead of the
+        // currently-featured LAN interface.
+        assert_eq!(
+            resolve_workspace_list_base("0.0.0.0", "192.168.1.9", 5050, None),
             ("http://127.0.0.1:5050".to_string(), false)
         );
         // No entry, specific bind → that address (deterministic; not on host).

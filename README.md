@@ -143,6 +143,7 @@ markon <COMMAND>
 | `markon ls [--format cards\|table]` | List active workspaces and feature state |
 | `markon detach <ID\|INDEX>` | Remove a workspace from the running server |
 | `markon set <ID\|INDEX> <FEATURE> <on\|off>` | Toggle `search`, `viewed`, `edit`, `live`, `chat`, or `shared` |
+| `markon cleanup [--yes]` | Show statistics and remove data outside active workspaces |
 | `markon admin open` / `markon admin code` | Create an administrator browser session automatically / with a pairing code |
 | `markon shutdown` | Stop the background server |
 | `markon bug` | Draft and open a GitHub bug report using authenticated `gh` |
@@ -206,8 +207,8 @@ The collaborator code is application-layer access control, not transport encrypt
 | Data | Default location or behavior |
 | --- | --- |
 | Settings, workspace list, provider configuration | `~/.markon/settings.json` |
-| Shared annotations, shared Viewed state, AI chat threads | `~/.markon/annotation.sqlite` |
-| Local annotations and local Viewed state | Browser LocalStorage |
+| Personal/shared annotations, Viewed state, AI chat threads | `~/.markon/annotation.sqlite` |
+| Legacy migration and unauthorized/offline fallback | Browser LocalStorage (removed after successful migration) |
 | Custom SQLite path | `MARKON_SQLITE_PATH=/path/to/annotation.sqlite` |
 | Workspace access codes | Persisted as salted hashes, not plaintext |
 | AI provider keys | Stored locally in `settings.json`; treat this file as sensitive |

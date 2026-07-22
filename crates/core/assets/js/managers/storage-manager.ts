@@ -1,12 +1,16 @@
 /**
  * StorageManager - Unified storage abstraction layer.
- * Supports local mode (`localStorage`) and shared mode (WebSocket).
+ * SQLite is the canonical store whenever the browser has permission to use
+ * the workspace document-state endpoint. `localStorage` remains a migration
+ * source and an offline/unauthorized fallback. WebSocket is synchronization,
+ * not persistence.
  */
 
-import { CONFIG, type WsMessageType } from '../core/config';
+import { CONFIG } from '../core/config';
+import { workspaceDocumentStateUrl } from '../core/routes';
 import { Logger } from '../core/utils';
 import type { Annotation } from './annotation-manager';
-import type { WebSocketManager } from './websocket-manager';
+import { makeOpId, type WebSocketManager } from './websocket-manager';
 
 /**
  * Generic storage strategy interface. The default `unknown` parameter keeps
@@ -49,125 +53,138 @@ export class LocalStorageStrategy<T = unknown> extends StorageStrategy<T> {
     }
 }
 
-/** WebSocket-backed strategy. Maintains a local cache of pushed values. */
-export class SharedStorageStrategy extends StorageStrategy {
-    #wsManager: WebSocketManager | null;
-    #cache = new Map<string, unknown>();
+type DocumentSnapshot = {
+    annotations: Annotation[];
+    viewed_state: Record<string, boolean>;
+};
 
-    constructor(wsManager: WebSocketManager | null) {
+/** SQLite-backed browser strategy. Mutations use HTTP; WS only fans them out. */
+export class ServerStorageStrategy extends StorageStrategy {
+    #workspaceId: string;
+    #filePath: string;
+    #shared: boolean;
+    #wsManager: WebSocketManager | null;
+    #snapshot: Promise<DocumentSnapshot> | null = null;
+    #cache = new Map<string, unknown>();
+    #writeQueue: Promise<void> = Promise.resolve();
+
+    constructor(
+        workspaceId: string,
+        filePath: string,
+        shared: boolean,
+        wsManager: WebSocketManager | null,
+    ) {
         super();
+        this.#workspaceId = workspaceId;
+        this.#filePath = filePath;
+        this.#shared = shared;
         this.#wsManager = wsManager;
     }
 
+    async #loadSnapshot(): Promise<DocumentSnapshot> {
+        this.#snapshot ??= (async () => {
+            const query = new URLSearchParams({ path: this.#filePath });
+            const response = await fetch(
+                `${workspaceDocumentStateUrl(this.#workspaceId)}?${query.toString()}`,
+                { credentials: 'same-origin', cache: 'no-store' },
+            );
+            if (!response.ok) throw new Error(`document state load failed (${response.status})`);
+            const snapshot = await response.json() as DocumentSnapshot;
+            this.#cache.set(CONFIG.STORAGE_KEYS.ANNOTATIONS(this.#filePath), snapshot.annotations ?? []);
+            this.#cache.set(CONFIG.STORAGE_KEYS.VIEWED(this.#filePath), snapshot.viewed_state ?? {});
+            return snapshot;
+        })();
+        return this.#snapshot;
+    }
+
+    async #post(command: Record<string, unknown>): Promise<string | null> {
+        let opId: string | null = null;
+        if (this.#shared && this.#wsManager?.isConnected()) {
+            opId = makeOpId();
+            this.#wsManager.recordOutgoing(opId);
+            command['op_id'] = opId;
+        }
+
+        // Unlike one WebSocket, independent fetches are not ordered. Viewed
+        // toggles intentionally fire-and-forget, so a slow earlier request
+        // could otherwise overwrite the user's newest state in SQLite. Keep a
+        // per-document mutation queue and keep it usable after a failed write.
+        const run = async (): Promise<void> => {
+            const response = await fetch(workspaceDocumentStateUrl(this.#workspaceId), {
+                method: 'POST',
+                credentials: 'same-origin',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(command),
+            });
+            if (!response.ok) {
+                throw new Error(`document state save failed (${response.status}): ${await response.text()}`);
+            }
+        };
+        const pending = this.#writeQueue.then(run, run);
+        this.#writeQueue = pending.catch(() => {});
+        await pending;
+        return opId;
+    }
+
     async load(key: string): Promise<unknown> {
-        // In shared mode, data is delivered via WebSocket. Return whatever
-        // the cache has been populated with so far.
+        await this.#loadSnapshot();
         return this.#cache.get(key) ?? null;
     }
 
     async save(key: string, data: unknown): Promise<void> {
         this.#cache.set(key, data);
-
-        if (this.#wsManager && this.#wsManager.isConnected()) {
-            const messageType = this.#getMessageType(key, 'save');
-            if (messageType === CONFIG.WS_MESSAGE_TYPES.UPDATE_VIEWED_STATE) {
-                await this.#wsManager.sendWithOpId({
-                    type: 'update_viewed_state',
-                    state: data as Record<string, boolean>,
-                });
-                Logger.log('SharedStorage', 'Saved viewed state via WebSocket');
-            }
-        } else {
-            Logger.warn('SharedStorage', 'WebSocket not connected, data cached locally');
+        if (key.includes('viewed')) {
+            await this.#post({
+                action: 'save_viewed_state',
+                path: this.#filePath,
+                state: data,
+            });
         }
     }
 
-    /**
-     * Save a single annotation (shared mode only). Returns the op_id used
-     * for the outgoing frame so callers can correlate it with an undo entry
-     * (or `null` when nothing was sent — disconnected, etc.).
-     */
     async saveSingleAnnotation(annotation: Annotation): Promise<string | null> {
-        if (this.#wsManager && this.#wsManager.isConnected()) {
-            const opId = await this.#wsManager.sendWithOpId({
-                type: 'new_annotation',
-                annotation,
-            });
-            Logger.log('SharedStorage', 'Saved annotation via WebSocket:', annotation.id);
-            return opId;
-        }
-        Logger.warn('SharedStorage', 'WebSocket not connected, annotation not saved');
-        return null;
+        const key = CONFIG.STORAGE_KEYS.ANNOTATIONS(this.#filePath);
+        const current = (this.#cache.get(key) as Annotation[] | undefined) ?? [];
+        const next = current.filter(item => item.id !== annotation.id);
+        next.push(annotation);
+        this.#cache.set(key, next);
+        return this.#post({ action: 'save_annotation', path: this.#filePath, annotation });
+    }
+
+    async deleteSingleAnnotation(annotationId: string): Promise<string | null> {
+        const key = CONFIG.STORAGE_KEYS.ANNOTATIONS(this.#filePath);
+        const current = (this.#cache.get(key) as Annotation[] | undefined) ?? [];
+        this.#cache.set(key, current.filter(item => item.id !== annotationId));
+        return this.#post({
+            action: 'delete_annotation',
+            path: this.#filePath,
+            id: annotationId,
+        });
     }
 
     async delete(key: string): Promise<void> {
-        this.#cache.delete(key);
-
-        if (this.#wsManager && this.#wsManager.isConnected()) {
-            // `delete` clears the entire bucket (all annotations or all viewed state).
-            if (key.includes('annotations')) {
-                await this.#wsManager.sendWithOpId({ type: 'clear_annotations' });
-                Logger.log('SharedStorage', 'Sent clear annotations via WebSocket');
-            } else if (key.includes('viewed')) {
-                // Clearing viewed state is modelled as "set state to {}".
-                await this.#wsManager.sendWithOpId({
-                    type: 'update_viewed_state',
-                    state: {},
-                });
-                Logger.log('SharedStorage', 'Sent clear viewed state via WebSocket');
-            }
-        }
-    }
-
-    /**
-     * Delete a single annotation (shared mode only). Returns the op_id used
-     * for the outgoing frame (or `null` when nothing was sent).
-     */
-    async deleteSingleAnnotation(annotationId: string): Promise<string | null> {
-        if (this.#wsManager && this.#wsManager.isConnected()) {
-            const opId = await this.#wsManager.sendWithOpId({
-                type: 'delete_annotation',
-                id: annotationId,
+        if (key.includes('annotations')) {
+            this.#cache.set(key, []);
+            await this.#post({ action: 'clear_annotations', path: this.#filePath });
+        } else if (key.includes('viewed')) {
+            this.#cache.set(key, {});
+            await this.#post({
+                action: 'save_viewed_state',
+                path: this.#filePath,
+                state: {},
             });
-            Logger.log('SharedStorage', 'Deleted annotation via WebSocket:', annotationId);
-            return opId;
         }
-        Logger.warn('SharedStorage', 'WebSocket not connected, annotation not deleted');
-        return null;
     }
 
-    /** Update cache (called when WebSocket pushes data). */
     updateCache(key: string, data: unknown): void {
         this.#cache.set(key, data);
-        Logger.log('SharedStorage', 'Cache updated:', key);
-    }
-
-    /** Clear cache. Pass a key to clear a single entry, or omit to clear all. */
-    clearCache(key: string | null = null): void {
-        if (key) {
-            this.#cache.delete(key);
-        } else {
-            this.#cache.clear();
-        }
-    }
-
-    /** Infer the WebSocket message type from a storage key. */
-    #getMessageType(key: string, action: 'save' | 'delete' | 'load'): WsMessageType | null {
-        if (key.includes('annotations')) {
-            if (action === 'save') return CONFIG.WS_MESSAGE_TYPES.NEW_ANNOTATION;
-            if (action === 'delete') return CONFIG.WS_MESSAGE_TYPES.DELETE_ANNOTATION;
-            return CONFIG.WS_MESSAGE_TYPES.ALL_ANNOTATIONS;
-        }
-        if (key.includes('viewed')) {
-            return CONFIG.WS_MESSAGE_TYPES.UPDATE_VIEWED_STATE;
-        }
-        return null;
     }
 }
 
-/** Storage facade. Picks a strategy based on shared-vs-local mode. */
+/** Storage facade. Prefers SQLite and owns legacy/offline local fallback. */
 export class StorageManager {
-    #strategy: LocalStorageStrategy | SharedStorageStrategy;
+    #strategy: LocalStorageStrategy | ServerStorageStrategy;
+    #local = new LocalStorageStrategy();
     #filePath: string;
     #isSharedMode: boolean;
 
@@ -175,54 +192,89 @@ export class StorageManager {
         filePath: string,
         isSharedMode = false,
         wsManager: WebSocketManager | null = null,
+        workspaceId = '',
     ) {
         this.#filePath = filePath;
         this.#isSharedMode = isSharedMode;
 
-        if (isSharedMode && wsManager) {
-            this.#strategy = new SharedStorageStrategy(wsManager);
-            Logger.log('StorageManager', 'Using shared storage strategy');
+        if (workspaceId) {
+            this.#strategy = new ServerStorageStrategy(
+                workspaceId,
+                filePath,
+                isSharedMode,
+                wsManager,
+            );
+            Logger.log('StorageManager', 'Using SQLite-backed server storage strategy');
         } else {
             this.#strategy = new LocalStorageStrategy();
             Logger.log('StorageManager', 'Using local storage strategy');
         }
     }
 
-    /** Load the local annotation mirror regardless of the active storage mode. */
+    /** Load a legacy/offline annotation snapshot from the current origin. */
     static async loadLocalAnnotations(filePath: string): Promise<Annotation[]> {
         const storage = new LocalStorageStrategy<Annotation[]>();
         const key = CONFIG.STORAGE_KEYS.ANNOTATIONS(filePath);
         return (await storage.load(key)) ?? [];
     }
 
-    /** Save the local annotation mirror regardless of the active storage mode. */
+    /** Save the browser fallback used when SQLite is unavailable. */
     static async saveLocalAnnotations(filePath: string, annotations: Annotation[]): Promise<void> {
         const storage = new LocalStorageStrategy<Annotation[]>();
         const key = CONFIG.STORAGE_KEYS.ANNOTATIONS(filePath);
         await storage.save(key, annotations);
     }
 
+    static async loadLocalViewedState(filePath: string): Promise<Record<string, boolean>> {
+        const storage = new LocalStorageStrategy<Record<string, boolean>>();
+        return (await storage.load(CONFIG.STORAGE_KEYS.VIEWED(filePath))) ?? {};
+    }
+
     /** Load all annotations for the current file. */
     async loadAnnotations(): Promise<Annotation[]> {
         const key = CONFIG.STORAGE_KEYS.ANNOTATIONS(this.#filePath);
-        const data = await this.#strategy.load(key);
-        return (data as Annotation[] | null) ?? [];
+        if (this.#strategy instanceof LocalStorageStrategy) {
+            return ((await this.#strategy.load(key)) as Annotation[] | null) ?? [];
+        }
+        const local = await StorageManager.loadLocalAnnotations(this.#filePath);
+        try {
+            const persisted = ((await this.#strategy.load(key)) as Annotation[] | null) ?? [];
+            const byId = new Map(persisted.map(annotation => [annotation.id, annotation]));
+            const missing = local.filter(annotation => !byId.has(annotation.id));
+            for (const annotation of missing) {
+                await this.#strategy.saveSingleAnnotation(annotation);
+                byId.set(annotation.id, annotation);
+            }
+            await this.#local.delete(key);
+            return [...byId.values()];
+        } catch (error) {
+            Logger.warn('StorageManager', 'SQLite unavailable; using local annotation fallback', error);
+            return local;
+        }
     }
 
-    /** Save the full annotation list (local mode) or push individually (shared). */
+    /** Save the full annotation list in browser-fallback mode. */
     async saveAnnotations(annotations: Annotation[]): Promise<void> {
         const key = CONFIG.STORAGE_KEYS.ANNOTATIONS(this.#filePath);
         await this.#strategy.save(key, annotations);
     }
 
     /**
-     * Upsert a single annotation. In shared mode returns the op_id of the
-     * outgoing WebSocket frame; in local mode returns `null`.
+     * Upsert a single annotation. Shared mode returns the op_id used to dedup
+     * the HTTP mutation's WebSocket broadcast; personal mode returns `null`.
      */
     async saveAnnotation(annotation: Annotation): Promise<string | null> {
-        if (this.#isSharedMode && this.#strategy instanceof SharedStorageStrategy) {
-            // Shared mode: push the single annotation to the server.
-            return this.#strategy.saveSingleAnnotation(annotation);
+        if (this.#strategy instanceof ServerStorageStrategy) {
+            try {
+                return await this.#strategy.saveSingleAnnotation(annotation);
+            } catch (error) {
+                Logger.warn('StorageManager', 'SQLite save failed; preserving annotation locally', error);
+                const local = await StorageManager.loadLocalAnnotations(this.#filePath);
+                const next = local.filter(item => item.id !== annotation.id);
+                next.push(annotation);
+                await StorageManager.saveLocalAnnotations(this.#filePath, next);
+                return null;
+            }
         }
         // Local mode: rewrite the entire array.
         const annotations = await this.loadAnnotations();
@@ -240,8 +292,18 @@ export class StorageManager {
 
     /** Delete an annotation by id. Returns the outgoing op_id in shared mode. */
     async deleteAnnotation(annotationId: string): Promise<string | null> {
-        if (this.#isSharedMode && this.#strategy instanceof SharedStorageStrategy) {
-            return this.#strategy.deleteSingleAnnotation(annotationId);
+        if (this.#strategy instanceof ServerStorageStrategy) {
+            try {
+                return await this.#strategy.deleteSingleAnnotation(annotationId);
+            } catch (error) {
+                Logger.warn('StorageManager', 'SQLite delete failed; updating local fallback', error);
+                const local = await StorageManager.loadLocalAnnotations(this.#filePath);
+                await StorageManager.saveLocalAnnotations(
+                    this.#filePath,
+                    local.filter(item => item.id !== annotationId),
+                );
+                return null;
+            }
         }
         const annotations = await this.loadAnnotations();
         const filtered = annotations.filter((a) => a.id !== annotationId);
@@ -252,36 +314,61 @@ export class StorageManager {
     /** Clear all annotations for the current file. Returns the outgoing op_id in shared mode. */
     async clearAnnotations(): Promise<string | null> {
         const key = CONFIG.STORAGE_KEYS.ANNOTATIONS(this.#filePath);
-        await this.#strategy.delete(key);
-        // SharedStorageStrategy.delete() already routes through sendWithOpId,
-        // but doesn't surface the id. For now callers that need the id can
-        // bypass this and call the WebSocketManager directly; threading it
-        // through the strategy is an easy future change.
+        try {
+            await this.#strategy.delete(key);
+            await this.#local.delete(key);
+        } catch (error) {
+            Logger.warn('StorageManager', 'SQLite clear failed; clearing local fallback', error);
+            await this.#local.delete(key);
+        }
         return null;
     }
 
     /** Load viewed state (heading id → checked). */
     async loadViewedState(): Promise<Record<string, boolean>> {
         const key = CONFIG.STORAGE_KEYS.VIEWED(this.#filePath);
-        const data = await this.#strategy.load(key);
-        return (data as Record<string, boolean> | null) ?? {};
+        if (this.#strategy instanceof LocalStorageStrategy) {
+            return ((await this.#strategy.load(key)) as Record<string, boolean> | null) ?? {};
+        }
+        const local = await StorageManager.loadLocalViewedState(this.#filePath);
+        try {
+            const persisted = ((await this.#strategy.load(key)) as Record<string, boolean> | null) ?? {};
+            const useLocal = Object.keys(persisted).length === 0 && Object.keys(local).length > 0;
+            if (useLocal) await this.#strategy.save(key, local);
+            await this.#local.delete(key);
+            return useLocal ? local : persisted;
+        } catch (error) {
+            Logger.warn('StorageManager', 'SQLite unavailable; using local viewed fallback', error);
+            return local;
+        }
     }
 
     /** Save viewed state. */
     async saveViewedState(viewedState: Record<string, boolean>): Promise<void> {
         const key = CONFIG.STORAGE_KEYS.VIEWED(this.#filePath);
-        await this.#strategy.save(key, viewedState);
+        try {
+            await this.#strategy.save(key, viewedState);
+        } catch (error) {
+            Logger.warn('StorageManager', 'SQLite viewed save failed; preserving state locally', error);
+            await this.#local.save(key, viewedState);
+        }
     }
 
     /** Clear viewed state. */
     async clearViewedState(): Promise<void> {
         const key = CONFIG.STORAGE_KEYS.VIEWED(this.#filePath);
-        await this.#strategy.delete(key);
+        try {
+            await this.#strategy.delete(key);
+            await this.#local.delete(key);
+        } catch (error) {
+            Logger.warn('StorageManager', 'SQLite viewed clear failed; clearing local fallback', error);
+            await this.#local.delete(key);
+        }
     }
 
-    /** Update cache (shared mode only; no-op otherwise). */
+    /** Update the SQLite strategy's in-page cache from a shared broadcast. */
     updateCache(key: string, data: unknown): void {
-        if (this.#strategy instanceof SharedStorageStrategy) {
+        if (this.#strategy instanceof ServerStorageStrategy) {
             this.#strategy.updateCache(key, data);
         }
     }

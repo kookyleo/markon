@@ -4,11 +4,11 @@
   <img src="/illustrations/07-sync.svg" alt="多端同步" />
 </div>
 
-默认情况下，Markon 的批注和已读状态存储在浏览器 LocalStorage —— 只对当前浏览器有效。启用 **共享批注** 后，这些数据会存到 SQLite 数据库，并通过 WebSocket 在所有连接的客户端间实时同步。
+Markon 的个人批注和已读状态始终存储在本机 SQLite。启用 **共享批注** 后，同一数据集再通过 WebSocket 向所有已获准的协作者实时同步；关闭共享不会搬移或删除数据，只会停止协作输出。
 
 ## 启用
 
-在浏览器工作区设置中勾选 **共享批注和已读状态**。CLI 只负责打开或追加工作区；功能开关统一在浏览器中控制。
+在浏览器工作区设置中勾选 **共享批注和已读状态**，或使用 `markon set <ID> shared on`。
 
 启用后，同一工作区的所有浏览器会话会共享：
 
@@ -40,15 +40,13 @@ MARKON_SQLITE_PATH=/path/to/db markon README.md
 ## 同步机制
 
 ```
-┌──────────┐  WebSocket  ┌──────────┐  WebSocket  ┌──────────┐
-│ Browser A├────────────▶│  Markon  │◀────────────┤ Browser B│
-└──────────┘             │  Server  │             └──────────┘
-                         │    +     │
-                         │  SQLite  │
-                         └──────────┘
+Browser A ──HTTP mutation──▶ SQLite
+    ▲                            │
+    └──── WebSocket broadcast ───┼──▶ Browser B
+                                 └──▶ Browser C
 ```
 
-- 任一客户端新建/修改/删除批注 → 写入 SQLite → 广播 WebSocket 消息
+- 任一客户端新建/修改/删除批注 → 通过 HTTP 写入 SQLite → 按共享开关广播 WebSocket 消息
 - 其他客户端收到消息后立即更新 UI
 - WebSocket 自动重连（指数退避），断线期间的变更在重连时一次性同步
 
@@ -94,12 +92,8 @@ cp ~/.markon/annotation.sqlite ~/backup/markon-$(date +%Y%m%d).sqlite
 
 恢复：把备份文件拷贝回原路径。
 
-## 切换存储模式
+## 旧版数据迁移
 
-从本地模式切到共享模式时，已有的 LocalStorage 批注**不会**自动迁移 —— 它们只对原浏览器可见。反之亦然。
-
-目前没有内置的迁移工具，如需迁移可以：
-
-1. 在本地模式下导出（浏览器 DevTools → Application → LocalStorage）
-2. 手动转成 SQLite 插入语句
-3. 或重新批注一次（最简单）
+升级后，页面会把当前浏览器来源下的旧版 LocalStorage 批注与 SQLite 合并；SQLite 中同 ID 的数据
+优先，本地独有批注会补写进去，成功后清除该来源副本。浏览器同源策略仍禁止新 IP 直接读取旧 IP
+下的存储；如旧数据只存在于已经不可访问的旧地址，需要临时恢复该地址并打开一次以完成迁移。

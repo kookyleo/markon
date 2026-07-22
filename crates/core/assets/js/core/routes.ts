@@ -50,6 +50,10 @@ export function workspaceFilesDataUrl(workspaceId: string): string {
     return workspaceInternalUrl(workspaceId, 'files/data');
 }
 
+export function workspaceDocumentStateUrl(workspaceId: string): string {
+    return workspaceInternalUrl(workspaceId, 'data/document-state');
+}
+
 export function workspaceFileDeleteUrl(workspaceId: string): string {
     return workspaceInternalUrl(workspaceId, 'files/delete');
 }
