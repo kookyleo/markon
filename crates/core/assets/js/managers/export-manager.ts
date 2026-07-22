@@ -13,7 +13,7 @@ import { EditorManager } from './editor-manager';
 
 export interface ExportManagerDeps {
     annotationManager: AnnotationManager;
-    /** Document title used for the export heading + default download filename. */
+    /** Document title used for the editable filename line + default download filename. */
     getDocumentTitle: () => string;
     /** Source file path (only used to construct the editor instance). */
     getFilePath: () => string;

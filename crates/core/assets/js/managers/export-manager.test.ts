@@ -75,7 +75,8 @@ describe('ExportManager', () => {
         const editorDom = document.querySelector<HTMLElement>('.cm-editor');
         expect(editorDom).toBeTruthy();
         expect(editorDom ? EditorView.findFromDOM(editorDom)?.state.doc.toString() : null)
-            .toBe('"quoted"\n> note\n');
+            .toBe('Review-notes.md\n\n"quoted"\n> note\n');
+        expect(document.querySelector('.editor-file-name')?.textContent).toBe('web.export.label');
 
         const format = manager.formatAsMarkdown as unknown as ReturnType<typeof vi.fn>;
         expect(format).toHaveBeenCalledTimes(1);

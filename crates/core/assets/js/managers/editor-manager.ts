@@ -44,7 +44,7 @@ export interface EditorOpenOptions {
     mode?: EditorMode;
     /** Initial content for `export` mode (used instead of fetching the file). */
     content?: string;
-    /** Display name + default download filename for `export` mode. */
+    /** Editable first-line + default download filename for `export` mode. */
     exportFileName?: string;
     /** Optional callback for a caller-owned "Back" action in `export` mode. */
     onBack?: () => void;
@@ -97,7 +97,7 @@ export class EditorManager {
     #scrollSyncCleanup: (() => void) | null = null;
     /** Current mode — `export` repurposes Save as a local download. */
     #mode: EditorMode = 'edit';
-    /** Display name / default download filename in export mode. */
+    /** Default download filename and fallback when the editable first line is blank. */
     #exportFileName = 'notes.md';
     /** Optional back callback in export mode. */
     #onBack: (() => void) | null = null;
@@ -166,9 +166,11 @@ export class EditorManager {
         let content: string | null;
         if (this.#mode === 'export') {
             // Ephemeral buffer: seed from the supplied string, never touch the
-            // file or the `#original-markdown-data` blob.
-            content = options.content ?? '';
+            // file or the `#original-markdown-data` blob. The filename lives
+            // on the first line so selecting/copying the whole editor includes
+            // both the source name and its exported notes.
             this.#exportFileName = toMarkdownFilename(options.exportFileName);
+            content = `${this.#exportFileName}\n\n${options.content ?? ''}`;
         } else {
             content = await this.#fetchCurrentContent();
             if (sessionId !== this.#sessionId) return;
@@ -294,7 +296,8 @@ export class EditorManager {
 
         // Export mode: "Save" means download a local .md, never hit the server.
         if (this.#mode === 'export') {
-            downloadTextFile(this.#exportFileName, content);
+            const exported = this.#readExportDocument(content);
+            downloadTextFile(exported.fileName, exported.content);
             if (this.#saveButton) flashText(this.#saveButton, _t('web.export.downloaded'));
             this.#baselineDoc = savedDoc;
             this.#isDirty = false;
@@ -419,7 +422,6 @@ export class EditorManager {
 
     #createEditorUI(content: string, createMarkdownEditor: CreateMarkdownEditor): void {
         const isExport = this.#mode === 'export';
-        const fileName = isExport ? this.#exportFileName : this.#filePath;
         // Export mode swaps the file-bound Save for a Copy + Download pair and
         // can show a Back button when a caller supplies one.
         const backBtn = isExport && this.#onBack
@@ -431,6 +433,7 @@ export class EditorManager {
         const saveBtn = isExport
             ? `<button class="editor-save-btn editor-download-btn">${_t('web.export.download')}</button>`
             : `<button class="editor-save-btn" style="display: none;">${_t('web.editor.save')}</button>`;
+        const headerTitle = isExport ? _t('web.export.label') : this.#filePath;
 
         const modal = document.createElement('div');
         modal.className = isExport ? 'editor-modal editor-modal-export' : 'editor-modal';
@@ -438,7 +441,7 @@ export class EditorManager {
             <div class="editor-header">
                 <button class="editor-close" title="${_t('web.editor.close.tip')}">✕</button>
                 ${backBtn}
-                <span class="editor-file-name">${Text.escape(fileName)}</span>
+                <span class="editor-file-name">${Text.escape(headerTitle)}</span>
                 <div class="editor-tab-bar">
                     <button class="editor-tab editor-tab-edit active" data-tab="edit">Edit</button>
                     <button class="editor-tab editor-tab-preview" data-tab="preview">Preview</button>
@@ -579,6 +582,23 @@ export class EditorManager {
                 ? 'web.export.copyselection'
                 : 'web.export.copytext');
         }
+    }
+
+    /**
+     * Split the editable export envelope into its download name and Markdown
+     * body. Exactly one optional blank separator line is omitted; every other
+     * byte of the body remains user-controlled.
+     */
+    #readExportDocument(source: string): { fileName: string; content: string } {
+        const firstLineEnd = source.indexOf('\n');
+        const rawFileName = firstLineEnd === -1 ? source : source.slice(0, firstLineEnd);
+        const fallback = this.#exportFileName.replace(/\.md$/i, '') || 'notes';
+        const fileName = toMarkdownFilename(rawFileName, fallback);
+        if (firstLineEnd === -1) return { fileName, content: '' };
+
+        let contentStart = firstLineEnd + 1;
+        if (source[contentStart] === '\n') contentStart += 1;
+        return { fileName, content: source.slice(contentStart) };
     }
 
     #focusEditor(): void {
@@ -826,7 +846,10 @@ export class EditorManager {
         const editorView = this.#editorView;
         if (!previewPane || !editorView) return;
 
-        const content = editorView.state.doc.toString();
+        const source = editorView.state.doc.toString();
+        const content = this.#mode === 'export'
+            ? this.#readExportDocument(source).content
+            : source;
         const workspaceId = Meta.get(CONFIG.META_TAGS.WORKSPACE_ID) ?? '';
         const token = Meta.get('preview-token') ?? '';
         const sessionId = this.#sessionId;

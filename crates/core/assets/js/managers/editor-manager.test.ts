@@ -1,6 +1,13 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { EditorView } from '@codemirror/view';
+import { downloadTextFile } from '../core/download';
+import type * as DownloadModule from '../core/download';
 import { EditorManager } from './editor-manager';
+
+vi.mock('../core/download', async importOriginal => {
+    const actual = await importOriginal<typeof DownloadModule>();
+    return { ...actual, downloadTextFile: vi.fn() };
+});
 
 /**
  * Inject the `<script id="original-markdown-data">` blob the editor reads at
@@ -64,6 +71,7 @@ describe('EditorManager', () => {
         logSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
         warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
         errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+        vi.mocked(downloadTextFile).mockClear();
         stubGlobals();
         // close() calls window.location.reload(); jsdom locks both the
         // location object and its `reload` property, so we replace the whole
@@ -322,6 +330,67 @@ describe('EditorManager', () => {
         expect(document.querySelector('.editor-tab-edit')?.classList.contains('active')).toBe(true);
         expect(document.querySelector<HTMLElement>('.editor-pane-source')?.style.display).toBe('flex');
         expect(document.querySelector<HTMLElement>('.editor-pane-preview')?.style.display).toBe('none');
+        mgr.close();
+    });
+
+    it('puts the function title in the header and the filename inside the copyable export buffer', async () => {
+        const fetchMock = vi.fn(async () => ({
+            ok: true,
+            status: 200,
+            text: async () => '',
+            json: async () => ({ html: '' }),
+        })) as unknown as typeof fetch;
+        vi.stubGlobal('fetch', fetchMock);
+        const writeText = vi.fn(async () => {});
+        Object.defineProperty(navigator, 'clipboard', {
+            value: { writeText },
+            configurable: true,
+        });
+
+        const mgr = new EditorManager('a.md');
+        await mgr.open({
+            mode: 'export',
+            exportFileName: 'Project charter',
+            content: '"quoted"\n> note\n',
+        });
+
+        expect(document.querySelector('.editor-file-name')?.textContent).toBe('web.export.label');
+        expect(getEditorView().state.doc.toString())
+            .toBe('Project-charter.md\n\n"quoted"\n> note\n');
+
+        document.querySelector<HTMLButtonElement>('.editor-copy-btn')?.click();
+        await vi.waitFor(() => {
+            expect(writeText).toHaveBeenCalledWith(
+                'Project-charter.md\n\n"quoted"\n> note\n',
+            );
+        });
+
+        await vi.waitFor(() => {
+            const previewCalls = (fetchMock as unknown as ReturnType<typeof vi.fn>).mock.calls
+                .filter((call: unknown[]) => call[0] === '/api/preview');
+            const previewContents = previewCalls.map((call: unknown[]) => {
+                const init = call[1] as RequestInit;
+                return JSON.parse(init.body as string).content as string;
+            });
+            expect(previewContents).toContain('"quoted"\n> note\n');
+        });
+        mgr.close();
+    });
+
+    it('downloads the body under the filename edited on the first line', async () => {
+        vi.stubGlobal('fetch', vi.fn(async () => ({
+            ok: true,
+            status: 200,
+            text: async () => '',
+            json: async () => ({ html: '' }),
+        })));
+        const mgr = new EditorManager('a.md');
+        await mgr.open({ mode: 'export', exportFileName: 'notes', content: 'old body' });
+        replaceDocument(getEditorView(), 'Renamed export.md\n\nnew body\n');
+
+        await mgr.save();
+
+        expect(downloadTextFile).toHaveBeenCalledWith('Renamed-export.md', 'new body\n');
         mgr.close();
     });
 
