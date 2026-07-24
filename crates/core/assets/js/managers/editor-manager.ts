@@ -12,7 +12,6 @@ import { Meta } from '../services/dom';
 import { Text } from '../services/text';
 import { downloadTextFile, toMarkdownFilename } from '../core/download';
 import { copyText, flashText } from '../core/clipboard';
-import { showNotification } from '../core/notifications';
 
 const _t = (key: string, ...args: unknown[]): string => i18n.t(key, ...args);
 
@@ -585,20 +584,16 @@ export class EditorManager {
     }
 
     /**
-     * Split the editable export envelope into its download name and Markdown
-     * body. Exactly one optional blank separator line is omitted; every other
-     * byte of the body remains user-controlled.
+     * Read the editable export document. Its first line doubles as the
+     * download filename and visible Markdown content, so copying, previewing,
+     * and downloading all operate on the exact same buffer.
      */
     #readExportDocument(source: string): { fileName: string; content: string } {
         const firstLineEnd = source.indexOf('\n');
         const rawFileName = firstLineEnd === -1 ? source : source.slice(0, firstLineEnd);
         const fallback = this.#exportFileName.replace(/\.md$/i, '') || 'notes';
         const fileName = toMarkdownFilename(rawFileName, fallback);
-        if (firstLineEnd === -1) return { fileName, content: '' };
-
-        let contentStart = firstLineEnd + 1;
-        if (source[contentStart] === '\n') contentStart += 1;
-        return { fileName, content: source.slice(contentStart) };
+        return { fileName, content: source };
     }
 
     #focusEditor(): void {
@@ -672,7 +667,7 @@ export class EditorManager {
             // Text not found, just focus at the beginning
             Logger.warn('EditorManager', `Text not found: "${searchText}"`);
             this.#focusEditor();
-            showNotification(_t('web.editor.selection_not_found'), { variant: 'warning' });
+            window.alert(_t('web.editor.selection_not_found'));
         }
     }
 

@@ -9,7 +9,6 @@
 import { CONFIG, i18n } from './core/config';
 import { Logger } from './core/utils';
 import { copyText, flashBeside, flashCopied } from './core/clipboard';
-import { showNotification } from './core/notifications';
 import { Meta } from './services/dom';
 import { Position } from './services/position';
 import { Text } from './services/text';
@@ -86,6 +85,7 @@ export class MarkonApp {
     #markdownBody: HTMLElement | null;
     #filePath: string;
     #isSharedMode: boolean;
+    #canUseDocumentState: boolean;
     #enableSearch: boolean;
     #enableEdit: boolean;
     #enableLive: boolean;
@@ -103,6 +103,8 @@ export class MarkonApp {
     constructor(config: MarkonAppConfig = {}) {
         this.#filePath = config.filePath || this.#getFilePathFromMeta();
         this.#isSharedMode = config.isSharedMode || false;
+        this.#canUseDocumentState =
+            Meta.flag(CONFIG.META_TAGS.CAN_MANAGE) || this.#isSharedMode;
         this.#enableSearch = config.enableSearch || false;
         this.#enableEdit = config.enableEdit || false;
         this.#enableLive = config.enableLive || false;
@@ -252,7 +254,15 @@ export class MarkonApp {
             this.#setupFileChangedHandler();
         }
 
+        if (!this.#markdownBody || !this.#canUseDocumentState) {
+            return;
+        }
+
         const workspaceId = Meta.get(CONFIG.META_TAGS.WORKSPACE_ID) ?? '';
+        if (!workspaceId) {
+            Logger.warn('MarkonApp', 'Document state unavailable without workspace-id');
+            return;
+        }
         this.#storage = new StorageManager(
             this.#filePath,
             this.#isSharedMode,
@@ -288,26 +298,7 @@ export class MarkonApp {
 
     /** Initialize managers. @private */
     #initManagers(): void {
-        if (!this.#markdownBody || !this.#storage) return;
-
-        this.#annotationManager = new AnnotationManager(this.#storage, this.#markdownBody);
-        this.#annotationManager.onChange(() => {
-            this.#dispatchNotesCountChanged();
-        });
-
-        this.#noteManager = new NoteManager(this.#annotationManager, this.#markdownBody);
-        this.#noteManager.onActiveChange(({ annotationId, previousAnnotationId, sourceElement }) => {
-            if (annotationId && sourceElement) {
-                window.viewedManager?.revealNoteSource(annotationId, sourceElement);
-            } else {
-                window.viewedManager?.clearNoteSourceReveal(previousAnnotationId);
-            }
-        });
-
-        this.#popoverManager = new PopoverManager(this.#markdownBody, {
-            enableEdit: this.#enableEdit,
-            enableChat: Meta.flag(CONFIG.META_TAGS.ENABLE_CHAT),
-        });
+        if (!this.#markdownBody) return;
 
         this.#visualZoomManager = new VisualZoomManager(this.#markdownBody);
         this.#visualZoomManager.init();
@@ -320,9 +311,31 @@ export class MarkonApp {
 
         this.#collaboration = new CollaborationManager(this);
 
-        this.#popoverManager.onAction((action, data) => {
-            void this.#handlePopoverAction(action, data);
-        });
+        if (this.#storage) {
+            this.#annotationManager = new AnnotationManager(this.#storage, this.#markdownBody);
+            this.#annotationManager.onChange(() => {
+                this.#dispatchNotesCountChanged();
+            });
+
+            this.#noteManager = new NoteManager(this.#annotationManager, this.#markdownBody);
+            this.#noteManager.onActiveChange(({ annotationId, previousAnnotationId, sourceElement }) => {
+                if (annotationId && sourceElement) {
+                    window.viewedManager?.revealNoteSource(annotationId, sourceElement);
+                } else {
+                    window.viewedManager?.clearNoteSourceReveal(previousAnnotationId);
+                }
+            });
+
+            this.#popoverManager = new PopoverManager(this.#markdownBody, {
+                enableEdit: this.#enableEdit,
+                enableChat: Meta.flag(CONFIG.META_TAGS.ENABLE_CHAT),
+            });
+            this.#popoverManager.onAction((action, data) => {
+                void this.#handlePopoverAction(action, data).catch((error: unknown) => {
+                    window.alert(error instanceof Error ? error.message : String(error));
+                });
+            });
+        }
 
         Logger.log('MarkonApp', 'Managers initialized');
     }
@@ -523,15 +536,21 @@ export class MarkonApp {
         });
 
         shortcuts.register('UNDO', () => {
-            void this.#handleUndo();
+            void this.#handleUndo().catch((error: unknown) => {
+                window.alert(error instanceof Error ? error.message : String(error));
+            });
         });
 
         shortcuts.register('REDO', () => {
-            void this.#handleRedo();
+            void this.#handleRedo().catch((error: unknown) => {
+                window.alert(error instanceof Error ? error.message : String(error));
+            });
         });
 
         shortcuts.register('REDO_ALT', () => {
-            void this.#handleRedo();
+            void this.#handleRedo().catch((error: unknown) => {
+                window.alert(error instanceof Error ? error.message : String(error));
+            });
         });
 
         shortcuts.register('NEXT_HEADING', () => {
@@ -729,8 +748,7 @@ export class MarkonApp {
 
                     if (noteText) {
                         if (annotation) {
-                            annotation.note = noteText;
-                            await annotationManager.add(annotation);
+                            await annotationManager.add({ ...annotation, note: noteText });
                         } else {
                             const newAnnotation = annotationManager.createAnnotation(
                                 selection,
@@ -748,7 +766,10 @@ export class MarkonApp {
 
                     cleanupOverlays();
                     window.getSelection()?.removeAllRanges();
-                })();
+                })().catch((error: unknown) => {
+                    cleanupOverlays();
+                    window.alert(error instanceof Error ? error.message : String(error));
+                });
             },
             onCancel: () => {
                 cleanupOverlays();
@@ -1213,13 +1234,28 @@ export class MarkonApp {
     /** Handle Undo. @private */
     async #handleUndo(): Promise<void> {
         const operation: UndoOperation | null = this.#undoManager?.undo() ?? null;
-        if (operation) await this.#replayOperation(operation, true);
+        if (!operation) return;
+        try {
+            await this.#replayOperation(operation, true);
+        } catch (error) {
+            // undo() already moved the entry to the redo stack; move it back
+            // when persistence rejects so history still mirrors SQLite.
+            this.#undoManager?.redo();
+            throw error;
+        }
     }
 
     /** Handle Redo. @private */
     async #handleRedo(): Promise<void> {
         const operation: UndoOperation | null = this.#undoManager?.redo() ?? null;
-        if (operation) await this.#replayOperation(operation, false);
+        if (!operation) return;
+        try {
+            await this.#replayOperation(operation, false);
+        } catch (error) {
+            // redo() already moved the entry to the undo stack; restore it.
+            this.#undoManager?.undo();
+            throw error;
+        }
     }
 
     /**
@@ -1452,9 +1488,9 @@ export class MarkonApp {
     async copyAnnotation(annotationId: string, button?: HTMLElement | null): Promise<void> {
         const annotationManager = this.#annotationManager;
         if (!annotationManager) return;
-        const annotation = annotationManager.getById(annotationId);
-        if (!annotation) return;
-        const markdown = annotationManager.formatAnnotation(annotation);
+        if (!annotationManager.getById(annotationId)) return;
+        const markdown = annotationManager.formatAsMarkdown({ ids: [annotationId] });
+        if (!markdown) return;
         const ok = await copyText(markdown);
         if (button) {
             if (ok) flashCopied(button);
@@ -1521,7 +1557,7 @@ export class MarkonApp {
             return;
         }
 
-        showNotification(i18n.t('web.note.linkmissing'), { variant: 'warning' });
+        window.alert(i18n.t('web.note.linkmissing'));
     }
 
     #noteLinkAnchorElement(elements: HTMLElement[], annotationId: string): HTMLElement | null {
@@ -1712,30 +1748,35 @@ document.addEventListener('DOMContentLoaded', () => {
     // Mount manager globals after init() resolves — `#initManagers()` runs
     // inside the async chain, so synchronous reads of `getManagers()` would
     // miss them.
-    void app.init().then(() => {
-        const managers = app.getManagers();
-        if (managers.undoManager) window.undoManager = managers.undoManager;
-        else delete window.undoManager;
-        if (managers.tocNavigator) window.tocNavigator = managers.tocNavigator;
-        else delete window.tocNavigator;
-        if (managers.annotationNavigator) window.annotationNavigator = managers.annotationNavigator;
-        else delete window.annotationNavigator;
-        if (managers.shortcutsManager) window.shortcutsManager = managers.shortcutsManager;
-        else delete window.shortcutsManager;
-        Logger.log('MarkonApp', 'Application started successfully');
-        // Deep-link into edit mode (e.g. from the diff file menu's "Edit file"),
-        // optionally jumping to a 1-based line so editing from the diff lands
-        // where the reviewer was looking.
-        try {
-            const params = new URLSearchParams(window.location.search);
-            if (params.get('edit') === '1') {
-                const line = parseInt(params.get('line') || '', 10);
-                app.openEditorAtLine(Number.isFinite(line) && line > 0 ? line : 1);
+    void app.init()
+        .then(() => {
+            const managers = app.getManagers();
+            if (managers.undoManager) window.undoManager = managers.undoManager;
+            else delete window.undoManager;
+            if (managers.tocNavigator) window.tocNavigator = managers.tocNavigator;
+            else delete window.tocNavigator;
+            if (managers.annotationNavigator) window.annotationNavigator = managers.annotationNavigator;
+            else delete window.annotationNavigator;
+            if (managers.shortcutsManager) window.shortcutsManager = managers.shortcutsManager;
+            else delete window.shortcutsManager;
+            Logger.log('MarkonApp', 'Application started successfully');
+            // Deep-link into edit mode (e.g. from the diff file menu's "Edit file"),
+            // optionally jumping to a 1-based line so editing from the diff lands
+            // where the reviewer was looking.
+            try {
+                const params = new URLSearchParams(window.location.search);
+                if (params.get('edit') === '1') {
+                    const line = parseInt(params.get('line') || '', 10);
+                    app.openEditorAtLine(Number.isFinite(line) && line > 0 ? line : 1);
+                }
+            } catch (_) {
+                /* ignore malformed URLs */
             }
-        } catch (_) {
-            /* ignore malformed URLs */
-        }
-    });
+        })
+        .catch((error: unknown) => {
+            Logger.error('MarkonApp', 'Application initialization failed:', error);
+            window.alert(error instanceof Error ? error.message : String(error));
+        });
 
     // Connect to per-workspace WebSocket — reload page when config flags change.
     const wsId = Meta.get(CONFIG.META_TAGS.WORKSPACE_ID);

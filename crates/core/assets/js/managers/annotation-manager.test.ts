@@ -146,6 +146,18 @@ describe('AnnotationManager', () => {
         expect(mgr.getAll()).toHaveLength(1);
     });
 
+    it('add() leaves memory unchanged when SQLite persistence fails', async () => {
+        const article = setupArticle('<p>aaa</p>');
+        const storage = makeStorage();
+        const mgr = new AnnotationManager(storage, article);
+        const range = makeRange(article.querySelector('p')!.firstChild!, 0, 3);
+        const anno = mgr.createAnnotation(range, 'highlight-green', 'span');
+        vi.mocked(storage.saveAnnotation).mockRejectedValueOnce(new Error('SQLite unavailable'));
+
+        await expect(mgr.add(anno)).rejects.toThrow('SQLite unavailable');
+        expect(mgr.getAll()).toEqual([]);
+    });
+
     it('replaceAll() updates memory without touching storage', () => {
         const article = setupArticle('<p>aaa</p>');
         const storage = makeStorage();
@@ -257,6 +269,19 @@ describe('AnnotationManager', () => {
         expect(warnSpy).toHaveBeenCalled();
     });
 
+    it('delete() leaves memory unchanged when SQLite persistence fails', async () => {
+        const article = setupArticle('<p>abcdef</p>');
+        const storage = makeStorage();
+        const mgr = new AnnotationManager(storage, article);
+        const range = makeRange(article.querySelector('p')!.firstChild!, 0, 3);
+        const anno = mgr.createAnnotation(range, 'highlight-orange', 'span');
+        await mgr.add(anno, true);
+        vi.mocked(storage.deleteAnnotation).mockRejectedValueOnce(new Error('SQLite unavailable'));
+
+        await expect(mgr.delete(anno.id)).rejects.toThrow('SQLite unavailable');
+        expect(mgr.getAll()).toEqual([anno]);
+    });
+
     it('removeFromDOM unwraps the annotation element and preserves text', () => {
         const article = setupArticle('<p>wrap me</p>');
         const storage = makeStorage();
@@ -310,6 +335,19 @@ describe('AnnotationManager', () => {
         expect(itemAt(last.data as Annotation[], 0).id).toBe(anno.id);
     });
 
+    it('clear() leaves memory unchanged when SQLite persistence fails', async () => {
+        const article = setupArticle('<p>abcdef</p>');
+        const storage = makeStorage();
+        const mgr = new AnnotationManager(storage, article);
+        const range = makeRange(article.querySelector('p')!.firstChild!, 0, 3);
+        const anno = mgr.createAnnotation(range, 'highlight-orange', 'span');
+        await mgr.add(anno, true);
+        vi.mocked(storage.clearAnnotations).mockRejectedValueOnce(new Error('SQLite unavailable'));
+
+        await expect(mgr.clear()).rejects.toThrow('SQLite unavailable');
+        expect(mgr.getAll()).toEqual([anno]);
+    });
+
     it('applyToDOM keeps inline <code> intact when the range crosses code boundaries', () => {
         const article = setupArticle('<p><code>foo</code> + <code>bar</code></p>');
         const storage = makeStorage();
@@ -352,7 +390,7 @@ describe('AnnotationManager', () => {
         void middle;
     });
 
-    it('creates one annotation across heading, paragraph, and list items', () => {
+    it('creates one annotation across heading, paragraph, and list items', async () => {
         const article = setupArticle(
             '<h2>Heading<span class="section-actions">Print</span></h2>' +
             '<p>Body text</p><ul><li>One</li><li>Two</li></ul>',
@@ -375,6 +413,7 @@ describe('AnnotationManager', () => {
         expect(anno.text).toBe('Heading\nBody text\nOne\nTwo');
         expect(mgr.textForRange(range)).toBe('Heading\nBody text\nOne\nTwo');
 
+        await mgr.add(anno);
         mgr.applyToDOM([anno]);
         const wrappers = article.querySelectorAll<HTMLElement>(
             `[data-annotation-id="${anno.id}"]`,
@@ -393,8 +432,8 @@ describe('AnnotationManager', () => {
         expect(restored?.startContainer.textContent).toBe('Heading');
         expect(restored?.endContainer.textContent).toBe('Two');
 
-        expect(mgr.formatAnnotation(anno)).toBe(
-            '> Heading\n> Body text\n> One\n> Two\n\ncovers a section\n',
+        expect(mgr.formatAsMarkdown({ ids: [anno.id] })).toBe(
+            '> *Heading*\n> *Body text*\n> *One*\n> *Two*\n\ncovers a section\n',
         );
 
         mgr.removeFromDOM(anno.id);
@@ -555,21 +594,21 @@ describe('AnnotationManager', () => {
         expect(md).not.toContain('## ');
         expect(md).not.toContain('**');
         expect(md).not.toMatch(/^\s*\d+\.\s/m); // no "1." style numbering
-        expect(md.trimStart().startsWith('"alpha"')).toBe(true);
+        expect(md.trimStart().startsWith('> *alpha* bravo charlie')).toBe(true);
 
-        // Items stay in document order: alpha → bravo → delta → echo.
-        const alphaIdx = md.indexOf('"alpha"');
-        const bravoIdx = md.indexOf('"bravo"');
-        const deltaIdx = md.indexOf('"delta"');
-        const echoIdx  = md.indexOf('"echo"');
+        // Items stay in document order and each real selection is emphasized.
+        const alphaIdx = md.indexOf('*alpha*');
+        const bravoIdx = md.indexOf('*bravo*');
+        const deltaIdx = md.indexOf('*delta*');
+        const echoIdx  = md.indexOf('*echo*');
         expect(alphaIdx).toBeGreaterThan(-1);
         expect(bravoIdx).toBeGreaterThan(alphaIdx);
         expect(deltaIdx).toBeGreaterThan(bravoIdx);
         expect(echoIdx).toBeGreaterThan(deltaIdx);
 
-        // Notes attached as blockquote under their entry
-        expect(md).toContain('> remember this');
-        expect(md).toContain('> a free-floating note');
+        // Source context is a blockquote; the user's note remains plain text.
+        expect(md).toContain('> alpha *bravo* charlie\n\nremember this');
+        expect(md).toContain('> delta *echo* foxtrot\n\na free-floating note');
     });
 
     it('formatAsMarkdown with ids exports only the selected subset (#13)', async () => {
@@ -586,11 +625,75 @@ describe('AnnotationManager', () => {
         mgr.applyToDOM([orange]);
 
         const md = mgr.formatAsMarkdown({ ids: new Set([orange.id]) });
-        expect(md).toContain('"bravo"');
-        expect(md).not.toContain('"alpha"');
+        expect(md).toContain('> alpha *bravo* charlie');
+        expect(md).not.toContain('*alpha*');
 
         // Empty selection yields an empty document.
         expect(mgr.formatAsMarkdown({ ids: new Set<string>() })).toBe('');
+    });
+
+    it('formatAsMarkdown includes the containing sentence and emphasizes the selection', async () => {
+        const article = setupArticle(
+            '<p>前一句。IdentityRef 表示稳定授权与历史主体，可代表人员。后一句。</p>',
+        );
+        const mgr = new AnnotationManager(makeStorage(), article);
+        const text = article.querySelector('p')!.firstChild!;
+        const start = text.textContent!.indexOf('IdentityRef');
+        const annotation = mgr.createAnnotation(
+            makeRange(text, start, start + 'IdentityRef'.length),
+            'has-note',
+            'span',
+            '需要提供 anonymous 身份特例',
+        );
+        await mgr.add(annotation);
+        mgr.applyToDOM([annotation]);
+
+        expect(mgr.formatAsMarkdown()).toBe(
+            '> *IdentityRef* 表示稳定授权与历史主体，可代表人员。\n\n'
+            + '需要提供 anonymous 身份特例\n',
+        );
+    });
+
+    it('formatAsMarkdown keeps the full table row as context', async () => {
+        const article = setupArticle(
+            '<table><tbody><tr><td><code>IdentityRef</code></td>'
+            + '<td><code>(authority_domain, identity_id)</code>；稳定授权与历史主体。</td>'
+            + '</tr></tbody></table>',
+        );
+        const mgr = new AnnotationManager(makeStorage(), article);
+        const selected = article.querySelector('code')!.firstChild!;
+        const annotation = mgr.createAnnotation(
+            makeRange(selected, 0, 'IdentityRef'.length),
+            'has-note',
+            'span',
+            '需要提供 anonymous 身份特例',
+        );
+        await mgr.add(annotation);
+        mgr.applyToDOM([annotation]);
+
+        expect(mgr.formatAsMarkdown()).toBe(
+            '> *IdentityRef* | (authority_domain, identity_id)；稳定授权与历史主体。\n\n'
+            + '需要提供 anonymous 身份特例\n',
+        );
+    });
+
+    it('formatAsMarkdown falls back to the stored selection for an orphaned anchor', async () => {
+        const article = setupArticle('<p>replacement content</p>');
+        const orphan: Annotation = {
+            id: 'anno-orphan',
+            type: 'has-note',
+            tagName: 'span',
+            anchor: { position: 0, exact: 'removed *selection*', prefix: '', suffix: '' },
+            text: 'removed *selection*',
+            note: 'still export this note',
+            createdAt: 1,
+        };
+        const mgr = new AnnotationManager(makeStorage([orphan]), article);
+        await mgr.load();
+
+        expect(mgr.formatAsMarkdown()).toBe(
+            '> *removed \\*selection\\**\n\nstill export this note\n',
+        );
     });
 
     it('getAllInSection includes nested child sections but excludes siblings', async () => {
@@ -638,16 +741,22 @@ describe('AnnotationManager', () => {
         expect(mgr.getAllInSection('missing')).toEqual([]);
     });
 
-    it('formatAnnotation renders quote and note for a single annotation', async () => {
+    it('formats one selected ID with the same context-aware export pipeline', async () => {
         const article = setupArticle('<p>alpha bravo charlie</p>');
         const mgr = new AnnotationManager(makeStorage(), article);
         const p = article.querySelector('p')!;
 
         const withNote = mgr.createAnnotation(makeRange(p.firstChild!, 0, 5), 'has-note', 'span', 'remember this');
-        expect(mgr.formatAnnotation(withNote)).toBe('> alpha\n\nremember this\n');
+        await mgr.add(withNote);
+        expect(mgr.formatAsMarkdown({ ids: [withNote.id] })).toBe(
+            '> *alpha* bravo charlie\n\nremember this\n',
+        );
 
         const plain = mgr.createAnnotation(makeRange(p.firstChild!, 0, 5), 'highlight-orange', 'span');
-        expect(mgr.formatAnnotation(plain)).toBe('> alpha\n');
+        await mgr.add(plain);
+        expect(mgr.formatAsMarkdown({ ids: [plain.id] })).toBe(
+            '> *alpha* bravo charlie\n',
+        );
     });
 
     it('getGroupedByHeading groups annotations under their heading in document order', async () => {

@@ -13,6 +13,11 @@
 
 import { Meta } from './services/dom';
 import { workspaceFileUrl } from './core/routes';
+import {
+    isAdminSessionExpiredError,
+    requireActiveAdminSession,
+    showAdminActionError,
+} from './core/admin-actions';
 
 type Kind = 'file' | 'folder';
 interface CreateUrls { file: string; folder: string; }
@@ -60,16 +65,19 @@ async function create(kind: Kind, path: string, urls: CreateUrls): Promise<{ ok:
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(kind === 'file' ? { path, content: '' } : { path }),
         });
+        requireActiveAdminSession(resp);
         const text = await resp.text();
         let data: { success?: boolean; message?: string; url?: string } = {};
         try { data = text ? JSON.parse(text) as { success?: boolean; message?: string; url?: string } : {}; } catch { /* ignore */ }
         if (!resp.ok || data.success === false) {
-            window.alert(data.message || text || resp.statusText);
-            return { ok: false };
+            throw new Error(data.message || text || resp.statusText);
         }
         return data.url ? { ok: true, url: data.url } : { ok: true };
     } catch (err) {
-        window.alert(err instanceof Error ? err.message : String(err));
+        showAdminActionError(
+            err,
+            isAdminSessionExpiredError(err) ? '' : 'Could not create the workspace item.',
+        );
         return { ok: false };
     }
 }

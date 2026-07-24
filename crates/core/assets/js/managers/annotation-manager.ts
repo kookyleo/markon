@@ -55,6 +55,18 @@ export interface AnnotationGroup {
     items: Annotation[];
 }
 
+interface ExportTextSegment {
+    node: Text;
+    start: number;
+}
+
+interface ExportSelectionInterval {
+    start: number;
+    end: number;
+}
+
+const EXPORT_SENTENCE_SEGMENTER = new Intl.Segmenter(undefined, { granularity: 'sentence' });
+
 /**
  * Canonical Annotation schema. Persisted by storage-manager,
  * round-tripped through WebSocket, and consumed by note-manager,
@@ -159,9 +171,8 @@ export class AnnotationManager {
     /**
      * Replace the in-memory annotation snapshot without writing to storage.
      *
-     * Shared mode uses this after merging a server snapshot with the local
-     * mirror. Persistence is handled explicitly by the caller so a reconnect
-     * cannot accidentally clear or overwrite either side.
+     * Shared mode uses this after reconciling the initial SQLite snapshot with
+     * a broadcast snapshot. Persistence is handled explicitly by the caller.
      */
     replaceAll(annotations: Annotation[]): void {
         this.#annotations = [...annotations];
@@ -281,46 +292,173 @@ export class AnnotationManager {
     }
 
     /**
-     * Format a single annotation as a standalone Markdown snippet centered on
-     * the quoted text, with the note (if any) following it. Used by the
-     * per-annotation quick-copy buttons.
-     */
-    formatAnnotation(a: Annotation): string {
-        const lines: string[] = a.text.trim().split(/\r?\n/).map(l => `> ${l}`);
-        if (a.note && a.note.trim()) {
-            lines.push('', a.note.trim());
-        }
-        return lines.join('\n') + '\n';
-    }
-
-    /**
      * Format annotations on the page as Markdown suitable for pasting into an
-     * AI tool. Annotations are listed in document order and grouped by their
-     * containing heading. When `ids` is given, only those annotations are
-     * exported (used by notes export); otherwise the whole page is.
+     * AI tool. This is the sole public annotation-to-Markdown path: quick copy
+     * passes one ID, while Export notes passes its selected set. Annotations
+     * are listed in document order. When `ids` is omitted, the whole page is
+     * formatted.
      */
     formatAsMarkdown(opts: { ids?: Iterable<string> } = {}): string {
         const filter = opts.ids ? new Set(opts.ids) : null;
         const annotations = this.getAllInDocumentOrder()
             .filter(a => !filter || filter.has(a.id));
+        return this.#formatAnnotations(annotations);
+    }
+
+    #formatAnnotations(annotations: Annotation[]): string {
         if (annotations.length === 0) return '';
 
-        const escapeBlockquote = (s: string): string =>
-            s.replace(/\r?\n/g, '\n> ');
-
-        // No preamble, no headings, no list numbering — each note is just its
-        // anchor quote (the annotated text) followed by the note as a
-        // blockquote, separated by a blank line.
+        // No preamble, no headings, no list numbering. Each note starts with
+        // the smallest useful live context (one sentence, or one table row),
+        // with the actual selection emphasized. Orphaned anchors retain the
+        // historical selection-only representation as a safe fallback.
         const lines: string[] = [];
         annotations.forEach((a) => {
-            lines.push(`"${a.text.trim()}"`);
+            const contextLines = this.#exportContextLines(a);
+            if (contextLines.length) {
+                contextLines.forEach(line => lines.push(`> ${line}`));
+            } else {
+                lines.push(`> *${this.#escapeExportMarkdown(a.text.trim())}*`);
+            }
             if (a.note && a.note.trim()) {
-                lines.push(`> ${escapeBlockquote(a.note.trim())}`);
+                lines.push('', a.note.trim());
             }
             lines.push('');
         });
 
         return lines.join('\n').trimEnd() + '\n';
+    }
+
+    /** Resolve the selection against the live document and return one
+     * context line per structural unit. Paragraph-like content is cropped to
+     * the sentence(s) intersecting the selection; table selections keep the
+     * complete row so a term and its definition remain connected. */
+    #exportContextLines(annotation: Annotation): string[] {
+        const ranges = this.rangesForAnnotation(annotation);
+        if (!ranges.length) return [];
+
+        const grouped = new Map<Element, Range[]>();
+        ranges.forEach((range) => {
+            const container = this.#exportContextContainer(range);
+            if (!container) return;
+            const group = grouped.get(container) ?? [];
+            group.push(range);
+            grouped.set(container, group);
+        });
+
+        return [...grouped.entries()]
+            .map(([container, selectedRanges]) =>
+                this.#formatExportContext(container, selectedRanges),
+            )
+            .filter((line): line is string => !!line);
+    }
+
+    #exportContextContainer(range: Range): Element | null {
+        const startElement = range.startContainer.nodeType === Node.ELEMENT_NODE
+            ? range.startContainer as Element
+            : range.startContainer.parentElement;
+        const tableRow = startElement?.closest('td, th')?.closest('tr');
+        if (tableRow && this.#markdownBody.contains(tableRow)) return tableRow;
+        return annotationBlockFor(range.startContainer, this.#markdownBody);
+    }
+
+    #formatExportContext(container: Element, ranges: readonly Range[]): string | null {
+        const { text, segments } = this.#collectExportText(container);
+        if (!text || !segments.length) return null;
+
+        const intervals = ranges
+            .map((range): ExportSelectionInterval | null => {
+                const start = this.#exportOffset(segments, range.startContainer, range.startOffset);
+                const end = this.#exportOffset(segments, range.endContainer, range.endOffset);
+                return start !== null && end !== null && start < end ? { start, end } : null;
+            })
+            .filter((interval): interval is ExportSelectionInterval => !!interval)
+            .sort((a, b) => a.start - b.start);
+        if (!intervals.length) return null;
+
+        const merged: ExportSelectionInterval[] = [];
+        intervals.forEach((interval) => {
+            const previous = merged.at(-1);
+            if (previous && interval.start <= previous.end) {
+                previous.end = Math.max(previous.end, interval.end);
+            } else {
+                merged.push({ ...interval });
+            }
+        });
+
+        const first = merged[0];
+        const last = merged.at(-1);
+        if (!first || !last) return null;
+        const [contextStart, contextEnd] = container.tagName === 'TR'
+            ? [0, text.length]
+            : this.#sentenceBounds(text, first.start, last.end);
+
+        const parts: string[] = [];
+        let cursor = contextStart;
+        merged.forEach((interval) => {
+            const start = Math.max(contextStart, interval.start);
+            const end = Math.min(contextEnd, interval.end);
+            if (start >= end) return;
+            parts.push(this.#escapeExportMarkdown(text.slice(cursor, start)));
+            parts.push(`*${this.#escapeExportMarkdown(text.slice(start, end))}*`);
+            cursor = end;
+        });
+        parts.push(this.#escapeExportMarkdown(text.slice(cursor, contextEnd)));
+        return parts.join('').replace(/\s+/g, ' ').trim() || null;
+    }
+
+    #collectExportText(container: Element): { text: string; segments: ExportTextSegment[] } {
+        const segments: ExportTextSegment[] = [];
+        let text = '';
+        let previousCell: Element | null = null;
+        const isTableRow = container.tagName === 'TR';
+        const walker = document.createTreeWalker(container, NodeFilter.SHOW_TEXT);
+        let current: Node | null = walker.nextNode();
+        while (current) {
+            const node = current as Text;
+            if (node.data && !this.#contentReject(node)) {
+                const block = annotationBlockFor(node, this.#markdownBody);
+                if (isTableRow || block === container) {
+                    if (isTableRow) {
+                        const cell = node.parentElement?.closest('td, th') ?? null;
+                        if (previousCell && cell && cell !== previousCell) text += ' | ';
+                        if (cell) previousCell = cell;
+                    }
+                    segments.push({ node, start: text.length });
+                    text += node.data;
+                }
+            }
+            current = walker.nextNode();
+        }
+        return { text, segments };
+    }
+
+    #exportOffset(
+        segments: readonly ExportTextSegment[],
+        container: Node,
+        offset: number,
+    ): number | null {
+        if (container.nodeType !== Node.TEXT_NODE) return null;
+        const segment = segments.find(candidate => candidate.node === container);
+        return segment ? segment.start + offset : null;
+    }
+
+    #sentenceBounds(text: string, selectionStart: number, selectionEnd: number): [number, number] {
+        const sentences = [...EXPORT_SENTENCE_SEGMENTER.segment(text)];
+        const matching = sentences.filter((sentence) => {
+            const start = sentence.index;
+            const end = start + sentence.segment.length;
+            return start < selectionEnd && end > selectionStart;
+        });
+        const first = matching[0];
+        const last = matching.at(-1);
+        return first && last
+            ? [first.index, last.index + last.segment.length]
+            : [0, text.length];
+    }
+
+    #escapeExportMarkdown(text: string): string {
+        return text.replace(/\\/g, '\\\\').replace(/\*/g, '\\*');
     }
 
     /**
@@ -329,21 +467,18 @@ export class AnnotationManager {
      * and for remote-originating updates (`skipSave === true`).
      */
     async add(annotation: Annotation, skipSave = false): Promise<string | null> {
-        // Check whether the annotation already exists locally.
-        const existingIndex = this.#annotations.findIndex(a => a.id === annotation.id);
-
-        if (existingIndex >= 0) {
-            // Update existing annotation in place.
-            this.#annotations[existingIndex] = annotation;
-        } else {
-            // Append the new annotation.
-            this.#annotations.push(annotation);
-        }
-
-        // Persist to storage (skipped when applying a remote echo).
+        // Commit before publishing the in-memory change. A failed SQLite write
+        // must leave the rendered page and the manager snapshot untouched.
         let opId: string | null = null;
         if (!skipSave) {
             opId = await this.#storage.saveAnnotation(annotation);
+        }
+
+        const existingIndex = this.#annotations.findIndex(a => a.id === annotation.id);
+        if (existingIndex >= 0) {
+            this.#annotations[existingIndex] = annotation;
+        } else {
+            this.#annotations.push(annotation);
         }
 
         // Fire the change callback.
@@ -362,12 +497,13 @@ export class AnnotationManager {
 
         const deleted = this.#annotations[index];
         if (!deleted) return null;
-        this.#annotations.splice(index, 1);
 
-        // Remove from storage (skipped when applying a remote echo).
+        // Commit before publishing the in-memory change.
         if (!skipSave) {
             await this.#storage.deleteAnnotation(id);
         }
+
+        this.#annotations.splice(index, 1);
 
         // Fire the change callback.
         this.#triggerChange('delete', deleted);
@@ -378,12 +514,12 @@ export class AnnotationManager {
 
     async clear(skipSave = false): Promise<void> {
         const oldAnnotations = [...this.#annotations];
-        this.#annotations = [];
 
         if (!skipSave) {
             await this.#storage.clearAnnotations();
         }
 
+        this.#annotations = [];
         this.#triggerChange('clear', oldAnnotations);
 
         Logger.log('AnnotationManager', `Cleared all annotations${skipSave ? ' (from remote)' : ''}`);

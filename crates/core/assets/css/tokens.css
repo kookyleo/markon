@@ -194,14 +194,10 @@
     --markon-fg-muted-hover: color-mix(in srgb, var(--markon-fg-muted) 60%, black);
     --markon-accent-muted:   color-mix(in srgb, var(--markon-accent) 10%, transparent);
 
-    /* ── Source-editor preset layer ──────────────────────────
-       editor.css references only these --mk-editor-* vars. The defaults
-       below are the "follow page" preset: chrome maps to the page tokens
-       (so it tracks data-theme) and markdown syntax uses the light GitHub
-       palette here + the GitHub-dark palette in the dark block. A named
-       preset overrides the whole set under html[data-editor-theme="…"]
-       (see "VSCode Dark" below). Adding a preset = one such block + one
-       settings option; nothing in editor.css changes. */
+    /* ── Source-editor token layer ───────────────────────────
+       editor.css references only these --mk-editor-* vars. Chrome maps to
+       the shared Theme page tokens; syntax uses the light GitHub
+       palette here and the GitHub-dark palette in the dark block. */
     --mk-editor-bg:               var(--markon-bg-default);
     --mk-editor-fg:               var(--markon-fg-default);
     --mk-editor-header-bg:        var(--markon-bg-muted);
@@ -438,42 +434,4 @@ html[data-theme="dark"] {
     /* Elevation needs more depth on a dark canvas. */
     --markon-shadow-pop:   0 2px 8px rgba(0, 0, 0, 0.4);
     --markon-shadow-modal: 0 10px 28px rgba(0, 0, 0, 0.5);
-}
-
-/* ── "VSCode Dark" source-editor preset (opt-in) ─────────────────────────
-   Reproduces the editor's original dark look as a named preset, applied via
-   html[data-editor-theme="vscode-dark"]. Always dark regardless of the page
-   theme — this is the template for plugging in further editor presets. */
-html[data-editor-theme="vscode-dark"] {
-    --mk-editor-bg:               #1e1e1e;
-    --mk-editor-fg:               #d4d4d4;
-    --mk-editor-header-bg:        #2d2d2d;
-    --mk-editor-header-border:    #3e3e3e;
-    --mk-editor-chrome-fg:        #cccccc;
-    --mk-editor-chrome-fg-strong: #ffffff;
-    --mk-editor-gutter-bg:        #1e1e1e;
-    --mk-editor-gutter-border:    #3e3e3e;
-    --mk-editor-gutter-fg:        #858585;
-    --mk-editor-divider:          #3e3e3e;
-    --mk-editor-accent:           #0e639c;
-    --mk-editor-caret:            #ffffff;
-    --mk-editor-selection:        rgba(38, 79, 120, 0.6);
-    --mk-editor-btn-fg:           #ffffff;
-    --mk-editor-btn-bg:           #0e639c;
-    --mk-editor-btn-bg-hover:     #1177bb;
-    --mk-editor-btn-bg-active:    #0d5a8f;
-    --mk-editor-btn-changes-bg:       #0e7a0d;
-    --mk-editor-btn-changes-bg-hover: #13a10e;
-    --mk-editor-btn-disabled-bg:  #4d4d4d;
-    --mk-editor-btn-disabled-fg:  #808080;
-    --mk-editor-syn-header:       #569cd6;
-    --mk-editor-syn-bold:         #dcdcaa;
-    --mk-editor-syn-italic:       #ce9178;
-    --mk-editor-syn-code:         #d16969;
-    --mk-editor-syn-code-bg:      rgba(255, 255, 255, 0.1);
-    --mk-editor-syn-fence:        #808080;
-    --mk-editor-syn-link:         #3794ff;
-    --mk-editor-syn-quote:        #6a9955;
-    --mk-editor-syn-list:         #dcdcaa;
-    --mk-editor-syn-hr:           #808080;
 }

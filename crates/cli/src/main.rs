@@ -181,8 +181,8 @@ struct WorkspaceAccessSummary {
     flags: WorkspaceFlags,
     /// Every reachable workspace URL (localhost first, then each LAN interface).
     local_urls: Vec<server::ReachableUrl>,
-    /// The featured workspace URL (LAN IP for wildcard binds) — used for the
-    /// browser auto-open and as the QR fallback.
+    /// The featured workspace URL (LAN IP for wildcard binds), used as the QR
+    /// fallback. Administrator browser launches choose their origin separately.
     featured_url: String,
     public_url: Option<String>,
     qr_url: Option<String>,
@@ -456,6 +456,9 @@ fn resolve_workspace_list_base(
     }
 }
 
+/// Move a daemon-issued one-time administrator fragment onto an explicitly
+/// requested trusted origin. The capability remains the identity proof; this
+/// helper changes only the origin used to redeem it.
 fn rehome_admin_bootstrap_url(base: &str, redirect: &str, issued_url: &str) -> String {
     let initial_route = redirect
         .split_once('#')
@@ -836,14 +839,13 @@ async fn forward_to_running_server(
             if let Some(base_option) = plan.open_browser_target {
                 let redirect = server::workspace_url_path(&workspace_id, plan.initial_path);
                 // The daemon mints the one-time bootstrap URL (nonce + its own
-                // stable local base) over the control socket.
+                // bind-aware local base) over the control socket. An explicit
+                // trusted reverse-proxy origin remains an intentional override.
                 match server.admin_bootstrap(&redirect).await {
                     Ok(boot_url) => {
                         let browser_url = if base_option == "local" {
                             boot_url
                         } else {
-                            // Re-home the final target onto the requested custom
-                            // base while preserving the one-time fragment.
                             rehome_admin_bootstrap_url(base_option, &redirect, &boot_url)
                         };
                         if let Err(e) = open::that(&browser_url) {
@@ -1199,8 +1201,8 @@ async fn main() {
     let language = settings.effective_web_language();
     let shortcuts_json = settings.render_shortcuts_json();
     let styles_css = settings.render_styles_css();
+    let theme = settings.theme.clone();
     let default_chat_mode = settings.default_chat_mode.clone();
-    let editor_theme = settings.web_editor_theme.clone();
     let collaborator_access_code_hash = settings.collaborator_access_code_hash.clone();
     let db_path = settings.db_path.clone();
     // CLI flag forces inclusion; otherwise inherit the persisted preference so
@@ -1221,7 +1223,7 @@ async fn main() {
             advertised_host: advertised_host.clone(),
             trusted_hosts: trusted_hosts.clone(),
             port: cli.port,
-            theme: "auto".to_string(),
+            theme: theme.clone(),
             qr: cli.entry.clone(),
             // The daemon never opens the browser itself — the CLI does, over the
             // control socket, after forwarding the workspace.
@@ -1236,7 +1238,6 @@ async fn main() {
             shortcuts_json: shortcuts_json.clone(),
             styles_css: styles_css.clone(),
             default_chat_mode: default_chat_mode.clone(),
-            editor_theme: editor_theme.clone(),
             collaborator_access_code_hash: collaborator_access_code_hash.clone(),
             print_collapsed_content,
         };
@@ -1315,7 +1316,7 @@ async fn main() {
         advertised_host,
         trusted_hosts,
         port: cli.port,
-        theme: "auto".to_string(),
+        theme,
         qr: cli.entry,
         open_browser: open_browser_target,
         shared_annotation: initial_workspaces.iter().any(|w| w.flags.shared_annotation),
@@ -1330,7 +1331,6 @@ async fn main() {
         shortcuts_json,
         styles_css,
         default_chat_mode,
-        editor_theme,
         collaborator_access_code_hash,
         print_collapsed_content,
     })
@@ -1361,26 +1361,6 @@ mod tests {
                 command: AdminCommands::Code
             })
         ));
-    }
-
-    #[test]
-    fn custom_base_admin_bootstrap_still_starts_at_final_target() {
-        assert_eq!(
-            rehome_admin_bootstrap_url(
-                "https://md.example.com/root/",
-                "/workspace/file.md?mode=preview",
-                "http://127.0.0.1:6419/workspace/file.md?mode=preview#bootstrap_nonce=abc"
-            ),
-            "https://md.example.com/root/workspace/file.md?mode=preview#bootstrap_nonce=abc"
-        );
-        assert_eq!(
-            rehome_admin_bootstrap_url(
-                "https://md.example.com",
-                "/workspace/file.md#heading",
-                "http://127.0.0.1:6419/workspace/file.md#bootstrap_nonce=abc"
-            ),
-            "https://md.example.com/workspace/file.md#bootstrap_nonce=abc"
-        );
     }
 
     #[test]
@@ -1487,6 +1467,26 @@ mod tests {
         // The interactive `select` sentinel is not a real host → fall back.
         assert_eq!(configured_bind_host(Some("select"), "0.0.0.0"), "0.0.0.0");
         assert_eq!(configured_bind_host(Some("select"), ""), "127.0.0.1");
+    }
+
+    #[test]
+    fn explicit_trusted_origin_can_redeem_the_same_admin_bootstrap() {
+        assert_eq!(
+            rehome_admin_bootstrap_url(
+                "https://md.example.com/root/",
+                "/workspace/file.md?mode=preview",
+                "http://127.0.0.1:6419/workspace/file.md?mode=preview#bootstrap_nonce=abc"
+            ),
+            "https://md.example.com/root/workspace/file.md?mode=preview#bootstrap_nonce=abc"
+        );
+        assert_eq!(
+            rehome_admin_bootstrap_url(
+                "https://md.example.com",
+                "/workspace/file.md#heading",
+                "http://198.51.100.7:6419/workspace/file.md#bootstrap_nonce=abc"
+            ),
+            "https://md.example.com/workspace/file.md#bootstrap_nonce=abc"
+        );
     }
 
     #[test]

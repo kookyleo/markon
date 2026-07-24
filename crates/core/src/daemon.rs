@@ -83,8 +83,6 @@ pub struct DaemonConfig {
     #[serde(default)]
     pub default_chat_mode: String,
     #[serde(default)]
-    pub editor_theme: String,
-    #[serde(default)]
     pub collaborator_access_code_hash: String,
     #[serde(default)]
     pub print_collapsed_content: bool,
@@ -130,7 +128,6 @@ impl ServerConfig {
             shortcuts_json: cfg.shortcuts_json,
             styles_css: cfg.styles_css,
             default_chat_mode: cfg.default_chat_mode,
-            editor_theme: cfg.editor_theme,
             collaborator_access_code_hash: cfg.collaborator_access_code_hash,
             print_collapsed_content: cfg.print_collapsed_content,
         }
@@ -349,7 +346,6 @@ mod tests {
             shortcuts_json: None,
             styles_css: None,
             default_chat_mode: "in_page".to_string(),
-            editor_theme: "follow".to_string(),
             collaborator_access_code_hash: "cafef00d".to_string(),
             print_collapsed_content: true,
         };

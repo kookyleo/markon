@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="en" dir="auto" data-theme="{{ theme }}" data-theme-default="{{ theme }}" data-editor-theme="{{ editor_theme | default(value='follow') }}" data-print-collapsed-content="{{ print_collapsed_content | default(value=false) }}">
+<html lang="en" dir="auto" data-theme="{{ theme }}" data-theme-default="{{ theme }}" data-print-collapsed-content="{{ print_collapsed_content | default(value=false) }}">
 <head>
     {% include "theme-boot.html" %}
     {% include "admin-session-boot.html" %}
@@ -104,7 +104,7 @@
             display: flex;
             align-items: center;
             justify-content: flex-start;
-            column-gap: 47px;
+            column-gap: 10px;
             row-gap: 12px;
             flex-wrap: wrap;
         }
@@ -822,9 +822,8 @@
             margin-bottom: 0;
         }
 
-        /* Editor modal chrome is owned by editor.css via the --mk-editor-*
-           preset layer (default "follow page"); no inline overrides here so
-           the data-editor-theme presets can take effect. */
+        /* Editor modal chrome consumes the same shared Theme token layer
+           as the rendered page; no page-local overrides live here. */
 
         /* ========================================
            SEARCH HIGHLIGHTING
@@ -925,7 +924,7 @@
     <footer class="container footer">
         <a href="https://kookyleo.github.io/markon/" id="footer-text">Powered by markon</a>
         <span class="footer-separator"> | </span>
-        <a href="#" class="footer-clear-link" id="clear-annot-text" onclick="clearPageAnnotations(event, window.ws, window.isSharedAnnotationMode); return false;">Clear Annotations in this page</a>
+        {% if can_manage or shared_annotation %}<a href="#" class="footer-clear-link" id="clear-annot-text" onclick="clearPageAnnotations(event, window.ws, window.isSharedAnnotationMode); return false;">Clear Annotations in this page</a>{% endif %}
         <span class="footer-separator"> | </span>
         <a href="https://github.com/kookyleo/markon/issues/new?title=%5BFeedback%5D%20&body=One-line%20summary%3A%0A%0A%23%23%20Environment%0A-%20markon%20version%3A%0A-%20OS%3A%0A-%20Browser%3A%0A%0A%23%23%20Steps%20to%20reproduce%0A1.%0A%0A%23%23%20Expected%0A%0A%23%23%20Actual%0A" id="feedback-link-text" target="_blank" rel="noopener noreferrer">Feedback</a>
         <span class="footer-separator"> | </span>

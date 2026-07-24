@@ -70,7 +70,9 @@ class DiffAnnotationCoordinator {
             },
         });
         this.#popover.onAction((action, data) => {
-            void this.#handleAction(action, data);
+            void this.#handleAction(action, data).catch((error: unknown) => {
+                window.alert(error instanceof Error ? error.message : String(error));
+            });
         });
         this.#wireEvents();
     }
@@ -255,11 +257,11 @@ class DiffAnnotationCoordinator {
                 void (async () => {
                     if (noteText) {
                         if (existing) {
-                            existing.note = noteText;
-                            await ctx.annotationManager.add(existing);
+                            const updated = { ...existing, note: noteText };
+                            await ctx.annotationManager.add(updated);
                             ctx.annotationManager.removeFromDOM(existing.id);
                             ctx.annotationManager.setRoot(newSideRootFor(section));
-                            ctx.annotationManager.applyToDOM([existing]);
+                            ctx.annotationManager.applyToDOM([updated]);
                             ctx.noteManager.setMarkdownBody(newSideRootFor(section));
                             ctx.noteManager.render();
                             this.#emitNotesChanged();
@@ -279,7 +281,9 @@ class DiffAnnotationCoordinator {
                         this.#emitNotesChanged();
                     }
                     window.getSelection()?.removeAllRanges();
-                })();
+                })().catch((error: unknown) => {
+                    window.alert(error instanceof Error ? error.message : String(error));
+                });
             },
             onCancel: () => {
                 window.getSelection()?.removeAllRanges();
@@ -331,7 +335,10 @@ class DiffAnnotationCoordinator {
             const id = copyBtn.dataset['annotationId'];
             const ctx = id ? this.#contextForAnnotationId(id) : null;
             const anno = id && ctx ? ctx.annotationManager.getById(id) : null;
-            if (anno && ctx) await copyText(ctx.annotationManager.formatAnnotation(anno));
+            if (anno && ctx) {
+                const markdown = ctx.annotationManager.formatAsMarkdown({ ids: [anno.id] });
+                if (markdown) await copyText(markdown);
+            }
             e.stopPropagation();
             return;
         }
@@ -416,6 +423,19 @@ class DiffAnnotationCoordinator {
 const init = (): void => {
     const pane = document.querySelector<HTMLElement>(PANE_SELECTOR);
     if (!pane) return;
+    const canUseDocumentState =
+        Meta.flag(CONFIG.META_TAGS.CAN_MANAGE)
+        || Meta.flag(CONFIG.META_TAGS.SHARED_ANNOTATION);
+    if (!canUseDocumentState) {
+        window.markonDiffAnnotations = {
+            onBodyRendered: () => {},
+            onContentRendered: () => {},
+            exportNotes: async () => false,
+            notesCount: async () => 0,
+        };
+        document.dispatchEvent(new CustomEvent('markon:diff-annotations-ready'));
+        return;
+    }
     const coordinator = new DiffAnnotationCoordinator(pane);
     window.markonDiffAnnotations = {
         onBodyRendered: (body) => coordinator.onBodyRendered(body),

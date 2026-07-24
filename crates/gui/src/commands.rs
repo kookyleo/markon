@@ -83,6 +83,33 @@ fn workspace_panel_json(info: WorkspaceInfo, browser_base: &str) -> serde_json::
     })
 }
 
+fn workspace_share_urls(
+    bind_host: &str,
+    advertised_host: &str,
+    port: u16,
+    workspace_id: &str,
+) -> Vec<server::ReachableUrl> {
+    workspace_share_urls_from_origins(
+        server::reachable_urls(bind_host, advertised_host, port).all,
+        workspace_id,
+    )
+}
+
+fn workspace_share_urls_from_origins(
+    origins: Vec<server::ReachableUrl>,
+    workspace_id: &str,
+) -> Vec<server::ReachableUrl> {
+    let workspace_path = server::workspace_url_path(workspace_id, None);
+    origins
+        .into_iter()
+        .filter(|entry| entry.label != "localhost")
+        .map(|entry| server::ReachableUrl {
+            label: entry.label,
+            url: server::build_workspace_url(&entry.url, &workspace_path),
+        })
+        .collect()
+}
+
 // Spawning a console program from a GUI app on Windows pops up a cmd window
 // unless CREATE_NO_WINDOW is set. These helpers centralise the cfg dance so
 // call sites look identical across platforms.
@@ -186,7 +213,7 @@ pub(crate) fn effective_port(settings: &AppSettings) -> u16 {
 /// RESPAWN the shared markon service from the current settings snapshot, then
 /// broadcast the resulting status. Shared by save_settings and the server-level
 /// access-code path. Because the service is shared, this restarts `markond` for
-/// everyone connected — the UI warns before triggering these edits.
+/// everyone connected.
 async fn respawn_service_and_broadcast(
     app: &tauri::AppHandle,
     state: &State<'_, AppState>,
@@ -198,8 +225,8 @@ async fn respawn_service_and_broadcast(
         None => Ok(()),
     };
     *state.server.lock().unwrap() = conn;
-    // Always broadcast — even on failure UI needs the new (host, error) so
-    // the banner state and toast don't lag the persisted settings.
+    // Always broadcast — even on failure the UI needs the new host/error state
+    // so server-backed controls do not lag the persisted settings.
     let _ = app.emit("server-status-changed", server_status_payload(state));
     result
 }
@@ -473,6 +500,33 @@ pub async fn get_workspaces(state: State<'_, AppState>) -> Result<Vec<serde_json
         .into_iter()
         .map(|info| workspace_panel_json(info, &browser_base))
         .collect())
+}
+
+/// Return collaborator-facing links for one shared Workspace. This stays on the
+/// local control plane: browser pages never enumerate local interfaces and the
+/// copied URL carries no administrator bootstrap capability.
+#[tauri::command]
+pub async fn get_workspace_share_urls(
+    workspace_id: String,
+    state: State<'_, AppState>,
+) -> Result<Vec<server::ReachableUrl>, String> {
+    let remote = require_service(&state)?;
+    let workspace = remote
+        .list_workspaces()
+        .await
+        .map_err(remote_err)?
+        .into_iter()
+        .find(|workspace| workspace.id == workspace_id)
+        .ok_or_else(|| "Workspace not found".to_string())?;
+    if !workspace.flags.shared_annotation {
+        return Ok(Vec::new());
+    }
+    Ok(workspace_share_urls(
+        remote.host(),
+        remote.advertised_host().unwrap_or_default(),
+        remote.port(),
+        &workspace.id,
+    ))
 }
 
 /// Set (or clear, with an empty string) a workspace's alias over the service's
@@ -832,4 +886,33 @@ pub fn set_tray_resident(
         tray.set_visible(value).map_err(|e| e.to_string())?;
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn shared_workspace_urls_exclude_loopback_and_target_workspace_root() {
+        let urls = workspace_share_urls_from_origins(
+            vec![
+                server::ReachableUrl {
+                    label: "localhost".into(),
+                    url: "http://127.0.0.1:1618".into(),
+                },
+                server::ReachableUrl {
+                    label: "en0".into(),
+                    url: "http://192.168.1.20:1618".into(),
+                },
+            ],
+            "abc123",
+        );
+        assert_eq!(
+            urls,
+            vec![server::ReachableUrl {
+                label: "en0".into(),
+                url: "http://192.168.1.20:1618/abc123/".into(),
+            }]
+        );
+    }
 }

@@ -237,15 +237,18 @@ pub struct AppSettings {
     #[serde(default)]
     pub trusted_hosts: Vec<String>,
     pub theme: String,
+    /// Unified language for the desktop panel, tray, rendered pages and editor.
     #[serde(default = "default_auto")]
     pub language: String,
     #[serde(default = "default_auto")]
     pub web_theme: String,
+    /// Legacy viewer-only language retained as a downgrade mirror of
+    /// `language`; current builds never expose it independently.
     #[serde(default = "default_auto")]
     pub web_language: String,
-    /// Source-editor colour preset for the web view: "follow" (track the page
-    /// theme via the --mk-editor-* layer) or "vscode-dark" (the named dark
-    /// preset). Emitted as the `data-editor-theme` attribute on <html>.
+    /// Legacy field retained for settings downgrade compatibility. Current
+    /// builds always normalize it to `"follow"` because the source editor now
+    /// consumes the same Theme and token overrides as the page and desktop panel.
     #[serde(default = "default_follow")]
     pub web_editor_theme: String,
     /// Server-level collaborator access code. Empty = no collaborator token
@@ -570,21 +573,28 @@ impl AppSettings {
         let mut seen = HashSet::new();
         self.workspaces
             .retain(|w| seen.insert((w.path.clone(), w.single_file.clone())));
-        for field in [
-            &mut self.language,
-            &mut self.web_theme,
-            &mut self.web_language,
-        ] {
-            if field.is_empty() {
-                *field = "auto".to_string();
-            }
+
+        if !matches!(self.theme.as_str(), "auto" | "light" | "dark") {
+            self.theme = "auto".to_string();
         }
+        if self.language.is_empty() {
+            self.language = "auto".to_string();
+        }
+        if self.web_language.is_empty() {
+            self.web_language = "auto".to_string();
+        }
+        // `language` is now the single setting for the desktop panel, tray,
+        // rendered pages and editor. Prefer an existing explicit panel choice;
+        // otherwise preserve an explicit legacy viewer choice during migration.
+        if self.language == "auto" && self.web_language != "auto" {
+            self.language = self.web_language.clone();
+        }
+        self.web_language = self.language.clone();
+        self.web_theme = self.theme.clone();
         if self.default_chat_mode != "popout" {
             self.default_chat_mode = "in_page".to_string();
         }
-        if self.web_editor_theme != "vscode-dark" {
-            self.web_editor_theme = "follow".to_string();
-        }
+        self.web_editor_theme = "follow".to_string();
     }
     fn save_at_unlocked(&self, home: &Path) -> Result<(), String> {
         let p = Self::settings_path_at(home);
@@ -664,6 +674,7 @@ impl AppSettings {
                     self.salt = latest.salt;
                 }
             }
+            self.normalize();
             self.save_at_unlocked(home)
         })
     }
@@ -686,11 +697,7 @@ impl AppSettings {
             advertised_host: self.advertised_host.clone(),
             trusted_hosts: self.trusted_hosts.clone(),
             port,
-            // Web pages resolve theme at runtime and persist page-local
-            // overrides in the browser. The persisted `web_theme` field is
-            // kept only for old settings.json compatibility and is no longer
-            // allowed to make light/dark a server-level concern.
-            theme: "auto".to_string(),
+            theme: self.theme.clone(),
             qr: None,
             open_browser: None,
             shared_annotation: initial_workspaces.iter().any(|w| w.flags.shared_annotation),
@@ -701,25 +708,16 @@ impl AppSettings {
             registry: None,
             management_token: None,
             admin_bootstraps: None,
-            language: if self.web_language == "auto" {
-                Some(self.language.clone())
-            } else {
-                Some(self.web_language.clone())
-            },
+            language: Some(self.language.clone()),
             styles_css: self.render_styles_css(),
             shortcuts_json: self.render_shortcuts_json(),
             default_chat_mode: self.default_chat_mode.clone(),
-            editor_theme: self.web_editor_theme.clone(),
             collaborator_access_code_hash: self.collaborator_access_code_hash.clone(),
             print_collapsed_content: self.print_collapsed_content,
         }
     }
     pub fn effective_web_language(&self) -> Option<String> {
-        let l = if self.web_language == "auto" {
-            &self.language
-        } else {
-            &self.web_language
-        };
+        let l = &self.language;
         if l == "auto" || l.is_empty() {
             None
         } else {
@@ -797,32 +795,10 @@ impl AppSettings {
             .collect();
     }
 
-    /// Render `web_styles` (GUI-supplied overrides) as a complete CSS block
-    /// targeting the `--markon-*` design tokens defined in `editor.css`.
-    ///
-    /// Storage convention from the GUI panel (`STYLE_DEFS` in `index.html`):
-    ///   • duo-color entries are keyed `<base>.light` / `<base>.dark`
-    ///     (e.g. `primary.light`, `muted.dark`)
-    ///   • single-value entries are keyed by the bare token name
-    ///     (`ui-font`, `ui-font-size`, `panel-opacity`)
-    ///
-    /// Routing rules:
-    ///   • `<base>.light`  → `:root`                       as `--markon-<base>`
-    ///   • `<base>.dark`   → `html[data-theme="dark"]`     as `--markon-<base>`
-    ///   • bare key        → `:root`                       as `--markon-<key>`
-    ///   • unknown suffix (anything other than `.light`/`.dark`) is treated
-    ///     as a single value and routed to `:root` so malformed/legacy
-    ///     storage doesn't panic.
-    ///
-    /// Selector blocks are emitted in a fixed order — `:root` first, then
-    /// the dark override — so callers/tests get stable framing even though
-    /// HashMap iteration over individual properties is unordered.
-    /// Returns `None` when neither selector would have any content.
+    /// Render `web_styles` (GUI-supplied overrides) as a complete CSS block.
+    /// Light and dark color values are stored as `<token>.light` and
+    /// `<token>.dark`; typography and opacity use a shared bare key.
     pub fn render_styles_css(&self) -> Option<String> {
-        // Map a legacy flat colour key to its Primer-style canonical token, so
-        // Page Styles overrides saved under the old names keep applying after
-        // the token rename. Non-colour keys (typography, opacity, …) and
-        // already-canonical names pass through unchanged.
         fn canonical(name: &str) -> &str {
             match name {
                 "primary" => "accent",
@@ -854,41 +830,36 @@ impl AppSettings {
         if self.web_styles.is_empty() {
             return None;
         }
-        let mut root: Vec<String> = Vec::new();
-        let mut dark: Vec<String> = Vec::new();
-        for (k, v) in &self.web_styles {
-            if !css_safe(k) || !css_safe(v) {
+        let mut root = Vec::new();
+        let mut dark = Vec::new();
+        for (key, value) in &self.web_styles {
+            if !css_safe(key) || !css_safe(value) {
                 continue;
             }
-            if let Some(base) = k.strip_suffix(".light") {
-                root.push(format!("--markon-{}: {v};", canonical(base)));
-            } else if let Some(base) = k.strip_suffix(".dark") {
-                dark.push(format!("--markon-{}: {v};", canonical(base)));
+            if let Some(base) = key.strip_suffix(".light") {
+                root.push(format!("--markon-{}: {value};", canonical(base)));
+            } else if let Some(base) = key.strip_suffix(".dark") {
+                dark.push(format!("--markon-{}: {value};", canonical(base)));
             } else {
-                // Bare key (single-value token) or unknown suffix — both go
-                // to `:root` so unexpected data is rendered harmlessly rather
-                // than dropped or panicking.
-                root.push(format!("--markon-{k}: {v};"));
+                root.push(format!("--markon-{}: {value};", canonical(key)));
             }
         }
         if root.is_empty() && dark.is_empty() {
             return None;
         }
-        let mut out = String::new();
+        root.sort();
+        dark.sort();
+        let mut blocks = Vec::new();
         if !root.is_empty() {
-            out.push_str(":root { ");
-            out.push_str(&root.join(" "));
-            out.push_str(" }");
+            blocks.push(format!(":root {{ {} }}", root.join(" ")));
         }
         if !dark.is_empty() {
-            if !out.is_empty() {
-                out.push(' ');
-            }
-            out.push_str("html[data-theme=\"dark\"] { ");
-            out.push_str(&dark.join(" "));
-            out.push_str(" }");
+            blocks.push(format!(
+                "html[data-theme=\"dark\"] {{ {} }}",
+                dark.join(" ")
+            ));
         }
-        Some(out)
+        Some(blocks.join(" "))
     }
 }
 
@@ -998,6 +969,7 @@ mod tests {
         let saved: serde_json::Value =
             serde_json::from_str(&std::fs::read_to_string(&p).unwrap()).unwrap();
         assert_eq!(saved["salt"], "historical-random-salt");
+        assert_eq!(saved["workspaces"][0]["path"], "/tmp/docs");
     }
 
     /// Repro: a per-workspace collaborator access-code hash must survive the
@@ -1087,10 +1059,12 @@ mod tests {
         std::fs::create_dir_all(p.parent().unwrap()).unwrap();
         std::fs::write(
             &p,
-            r#"{
+            r##"{
                 "port": "not-a-number",
                 "host": "127.0.0.1",
                 "salt": "stable-salt",
+                "theme": "dark",
+                "web_styles": {"primary.dark": "#abcdef"},
                 "default_chat_mode": "popout",
                 "workspaces": [
                     {
@@ -1101,7 +1075,7 @@ mod tests {
                         "collaborator_access_code_hash": "guest"
                     }
                 ]
-            }"#,
+            }"##,
         )
         .unwrap();
 
@@ -1110,6 +1084,11 @@ mod tests {
         // Even when another field has a schema mismatch, identity fields are
         // recovered without replacing the historical salt.
         assert_eq!(loaded.salt, "stable-salt");
+        assert_eq!(loaded.theme, "dark");
+        assert_eq!(
+            loaded.web_styles.get("primary.dark").map(String::as_str),
+            Some("#abcdef")
+        );
         assert_eq!(loaded.default_chat_mode, "popout");
         assert_eq!(loaded.workspaces.len(), 1);
         assert_eq!(loaded.workspaces[0].path, "/tmp/docs");
@@ -1142,22 +1121,22 @@ mod tests {
     }
 
     #[test]
-    fn web_theme_is_ignored_by_server_config() {
+    fn theme_is_shared_by_server_config() {
         let s = AppSettings {
             theme: "dark".to_string(),
             web_theme: "auto".to_string(),
             ..AppSettings::default()
         };
 
-        assert_eq!(s.to_server_config(6419).theme, "auto");
+        assert_eq!(s.to_server_config(6419).theme, "dark");
 
         let explicit = AppSettings {
-            theme: "dark".to_string(),
-            web_theme: "light".to_string(),
+            theme: "light".to_string(),
+            web_theme: "dark".to_string(),
             ..AppSettings::default()
         };
 
-        assert_eq!(explicit.to_server_config(6419).theme, "auto");
+        assert_eq!(explicit.to_server_config(6419).theme, "light");
     }
 
     #[cfg(unix)]
@@ -1264,12 +1243,12 @@ mod tests {
         s.normalize();
         assert_eq!(s.default_chat_mode, "popout");
 
-        // web_editor_theme: default is "follow"; unknown/blank values are
-        // canonicalized back to "follow", and "vscode-dark" is preserved.
+        // The former editor-only theme is retained only for downgrade
+        // compatibility. Current builds always use the shared Theme.
         assert_eq!(s.web_editor_theme, "follow");
         s.web_editor_theme = "vscode-dark".to_string();
         s.normalize();
-        assert_eq!(s.web_editor_theme, "vscode-dark");
+        assert_eq!(s.web_editor_theme, "follow");
         s.web_editor_theme = "bogus".to_string();
         s.normalize();
         assert_eq!(s.web_editor_theme, "follow");
@@ -1394,138 +1373,84 @@ mod tests {
         assert_eq!(disabled.workspaces.len(), 2);
     }
 
-    /// Helper: build settings with the given `web_styles` map and nothing else.
-    fn settings_with_styles(pairs: &[(&str, &str)]) -> AppSettings {
-        let mut s = AppSettings::default();
-        for (k, v) in pairs {
-            s.web_styles.insert((*k).to_string(), (*v).to_string());
+    #[test]
+    fn render_styles_css_emits_light_dark_and_shared_overrides() {
+        let mut s = AppSettings {
+            web_styles: [
+                ("primary.light".to_string(), "#112233".to_string()),
+                ("primary.dark".to_string(), "#aabbcc".to_string()),
+                ("ui-font".to_string(), "Charter, serif".to_string()),
+            ]
+            .into_iter()
+            .collect(),
+            ..AppSettings::default()
+        };
+        let css = s.render_styles_css().expect("custom styles should render");
+        let root = css.split("html[data-theme=\"dark\"]").next().unwrap();
+        let dark = css.split("html[data-theme=\"dark\"]").nth(1).unwrap();
+        assert!(root.contains("--markon-accent: #112233;"), "got: {css}");
+        assert!(
+            root.contains("--markon-ui-font: Charter, serif;"),
+            "got: {css}"
+        );
+        assert!(dark.contains("--markon-accent: #aabbcc;"), "got: {css}");
+
+        s.web_styles
+            .insert("bad;key".to_string(), "red".to_string());
+        s.web_styles
+            .insert("text".to_string(), "red; } body { color: red".to_string());
+        let safe_css = s.render_styles_css().expect("safe styles should render");
+        assert!(
+            !safe_css.contains("bad;key"),
+            "unsafe key leaked: {safe_css}"
+        );
+        assert!(
+            !safe_css.contains("body"),
+            "unsafe value leaked: {safe_css}"
+        );
+    }
+
+    #[test]
+    fn normalize_unifies_panel_and_viewer_language() {
+        let mut viewer_explicit = AppSettings {
+            language: "auto".into(),
+            web_language: "ja".into(),
+            ..AppSettings::default()
+        };
+        viewer_explicit.normalize();
+        assert_eq!(viewer_explicit.language, "ja");
+        assert_eq!(viewer_explicit.web_language, "ja");
+
+        let mut panel_explicit = AppSettings {
+            language: "zh-CN".into(),
+            web_language: "en".into(),
+            ..AppSettings::default()
+        };
+        panel_explicit.normalize();
+        assert_eq!(panel_explicit.language, "zh-CN");
+        assert_eq!(panel_explicit.web_language, "zh-CN");
+    }
+
+    #[test]
+    fn custom_style_css_is_canonical_across_hashmap_insertion_order() {
+        let mut forward = AppSettings::default();
+        let mut reverse = AppSettings::default();
+        let pairs = [
+            ("primary.light", "#123456"),
+            ("canvas.dark", "#101010"),
+            ("ui-font", "Inter, sans-serif"),
+        ];
+        for (key, value) in pairs {
+            forward
+                .web_styles
+                .insert(key.to_string(), value.to_string());
         }
-        s
-    }
-
-    #[test]
-    fn render_styles_css_empty_returns_none() {
-        let s = AppSettings::default();
-        assert!(s.web_styles.is_empty());
-        assert!(s.render_styles_css().is_none());
-    }
-
-    #[test]
-    fn render_styles_css_light_only_emits_root_block() {
-        let s = settings_with_styles(&[("primary.light", "#0969da"), ("muted.light", "#656d76")]);
-        let css = s.render_styles_css().expect("should render");
-        assert!(css.starts_with(":root { "), "got: {css}");
-        // Legacy keys migrate to the Primer-style canonical tokens.
-        assert!(css.contains("--markon-accent: #0969da;"), "got: {css}");
-        assert!(css.contains("--markon-fg-muted: #656d76;"), "got: {css}");
-        assert!(
-            !css.contains("html[data-theme=\"dark\"]"),
-            "dark block must be absent when no dark keys: {css}"
-        );
-        // Reverse-assert old bug shape never reappears.
-        assert!(!css.contains("primary.light:"), "leaked dotted key: {css}");
-        assert!(css.contains("--markon-"), "must carry token prefix: {css}");
-    }
-
-    #[test]
-    fn render_styles_css_dark_only_emits_dark_block_only() {
-        let s = settings_with_styles(&[("primary.dark", "#58a6ff")]);
-        let css = s.render_styles_css().expect("should render");
-        assert!(
-            !css.contains(":root {"),
-            "no :root block when no light/single-value keys: {css}"
-        );
-        assert!(
-            css.contains("html[data-theme=\"dark\"] { --markon-accent: #58a6ff; }"),
-            "got: {css}"
-        );
-        assert!(!css.contains("primary.dark:"), "leaked dotted key: {css}");
-        assert!(css.contains("--markon-"), "must carry token prefix: {css}");
-    }
-
-    #[test]
-    fn render_styles_css_mixed_routes_keys_correctly() {
-        let s = settings_with_styles(&[
-            ("primary.light", "#0969da"),
-            ("primary.dark", "#58a6ff"),
-            ("muted.light", "#656d76"),
-            ("ui-font", "Inter"),
-            ("ui-font-size", "0.95"),
-            ("panel-opacity", "0.85"),
-        ]);
-        let css = s.render_styles_css().expect("should render");
-
-        // Both selector blocks present, in fixed order: :root then dark.
-        let root_idx = css.find(":root {").expect("root block present");
-        let dark_idx = css
-            .find("html[data-theme=\"dark\"] {")
-            .expect("dark block present");
-        assert!(
-            root_idx < dark_idx,
-            "selector block order must be :root before dark: {css}"
-        );
-
-        // Light + single-value tokens routed to :root with --markon- prefix.
-        // Use HashMap-order-agnostic membership checks.
-        let root_block = &css[root_idx..dark_idx];
-        assert!(
-            root_block.contains("--markon-accent: #0969da;"),
-            "got: {root_block}"
-        );
-        assert!(
-            root_block.contains("--markon-fg-muted: #656d76;"),
-            "got: {root_block}"
-        );
-        assert!(
-            root_block.contains("--markon-ui-font: Inter;"),
-            "got: {root_block}"
-        );
-        assert!(
-            root_block.contains("--markon-ui-font-size: 0.95;"),
-            "got: {root_block}"
-        );
-        assert!(
-            root_block.contains("--markon-panel-opacity: 0.85;"),
-            "got: {root_block}"
-        );
-
-        // Dark override carries only the .dark entries — single-value tokens
-        // must NOT leak into the dark block.
-        let dark_block = &css[dark_idx..];
-        assert!(
-            dark_block.contains("--markon-accent: #58a6ff;"),
-            "got: {dark_block}"
-        );
-        assert!(
-            !dark_block.contains("--markon-ui-font"),
-            "single-value token leaked into dark block: {dark_block}"
-        );
-        assert!(
-            !dark_block.contains("--markon-panel-opacity"),
-            "single-value token leaked into dark block: {dark_block}"
-        );
-
-        // Reverse assertions: none of the legacy-bug shapes should appear.
-        assert!(!css.contains("primary.light:"), "leaked dotted key: {css}");
-        assert!(!css.contains("primary.dark:"), "leaked dotted key: {css}");
-        assert!(
-            !css.contains(" ui-font:") && !css.starts_with("ui-font:"),
-            "bare (un-prefixed) property leaked: {css}"
-        );
-        assert!(css.contains("--markon-"), "must carry token prefix: {css}");
-    }
-
-    #[test]
-    fn render_styles_css_unknown_suffix_falls_back_to_root() {
-        // An out-of-spec key (e.g. legacy/typo) must not panic; route to :root
-        // verbatim under the --markon- prefix so the result is still legal CSS.
-        let s = settings_with_styles(&[("primary.weird", "#abcdef")]);
-        let css = s.render_styles_css().expect("should render");
-        assert!(
-            css.contains(":root { --markon-primary.weird: #abcdef; }"),
-            "got: {css}"
-        );
-        assert!(!css.contains("html[data-theme=\"dark\"]"), "got: {css}");
+        for (key, value) in pairs.into_iter().rev() {
+            reverse
+                .web_styles
+                .insert(key.to_string(), value.to_string());
+        }
+        assert_eq!(forward.render_styles_css(), reverse.render_styles_css());
     }
 
     #[test]
@@ -1549,8 +1474,7 @@ mod tests {
         assert_eq!(cfg.port, 7777);
         assert_eq!(cfg.initial_workspaces.len(), 1);
         assert_eq!(cfg.initial_workspaces[0].path, Path::new("/docs"));
-        // editor preset defaults to "follow" and rides through to the config.
-        assert_eq!(cfg.editor_theme, "follow");
+        assert_eq!(cfg.theme, "auto");
     }
 
     #[test]

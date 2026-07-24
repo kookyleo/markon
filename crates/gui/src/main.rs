@@ -915,6 +915,7 @@ fn main() {
             commands::get_data_cleanup_stats,
             commands::cleanup_orphaned_data,
             commands::get_workspaces,
+            commands::get_workspace_share_urls,
             commands::reconnect,
             commands::open_url,
             commands::get_bind_hosts,
@@ -1082,5 +1083,31 @@ mod tests {
         assert!(html.contains(
             "'auto_update', 'print_collapsed_content', 'auto_remove_single_file_workspaces',"
         ));
+    }
+
+    #[test]
+    fn appearance_uses_one_theme_and_unified_language() {
+        let html = _UI_REEMBED_MARKER;
+        assert_eq!(html.matches("id=\"theme\"").count(), 1);
+        assert!(html.contains("value=\"auto\""));
+        assert!(html.contains("value=\"light\""));
+        assert!(html.contains("value=\"dark\""));
+        assert_eq!(html.matches("id=\"language\"").count(), 1);
+        let language_position = html.find("id=\"language\"").expect("language control");
+        let appearance_position = html
+            .find("id=\"webstyles-editor\"")
+            .expect("appearance editor");
+        assert!(
+            language_position < appearance_position,
+            "language must live outside and before Appearance"
+        );
+        assert!(html.contains("id=\"language-section\""));
+        assert!(!html.contains("id=\"web_language\""));
+        assert!(html.contains(".pref-row[hidden] { display: none; }"));
+        assert!(html.contains("theme: document.getElementById('theme').value"));
+        assert!(html.contains("web_styles: { ...currentWebStyles }"));
+        assert!(html.contains("let settingsSaveTail = Promise.resolve();"));
+        assert!(!html.contains("id=\"web_editor_theme\""));
+        assert!(!html.contains("editor_theme.vscode_dark"));
     }
 }

@@ -3,6 +3,7 @@
 // chevron · path · copy-path  |  +adds -dels + diffstat bars · Viewed · ⋯ menu.
 
 import { workspaceFileDeleteUrl, workspaceFileUrl } from './core/routes';
+import { requireActiveAdminSession, showAdminActionError } from './core/admin-actions';
 
 export interface DiffFileHeaderOpts {
     path: string;
@@ -296,16 +297,16 @@ const deleteFile = async (path: string, onDeleted?: () => void): Promise<void> =
             headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
             body: JSON.stringify({ path }),
         });
+        requireActiveAdminSession(response);
         const result: unknown = await response.json().catch(() => null);
         const ok = response.ok && !!result && (result as { success?: boolean }).success === true;
         if (!ok) {
             const msg = (result as { message?: string } | null)?.message || 'Delete failed';
-            window.alert(`Could not delete ${path}: ${msg}`);
-            return;
+            throw new Error(`Could not delete ${path}: ${msg}`);
         }
         onDeleted?.();
     } catch (error) {
-        window.alert(`Could not delete ${path}: ${error instanceof Error ? error.message : String(error)}`);
+        showAdminActionError(error, `Could not delete ${path}.`);
     }
 };
 

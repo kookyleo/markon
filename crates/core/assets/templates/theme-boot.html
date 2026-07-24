@@ -1,6 +1,5 @@
 {# Pre-paint runtime theme bootstrap, shared by the web entry points.
-   Server-side `theme` is only the default. The browser owns the runtime
-   preference so users can switch light/dark/auto without restarting markon. #}
+   Server-side `theme` is the default; the browser may override it locally. #}
 <script>
     (function(){
         var STORAGE_KEY = 'markon.web.theme';

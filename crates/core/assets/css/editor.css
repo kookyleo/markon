@@ -1962,6 +1962,10 @@ body.workspace-spotlight-open {
     padding: 0 12px 0 8px;
 }
 
+.editor-codemirror .cm-lineNumbers .cm-gutterElement {
+    text-align: right;
+}
+
 .editor-codemirror .cm-activeLine,
 .editor-codemirror .cm-activeLineGutter {
     background-color: color-mix(in srgb, var(--mk-editor-accent) 8%, transparent);
@@ -2243,114 +2247,6 @@ html[data-theme="dark"] .editor-tab.active {
 
 .markon-copy-flash.is-visible {
     opacity: 1;
-}
-
-.markon-notification-stack {
-    position: fixed;
-    top: calc(16px + env(safe-area-inset-top));
-    right: calc(18px + env(safe-area-inset-right));
-    z-index: var(--markon-z-modal-layer);
-    display: flex;
-    flex-direction: column;
-    align-items: flex-end;
-    gap: 10px;
-    width: min(390px, calc(100vw - 32px));
-    pointer-events: none;
-}
-
-.markon-notification {
-    --markon-notification-accent: var(--markon-accent);
-    width: min(360px, 100%);
-    max-width: 100%;
-    max-height: 240px;
-    overflow: hidden;
-    opacity: 0;
-    transform: translateX(14px) scale(0.985);
-    pointer-events: auto;
-    transition:
-        opacity 0.2s ease,
-        transform 0.2s ease,
-        max-height 0.24s ease,
-        margin 0.24s ease;
-}
-
-.markon-notification.is-success {
-    --markon-notification-accent: var(--markon-success);
-    --markon-modal-surface-border: var(--markon-modal-border-success);
-}
-
-.markon-notification.is-warning {
-    --markon-notification-accent: var(--markon-warning);
-    --markon-modal-surface-border: var(--markon-modal-border-accent);
-}
-
-.markon-notification.is-danger {
-    --markon-notification-accent: var(--markon-danger);
-    --markon-modal-surface-border: var(--markon-modal-border-danger);
-}
-
-.markon-notification-content {
-    display: grid;
-    grid-template-columns: 8px minmax(0, 1fr) auto;
-    gap: 10px;
-    align-items: start;
-    padding: 10px 11px 10px 10px;
-}
-
-.markon-notification-dot {
-    width: 8px;
-    height: 8px;
-    margin-top: 6px;
-    border-radius: 999px;
-    background: var(--markon-notification-accent);
-    box-shadow: 0 0 0 3px color-mix(in srgb, var(--markon-notification-accent) 13%, transparent);
-}
-
-.markon-notification-title {
-    margin-bottom: 2px;
-    color: var(--markon-fg-default);
-    font-size: 12px;
-    font-weight: 700;
-    line-height: 1.25;
-}
-
-.markon-notification-message {
-    color: var(--markon-fg-muted);
-    font-size: 13px;
-    line-height: 1.35;
-    overflow-wrap: anywhere;
-    text-align: left;
-}
-
-.markon-notification-close {
-    width: 22px;
-    height: 22px;
-    padding: 0;
-    border: 0;
-    border-radius: 999px;
-    background: transparent;
-    color: var(--markon-fg-muted);
-    cursor: pointer;
-    font-size: 18px;
-    line-height: 1;
-    display: grid;
-    place-items: center;
-}
-
-.markon-notification-close:hover {
-    background: var(--markon-bg-muted);
-    color: var(--markon-fg-default);
-}
-
-.markon-notification.is-visible {
-    opacity: 1;
-    transform: translateX(0) scale(1);
-}
-
-.markon-notification.is-leaving {
-    margin: 0;
-    opacity: 0;
-    transform: translateX(14px) scale(0.985);
 }
 
 /* Background scroll lock applied to <html> while a full-screen editor is open

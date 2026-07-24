@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { SectionViewedManager } from './viewed';
+import type { StorageManager } from './managers/storage-manager';
 
 /**
  * Tests for the section viewed manager.
@@ -54,6 +55,17 @@ function itemAt<T>(items: ArrayLike<T>, index: number): T {
     return item;
 }
 
+function fakeStorage(viewedState: Record<string, boolean> = {}) {
+    const storage = {
+        loadViewedState: vi.fn(async () => ({ ...viewedState })),
+        saveViewedState: vi.fn(async () => {}),
+    };
+    return {
+        storage: storage as unknown as StorageManager,
+        saveViewedState: storage.saveViewedState,
+    };
+}
+
 describe('SectionViewedManager', () => {
     let logSpy: ReturnType<typeof vi.spyOn>;
     let warnSpy: ReturnType<typeof vi.spyOn>;
@@ -61,6 +73,7 @@ describe('SectionViewedManager', () => {
     beforeEach(() => {
         document.body.innerHTML = '';
         document.head.innerHTML = '';
+        seedMeta('can-manage', 'true');
         localStorage.clear();
         logSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
         warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
@@ -149,29 +162,29 @@ describe('SectionViewedManager', () => {
         expect(exportNotes).not.toHaveBeenCalled();
     });
 
-    it('toggleViewed marks a section collapsed and persists to LocalStorage in local mode', async () => {
+    it('toggleViewed persists to SQLite and keeps only collapse preference in localStorage', async () => {
         seedMeta('file-path', 'docs/x.md');
         seedMeta('enable-viewed', 'true');
         buildArticle(['h2-a']);
 
         const mgr = new SectionViewedManager(false, null);
         await mgr.ready;
+        const sqlite = fakeStorage();
+        await mgr.attachStorage(sqlite.storage, null);
 
         mgr.toggleViewed('h2-a', true);
         const heading = document.getElementById('h2-a');
         expect(heading?.classList.contains('section-collapsed')).toBe(true);
 
-        // Persisted to localStorage.
-        const raw = localStorage.getItem('markon-viewed-docs/x.md');
-        expect(raw).not.toBeNull();
-        expect(JSON.parse(raw as string)).toEqual({ 'h2-a': true });
+        expect(sqlite.saveViewedState).toHaveBeenCalledWith({ 'h2-a': true });
+        expect(localStorage.getItem('markon-viewed-docs/x.md')).toBeNull();
 
         const collapsedRaw = localStorage.getItem('markon-collapsed-docs/x.md');
         expect(collapsedRaw).not.toBeNull();
         expect(JSON.parse(collapsedRaw as string)).toEqual({ 'h2-a': true });
     });
 
-    it('restores viewed sections as collapsed when no explicit collapse state exists', async () => {
+    it('ignores legacy origin-local viewed state', async () => {
         seedMeta('file-path', 'docs/x.md');
         seedMeta('enable-viewed', 'true');
         localStorage.setItem('markon-viewed-docs/x.md', JSON.stringify({ 'h2-a': true }));
@@ -180,9 +193,9 @@ describe('SectionViewedManager', () => {
         const mgr = new SectionViewedManager(false, null);
         await mgr.ready;
 
-        expect(document.getElementById('h2-a')?.classList.contains('section-collapsed')).toBe(true);
+        expect(document.getElementById('h2-a')?.classList.contains('section-collapsed')).toBe(false);
         const cb = document.querySelector<HTMLInputElement>('.viewed-checkbox[data-heading-id="h2-a"]');
-        expect(cb?.checked).toBe(true);
+        expect(cb?.checked).toBe(false);
     });
 
     it('persists manual collapse and expand independently of viewed state', async () => {
@@ -215,11 +228,11 @@ describe('SectionViewedManager', () => {
     it('keeps a manually expanded viewed section expanded after reload', async () => {
         seedMeta('file-path', 'docs/x.md');
         seedMeta('enable-viewed', 'true');
-        localStorage.setItem('markon-viewed-docs/x.md', JSON.stringify({ 'h2-a': true }));
         buildArticle(['h2-a']);
 
         const mgr = new SectionViewedManager(false, null);
         await mgr.ready;
+        await mgr.attachStorage(fakeStorage({ 'h2-a': true }).storage, null);
         expect(document.getElementById('h2-a')?.classList.contains('section-collapsed')).toBe(true);
 
         mgr.toggleCollapse('h2-a');
@@ -229,6 +242,7 @@ describe('SectionViewedManager', () => {
         buildArticle(['h2-a']);
         const restored = new SectionViewedManager(false, null);
         await restored.ready;
+        await restored.attachStorage(fakeStorage({ 'h2-a': true }).storage, null);
 
         expect(restored.viewedState).toEqual({ 'h2-a': true });
         expect(restored.collapsedState).toEqual({ 'h2-a': false });
@@ -341,13 +355,13 @@ describe('SectionViewedManager', () => {
     it('temporarily expands a collapsed note source and restores it when the note loses focus', async () => {
         seedMeta('file-path', 'docs/x.md');
         seedMeta('enable-viewed', 'true');
-        localStorage.setItem('markon-viewed-docs/x.md', JSON.stringify({ 'h2-a': true }));
         const article = buildArticle(['h2-a']);
         const paragraph = article.querySelector('p')!;
         paragraph.innerHTML = '<span class="has-note" data-annotation-id="anno-a">note source</span>';
 
         const mgr = new SectionViewedManager(false, null);
         await mgr.ready;
+        await mgr.attachStorage(fakeStorage({ 'h2-a': true }).storage, null);
 
         const heading = document.getElementById('h2-a')!;
         const source = article.querySelector<HTMLElement>('[data-annotation-id="anno-a"]')!;
@@ -365,13 +379,13 @@ describe('SectionViewedManager', () => {
     it('does not restore an auto-expanded note source after manual expand/collapse', async () => {
         seedMeta('file-path', 'docs/x.md');
         seedMeta('enable-viewed', 'true');
-        localStorage.setItem('markon-viewed-docs/x.md', JSON.stringify({ 'h2-a': true }));
         const article = buildArticle(['h2-a']);
         const paragraph = article.querySelector('p')!;
         paragraph.innerHTML = '<span class="has-note" data-annotation-id="anno-a">note source</span>';
 
         const mgr = new SectionViewedManager(false, null);
         await mgr.ready;
+        await mgr.attachStorage(fakeStorage({ 'h2-a': true }).storage, null);
 
         const heading = document.getElementById('h2-a')!;
         const source = article.querySelector<HTMLElement>('[data-annotation-id="anno-a"]')!;
@@ -464,7 +478,7 @@ describe('SectionViewedManager', () => {
         expect(document.getElementById('h2-b')?.classList.contains('section-collapsed')).toBe(false);
     });
 
-    it('saveState without attached SQLite uses local fallback, never WebSocket persistence', () => {
+    it('saveState without attached SQLite writes nowhere', () => {
         seedMeta('file-path', 'docs/x.md');
         seedMeta('enable-viewed', 'true');
         buildArticle(['h2-a']);
@@ -479,9 +493,7 @@ describe('SectionViewedManager', () => {
         mgr.saveState();
 
         expect(send).not.toHaveBeenCalled();
-        expect(JSON.parse(localStorage.getItem('markon-viewed-docs/x.md') ?? '{}')).toEqual({
-            'h2-a': true,
-        });
+        expect(localStorage.getItem('markon-viewed-docs/x.md')).toBeNull();
     });
 
     it('markAllViewed and markAllUnviewed flip every section', async () => {

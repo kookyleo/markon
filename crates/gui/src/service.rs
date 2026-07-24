@@ -105,8 +105,7 @@ pub fn daemon_config_from_settings(settings: &AppSettings, port: u16) -> DaemonC
         advertised_host: settings.advertised_host.clone(),
         trusted_hosts: settings.trusted_hosts.clone(),
         port,
-        // Web pages resolve light/dark at runtime; theme is not a server concern.
-        theme: "auto".to_string(),
+        theme: settings.theme.clone(),
         qr: None,
         // The daemon never opens a browser itself; the GUI opens URLs over the
         // control socket (admin bootstrap) when the user asks.
@@ -114,15 +113,10 @@ pub fn daemon_config_from_settings(settings: &AppSettings, port: u16) -> DaemonC
         db_path: settings.db_path.clone(),
         salt: Some(settings.salt.clone()),
         workspaces: workspaces_for_daemon(settings),
-        language: Some(if settings.web_language == "auto" {
-            settings.language.clone()
-        } else {
-            settings.web_language.clone()
-        }),
+        language: Some(settings.language.clone()),
         shortcuts_json: settings.render_shortcuts_json(),
         styles_css: settings.render_styles_css(),
         default_chat_mode: settings.default_chat_mode.clone(),
-        editor_theme: settings.web_editor_theme.clone(),
         collaborator_access_code_hash: settings.collaborator_access_code_hash.clone(),
         print_collapsed_content: settings.print_collapsed_content,
     }

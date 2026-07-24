@@ -372,12 +372,14 @@ describe('EditorManager', () => {
                 const init = call[1] as RequestInit;
                 return JSON.parse(init.body as string).content as string;
             });
-            expect(previewContents).toContain('"quoted"\n> note\n');
+            expect(previewContents).toContain(
+                'Project-charter.md\n\n"quoted"\n> note\n',
+            );
         });
         mgr.close();
     });
 
-    it('downloads the body under the filename edited on the first line', async () => {
+    it('downloads the complete buffer under the filename edited on the first line', async () => {
         vi.stubGlobal('fetch', vi.fn(async () => ({
             ok: true,
             status: 200,
@@ -390,7 +392,10 @@ describe('EditorManager', () => {
 
         await mgr.save();
 
-        expect(downloadTextFile).toHaveBeenCalledWith('Renamed-export.md', 'new body\n');
+        expect(downloadTextFile).toHaveBeenCalledWith(
+            'Renamed-export.md',
+            'Renamed export.md\n\nnew body\n',
+        );
         mgr.close();
     });
 

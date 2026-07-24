@@ -74,9 +74,9 @@ declare global {
     __MARKON_SHORTCUTS__?: Record<string, Partial<Record<string, unknown>>>;
     MarkonTheme?: {
       storageKey: string;
-      getMode: () => 'auto' | 'light' | 'dark';
+      getMode: () => string;
       getResolved: () => 'light' | 'dark';
-      setMode: (mode: 'auto' | 'light' | 'dark') => void;
+      setMode: (mode: string) => void;
       openPanel: (anchor?: Element | null) => void;
       togglePanel: (anchor?: Element | null) => void;
       closePanel: () => void;

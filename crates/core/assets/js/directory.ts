@@ -10,6 +10,12 @@
  * parse, before the deferred `main.js` / `workspace-diff.js` modules.
  */
 
+import {
+    isAdminSessionExpiredError,
+    requireActiveAdminSession,
+    showAdminActionError,
+} from './core/admin-actions';
+
 type I18nFn = (key: string) => string;
 
 const t: I18nFn = (window.__MARKON_I18N__?.t) || ((k: string) => k);
@@ -105,19 +111,25 @@ function setupWorkspaceFeatureForm(): void {
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(featurePayload(inputs)),
             })
-                .then((resp) =>
-                    resp.text().then((text) => {
+                .then((resp) => {
+                    requireActiveAdminSession(resp);
+                    return resp.text().then((text) => {
                         let data: { success?: boolean; message?: string } = {};
                         try { data = text ? JSON.parse(text) as { success?: boolean; message?: string } : {}; } catch { /* ignore */ }
                         if (!resp.ok || data.success === false) throw new Error(data.message || text || resp.statusText);
                         setFeaturePending(form, false);
-                    }),
-                )
+                    });
+                })
                 .catch((err: unknown) => {
                     input.checked = previous;
                     syncFeatureSwitch(input);
                     setFeaturePending(form, false);
-                    window.alert(`${t('web.ws.feature.update_failed')}: ${errorMessage(err)}`);
+                    showAdminActionError(
+                        isAdminSessionExpiredError(err)
+                            ? err
+                            : new Error(`${t('web.ws.feature.update_failed')}: ${errorMessage(err)}`),
+                        t('web.ws.feature.update_failed'),
+                    );
                 });
         });
     });
@@ -181,8 +193,12 @@ document.querySelectorAll<HTMLElement>('[data-set-alias]').forEach((button) => {
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ alias: next.trim() }),
         })
-            .then((resp) => { if (resp.ok) window.location.reload(); else window.alert(t('web.ws.set_alias_failed')); })
-            .catch(() => window.alert(t('web.ws.set_alias_failed')));
+            .then((resp) => {
+                requireActiveAdminSession(resp);
+                if (!resp.ok) throw new Error(t('web.ws.set_alias_failed'));
+                window.location.reload();
+            })
+            .catch((error: unknown) => showAdminActionError(error, t('web.ws.set_alias_failed')));
     });
 });
 
@@ -191,17 +207,20 @@ document.querySelectorAll<HTMLElement>('[data-workspace-dropdown] > button').for
     button.addEventListener('click', (event) => {
         event.preventDefault();
         event.stopPropagation();
-        const menu = button.closest('[data-workspace-dropdown]');
+        const menu = button.closest<HTMLElement>('[data-workspace-dropdown]');
         if (!menu) return;
         const open = menu.classList.contains('is-open');
-        document.querySelectorAll('[data-workspace-dropdown].is-open').forEach((other) => {
-            if (other !== menu) other.classList.remove('is-open');
-        });
-        menu.classList.toggle('is-open', !open);
-        if (!open) {
-            const filter = menu.querySelector<HTMLInputElement>('[data-branch-filter]');
-            if (filter) window.setTimeout(() => filter.focus(), 0);
-        }
+        const toggle = (): void => {
+            document.querySelectorAll('[data-workspace-dropdown].is-open').forEach((other) => {
+                if (other !== menu) other.classList.remove('is-open');
+            });
+            menu.classList.toggle('is-open', !open);
+            if (!open) {
+                const filter = menu.querySelector<HTMLInputElement>('[data-branch-filter]');
+                if (filter) window.setTimeout(() => filter.focus(), 0);
+            }
+        };
+        toggle();
     });
 });
 document.addEventListener('click', () => {
@@ -224,16 +243,17 @@ document.querySelectorAll<HTMLButtonElement>('[data-checkout-branch]').forEach((
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ branch }),
         })
-            .then((resp) =>
-                resp.text().then((text) => {
+            .then((resp) => {
+                requireActiveAdminSession(resp);
+                return resp.text().then((text) => {
                     let data: { success?: boolean; message?: string } = {};
                     try { data = text ? JSON.parse(text) as { success?: boolean; message?: string } : {}; } catch { /* ignore */ }
                     if (!resp.ok || data.success === false) throw new Error(data.message || text || resp.statusText);
                     window.location.reload();
-                }),
-            )
+                });
+            })
             .catch((err: unknown) => {
-                window.alert(errorMessage(err));
+                showAdminActionError(err, errorMessage(err));
             });
     });
 });
@@ -763,15 +783,20 @@ if (addForm) {
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ path: rel, content: contentInput ? contentInput.value : '' }),
         })
-            .then((resp) =>
-                resp.text().then((text) => {
+            .then((resp) => {
+                requireActiveAdminSession(resp);
+                return resp.text().then((text) => {
                     let data: { success?: boolean; message?: string; url?: string } = {};
                     try { data = text ? JSON.parse(text) as { success?: boolean; message?: string; url?: string } : {}; } catch { /* ignore */ }
                     if (!resp.ok || data.success === false) throw new Error(data.message || text || resp.statusText);
                     window.location.href = data.url || window.location.href;
-                }),
-            )
+                });
+            })
             .catch((err: unknown) => {
+                if (isAdminSessionExpiredError(err)) {
+                    if (status) status.textContent = '';
+                    return;
+                }
                 if (status) status.textContent = errorMessage(err);
             });
     });
@@ -803,15 +828,20 @@ if (addFolderForm) {
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ path: rel }),
         })
-            .then((resp) =>
-                resp.text().then((text) => {
+            .then((resp) => {
+                requireActiveAdminSession(resp);
+                return resp.text().then((text) => {
                     let data: { success?: boolean; message?: string; url?: string } = {};
                     try { data = text ? JSON.parse(text) as { success?: boolean; message?: string; url?: string } : {}; } catch { /* ignore */ }
                     if (!resp.ok || data.success === false) throw new Error(data.message || text || resp.statusText);
                     window.location.href = data.url || window.location.href;
-                }),
-            )
+                });
+            })
             .catch((err: unknown) => {
+                if (isAdminSessionExpiredError(err)) {
+                    if (status) status.textContent = '';
+                    return;
+                }
                 if (status) status.textContent = errorMessage(err);
             });
     });

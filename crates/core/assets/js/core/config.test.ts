@@ -2,15 +2,6 @@ import { describe, it, expect } from 'vitest';
 import { CONFIG, i18n, type ShortcutDef } from './config.js';
 
 describe('CONFIG.STORAGE_KEYS', () => {
-    it('builds the per-file annotations storage key', () => {
-        expect(CONFIG.STORAGE_KEYS.ANNOTATIONS('/foo')).toBe('markon-annotations-/foo');
-        expect(CONFIG.STORAGE_KEYS.ANNOTATIONS('docs/readme.md')).toBe('markon-annotations-docs/readme.md');
-    });
-
-    it('builds the per-file viewed storage key', () => {
-        expect(CONFIG.STORAGE_KEYS.VIEWED('/bar')).toBe('markon-viewed-/bar');
-    });
-
     it('exposes the static storage keys', () => {
         expect(CONFIG.STORAGE_KEYS.LIVE_POS).toBe('markon-live-pos');
         expect(CONFIG.STORAGE_KEYS.LIVE_COLOR).toBe('markon-user-color');

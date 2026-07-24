@@ -44,13 +44,6 @@ function sectionHeadingsByLevel(deepestFirst: boolean): HTMLElement[] {
     return headings;
 }
 
-/**
- * LocalStorage key for per-file viewed state. Mirrors
- * CONFIG.STORAGE_KEYS.VIEWED (core/config.ts), the canonical definition used
- * by storage-manager.ts on the same entries — kept as a local copy because
- * importing config.ts would pull its window side effects into this bundle.
- */
-const viewedStorageKey = (filePath: string): string => `markon-viewed-${filePath}`;
 const collapsedStorageKey = (filePath: string): string => `markon-collapsed-${filePath}`;
 
 /** Map of `headingId → viewed?`. */
@@ -128,9 +121,14 @@ export class SectionViewedManager {
         this.preserveExpansionOnNextSharedState = false;
         this.storageManager = null;
 
-        // Check if viewed feature is enabled
+        // Viewed state is writable only by the administrator, or by a
+        // collaborator when shared annotations are explicitly enabled.
         const enableViewedMeta = document.querySelector('meta[name="enable-viewed"]');
-        this.enableViewed = enableViewedMeta ? enableViewedMeta.getAttribute('content') === 'true' : true;
+        const canManage = document.querySelector('meta[name="can-manage"]')?.getAttribute('content') === 'true';
+        const sharedAnnotation =
+            document.querySelector('meta[name="shared-annotation"]')?.getAttribute('content') === 'true';
+        const configured = enableViewedMeta ? enableViewedMeta.getAttribute('content') === 'true' : true;
+        this.enableViewed = configured && (canManage || sharedAnnotation);
         this.revealSeq = 0;
 
         if (this.isSharedMode && this.ws) {
@@ -143,7 +141,8 @@ export class SectionViewedManager {
     async init(): Promise<void> {
         this.loadCollapsedState();
 
-        // 1. Bootstrap legacy/offline viewed state; SQLite attaches immediately after.
+        // 1. SQLite attaches immediately after MarkonApp starts. Until then,
+        // viewed state is empty; browser storage is never a persistence source.
         if (this.enableViewed) {
             await this.loadState();
         }
@@ -954,10 +953,7 @@ export class SectionViewedManager {
     }
 
     async loadState(): Promise<void> {
-        // Bootstrap from the current origin so legacy state remains visible
-        // until MarkonApp attaches SQLite and migrates it.
-        const saved = localStorage.getItem(viewedStorageKey(this.filePath));
-        this.viewedState = saved ? (JSON.parse(saved) as ViewedState) : {};
+        this.viewedState = {};
         this.stateLoaded = true;
     }
 
@@ -976,12 +972,10 @@ export class SectionViewedManager {
 
     saveState(): void {
         if (this.storageManager) {
-            void this.storageManager.saveViewedState(this.viewedState);
-            return;
+            void this.storageManager.saveViewedState(this.viewedState).catch((error: unknown) => {
+                alert(error instanceof Error ? error.message : String(error));
+            });
         }
-        // Bootstrap/offline fallback before MarkonApp attaches SQLite. Never
-        // mutate persistent state through WebSocket.
-        localStorage.setItem(viewedStorageKey(this.filePath), JSON.stringify(this.viewedState));
     }
 
     applyViewedState(): void {

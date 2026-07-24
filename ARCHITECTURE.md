@@ -79,11 +79,16 @@ Markon 的用户数据**独立于进程**,持久在 `~/.markon/`:
 - **SQLite 始终是管理员个人数据的权威存储**:是否开启 `shared_annotation` 只决定批注 / 已读
   是否通过 WebSocket 向协作者广播和展示,不得再切换持久化后端。浏览器变更统一先经同源
   document-state HTTP 接口写入 SQLite;WebSocket 不接受批注 / 已读写库请求,只承担广播输出。
-  浏览器 `localStorage` 只允许作为
-  旧版本迁移来源,或无管理员 / 共享权限时的浏览器私有降级;成功写入 SQLite 后应删除当前 origin
-  下的迁移副本。
+  **浏览器 `localStorage` 不得读写文档批注或章节已读状态**,也不得作为迁移源、离线队列或权限
+  失败时的静默降级。服务不可用时操作必须明确失败;无管理员 / 共享权限时页面保持只读,原生选择
+  与复制不受影响。纯界面偏好(主题、面板位置、diff 折叠等)仍可保留在浏览器本地。
 - **访问边界**:非共享状态下仅显式 Admin session 可读写 SQLite 中的个人批注 / 已读;开启共享后
   Collaborator 才获得同一数据集的读取、写入和实时广播能力。loopback 本身仍不构成管理员身份。
+  GUI / CLI 的管理端打开动作必须携带 Admin bootstrap,并按实际 bind 选择可达 origin:
+  `0.0.0.0` / loopback bind 优先稳定的 `127.0.0.1`,具体网卡地址 bind 则必须使用该地址。
+  浏览器页面不提供分享入口。只有开启 `shared_annotation` 的 Workspace 才在本机管理端显示
+  分享操作;候选地址必须按运行中服务的实际 bind 计算,复制出的协作者链接不得携带 Admin
+  bootstrap 能力。
 - **批注内容兼容**:`annotations.data` 是完整 Annotation JSON。锚点新增能力只能以可选字段扩展;
   当前 `anchor.version = 2` 追加有序 `fragments`,同时保留原 `position / exact / prefix /
   suffix` 平面锚点。读取端必须继续接受没有 `version / fragments` 的历史批注,不得要求数据库迁移。
@@ -93,12 +98,13 @@ Markon 的用户数据**独立于进程**,持久在 `~/.markon/`:
 
 ## 3. `settings.json` 结构演进
 
-- **新增字段必须带 `#[serde(default = "...")]`**(示例:`web_editor_theme` 默认 `"follow"`),
-  以保证旧文件反序列化不失败、且不丢未知字段。
+- **新增字段必须带 `#[serde(default = "...")]`**，保证旧文件反序列化不失败、且不丢未知字段。
 - 反序列化容错:`load_at` 遇到 schema mismatch / 损坏 / 不可读 settings 时,必须优先恢复或稳定
   推导 `salt` / `workspaces`,不得静默生成随机新 salt 后覆盖旧文件;`normalize()`
-  **只规整新字段**(如把未知 `web_editor_theme` 收敛为 `follow`),**绝不重置 `salt` 或
-  `workspaces`**。
+  **只规整新字段**。`theme` 是跟随系统 / Light / Dark 三态主题，`web_styles` 保存细节覆盖；
+  `language` 是桌面端与阅读页的统一语言，`web_theme` / `web_language` /
+  `web_editor_theme` 仅作旧版本降级镜像。
+  `normalize()` **绝不重置 `salt` 或 `workspaces`**。
 - **不得**对 `AppSettings` 启用 `deny_unknown_fields`——保留「旧版本读新文件时忽略未知字段」
   的降级兼容。
 
@@ -116,7 +122,8 @@ Markon 的用户数据**独立于进程**,持久在 `~/.markon/`:
   1. `markon ls` 列出的每个 workspace id 与升级前**逐一一致**(URL 未变);
   2. 任一 workspace 的批注 / 已读在页面上仍可见(数据未丢);
   3. `settings.json` 的 `salt` 与升级前相同。
-  4. 切换本机网络/IP 后,GUI/CLI 仍以稳定 loopback origin 打开,同一路径的 SQLite 批注可见。
+  4. wildcard / loopback bind 下切换本机网络/IP 后,GUI/CLI 仍以稳定 loopback origin 打开;
+     具体网卡 bind 下则使用该 bind 地址,同一路径的 SQLite 批注可见。
 
 ## 设计决策
 

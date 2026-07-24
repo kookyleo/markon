@@ -75,7 +75,8 @@ pub struct WorkspaceInit {
 pub struct ServerConfig {
     pub host: String,
     /// Preferred address to feature when bound to a wildcard (0.0.0.0/::):
-    /// the LAN IP used for the headline URL, QR code, and browser auto-open.
+    /// the LAN IP used for printed/shareable links and QR codes. Native local
+    /// browser launches choose a bind-aware administrator origin separately.
     /// Empty = no preference (fall back to the first interface).
     pub advertised_host: String,
     /// Exact host names accepted in HTTP Host/Origin authorities in addition
@@ -109,19 +110,12 @@ pub struct ServerConfig {
     pub language: Option<String>,
     /// Custom keyboard shortcut overrides (JSON object, injected into browser pages).
     pub shortcuts_json: Option<String>,
-    /// Custom CSS variable overrides for `--markon-*` design tokens.
-    /// Pre-rendered by `AppSettings::render_styles_css` as a complete CSS
-    /// block carrying its own selectors (`:root { ... }` for light/single-
-    /// value tokens, `html[data-theme="dark"] { ... }` for dark overrides),
-    /// so templates inject it verbatim — no wrapping selector.
+    /// Custom CSS variable overrides pre-rendered by
+    /// `AppSettings::render_styles_css`; templates inject it verbatim.
     pub styles_css: Option<String>,
     /// Default chat surface: "in_page" or "popout". Surfaced to the browser
     /// via the `default-chat-mode` meta tag.
     pub default_chat_mode: String,
-    /// Source-editor colour preset: "follow" (track page theme) or
-    /// "vscode-dark". Mirrored to the browser as the `data-editor-theme`
-    /// attribute on <html>; resolved by the --mk-editor-* token layer.
-    pub editor_theme: String,
     /// Server-level collaborator access-code hash (empty = no collaborator
     /// token unless a workspace defines one).
     pub collaborator_access_code_hash: String,
@@ -287,9 +281,6 @@ pub(crate) struct AppState {
     pub styles_css: Arc<String>,
     /// Default chat surface ("in_page" or "popout").
     pub default_chat_mode: Arc<String>,
-    /// Source-editor colour preset ("follow" or "vscode-dark"). Mirrored to
-    /// the browser as the `data-editor-theme` attribute on <html>.
-    pub editor_theme: Arc<String>,
     /// Access gate: server-level collaborator access-code hash.
     pub collaborator_access_code_hash: Arc<String>,
     /// Secret for signing access cookies — the persistent per-install salt, so
@@ -479,7 +470,7 @@ pub struct ReachableUrl {
 }
 
 /// Every base URL a client could use to reach this server, plus the single one
-/// we feature by default (headline link, QR code, browser auto-open).
+/// we feature by default for printed/shareable links and QR codes.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ReachableUrls {
     /// The featured base URL, e.g. `http://192.168.1.20:6419`.
@@ -892,7 +883,6 @@ pub async fn start(config: ServerConfig) -> Result<(), String> {
         shortcuts_json,
         styles_css,
         default_chat_mode,
-        editor_theme,
         collaborator_access_code_hash,
         print_collapsed_content,
     } = config;
@@ -1062,7 +1052,6 @@ pub async fn start(config: ServerConfig) -> Result<(), String> {
         )),
         styles_css: Arc::new(styles_css.unwrap_or_default()),
         default_chat_mode: Arc::new(default_chat_mode),
-        editor_theme: Arc::new(editor_theme),
         collaborator_access_code_hash: Arc::new(collaborator_access_code_hash),
         access_secret: Arc::new(access_cookie_secret),
         access_attempts: Arc::new(std::sync::Mutex::new(std::collections::HashMap::new())),
@@ -1234,6 +1223,9 @@ pub async fn start(config: ServerConfig) -> Result<(), String> {
     let app = app.merge(
         crate::chat::routes::router().route_layer(axum::middleware::from_fn(require_same_origin)),
     );
+    // Administrator-rendered pages contain privileged controls. Never let a
+    // browser reuse them after a daemon restart invalidates the admin cookie.
+    let app = app.layer(axum::middleware::from_fn(prevent_admin_response_caching));
     // Access-code gate over every workspace-scoped route (no-op when unset).
     let app = app.layer(axum::middleware::from_fn_with_state(
         state.clone(),
@@ -1412,11 +1404,13 @@ pub async fn start(config: ServerConfig) -> Result<(), String> {
         }
     }
 
-    if let Some(ref base_opt) = open_browser {
-        let base = if base_opt == "local" {
+    if let Some(ref base_option) = open_browser {
+        // The default follows the actual bind. A caller may still explicitly
+        // name a trusted reverse-proxy origin through --open-browser=URL.
+        let base = if base_option == "local" {
             local_browser_base_url(&host, addr.port())
         } else {
-            base_opt.to_string()
+            base_option.to_string()
         };
         let redirect = first_workspace_url_path.as_deref().unwrap_or("/");
         let nonce = admin_bootstraps.issue_url(redirect);
@@ -1944,6 +1938,24 @@ async fn require_admin_role(req: axum::extract::Request, next: axum::middleware:
     }
 }
 
+/// Administrator pages expose controls that stop working as soon as their
+/// short-lived capability expires (or the daemon restarts with a new token).
+/// Prevent browsers from restoring a stale privileged page from cache.
+async fn prevent_admin_response_caching(
+    req: axum::extract::Request,
+    next: axum::middleware::Next,
+) -> Response {
+    let is_admin = req.extensions().get::<AccessRole>() == Some(&AccessRole::Admin);
+    let mut response = next.run(req).await;
+    if is_admin {
+        response.headers_mut().insert(
+            header::CACHE_CONTROL,
+            axum::http::HeaderValue::from_static("private, no-store"),
+        );
+    }
+    response
+}
+
 /// Global DNS-rebinding boundary: only authorities derived from the bind/
 /// advertised addresses or explicitly trusted origins are accepted.
 async fn require_allowed_host(
@@ -2262,9 +2274,10 @@ impl DocumentStateCommand {
 
 fn document_state_access_allowed(role: Option<AccessRole>, entry: &WorkspaceEntry) -> bool {
     role == Some(AccessRole::Admin)
-        || entry
-            .shared_annotation
-            .load(std::sync::atomic::Ordering::Relaxed)
+        || (role == Some(AccessRole::Collaborator)
+            && entry
+                .shared_annotation
+                .load(std::sync::atomic::Ordering::Relaxed))
 }
 
 fn authorize_document_path(entry: &WorkspaceEntry, path: &str) -> Option<String> {
@@ -3708,7 +3721,6 @@ fn base_context(state: &AppState) -> tera::Context {
     context.insert("shortcuts_json", state.shortcuts_json.as_str());
     context.insert("styles_css", state.styles_css.as_str());
     context.insert("default_chat_mode", state.default_chat_mode.as_str());
-    context.insert("editor_theme", state.editor_theme.as_str());
     context.insert("print_collapsed_content", &state.print_collapsed_content);
     context
 }
@@ -6685,6 +6697,7 @@ fn render_directory_listing(
             .unwrap_or_default(),
     );
     context.insert("can_manage", &can_manage);
+    context.insert("shared_annotation", &flags.shared_annotation);
     context.insert("current_dir", &current_dir.display().to_string());
     context.insert("history_url", &workspace_git_history_url(workspace_id));
     context.insert("work_diff_url", &work_diff_url);
@@ -7063,7 +7076,6 @@ mod tests {
             shortcuts_json: Arc::new("null".into()),
             styles_css: Arc::new("".into()),
             default_chat_mode: Arc::new("in_page".into()),
-            editor_theme: Arc::new("follow".into()),
             collaborator_access_code_hash: Arc::new(String::new()),
             access_secret: Arc::new("test-salt".into()),
             access_attempts: Arc::new(std::sync::Mutex::new(std::collections::HashMap::new())),
@@ -7931,7 +7943,6 @@ mod tests {
             shortcuts_json: Arc::new("{}".into()),
             styles_css: Arc::new("".into()),
             default_chat_mode: Arc::new("in_page".into()),
-            editor_theme: Arc::new("follow".into()),
             collaborator_access_code_hash: Arc::new(String::new()),
             access_secret: Arc::new("test-salt".into()),
             access_attempts: Arc::new(std::sync::Mutex::new(std::collections::HashMap::new())),
@@ -8271,6 +8282,50 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn administrator_workspace_responses_are_not_cached() {
+        let root = tempfile::tempdir().unwrap();
+        let registry = Arc::new(WorkspaceRegistry::new("admin-cache".into()));
+        let id = add_test_workspace(&registry, root.path().to_path_buf(), all_flags());
+        let state = test_state(registry);
+        let route = format!("/{id}/page");
+        let app = Router::new()
+            .route(
+                "/{workspace_id}/page",
+                get(|| async { Html("<p>workspace</p>") }),
+            )
+            .layer(axum::middleware::from_fn(prevent_admin_response_caching))
+            .layer(axum::middleware::from_fn_with_state(
+                state.clone(),
+                require_access_code,
+            ));
+
+        let request = |cookie: Option<String>| {
+            let mut builder = axum::http::Request::builder().uri(&route);
+            if let Some(cookie) = cookie {
+                builder = builder.header(header::COOKIE, cookie);
+            }
+            builder.body(axum::body::Body::empty()).unwrap()
+        };
+
+        let collaborator_response = app.clone().oneshot(request(None)).await.unwrap();
+        assert!(collaborator_response
+            .headers()
+            .get(header::CACHE_CONTROL)
+            .is_none());
+
+        let admin =
+            admin_auth::make_admin_cookie(&state.management_token, access_now_unix(), false);
+        let admin_response = app.oneshot(request(Some(admin))).await.unwrap();
+        assert_eq!(
+            admin_response
+                .headers()
+                .get(header::CACHE_CONTROL)
+                .and_then(|value| value.to_str().ok()),
+            Some("private, no-store")
+        );
+    }
+
+    #[tokio::test]
     async fn admin_nonce_exchange_sets_single_use_http_only_session() {
         let state = test_state(Arc::new(WorkspaceRegistry::new("admin-exchange".into())));
         let nonce = state.admin_bootstraps.issue_url("/abcd1234/");
@@ -8507,6 +8562,14 @@ mod tests {
             ..Default::default()
         };
         assert!(registry.update_flags(&id, flags));
+        let anonymous = handle_document_state(
+            State(state.clone()),
+            AxumPath(id.clone()),
+            None,
+            Query(DocumentStateQuery { path: path.clone() }),
+        )
+        .await;
+        assert_eq!(anonymous.status(), StatusCode::FORBIDDEN);
         let shared_annotation = serde_json::json!({
             "id": "anno-shared",
             "text": "shared note",
@@ -9072,18 +9135,19 @@ mod tests {
 
         let response = handle_workspace_path(
             State(state),
-            AxumPath((id, "README.md".to_string())),
+            AxumPath((id.clone(), "README.md".to_string())),
             Some(Extension(AccessRole::Admin)),
             axum::http::HeaderMap::new(),
         )
         .await
         .into_response();
         assert_eq!(response.status(), StatusCode::OK);
-        let body = response_text(response).await;
+        let body = html_escape::decode_html_entities(&response_text(response).await).to_string();
         assert!(body.contains("/_/js/katex/katex.min.css"), "{body}");
         assert!(body.contains("/_/js/katex/katex.min.js"), "{body}");
         assert!(body.contains("/_/js/math-render.js"), "{body}");
         assert!(body.contains("data-math-display=\"true\""), "{body}");
+        assert!(!body.contains("data-share-controls"), "{body}");
     }
 
     #[tokio::test]
@@ -9119,6 +9183,7 @@ mod tests {
         assert!(body.contains(&format!(r#"data-update-url="/_/{id}/settings/features""#)));
         assert!(body.contains(r#"data-feature-key="enable_search""#));
         assert!(body.contains(r#"type="checkbox""#));
+        assert!(!body.contains("data-share-controls"));
 
         let next_flags = WorkspaceFlags {
             enable_search: false,
@@ -9140,8 +9205,19 @@ mod tests {
         assert_eq!(registry.get(&id).unwrap().flags(), next_flags);
 
         let response = handle_workspace_root(
-            State(state),
-            AxumPath(id),
+            State(state.clone()),
+            AxumPath(id.clone()),
+            Some(Extension(AccessRole::Admin)),
+        )
+        .await
+        .into_response();
+        assert_eq!(response.status(), StatusCode::OK);
+        let body = response_text(response).await;
+        assert!(!body.contains("data-share-controls"));
+
+        let response = handle_workspace_root(
+            State(state.clone()),
+            AxumPath(id.clone()),
             Some(Extension(AccessRole::Collaborator)),
         )
         .await
@@ -9150,6 +9226,13 @@ mod tests {
         let body = response_text(response).await;
         assert!(body.contains(r#"data-can-edit="false""#));
         assert!(body.contains("disabled"));
+        assert!(!body.contains("data-share-controls"));
+
+        let disabled_flags = WorkspaceFlags {
+            shared_annotation: false,
+            ..next_flags
+        };
+        assert!(registry.update_flags(&id, disabled_flags));
     }
 
     /// New model: edit/chat are collaboration abilities gated purely by the
@@ -9194,6 +9277,7 @@ mod tests {
         );
         assert!(on.contains(r#"name="preview-token""#));
         assert!(on.contains(r#"<meta name="enable-chat" content="true">"#));
+        assert!(!on.contains("data-share-controls"));
 
         // both OFF → no save token and no chat for the same remote peer.
         let reg_off = Arc::new(WorkspaceRegistry::new("remote-flags-off".into()));

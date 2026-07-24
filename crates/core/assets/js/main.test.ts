@@ -90,7 +90,15 @@ describe('MarkonApp', () => {
     beforeEach(() => {
         document.body.innerHTML = '';
         document.head.innerHTML = '';
+        seedMeta('workspace-id', 'ws1');
+        seedMeta('can-manage', 'true');
         localStorage.clear();
+        vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
+            ok: true,
+            status: 200,
+            text: () => Promise.resolve(''),
+            json: () => Promise.resolve({ annotations: [], viewed_state: {} }),
+        }));
         MockWS.instances = [];
         ({ restore } = silenceLogs());
         // Wipe globals between tests.
@@ -114,7 +122,7 @@ describe('MarkonApp', () => {
         await app.init();
 
         const m = app.getManagers();
-        expect(m.storage).not.toBeNull();
+        expect(m.storage).toBeNull();
         expect(m.shortcutsManager).not.toBeNull();
         // Document-mode managers should remain null.
         expect(m.annotationManager).toBeNull();
@@ -172,6 +180,7 @@ describe('MarkonApp', () => {
     });
 
     it('missing workspace id leaves WorkspaceSpotlight null and hides its triggers', async () => {
+        document.querySelector('meta[name="workspace-id"]')?.remove();
         seedMarkdownBody();
         const trigger = document.createElement('button');
         trigger.setAttribute('data-workspace-spotlight-trigger', '');

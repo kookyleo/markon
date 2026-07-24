@@ -11,11 +11,11 @@
       --surface: #ffffff;
       --surface-2: #ebebf0;
       --accent: #3451B2;
-      --accent-hover: #283D86;
-      --accent-soft: rgba(52, 81, 178, 0.14);
-      --accent-soft-hover: rgba(52, 81, 178, 0.22);
-      --accent-border: rgba(52, 81, 178, 0.18);
-      --accent-border-hover: rgba(52, 81, 178, 0.28);
+      --accent-hover: color-mix(in srgb, var(--accent) 78%, black);
+      --accent-soft: color-mix(in srgb, var(--accent) 14%, transparent);
+      --accent-soft-hover: color-mix(in srgb, var(--accent) 22%, transparent);
+      --accent-border: color-mix(in srgb, var(--accent) 18%, transparent);
+      --accent-border-hover: color-mix(in srgb, var(--accent) 28%, transparent);
 
       --text: #1c1c1e;
       --text-2: #6c6c70;
@@ -24,6 +24,20 @@
       --danger: #ff3b30;
       --radius: 10px;
       --radius-sm: 6px;
+      /* Glass frame: mirrors the page-side markon-modal-frame component. */
+      --glass-frame-inset: 6px;
+      --glass-frame-radius: 14px;
+      --glass-on-emphasis: #ffffff;
+      --glass-frame-border: color-mix(in srgb, var(--glass-on-emphasis) 52%, transparent);
+      --glass-frame-start: color-mix(in srgb, var(--glass-on-emphasis) 58%, transparent);
+      --glass-frame-end: color-mix(in srgb, var(--glass-on-emphasis) 24%, transparent);
+      --glass-frame-highlight: color-mix(in srgb, var(--glass-on-emphasis) 76%, transparent);
+      --glass-frame-glow: color-mix(in srgb, var(--glass-on-emphasis) 34%, transparent);
+      --glass-surface: var(--surface);
+      --glass-surface-border-neutral: color-mix(in srgb, var(--border) 86%, var(--surface));
+      --glass-surface-border: color-mix(in srgb, var(--accent) 18%, var(--glass-surface-border-neutral));
+      --glass-surface-ring: color-mix(in srgb, var(--glass-on-emphasis) 30%, transparent);
+      --glass-shadow: 0 8px 24px rgba(0, 0, 0, 0.14);
       /* Tell WKWebView the page supports both schemes so native UA controls
          (datalist popup, scrollbars, etc.) follow the active theme. */
       color-scheme: light;
@@ -38,17 +52,18 @@
       --surface: #2c2c2e;
       --surface-2: #3a3a3c;
       --accent: #3451B2;
-      --accent-hover: #4B65C5;
-      --accent-soft: rgba(75, 101, 197, 0.24);
-      --accent-soft-hover: rgba(75, 101, 197, 0.34);
-      --accent-border: rgba(75, 101, 197, 0.3);
-      --accent-border-hover: rgba(75, 101, 197, 0.42);
+      --accent-hover: color-mix(in srgb, var(--accent) 82%, white);
+      --accent-soft: color-mix(in srgb, var(--accent) 24%, transparent);
+      --accent-soft-hover: color-mix(in srgb, var(--accent) 34%, transparent);
+      --accent-border: color-mix(in srgb, var(--accent) 30%, transparent);
+      --accent-border-hover: color-mix(in srgb, var(--accent) 42%, transparent);
 
       --text: #f2f2f7;
       --text-2: #8e8e93;
       --text-3: #48484a;
       --border: #38383a;
       --danger: #ff453a;
+      --glass-shadow: 0 10px 28px rgba(0, 0, 0, 0.5);
     }
     /* Auto: follow system when attribute is "auto" */
     @media (prefers-color-scheme: dark) {
@@ -57,17 +72,18 @@
         --surface: #2c2c2e;
         --surface-2: #3a3a3c;
         --accent: #3451B2;
-        --accent-hover: #4B65C5;
-        --accent-soft: rgba(75, 101, 197, 0.24);
-        --accent-soft-hover: rgba(75, 101, 197, 0.34);
-        --accent-border: rgba(75, 101, 197, 0.3);
-        --accent-border-hover: rgba(75, 101, 197, 0.42);
+        --accent-hover: color-mix(in srgb, var(--accent) 82%, white);
+        --accent-soft: color-mix(in srgb, var(--accent) 24%, transparent);
+        --accent-soft-hover: color-mix(in srgb, var(--accent) 34%, transparent);
+        --accent-border: color-mix(in srgb, var(--accent) 30%, transparent);
+        --accent-border-hover: color-mix(in srgb, var(--accent) 42%, transparent);
 
         --text: #f2f2f7;
         --text-2: #8e8e93;
         --text-3: #48484a;
         --border: #38383a;
         --danger: #ff453a;
+        --glass-shadow: 0 10px 28px rgba(0, 0, 0, 0.5);
       }
     }
     * { box-sizing: border-box; margin: 0; padding: 0; }
@@ -77,8 +93,8 @@
       -webkit-touch-callout: none;
     }
     body {
-      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
-      font-size: 13px;
+      font-family: var(--ui-font, -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif);
+      font-size: var(--ui-font-size, 13px);
       background: var(--bg);
       color: var(--text);
       height: 100vh;
@@ -150,6 +166,12 @@
       padding: 6px 14px;
       gap: 12px;
       min-height: 36px;
+    }
+    .pref-row[hidden] { display: none; }
+    #webstyles-list {
+      border-top: 1px solid var(--border);
+      margin-top: 4px;
+      padding-top: 4px;
     }
     .pref-label, .st-name, .sc-name { font-size: 13px; color: var(--text); flex: 1; }
     /* Inline help affordance: a small ⓘ next to a label. Native title
@@ -255,6 +277,21 @@
       word-break: break-all;
       margin-top: 3px;
     }
+    .data-cleanup-summary {
+      display: flex;
+      align-items: baseline;
+      gap: 8px;
+      min-width: 0;
+      white-space: nowrap;
+    }
+    .data-cleanup-summary .db-path-val {
+      display: inline;
+      min-width: 0;
+      margin-top: 0;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      word-break: normal;
+    }
     select {
       appearance: none; -webkit-appearance: none;
       padding-right: 22px;
@@ -264,20 +301,6 @@
     }
     input[type="text"].full { width: 100%; }
 
-    /* Toast — bottom-anchored notification. WKWebView (Tauri) silently drops
-       window.alert() calls, so we render our own ephemeral banner instead. */
-    .mk-toast {
-      position: fixed; left: 50%; top: 64px;
-      transform: translateX(-50%) translateY(-20px);
-      background: var(--surface); border: 1px solid var(--border); color: var(--text);
-      padding: 10px 14px; border-radius: var(--radius-sm); font-size: 13px;
-      box-shadow: 0 8px 24px rgba(0,0,0,0.18);
-      opacity: 0; transition: opacity 0.2s, transform 0.2s;
-      white-space: pre-wrap; max-width: 540px; z-index: 9999;
-      pointer-events: none;
-    }
-    .mk-toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
-    .mk-toast-err { border-color: rgba(255,69,58,0.45); background: rgba(255,69,58,0.12); }
     /* Inline status text — sits inside .key-row before the input, fades after
        a few seconds. Used for non-blocking per-row feedback. */
     .inline-hint {
@@ -571,6 +594,93 @@
     .ws-icon-btn.open-btn { color: var(--accent); }
     .ws-icon-btn.open-btn:hover { background: rgba(0,122,255,0.1); }
     .ws-icon-btn.remove-btn:hover { background: rgba(255,59,48,0.1); color: var(--danger); }
+    .ws-share {
+      position: relative;
+      flex-shrink: 0;
+    }
+    .ws-icon-btn.share-link-btn { color: var(--accent); }
+    .ws-icon-btn.share-link-btn:hover { background: rgba(0,122,255,0.1); }
+    .glass-frame {
+      padding: var(--glass-frame-inset);
+      border: 1px solid var(--glass-frame-border);
+      border-radius: var(--glass-frame-radius);
+      background: linear-gradient(135deg, var(--glass-frame-start), var(--glass-frame-end));
+      background-clip: padding-box;
+      box-shadow:
+        inset 0 1px 0 var(--glass-frame-highlight),
+        inset 0 0 18px var(--glass-frame-glow),
+        var(--glass-shadow);
+      isolation: isolate;
+      overflow: hidden;
+      -webkit-backdrop-filter: blur(18px) saturate(1.35);
+      backdrop-filter: blur(18px) saturate(1.35);
+    }
+    .glass-frame::before,
+    .glass-frame::after {
+      content: "";
+      position: absolute;
+      inset: var(--glass-frame-inset);
+      border-radius: 8px;
+      pointer-events: none;
+    }
+    .glass-frame::before {
+      z-index: 0;
+      background: var(--glass-surface);
+    }
+    .glass-frame::after {
+      z-index: 2;
+      border: 1px solid var(--glass-surface-border);
+      box-shadow: 0 0 0 1px var(--glass-surface-ring);
+    }
+    .glass-frame > * {
+      position: relative;
+      z-index: 1;
+    }
+    .ws-share-popover {
+      position: absolute;
+      right: 0;
+      top: 30px;
+      z-index: 30;
+      width: 280px;
+    }
+    .ws-share-popover[hidden] { display: none; }
+    .ws-share-title {
+      padding: 4px 7px 6px;
+      color: var(--text-2);
+      font-size: 11px;
+    }
+    .ws-share-option {
+      display: flex;
+      width: 100%;
+      min-width: 0;
+      align-items: center;
+      gap: 8px;
+      padding: 7px;
+      border: none;
+      border-radius: 6px;
+      background: transparent;
+      color: var(--text);
+      text-align: left;
+      cursor: default;
+    }
+    .ws-share-option:hover { background: var(--surface-2); }
+    .ws-share-option-label {
+      flex: 0 0 58px;
+      overflow: hidden;
+      color: var(--text-2);
+      font-size: 11px;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .ws-share-option-url {
+      flex: 1;
+      min-width: 0;
+      overflow: hidden;
+      font-family: 'SF Mono', Monaco, Menlo, monospace;
+      font-size: 10.5px;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
     /* Per-workspace access-code editor: lives *in* the toolbar, in the lock
        icon's slot. Clicking the lock hides it and reveals this (input + ✓) in
        place; collapsing reverses back to the lock. Holds the shared .ac-editor.*/
@@ -1022,34 +1132,9 @@
               </select>
             </div>
           </div>
-          <div class="pref-row" id="advertised-row" style="display:none">
-            <span class="pref-label">
-              <span data-i18n="pref.advertised"></span><span class="pref-info" data-i18n-title="advertised.hint" tabindex="0">&#9432;</span>
-            </span>
-            <div class="pref-control">
-              <select id="advertised-host" style="width:240px"></select>
-            </div>
-          </div>
           <div id="bind-warning" class="pref-row" style="display:none">
             <span class="pref-label"></span>
             <div class="pref-control" style="color:#d93025;font-size:12px;line-height:1.4;max-width:380px"></div>
-          </div>
-          <!-- The GUI is a pure frontend: it attaches to (or spawns) the shared
-               markon service and drives it over the control socket. Populated by
-               applyServerMode() from get_server_status.mode. -->
-          <div id="server-mode-row" class="pref-row" style="display:none">
-            <span class="pref-label" data-i18n="server.label">Service</span>
-            <div class="pref-control" style="font-size:12px;line-height:1.5;max-width:400px">
-              <span id="server-mode-text"></span>
-              <button type="button" class="btn" id="server-reconnect-btn" data-i18n="server.reconnect" style="margin-left:8px;display:none">Reconnect</button>
-            </div>
-          </div>
-          <!-- Reconfiguration warning: host/port and the global access code are
-               baked into the daemon config, so editing them respawns the shared
-               service. Shown only while connected. -->
-          <div id="service-restart-note" class="pref-row" style="display:none">
-            <span class="pref-label"></span>
-            <div class="pref-control" style="font-size:12px;line-height:1.4;color:var(--text-dim,#888);max-width:400px" data-i18n="server.restart_warning"></div>
           </div>
           <div class="pref-row">
             <span class="pref-label">
@@ -1060,47 +1145,31 @@
         </div>
       </div>
 
-      <div class="section">
-        <div class="section-title" data-i18n="sec.appearance"></div>
+      <div class="section" id="language-section">
+        <div class="section-title" data-i18n="sec.language"></div>
         <div class="section-body">
-          <div class="pref-row">
-            <span class="pref-label" data-i18n="pref.theme"></span>
-            <div class="pref-control">
-              <select id="theme" style="width:150px">
-                <option value="auto"  data-i18n="theme.auto"></option>
-                <option value="light" data-i18n="theme.light"></option>
-                <option value="dark"  data-i18n="theme.dark"></option>
-              </select>
-            </div>
-          </div>
           <div class="pref-row">
             <span class="pref-label"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" style="vertical-align:-2px;margin-right:3px;opacity:.6"><circle cx="12" cy="12" r="10"/><path d="M2 12h20M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg><span data-i18n="pref.lang"></span></span>
             <div class="pref-control">
               <select id="language" style="width:150px"></select>
             </div>
           </div>
-          <div class="pref-row">
-            <span class="pref-label" data-i18n="pref.web.editor_theme"></span>
-            <div class="pref-control">
-              <select id="web_editor_theme" style="width:150px">
-                <option value="follow"      data-i18n="editor_theme.follow"></option>
-                <option value="vscode-dark" data-i18n="editor_theme.vscode_dark"></option>
-              </select>
-            </div>
-          </div>
-          <div class="pref-row">
-            <span class="pref-label"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" style="vertical-align:-2px;margin-right:3px;opacity:.6"><circle cx="12" cy="12" r="10"/><path d="M2 12h20M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg><span data-i18n="pref.web.lang"></span></span>
-            <div class="pref-control">
-              <select id="web_language" style="width:150px">
-              </select>
-            </div>
-          </div>
         </div>
       </div>
 
       <div class="section">
-        <div class="section-title" data-i18n="sec.webstyles"></div>
+        <div class="section-title" data-i18n="sec.appearance"></div>
         <div class="section-body" id="webstyles-editor">
+          <div class="pref-row">
+            <span class="pref-label" data-i18n="pref.theme"></span>
+            <div class="pref-control">
+              <select id="theme" style="width:180px">
+                <option value="auto" data-i18n="theme.auto"></option>
+                <option value="light" data-i18n="theme.light"></option>
+                <option value="dark" data-i18n="theme.dark"></option>
+              </select>
+            </div>
+          </div>
           <div id="webstyles-list"></div>
           <div class="pref-row">
             <span class="pref-label"></span>
@@ -1293,8 +1362,8 @@
               <button class="btn" id="db_path_clear" data-i18n="pref.dbpath.clear" style="font-size:12px;display:none"></button>
             </div>
           </div>
-          <div class="pref-row" style="flex-wrap:wrap">
-            <div class="pref-label" style="flex:1;min-width:0">
+          <div class="pref-row">
+            <div class="pref-label data-cleanup-summary">
               <span data-i18n="pref.data_cleanup"></span>
               <small id="data_cleanup_stats" class="db-path-val"></small>
             </div>
@@ -1524,8 +1593,11 @@
 
   // Service connection state: 'connected' (attached to a running markond) or
   // 'disconnected' (discover/spawn failed, or a control call errored). The
-  // server-level access-code editor and the restart warning depend on it.
+  // server-level access-code editor depends on it.
   let globalServerMode = 'connected';
+  // Kept only to round-trip older settings.json files. Address selection is
+  // now a per-workspace Share action, so there is no global GUI control.
+  let preservedAdvertisedHost = '';
 
   // ── Tab navigation ──────────────────────────────────────────────────────
   function activateTab(name) {
@@ -1572,8 +1644,7 @@
   // Each key maps to a function that applies that setting to the page immediately.
   const liveApply = {
     theme(value) {
-      // "auto" | "light" | "dark" — drives :root[data-theme] for CSS vars.
-      document.documentElement.setAttribute('data-theme', value || 'auto');
+      applyThemeToPanel(value);
     },
     language(value, sysLocale) {
       if (value === 'auto') {
@@ -1590,7 +1661,7 @@
     },
   };
   function applyAll(s) {
-    liveApply.theme(s.theme);
+    liveApply.theme(s.theme || 'auto');
     liveApply.language(s.language ?? 'auto', systemLocale);
     liveApply.port_mode(s.port_mode ?? 'spec');
   }
@@ -1612,14 +1683,12 @@
     document.querySelector(`input[name="port_mode"][value="${mode}"]`).checked = true;
     document.getElementById('port').value = s.port;
     document.getElementById('host').value = s.host;
-    document.getElementById('advertised-host').value = s.advertised_host || '';
-    updateAdvertisedVisibility(s.host);
-    document.getElementById('theme').value = s.theme;
+    preservedAdvertisedHost = s.advertised_host || '';
+    document.getElementById('theme').value = s.theme || 'auto';
+    currentWebStyles = { ...(s.web_styles || {}) };
     document.getElementById('language').value = s.language || 'auto';
-    document.getElementById('web_editor_theme').value = s.web_editor_theme || 'follow';
     globalCollaboratorCodeLen = (s.collaborator_access_code_hash || '').length;
     renderGlobalAccessCode();
-    document.getElementById('web_language').value = s.web_language || 'auto';
     updateDbPathDisplay(s.db_path ?? '');
     document.getElementById('tray_resident').checked = s.tray_resident ?? true;
     document.getElementById('auto_remove_single_file_workspaces').checked = s.auto_remove_single_file_workspaces ?? true;
@@ -1657,7 +1726,6 @@
     const ch = s.update_channel ?? 'stable';
     const chRadio = document.querySelector(`input[name="update_channel"][value="${ch}"]`);
     if (chRadio) chRadio.checked = true;
-    currentWebStyles = s.web_styles ?? {};
     renderWebStyles();
     currentShortcuts = s.shortcuts ?? {};
     renderShortcuts();
@@ -1666,16 +1734,18 @@
     return s;
   }
 
-  async function saveSettings() {
-    const settings = {
+  function collectSettings() {
+    const language = document.getElementById('language').value;
+    return {
       port_mode: document.querySelector('input[name="port_mode"]:checked')?.value ?? 'spec',
       port:      parseInt(document.getElementById('port').value) || 6419,
       host:      document.getElementById('host').value,
-      advertised_host: document.getElementById('advertised-host').value,
+      advertised_host: preservedAdvertisedHost,
       theme:     document.getElementById('theme').value,
-      language:  document.getElementById('language').value,
-      web_editor_theme: document.getElementById('web_editor_theme').value,
-      web_language: document.getElementById('web_language').value,
+      language,
+      web_theme: document.getElementById('theme').value,
+      web_editor_theme: 'follow',
+      web_language: language,
       db_path:   currentDbPath || null,
       default_search: document.getElementById('default_search').checked,
       default_viewed: document.getElementById('default_viewed').checked,
@@ -1701,21 +1771,27 @@
           models:   readDatalistOptions('chat_openai_models_list'),
         },
       },
-      web_styles: currentWebStyles,
+      web_styles: { ...currentWebStyles },
       shortcuts: currentShortcuts,
       auto_update: document.getElementById('auto_update').checked,
       update_channel: document.querySelector('input[name="update_channel"]:checked')?.value ?? 'stable',
       workspaces: [],  // preserved by Rust command; managed via add/remove/update
     };
-    try {
-      await invoke('save_settings', { settings });
-    } catch (e) {
+  }
+
+  // Tauri commands are asynchronous. Serialize snapshots so rapid changes in
+  // separate controls cannot finish out of order and restore stale settings.
+  let settingsSaveTail = Promise.resolve();
+  function saveSettings() {
+    const settings = collectSettings();
+    settingsSaveTail = settingsSaveTail.then(() =>
+      invoke('save_settings', { settings })
+    ).catch(e => {
       // Bind failure ("address not on this machine") is the realistic case;
       // surface server-side text directly so the user knows what to fix.
-      // Don't rethrow — every saveSettings() caller is fire-and-forget; a
-      // rejection would only surface as an unhandled promise warning.
-      toast(T('bind.save_failed').replace('{error}', String(e)), 'err');
-    }
+      window.alert(T('bind.save_failed').replace('{error}', String(e)));
+    });
+    return settingsSaveTail;
   }
 
   // ── DB path state & helpers ────────────────────────────────────────────
@@ -1762,15 +1838,9 @@
       const stats = await invoke('get_data_cleanup_stats');
       const count = stats.orphaned_annotations + stats.orphaned_viewed_files
         + stats.orphaned_chat_threads + stats.orphaned_chat_messages;
-      display.textContent = count === 0
-        ? `${T('pref.data_cleanup.none')} · ${formatBytes(stats.database_bytes)}`
-        : T('pref.data_cleanup.stats')
-            .replace('{files}', String(stats.orphaned_annotation_files))
-            .replace('{annotations}', String(stats.orphaned_annotations))
-            .replace('{viewed}', String(stats.orphaned_viewed_files))
-            .replace('{threads}', String(stats.orphaned_chat_threads))
-            .replace('{messages}', String(stats.orphaned_chat_messages))
-            .replace('{bytes}', formatBytes(stats.orphaned_payload_bytes));
+      display.textContent = T('pref.data_cleanup.stats')
+        .replace('{messages}', String(stats.orphaned_chat_messages))
+        .replace('{bytes}', formatBytes(stats.orphaned_payload_bytes));
       run.disabled = count === 0;
       return stats;
     } catch (error) {
@@ -1796,7 +1866,7 @@
         .replace('{viewed}', String(result.deleted_viewed_files))
         .replace('{threads}', String(result.deleted_chat_threads))
         .replace('{messages}', String(result.deleted_chat_messages));
-      toast(done);
+      window.alert(done);
     } catch (error) {
       document.getElementById('data_cleanup_stats').textContent = String(error);
     } finally {
@@ -1806,23 +1876,18 @@
   void refreshDataCleanupStats();
 
   // Wire change handlers: save + live-apply where applicable.
-  ['port', 'host', 'advertised-host'].forEach(id =>
+  ['port', 'host'].forEach(id =>
     document.getElementById(id).addEventListener('change', saveSettings)
-  );
-  document.getElementById('host').addEventListener('change', e =>
-    updateAdvertisedVisibility(e.target.value)
   );
   document.getElementById('theme').addEventListener('change', e => {
     liveApply.theme(e.target.value);
+    renderWebStyles();
     saveSettings();
   });
   document.getElementById('language').addEventListener('change', e => {
     liveApply.language(e.target.value, systemLocale);
     saveSettings();
   });
-  ['web_editor_theme', 'web_language'].forEach(id =>
-    document.getElementById(id).addEventListener('change', saveSettings)
-  );
   document.querySelectorAll('input[name="port_mode"]').forEach(radio => {
     radio.addEventListener('change', () => {
       liveApply.port_mode(radio.value);
@@ -1961,7 +2026,7 @@
           await invoke('set_collaborator_access_code', { workspaceId: null, code });
           globalCollaboratorCodeLen = code.trim().length;
           collaboratorCtl.applied(globalCollaboratorCodeLen, btn);
-        } catch (e) { toast(String(e), 'err'); }
+        } catch (e) { window.alert(String(e)); }
       },
     });
   }
@@ -2023,23 +2088,8 @@
   // base URL, replace the datalist, and persist. Unrecoverable failures
   // (missing key, network, 4xx) surface as an alert with the server message
   // so the user can fix proxies / typos.
-  // Tauri's WKWebView silently drops window.alert() — render our own toast so
-  // refresh feedback (success/error) is actually visible.
-  function toast(msg, kind = 'info') {
-    const t = document.createElement('div');
-    t.className = `mk-toast mk-toast-${kind}`;
-    t.textContent = msg;
-    document.body.appendChild(t);
-    requestAnimationFrame(() => requestAnimationFrame(() => t.classList.add('show')));
-    const ttl = kind === 'err' ? 6000 : 3500;
-    setTimeout(() => {
-      t.classList.remove('show');
-      setTimeout(() => t.remove(), 250);
-    }, ttl);
-  }
   // Transient success on an Apply button: briefly tint it green instead of a
-  // floating toast, so the confirmation stays anchored to the control the user
-  // acted on. Owns the flash duration; `after` (optional) runs when the flash
+  // separate notification. Owns the flash duration; `after` (optional) runs when the flash
   // ends — call sites use it to collapse the editor, so the timing lives here
   // rather than being duplicated per caller.
   function flashApplyOk(btn, after) {
@@ -2146,6 +2196,24 @@
   );
 
   // ── Workspace list ──────────────────────────────────────────────────────
+  function closeWorkspaceSharePopovers(except) {
+    document.querySelectorAll('.ws-share-popover:not([hidden])').forEach(popover => {
+      if (popover !== except) {
+        popover.hidden = true;
+        popover.closest('.ws-share')?.querySelector('.share-link-btn')
+          ?.setAttribute('aria-expanded', 'false');
+      }
+    });
+  }
+
+  document.addEventListener('click', (event) => {
+    document.querySelectorAll('.ws-share-popover:not([hidden])').forEach(popover => {
+      if (!popover.closest('.ws-share')?.contains(event.target)) {
+        closeWorkspaceSharePopovers();
+      }
+    });
+  });
+
   async function refreshWorkspaces() {
     let all;
     try {
@@ -2215,10 +2283,22 @@
       const nameBlock = aliasName
         ? `<span class="ws-path ws-named" title="${esc(fullPath)}"><span class="ws-alias-name">${esc(aliasName)}</span><span class="ws-subpath">${esc(shortPath)}</span></span>`
         : `<span class="ws-path" title="${esc(fullPath)}">${esc(shortPath)}</span>`;
+      const shareControl = ws.shared_annotation
+        ? `<div class="ws-share">
+            <button class="ws-icon-btn share-link-btn" type="button" title="${esc(T('ws.share.copy'))}" aria-label="${esc(T('ws.share.copy'))}" aria-haspopup="menu" aria-expanded="false">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <path d="M10 13a5 5 0 0 0 7.07.07l2-2a5 5 0 0 0-7.07-7.07l-1.15 1.15"/>
+                <path d="M14 11a5 5 0 0 0-7.07-.07l-2 2A5 5 0 0 0 12 20l1.15-1.15"/>
+              </svg>
+            </button>
+            <div class="ws-share-popover glass-frame" role="menu" hidden></div>
+          </div>`
+        : '';
       card.innerHTML = `
         <div class="ws-row-top">
           ${leadIcon}
           ${nameBlock}
+          ${shareControl}
           <button class="ws-icon-btn open-btn" title="${T('ws.open.tip')}">
             <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
               <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/>
@@ -2261,6 +2341,67 @@
         invoke('open_url', { url: ws.url });
       });
 
+      const shareButton = card.querySelector('.share-link-btn');
+      if (shareButton) {
+        const sharePopover = card.querySelector('.ws-share-popover');
+        shareButton.addEventListener('click', async (event) => {
+          event.stopPropagation();
+          if (!sharePopover.hidden) {
+            sharePopover.hidden = true;
+            shareButton.setAttribute('aria-expanded', 'false');
+            return;
+          }
+          closeWorkspaceSharePopovers(sharePopover);
+          shareButton.disabled = true;
+          try {
+            const entries = await invoke('get_workspace_share_urls', { workspaceId: ws.id });
+            if (!Array.isArray(entries) || entries.length === 0) {
+              window.alert(T('ws.share.unavailable'));
+              return;
+            }
+            sharePopover.replaceChildren();
+            const title = document.createElement('div');
+            title.className = 'ws-share-title';
+            title.textContent = T('ws.share.choose');
+            sharePopover.appendChild(title);
+            entries.forEach(entry => {
+              const option = document.createElement('button');
+              option.type = 'button';
+              option.className = 'ws-share-option';
+              option.setAttribute('role', 'menuitem');
+              option.title = entry.url;
+              const label = document.createElement('span');
+              label.className = 'ws-share-option-label';
+              label.textContent = entry.label || new URL(entry.url).hostname;
+              const url = document.createElement('span');
+              url.className = 'ws-share-option-url';
+              url.textContent = entry.url;
+              option.append(label, url);
+              option.addEventListener('click', async (clickEvent) => {
+                clickEvent.stopPropagation();
+                try {
+                  await navigator.clipboard.writeText(entry.url);
+                  const original = shareButton.innerHTML;
+                  shareButton.innerHTML = '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="20 6 9 17 4 12"/></svg>';
+                  sharePopover.hidden = true;
+                  shareButton.setAttribute('aria-expanded', 'false');
+                  setTimeout(() => { shareButton.innerHTML = original; }, 1200);
+                } catch (_) {
+                  window.alert(T('ws.share.failed'));
+                }
+              });
+              sharePopover.appendChild(option);
+            });
+            sharePopover.hidden = false;
+            shareButton.setAttribute('aria-expanded', 'true');
+          } catch (error) {
+            window.alert(T('ws.share.failed') + ': ' + error);
+          } finally {
+            shareButton.disabled = false;
+          }
+        });
+      }
+
       // Toggle feature flags — persisted via update_workspace (registry
       // update_flags fires the persist hook, so it survives restart).
       card.querySelectorAll('.ws-flag input').forEach(cb => {
@@ -2283,7 +2424,7 @@
             });
             // Re-render so the Search flag can pick up its search_ready state.
             refreshWorkspaces();
-          } catch (e) { toast(T('ws.update.fail') + ': ' + e, 'err'); }
+          } catch (e) { window.alert(T('ws.update.fail') + ': ' + e); }
         });
       });
 
@@ -2325,7 +2466,7 @@
           try {
             await invoke('set_alias', { workspaceId: ws.id, alias: input.value.trim() });
             refreshWorkspaces();
-          } catch (e) { toast(T('ws.update.fail') + ': ' + e, 'err'); busy = false; }
+          } catch (e) { window.alert(T('ws.update.fail') + ': ' + e); busy = false; }
         };
         ok.addEventListener('click', save);
         input.addEventListener('keydown', (e) => {
@@ -2366,7 +2507,7 @@
               len = code.trim().length;
               setState(len > 0);
               ctl.applied(len, applyBtn);
-            } catch (e) { toast(T('ws.update.fail') + ': ' + e, 'err'); }
+            } catch (e) { window.alert(T('ws.update.fail') + ': ' + e); }
           },
         });
         btn.addEventListener('click', () => {
@@ -2387,7 +2528,7 @@
     try {
       path = await invoke('pick_workspace_dir');
     } catch (e) {
-      toast(T('ws.add.fail') + ': ' + e, 'err');
+      window.alert(T('ws.add.fail') + ': ' + e);
       return;
     }
     if (!path) return; // user cancelled
@@ -2395,7 +2536,7 @@
       await invoke('add_workspace', { path });
       refreshWorkspaces();
     } catch (e) {
-      toast(T('ws.add.fail') + ': ' + e, 'err');
+      window.alert(T('ws.add.fail') + ': ' + e);
     }
   }
 
@@ -2609,30 +2750,7 @@
     }
     cliSel.value = currentCliHost;
 
-    // Advertised (shared) address: only the real LAN interfaces, plus an
-    // "auto" entry (= first interface). Relevant only for wildcard binds.
-    const advSel = document.getElementById('advertised-host');
-    const currentAdv = advSel.value || '';
-    advSel.innerHTML = '';
-    appendSelectOption(advSel, '', T('advertised.auto'));
-    bindHosts
-      .filter(host => host.kind === 'interface')
-      .forEach(host => appendSelectOption(advSel, host.address, bindHostLabel(host)));
-    if (currentAdv && !hasSelectOption(advSel, currentAdv)) {
-      appendSelectOption(advSel, currentAdv, `⚠️ ${currentAdv} ${T('bind.stale')}`);
-    }
-    advSel.value = currentAdv;
-    updateAdvertisedVisibility(currentHost);
-
     updateBindWarning(currentHost, isHostInList(currentHost, bindHosts));
-  }
-
-  // The shared-address picker only matters when bound to a wildcard, where
-  // there are multiple reachable LAN IPs to choose between.
-  function updateAdvertisedVisibility(host) {
-    const row = document.getElementById('advertised-row');
-    if (!row) return;
-    row.style.display = ['0.0.0.0', '::', '[::]', ''].includes(host) ? '' : 'none';
   }
 
   async function loadBindHosts(settingsHost) {
@@ -2700,27 +2818,22 @@
     }
   }
 
-  // Populate language dropdowns from i18n meta.
+  // Populate the one shared language dropdown from i18n metadata.
   function populateLanguageSelects() {
-    ['language', 'web_language'].forEach(id => {
-      const sel = document.getElementById(id);
-      const cur = sel.value || 'auto';
-      sel.innerHTML = '';
-      // "auto" option — label depends on which select
-      const autoLabel = id === 'language' ? T('lang.auto') : T('web.auto');
-      const autoOpt = document.createElement('option');
-      autoOpt.value = 'auto';
-      autoOpt.textContent = autoLabel;
-      sel.appendChild(autoOpt);
-      // Language options from i18n files
-      availableLanguages.forEach(l => {
-        const opt = document.createElement('option');
-        opt.value = l.value;
-        opt.textContent = l.label;
-        sel.appendChild(opt);
-      });
-      sel.value = cur;
+    const sel = document.getElementById('language');
+    const cur = sel.value || 'auto';
+    sel.innerHTML = '';
+    const autoOpt = document.createElement('option');
+    autoOpt.value = 'auto';
+    autoOpt.textContent = T('lang.auto');
+    sel.appendChild(autoOpt);
+    availableLanguages.forEach(l => {
+      const opt = document.createElement('option');
+      opt.value = l.value;
+      opt.textContent = l.label;
+      sel.appendChild(opt);
     });
+    sel.value = cur;
   }
 
   function setLocale(localeStr) {
@@ -2856,7 +2969,7 @@
     let status;
     try { status = await invoke('get_server_status'); } catch (_) { return; }
     if (status?.error) {
-      toast(T('bind.bind_failed').replace('{error}', status.error), 'err');
+      window.alert(T('bind.bind_failed').replace('{error}', status.error));
     }
     if (typeof status?.host_available === 'boolean') {
       updateBindWarning(status.host, status.host_available);
@@ -2864,47 +2977,15 @@
     if (status?.mode) applyServerMode(status.mode, status.port);
   }
 
-  // Reflect the connection state ('connected' / 'disconnected') in the Service
-  // section: a status line, the reconnect button, the "restarts the service"
-  // warning, and whether the server-level access-code editor is available.
-  function applyServerMode(mode, port) {
+  // Connection state still gates server-backed controls, but no longer takes
+  // up a redundant row in Settings.
+  function applyServerMode(mode, _port) {
     const prev = globalServerMode;
     globalServerMode = mode;
-    const row  = document.getElementById('server-mode-row');
-    const text = document.getElementById('server-mode-text');
-    const reconnectBtn = document.getElementById('server-reconnect-btn');
-    const restartNote  = document.getElementById('service-restart-note');
-    if (!row || !text) return;
-    row.style.display = '';
-    if (mode === 'disconnected') {
-      text.textContent = T('server.disconnected');
-      text.style.color = '#d93025';
-      reconnectBtn.style.display = '';
-      if (restartNote) restartNote.style.display = 'none';
-    } else {
-      text.textContent = `${T('server.connected')}${port ? ` (${port})` : ''}`;
-      text.style.color = '';
-      reconnectBtn.style.display = 'none';
-      // The restart warning only matters while a shared service is actually up.
-      if (restartNote) restartNote.style.display = '';
-    }
-    // The global access-code editor's availability depends on the mode — rebuild
-    // it when the mode actually changed (and no edit is in progress).
     if (prev !== mode) renderGlobalAccessCode();
   }
 
-  async function doReconnect() {
-    try {
-      const res = await invoke('reconnect');
-      applyServerMode(res?.mode || 'connected', res?.port);
-      await refreshWorkspaces();
-    } catch (e) {
-      toast(String(e), 'err');
-    }
-  }
-
   function setupBindHostListeners() {
-    document.getElementById('server-reconnect-btn')?.addEventListener('click', doReconnect);
     const ev = window.__TAURI__?.event;
     if (!ev?.listen) return;
     // Native File ▸ New Workspace (⌘N). The accelerator is registered on the
@@ -2925,7 +3006,7 @@
     ev.listen('server-status-changed', (evt) => {
       const payload = evt?.payload || {};
       if (payload.error) {
-        toast(T('bind.bind_failed').replace('{error}', payload.error), 'err');
+        window.alert(T('bind.bind_failed').replace('{error}', payload.error));
       }
       if (typeof payload.host_available === 'boolean') {
         updateBindWarning(payload.host, payload.host_available);
@@ -3037,47 +3118,90 @@
   document.querySelectorAll('.tips-copy').forEach(attachCopyHandler);
 
   // ── Auto-update check ───────────────────────────────────────────────────
-  // ── Web styles editor ────────────────────────────────────────────────
-  // Semantic design tokens: 6 colors (light + dark) + typography + opacity.
-  // Other tokens (text-muted, elevated, elevated-2, overlay, border-strong)
-  // are derived in editor.css from these and not user-configurable.
+  // ── Theme + detail editor ─────────────────────────────────────────────
+  const STYLE_DEFAULTS = {
+    light: {
+      primary: '#0969da', muted: '#656d76', border: '#d1d9e0',
+      subtle: '#f6f8fa', canvas: '#ffffff', text: '#1f2328',
+      'ui-font': 'system-ui, sans-serif', 'ui-font-size': '0.80rem',
+      'panel-opacity': '0.90',
+    },
+    dark: {
+      primary: '#58a6ff', muted: '#8b949e', border: '#30363d',
+      subtle: '#161b22', canvas: '#0d1117', text: '#f0f6fc',
+      'ui-font': 'system-ui, sans-serif', 'ui-font-size': '0.80rem',
+      'panel-opacity': '0.90',
+    },
+  };
   const STYLE_DEFS = [
-    { key: 'primary',  type: 'duocolor', defLight: '#0969da', defDark: '#58a6ff',
-      hint: 'webstyles.primary.hint' },
-    { key: 'muted',    type: 'duocolor', defLight: '#656d76', defDark: '#8b949e',
-      hint: 'webstyles.muted.hint' },
-    { key: 'border',   type: 'duocolor', defLight: '#d1d9e0', defDark: '#30363d',
-      hint: 'webstyles.border.hint' },
-    { key: 'subtle',   type: 'duocolor', defLight: '#f6f8fa', defDark: '#161b22',
-      hint: 'webstyles.subtle.hint' },
-    { key: 'canvas',   type: 'duocolor', defLight: '#ffffff', defDark: '#0d1117',
-      hint: 'webstyles.canvas.hint' },
-    { key: 'text',     type: 'duocolor', defLight: '#1f2328', defDark: '#f0f6fc',
-      hint: 'webstyles.text.hint' },
-    { key: 'ui-font',          type: 'font',  def: 'system-ui, sans-serif' },
-    { key: 'ui-font-size',     type: 'range', def: '0.80', min: 0.60, max: 1.20, step: 0.05, unit: 'rem' },
-    { key: 'panel-opacity',    type: 'range', def: '0.90', min: 0.30, max: 1.00, step: 0.05, unit: '' },
+    { key: 'primary',  type: 'color', hint: 'webstyles.primary.hint' },
+    { key: 'muted',    type: 'color', hint: 'webstyles.muted.hint' },
+    { key: 'border',   type: 'color', hint: 'webstyles.border.hint' },
+    { key: 'subtle',   type: 'color', hint: 'webstyles.subtle.hint' },
+    { key: 'canvas',   type: 'color', hint: 'webstyles.canvas.hint' },
+    { key: 'text',     type: 'color', hint: 'webstyles.text.hint' },
+    { key: 'ui-font',       type: 'font' },
+    { key: 'ui-font-size',  type: 'range', min: 0.60, max: 1.20, step: 0.05, unit: 'rem' },
+    { key: 'panel-opacity', type: 'range', min: 0.30, max: 1.00, step: 0.05, unit: '' },
   ];
-
+  const styleSchemeMedia = window.matchMedia?.('(prefers-color-scheme: dark)');
   let currentWebStyles = {};
+
+  function resolvedThemeAppearance() {
+    const theme = document.getElementById('theme')?.value || 'auto';
+    if (theme === 'light' || theme === 'dark') return theme;
+    return styleSchemeMedia?.matches ? 'dark' : 'light';
+  }
+
+  function resolvedThemeStyles() {
+    const appearance = resolvedThemeAppearance();
+    const styles = { ...STYLE_DEFAULTS[appearance] };
+    for (const def of STYLE_DEFS) {
+      const key = def.type === 'color' ? `${def.key}.${appearance}` : def.key;
+      if (currentWebStyles[key] != null) styles[def.key] = currentWebStyles[key];
+    }
+    return { appearance, styles };
+  }
+
+  function applyThemeToPanel(theme = document.getElementById('theme')?.value || 'auto') {
+    const appearance = theme === 'light' || theme === 'dark'
+      ? theme
+      : (styleSchemeMedia?.matches ? 'dark' : 'light');
+    const { styles } = resolvedThemeStyles();
+    const root = document.documentElement;
+    root.setAttribute('data-theme', appearance);
+    root.setAttribute('data-theme-mode', theme);
+    root.style.colorScheme = appearance;
+    const mapping = {
+      '--accent': styles.primary,
+      '--text': styles.text,
+      '--text-2': styles.muted,
+      '--border': styles.border,
+      '--bg': styles.subtle,
+      '--surface': styles.canvas,
+      '--surface-2': styles.subtle,
+      '--glass-surface': styles.canvas,
+      '--ui-font': styles['ui-font'],
+      '--ui-font-size': styles['ui-font-size'],
+      '--panel-opacity': styles['panel-opacity'],
+    };
+    for (const [property, value] of Object.entries(mapping)) {
+      if (value) root.style.setProperty(property, value);
+    }
+  }
 
   // Undo-arrow icon shared by the web-styles and shortcuts row-reset buttons.
   const UNDO_SVG = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M9 14 4 9l5-5"/><path d="M4 9h10.5a5.5 5.5 0 0 1 0 11H11"/></svg>';
 
   function isStyleAtDefault(d) {
-    if (d.type === 'duocolor') {
-      return !(`${d.key}.light` in currentWebStyles) && !(`${d.key}.dark` in currentWebStyles);
-    }
-    return !(d.key in currentWebStyles);
+    const key = d.type === 'color' ? `${d.key}.${resolvedThemeAppearance()}` : d.key;
+    return currentWebStyles[key] == null;
   }
 
   function resetStyleRow(d) {
-    if (d.type === 'duocolor') {
-      delete currentWebStyles[`${d.key}.light`];
-      delete currentWebStyles[`${d.key}.dark`];
-    } else {
-      delete currentWebStyles[d.key];
-    }
+    const key = d.type === 'color' ? `${d.key}.${resolvedThemeAppearance()}` : d.key;
+    delete currentWebStyles[key];
+    applyThemeToPanel();
     saveSettings();
     renderWebStyles();
   }
@@ -3103,32 +3227,25 @@
       const label = T('webstyles.' + d.key) || d.key;
       const hint = d.hint ? T(d.hint) : '';
 
-      if (d.type === 'duocolor') {
-        // Two color pickers: light (☀) + dark (🌙)
-        const valL = currentWebStyles[d.key + '.light'] || d.defLight;
-        const valD = currentWebStyles[d.key + '.dark'] || d.defDark;
+      const appearance = resolvedThemeAppearance();
+      const storageKey = d.type === 'color' ? `${d.key}.${appearance}` : d.key;
+      const val = currentWebStyles[storageKey] || STYLE_DEFAULTS[appearance][d.key];
+
+      if (d.type === 'color') {
         row.innerHTML = `<span class="st-name">${label}${hint ? '<br><small style="color:var(--text-2);font-size:10px;font-weight:400">' + hint + '</small>' : ''}</span>
-          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="opacity:.4;flex-shrink:0"><circle cx="12" cy="12" r="5"/><path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"/></svg>
-          <input type="color" value="${valL}" data-key="${d.key}.light">
-          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="opacity:.4;flex-shrink:0"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
-          <input type="color" value="${valD}" data-key="${d.key}.dark">`;
-        row.querySelectorAll('input[type="color"]').forEach(inp => {
-          inp.addEventListener('input', () => {
-            const k = inp.dataset.key;
-            const base = k.replace(/\.(light|dark)$/, '');
-            const mode = k.endsWith('.light') ? 'light' : 'dark';
-            const def = mode === 'light' ? d.defLight : d.defDark;
-            if (inp.value === def) { delete currentWebStyles[k]; } else { currentWebStyles[k] = inp.value; }
-            saveSettings();
-            row.querySelector('.row-reset')?.classList.toggle('is-default', isStyleAtDefault(d));
-          });
+          <input type="color" value="${val}" data-key="${storageKey}">`;
+        const input = row.querySelector('input');
+        input.addEventListener('input', event => {
+          currentWebStyles[event.target.dataset.key] = event.target.value;
+          applyThemeToPanel();
+          row.querySelector('.row-reset')?.classList.toggle('is-default', isStyleAtDefault(d));
         });
+        input.addEventListener('change', saveSettings);
         appendResetBtn(row, d);
         list.appendChild(row);
         continue;
       }
 
-      const val = currentWebStyles[d.key] || d.def;
       if (d.type === 'font') {
         row.innerHTML = `<span class="st-name">${label}</span>
           <select data-key="${d.key}" style="flex:1;max-width:180px;font-size:11px"></select>`;
@@ -3155,30 +3272,34 @@
           populateFontSelect(['system-ui, sans-serif', 'Arial', 'Helvetica Neue', 'Georgia', 'Menlo', 'Monaco', 'Inter']);
         });
       } else if (d.type === 'range') {
-        const num = parseFloat(val) || parseFloat(d.def);
+        const num = parseFloat(val) || parseFloat(STYLE_DEFAULTS[appearance][d.key]);
         row.innerHTML = `<span class="st-name">${label}</span>
           <input type="range" min="${d.min}" max="${d.max}" step="${d.step}" value="${num}" data-key="${d.key}" data-unit="${d.unit}" style="width:100px;accent-color:var(--accent)">
           <span class="st-val" style="font-size:11px;color:var(--text-2);width:56px;text-align:right;font-family:monospace;flex-shrink:0">${num.toFixed(2)}${d.unit}</span>`;
       }
       row.querySelectorAll('input, select[data-key]').forEach(inp => {
-        inp.addEventListener(inp.tagName === 'SELECT' ? 'change' : 'input', () => {
+        const updateValue = () => {
           const k = inp.dataset.key;
           let v = inp.value;
-          const def = STYLE_DEFS.find(s => s.key === k);
           if (inp.type === 'range') {
             const unit = inp.dataset.unit || '';
             const valSpan = row.querySelector('.st-val');
             if (valSpan) valSpan.textContent = parseFloat(v).toFixed(2) + unit;
             v = v + unit;
           }
-          if (v === def?.def || v === def?.def + (def?.unit || '')) {
-            delete currentWebStyles[k];
-          } else {
-            currentWebStyles[k] = v;
-          }
-          saveSettings();
+          currentWebStyles[k] = v;
+          applyThemeToPanel();
           row.querySelector('.row-reset')?.classList.toggle('is-default', isStyleAtDefault(d));
-        });
+        };
+        if (inp.tagName === 'SELECT') {
+          inp.addEventListener('change', () => {
+            updateValue();
+            saveSettings();
+          });
+        } else {
+          inp.addEventListener('input', updateValue);
+          inp.addEventListener('change', saveSettings);
+        }
       });
       appendResetBtn(row, d);
       list.appendChild(row);
@@ -3187,7 +3308,14 @@
 
   document.getElementById('webstyles-reset').addEventListener('click', () => {
     currentWebStyles = {};
+    applyThemeToPanel();
     saveSettings();
+    renderWebStyles();
+  });
+
+  styleSchemeMedia?.addEventListener?.('change', () => {
+    if (document.getElementById('theme').value !== 'auto') return;
+    applyThemeToPanel('auto');
     renderWebStyles();
   });
 

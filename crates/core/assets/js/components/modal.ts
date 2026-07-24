@@ -557,6 +557,7 @@ export class ConfirmModal extends BaseModal {
                     Logger.log('ConfirmModal', 'Callback completed successfully');
                 } catch (error) {
                     Logger.error('ConfirmModal', 'Callback failed:', error);
+                    window.alert(error instanceof Error ? error.message : String(error));
                 }
                 this.close();
             })();

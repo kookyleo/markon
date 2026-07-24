@@ -1,12 +1,8 @@
-import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import {
-    StorageManager,
-    LocalStorageStrategy,
-} from './storage-manager.js';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { StorageManager } from './storage-manager.js';
 import type { Annotation } from './annotation-manager.js';
 import type { WebSocketManager } from './websocket-manager.js';
 
-/** Minimal WebSocketManager fake for HTTP-broadcast op-id correlation. */
 function makeFakeWs(connected: boolean) {
     const fake = {
         isConnected: () => connected,
@@ -16,8 +12,6 @@ function makeFakeWs(connected: boolean) {
     return { fake: fake as unknown as WebSocketManager };
 }
 
-/** Build a fully-shaped Annotation for storage round-trip tests; only `id`
- * and any explicitly-overridden fields matter to these tests. */
 function makeAnno(overrides: Partial<Annotation> & { id: string }): Annotation {
     return {
         type: 'highlight-yellow',
@@ -30,223 +24,209 @@ function makeAnno(overrides: Partial<Annotation> & { id: string }): Annotation {
     };
 }
 
-describe('StorageManager', () => {
-    let logSpy: ReturnType<typeof vi.spyOn>;
-    let warnSpy: ReturnType<typeof vi.spyOn>;
-    let errorSpy: ReturnType<typeof vi.spyOn>;
+function snapshotResponse(
+    annotations: Annotation[] = [],
+    viewedState: Record<string, boolean> = {},
+) {
+    return {
+        ok: true,
+        status: 200,
+        text: async (): Promise<string> => '',
+        json: async (): Promise<DocumentSnapshotForTest> => ({
+            annotations,
+            viewed_state: viewedState,
+        }),
+    };
+}
 
+function emptyResponse() {
+    return {
+        ok: true,
+        status: 204,
+        text: async (): Promise<string> => '',
+    };
+}
+
+type DocumentSnapshotForTest = {
+    annotations: Annotation[];
+    viewed_state: Record<string, boolean>;
+};
+
+describe('StorageManager SQLite-only document state', () => {
     beforeEach(() => {
         localStorage.clear();
-        logSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
-        warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
-        errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+        vi.spyOn(console, 'log').mockImplementation(() => {});
     });
 
     afterEach(() => {
-        logSpy.mockRestore();
-        warnSpy.mockRestore();
-        errorSpy.mockRestore();
         localStorage.clear();
         vi.unstubAllGlobals();
+        vi.restoreAllMocks();
     });
 
-    describe('LocalStorageStrategy', () => {
-        it('round-trips load/save/delete via localStorage', async () => {
-            const s = new LocalStorageStrategy<{ value: number }>();
-            await s.save('k', { value: 42 });
-            const loaded = await s.load('k');
-            expect(loaded).toEqual({ value: 42 });
-
-            await s.delete('k');
-            expect(await s.load('k')).toBeNull();
-        });
-
-        it('returns null for a missing key', async () => {
-            const s = new LocalStorageStrategy();
-            expect(await s.load('missing')).toBeNull();
-        });
-
-        it('returns null and logs error on malformed JSON', async () => {
-            localStorage.setItem('bad', 'not-json{');
-            const s = new LocalStorageStrategy();
-            expect(await s.load('bad')).toBeNull();
-            expect(errorSpy).toHaveBeenCalled();
-        });
+    it('requires a workspace id instead of silently choosing browser storage', () => {
+        expect(() => new StorageManager('foo.md', false, null, '')).toThrow(
+            'workspace-id is required',
+        );
     });
 
-    describe('StorageManager facade', () => {
-        it('selects LocalStorageStrategy when not in shared mode', async () => {
-            const m = new StorageManager('foo.md', false);
-            expect(m.isSharedMode()).toBe(false);
-            expect(m.getFilePath()).toBe('foo.md');
+    it('loads annotations and viewed state from one SQLite snapshot', async () => {
+        const annotation = makeAnno({ id: 'a', text: 'hello' });
+        const fetchMock = vi.fn(async (_url: string) =>
+            snapshotResponse([annotation], { intro: true }),
+        );
+        vi.stubGlobal('fetch', fetchMock);
+        const manager = new StorageManager('/docs/foo.md', false, null, 'abc123');
 
-            const a = makeAnno({ id: 'a' });
-            const b = makeAnno({ id: 'b' });
-            await m.saveAnnotations([a, b]);
-            expect(await m.loadAnnotations()).toEqual([a, b]);
+        expect(await manager.loadAnnotations()).toEqual([annotation]);
+        expect(await manager.loadViewedState()).toEqual({ intro: true });
+        expect(fetchMock).toHaveBeenCalledTimes(1);
+        expect(String(fetchMock.mock.calls[0]?.[0])).toContain(
+            '/_/abc123/data/document-state?path=%2Fdocs%2Ffoo.md',
+        );
+        expect(localStorage.length).toBe(0);
+    });
+
+    it('persists an annotation through HTTP and records its shared broadcast op id', async () => {
+        const { fake } = makeFakeWs(true);
+        const fetchMock = vi.fn(async (_url: string, init?: RequestInit) =>
+            init?.method === 'POST' ? emptyResponse() : snapshotResponse(),
+        );
+        vi.stubGlobal('fetch', fetchMock);
+        const manager = new StorageManager('foo.md', true, fake, 'abc123');
+        const annotation = makeAnno({ id: 'x1' });
+
+        const opId = await manager.saveAnnotation(annotation);
+
+        expect(opId).toMatch(/^[0-9a-f]{16}$/);
+        expect(fake.recordOutgoing).toHaveBeenCalledWith(opId);
+        const [, init] = fetchMock.mock.calls[1] as unknown as [string, RequestInit];
+        expect(JSON.parse(init.body as string)).toMatchObject({
+            action: 'save_annotation',
+            path: 'foo.md',
+            annotation,
+            op_id: opId,
         });
+        expect(await manager.loadAnnotations()).toEqual([annotation]);
+        expect(localStorage.length).toBe(0);
+    });
 
-        it('persists through HTTP and records the shared broadcast op id', async () => {
-            const { fake } = makeFakeWs(true);
-            const fetchMock = vi.fn(async () => ({
-                ok: true,
-                status: 204,
-                text: async () => '',
-            }));
-            vi.stubGlobal('fetch', fetchMock);
-            const m = new StorageManager('foo.md', true, fake, 'abc123');
-            expect(m.isSharedMode()).toBe(true);
-
-            const anno = makeAnno({ id: 'x1' });
-            const opId = await m.saveAnnotation(anno);
-            expect(opId).toMatch(/^[0-9a-f]{16}$/);
-            expect(fake.recordOutgoing).toHaveBeenCalledWith(opId);
-            const [, init] = fetchMock.mock.calls[0] as unknown as [string, RequestInit];
-            expect(JSON.parse(init.body as string)).toMatchObject({
-                action: 'save_annotation',
-                path: 'foo.md',
-                annotation: anno,
-                op_id: opId,
-            });
+    it('round-trips version 2 fragment anchors without changing the persisted schema', async () => {
+        const annotation = makeAnno({
+            id: 'cross',
+            text: 'Heading\nBody',
+            anchor: {
+                position: 0,
+                exact: 'HeadingBody',
+                prefix: '',
+                suffix: '',
+                version: 2,
+                fragments: [
+                    {
+                        position: 0,
+                        exact: 'Heading',
+                        prefix: '',
+                        suffix: 'Body',
+                        blockTag: 'H2',
+                    },
+                    {
+                        position: 7,
+                        exact: 'Body',
+                        prefix: 'Heading',
+                        suffix: '',
+                        blockTag: 'P',
+                    },
+                ],
+            },
         });
+        const fetchMock = vi.fn(async (_url: string, init?: RequestInit) =>
+            init?.method === 'POST' ? emptyResponse() : snapshotResponse(),
+        );
+        vi.stubGlobal('fetch', fetchMock);
+        const manager = new StorageManager('cross-block.md', false, null, 'abc123');
 
-        it('merges legacy local annotations into SQLite then removes the origin copy', async () => {
-            const localOnly = makeAnno({ id: 'anno-local' });
-            const persisted = makeAnno({ id: 'anno-server' });
-            await StorageManager.saveLocalAnnotations('/docs/foo.md', [localOnly]);
-            const fetchMock = vi.fn(async (_url: string, init?: RequestInit) => {
-                if (!init?.method) {
-                    return {
-                        ok: true,
-                        status: 200,
-                        json: async () => ({ annotations: [persisted], viewed_state: {} }),
-                    };
-                }
-                return { ok: true, status: 204, text: async () => '' };
-            });
-            vi.stubGlobal('fetch', fetchMock);
-            const m = new StorageManager('/docs/foo.md', false, null, 'abc123');
-            expect(await m.loadAnnotations()).toEqual([persisted, localOnly]);
-            expect(fetchMock).toHaveBeenCalledTimes(2);
-            expect(localStorage.getItem('markon-annotations-/docs/foo.md')).toBeNull();
+        await manager.saveAnnotation(annotation);
+
+        const [, init] = fetchMock.mock.calls[1] as unknown as [string, RequestInit];
+        expect(JSON.parse(init.body as string).annotation).toEqual(annotation);
+        expect(await manager.loadAnnotations()).toEqual([annotation]);
+        expect(localStorage.length).toBe(0);
+    });
+
+    it('serializes viewed-state writes so an older request cannot win', async () => {
+        let releaseFirst!: () => void;
+        const firstResponse = new Promise<void>((resolve) => { releaseFirst = resolve; });
+        const fetchMock = vi.fn(async (_url: string, _init?: RequestInit) => {
+            if (fetchMock.mock.calls.length === 1) await firstResponse;
+            return emptyResponse();
         });
+        vi.stubGlobal('fetch', fetchMock);
+        const manager = new StorageManager('/docs/foo.md', false, null, 'abc123');
 
-        it('serializes SQLite mutations so a slow older viewed state cannot win', async () => {
-            let releaseFirst!: () => void;
-            const firstResponse = new Promise<void>((resolve) => { releaseFirst = resolve; });
-            const fetchMock = vi.fn(async (_url: string, _init?: RequestInit) => {
-                if (fetchMock.mock.calls.length === 1) await firstResponse;
-                return { ok: true, status: 204, text: async () => '' };
-            });
-            vi.stubGlobal('fetch', fetchMock);
-            const m = new StorageManager('/docs/foo.md', false, null, 'abc123');
+        const older = manager.saveViewedState({ section: false });
+        await Promise.resolve();
+        const newer = manager.saveViewedState({ section: true });
+        await Promise.resolve();
+        expect(fetchMock).toHaveBeenCalledTimes(1);
 
-            const older = m.saveViewedState({ section: false });
-            await Promise.resolve();
-            const newer = m.saveViewedState({ section: true });
-            await Promise.resolve();
-            expect(fetchMock).toHaveBeenCalledTimes(1);
+        releaseFirst();
+        await older;
+        await newer;
+        const bodies = fetchMock.mock.calls.map(([, init]) =>
+            JSON.parse(init?.body as string) as { state: Record<string, boolean> },
+        );
+        expect(bodies.map(body => body.state)).toEqual([
+            { section: false },
+            { section: true },
+        ]);
+    });
 
-            releaseFirst();
-            await older;
-            await newer;
-            expect(fetchMock).toHaveBeenCalledTimes(2);
-            const bodies = fetchMock.mock.calls.map(([, init]) => {
-                const parsed = JSON.parse(init?.body as string) as unknown;
-                return parsed as { state: Record<string, boolean> };
-            });
-            expect(bodies.map(body => body.state)).toEqual([
-                { section: false },
-                { section: true },
-            ]);
+    it('deletes and clears annotations only after the service commits them', async () => {
+        const a = makeAnno({ id: 'a' });
+        const b = makeAnno({ id: 'b' });
+        const fetchMock = vi.fn(async (_url: string, init?: RequestInit) =>
+            init?.method === 'POST' ? emptyResponse() : snapshotResponse([a, b]),
+        );
+        vi.stubGlobal('fetch', fetchMock);
+        const manager = new StorageManager('foo.md', false, null, 'abc123');
+
+        await manager.deleteAnnotation('a');
+        expect(await manager.loadAnnotations()).toEqual([b]);
+        await manager.clearAnnotations();
+        expect(await manager.loadAnnotations()).toEqual([]);
+
+        const actions = fetchMock.mock.calls
+            .filter(([, init]) => init?.method === 'POST')
+            .map(([, init]) =>
+                (JSON.parse(init?.body as string) as { action: string }).action,
+            );
+        expect(actions).toEqual(['delete_annotation', 'clear_annotations']);
+        expect(localStorage.length).toBe(0);
+    });
+
+    it('propagates service failures without writing an origin-local fallback', async () => {
+        localStorage.setItem('unrelated-preference', 'keep');
+        const fetchMock = vi.fn(async (_url: string, init?: RequestInit) => {
+            if (init?.method === 'POST') {
+                return {
+                    ok: false,
+                    status: 403,
+                    text: async (): Promise<string> => 'Forbidden',
+                };
+            }
+            return snapshotResponse();
         });
+        vi.stubGlobal('fetch', fetchMock);
+        const manager = new StorageManager('foo.md', false, null, 'abc123');
 
-        it('local mode upserts and removes annotations through the array', async () => {
-            const m = new StorageManager('foo.md', false);
-            const a1 = makeAnno({ id: 'a', text: '1' });
-            const b = makeAnno({ id: 'b', text: '2' });
-            const a2 = makeAnno({ id: 'a', text: '99' }); // update existing
-            await m.saveAnnotation(a1);
-            await m.saveAnnotation(b);
-            await m.saveAnnotation(a2);
-
-            let annos = await m.loadAnnotations();
-            expect(annos).toEqual([a2, b]);
-
-            await m.deleteAnnotation('a');
-            annos = await m.loadAnnotations();
-            expect(annos).toEqual([b]);
-        });
-
-        it('round-trips version 2 fragment anchors without a schema migration', async () => {
-            const m = new StorageManager('cross-block.md', false);
-            const annotation = makeAnno({
-                id: 'cross',
-                text: 'Heading\nBody',
-                anchor: {
-                    position: 0,
-                    exact: 'HeadingBody',
-                    prefix: '',
-                    suffix: '',
-                    version: 2,
-                    fragments: [
-                        {
-                            position: 0,
-                            exact: 'Heading',
-                            prefix: '',
-                            suffix: 'Body',
-                            blockTag: 'H2',
-                        },
-                        {
-                            position: 7,
-                            exact: 'Body',
-                            prefix: 'Heading',
-                            suffix: '',
-                            blockTag: 'P',
-                        },
-                    ],
-                },
-            });
-
-            await m.saveAnnotation(annotation);
-            expect(await m.loadAnnotations()).toEqual([annotation]);
-            expect(JSON.parse(localStorage.getItem('markon-annotations-cross-block.md')!)).toEqual([
-                annotation,
-            ]);
-        });
-
-        it('viewed-state save/load/clear round-trip in local mode', async () => {
-            const m = new StorageManager('foo.md', false);
-            expect(await m.loadViewedState()).toEqual({});
-            await m.saveViewedState({ h1: true, h2: false });
-            expect(await m.loadViewedState()).toEqual({ h1: true, h2: false });
-            await m.clearViewedState();
-            expect(await m.loadViewedState()).toEqual({});
-        });
-
-        it('updateCache() is a no-op in local mode', async () => {
-            const m = new StorageManager('foo.md', false);
-            // Should not throw and should not write to localStorage.
-            m.updateCache('markon-annotations-foo.md', [makeAnno({ id: 'a' })]);
-            expect(localStorage.getItem('markon-annotations-foo.md')).toBeNull();
-        });
-
-        it('loads and saves the local annotation mirror independent of mode', async () => {
-            const a = makeAnno({ id: 'a' });
-            await StorageManager.saveLocalAnnotations('foo.md', [a]);
-            expect(await StorageManager.loadLocalAnnotations('foo.md')).toEqual([a]);
-        });
-
-        it('falls back to LocalStorageStrategy when shared mode is requested but ws is null', () => {
-            const m = new StorageManager('foo.md', true, null);
-            const a = makeAnno({ id: 'a' });
-            // No ws supplied: facade should silently degrade to local mode storage.
-            // We assert behaviour by writing and reading; localStorage should be hit.
-            return m.saveAnnotations([a]).then(async () => {
-                const raw = localStorage.getItem('markon-annotations-foo.md');
-                expect(raw).not.toBeNull();
-                expect(JSON.parse(raw as string)).toEqual([a]);
-            });
-        });
+        await expect(manager.saveAnnotation(makeAnno({ id: 'a' }))).rejects.toThrow(
+            'document state save failed (403)',
+        );
+        await expect(manager.saveViewedState({ h1: true })).rejects.toThrow(
+            'document state save failed (403)',
+        );
+        expect(localStorage.getItem('unrelated-preference')).toBe('keep');
+        expect(localStorage.getItem('markon-annotations-foo.md')).toBeNull();
+        expect(localStorage.getItem('markon-viewed-foo.md')).toBeNull();
     });
 });

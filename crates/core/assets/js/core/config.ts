@@ -149,8 +149,6 @@ export const CONFIG = {
 
     // Storage keys
     STORAGE_KEYS: {
-        ANNOTATIONS: (filePath: string): string => `markon-annotations-${filePath}`,
-        VIEWED: (filePath: string): string => `markon-viewed-${filePath}`,
         LIVE_POS: 'markon-live-pos',
         LIVE_COLOR: 'markon-user-color',
         IDENTITY_NAME: 'markon-user-name',
@@ -186,6 +184,7 @@ export const CONFIG = {
     META_TAGS: {
         FILE_PATH: 'file-path',
         WORKSPACE_ID: 'workspace-id',
+        CAN_MANAGE: 'can-manage',
         SHARED_ANNOTATION: 'shared-annotation',
         ENABLE_SEARCH: 'enable-search',
         ENABLE_VIEWED: 'enable-viewed',
