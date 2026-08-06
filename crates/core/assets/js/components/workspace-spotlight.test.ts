@@ -3,8 +3,21 @@ import { CONFIG } from '../core/config';
 import { WorkspaceSpotlight } from './workspace-spotlight';
 
 const files = [
-    { path: 'README.md', name: 'README.md', url: '/ws/README.md', is_markdown: true },
-    { path: 'docs/Guide.md', name: 'Guide.md', url: '/ws/docs/Guide.md', is_markdown: true },
+    {
+        path: 'README.md',
+        name: 'README.md',
+        url: '/ws/README.md',
+        is_markdown: true,
+        title: 'Workspace overview',
+    },
+    {
+        path: 'docs/Guide.md',
+        name: 'Guide.md',
+        url: '/ws/docs/Guide.md',
+        is_markdown: true,
+        title: 'Getting Started <safely>',
+    },
+    { path: 'docs/Untitled.md', name: 'Untitled.md', url: '/ws/docs/Untitled.md', is_markdown: true },
     { path: 'Cargo.toml', name: 'Cargo.toml', url: '/ws/Cargo.toml', is_markdown: false },
 ];
 
@@ -59,6 +72,24 @@ describe('WorkspaceSpotlight', () => {
         expect(text).toContain('README.md');
         expect(text).toContain('docs/Guide.md');
         expect(text).not.toContain('Cargo.toml');
+    });
+
+    it('shows an escaped document title after a Markdown file name when available', async () => {
+        const nav = new WorkspaceSpotlight({ workspaceId: 'ws' });
+        nav.open();
+        await flush();
+
+        const guide = document.querySelector<HTMLAnchorElement>(
+            '.workspace-spotlight-result--file[href="/ws/docs/Guide.md"]',
+        )!;
+        const title = guide.querySelector<HTMLElement>('.workspace-spotlight-result-document-title');
+        expect(title?.textContent).toBe('Getting Started <safely>');
+        expect(title?.querySelector('safely')).toBeNull();
+
+        const untitled = document.querySelector<HTMLAnchorElement>(
+            '.workspace-spotlight-result--file[href="/ws/docs/Untitled.md"]',
+        )!;
+        expect(untitled.querySelector('.workspace-spotlight-result-document-title')).toBeNull();
     });
 
     it('filters results and marks the current document', async () => {

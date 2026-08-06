@@ -1678,6 +1678,30 @@ body.workspace-spotlight-open {
     white-space: nowrap;
 }
 
+.workspace-spotlight-result-file-label {
+    display: flex;
+    flex: 1 1 auto;
+    align-items: baseline;
+    gap: 8px;
+    min-width: 0;
+    overflow: hidden;
+}
+
+.workspace-spotlight-result-file-label.has-title .workspace-spotlight-result-path {
+    flex: 0 1 auto;
+    max-width: 62%;
+}
+
+.workspace-spotlight-result-document-title {
+    flex: 1 1 auto;
+    min-width: 0;
+    overflow: hidden;
+    color: var(--markon-fg-muted);
+    font-size: 13px;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
 .workspace-spotlight-result-main {
     display: flex;
     flex: 1 1 auto;

@@ -104,6 +104,30 @@ pub(crate) fn extract_referenced_assets(markdown: &str) -> std::collections::Has
     extract_referenced_assets_with_context(markdown, None)
 }
 
+/// Return the first top-level H1 as plain text for document-list metadata.
+///
+/// Parsing through Supramark keeps this aligned with the rendered document:
+/// Setext headings and inline formatting are handled, while heading-like text
+/// inside code fences or blockquotes is not mistaken for the document title.
+pub(crate) fn extract_document_title(markdown: &str) -> Option<String> {
+    let ast = supramark_markdown::parse(markdown);
+    let children = match &ast {
+        supramark_markdown::SupramarkNode::Root { children, .. } => children,
+        _ => return None,
+    };
+
+    children.iter().find_map(|node| {
+        let supramark_markdown::SupramarkNode::Heading {
+            depth: 1, children, ..
+        } = node
+        else {
+            return None;
+        };
+        let title = heading_plain_text(children);
+        (!title.is_empty()).then_some(title)
+    })
+}
+
 pub(crate) fn extract_referenced_assets_for_file(
     markdown: &str,
     file_path: impl Into<PathBuf>,
@@ -2247,8 +2271,8 @@ fn supramark_children(
 mod assets_tests {
     use super::MarkdownRenderer;
     use super::{
-        extract_referenced_assets, normalize_local_image_destinations, sanitize_asset_ref,
-        sanitize_raw_html_fragment, url_scheme_is_safe,
+        extract_document_title, extract_referenced_assets, normalize_local_image_destinations,
+        sanitize_asset_ref, sanitize_raw_html_fragment, url_scheme_is_safe,
     };
     use crate::markdown::MarkdownEngine;
 
@@ -2256,6 +2280,31 @@ mod assets_tests {
         let want: std::collections::HashSet<String> =
             expected.iter().map(|s| s.to_string()).collect();
         assert_eq!(actual, want, "asset set mismatch");
+    }
+
+    #[test]
+    fn document_title_uses_first_top_level_h1_plain_text() {
+        let markdown = "## Context\n\n# **Markon** `Guide`\n\n# Later";
+        assert_eq!(
+            extract_document_title(markdown).as_deref(),
+            Some("Markon Guide")
+        );
+    }
+
+    #[test]
+    fn document_title_supports_setext_and_ignores_nested_heading_like_text() {
+        let markdown =
+            "```\n# Code title\n```\n\n> # Quoted title\n\nActual *title*\n==============";
+        assert_eq!(
+            extract_document_title(markdown).as_deref(),
+            Some("Actual title")
+        );
+    }
+
+    #[test]
+    fn document_title_is_absent_without_a_nonempty_top_level_h1() {
+        assert_eq!(extract_document_title("## Section\n\nBody"), None);
+        assert_eq!(extract_document_title("#\n\nBody"), None);
     }
 
     #[test]

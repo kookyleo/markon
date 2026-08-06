@@ -17,6 +17,7 @@ interface WorkspaceFileEntry {
     name?: string;
     url: string;
     is_markdown?: boolean;
+    title?: string;
 }
 
 export interface WorkspaceSpotlightOptions {
@@ -407,6 +408,7 @@ export class WorkspaceSpotlight {
         for (const file of fileList) {
             const li = document.createElement('li');
             const link = document.createElement('a');
+            const title = file.title?.trim() || '';
             link.className = 'workspace-spotlight-result workspace-spotlight-result--file';
             link.href = file.url;
             link.setAttribute('role', 'option');
@@ -415,7 +417,10 @@ export class WorkspaceSpotlight {
             }
             link.innerHTML = `
                 <span class="workspace-spotlight-file-icon" aria-hidden="true"></span>
-                <span class="workspace-spotlight-result-path">${highlightPath(file.path, query)}</span>
+                <span class="workspace-spotlight-result-file-label${title ? ' has-title' : ''}">
+                    <span class="workspace-spotlight-result-path">${highlightPath(file.path, query)}</span>
+                    ${title ? `<span class="workspace-spotlight-result-document-title" title="${escapeHtml(title)}">${escapeHtml(title)}</span>` : ''}
+                </span>
                 <span class="workspace-spotlight-result-badge">${escapeHtml(file.path === this.#currentPath ? i18n.t('web.wsnav.current') : 'MD')}</span>
             `;
             li.appendChild(link);

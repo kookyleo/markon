@@ -30,7 +30,8 @@ use crate::assets::{CssAssets, IconAssets, JsAssets, Templates};
 use crate::git;
 use crate::i18n;
 use crate::markdown::{
-    default_markdown_engine, MarkdownEngine, MarkdownHtmlRenderer, MarkdownRenderer,
+    default_markdown_engine, extract_document_title, MarkdownEngine, MarkdownHtmlRenderer,
+    MarkdownRenderer,
 };
 use crate::markdown_ast;
 use crate::search::{SearchQuery, SearchResult};
@@ -3333,6 +3334,8 @@ struct WorkspaceFileListEntry {
     path: String,
     name: String,
     is_markdown: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    title: Option<String>,
     url: String,
 }
 
@@ -3346,12 +3349,22 @@ async fn handle_workspace_files_data(
     let mut files = Vec::new();
     for (rel, path) in ws.fs.served_files(2000) {
         let route = rel.as_route();
+        let is_markdown = is_markdown_path(&path);
+        let title = if is_markdown {
+            ws.fs
+                .read_content_to_string(&route)
+                .ok()
+                .and_then(|content| extract_document_title(&content))
+        } else {
+            None
+        };
         files.push(WorkspaceFileListEntry {
             name: path
                 .file_name()
                 .map(|name| name.to_string_lossy().to_string())
                 .unwrap_or_else(|| route.clone()),
-            is_markdown: is_markdown_path(&path),
+            is_markdown,
+            title,
             url: workspace_file_url(&workspace_id, &route),
             path: route,
         });
@@ -10249,6 +10262,40 @@ mod tests {
         assert!(body.contains(&format!("/{id}/sub/")));
         assert!(body.contains("data-filter-visible-markdown=\"true\""));
         assert!(!body.contains(&format!("/_/{id}/git/history")));
+    }
+
+    #[tokio::test]
+    async fn workspace_files_data_includes_optional_markdown_document_titles() {
+        let dir = tempfile::tempdir().unwrap();
+        fs::write(
+            dir.path().join("Guide.md"),
+            "## Context\n\n# **Workspace** `Guide`\n",
+        )
+        .unwrap();
+        fs::write(dir.path().join("Untitled.md"), "## Section\n\nBody\n").unwrap();
+        fs::write(dir.path().join("notes.txt"), "# Not Markdown\n").unwrap();
+
+        let registry = Arc::new(WorkspaceRegistry::new("file-title-test".into()));
+        let id = add_test_workspace(
+            &registry,
+            dir.path().to_path_buf(),
+            WorkspaceFlags::default(),
+        );
+        let response = handle_workspace_files_data(State(test_state(registry)), AxumPath(id)).await;
+        let entries: serde_json::Value =
+            serde_json::from_str(&response_text(response.into_response()).await).unwrap();
+        let entry = |path: &str| {
+            entries
+                .as_array()
+                .unwrap()
+                .iter()
+                .find(|entry| entry["path"] == path)
+                .unwrap_or_else(|| panic!("missing file-list entry {path}"))
+        };
+
+        assert_eq!(entry("Guide.md")["title"], "Workspace Guide");
+        assert!(entry("Untitled.md").get("title").is_none());
+        assert!(entry("notes.txt").get("title").is_none());
     }
 
     #[test]
