@@ -290,6 +290,9 @@ export interface NoteInputModalOptions extends BaseModalOptions {
     onSave?: (value: string) => void;
     onCancel?: () => void;
     initialValue?: string;
+    /** Render directly over a wide-screen margin note card instead of as a
+     *  draggable floating editor near the source selection. */
+    inlineInCard?: boolean;
 }
 
 /**
@@ -299,27 +302,46 @@ export class NoteInputModal extends BaseModal {
     #onSave: (value: string) => void;
     #onCancel: () => void;
     #initialValue: string;
+    #inlineInCard: boolean;
     #resizeObserver: ResizeObserver | null = null;
     #sizeTrackingReady = false;
 
     constructor(options: NoteInputModalOptions = {}) {
+        const { inlineInCard = false, ...baseOptions } = options;
         super({
             className: 'note-input-modal',
             dragHandle: '.note-input-drag-region',
-            dragStorageKey: CONFIG.STORAGE_KEYS.NOTE_INPUT_OFFSET,
             dragStorageMode: 'offset',
-            ...options,
+            ...baseOptions,
+            draggable: inlineInCard ? false : (baseOptions.draggable ?? true),
+            dragStorageKey: inlineInCard
+                ? null
+                : (baseOptions.dragStorageKey ?? CONFIG.STORAGE_KEYS.NOTE_INPUT_OFFSET),
         });
 
         this.#onSave = options.onSave ?? (() => {});
         this.#onCancel = options.onCancel ?? (() => {});
         this.#initialValue = options.initialValue ?? '';
+        this.#inlineInCard = inlineInCard;
     }
 
     override show(anchorElement: HTMLElement | null = null): void {
         super.show(anchorElement);
         const modal = this.getElement();
         if (!modal) return;
+        if (this.#inlineInCard && anchorElement) {
+            const rect = anchorElement.getBoundingClientRect();
+            const width = rect.width || anchorElement.offsetWidth || CONFIG.DIMENSIONS.NOTE_CARD_WIDTH;
+            const height = Math.max(rect.height || anchorElement.offsetHeight, 128);
+            modal.style.position = 'absolute';
+            modal.style.left = `${rect.left + window.scrollX}px`;
+            modal.style.top = `${rect.top + window.scrollY}px`;
+            modal.style.width = `${width}px`;
+            modal.style.height = `${height}px`;
+            modal.dataset['originalLeft'] = String(rect.left + window.scrollX);
+            modal.dataset['originalTop'] = String(rect.top + window.scrollY);
+            return;
+        }
         this.#restoreSize(modal);
         this.#constrainCurrentPosition(modal);
         this.#observeSize(modal);
@@ -334,7 +356,12 @@ export class NoteInputModal extends BaseModal {
 
     create(): HTMLElement {
         const modal = document.createElement('div');
-        modal.className = 'note-input-modal markon-modal-frame';
+        modal.className = `note-input-modal markon-modal-frame${this.#inlineInCard ? ' is-note-card-editor' : ''}`;
+        if (this.#inlineInCard) {
+            modal.setAttribute('role', 'form');
+            modal.setAttribute('aria-modal', 'false');
+            modal.setAttribute('aria-label', _t('web.note.edit'));
+        }
 
         modal.innerHTML = `
             <span class="note-input-drag-region note-input-drag-top" aria-hidden="true"></span>

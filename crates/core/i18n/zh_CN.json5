@@ -464,6 +464,7 @@
     "web.kbd.redo.alt":     "重做 (2)",
     "web.kbd.escape":       "关闭弹窗/取消选择",
     "web.kbd.toc":          "切换/聚焦 ToC 目录",
+    "web.kbd.selection_toolbar": "临时启用/禁用本页选区工具条",
     "web.kbd.help":         "显示功能与快捷键",
     "web.kbd.theme":        "打开主题切换面板",
     "web.kbd.search":       "打开 Workspace Spotlight",

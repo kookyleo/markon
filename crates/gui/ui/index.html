@@ -3326,6 +3326,7 @@
     REDO_ALT:       { key: 'y', ctrl: true, shift: false },
     ESCAPE:         { key: 'Escape', ctrl: false, shift: false },
     TOGGLE_TOC:     { key: '\\', ctrl: true, shift: false },
+    TOGGLE_SELECTION_TOOLBAR: { key: 'a', ctrl: false, shift: false },
     HELP:           { key: '?', ctrl: false, shift: false },
     THEME_PANEL:    { key: 't', ctrl: false, shift: false },
     NEW_WORKSPACE:  { key: 'n', ctrl: true, shift: false },
@@ -3351,7 +3352,8 @@
   // i18n keys for shortcut descriptions (reuse web.kbd.* keys)
   const SHORTCUT_DESC_KEYS = {
     UNDO: 'web.kbd.undo', REDO: 'web.kbd.redo', REDO_ALT: 'web.kbd.redo.alt',
-    ESCAPE: 'web.kbd.escape', TOGGLE_TOC: 'web.kbd.toc', HELP: 'web.kbd.help',
+    ESCAPE: 'web.kbd.escape', TOGGLE_TOC: 'web.kbd.toc',
+    TOGGLE_SELECTION_TOOLBAR: 'web.kbd.selection_toolbar', HELP: 'web.kbd.help',
     THEME_PANEL: 'web.kbd.theme',
     NEW_WORKSPACE: 'ws.add.hint',
     SEARCH: 'web.kbd.search', WORKSPACE_NAVIGATOR: 'web.kbd.workspace_nav',
@@ -3376,6 +3378,7 @@
     ['REDO', 'REDO_ALT'],
     ['ESCAPE'],
     ['TOGGLE_TOC'],
+    ['TOGGLE_SELECTION_TOOLBAR'],
     ['HELP'],
     ['THEME_PANEL'],
     ['NEW_WORKSPACE'],

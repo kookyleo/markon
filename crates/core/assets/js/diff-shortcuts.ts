@@ -154,6 +154,11 @@ const init = async (): Promise<void> => {
     km.register('DIFF_TOGGLE_VIEW', () => toggleView(shell));
     km.register('DIFF_NEXT_FILE', () => stepBlock(shell, 1));
     km.register('DIFF_PREV_FILE', () => stepBlock(shell, -1));
+    if (window.markonDiffAnnotations?.toggleSelectionToolbar) {
+        km.register('TOGGLE_SELECTION_TOOLBAR', () => {
+            window.markonDiffAnnotations?.toggleSelectionToolbar?.();
+        });
+    }
     if (Meta.flag(CONFIG.META_TAGS.ENABLE_LIVE) && collaboration) {
         km.register('TOGGLE_LIVE_ACTIVE', () => collaboration.toggleActiveMode());
         km.register('TOGGLE_LIVE_OFF', () => collaboration.toggleOff());

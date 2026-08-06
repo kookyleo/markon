@@ -465,6 +465,7 @@
     "web.kbd.redo.alt":     "Redo (alternative)",
     "web.kbd.escape":       "Close popups/Clear selection",
     "web.kbd.toc":          "Toggle/Focus TOC",
+    "web.kbd.selection_toolbar": "Temporarily enable/disable the selection toolbar",
     "web.kbd.help":         "Show features and shortcuts",
     "web.kbd.theme":        "Open theme switcher",
     "web.kbd.search":       "Open Workspace Spotlight",

@@ -127,6 +127,41 @@ describe('NoteInputModal', () => {
         expect(modal.querySelector('.note-input-drag-left')).not.toBeNull();
     });
 
+    it('renders directly over a margin card for wide-screen in-place editing', () => {
+        const card = document.createElement('div');
+        card.className = 'note-card-margin';
+        card.getBoundingClientRect = () => ({
+            left: 900,
+            top: 160,
+            right: 1180,
+            bottom: 250,
+            width: 280,
+            height: 90,
+            x: 900,
+            y: 160,
+            toJSON: () => ({}),
+        });
+        document.body.appendChild(card);
+        localStorage.setItem(
+            CONFIG.STORAGE_KEYS.NOTE_INPUT_SIZE,
+            JSON.stringify({ width: 420, height: 180 }),
+        );
+
+        const m = new NoteInputModal({ inlineInCard: true, initialValue: 'original' });
+        m.show(card);
+
+        const modal = m.getElement()!;
+        expect(modal.classList.contains('is-note-card-editor')).toBe(true);
+        expect(modal.getAttribute('role')).toBe('form');
+        expect(modal.getAttribute('aria-modal')).toBe('false');
+        expect(modal.style.position).toBe('absolute');
+        expect(modal.style.left).toBe('900px');
+        expect(modal.style.top).toBe('160px');
+        expect(modal.style.width).toBe('280px');
+        expect(modal.style.height).toBe('128px');
+        expect(modal.querySelector<HTMLTextAreaElement>('.note-textarea')?.value).toBe('original');
+    });
+
     it('restores anchor-relative drag offset', () => {
         const anchor = document.createElement('span');
         Object.defineProperty(anchor, 'getBoundingClientRect', {

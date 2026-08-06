@@ -247,11 +247,12 @@ class DiffAnnotationCoordinator {
         section: HTMLElement,
         selection: Range,
         existing: Annotation | null = null,
+        editSurface: HTMLElement | null = null,
     ): void {
         const rect = selection.getBoundingClientRect();
-        const anchorElement = { getBoundingClientRect: () => rect } as unknown as HTMLElement;
+        const selectionAnchor = { getBoundingClientRect: () => rect } as unknown as HTMLElement;
         ModalManager.showNoteInput({
-            anchorElement,
+            anchorElement: editSurface ?? selectionAnchor,
             initialValue: existing ? existing.note ?? '' : '',
             onSave: (noteText: string) => {
                 void (async () => {
@@ -289,6 +290,11 @@ class DiffAnnotationCoordinator {
                 window.getSelection()?.removeAllRanges();
             },
         });
+    }
+
+    /** Toggle the selection toolbar for this compare-page instance. */
+    toggleSelectionToolbar(): boolean {
+        return this.#popover.toggleEnabled();
     }
 
     // ── Document events ─────────────────────────────────────────────────────────
@@ -364,13 +370,16 @@ class DiffAnnotationCoordinator {
             const ctx = id ? this.#contextForAnnotationId(id) : null;
             const anno = id && ctx ? ctx.annotationManager.getById(id) : null;
             if (id && ctx && anno) {
-                document.querySelector('.note-popup')?.remove();
+                const notePopup = document.querySelector<HTMLElement>('.note-popup');
                 const el = this.#pane.querySelector<HTMLElement>(`[data-annotation-id="${id}"]`);
                 const section = el ? el.closest<HTMLElement>('.md-diff-file-section[data-abs-path]') : null;
                 if (el && section) {
                     ctx.annotationManager.setRoot(newSideRootFor(section));
                     const range = ctx.annotationManager.rangeForAnnotation(anno);
-                    if (range) this.#showNoteInputModal(ctx, section, range, anno);
+                    if (range) {
+                        this.#showNoteInputModal(ctx, section, range, anno, notePopup);
+                        notePopup?.remove();
+                    }
                 }
             }
             e.stopPropagation();
@@ -442,6 +451,7 @@ const init = (): void => {
         onContentRendered: () => coordinator.onContentRendered(),
         exportNotes: (anchor) => coordinator.exportNotes(anchor),
         notesCount: () => coordinator.notesCount(),
+        toggleSelectionToolbar: () => coordinator.toggleSelectionToolbar(),
     };
     document.dispatchEvent(new CustomEvent('markon:diff-annotations-ready'));
 };

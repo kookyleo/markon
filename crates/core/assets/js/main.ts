@@ -553,6 +553,12 @@ export class MarkonApp {
             this.#toggleTOC();
         });
 
+        if (this.#popoverManager) {
+            shortcuts.register('TOGGLE_SELECTION_TOOLBAR', () => {
+                this.#popoverManager?.toggleEnabled();
+            });
+        }
+
         shortcuts.register('UNDO', () => {
             void this.#handleUndo().catch((error: unknown) => {
                 window.alert(error instanceof Error ? error.message : String(error));
@@ -717,7 +723,11 @@ export class MarkonApp {
      * Show the note input modal.
      * @private
      */
-    #showNoteInputModal(selection: Range, annotation: Annotation | null = null): void {
+    #showNoteInputModal(
+        selection: Range,
+        annotation: Annotation | null = null,
+        editSurface: HTMLElement | null = null,
+    ): void {
         // Build temporary highlight overlays — we can't keep the live selection
         // alive while a textarea steals focus.
         const createSelectionOverlay = (): HTMLElement[] => {
@@ -750,12 +760,19 @@ export class MarkonApp {
         };
 
         const rect = selection.getBoundingClientRect();
-        const anchorElement = {
+        const selectionAnchor = {
             getBoundingClientRect: () => rect,
         } as unknown as HTMLElement;
+        const marginCard =
+            annotation &&
+            window.innerWidth > CONFIG.BREAKPOINTS.WIDE_SCREEN &&
+            editSurface?.matches('.note-card-margin')
+                ? editSurface
+                : null;
 
         ModalManager.showNoteInput({
-            anchorElement,
+            anchorElement: marginCard ?? editSurface ?? selectionAnchor,
+            inlineInCard: Boolean(marginCard),
             initialValue: annotation ? annotation.note ?? '' : '',
             onSave: (noteText: string) => {
                 void (async () => {
@@ -930,11 +947,23 @@ export class MarkonApp {
                 if (!annotationId) return;
                 const annotation = this.#annotationManager.getById(annotationId);
                 if (annotation) {
-                    document.querySelector('.note-popup')?.remove();
+                    const editSurface = editBtn.closest<HTMLElement>(
+                        '.note-card-margin, .note-popup',
+                    );
+                    const notePopup = document.querySelector<HTMLElement>('.note-popup');
 
                     const range = this.#annotationManager.rangeForAnnotation(annotation);
                     if (range) {
-                        this.#showNoteInputModal(range, annotation);
+                        if (
+                            editSurface?.matches('.note-card-margin') &&
+                            this.#noteManager.getActiveAnnotationId() !== annotationId
+                        ) {
+                            this.#noteManager.setActive(annotationId);
+                        }
+                        this.#showNoteInputModal(range, annotation, editSurface);
+                        // Positioning is synchronous, so a narrow-screen editor
+                        // can read the popup's live rect before we replace it.
+                        notePopup?.remove();
                     }
                 }
                 e.stopPropagation();

@@ -465,6 +465,7 @@
     "web.kbd.redo.alt":     "やり直し (代替)",
     "web.kbd.escape":       "ポップアップを閉じる/選択を解除",
     "web.kbd.toc":          "目次の切り替え/フォーカス",
+    "web.kbd.selection_toolbar": "このページの選択ツールバーを一時的に有効化/無効化",
     "web.kbd.help":         "機能とショートカットを表示",
     "web.kbd.theme":        "テーマ切り替えを開く",
     "web.kbd.search":       "Workspace Spotlight を開く",

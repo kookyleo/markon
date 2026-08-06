@@ -86,6 +86,7 @@ export class PopoverManager {
     #enableEdit: boolean;
     #enableChat: boolean;
     #enableNote: boolean;
+    #enabled = true;
     #reject: ((node: Node) => boolean) | undefined;
     #selectionScope: ((node: Node) => Node | null) | undefined;
 
@@ -106,6 +107,8 @@ export class PopoverManager {
     }
 
     show(range: Range, highlightedElement: Element | null = null): void {
+        if (!this.#enabled) return;
+
         const selectedText = range.toString();
         this.#currentSelection = range.cloneRange();
         this.#currentHighlightedElement = highlightedElement;
@@ -133,6 +136,22 @@ export class PopoverManager {
         return this.#element.style.display !== 'none';
     }
 
+    /** Temporarily enable or disable the toolbar for this page instance. */
+    setEnabled(enabled: boolean): boolean {
+        this.#enabled = enabled;
+        if (!enabled) this.hide();
+        Logger.log('PopoverManager', enabled ? 'Enabled' : 'Disabled');
+        return enabled;
+    }
+
+    toggleEnabled(): boolean {
+        return this.setEnabled(!this.#enabled);
+    }
+
+    isEnabled(): boolean {
+        return this.#enabled;
+    }
+
     getCurrentSelection(): Range | null {
         return this.#currentSelection;
     }
@@ -146,6 +165,11 @@ export class PopoverManager {
     }
 
     handleSelection(event: Event): void {
+        if (!this.#enabled) {
+            if (this.isVisible()) this.hide();
+            return;
+        }
+
         const target = event.target as Element | null;
 
         // Ignore clicks that originate inside the popover itself.
@@ -234,6 +258,8 @@ export class PopoverManager {
     }
 
     handleHighlightClick(highlightedElement: Element): void {
+        if (!this.#enabled) return;
+
         // A diff re-render can leave a click handler holding a detached element;
         // never place the toolbar against something no longer in the document.
         if (!highlightedElement.isConnected) {

@@ -162,6 +162,101 @@ describe('MarkonApp', () => {
         expect(m.wsManager).toBeNull();
     });
 
+    it('toggles the selection toolbar from its shortcut and lists it in help', async () => {
+        seedMarkdownBody();
+        const app = new MarkonApp({ filePath: 'docs/x.md' });
+        await app.init();
+
+        const { popoverManager, shortcutsManager } = app.getManagers();
+        expect(popoverManager?.isEnabled()).toBe(true);
+        expect(shortcutsManager?.run('TOGGLE_SELECTION_TOOLBAR')).toBe(true);
+        expect(popoverManager?.isEnabled()).toBe(false);
+
+        shortcutsManager?.showHelp();
+        const item = document.querySelector<HTMLElement>(
+            '.shortcut-item[data-shortcut-name="TOGGLE_SELECTION_TOOLBAR"]',
+        );
+        expect(item).not.toBeNull();
+        item?.click();
+        expect(popoverManager?.isEnabled()).toBe(true);
+        expect(document.querySelector('.shortcuts-help-panel')).toBeNull();
+    });
+
+    it('edits a wide-screen margin note directly over its card', async () => {
+        vi.stubGlobal('innerWidth', 1600);
+        const body = seedMarkdownBody();
+        const app = new MarkonApp({ filePath: 'docs/x.md' });
+        await app.init();
+
+        const { annotationManager, noteManager } = app.getManagers();
+        expect(annotationManager).not.toBeNull();
+        expect(noteManager).not.toBeNull();
+        if (!annotationManager || !noteManager) return;
+
+        const text = body.querySelector('p')?.firstChild;
+        expect(text).not.toBeNull();
+        if (!text) return;
+        const range = document.createRange();
+        range.selectNodeContents(text);
+        const annotation = annotationManager.createAnnotation(
+            range,
+            'has-note',
+            'span',
+            'Original note',
+        );
+        await annotationManager.add(annotation, true);
+        annotationManager.applyToDOM([annotation]);
+        noteManager.render();
+
+        const card = document.querySelector<HTMLElement>(
+            `.note-card-margin[data-annotation-id="${annotation.id}"]`,
+        );
+        expect(card).not.toBeNull();
+        if (!card) return;
+        card.getBoundingClientRect = () => ({
+            left: 1200,
+            top: 180,
+            right: 1480,
+            bottom: 270,
+            width: 280,
+            height: 90,
+            x: 1200,
+            y: 180,
+            toJSON: () => ({}),
+        });
+
+        const editRange = annotationManager.rangeForAnnotation(annotation);
+        expect(editRange).not.toBeNull();
+        if (!editRange) return;
+        editRange.getClientRects = () => [] as unknown as DOMRectList;
+        editRange.getBoundingClientRect = () => ({
+            left: 120,
+            top: 180,
+            right: 220,
+            bottom: 200,
+            width: 100,
+            height: 20,
+            x: 120,
+            y: 180,
+            toJSON: () => ({}),
+        });
+        vi.spyOn(annotationManager, 'rangeForAnnotation').mockReturnValue(editRange);
+
+        card.querySelector<HTMLButtonElement>('.note-edit')?.click();
+        await flush();
+
+        const editor = document.querySelector<HTMLElement>(
+            '.note-input-modal.is-note-card-editor',
+        );
+        expect(editor).not.toBeNull();
+        expect(editor?.style.left).toBe('1200px');
+        expect(editor?.style.top).toBe('180px');
+        expect(editor?.style.width).toBe('280px');
+        expect(editor?.querySelector<HTMLTextAreaElement>('.note-textarea')?.value)
+            .toBe('Original note');
+        expect(card.classList.contains('highlight-active')).toBe(true);
+    });
+
     it('plain markdown-body without the interactive marker stays in minimal mode', async () => {
         const body = document.createElement('article');
         body.className = 'markdown-body';

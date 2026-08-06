@@ -108,6 +108,38 @@ describe('PopoverManager', () => {
         expect(m.getCurrentHighlightedElement()).toBeNull();
     });
 
+    it('temporarily disables and re-enables the toolbar without changing the native selection', () => {
+        const { body, textNode, paragraph } = setupBody();
+        const m = new PopoverManager(body);
+        const range = rangeOver(textNode, 5);
+        const removeAllRanges = vi.fn();
+        vi.spyOn(window, 'getSelection').mockReturnValue({
+            rangeCount: 1,
+            toString: () => range.toString(),
+            getRangeAt: () => range,
+            removeAllRanges,
+        } as unknown as Selection);
+
+        m.show(range);
+        expect(m.isVisible()).toBe(true);
+        expect(m.toggleEnabled()).toBe(false);
+        expect(m.isEnabled()).toBe(false);
+        expect(m.isVisible()).toBe(false);
+
+        const event = new MouseEvent('mouseup', { bubbles: true });
+        Object.defineProperty(event, 'target', { value: paragraph, configurable: true });
+        m.handleSelection(event);
+        m.show(range);
+        expect(m.isVisible()).toBe(false);
+        expect(removeAllRanges).not.toHaveBeenCalled();
+        expect(range.toString()).toBe('Hello');
+
+        expect(m.toggleEnabled()).toBe(true);
+        expect(m.isEnabled()).toBe(true);
+        m.handleSelection(event);
+        expect(m.isVisible()).toBe(true);
+    });
+
     it('clicking a button fires onAction with the action name and payload', () => {
         const { body, textNode } = setupBody();
         const m = new PopoverManager(body);

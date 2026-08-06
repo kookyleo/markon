@@ -18,6 +18,11 @@ describe('CONFIG.SHORTCUTS', () => {
         expect(CONFIG.SHORTCUTS.REDO).toMatchObject({ key: 'z', ctrl: true, shift: true });
         expect(CONFIG.SHORTCUTS.REDO_ALT).toMatchObject({ key: 'y', ctrl: true, shift: false });
         expect(CONFIG.SHORTCUTS.ESCAPE).toMatchObject({ key: 'Escape', ctrl: false, shift: false });
+        expect(CONFIG.SHORTCUTS.TOGGLE_SELECTION_TOOLBAR).toMatchObject({
+            key: 'a',
+            ctrl: false,
+            shift: false,
+        });
         expect(CONFIG.SHORTCUTS.SEARCH).toMatchObject({ key: '/', ctrl: false, shift: false });
         expect(CONFIG.SHORTCUTS.EXPORT_NOTES).toMatchObject({ key: 'x', ctrl: false, shift: false });
         expect(CONFIG.SHORTCUTS.WORKSPACE_NAVIGATOR).toMatchObject({ key: 'g', ctrl: false, shift: false });
@@ -91,6 +96,7 @@ describe('CONFIG.SHORTCUTS', () => {
             "TOGGLE_LIVE_ACTIVE",
             "TOGGLE_LIVE_OFF",
             "TOGGLE_SECTION_COLLAPSE",
+            "TOGGLE_SELECTION_TOOLBAR",
             "TOGGLE_TOC",
             "TOGGLE_VIEWED",
             "UNDO",

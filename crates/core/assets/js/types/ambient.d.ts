@@ -60,6 +60,7 @@ declare global {
       onContentRendered: () => void;
       exportNotes: (anchor?: HTMLElement | null) => Promise<boolean>;
       notesCount: () => Promise<number>;
+      toggleSelectionToolbar?: () => boolean;
     };
     isSharedAnnotationMode?: boolean;
     openEditorAtLine?: (line: number) => void;

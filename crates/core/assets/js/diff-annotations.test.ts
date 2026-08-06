@@ -51,6 +51,7 @@ describe('diff annotation coordinator init', () => {
         expect(window.markonDiffAnnotations).toBeTruthy();
         expect(typeof window.markonDiffAnnotations?.exportNotes).toBe('function');
         expect(typeof window.markonDiffAnnotations?.notesCount).toBe('function');
+        expect(window.markonDiffAnnotations?.toggleSelectionToolbar).toBeUndefined();
     });
 
     it('exports every file through the shared context-aware Markdown formatter', async () => {
@@ -106,6 +107,9 @@ describe('diff annotation coordinator init', () => {
 
         await import('./diff-annotations');
 
+        expect(typeof window.markonDiffAnnotations?.toggleSelectionToolbar).toBe('function');
+        expect(window.markonDiffAnnotations?.toggleSelectionToolbar?.()).toBe(false);
+        expect(window.markonDiffAnnotations?.toggleSelectionToolbar?.()).toBe(true);
         await expect(window.markonDiffAnnotations?.exportNotes()).resolves.toBe(true);
         const editorDom = document.querySelector<HTMLElement>('.cm-editor');
         expect(editorDom).toBeTruthy();

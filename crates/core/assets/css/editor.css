@@ -486,6 +486,14 @@ html[data-theme="dark"] .markdown-body h6.heading-focused {
     resize: both;
 }
 
+.note-input-modal.is-note-card-editor {
+    position: absolute;
+    min-width: 0;
+    min-height: 128px;
+    max-width: var(--markon-note-width, 280px);
+    resize: none;
+}
+
 .note-input-modal.markon-modal-frame::before,
 .note-input-modal.markon-modal-frame::after {
     display: none;
@@ -739,17 +747,25 @@ html[data-theme="dark"] .markdown-body h6.heading-focused {
     border: 0.5px solid var(--markon-border-default);
 }
 
-/* Margin card: the cluster floats over the text and only appears on hover, so
-   the text uses the full width and no space is reserved for it. */
+/* Margin card: actions live inside the card and remain visible while it is
+   active/focused. This keeps both the controls and the editor in one local
+   interaction area instead of making the pointer travel above the rail. */
 .note-card-margin .note-actions {
-    top: -28px;
-    right: 2px;
+    top: 6px;
+    right: 6px;
     opacity: 0;
     pointer-events: none;
     transition: opacity 0.12s ease;
     z-index: 1;
 }
-.note-card-margin:hover .note-actions {
+
+.note-card-margin .note-content {
+    padding-top: 26px;
+}
+
+.note-card-margin:hover .note-actions,
+.note-card-margin.highlight-active .note-actions,
+.note-card-margin:focus-within .note-actions {
     opacity: 1;
     pointer-events: auto;
 }

@@ -95,6 +95,7 @@ export const CONFIG = {
         REDO_ALT: { key: 'y', ctrl: true, shift: false, desc: _t('web.kbd.redo.alt'), cat: 'core' },
         ESCAPE: { key: 'Escape', ctrl: false, shift: false, desc: _t('web.kbd.escape'), cat: 'core' },
         TOGGLE_TOC: { key: '\\', ctrl: true, shift: false, desc: _t('web.kbd.toc'), cat: 'core' },
+        TOGGLE_SELECTION_TOOLBAR: { key: 'a', ctrl: false, shift: false, desc: _t('web.kbd.selection_toolbar'), cat: 'core' },
         SEARCH: { key: '/', ctrl: false, shift: false, desc: _t('web.kbd.search'), cat: 'search', feature: 'workspace_spotlight' },
         EXPORT_NOTES: { key: 'x', ctrl: false, shift: false, desc: _t('web.kbd.exportnotes'), cat: 'core' },
         WORKSPACE_NAVIGATOR: { key: 'g', ctrl: false, shift: false, desc: _t('web.kbd.workspace_nav'), cat: 'search', feature: 'workspace_spotlight' },
