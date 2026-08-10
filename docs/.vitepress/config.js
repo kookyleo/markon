@@ -1,7 +1,6 @@
 import { defineConfig } from 'vitepress';
-import { zh } from './locales/zh.js';
 import { en } from './locales/en.js';
-import { ja } from './locales/ja.js';
+import { zh } from './locales/zh.js';
 
 // Pulled at build time so the homepage and install page can link to the actual
 // latest release (Tauri bundles are versioned, so /releases/latest/download/X
@@ -40,38 +39,48 @@ async function fetchLatestRelease() {
 }
 
 export default defineConfig({
-  title: 'Markon',
-  description: 'Turn your markdown on. — A lightweight, local-first Markdown reading & review workbench. Open source and free.',
+  lang: 'en-US',
+  title: 'Markon - Mark it on',
+  description: 'A local-first Markdown reading, review, Git, and collaboration workbench for desktop and server workflows.',
 
   base,
 
   cleanUrls: true,
   lastUpdated: true,
+  sitemap: {
+    hostname: 'https://kookyleo.github.io/markon/',
+  },
   head: [
     ['link', { rel: 'icon', type: 'image/png', href: `${base}favicon.png` }],
+    ['meta', { name: 'theme-color', content: '#168a4a' }],
+    ['meta', { property: 'og:type', content: 'website' }],
+    ['meta', { property: 'og:site_name', content: 'Markon' }],
+    ['meta', { property: 'og:title', content: 'Markon — Local-first Markdown workbench' }],
+    ['meta', { property: 'og:description', content: 'Read, review, edit, compare, and collaborate on local Markdown without uploading the workspace.' }],
+    ['meta', { property: 'og:url', content: 'https://kookyleo.github.io/markon/' }],
+    ['meta', { property: 'og:image', content: 'https://kookyleo.github.io/markon/og.jpg' }],
+    ['meta', { name: 'twitter:card', content: 'summary_large_image' }],
+    ['meta', { name: 'twitter:title', content: 'Markon — Local-first Markdown workbench' }],
+    ['meta', { name: 'twitter:description', content: 'Read, review, edit, compare, and collaborate on local Markdown.' }],
+    ['meta', { name: 'twitter:image', content: 'https://kookyleo.github.io/markon/og.jpg' }],
   ],
 
   themeConfig: {
-    // Logo is a baked wordmark (mark + "Markon" as vector paths), so the
-    // text title is hidden to avoid duplicating the brand name.
-    logo: { light: '/logo-wordmark-light.svg', dark: '/logo-wordmark-dark.svg', alt: 'Markon' },
-    siteTitle: false,
+    // The documentation body is currently authored in Chinese, so retain its
+    // complete sidebar and document controls while using English as the
+    // browser-independent static shell fallback. Client-side locale copy then
+    // updates the shared shell without adding a language URL segment.
+    ...zh.themeConfig,
+    ...en.themeConfig,
+    // Keep the navigation quiet: the product mark belongs to the home hero,
+    // while the persistent navigation uses the wordmark only.
+    logo: false,
+    siteTitle: 'Markon',
     search: { provider: 'local' },
     socialLinks: [
       { icon: 'github', link: 'https://github.com/kookyleo/markon' },
     ],
     // Consumed by docs/.vitepress/theme/components/DownloadButton.vue.
     markonRelease: release,
-  },
-
-  // Chinese is the default language, served at the root path.
-  // English and Japanese live at /en/ and /ja/.
-  // The language switcher shows exactly three options — no extra "root" entry.
-  // Per-locale nav/sidebar/label text lives in ./locales/*.js so this config
-  // file stays ASCII-only (CJK label text belongs under a /locales/ path).
-  locales: {
-    root: zh,
-    en,
-    ja,
   },
 });

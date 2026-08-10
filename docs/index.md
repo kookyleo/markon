@@ -3,19 +3,20 @@ layout: home
 
 hero:
   name: Markon
-  text: Mark it on.
-  tagline: 轻量级的 Markdown 阅览与审校工作台。开源、免费，完全本地。
+  tagline: |-
+    <span class="markon-hero-declaration">Help people and agents reach agreement in documents.</span>
+    <span class="markon-hero-explainer">Design is rarely finished in one pass. It converges through review, revision, and review again. Markon is a Markdown IDE for people and agents to refine Specs together: read the current proposal, leave feedback or edit it directly, then review what changed in the next version—repeat until everyone agrees.</span>
   image:
     light: /logo-light.svg
     dark: /logo-dark.svg
     alt: Markon
   actions:
     - theme: brand
-      text: 快速上手
+      text: Get started
       link: /guide/getting-started
     - theme: alt
-      text: 查看功能
-      link: /features/search
+      text: Explore features
+      link: /features/
     - theme: alt
       text: GitHub
       link: https://github.com/kookyleo/markon
@@ -23,13 +24,17 @@ hero:
 
 <FeatureGallery />
 
-## 即刻开始
+<HomeDownloadSection>
+
+<h2 id="downloads" class="markon-home-download-title">Get started</h2>
 
 <DownloadButton />
 
-或通过 [Cargo](https://crates.io/crates/markon) 安装命令行版本：
+<p class="markon-home-download-copy">The desktop app already includes the background service. For servers or terminal-only workflows, install <code>markon</code> and <code>markond</code> through <a href="https://crates.io/crates/markon">Cargo</a>:</p>
 
 ```bash
-cargo install markon
+cargo install markon markond
 markon README.md
 ```
+
+</HomeDownloadSection>

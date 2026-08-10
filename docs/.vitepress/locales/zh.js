@@ -4,47 +4,62 @@
 export const zh = {
   label: '简体中文',
   lang: 'zh-CN',
-  description: 'Turn your markdown on. — 轻量级 Markdown 阅览与审校工作台。开源、免费、完全本地。',
+  description: '本地优先的 Markdown 阅读、审阅、Git 对比与协作工作台。',
   themeConfig: {
     nav: [
-      { text: '指南', link: '/guide/getting-started' },
-      { text: '功能', link: '/features/search' },
-      { text: '进阶', link: '/advanced/shared-annotations' },
+      { text: '开始使用', link: '/guide/getting-started' },
+      { text: '产品能力', link: '/features/' },
+      { text: '部署与数据', link: '/advanced/data-and-privacy' },
       { text: '常见问题', link: '/faq' },
-      { text: 'Release', link: 'https://github.com/kookyleo/markon/releases' },
     ],
     sidebar: {
       '/guide/': [
         {
-          text: '入门',
+          text: '认识 Markon',
           items: [
-            { text: '简介', link: '/guide/introduction' },
+            { text: '产品定位', link: '/guide/introduction' },
             { text: '快速上手', link: '/guide/getting-started' },
             { text: '安装', link: '/guide/installation' },
+            { text: '运行架构', link: '/guide/architecture' },
             { text: '命令行选项', link: '/guide/cli' },
           ],
         },
       ],
       '/features/': [
         {
-          text: '核心功能',
+          text: '工作区',
           items: [
-            { text: '全文搜索', link: '/features/search' },
-            { text: '与文档对话', link: '/features/chat' },
-            { text: '已读追踪 (Viewed)', link: '/features/viewed' },
-            { text: '快捷编辑', link: '/features/edit' },
-            { text: '注解与笔记', link: '/features/annotations' },
+            { text: '能力总览', link: '/features/' },
+            { text: '工作区与文件浏览', link: '/features/workspaces' },
+            { text: 'Markdown 渲染', link: '/features/rendering' },
+            { text: 'Workspace Spotlight', link: '/features/search' },
+            { text: 'Git 浏览与对比', link: '/features/git' },
+          ],
+        },
+        {
+          text: '阅读与审阅',
+          items: [
+            { text: '批注与 Notes', link: '/features/annotations' },
+            { text: '章节进度与折叠', link: '/features/viewed' },
             { text: '导出便条', link: '/features/export' },
-            { text: '实时协作 (Live)', link: '/features/live' },
             { text: '章节打印', link: '/features/print' },
-            { text: '访问码', link: '/features/access' },
+            { text: '源码编辑', link: '/features/edit' },
+          ],
+        },
+        {
+          text: '协作与智能',
+          items: [
+            { text: '实时演示 (Live)', link: '/features/live' },
+            { text: 'Workspace AI', link: '/features/chat' },
+            { text: '访问与权限', link: '/features/access' },
           ],
         },
       ],
       '/advanced/': [
         {
-          text: '进阶用法',
+          text: '部署、数据与定制',
           items: [
+            { text: '数据与隐私', link: '/advanced/data-and-privacy' },
             { text: '共享批注', link: '/advanced/shared-annotations' },
             { text: '反向代理', link: '/advanced/reverse-proxy' },
             { text: '自定义样式', link: '/advanced/custom-styles' },
@@ -61,9 +76,5 @@ export const zh = {
     darkModeSwitchLabel: '主题',
     lightModeSwitchTitle: '切换到浅色模式',
     darkModeSwitchTitle: '切换到深色模式',
-    footer: {
-      message: '以 Apache 2.0 协议发布',
-      copyright: 'Copyright © 2026 kookyleo',
-    },
   },
 };

@@ -1,6 +1,8 @@
 <script setup>
 import { computed, onMounted, ref } from 'vue';
 import { useData } from 'vitepress';
+import { fetchLatestRelease } from '../latest-release';
+import { useHomeLocale } from '../home-locale';
 
 const props = defineProps({
   // 'primary': big auto-detected button + collapsible others
@@ -11,11 +13,60 @@ const props = defineProps({
   os: { type: String, default: null },
 });
 
-const { theme } = useData();
-const release = computed(() => theme.value.markonRelease);
+const { theme, lang, frontmatter } = useData();
+const { locale: homeLocale } = useHomeLocale();
+const release = ref(theme.value.markonRelease);
+
+const COPY = {
+  zh: {
+    current: '当前系统',
+    download: '下载 Markon',
+    all: '其他平台 / 架构',
+    collapse: '收起',
+    unmatched: '当前系统未匹配 — 查看所有平台',
+    detecting: '检测中…',
+    unavailable: '此版本未发布',
+    fallback: '在 GitHub Releases 查看所有版本 →',
+    nav: '下载',
+    allPlatforms: '所有平台',
+  },
+  en: {
+    current: 'Current system',
+    download: 'Download Markon',
+    all: 'Other platforms / architectures',
+    collapse: 'Collapse',
+    unmatched: 'No matching package — view all platforms',
+    detecting: 'Detecting…',
+    unavailable: 'Not published in this release',
+    fallback: 'View all versions on GitHub Releases →',
+    nav: 'Download',
+    allPlatforms: 'All platforms',
+  },
+  ja: {
+    current: '現在のシステム',
+    download: 'Markon をダウンロード',
+    all: 'その他のプラットフォーム / アーキテクチャ',
+    collapse: '閉じる',
+    unmatched: '対応パッケージなし — 全プラットフォームを表示',
+    detecting: '検出中…',
+    unavailable: 'このリリースでは未公開',
+    fallback: 'GitHub Releases ですべてのバージョンを見る →',
+    nav: 'ダウンロード',
+    allPlatforms: '全プラットフォーム',
+  },
+};
+const localeKey = computed(() => {
+  if (frontmatter.value.layout === 'home') return homeLocale.value;
+  return lang.value.startsWith('ja') ? 'ja' : lang.value.startsWith('en') ? 'en' : 'zh';
+});
+const copy = computed(() => COPY[localeKey.value]);
 
 const detected = ref(null);
-onMounted(async () => { detected.value = await detectPlatform(); });
+onMounted(async () => {
+  detected.value = await detectPlatform();
+  const latest = await fetchLatestRelease();
+  if (latest) release.value = latest;
+});
 
 async function detectPlatform() {
   const ua = navigator.userAgent || '';
@@ -60,7 +111,7 @@ function pickPrimary(assets, os, arch) {
   const find = (...patterns) => assets.find(a => patterns.every(p => p.test(a.name)));
   if (os === 'macos') return arch === 'arm64' ? find(/\.dmg$/, /aarch64/) : find(/\.dmg$/, /(x86_64|x64)/);
   if (os === 'windows') return arch === 'arm64' ? find(/setup\.exe$/, /arm64/) : find(/setup\.exe$/, /x64/);
-  if (os === 'linux') return arch === 'arm64' ? find(/\.AppImage$/, /aarch64/) : find(/\.AppImage$/, /amd64/);
+  if (os === 'linux') return arch === 'arm64' ? find(/\.AppImage$/, /(arm64|aarch64)/) : find(/\.AppImage$/, /amd64/);
   return null;
 }
 
@@ -73,7 +124,7 @@ const primary = computed(() =>
 const platformLabel = computed(() => {
   if (!detected.value) return '';
   const { os, arch } = detected.value;
-  const o = { macos: 'macOS', windows: 'Windows', linux: 'Linux' }[os] || '当前系统';
+  const o = { macos: 'macOS', windows: 'Windows', linux: 'Linux' }[os] || copy.value.current;
   const a = arch === 'arm64' ? (os === 'macos' ? 'Apple Silicon' : 'ARM64')
           : arch === 'x64'   ? (os === 'macos' ? 'Intel' : 'x64')
           : '';
@@ -95,7 +146,7 @@ const MATRIX = {
   ],
   linux: [
     { variant: 'AppImage · amd64',  match: a => /\.AppImage$/.test(a) && /amd64/.test(a) },
-    { variant: 'AppImage · aarch64', match: a => /\.AppImage$/.test(a) && /aarch64/.test(a) },
+    { variant: 'AppImage · arm64', match: a => /\.AppImage$/.test(a) && /(arm64|aarch64)/.test(a) },
     { variant: 'deb · amd64',       match: a => /\.deb$/.test(a) && /amd64/.test(a) },
     { variant: 'deb · arm64',       match: a => /\.deb$/.test(a) && /(arm64|aarch64)/.test(a) },
   ],
@@ -135,7 +186,7 @@ const showAll = ref(false);
 <template>
   <div v-if="!release" class="markon-dl-fallback">
     <a href="https://github.com/kookyleo/markon/releases/latest" target="_blank" rel="noopener">
-      在 GitHub Releases 查看所有版本 →
+      {{ copy.fallback }}
     </a>
   </div>
 
@@ -143,19 +194,19 @@ const showAll = ref(false);
     <a v-if="primary" :href="primary.url" class="markon-dl-primary">
       <span class="markon-dl-arrow">↓</span>
       <span class="markon-dl-stack">
-        <span class="markon-dl-title">下载 Markon {{ release.version }}</span>
+        <span class="markon-dl-title">{{ copy.download }} {{ release.version }}</span>
         <span class="markon-dl-meta">{{ platformLabel }} · {{ formatBytes(primary.size) }}</span>
       </span>
     </a>
     <a v-else :href="release.htmlUrl" class="markon-dl-primary" target="_blank" rel="noopener">
       <span class="markon-dl-arrow">↓</span>
       <span class="markon-dl-stack">
-        <span class="markon-dl-title">下载 Markon {{ release.version }}</span>
-        <span class="markon-dl-meta">{{ detected ? '当前系统未匹配 — 查看所有平台' : '检测中…' }}</span>
+        <span class="markon-dl-title">{{ copy.download }} {{ release.version }}</span>
+        <span class="markon-dl-meta">{{ detected ? copy.unmatched : copy.detecting }}</span>
       </span>
     </a>
     <button class="markon-dl-toggle" @click="showAll = !showAll">
-      {{ showAll ? '收起' : '其他平台 / 架构' }}
+      {{ showAll ? copy.collapse : copy.all }}
     </button>
     <div v-if="showAll" class="markon-dl-list">
       <div v-for="g in grouped" :key="g.label" class="markon-dl-group">
@@ -164,7 +215,7 @@ const showAll = ref(false);
           <li v-for="a in g.items" :key="a.variant" :class="{ unavailable: !a.available }">
             <a v-if="a.available" :href="a.url">{{ a.variant }}</a>
             <span v-else class="markon-dl-disabled">{{ a.variant }}</span>
-            <span class="markon-dl-name">{{ a.available ? a.name : '此版本未发布' }}</span>
+            <span class="markon-dl-name">{{ a.available ? a.name : copy.unavailable }}</span>
             <span class="markon-dl-size">{{ formatBytes(a.size) }}</span>
           </li>
         </ul>
@@ -179,7 +230,7 @@ const showAll = ref(false);
     :title="`Markon ${release.version} · ${platformLabel} · ${formatBytes(primary.size)}`"
   >
     <span class="markon-dl-nav-arrow">↓</span>
-    <span>下载 {{ platformLabel || '' }}</span>
+    <span>{{ copy.nav }} {{ platformLabel || '' }}</span>
   </a>
   <a
     v-else-if="mode === 'nav'"
@@ -187,10 +238,10 @@ const showAll = ref(false);
     class="markon-dl-nav"
     target="_blank"
     rel="noopener"
-    :title="`Markon ${release.version} · 所有平台`"
+    :title="`Markon ${release.version} · ${copy.allPlatforms}`"
   >
     <span class="markon-dl-nav-arrow">↓</span>
-    <span>下载</span>
+    <span>{{ copy.nav }}</span>
   </a>
 
   <div v-else-if="mode === 'os'" class="markon-dl-list">
@@ -198,7 +249,7 @@ const showAll = ref(false);
       <li v-for="a in osItems" :key="a.variant" :class="{ unavailable: !a.available }">
         <a v-if="a.available" :href="a.url">{{ a.variant }}</a>
         <span v-else class="markon-dl-disabled">{{ a.variant }}</span>
-        <span class="markon-dl-name">{{ a.available ? a.name : '此版本未发布' }}</span>
+        <span class="markon-dl-name">{{ a.available ? a.name : copy.unavailable }}</span>
         <span class="markon-dl-size">{{ formatBytes(a.size) }}</span>
       </li>
     </ul>
@@ -231,8 +282,8 @@ const showAll = ref(false);
    clearly the primary action, distinct from the neutral nav links beside it. */
 .markon-dl-nav {
   display: inline-flex; align-items: center; gap: 6px;
-  height: 30px; padding: 0 14px;
-  margin: 0 24px;
+  height: 30px; padding: 0 12px;
+  margin: 0 10px;
   border: 1px solid transparent;
   border-radius: 16px;
   background: var(--vp-c-brand-soft);
@@ -249,9 +300,9 @@ const showAll = ref(false);
   font-size: 14px; line-height: 1;
 }
 
-@media (max-width: 768px) {
-  /* On small screens the navbar collapses; hide the nav pill to avoid
-     squeezing — users can still reach the download via hamburger menu / hero. */
+@media (max-width: 1320px) {
+  /* Keep the shared theme, GitHub, and locale controls visible on narrower
+     desktop layouts. Download remains available in the footer and on home. */
   .markon-dl-nav { display: none; }
 }
 
