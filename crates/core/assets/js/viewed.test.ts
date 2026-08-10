@@ -251,6 +251,24 @@ describe('SectionViewedManager', () => {
         expect(cb?.checked).toBe(true);
     });
 
+    it('keeps the collapsed hint visible when collapse state is re-applied (#75)', async () => {
+        seedMeta('file-path', 'docs/x.md');
+        seedMeta('enable-viewed', 'true');
+        localStorage.setItem('markon-collapsed-docs/x.md', JSON.stringify({ 'h2-a': true }));
+        buildArticle(['h2-a']);
+
+        // init() applies the collapsed state once and inserts the hint;
+        // attachStorage() applies it a second time once SQLite is attached.
+        const mgr = new SectionViewedManager(false, null);
+        await mgr.ready;
+        await mgr.attachStorage(fakeStorage({}).storage, null);
+
+        expect(document.getElementById('h2-a')?.classList.contains('section-collapsed')).toBe(true);
+        const placeholders = document.querySelectorAll('.section-collapsed-placeholder');
+        expect(placeholders.length).toBe(1);
+        expect(itemAt(placeholders, 0).classList.contains('section-content-hidden')).toBe(false);
+    });
+
     it('toggleCollapse flips section-collapsed without touching viewedState', async () => {
         seedMeta('file-path', 'docs/x.md');
         seedMeta('enable-viewed', 'true');

@@ -461,6 +461,12 @@ export class SectionViewedManager {
 
         heading.classList.add('section-collapsed');
         content.forEach((el) => {
+            // The hint placeholder sits right after the heading, so a second
+            // collapse of the same section picks it up as section content.
+            // Hiding it would leave the section collapsed with no hint — the
+            // exact symptom after a reload, where applyViewedState() runs once
+            // during init() and again from attachStorage().
+            if (el.classList.contains('section-collapsed-placeholder')) return;
             el.classList.add('section-content-hidden');
             el.classList.remove('section-content-temp-visible');
         });
