@@ -48,6 +48,11 @@ Markon 提供 macOS、Windows、Linux 的 Tauri 桌面应用，也提供适合�
 | Windows | x64 与 ARM64 NSIS 安装程序 |
 | Linux | x64 与 ARM64 `.deb`、`.AppImage` |
 
+[固定下载页](https://kookyleo.github.io/markon/download)会识别当前平台并解析最新稳定版安装包。
+项目的 [Code signing policy](https://kookyleo.github.io/markon/download#code-signing-policy)
+说明了签名流程：免费代码签名由 [SignPath.io](https://about.signpath.io/) 提供，证书由
+[SignPath Foundation](https://signpath.org/) 提供。
+
 macOS 可使用仓库内的 Homebrew tap：
 
 ```bash

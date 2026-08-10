@@ -1,63 +1,62 @@
-# 已读追踪
+---
+title: 章节进度与折叠
+description: Markon 的 H2–H6 Viewed 状态、独立折叠、本地 UI 偏好与章节级操作。
+---
+
+# 章节进度与折叠
 
 <div class="feature-illustration">
-  <img src="/illustrations/03-viewed.svg" alt="已读追踪" />
+  <img src="/illustrations/03-viewed.svg" alt="Markon 章节 Viewed 状态" />
 </div>
 
-> 需要启用：在浏览器工作区设置中勾选「已读追踪」。CLI 只继承新工作区的全局默认值，不再提供单独的 feature flag。
+开启 `Viewed` 后，Markon 以 H2–H6 章节为单位追踪审阅进度。Viewed 与折叠相关联，但不是同一个状态。
 
-受 GitHub PR Review 的「Viewed」复选框启发，Markon 按**段落级别**追踪你的阅读进度。
+## Viewed
 
-## 使用
+- 标记某标题 Viewed 时，该章节同时折叠；
+- 取消 Viewed 时展开；
+- H1 下方显示整页进度与批量操作；
+- TOC 反映 Viewed 状态；
+- Viewed 保存到 SQLite；
+- Shared 开启后，协作者同步同一 Viewed 数据。
 
-启用后，每个 `H2` 及以下级别的标题旁会出现 ☐ 已读 复选框。勾选后：
+<kbd>v</kbd> 切换当前聚焦章节。聚焦来自滚动位置、TOC 导航或 <kbd>j</kbd>/<kbd>k</kbd> 标题导航。
 
-1. 该章节自动折叠
-2. 标题显示为已读状态（TOC 中变为绿色）
-3. 状态持久化 —— 下次打开同一文档时恢复
+## 独立折叠
 
-<!-- TODO: screenshot: 已读追踪 (/screenshots/viewed.png) -->
+<kbd>o</kbd> 只切换当前章节显示，不改变 Viewed：
 
-## 操作方式
+- H2–H6 都可以独立折叠；
+- 嵌套章节按 heading level 计算范围；
+- 折叠后插入可点击占位；
+- 打开折叠区内的 Note 时会临时展开，关闭后恢复；
+- 普通折叠偏好保存在当前浏览器，不写 SQLite，也不在 Shared 客户端之间同步。
 
-### 鼠标
+打印时默认用占位表示折叠内容；全局 `print_collapsed_content` 或 CLI `--print-collapsed-content` 可强制包含。
 
-- 点击标题旁的 ☐ 复选框 — 切换已读状态（会自动折叠/展开）
-- 点击已折叠章节下方的占位提示 — 临时展开，不改变已读状态
-- 点击标题旁的 **折叠** / **展开** 链接 — 仅切换显示，不改变已读状态
+## 标题操作
 
-### 键盘
+聚焦 H2–H6 后出现：
 
-- <kbd>v</kbd> — 切换当前光标所在章节的已读状态
-- <kbd>o</kbd> — 折叠/展开当前章节（不改变已读状态）
+- Viewed；
+- Print；
+- Collapse / Expand；
+- Export Notes 及当前章节计数。
 
-### 批量操作
+H1 工具栏提供：
 
-H1 标题下方有一个工具栏：
+- 全部 Viewed / 全部未读；
+- 全部折叠 / 全部展开；
+- 整页打印；
+- 整页 Notes 导出。
 
-- **全部已读** — 一键把所有 H2+ 章节标为已读
-- **全部未读** — 清空所有已读状态
-- **全部折叠** / **全部展开** — 不改变已读状态
+章节范围从当前 heading 到下一个同级或更高层 heading 之前。
 
-## 折叠行为
+## 存储与权限
 
-已读的章节默认折叠，折叠后会显示一个占位提示行：
+| 状态 | 存储 | 共享 |
+|---|---|---|
+| Viewed | SQLite `viewed_state` | Shared 开启时 |
+| Collapse | 浏览器 UI 偏好 | 不共享 |
 
-> ⋯ *本节已折叠，点击展开*
-
-点击这行即可临时展开；也可以直接点击标题旁的 **展开** 链接切换。
-
-## 存储与共享
-
-| 模式 | 存储位置 | 同步 |
-|------|---------|------|
-| **个人** | 本机 SQLite | 仅管理员会话可见 |
-| **共享** | 同一 SQLite 数据集 | 多设备实时同步 |
-
-→ 共享模式详见 [共享批注](/advanced/shared-annotations)
-
-## 典型场景
-
-- **阅读技术文档** — 学完一章勾选，下次直接从未读章节继续
-- **Code Review 文档** — 审阅长文档时标记「已审」段落
-- **周期性浏览** — 每次读完一部分做标记，避免重复阅读
+Shared 关闭时只有管理员可读写 SQLite Viewed；协作者页面保持只读。详情见[共享批注](/advanced/shared-annotations)。

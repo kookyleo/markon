@@ -25,7 +25,7 @@ Markon 不把 TCP 来源地址当作身份。浏览器默认是协作者，能�
 - **零信任隧道** — Cloudflare Access、Tailscale Funnel；流量在到达服务器之前已完成身份核验。
 - **网络层隔离** — Tailscale、WireGuard，或绑定 `--host 127.0.0.1` 仅本机访问，适合单人私有部署。
 
-如需对外提供只读访问，目前须在代理层屏蔽写入方法（`PUT`/`POST`/`DELETE`），应用层暂无原生只读公开模式。
+如需对外提供只读访问，保持该 Workspace 的 `Edit`、`Chat`、`Shared` 关闭即可：协作者仍能浏览，并在 `Search` 开启时搜索，但没有正文、AI 或审阅状态写权限。管理与结构性操作继续要求显式 Admin session。网关层仍可按需要额外限制方法，但不要一刀切阻断 WebSocket upgrade 或门禁解锁所需请求。
 
 ## 为什么需要反向代理
 
@@ -65,7 +65,7 @@ server {
     proxy_pass http://127.0.0.1:6419;
     proxy_http_version 1.1;
 
-    # WebSocket 支持（共享批注需要）
+    # WebSocket 支持（Shared 与 Live 需要）
     proxy_set_header Upgrade $http_upgrade;
     proxy_set_header Connection "upgrade";
 
@@ -99,7 +99,7 @@ VirtualHost 配置：
   SSLCertificateFile    /path/to/fullchain.pem
   SSLCertificateKeyFile /path/to/privkey.pem
 
-  # WebSocket (共享批注)
+  # WebSocket（Shared 与 Live）
   RewriteEngine on
   RewriteCond %{HTTP:Upgrade} websocket [NC]
   RewriteCond %{HTTP:Connection} upgrade [NC]
@@ -124,7 +124,7 @@ Caddy 自动处理 HTTPS（Let's Encrypt）和 WebSocket，无需额外配置。
 
 ## Systemd 服务
 
-把 Markon 托管为系统服务，开机自启：
+`markon` 是启动或连接后台 `markond` 的本地客户端，完成后会正常退出。因此 systemd 单元应使用一次性初始化模式，而不是把 `markon` 当成长驻进程：
 
 ```ini
 # /etc/systemd/system/markon.service
@@ -133,14 +133,14 @@ Description=Markon Markdown Renderer
 After=network.target
 
 [Service]
-Type=simple
+Type=oneshot
+RemainAfterExit=yes
 User=markon
 WorkingDirectory=/srv/docs
-ExecStart=/usr/local/bin/markon \
+ExecStart=/usr/local/bin/markon /srv/docs \
   --host 127.0.0.1 -p 6419 \
-  -b https://docs.example.com \
-  --qr https://docs.example.com
-Restart=on-failure
+  --entry https://docs.example.com
+ExecStop=/usr/local/bin/markon shutdown
 Environment="MARKON_SQLITE_PATH=/var/lib/markon/annotation.sqlite"
 
 [Install]
@@ -152,6 +152,8 @@ WantedBy=multi-user.target
 ```bash
 sudo systemctl enable --now markon
 ```
+
+这个单元负责在开机时初始化后台服务，并在停止单元时通过控制套接字关闭它。`markond` 由 `markon` 使用临时配置安全启动，不应手写 `markond --config` 调用；如果需要由服务管理器直接监护并自动拉起崩溃的 daemon，当前版本尚未提供稳定的静态配置入口。
 
 ## 系统路径前缀
 

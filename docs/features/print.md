@@ -1,16 +1,19 @@
+---
+title: 章节打印
+description: 按整页或 H2–H6 章节打印 Markon 渲染结果，并保留代码、图表与批注。
+---
+
 # 章节打印
 
 <div class="feature-illustration">
   <img src="/illustrations/08-print.svg" alt="章节打印" />
 </div>
 
-除了浏览器自带的「整页打印」，Markon 还支持**按章节打印** —— 只打印某个小节的内容。
+除了整页打印，Markon 还支持按 H2–H6 章节打印，只输出当前标题对应的章节范围。
 
 ## 使用
 
-鼠标悬停在任意 `H2`+ 级别标题上，标题旁会出现 **打印** 链接。点击即弹出打印对话框，预览区只包含当前章节。
-
-<!-- TODO: screenshot: 章节打印 (/screenshots/print.png) -->
+聚焦任意 H2–H6 标题后，标题操作区会出现 `Print`。点击后打开浏览器打印对话框，内容只包含当前章节。H1 工具栏的 `Print` 用于整页打印。
 
 ## 打印范围
 
@@ -36,18 +39,18 @@
 
 打印输出保留：
 
-- ✅ GitHub 风格排版（字体、配色、间距）
-- ✅ 代码块语法高亮
-- ✅ 图表 SVG（Mermaid、PlantUML、D2、DOT/Graphviz、Vega-Lite/Vega/chart、ECharts、Chart.js/chart.js）
-- ✅ 表格、列表、引用块
-- ✅ 批注（高亮色、删除线、便条）
+- GitHub 风格排版（字体、配色、间距）；
+- 代码块语法高亮；
+- 图表 SVG（Mermaid、PlantUML、D2、DOT/Graphviz、Vega-Lite/Vega/chart、ECharts、Chart.js/chart.js）；
+- 表格、列表、引用块；
+- 批注（高亮色、删除线、Note 内容）。
 
 自动隐藏：
 
-- ❌ 已读复选框
-- ❌「编辑」/「打印」/「展开/折叠」等交互链接
-- ❌ TOC 侧边栏
-- ❌ 搜索框、快捷键面板、便条卡片
+- Viewed 复选框；
+- Edit、Print、Collapse / Expand 等交互入口；
+- TOC、搜索框与快捷键面板；
+- 屏幕专用的 Note 卡片容器。
 
 ## 浏览器限制
 
@@ -68,6 +71,8 @@
 
 ## 典型场景
 
-- **快速生成 PDF** — 打印对话框选择「另存为 PDF」
-- **纸质归档** — 把某一章节打印存档
-- **演示/分享** — 导出 PDF 发给同事，只含相关章节
+- **快速生成 PDF** — 打印对话框选择“另存为 PDF”；
+- **纸质归档** — 把某一章节打印存档；
+- **演示/分享** — 生成只含相关章节的 PDF。
+
+如果要继续编辑评审文字，而不是保留页面样式，请使用[导出 Notes](/features/export)。

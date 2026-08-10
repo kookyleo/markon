@@ -1,221 +1,201 @@
+---
+title: 命令行选项
+description: 以 crates/cli 的 Clap 定义为准的 markon 参数、子命令、服务行为与常用部署示例。
+---
+
 # 命令行选项
 
-本页介绍 CLI 版 `markon` 的所有选项。桌面版用户通常不需要关心这些 —— GUI 的图形化设置覆盖了大部分配置。
+`markon` 是 `markond` 后台服务的本地客户端。它负责解析配置、启动或连接服务、注册 Workspace，并通过当前用户专属的本地控制套接字执行管理操作。
 
-## 基础用法
+## 安装
 
 ```bash
-markon [FILE] [OPTIONS]
+cargo install markon markond
 ```
 
-- **`FILE`** — 要渲染的 Markdown 文件或目录（可选）。省略时使用当前目录。
+两个二进制都应位于 `PATH`。缺少 `markond` 时，`markon` 会在当前进程以前台模式提供服务。
+
+## 语法
+
+```text
+markon [OPTIONS] [FILE]
+markon <COMMAND>
+```
+
+`FILE` 可以是 Markdown 文件或目录；省略时使用当前目录。传入路径后默认尝试打开浏览器。
 
 ::: tip 桌面版用户
-桌面版内置了可视化的 CLI 命令生成器——打开 **Tips** 标签页，填写目标路径、服务地址和协作者访问码，即可一键复制完整命令或生成 shell alias。
+桌面版 **Tips** 页提供 CLI 命令生成器，可根据路径、地址与访问码生成命令或 shell alias。
 
 ![GUI 内置的 CLI 命令生成器](/screenshots/gui-cli-builder.png)
 :::
 
-## 选项速查
+## 主选项
 
-| 选项 | 说明 | 默认 |
-|------|------|------|
-| `-p, --port <PORT>` | HTTP 服务器端口 | `6419` |
-| `--host [IP]` | 绑定地址，省略值时交互式选择 | `127.0.0.1` |
-| `-b, --open-browser [BASE_URL]` | 自动打开浏览器；可选传入 BASE_URL 覆盖默认（不传则用本地工作区地址） | 是（若提供路径） |
-| `--entry, --qr [PREFIX]` | 指定外部访问地址前缀（生成二维码） | — |
-| `--trusted-host <HOST_OR_ORIGIN>` | 额外允许的精确 Host / HTTPS origin，可重复 | — |
-| `--collaborator-access-code <CODE>` | 设置或清除该工作区的协作者访问码（约束所有非管理员浏览器） | — |
-| `--print-collapsed-content` | 打印时包含折叠章节的内容（默认隐藏折叠内容） | false |
-| `--salt <STRING>` | 自定义 workspace ID salt | — |
+| 选项 | 代码中的行为 |
+|---|---|
+| `-p, --port <PORT>` | Web 端口，默认 `6419`；显式参数覆盖 settings |
+| `--host [IP]` | 指定绑定地址；只写 `--host` 时进入网卡选择器 |
+| `--entry [URL_PREFIX]` | 对外展示地址前缀，同时用于 QR 和 Host/origin allowlist |
+| `--qr [URL_PREFIX]` | `--entry` 的别名 |
+| `--trusted-host <HOST_OR_ORIGIN>` | 额外允许的精确 authority，可重复 |
+| `-b, --open-browser [BASE_URL]` | 打开浏览器；无值用本地地址，有值时用给定 base |
+| `--collaborator-access-code <CODE>` | 设置当前工作区协作者码；空字符串清除 |
+| `--print-collapsed-content` | 打印时强制包含折叠正文；默认显示折叠占位 |
+| `--salt <SALT>` | 高级 workspace-id salt 覆盖；已有安装不要随意修改 |
 
-工作区功能（搜索、已读追踪、编辑、Live、AI 对话、共享批注）统一在浏览器工作区设置页中控制；CLI 只继承全局默认值来初始化新工作区。
+功能开关不再是启动参数。使用 `markon set`、桌面端或浏览器管理员页调整。
 
-## 工作区管理
+## 子命令
 
-Markon 支持在同一个服务实例中管理多个工作区。你可以通过以下命令进行维护：
-
-### 列出活跃工作区
+### `markon ls`
 
 ```bash
 markon ls
+markon ls --format cards
+markon ls --format table
 ```
 
-输出示例：
-```text
-#    ID         PATH
----  ---        ----
-1    abc12345   /Users/me/project-a
-2    def67890   /Users/me/project-b
-```
+- stdin/stdout 都是可用 TTY 时，裸命令启动交互式 TUI。
+- 非 TTY 或 `MARKON_NO_TUI` 已设置时，回退为静态 cards。
+- `--format` 可明确要求 cards 或 table。
 
-### 移除工作区
+结果包含 workspace id/path、功能开关、Search ready 状态、本地/公网地址与 QR 信息。TUI 还能编辑功能、打开 Workspace、分享已开启 Shared 的协作者地址，以及进入数据清理。
 
-你可以通过 `ls` 命令输出的序号或 ID 来移除不再需要的工作区：
+### `markon set`
 
 ```bash
-markon detach 1          # 通过序号移除
-markon detach abc12345   # 通过 ID 移除
+markon set <ID|INDEX> <FEATURE> <on|off>
 ```
 
-### 开关工作区功能
+`FEATURE`：
 
-本机 CLI 可以像桌面 GUI 一样直接开关某个工作区的功能（走本机管理 API，等同管理员，无需任何码）：
+| 值 | 功能 |
+|---|---|
+| `search` | Tantivy/Jieba 内容索引与 Spotlight 搜索结果 |
+| `viewed` | H2–H6 Viewed 状态和章节动作 |
+| `edit` | CodeMirror 保存与 AI `edit_file` 提案 |
+| `live` | Broadcast / Follow |
+| `chat` | Workspace AI |
+| `shared` | 协作者读写批注/Viewed，并通过 WebSocket 同步 |
+
+示例：
 
 ```bash
-markon set 3 edit on         # 通过序号，打开「编辑」
-markon set abc12345 chat off # 通过 ID，关闭「AI 对话」
+markon set 1 edit on
+markon set a1b2c3d4 chat off
 ```
 
-- 第一个参数是 `ls` 输出里的**序号或 ID**。
-- feature 名可选：`search`（搜索）/ `viewed`（已读追踪）/ `edit`（编辑）/ `live`（Live）/ `chat`（AI 对话）/ `shared`（共享批注）。
-- 最后一个参数是 `on` 或 `off`。
-
-> CLI 管理操作走当前用户专属的本地控制套接字，不通过 HTTP 暴露。浏览器管理与结构性操作使用下面的短期 Admin session。详见[访问权限](/features/access)。
-
-### 清理已关闭工作区的数据
-
-批注、已读状态和对话在移除工作区时不会自动删除，以便误移除或重新添加后仍可恢复。确认不再需要后可以先看统计，再显式清理：
+### `markon detach`
 
 ```bash
-markon cleanup       # 显示统计并交互确认
-markon cleanup --yes # 脚本中跳过确认
+markon detach <ID|INDEX>
 ```
 
-裸 `markon ls` 的交互界面也提供 `c data` 入口。清理只删除不属于任何活动工作区的数据；如果文件仍被另一个父目录工作区覆盖，则会保留。
+从运行中注册表移除 Workspace，并持久化列表。不会删除源文件、settings 其它字段或 SQLite 历史。
 
-### 打开管理员浏览器会话
+### `markon cleanup`
 
 ```bash
-markon admin open  # 通过 60 秒、一次性的 URL fragment nonce 自动打开
-markon admin code  # 打印 5 分钟有效的手动配对码（适合 SSH/headless）
+markon cleanup
+markon cleanup --yes
 ```
 
-两条入口最终兑换相同的 12 小时 `HttpOnly` Admin session。loopback 地址本身不授予管理员权限。
+统计并可选删除不属于任何活动 Workspace 的 annotations、Viewed 与 Chat 数据。执行前请先读[数据与隐私](/advanced/data-and-privacy)并备份数据库。
 
-### 停止服务
-
-当你不再需要 Markon 时，可以关闭后台驻留的服务进程：
+### `markon admin`
 
 ```bash
-markon shutdown
+markon admin open
+markon admin code
 ```
 
-### 反馈与提问
+- `open`：创建 60 秒有效、一次性 URL fragment nonce 并打开浏览器；
+- `code`：打印 5 分钟有效的手动配对码，适合 SSH/headless。
 
-除了 `ls` / `detach` / `shutdown`，CLI 还提供几个反馈类子命令，方便你直接从终端联系作者：
+两者兑换相同的短期 `HttpOnly` Admin session。loopback 不自动获得管理员角色。
+
+### `markon shutdown`
+
+请求后台服务优雅关闭并清理运行锁。
+
+### `markon bug` / `idea` / `ask`
 
 ```bash
-markon bug      # 报告一个 Bug
-markon idea     # 提一个功能建议
-markon ask      # 提问或寻求帮助
+markon bug  [-t TITLE] [-b BODY]
+markon idea [-t TITLE] [-b BODY]
+markon ask  [-t TITLE] [-b BODY]
 ```
 
-## 驻留模式
+通过已认证的 `gh` 创建 GitHub Issue 或 Discussion；未提供 title/body 时进入交互输入或 `$EDITOR`。
 
-Markon CLI 默认以守护进程（Daemon）模式运行。当你第一次启动时，它会自动转入后台并不再占用终端。你可以随时通过 `ls` 查看状态或 `shutdown` 关闭它。
-## 基础逻辑
-
-Markon 采用 **“单服务 + 多工作区”** 模型，且 CLI 默认开启 **后台驻留 (Daemon)** 模式。
-
-- **首次运行**：Markon 会启动后台服务并立即释放终端控制权。
-- **后续运行**：新实例会自动检测后台服务，将路径作为新工作区追加，并在浏览器中尝试打开。
-
-无论是哪种情况，终端都会反馈当前工作区的访问地址。
-
-
-## 常用场景
-
-### 个人本地阅读
+## 单服务、多工作区
 
 ```bash
+markon project-a/
+markon project-b/
 markon README.md
+markon ls
 ```
 
-最简单的用法：渲染一个文件。程序会尝试自动打开浏览器。
+第一次调用启动 `markond`，之后的调用连接现有服务。目录工作区写入 settings 并恢复；单文件工作区是否自动清理由全局设置控制。
 
-### 浏览整个项目的文档
+若运行中的服务版本与当前 CLI 不兼容，CLI 会刷新服务状态，而不是把新客户端命令发给旧控制协议。
+
+## 地址与浏览器行为
 
 ```bash
-markon docs/
+markon README.md                 # 路径参数：默认尝试打开
+markon                           # 当前目录：默认不强制打开
+markon -b                        # 当前目录并打开本地地址
+markon -b https://docs.example.com docs/
 ```
 
-以目录为工作区。搜索、编辑等功能可在打开后的工作区设置页开启；新工作区的初始值来自全局默认设置。
+`--open-browser BASE_URL` 会把 Workspace 路径附加到给定 base，适合反向代理入口。
 
-### 局域网共享给团队
+## 监听示例
 
 ```bash
-markon --host 0.0.0.0 --entry http://192.168.1.100:6419
+markon docs/                     # 默认 settings host；新安装通常是 127.0.0.1
+markon docs/ --host              # 交互选择网卡
+markon docs/ --host 0.0.0.0      # 全接口
+markon docs/ --host 192.168.1.5  # 指定接口
 ```
 
-- `--host 0.0.0.0` — 绑定所有网络接口，局域网可访问
-- `--entry` — 指定外部访问地址前缀，终端将打印完整的工作区二维码
-- 在浏览器工作区设置页启用 **共享批注** / **已读追踪** 等功能
-
-![CLI 启动后显示访问链接和 QR 码，移动端扫码即可打开](/screenshots/cli-qr.png)
-
-### 交互式选择网络接口
+局域网：
 
 ```bash
-markon --host
+markon docs/ --host 0.0.0.0 \
+  --entry http://192.168.1.20:6419 \
+  --collaborator-access-code guest-secret
 ```
 
-运行后会列出所有可用的网络接口，上下方向键选择。
-
-### 经反向代理暴露
+反向代理：
 
 ```bash
-markon --entry https://docs.example.com
+markon docs/ --host 127.0.0.1 \
+  --entry https://docs.example.com \
+  --trusted-host https://docs.example.com
 ```
 
-当 Markon 部署在反向代理后面时，使用 `--entry` 指定外部访问的前缀。Markon 会在该前缀后自动追加具体工作区的 ID。
+![CLI 输出访问链接与 QR](/screenshots/cli-qr.png)
 
-→ 配置细节见 [反向代理](/advanced/reverse-proxy)
+`--entry` 只描述外部 origin，不提供 TLS。公网部署见[反向代理](/advanced/reverse-proxy)。
 
+## 设置优先级
 
-### 设置协作者访问码
+CLI 读取 `~/.markon/settings.json`。大体规则是：
+
+1. 本次显式命令行参数；
+2. 已保存全局设置；
+3. 内置默认值。
+
+主题、语言、自定义样式、快捷键、Provider、工作区列表和新工作区默认开关与桌面端共享。运行中 Workspace 注册表由服务拥有，GUI 保存偏好时不会用旧快照覆盖它。
+
+## 数据库覆盖
 
 ```bash
-markon --collaborator-access-code guest-secret README.md
+MARKON_SQLITE_PATH=/srv/markon/annotation.sqlite markon docs/
 ```
 
-给协作者加一道门禁：设了协作者访问码后，任何未持有 Admin session 的浏览器都要先输入正确的码，loopback 也不例外。明文只用于这次 CLI 调用，Markon 写入 `settings.json` 时只保存加盐 hash。传空字符串则清除该工作区的码。详见[访问权限](/features/access)。
-
-## `--host` 详解
-
-`--host` 参数有几种形式：
-
-```bash
-markon                       # 默认：绑定 127.0.0.1，仅本机可访问（最安全）
-markon --host                # 交互式菜单选择可用接口
-markon --host 0.0.0.0        # 绑定所有接口，局域网可访问
-markon --host 192.168.1.5    # 绑定到指定 IP
-```
-
-## 数据存储位置
-
-个人批注、已读状态和 AI 对话统一存入 SQLite；是否开启 **共享批注** 只决定这些数据是否向协作者同步展示，不再切换存储位置。数据库默认位于：
-
-- **Linux/macOS**：`~/.markon/annotation.sqlite`
-- **Windows**：`%USERPROFILE%\.markon\annotation.sqlite`
-
-自定义路径：
-
-```bash
-MARKON_SQLITE_PATH=/path/to/db markon README.md
-```
-
-## 共享配置
-
-CLI 启动时会自动读取 `~/.markon/settings.json`（如果存在），继承：
-
-- **主题与自定义样式** (`theme` / `web_styles`) — 阅读页、浮动面板与源码编辑器共用的
-  跟随系统 / Light / Dark 主题，以及颜色、字体、字号和透明度覆盖
-- **快捷键** (`shortcuts`) — 用户在桌面版中重新绑定的按键
-- **语言** (`language`) — 桌面端、托盘、阅读页和编辑器共用的显示语言
-
-这份配置文件由桌面版的 **全局设置** 维护。推荐流程：**用桌面版配好样式和快捷键，然后
-CLI 自动继承**。两端在同一台机器上共享同一份配置。
-
-命令行参数（如 `--port`、`--host`）仍然是显式指定的 —— 它们覆盖配置文件里对应的字段。
-如果配置文件不存在（从未启动过桌面版），CLI 使用内置默认值。
+数据库保存批注、Viewed 与 Chat。是否启用 Shared 不改变存储位置，只改变协作者能力与广播。

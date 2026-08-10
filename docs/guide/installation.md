@@ -103,29 +103,37 @@ chmod +x Markon_*.AppImage
 ### Cargo（推荐）
 
 ```bash
-cargo install markon
+cargo install markon markond
 ```
 
-这会从 [crates.io](https://crates.io/crates/markon) 下载并编译 `markon` 二进制到 `~/.cargo/bin/`。
+这会从 crates.io 安装两个二进制到 `~/.cargo/bin/`：
+
+- [`markon`](https://crates.io/crates/markon) — CLI 与本地控制客户端；
+- [`markond`](https://crates.io/crates/markond) — 长期运行的后台服务。
+
+两者都应在 `PATH`。缺少 `markond` 时，CLI 会退回前台服务模式，当前终端会被服务占用。
 
 ### 从源码
 
 ```bash
 git clone https://github.com/kookyleo/markon.git
 cd markon
+cargo install --path crates/markond
 cargo install --path crates/cli
 ```
 
 ### 从 GitHub Releases
 
-桌面版的 `.dmg` / `.exe` / `.AppImage` 里已经捆绑了 `markon` CLI 二进制，你也可以直接从 Releases 拿预编译的 CLI 文件（如有发布）。
+桌面版已经随附后台服务，无需另行安装。若要在服务器或纯命令行环境中使用，请通过 Cargo 安装 `markon` 与 `markond`；也可以从 Releases 获取预编译的 CLI 文件（如有发布）。
 
 ## 验证安装
 
 ```bash
 markon --version
-# Markon vX.Y.Z
+command -v markond
 ```
+
+`markond` 只由桌面端或 CLI 以临时配置启动，不需要日常手动调用。
 
 ## 卸载
 
@@ -138,7 +146,7 @@ markon --version
 **CLI 版**：
 
 ```bash
-cargo uninstall markon
+cargo uninstall markon markond
 ```
 
 用户数据统一存放在用户主目录下的 `.markon/`：

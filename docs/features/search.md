@@ -1,75 +1,66 @@
-# 全文搜索
+---
+title: Workspace Spotlight
+description: Markon 的统一文件导航、H1 标题元数据与 Tantivy/Jieba Markdown 全文搜索。
+---
+
+# Workspace Spotlight
 
 <div class="feature-illustration">
-  <img src="/illustrations/02-search.svg" alt="全文搜索" />
+  <img src="/illustrations/02-search.svg" alt="Workspace Spotlight 搜索" />
 </div>
 
-> 需要启用：在浏览器工作区设置中勾选「搜索」。CLI 只继承新工作区的全局默认值，不再提供单独的 feature flag。
+Workspace Spotlight 把文件导航与全文搜索放在同一个面板。按 <kbd>/</kbd> 或 <kbd>g</kbd> 打开，方向键选择，Enter 跳转，Esc 关闭。
 
-基于 [Tantivy](https://github.com/quickwit-oss/tantivy) 引擎构建的全文搜索，支持中日英分词。
+## 文件导航
 
-## 使用
+工作区文件 API 提供：
 
-在浏览器页面中按下 <kbd>/</kbd> 打开搜索框，输入关键词即可实时搜索所有 Markdown 文件。
+- Workspace-relative path；
+- 文件名；
+- 是否为 Markdown；
+- Markdown 首个顶层 H1 的纯文本标题（若存在）；
+- 可访问 URL。
 
-<!-- TODO: screenshot: 搜索界面 (/screenshots/search.png) -->
+H1 提取走与渲染器一致的 Supramark AST，因此支持 Setext 标题与 inline formatting，并不会把代码块或 blockquote 中的 `#` 当作文档标题。
 
-- **`↑` / `↓`** — 在结果间导航
-- **`Enter`** — 跳转到选中结果
-- **`Esc`** — 关闭搜索框
+文件导航受 WorkspaceFs capability 与 ignore 规则约束。单文件 Workspace 只返回固定文件。
 
-## 搜索范围
+## 全文搜索
 
-Markon 对以下字段建立索引：
+开启 `Search` 后，服务为 Markdown 建立 Tantivy 索引：
 
-- **文件路径** —  `docs/guide/install.md` 中匹配 `install`
-- **文件名** — `README.md` 中匹配 `readme`
-- **标题** — 所有 `#`/`##`/`###` 标题行
-- **正文内容** — 所有 Markdown 文本
+| 字段 | 行为 |
+|---|---|
+| path | 作为精确 route key，用于增量删除/替换 |
+| file_name | 建立索引并存储 |
+| title | 第一个 Markdown heading，缺失时回退文件名 |
+| content | 建立索引但不在 Tantivy 再存一份全文 |
 
-> 搜索不区分大小写：`README` 与 `readme` 等价，匹配结果相同。
+查询覆盖 file name、title 与 content。命中 snippet 在返回结果时通过 WorkspaceFs 读取对应文件生成，避免索引内再保留一份完整正文。
 
-## 搜索结果
+## 中英文与大小写
 
-每条结果包含：
+索引和查询共同使用 Jieba tokenizer + LowerCaser：
 
-- 文件路径（相对于工作区根目录）
-- 匹配的标题
-- **高亮的代码片段** — 关键词上下文预览
+- 中文按词切分；
+- 拉丁文本不区分大小写；
+- CJK 不受大小写过滤影响。
 
-点击结果或按 <kbd>Enter</kbd> 跳转后，Markon 会：
+## 资源与更新
 
-1. 在浏览器中打开对应文件
-2. 自动滚动到匹配位置
-3. 临时高亮关键词（几秒后淡出）
+- 索引位于自动清理的临时 MmapDirectory，服务退出后清除；
+- 初次构建只预收集路径，正文按 64 文件一批并行读取；
+- Tantivy writer 只在一个受互斥保护的写入路径使用；
+- watcher 把一批 create/modify/delete/rename 合并为一次 commit + reader reload；
+- ignore 规则或目录拓扑变化时重建 route set；
+- 搜索查询本身保持无写锁读取。
 
-## 中文分词
+这些限制用于控制大工作区的内存峰值和增量索引开销，实际速度取决于文件数、正文大小和存储设备。
 
-使用 [Jieba](https://github.com/baoyachi/tantivy-jieba) 分词器，能正确处理中文词语：
+## 范围与限制
 
-- 搜索 `数据库` 能匹配「数据库连接」、「关系型数据库」，但不会匹配「数据」
-- 搜索 `数据` 能匹配「数据处理」、「大数据」
-- 日文同样支持（通过 Jieba 的东亚语言分词）
-
-## 自动索引更新
-
-Markon 启动时对工作区做一次全量索引，之后通过 [notify](https://github.com/notify-rs/notify) 监听文件变化：
-
-- **文件修改** — 自动重新索引该文件
-- **新文件** — 自动加入索引
-- **文件删除** — 自动从索引移除
-
-无需手动刷新，编辑器里保存文件后，搜索结果即刻反映。
-
-## 技术细节
-
-- **索引位置**：内存（进程退出即清理）
-- **首次索引耗时**：每 1000 个 Markdown 文件约 1-2 秒
-- **内存占用**：每 1000 个文件约 10-50 MB（取决于内容量）
-- **不索引**：非 `.md` 扩展名的文件一律跳过
-
-## 局限
-
-- 目前不支持正则搜索、短语精确匹配、字段过滤等高级查询
-- 代码块内容参与索引（如有代码搜索需求可用）
-- 无法跨工作区搜索
+- 只索引 `.md` 文件；文件导航可以包含其它允许的文件。
+- 不跨 Workspace 搜索。
+- 查询使用 Tantivy QueryParser，不提供站点级高级查询 UI。
+- 代码块仍是 Markdown content 的一部分，会进入索引。
+- Search 关闭时不建立内容索引，但文件导航仍可用。

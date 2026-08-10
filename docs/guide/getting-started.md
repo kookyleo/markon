@@ -1,109 +1,139 @@
+---
+title: 快速上手
+description: 用桌面版或 CLI 在 5 分钟内建立第一个 Markon Workspace，并了解管理员会话与功能开关。
+---
+
 # 快速上手
 
-本指南帮你在 5 分钟内上手 Markon。
+本指南用最短路径建立一个目录工作区。若只想打开单个 Markdown 文件，直接把文件交给 Markon 即可。
 
 ## 桌面版
 
-### 1. 下载安装包
-
-从 [GitHub Releases](https://github.com/kookyleo/markon/releases/latest) 下载对应平台的安装包：
-
-| 平台 | 文件 |
-|------|------|
-| macOS (Apple Silicon) | `Markon_x.x.x_aarch64.dmg` |
-| macOS (Intel) | `Markon_x.x.x_x64.dmg` |
-| Windows (x64) | `Markon_x.x.x_x64-setup.exe` |
-| Windows (ARM64) | `Markon_x.x.x_arm64-setup.exe` |
-| Linux Debian/Ubuntu (amd64) | `Markon_x.x.x_amd64.deb` |
-| Linux Debian/Ubuntu (arm64) | `Markon_x.x.x_arm64.deb` |
-| Linux AppImage (amd64) | `Markon_x.x.x_amd64.AppImage` |
-| Linux AppImage (arm64) | `Markon_x.x.x_arm64.AppImage` |
-
-### 2. 使用 Markon
-
-分述两种场景。
-
-#### 场景 A：针对某目录（工作区）文档集的阅览、批注、对话和团队协作
-
-可以视为某个工程项目的 **Markdown 文档 IDE**，这也是 Markon 设计初衷的典型场景。
-
-加入的工作区会常驻在 Markon 的 **工作区** 标签页，后续可以一键打开。有几种启动方式：
-
-- **从 markon 开始**：启动 Markon，在 **工作区** 标签页点左下角 ➕，手选目录。
-- **macOS — Finder 工具栏**：把 `/Applications/Markon.app` 拖到 Finder 窗口顶部的工具栏，之后进入任意目录点一下图标，就把当前目录加入并打开。
-- **Windows — 右键菜单**：在资源管理器里右键文件夹 → **使用 markon 打开**。
-
-<!-- TODO: screenshot: 添加工作区 (/screenshots/add-workspace.png) -->
-
-#### 场景 B：阅览单个 md 文件
-
-项目级的 IDE 当然也可以 handle 单个文件。
-
-打开单个文件也会创建一个**单文件工作区**：它同样出现在 Markon 的 **工作区** 标签页里（带一个文件图标），和普通工作区一样可以配置。区别在于它是**临时**的 —— 不会在重启 Markon 后保留，全文搜索的范围也只限这一个文件。
-
-单文件工作区仍会加载该 md 明确引用的本地资源，例如同目录的 `logo.svg` 或子目录里的 `images/a.png`。这些资源必须位于打开文件所在目录内；未被引用的邻居文件和逃出该目录的路径不会被开放。
-
-- **macOS / Windows**：右键文件 → **打开方式 → Markon**，浏览器直接出结果。
-- 如果配置了默认打开方式，双击也同样可以直接启动它。
-
-### 3. 在浏览器中查看
-
-桌面集成入口（Finder 工具栏 / Windows 右键菜单）会直接把浏览器打开。如果是从 Markon 里手动加的工作区，事后点工作区条目的 ↗ 图标即可。
-
-### 4. 探索功能
-
-在浏览器页面中按下 <kbd>?</kbd> 查看完整快捷键列表，了解所有功能。
-
----
-
-## CLI 版
-
 ### 1. 安装
 
+<DownloadButton />
+
+安装包覆盖 macOS Apple Silicon / Intel、Windows x64 / ARM64，以及 Linux amd64 / arm64。首次启动的系统安全提示见[安装说明](/guide/installation)。
+
+### 2. 添加目录
+
+启动 Markon，在 **Workspaces** 页点击左下角 `+`，选择包含 Markdown 的目录。
+
+也可以从系统文件管理器进入：
+
+- **macOS**：把 Markon.app 拖入 Finder 工具栏，在目标目录点图标；
+- **Windows**：在目录或 Markdown 文件的右键菜单中使用 Markon 打开。
+
+目录工作区会写入 `~/.markon/settings.json`，以后服务重启会恢复。
+
+### 3. 打开浏览器工作区
+
+点击工作区卡片的打开按钮。你会看到：
+
+- 可展开的文件树；
+- Workspace 路径、别名和 id；
+- Search、Viewed、Edit、Live、Chat、Shared 六个开关；
+- Git 仓库的分支、历史与工作区改动；
+- 搜索入口与当前版本。
+
+桌面端打开的浏览器会引导建立管理员会话，因此可以修改功能、增删文件、checkout 或 commit。单纯访问 URL 的浏览器不会因为来自本机就自动成为管理员。
+
+### 4. 选一条工作流
+
+**阅读与搜索**
+
+1. 开启 Search。
+2. 打开 Markdown。
+3. 按 <kbd>/</kbd> 或 <kbd>g</kbd> 搜索文件和正文。
+4. 按 <kbd>?</kbd> 查看当前页面实际可用的快捷键。
+
+**审阅长文档**
+
+1. 开启 Viewed。
+2. 选中文字，建立高亮、删除线或 Note。
+3. 聚焦 H2–H6，用 <kbd>v</kbd> 标记 Viewed、<kbd>o</kbd> 独立折叠。
+4. 用标题操作导出当前章节 Notes 或打印章节。
+
+**审阅 Git 改动**
+
+1. 回到工作区根页。
+2. 打开 **Working diff** 或某个 commit。
+3. 在 Rendered / Raw 间切换；Raw 还可选 Split / Unified。
+4. 用 Viewed 逐个处理文件，用 <kbd>j</kbd>/<kbd>k</kbd> 聚焦变更。
+
+## CLI / 服务器
+
+### 1. 安装两个二进制
+
 ```bash
-cargo install markon
+cargo install markon markond
 ```
 
-### 2. 基础用法
+`markon` 是本地控制客户端，`markond` 是后台服务。两者都应位于 `PATH`；如果找不到 `markond`，CLI 会退回前台服务模式。
+
+### 2. 打开文件或目录
 
 ```bash
-# 渲染单个文件，自动打开浏览器
-markon README.md -b
-
-# 浏览当前目录下所有 Markdown 文件
-markon
-
-# 指定端口
-markon -p 8080 README.md
-
-# 添加工作区时设置协作者访问码（约束所有非管理员浏览器）
-markon --collaborator-access-code guest-secret README.md
-
-# 搜索、编辑、Live、AI 对话等功能在浏览器工作区设置页开启
-markon README.md
+markon README.md  # 路径参数默认尝试打开浏览器
+markon docs/      # 目录工作区
+markon -b         # 当前目录，并明确打开浏览器
 ```
 
-### 3. 局域网访问
+第一次运行启动后台服务，后续调用把路径追加到同一服务。
+
+### 3. 管理工作区
 
 ```bash
-# 绑定所有网络接口，允许局域网访问
-markon --host 0.0.0.0 README.md
-
-# 交互式选择网络接口
-markon --host
-
-# 通过 --entry 指定外部访问地址，终端会显示 QR 码方便移动端扫码
-markon --host 0.0.0.0 --entry https://example.com/
+markon ls
+markon set 1 edit on
+markon set 1 shared on
+markon detach 1
+markon shutdown
 ```
 
-![CLI 启动后显示访问链接和 QR 码，移动端扫码即可打开](/screenshots/cli-qr.png)
+交互式终端中的裸 `markon ls` 会打开 TUI；管道或重定向时输出静态 cards。也可用 `--format cards|table` 明确选择。
 
-→ 完整选项见 [命令行选项](/guide/cli)
+### 4. SSH 与管理员会话
 
----
+无桌面服务器上：
+
+```bash
+markon admin code
+```
+
+在浏览器的管理员引导页输入一次性配对码。管理浏览器会话与普通协作者严格分开。
+
+### 5. 局域网或反向代理
+
+```bash
+# 局域网
+markon docs/ --host 0.0.0.0 --entry http://192.168.1.20:6419
+
+# HTTPS 反向代理
+markon docs/ --host 127.0.0.1 \
+  --entry https://docs.example.com \
+  --trusted-host https://docs.example.com
+```
+
+`--entry` 既用于展示/二维码地址，也登记对应 Host/origin。公网部署仍须由反向代理提供 TLS，详见[反向代理](/advanced/reverse-proxy)。
+
+## 单文件工作区
+
+```bash
+markon path/to/README.md
+```
+
+单文件工作区：
+
+- 搜索范围只有该文件；
+- 只开放正文与它明确引用、且仍在父目录内的本地资源；
+- 默认在下一次服务启动时自动移除；
+- 可在桌面全局设置关闭自动移除。
 
 ## 下一步
 
-- 了解 [核心功能](/features/search) — 全文搜索、已读追踪、快捷编辑、批注与高亮、章节打印、[实时协作 Live](/features/live)、[与文档对话](/features/chat)
-- 配置 [共享批注](/advanced/shared-annotations) 实现多端同步
-- 查看 [键盘快捷键](/advanced/shortcuts) 提升效率
+- [产品能力总览](/features/)
+- [运行架构](/guide/architecture)
+- [访问与权限](/features/access)
+- [数据与隐私](/advanced/data-and-privacy)
+- [命令行完整参考](/guide/cli)

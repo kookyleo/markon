@@ -1,150 +1,119 @@
-# 与文档对话
+---
+title: Workspace AI
+description: Markon 的 Anthropic/OpenAI-compatible Provider、工作区文件工具、引用、threads 与审批式 edit_file。
+---
+
+# Workspace AI
 
 <div class="feature-illustration">
-  <img src="/illustrations/12-chat.svg" alt="与文档对话" />
+  <img src="/illustrations/12-chat.svg" alt="Markon Workspace AI" />
 </div>
 
-> 需要启用：在浏览器工作区设置中勾选「AI 对话」。还需在全局设置中填入 OpenAI 或 Anthropic 的 API Key。
+Workspace AI 是一个受当前 Workspace 边界约束的阅读助手。它能调查文件、给出可点击引用；当 Edit 也开启时，还能提出必须由用户确认的精确文件修改。
 
-把整个工作区当作一份可对话的资料库，AI 直接读取你目录里的 Markdown 与代码，并在回答中标出引用位置。「只读版 Claude Code」是它最直观的类比 —— 提供 `read_file` / `list_dir` / `glob` / `grep` 四个工具，但**没有任何写入或执行能力**。
+## 启用条件
 
-## 适合的场景
+1. 在桌面端 **全局设置 → AI Chat** 配置 Provider、API key、base URL 与 model。
+2. 为目标 Workspace 开启 `Chat`。
+3. 如果希望 AI 提出修改，再同时开启 `Edit`。
 
-- **快速理解陌生代码 / 长文档**：直接问「这个项目主入口在哪、调用链是怎样的」。
-- **跨文件的事实核对**：让 AI 跑 grep 验证你记得的某个 API 用法是否还成立。
-- **写作时的上下文助手**：选中一段已有内容，问 AI「这段和我刚写的是不是有冲突」。
-- **新人 onboarding**：把仓库交给同事，他可以把「这个常量是哪里定义的」这种问题直接抛给 AI。
+支持：
 
-不适合让它做的事：写代码、运行命令、访问外网。所有这些都被工具层物理屏蔽。
+- Anthropic；
+- OpenAI-compatible API（可配置 base URL）。
 
-## 启用与配置
+默认模型由代码按 Provider 选择：Anthropic 为 `claude-sonnet-4-6`，OpenAI-compatible 为 `gpt-4o`。模型列表可以从 Provider 的 `/v1/models` 刷新并缓存到 settings。
 
-### 1. 选择 Provider 并填 Key
+API key 明文存入 `~/.markon/settings.json`，请把它当作开发凭据保护。
 
-打开桌面版 → **设置 → AI 对话**：
+## 打开方式
 
-- **Provider**：`Anthropic`（推荐，含 prompt cache）或 `OpenAI`。
-- **API Key**：粘贴对应平台的 key。Key 仅保存在本机的 `~/.markon/settings.json`，不会上传到任何 Markon 服务。
-- **模型**（可选）：留空使用默认。Anthropic 默认 `claude-sonnet-4-6`，OpenAI 默认 `gpt-4o`。
+### 页内面板
 
-CLI 用户：直接编辑 `~/.markon/settings.json`：
+点击右下角 Chat 球，或按 <kbd>c</kbd>。面板可拖动、缩放，位置与尺寸按 Workspace 保存在当前浏览器。
 
-```json
-{
-  "chat": {
-    "provider": "anthropic",
-    "anthropic_api_key": "sk-ant-...",
-    "model": ""
-  }
-}
-```
+### 独立窗口
 
-### 2. 在工作区中开启
+设置默认 Chat surface 为 popout，或按 <kbd>Shift</kbd>+<kbd>c</kbd> 临时使用与默认相反的形式。页内面板与窗口之间会转交当前草稿和未发送引用。
 
-打开工作区后，在浏览器工作区设置页勾选 **AI 对话**。
+### 从选区提问
 
-启用后，浏览器页面右下角会出现一个紫色小球。
+在正文选中文字，点击选区工具条的 Chat。选区会变成输入框上方的引用 pill；可在发送前单独移除。
 
-## 三种打开方式
+### `@` 引用文件
 
-### 点小球展开聊天面板
+输入 `@` 搜索 Workspace 内可读文本文件。选中后，该文件内容随本轮请求发送。文件列表与读取都经过 WorkspaceFs，单文件工作区不会因此扩大范围。
 
-最常规的入口。面板从右下角的紫色小球展开，再点一次同一位置的 X 即收回。
-面板支持**自由拖拽改变大小**（右下角抓手），尺寸会按工作区分别记住，下次展开自动恢复。
+## 文件调查工具
 
-### `@` 引用工作区文件
+每个 Chat session 默认得到四个只读工具：
 
-在输入框打 `@`，弹出文件搜索 —— 工作区内**所有可读的文本文件**都可以引用，不限于 Markdown。选中后变成一个 pill，发送时会把该文件原文一并塞进 AI 的 context。
+| 工具 | 作用 |
+|---|---|
+| `read_file(path, offset?, limit?)` | 分页读取 UTF-8 文本 |
+| `list_dir(path?)` | 列出一层目录 |
+| `glob(pattern, limit?)` | 按路径模式找文件 |
+| `grep(pattern, path?, glob?, ...)` | 用正则搜索内容 |
 
-```
-读一下 @src/main.rs，告诉我端口号是从哪里取的
-```
+约束：
 
-### 选中文字 → 聊聊
+- 相对路径必须留在 Workspace capability 内；
+- 拒绝二进制或非 UTF-8 文件；
+- 单文件上限 1 MiB；
+- 单次工具输出上限 64 KiB；
+- 每个用户回合最多 8 个 agent step；
+- 模型不能执行命令或访问网络。
 
-选中正文中任意一段文字，弹出的菜单里会出现 **聊聊** 选项。点击后聊天面板自动打开，被选中的内容已作为引用 pill 填入输入框。适合「这一段写得对吗」、「这个术语在别处还有没有用过」这种针对性提问。
+目录与 glob 遵守 Workspace 的忽略规则。
 
-输入框上方的引用 pill 可以独立丢弃（点 X），不影响已经打字的草稿。
+## 审批式文件修改
 
-## 页内面板 vs 独立窗口
+当 `Chat` 与 `Edit` 同时开启，工具注册表会增加 `edit_file(path, old_string, new_string)`。
 
-聊天有两种界面形态：
+流程不是“模型直接写盘”：
 
-- **页内浮层**（默认）— 紫色小球展开为右下角的浮动面板，占据当前阅读视图的一角。适合一边看文档一边问。
-- **独立窗口** — 浏览器级弹出窗口，无地址栏、可移到任意屏幕、不会随原页面滚动。适合长对话或多显示器布局。
+1. 模型提出 exact-string replace。
+2. 后端校验路径、UTF-8、1 MiB 上限，以及 `old_string` 恰好出现一次。
+3. Chat 显示 old/new diff 卡片，agent 暂停。
+4. 用户选择 **Apply** 或 **Reject**；也可按 Enter / Esc。
+5. Apply 前重新读取文件，检测提案后是否已发生 drift。
+6. 成功应用后显示 **Undo**；Undo 同样校验当前内容，避免覆盖后续改动。
 
-切换方式：
-
-- **设置一次默认形式** — 桌面版 **设置 → AI 对话 → 默认的对话框形式**，可选 `页内面板` 或 `独立窗口`。
-- **按 <kbd>Shift</kbd> 临时反转** — Shift+点击小球、Shift+聊聊按钮、<kbd>Shift</kbd>+<kbd>c</kbd> 都会以反向形式打开一次，不改默认设置。
-- **面板内的切换图标** — 页内面板标题栏左上有 ⤢ 图标，点击把当前会话搬到独立窗口；独立窗口的同一位置则变成回到页面内的图标。
-
-打开独立窗口时，已有的引用 pill 与未发送的草稿会通过 `postMessage` 自动转交过去；同样地，**有独立窗口存在时**，主页面再次选中文字点 **聊聊** 会把选区直接送进那个窗口而不是另起页内面板。
-
-## 键盘快捷键
-
-| 快捷键 | 功能 |
-|--------|------|
-| <kbd>c</kbd> | 按默认形式打开 AI 对话 |
-| <kbd>Shift</kbd> + <kbd>c</kbd> | 按相反形式打开（页内 ⇄ 独立窗口） |
+`edit_file` 不能创建新文件、移动、删除或运行命令。结构性文件操作仍要求管理员在 Workspace 页面明确执行。
 
 ## 引用与回链
 
-回答中所有的引用都遵循固定格式：
+AI 输出中的下列格式会渲染为可点击引用：
 
-- `path/to/file.md:42` —— 单行
-- `path/to/file.md:42-58` —— 行区间
-- `path/to/file.md#heading-id` —— 标题锚点
+- `path/to/file.md:42`
+- `path/to/file.md:42-58`
+- `path/to/file.md#heading-id`
 
-它们在前端会渲染成可点击的 pill，点击直接跳转到阅读视图的对应位置。让 AI 给出的每个论断都「一键追源」，是这个功能区别于通用聊天工具的关键。
+Markdown 文件打开阅读视图并定位；其它可读文本文件保持工作区边界。引用让答案可以回到证据，而不是只显示一段不可核对的总结。
 
-## AI 能调用的工具
+## Threads
 
-四个，全部只读：
+每个 Workspace 可以创建多个 thread，并支持：
 
-| 工具 | 作用 |
-|------|------|
-| `read_file(path, offset?, limit?)` | 读单个文本文件，支持分页 |
-| `list_dir(path?)` | 列目录（一层），尊重 `.gitignore` |
-| `glob(pattern, limit?)` | 路径模式匹配，如 `**/*.md` |
-| `grep(pattern, path?, glob?, ...)` | 内容搜索，正则，可加路径/扩展名筛选 |
+- 列表与切换；
+- 自动标题；
+- 重命名；
+- 删除；
+- 保存消息内容、工具调用和 edit 状态。
 
-工具受以下约束保护：
-
-- 所有路径必须落在工作区根目录内，越界自动拒绝。
-- 二进制文件、≥ 1 MiB 的文件不会被读取。
-- 工具单次输出上限 64 KiB，超出截断。
-- 工具调用次数有上限，避免模型陷入循环检索。
-
-## 多会话
-
-每个工作区的对话独立保存，存在 `~/.markon/annotation.sqlite`（与个人批注和已读状态共用一个 SQLite 数据库；可通过 `MARKON_SQLITE_PATH` 环境变量自定义路径）。面板顶部的下拉框可以切换会话或新建。
-
-切换工作区时不会丢历史 —— 下次打开同一个目录，所有对话仍在。
+threads/messages 位于 `annotation.sqlite`，按稳定 workspace id 关联。服务重启后仍保留。
 
 ## 隐私与成本
 
-- **API 调用**：工作区内被引用的文件、被选中的文字、AI 工具读取的内容，都会作为 prompt 发到 Provider。请只对你愿意上传的目录开启 chat。
-- **Key 存储**：API Key 以**明文**形式存储在 `~/.markon/settings.json`。任何能读到该文件的进程都能读取你的 Key —— 与本地 git credentials、ssh key 等同敏感度，但 Markon 本身不做额外加密。请确保该目录的文件权限合理（macOS / Linux 默认 0600 即可），并避免把 `settings.json` 同步到版本控制或公共云盘。
-- **prompt cache**（仅 Anthropic）：系统提示词与工作区结构会进入 5 分钟 TTL 缓存，**实际计费量在第二轮起会显著下降**。
+会发送给 Provider 的内容可能包括：
 
-## 自定义 Persona
+- 用户问题与 thread 历史；
+- 当前文档路径；
+- 文字选区；
+- `@` 文件；
+- 工具读取结果；
+- edit 提案的执行结果。
 
-如果默认提示词不满足你的需求（例如希望 AI 用更正式的语气、按特定模板回答），可以在 `settings.json` 的 `chat.system_prompt` 字段填入自定义文本。该字段会替换内置 persona 的整段，但工作区上下文与每轮的「当前文档/选区」块依然由 Markon 自动拼接。
+不会因为开启 Chat 自动上传整个目录。工具按模型请求逐项读取，但读取内容会进入对应 Provider 的请求；只对愿意发送的 Workspace 开启。
 
-```json
-{
-  "chat": {
-    "system_prompt": "你是一位严谨的代码审查者，回答用..."
-  }
-}
-```
-
-## 相关命令行参数
-
-```bash
-markon docs/                               # 打开工作区
-# 然后在浏览器工作区设置页启用 AI 对话 / 搜索
-```
-
-→ 完整选项见 [命令行选项](/guide/cli)
+完整边界见[数据与隐私](/advanced/data-and-privacy)。

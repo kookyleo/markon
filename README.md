@@ -48,6 +48,12 @@ Download the package for your platform from [GitHub Releases](https://github.com
 | Windows | x64 and ARM64 NSIS installers |
 | Linux | x64 and ARM64 `.deb` and `.AppImage` |
 
+The permanent [download page](https://kookyleo.github.io/markon/download)
+detects the current platform and resolves the latest stable installer. See the
+project's [Code signing policy](https://kookyleo.github.io/markon/download#code-signing-policy):
+free code signing is provided by [SignPath.io](https://about.signpath.io/),
+certificate by [SignPath Foundation](https://signpath.org/).
+
 macOS users can install from the repository's Homebrew tap:
 
 ```bash

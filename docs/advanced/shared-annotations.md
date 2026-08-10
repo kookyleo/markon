@@ -1,99 +1,95 @@
+---
+title: 共享批注
+description: Markon 以 SQLite 为唯一权威、HTTP 写入、WebSocket 广播的共享 annotations 与 Viewed 状态。
+---
+
 # 共享批注
 
 <div class="feature-illustration">
-  <img src="/illustrations/07-sync.svg" alt="多端同步" />
+  <img src="/illustrations/07-sync.svg" alt="Markon 共享批注同步" />
 </div>
 
-Markon 的个人批注和已读状态始终存储在本机 SQLite。启用 **共享批注** 后，同一数据集再通过 WebSocket 向所有已获准的协作者实时同步；关闭共享不会搬移或删除数据，只会停止协作输出。
+Shared 不是另一种存储模式。批注与 Viewed 始终写入本机 SQLite；开启 Shared 只让已通过门禁的协作者访问同一数据集，并接收实时广播。
 
 ## 启用
 
-在浏览器工作区设置中勾选 **共享批注和已读状态**，或使用 `markon set <ID> shared on`。
+在管理员浏览器的 Workspace 根页开启 `Shared`，或：
 
-启用后，同一工作区的所有浏览器会话会共享：
+```bash
+markon set <ID|INDEX> shared on
+```
 
-- 所有颜色高亮
-- 删除线
-- 便条笔记
-- 已读状态
-- 章节折叠状态
+共享内容：
 
-## 数据存储
+- 三色高亮；
+- 删除线；
+- Notes；
+- H2–H6 Viewed 状态。
 
-### 默认路径
+**独立折叠状态不共享。** 它是每个浏览器自己的 UI 偏好，保存在当前浏览器；Live Broadcast 可以临时同步演示动作，但不会把普通折叠偏好写入共享 Viewed 数据。
 
-| 平台 | 路径 |
-|------|------|
+## 数据流
+
+```text
+Browser A ── same-origin HTTP command ──▶ SQLite
+                                              │
+                                              ├── WebSocket event ──▶ Browser B
+                                              └── WebSocket event ──▶ Browser C
+```
+
+WebSocket 不接受批注/Viewed 写库请求，只承担广播输出。这样断开某个 socket 不会产生第二份离线数据；重连后客户端重新读取服务端权威状态。
+
+## 权限变化
+
+| Shared | 管理员 | 协作者 |
+|---|---|---|
+| Off | 读写个人审阅状态 | 页面保持只读，可正常原生选择/复制 |
+| On | 读写同一状态 | 通过协作者门禁后读写并实时同步 |
+
+关闭 Shared 不删除或搬移任何记录，只收回协作者能力并停止协作广播。
+
+## 多设备
+
+```bash
+markon docs/ \
+  --host 0.0.0.0 \
+  --entry http://192.168.1.20:6419 \
+  --collaborator-access-code guest-secret
+```
+
+管理员可以从 `markon ls` TUI 复制协作者地址。只有 Shared 已开启的 Workspace 才显示分享操作，且复制出的 URL 不携带管理员 bootstrap。
+
+## 数据库
+
+| 平台 | 默认路径 |
+|---|---|
 | macOS / Linux | `~/.markon/annotation.sqlite` |
 | Windows | `%USERPROFILE%\.markon\annotation.sqlite` |
 
-### 自定义路径
-
-通过环境变量：
+覆盖：
 
 ```bash
-MARKON_SQLITE_PATH=/path/to/db markon README.md
+MARKON_SQLITE_PATH=/srv/markon/annotation.sqlite markon docs/
 ```
 
-桌面版：**全局设置 → 数据库**，点击 **选择…** 浏览。
+## 适用边界
 
-## 同步机制
+适合：
 
-```
-Browser A ──HTTP mutation──▶ SQLite
-    ▲                            │
-    └──── WebSocket broadcast ───┼──▶ Browser B
-                                 └──▶ Browser C
-```
-
-- 任一客户端新建/修改/删除批注 → 通过 HTTP 写入 SQLite → 按共享开关广播 WebSocket 消息
-- 其他客户端收到消息后立即更新 UI
-- WebSocket 自动重连（指数退避），断线期间的变更在重连时一次性同步
-
-## 多设备访问
-
-启用 `--host 0.0.0.0` 让其他设备通过网络访问同一 Markon 实例：
-
-```bash
-markon --host 0.0.0.0 --qr
-```
-
-然后在浏览器工作区设置中启用 **共享批注和已读状态**。
-
-场景：
-- 手机扫 QR 码打开 → 添加批注 → 电脑浏览器实时看到
-- 家里服务器跑 Markon → 手机/平板/电脑各自连接 → 共享笔记
-
-## 团队协作
-
-Markon 本身不区分用户身份 —— 所有连接客户端都是平等的编辑者。这种「共享白板」模式适合：
-
-- 小团队 wiki（3-5 人）
-- 读书会/讨论组的共同批注
-- 技术评审会议中的实时批注
+- 小团队同步审阅；
+- 手机、平板、电脑查看同一审阅状态；
+- 评审会与读书会。
 
 不适合：
-- 需要权限管理的场景（谁能编辑、谁只能看）
-- 需要审批流、版本对比的正式文档系统
 
-## 性能
+- 按用户区分私有批注；
+- 需要逐人 RBAC、审批流或审计日志；
+- 高延迟离线编辑与自动合并。
 
-- SQLite 是嵌入式数据库，无需服务端进程
-- 单库支持数万条批注无压力
-- WebSocket 广播延迟通常 < 100ms
+同一 Shared Workspace 的协作者是同一数据集的平等编辑者。
 
-## 数据备份
+## 备份与清理
 
-SQLite 数据库就是一个文件，直接拷贝即可备份：
+停服后备份 `settings.json` 与 `annotation.sqlite`。解除注册不会删除历史；确认不再需要后使用 `markon cleanup` 查看并清理 orphan data。
 
-```bash
-cp ~/.markon/annotation.sqlite ~/backup/markon-$(date +%Y%m%d).sqlite
-```
-
-恢复：把备份文件拷贝回原路径。
-
-## 旧版数据迁移
-
-升级后，页面会把当前浏览器来源下的旧版 LocalStorage 批注与 SQLite 合并；SQLite 中同 ID 的数据
-优先，本地独有批注会补写进去，成功后清除该来源副本。浏览器同源策略仍禁止新 IP 直接读取旧 IP
-下的存储；如旧数据只存在于已经不可访问的旧地址，需要临时恢复该地址并打开一次以完成迁移。
+→ 完整说明见[数据与隐私](/advanced/data-and-privacy)。

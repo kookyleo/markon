@@ -11,9 +11,10 @@ Markon 不需要注册账号，但权限建立在显式 capability 上，而不�
 管理员会话可以：
 
 - 修改工作区的功能开关（features）、别名（alias）；
-- 增删工作区；
 - `git commit` / `checkout`；
 - 增删文件、编辑并保存正文。
+
+增删 Workspace、停止服务等服务级管理已经完全移出 TCP，只能由本机 GUI / CLI 通过控制套接字执行。
 
 用两种方式创建同一种管理员会话：
 
@@ -33,10 +34,10 @@ fragment nonce 有 256 bit 随机性，页面读取后会立即清除地址栏 f
 
 - `edit` 开 → 可编辑并保存正文；
 - `chat` 开 → 可用 AI 助手；
-- `annotation`（共享批注 / shared）开 → 可批注；
+- `shared`（共享批注）开 → 可读写批注与 Viewed 状态；
 - 其余功能开关同理，就近生效。
 
-协作者**不能**做管理 / 结构性操作：不能改功能开关或别名、不能增删工作区、不能 `git commit` / `checkout`、不能增删文件。这些一律要求 Admin session（原生 CLI / GUI 则使用 management token）。
+协作者**不能**做管理 / 结构性操作：不能改功能开关或别名、不能 `git commit` / `checkout`、不能增删文件。这些一律要求 Admin session（原生 CLI / GUI 则使用 management token）。增删 Workspace 与 shutdown 只能走本机控制套接字。
 
 ## 协作者访问码
 
