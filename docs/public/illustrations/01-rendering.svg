@@ -29,13 +29,10 @@
     </g>
   </g>
 
-  <g filter="url(#sh)">
-    <rect x="240" y="100" width="490" height="600" rx="16" fill="#FFFFFF" stroke="#E5E7EB"/>
-    <circle cx="265" cy="128" r="6" fill="#FF5F57"/>
-    <circle cx="285" cy="128" r="6" fill="#FEBC2E"/>
-    <circle cx="305" cy="128" r="6" fill="#28C840"/>
-    <line x1="240" y1="156" x2="730" y2="156" stroke="#E5E7EB"/>
+  <g>
+    <rect x="210" y="66" width="540" height="668" rx="16" fill="#FCFCFA" stroke="#D8DDE1"/>
 
+    <g transform="translate(-68 -88) scale(1.12)">
     <rect x="270" y="180" rx="3" width="240" height="14" fill="#111827"/>
     <rect x="270" y="208" rx="2" width="180" height="8" fill="#9CA3AF"/>
 
@@ -56,7 +53,7 @@
     <rect x="290" y="446" rx="2" width="380" height="8" fill="#93C5FD"/>
     <rect x="290" y="460" rx="2" width="260" height="8" fill="#93C5FD"/>
 
-    <rect x="270" y="500" width="430" height="160" fill="#FFFFFF" stroke="#E5E7EB"/>
+    <rect x="270" y="500" width="430" height="160" fill="#FCFCFA" stroke="#E5E7EB"/>
     <rect x="270" y="500" width="430" height="36" fill="#F3F4F6"/>
     <line x1="270" y1="536" x2="700" y2="536" stroke="#E5E7EB"/>
     <line x1="270" y1="572" x2="700" y2="572" stroke="#E5E7EB"/>
@@ -75,5 +72,6 @@
     <rect x="290" y="624" rx="2" width="50" height="8" fill="#9CA3AF"/>
     <rect x="432" y="624" rx="2" width="110" height="8" fill="#9CA3AF"/>
     <rect x="577" y="624" rx="2" width="70" height="8" fill="#9CA3AF"/>
+    </g>
   </g>
 </svg>

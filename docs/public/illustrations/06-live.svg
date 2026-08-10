@@ -68,11 +68,26 @@
     <rect x="345" y="602" rx="2" width="190" height="6" fill="#D1D5DB"/>
   </g>
 
-  <!-- Broadcast pulse — 3 rings, 2px stroke, fading outward; nudged toward the lower-left whitespace -->
+  <!-- Bidirectional broadcast pulse: centred between both views so the
+       synchronisation reads as a shared signal rather than a one-way push. -->
   <g pointer-events="none">
-    <circle cx="310" cy="365" r="200" fill="none" stroke="#FF8A3D" stroke-width="2" opacity="0.25"/>
-    <circle cx="310" cy="365" r="130" fill="none" stroke="#FF8A3D" stroke-width="2" opacity="0.5"/>
-    <circle cx="310" cy="365" r="70" fill="none" stroke="#FF8A3D" stroke-width="2" opacity="0.85"/>
-    <circle cx="310" cy="365" r="20" fill="#F59E0B"/>
+    <!-- inner signal -->
+    <path d="M296 300 Q282 313 296 326" fill="none" stroke="#FF8A3D" stroke-width="3" stroke-linecap="round" opacity=".9"/>
+    <path d="M324 300 Q338 313 324 326" fill="none" stroke="#FF8A3D" stroke-width="3" stroke-linecap="round" opacity=".9"/>
+
+    <!-- middle signal -->
+    <path d="M282 284 Q252 313 282 342" fill="none" stroke="#FF8A3D" stroke-width="2.5" stroke-linecap="round" opacity=".55"/>
+    <path d="M338 284 Q368 313 338 342" fill="none" stroke="#FF8A3D" stroke-width="2.5" stroke-linecap="round" opacity=".55"/>
+
+    <!-- outer signal -->
+    <path d="M264 260 Q212 313 264 366" fill="none" stroke="#FF8A3D" stroke-width="2" stroke-linecap="round" opacity=".28"/>
+    <path d="M356 260 Q408 313 356 366" fill="none" stroke="#FF8A3D" stroke-width="2" stroke-linecap="round" opacity=".28"/>
+
+    <!-- far signal -->
+    <path d="M244 239 Q178 313 244 387" fill="none" stroke="#FF8A3D" stroke-width="1.5" stroke-linecap="round" opacity=".14"/>
+    <path d="M376 239 Q442 313 376 387" fill="none" stroke="#FF8A3D" stroke-width="1.5" stroke-linecap="round" opacity=".14"/>
+
+    <circle cx="310" cy="313" r="11" fill="#FFFFFF" stroke="#FF8A3D" stroke-width="2" opacity=".95"/>
+    <circle cx="310" cy="313" r="6" fill="#F59E0B"/>
   </g>
 </svg>

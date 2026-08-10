@@ -1,0 +1,113 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 800" width="800" height="800">
+  <defs>
+    <filter id="shadow" x="-12%" y="-12%" width="124%" height="130%">
+      <feDropShadow dx="0" dy="4" stdDeviation="8" flood-color="#1f2937" flood-opacity=".045"/>
+    </filter>
+  </defs>
+  <rect width="800" height="800" fill="#FAFAF7"/>
+
+  <!-- Abstracted Markdiff view: comparison tree and rendered diff -->
+  <rect x="34" y="82" width="732" height="636" rx="18" fill="#FFFFFF" stroke="#E4E5E1" filter="url(#shadow)"/>
+  <rect x="34" y="82" width="732" height="45" rx="18" fill="#F5F6F3"/>
+  <path d="M34 109h732v18H34z" fill="#F5F6F3"/>
+  <circle cx="59" cy="105" r="6" fill="#FF6B61"/>
+  <circle cx="79" cy="105" r="6" fill="#F6C451"/>
+  <circle cx="99" cy="105" r="6" fill="#42C76B"/>
+  <rect x="304" y="95" width="190" height="19" rx="9.5" fill="#E7E9E5"/>
+
+  <line x1="256" y1="127" x2="256" y2="718" stroke="#D9DCD8"/>
+
+  <!-- Left compare controls -->
+  <text x="56" y="164" fill="#202428" font-family="system-ui, sans-serif" font-size="20" font-weight="750">Markdiff</text>
+  <rect x="56" y="179" width="54" height="19" rx="7" fill="#F2F3F0"/>
+  <text x="69" y="192" fill="#34383D" font-family="system-ui, sans-serif" font-size="9">markon</text>
+  <rect x="120" y="185" width="100" height="7" rx="3.5" fill="#C7CAC6"/>
+  <rect x="56" y="221" width="46" height="8" rx="4" fill="#BFC3BE"/>
+  <rect x="186" y="221" width="44" height="8" rx="4" fill="#C8CCC7"/>
+
+  <rect x="56" y="244" width="148" height="38" rx="8" fill="#FFFFFF" stroke="#D8DAD7"/>
+  <text x="69" y="268" fill="#34383D" font-family="system-ui, sans-serif" font-size="12">HEAD</text>
+  <path d="M109 263h21" stroke="#9A9FA4" stroke-width="1.5"/>
+  <path d="m126 259 4 4-4 4" fill="none" stroke="#9A9FA4" stroke-width="1.5"/>
+  <text x="142" y="268" fill="#34383D" font-family="system-ui, sans-serif" font-size="12">Worktree</text>
+  <rect x="56" y="300" width="86" height="20" rx="10" fill="#F7F8F5" stroke="#E1E3DF"/>
+  <rect x="148" y="300" width="74" height="20" rx="10" fill="#F7F8F5" stroke="#E1E3DF"/>
+  <line x1="56" y1="342" x2="230" y2="342" stroke="#E5E7E3"/>
+
+  <rect x="56" y="363" width="144" height="34" rx="7" fill="#FFFFFF" stroke="#D8DAD7"/>
+  <circle cx="72" cy="380" r="5" fill="none" stroke="#8B9095" stroke-width="1.5"/>
+  <path d="m76 384 4 4" stroke="#8B9095" stroke-width="1.5" stroke-linecap="round"/>
+  <rect x="88" y="376" width="78" height="7" rx="3.5" fill="#C8CBC7"/>
+  <rect x="207" y="363" width="28" height="34" rx="7" fill="#E9F1FD" stroke="#8EB5E7"/>
+  <path d="M216 373h10m-8 5h6m-4 5h2" stroke="#4A83CE" stroke-width="1.5" stroke-linecap="round"/>
+
+  <!-- File tree patterned after the real screenshot -->
+  <g font-family="system-ui, sans-serif" fill="#34383D">
+    <rect x="57" y="423" width="10" height="12" rx="2" fill="none" stroke="#858A8F"/>
+    <text x="76" y="434" font-size="12" font-weight="700">markon /</text>
+    <rect x="72" y="450" width="10" height="12" rx="2" fill="#FFF8DC" stroke="#C3A94B"/>
+    <text x="91" y="461" font-size="11">README.md</text>
+    <rect x="72" y="477" width="10" height="12" rx="2" fill="#FFF8DC" stroke="#C3A94B"/>
+    <text x="91" y="488" font-size="11">README.zh.md</text>
+    <path d="M72 519h4.5l2 2.5H85V531H72z" fill="#F7F8F5" stroke="#858A8F" stroke-linejoin="round"/>
+    <text x="91" y="529" font-size="11">docs</text>
+    <path d="M87 552h4.5l2 2.5H100V564H87z" fill="#F7F8F5" stroke="#858A8F" stroke-linejoin="round"/>
+    <text x="106" y="562" font-size="11">features</text>
+    <rect x="102" y="582" width="10" height="12" rx="2" fill="#EAF8ED" stroke="#5DAE6B"/>
+    <text x="121" y="593" font-size="11">git.md</text>
+    <rect x="102" y="609" width="10" height="12" rx="2" fill="#FFF8DC" stroke="#C3A94B"/>
+    <text x="121" y="620" font-size="11">search.md</text>
+    <rect x="102" y="636" width="10" height="12" rx="2" fill="#FFF8DC" stroke="#C3A94B"/>
+    <text x="121" y="647" font-size="11">viewed.md</text>
+  </g>
+
+  <!-- Right header -->
+  <rect x="256" y="127" width="510" height="44" fill="#F6F7F5"/>
+  <path d="m282 147 5 5 5-5" fill="none" stroke="#8D9297" stroke-width="1.5"/>
+  <text x="304" y="154" fill="#34383D" font-family="system-ui, sans-serif" font-size="13" font-weight="700">README.md</text>
+  <rect x="627" y="145" width="22" height="8" rx="4" fill="#77BE7E"/>
+  <rect x="654" y="145" width="8" height="8" rx="2" fill="#DE7E77"/>
+  <rect x="674" y="137" width="66" height="26" rx="7" fill="#FFFFFF" stroke="#D5D8D4"/>
+  <rect x="682" y="144" width="12" height="12" rx="3" fill="#FFFFFF" stroke="#A8ADA9"/>
+  <text x="700" y="154" fill="#4A4F54" font-family="system-ui, sans-serif" font-size="10">Viewed</text>
+
+  <!-- Rendered diff content -->
+  <line x1="290" y1="216" x2="732" y2="216" stroke="#DFE1DE" stroke-dasharray="3 4"/>
+  <rect x="433" y="211" width="146" height="11" rx="5.5" fill="#FFFFFF"/>
+  <rect x="451" y="213" width="112" height="7" rx="3.5" fill="#C8CBC7"/>
+
+  <text x="302" y="280" fill="#24272B" font-family="system-ui, sans-serif" font-size="21" font-weight="750">Desktop App</text>
+  <rect x="302" y="309" width="278" height="9" rx="4.5" fill="#5F6469"/>
+  <rect x="587" y="309" width="82" height="9" rx="4.5" fill="#5992D5"/>
+
+  <!-- Package table -->
+  <rect x="302" y="344" width="428" height="142" rx="5" fill="#FFFFFF" stroke="#D5D8D4"/>
+  <line x1="302" y1="381" x2="730" y2="381" stroke="#D5D8D4"/>
+  <line x1="302" y1="416" x2="730" y2="416" stroke="#D5D8D4"/>
+  <line x1="302" y1="451" x2="730" y2="451" stroke="#D5D8D4"/>
+  <line x1="406" y1="344" x2="406" y2="486" stroke="#D5D8D4"/>
+  <rect x="326" y="359" width="54" height="9" rx="4.5" fill="#34383D"/>
+  <rect x="487" y="359" width="88" height="9" rx="4.5" fill="#34383D"/>
+  <g fill="#858A8F">
+    <rect x="319" y="394" width="48" height="8" rx="4"/>
+    <rect x="426" y="394" width="142" height="8" rx="4"/>
+    <rect x="319" y="429" width="58" height="8" rx="4"/>
+    <rect x="426" y="429" width="174" height="8" rx="4"/>
+    <rect x="319" y="464" width="40" height="8" rx="4"/>
+    <rect x="426" y="464" width="156" height="8" rx="4"/>
+  </g>
+
+  <!-- Added rendered block -->
+  <rect x="291" y="510" width="446" height="72" rx="4" fill="#F0F8EF"/>
+  <rect x="291" y="510" width="4" height="72" rx="2" fill="#51A45E"/>
+  <text x="276" y="535" fill="#3E9850" font-family="system-ui, sans-serif" font-size="18" font-weight="700">+</text>
+  <rect x="307" y="525" width="392" height="8" rx="4" fill="#4E5358"/>
+  <rect x="307" y="543" width="338" height="8" rx="4" fill="#4E5358"/>
+  <rect x="307" y="561" width="210" height="8" rx="4" fill="#6595D2"/>
+
+  <rect x="302" y="612" width="214" height="9" rx="4.5" fill="#3C4145"/>
+  <rect x="302" y="638" width="400" height="52" rx="5" fill="#F6F7F5"/>
+  <rect x="321" y="653" width="280" height="7" rx="3.5" fill="#B17447"/>
+  <rect x="321" y="670" width="242" height="7" rx="3.5" fill="#B17447"/>
+
+</svg>

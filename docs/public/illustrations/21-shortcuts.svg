@@ -1,0 +1,109 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 800" width="800" height="800">
+  <defs>
+    <filter id="window-shadow" x="-12%" y="-12%" width="124%" height="130%">
+      <feDropShadow dx="0" dy="4" stdDeviation="8" flood-color="#1F2937" flood-opacity=".04"/>
+    </filter>
+    <filter id="panel-shadow" x="-18%" y="-16%" width="136%" height="140%">
+      <feDropShadow dx="0" dy="10" stdDeviation="14" flood-color="#27313A" flood-opacity=".12"/>
+    </filter>
+  </defs>
+
+  <rect width="800" height="800" fill="#FAFAF7"/>
+
+  <!-- Any-page context, deliberately softened behind the help surface. -->
+  <g opacity=".48" filter="url(#window-shadow)">
+    <rect x="44" y="54" width="712" height="692" rx="18" fill="#FFFFFF" stroke="#E1E5E0"/>
+    <path d="M62 54h676a18 18 0 0 1 18 18v30H44V72a18 18 0 0 1 18-18z" fill="#F5F7F4"/>
+    <circle cx="69" cy="78" r="6" fill="#FF6B61"/>
+    <circle cx="89" cy="78" r="6" fill="#F6C451"/>
+    <circle cx="109" cy="78" r="6" fill="#42C76B"/>
+    <rect x="289" y="68" width="222" height="20" rx="10" fill="#E7E9E5"/>
+
+    <rect x="44" y="102" width="174" height="644" fill="#FAFBF9"/>
+    <line x1="218" y1="102" x2="218" y2="746" stroke="#D7E5FA" stroke-width="2"/>
+    <rect x="70" y="137" width="82" height="8" rx="4" fill="#5F686E"/>
+    <rect x="70" y="166" width="112" height="7" rx="3.5" fill="#929A9F"/>
+    <rect x="60" y="205" width="142" height="122" rx="10" fill="#DDE9FA"/>
+    <rect x="76" y="225" width="104" height="8" rx="4" fill="#5F686E"/>
+    <rect x="86" y="253" width="72" height="7" rx="3.5" fill="#7CA5DC"/>
+    <rect x="86" y="280" width="88" height="7" rx="3.5" fill="#858F95"/>
+    <rect x="70" y="370" width="104" height="7" rx="3.5" fill="#929A9F"/>
+    <rect x="70" y="404" width="82" height="7" rx="3.5" fill="#929A9F"/>
+    <rect x="70" y="438" width="110" height="7" rx="3.5" fill="#929A9F"/>
+    <rect x="70" y="472" width="72" height="7" rx="3.5" fill="#929A9F"/>
+
+    <path d="M250 130h11l4 4h15v16h-30z" fill="#F7F8F5" stroke="#7E8489" stroke-width="1.4" stroke-linejoin="round"/>
+    <rect x="300" y="136" width="70" height="7" rx="3.5" fill="#8E979D"/>
+    <rect x="384" y="136" width="196" height="7" rx="3.5" fill="#A5ADB2"/>
+    <rect x="250" y="190" width="284" height="16" rx="5" fill="#2F363B"/>
+    <rect x="250" y="228" width="446" height="8" rx="4" fill="#9DA5AA"/>
+    <rect x="250" y="250" width="390" height="8" rx="4" fill="#ADB4B8"/>
+    <rect x="250" y="302" width="470" height="118" rx="10" fill="#FFFFFF" stroke="#DDE2E6"/>
+    <rect x="270" y="330" width="402" height="8" rx="4" fill="#9EA6AC"/>
+    <rect x="270" y="353" width="354" height="8" rx="4" fill="#AAB1B6"/>
+    <rect x="250" y="462" width="436" height="8" rx="4" fill="#A7AEB3"/>
+    <rect x="250" y="486" width="384" height="8" rx="4" fill="#B3B9BD"/>
+  </g>
+
+  <!-- Contextual help and shortcuts panel. -->
+  <g transform="translate(0 76)" filter="url(#panel-shadow)">
+    <rect x="132" y="126" width="536" height="396" rx="16" fill="#FFFFFF" stroke="#D8DEE3"/>
+    <rect x="132" y="126" width="536" height="58" rx="16" fill="#F5F7F9"/>
+    <path d="M132 162h536v22H132z" fill="#F5F7F9"/>
+    <line x1="132" y1="184" x2="668" y2="184" stroke="#D8DEE3"/>
+
+    <path d="m154 146 14 14m0-14-14 14" stroke="#69737A" stroke-width="2.2" stroke-linecap="round"/>
+    <text x="186" y="159" fill="#30383D" font-family="system-ui, sans-serif" font-size="15" font-weight="400">Help &amp; shortcuts</text>
+
+    <g transform="translate(0 -14)">
+    <text x="162" y="232" fill="#737E86" font-family="system-ui, sans-serif" font-size="11" font-weight="750" letter-spacing=".8">GENERAL</text>
+    <text x="418" y="232" fill="#737E86" font-family="system-ui, sans-serif" font-size="11" font-weight="750" letter-spacing=".8">WORKSPACE</text>
+
+    <!-- The ? row is highlighted as the universal entry point. -->
+    <rect x="152" y="248" width="232" height="52" rx="10" fill="#EAF2FD" stroke="#BDD3F3"/>
+    <rect x="166" y="258" width="38" height="32" rx="7" fill="#FFFFFF" stroke="#78A5ED" stroke-width="1.5"/>
+    <text x="185" y="280" fill="#356FB9" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="16" font-weight="700" text-anchor="middle">?</text>
+    <rect x="220" y="270" width="132" height="8" rx="4" fill="#5278A8"/>
+
+    <g font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="13" font-weight="650" text-anchor="middle">
+      <rect x="166" y="322" width="56" height="30" rx="6" fill="#F7F8F9" stroke="#C7CFD5"/>
+      <text x="194" y="342" fill="#4C565D">⌘ Z</text>
+      <rect x="238" y="333" width="98" height="7" rx="3.5" fill="#919AA0"/>
+
+      <rect x="166" y="374" width="50" height="30" rx="6" fill="#F7F8F9" stroke="#C7CFD5"/>
+      <text x="191" y="394" fill="#4C565D">Esc</text>
+      <rect x="232" y="385" width="128" height="7" rx="3.5" fill="#919AA0"/>
+
+      <rect x="166" y="426" width="56" height="30" rx="6" fill="#F7F8F9" stroke="#C7CFD5"/>
+      <text x="194" y="446" fill="#4C565D">⌘ K</text>
+      <rect x="238" y="437" width="104" height="7" rx="3.5" fill="#919AA0"/>
+
+      <rect x="166" y="478" width="64" height="30" rx="6" fill="#F7F8F9" stroke="#C7CFD5"/>
+      <text x="198" y="498" fill="#4C565D">Space</text>
+      <rect x="246" y="489" width="112" height="7" rx="3.5" fill="#919AA0"/>
+
+      <rect x="422" y="258" width="38" height="30" rx="6" fill="#F7F8F9" stroke="#C7CFD5"/>
+      <text x="441" y="278" fill="#4C565D">/</text>
+      <rect x="476" y="269" width="132" height="7" rx="3.5" fill="#919AA0"/>
+
+      <rect x="422" y="322" width="38" height="30" rx="6" fill="#F7F8F9" stroke="#C7CFD5"/>
+      <text x="441" y="342" fill="#4C565D">E</text>
+      <rect x="476" y="333" width="114" height="7" rx="3.5" fill="#919AA0"/>
+
+      <rect x="422" y="374" width="38" height="30" rx="6" fill="#F7F8F9" stroke="#C7CFD5"/>
+      <text x="441" y="394" fill="#4C565D">V</text>
+      <rect x="476" y="385" width="126" height="7" rx="3.5" fill="#919AA0"/>
+
+      <rect x="422" y="426" width="38" height="30" rx="6" fill="#F7F8F9" stroke="#C7CFD5"/>
+      <text x="441" y="446" fill="#4C565D">L</text>
+      <rect x="476" y="437" width="102" height="7" rx="3.5" fill="#919AA0"/>
+
+      <rect x="422" y="478" width="38" height="30" rx="6" fill="#F7F8F9" stroke="#C7CFD5"/>
+      <text x="441" y="498" fill="#4C565D">C</text>
+      <rect x="476" y="489" width="120" height="7" rx="3.5" fill="#919AA0"/>
+    </g>
+
+    </g>
+
+  </g>
+</svg>

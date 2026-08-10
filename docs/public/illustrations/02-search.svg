@@ -1,56 +1,130 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 800" width="800" height="800">
+  <defs>
+    <filter id="background-shadow" x="-12%" y="-12%" width="124%" height="130%">
+      <feDropShadow dx="0" dy="4" stdDeviation="8" flood-color="#1F2937" flood-opacity=".045"/>
+    </filter>
+    <filter id="spotlight-shadow" x="-15%" y="-15%" width="130%" height="140%">
+      <feDropShadow dx="0" dy="9" stdDeviation="13" flood-color="#24313A" flood-opacity=".15"/>
+    </filter>
+  </defs>
+
   <rect width="800" height="800" fill="#FAFAF7"/>
 
-  <g transform="translate(0 42)">
-    <!-- search bar zone -->
-    <line x1="60" y1="110" x2="740" y2="110" stroke="#E5E7EB"/>
-    <text x="92" y="150" font-family="ui-sans-serif, system-ui" font-size="22" font-weight="500" fill="#111827">script</text>
-    <rect x="164" y="128" width="2" height="26" fill="#111827"/>
-    <line x1="60" y1="174" x2="740" y2="174" stroke="#E5E7EB"/>
+  <!-- A document page with a persistent TOC remains visible around Spotlight. -->
+  <g transform="translate(4.32 58.06) scale(.989 .855)">
+    <rect x="30" y="28" width="740" height="744" rx="18" fill="#FFFFFF" stroke="#E4E5E1" filter="url(#background-shadow)"/>
+    <path d="M48 28h704a18 18 0 0 1 18 18v35H30V46a18 18 0 0 1 18-18z" fill="#F5F6F3"/>
+    <ellipse cx="55" cy="55" rx="6.1" ry="7" fill="#FF6B61"/>
+    <ellipse cx="75" cy="55" rx="6.1" ry="7" fill="#F6C451"/>
+    <ellipse cx="95" cy="55" rx="6.1" ry="7" fill="#42C76B"/>
+    <rect x="303" y="43" width="192" height="22" rx="11" fill="#E7E9E5"/>
 
-    <!-- Esc hint -->
-    <g transform="translate(345 192)">
-      <rect width="42" height="22" rx="4" fill="#FFFFFF" stroke="#D1D5DB"/>
-      <text x="21" y="16" font-family="ui-sans-serif, system-ui" font-size="11" font-weight="700" fill="#4B5563" text-anchor="middle">Esc</text>
-    </g>
-    <text x="395" y="208" font-family="ui-sans-serif, system-ui" font-size="13" fill="#6B7280">to close</text>
-
-    <!-- result 1 : focused -->
-    <g>
-      <rect x="60" y="244" width="680" height="118" rx="6" fill="#F4F6FA"/>
-      <rect x="60" y="244" width="4" height="118" fill="#3B82F6"/>
-      <rect x="92" y="266" rx="2" width="190" height="14" fill="#111827"/>
-      <rect x="92" y="290" rx="2" width="380" height="10" fill="#9CA3AF"/>
-      <rect x="92" y="320" rx="2" width="620" height="8" fill="#9CA3AF"/>
-      <rect x="172" y="320" rx="2" width="34" height="8" fill="#3B82F6"/>
-      <rect x="320" y="320" rx="2" width="38" height="8" fill="#3B82F6"/>
-      <rect x="490" y="320" rx="2" width="34" height="8" fill="#3B82F6"/>
-      <rect x="92" y="338" rx="2" width="540" height="8" fill="#9CA3AF"/>
-      <rect x="208" y="338" rx="2" width="34" height="8" fill="#3B82F6"/>
-    </g>
-
-    <line x1="92" y1="372" x2="708" y2="372" stroke="#F3F4F6"/>
-
-    <!-- result 2 -->
-    <g>
-      <rect x="92" y="396" rx="2" width="150" height="14" fill="#111827"/>
-      <rect x="92" y="420" rx="2" width="420" height="10" fill="#9CA3AF"/>
-      <rect x="92" y="450" rx="2" width="620" height="8" fill="#9CA3AF"/>
-      <rect x="262" y="450" rx="2" width="42" height="8" fill="#3B82F6"/>
-      <rect x="92" y="468" rx="2" width="480" height="8" fill="#9CA3AF"/>
+    <rect x="30" y="81" width="170" height="691" fill="#FAFBF9"/>
+    <line x1="200" y1="81" x2="200" y2="772" stroke="#D7E5FA" stroke-width="1.5"/>
+    <text x="52" y="127" fill="#30383E" font-family="system-ui, sans-serif" font-size="14" font-weight="750">TOC</text>
+    <g opacity=".62">
+      <rect x="52" y="151" width="106" height="8" rx="4" fill="#69747B"/>
+      <rect x="70" y="177" width="82" height="7" rx="3.5" fill="#89939A"/>
+      <rect x="44" y="205" width="144" height="142" rx="11" fill="#DDE9FA"/>
+      <rect x="60" y="222" width="108" height="8" rx="4" fill="#4F5A61"/>
+      <rect x="73" y="250" width="80" height="7" rx="3.5" fill="#768188"/>
+      <rect x="73" y="278" width="58" height="7" rx="3.5" fill="#3F7FD1"/>
+      <rect x="73" y="306" width="72" height="7" rx="3.5" fill="#768188"/>
+      <rect x="73" y="331" width="62" height="7" rx="3.5" fill="#768188"/>
+      <rect x="52" y="378" width="90" height="7" rx="3.5" fill="#8A949A"/>
+      <rect x="52" y="410" width="112" height="7" rx="3.5" fill="#8A949A"/>
+      <rect x="68" y="442" width="84" height="7" rx="3.5" fill="#8A949A"/>
+      <rect x="68" y="474" width="98" height="7" rx="3.5" fill="#8A949A"/>
+      <rect x="52" y="514" width="102" height="7" rx="3.5" fill="#8A949A"/>
+      <rect x="52" y="548" width="72" height="7" rx="3.5" fill="#8A949A"/>
     </g>
 
-    <line x1="92" y1="502" x2="708" y2="502" stroke="#F3F4F6"/>
+    <g opacity=".62">
+      <path d="M230 116h11l4 4h15v16h-30z" fill="#F7F8F5" stroke="#7E8489" stroke-width="1.4" stroke-linejoin="round"/>
+      <rect x="278" y="121" width="68" height="7" rx="3.5" fill="#8B959B"/>
+      <rect x="360" y="121" width="190" height="7" rx="3.5" fill="#A0A8AD"/>
+      <rect x="616" y="105" width="122" height="38" rx="19" fill="#FFFFFF" stroke="#C9D0D5"/>
+      <circle cx="638" cy="123" r="7" fill="none" stroke="#707B83" stroke-width="1.7"/>
+      <path d="m643 128 5 5" stroke="#707B83" stroke-width="1.7" stroke-linecap="round"/>
+      <rect x="663" y="120" width="42" height="7" rx="3.5" fill="#8B959B"/>
+    </g>
 
-    <!-- result 3 -->
-    <g>
-      <rect x="92" y="526" rx="2" width="110" height="14" fill="#111827"/>
-      <rect x="92" y="550" rx="2" width="320" height="10" fill="#9CA3AF"/>
-      <rect x="92" y="580" rx="2" width="620" height="8" fill="#9CA3AF"/>
-      <rect x="162" y="580" rx="2" width="34" height="8" fill="#3B82F6"/>
-      <rect x="280" y="580" rx="2" width="42" height="8" fill="#3B82F6"/>
-      <rect x="450" y="580" rx="2" width="42" height="8" fill="#3B82F6"/>
-      <rect x="92" y="598" rx="2" width="560" height="8" fill="#9CA3AF"/>
+    <rect x="230" y="174" width="260" height="17" rx="5" fill="#252B30"/>
+    <g opacity=".58">
+      <rect x="230" y="216" width="470" height="8" rx="4" fill="#9CA5AB"/>
+      <rect x="230" y="238" width="420" height="8" rx="4" fill="#ABB2B7"/>
+      <rect x="230" y="288" width="152" height="13" rx="4" fill="#343B40"/>
+      <rect x="230" y="324" width="502" height="138" rx="10" fill="#FFFFFF" stroke="#DDE2E6"/>
+      <rect x="250" y="348" width="430" height="8" rx="4" fill="#9EA6AC"/>
+      <rect x="250" y="371" width="392" height="8" rx="4" fill="#AAB1B6"/>
+      <rect x="250" y="416" width="326" height="8" rx="4" fill="#AAB1B6"/>
+    </g>
+  </g>
+
+  <!-- Workspace Spotlight close-up. -->
+  <g transform="translate(170 140) scale(.62)" filter="url(#spotlight-shadow)">
+    <rect x="62" y="106" width="676" height="626" rx="18" fill="#FFFFFF" stroke="#DCE2E7"/>
+
+    <rect x="76" y="120" width="648" height="74" rx="12" fill="#FFFFFF" stroke="#BFCBDD" stroke-width="1.5"/>
+    <circle cx="108" cy="156" r="13" fill="none" stroke="#65717A" stroke-width="3"/>
+    <path d="m118 166 10 10" stroke="#65717A" stroke-width="3" stroke-linecap="round"/>
+    <text x="148" y="166" fill="#22282D" font-family="system-ui, sans-serif" font-size="27" font-weight="500">Release</text>
+    <path d="m685 149 12 14m0-14-12 14" stroke="#3D68A5" stroke-width="3" stroke-linecap="round"/>
+
+    <text x="84" y="222" fill="#657078" font-family="system-ui, sans-serif" font-size="13" font-weight="750" letter-spacing=".7">FILES</text>
+
+    <g transform="translate(76 232)">
+      <rect width="648" height="66" rx="9" fill="#E7EFFC" stroke="#78A5ED" stroke-width="1.5"/>
+      <path d="M18 17h13l5 5h19v25H18z" fill="none" stroke="#77828A" stroke-width="2.4" stroke-linejoin="round"/>
+      <text x="72" y="34" fill="#252B30" font-family="system-ui, sans-serif" font-size="20" font-weight="720">RELEASE.md</text>
+      <text x="224" y="34" fill="#68727A" font-family="system-ui, sans-serif" font-size="16">Release Process</text>
+      <text x="610" y="35" fill="#68727A" font-family="system-ui, sans-serif" font-size="14" font-weight="700">MD</text>
+    </g>
+
+    <g transform="translate(76 305)">
+      <path d="M18 13h13l5 5h19v25H18z" fill="none" stroke="#77828A" stroke-width="2.4" stroke-linejoin="round"/>
+      <text x="72" y="31" fill="#2E3439" font-family="system-ui, sans-serif" font-size="19" font-weight="680">RELEASE.zh.md</text>
+      <rect x="236" y="19" width="118" height="8" rx="4" fill="#899299"/>
+      <text x="600" y="31" fill="#68727A" font-family="system-ui, sans-serif" font-size="14" font-weight="650">CURRENT</text>
+    </g>
+
+    <line x1="84" y1="368" x2="716" y2="368" stroke="#E7EAED"/>
+    <text x="84" y="395" fill="#657078" font-family="system-ui, sans-serif" font-size="13" font-weight="750" letter-spacing=".7">CONTENT</text>
+
+    <g transform="translate(82 414)">
+      <path d="M4 4h13l5 5h19v25H4z" fill="none" stroke="#77828A" stroke-width="2.2" stroke-linejoin="round"/>
+      <text x="54" y="19" fill="#252B30" font-family="system-ui, sans-serif" font-size="18" font-weight="700">Release Process</text>
+      <text x="54" y="41" fill="#3F474D" font-family="system-ui, sans-serif" font-size="14" font-weight="650">RELEASE.md</text>
+      <rect x="54" y="52" width="116" height="7" rx="3.5" fill="#A5ADB3"/>
+      <rect x="178" y="52" width="72" height="7" rx="3.5" fill="#4D76B4"/>
+      <rect x="258" y="52" width="260" height="7" rx="3.5" fill="#A5ADB3"/>
+      <rect x="54" y="68" width="420" height="7" rx="3.5" fill="#A5ADB3"/>
+      <text x="600" y="20" fill="#68727A" font-family="system-ui, sans-serif" font-size="13" font-weight="650">BODY</text>
+    </g>
+
+    <line x1="136" y1="500" x2="706" y2="500" stroke="#EEF0F2"/>
+
+    <g transform="translate(82 520)">
+      <path d="M4 4h13l5 5h19v25H4z" fill="none" stroke="#77828A" stroke-width="2.2" stroke-linejoin="round"/>
+      <text x="54" y="19" fill="#252B30" font-family="system-ui, sans-serif" font-size="18" font-weight="700">Download Markon</text>
+      <text x="54" y="41" fill="#667078" font-family="system-ui, sans-serif" font-size="14">docs/download.md</text>
+      <rect x="54" y="53" width="164" height="7" rx="3.5" fill="#A5ADB3"/>
+      <rect x="226" y="53" width="66" height="7" rx="3.5" fill="#4D76B4"/>
+      <rect x="300" y="53" width="248" height="7" rx="3.5" fill="#A5ADB3"/>
+      <rect x="54" y="69" width="456" height="7" rx="3.5" fill="#A5ADB3"/>
+      <text x="600" y="20" fill="#68727A" font-family="system-ui, sans-serif" font-size="13" font-weight="650">BODY</text>
+    </g>
+
+    <line x1="136" y1="606" x2="706" y2="606" stroke="#EEF0F2"/>
+
+    <g transform="translate(82 626)">
+      <path d="M4 4h13l5 5h19v25H4z" fill="none" stroke="#77828A" stroke-width="2.2" stroke-linejoin="round"/>
+      <text x="54" y="19" fill="#252B30" font-family="system-ui, sans-serif" font-size="18" font-weight="700">Release Diagram</text>
+      <text x="54" y="41" fill="#667078" font-family="system-ui, sans-serif" font-size="14">docs/diagrams.md</text>
+      <rect x="54" y="53" width="104" height="7" rx="3.5" fill="#A5ADB3"/>
+      <rect x="166" y="53" width="72" height="7" rx="3.5" fill="#4D76B4"/>
+      <rect x="246" y="53" width="226" height="7" rx="3.5" fill="#A5ADB3"/>
+      <text x="600" y="20" fill="#68727A" font-family="system-ui, sans-serif" font-size="13" font-weight="650">BODY</text>
     </g>
   </g>
 </svg>

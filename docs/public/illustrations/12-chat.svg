@@ -1,78 +1,99 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 600" width="800" height="600">
-  <rect width="800" height="600" fill="#FAFAF7"/>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 800" width="800" height="800">
+  <defs>
+    <filter id="panel-shadow" x="-30%" y="-20%" width="160%" height="150%">
+      <feDropShadow dx="0" dy="8" stdDeviation="12" flood-color="#3b3452" flood-opacity=".13"/>
+    </filter>
+  </defs>
+  <rect width="800" height="800" fill="#FAFAF7"/>
 
-  <!-- Page card (the web window) -->
-  <rect x="40" y="40" width="720" height="520" rx="12" fill="#FFFFFF" stroke="#EEEEEA"/>
+  <!-- 基于实际阅读页 + Workspace AI 侧浮层截图抽象 -->
+  <rect x="44" y="54" width="712" height="692" rx="18" fill="#FFFFFF" stroke="#E3E5E1"/>
+  <rect x="44" y="54" width="712" height="48" rx="18" fill="#F7F8F5"/>
+  <path d="M44 84h712v18H44z" fill="#F7F8F5"/>
+  <circle cx="69" cy="78" r="6" fill="#FF6B61"/>
+  <circle cx="89" cy="78" r="6" fill="#F6C451"/>
+  <circle cx="109" cy="78" r="6" fill="#42C76B"/>
+  <rect x="289" y="68" width="222" height="20" rx="10" fill="#E8EAE6"/>
 
-  <!-- macOS-style traffic lights -->
-  <circle cx="64" cy="74" r="6" fill="#FF5F57"/>
-  <circle cx="84" cy="74" r="6" fill="#FEBC2E"/>
-  <circle cx="104" cy="74" r="6" fill="#28C840"/>
+  <g opacity=".64">
+  <!-- Document toolbar -->
+  <path d="M76 130h11l4 4h15v16H76z" fill="#F7F8F5" stroke="#7E8489" stroke-width="1.4" stroke-linejoin="round"/>
+  <rect x="122" y="136" width="58" height="8" rx="4" fill="#B9BDB8"/>
+  <rect x="194" y="136" width="168" height="8" rx="4" fill="#D2D5D0"/>
+  <rect x="379" y="122" width="116" height="34" rx="17" fill="#FFFFFF" stroke="#D8DBD7"/>
+  <circle cx="401" cy="139" r="6" fill="none" stroke="#777D82" stroke-width="1.7"/>
+  <path d="m406 144 5 5" stroke="#777D82" stroke-width="1.7" stroke-linecap="round"/>
+  <rect x="422" y="135" width="44" height="8" rx="4" fill="#C9CCC8"/>
 
-  <!-- Address bar -->
-  <rect x="240" y="62" width="280" height="24" rx="12" fill="#F5F5F0"/>
+  <!-- Document content -->
+  <rect x="76" y="188" width="264" height="15" rx="5" fill="#25292D"/>
+  <rect x="76" y="226" width="470" height="1" fill="#D9DCD8"/>
+  <rect x="76" y="252" width="454" height="9" rx="4.5" fill="#5D6267"/>
+  <rect x="76" y="273" width="402" height="9" rx="4.5" fill="#5D6267"/>
+  <rect x="76" y="310" width="166" height="10" rx="5" fill="#34383D"/>
 
-  <!-- Three-dot menu -->
-  <circle cx="704" cy="74" r="2.5" fill="#D7D7D2"/>
-  <circle cx="716" cy="74" r="2.5" fill="#D7D7D2"/>
-  <circle cx="728" cy="74" r="2.5" fill="#D7D7D2"/>
+  <!-- Real document diagram, simplified -->
+  <rect x="76" y="343" width="474" height="198" rx="4" fill="#F6F8FA"/>
+  <rect x="104" y="383" width="122" height="72" rx="8" fill="#FFFFFF" stroke="#70767B" stroke-width="2"/>
+  <rect x="133" y="404" width="64" height="8" rx="4" fill="#5F666B"/>
+  <rect x="130" y="429" width="70" height="7" rx="3.5" fill="#C1C5C1"/>
+  <path d="M226 419h63" stroke="#73797F" stroke-width="2"/>
+  <path d="m289 419-10-6v12z" fill="#73797F"/>
+  <rect x="289" y="383" width="122" height="72" rx="8" fill="#FFFFFF" stroke="#56A967" stroke-width="2"/>
+  <rect x="326" y="404" width="50" height="8" rx="4" fill="#5F666B"/>
+  <rect x="316" y="429" width="68" height="7" rx="3.5" fill="#AFCAB4"/>
+  <path d="M411 419h65" stroke="#73797F" stroke-width="2"/>
+  <path d="m476 419-10-6v12z" fill="#73797F"/>
+  <rect x="476" y="383" width="60" height="72" rx="8" fill="#FFFFFF" stroke="#4C86CF" stroke-width="2"/>
+  <rect x="493" y="407" width="28" height="8" rx="4" fill="#588FD2"/>
+  <rect x="235" y="487" width="248" height="35" rx="7" fill="#F4F7FC" stroke="#7DA8DE"/>
+  <rect x="267" y="501" width="182" height="7" rx="3.5" fill="#5C91D1"/>
 
-  <!-- Header divider -->
-  <line x1="40" y1="106" x2="760" y2="106" stroke="#F0F0EB"/>
+  <rect x="76" y="573" width="244" height="13" rx="4.5" fill="#25292D"/>
+  <rect x="76" y="608" width="474" height="1" fill="#D9DCD8"/>
+  <rect x="76" y="628" width="474" height="88" rx="5" fill="#FFFFFF" stroke="#D8DBD7"/>
+  <line x1="76" y1="660" x2="550" y2="660" stroke="#D8DBD7"/>
+  <line x1="190" y1="628" x2="190" y2="716" stroke="#D8DBD7"/>
+  <line x1="307" y1="628" x2="307" y2="716" stroke="#D8DBD7"/>
+  <rect x="98" y="642" width="66" height="7" rx="3.5" fill="#3E4348"/>
+  <rect x="214" y="642" width="68" height="7" rx="3.5" fill="#3E4348"/>
+  <rect x="337" y="642" width="156" height="7" rx="3.5" fill="#3E4348"/>
+  <rect x="98" y="679" width="72" height="7" rx="3.5" fill="#8E9398"/>
+  <rect x="214" y="679" width="60" height="7" rx="3.5" fill="#5992D5"/>
+  </g>
 
-  <!-- ============= Document content (faded background) ============= -->
-  <rect x="64" y="138" rx="3" width="220" height="18" fill="#D6D8DA"/>
-  <rect x="64" y="172" rx="2" width="540" height="8" fill="#EAEBEC"/>
-  <rect x="64" y="190" rx="2" width="480" height="8" fill="#EAEBEC"/>
+  <!-- Workspace AI panel: white side overlay in the actual product -->
+  <rect x="478" y="175" width="250" height="490" rx="13" fill="#FFFFFF" stroke="#D7D9D5" filter="url(#panel-shadow)"/>
+  <rect x="486" y="183" width="234" height="474" rx="10" fill="#FFFFFF" stroke="#F0F1EE"/>
+  <text x="501" y="214" fill="#555A5F" font-family="system-ui, sans-serif" font-size="20">×</text>
+  <text x="526" y="212" fill="#62676C" font-family="system-ui, sans-serif" font-size="11" font-weight="650">Chat</text>
+  <line x1="486" y1="230" x2="720" y2="230" stroke="#F0F1EE"/>
 
-  <!-- Below this y, paragraphs stop short of the chatbox -->
-  <rect x="64" y="218" rx="2" width="296" height="8" fill="#EAEBEC"/>
+  <!-- Simplified conversation history. -->
+  <g>
+    <rect x="550" y="254" width="150" height="52" rx="10" fill="#F4F0FA" stroke="#DED5EF"/>
+    <rect x="570" y="271" width="106" height="6" rx="3" fill="#7A7483"/>
+    <rect x="590" y="287" width="86" height="6" rx="3" fill="#A39DAA"/>
 
-  <rect x="64" y="252" rx="3" width="150" height="13" fill="#D6D8DA"/>
+    <rect x="500" y="326" width="178" height="82" rx="10" fill="#F4F6F3" stroke="#E2E5E0"/>
+    <rect x="500" y="326" width="3" height="82" rx="1.5" fill="#5BAA6A"/>
+    <rect x="516" y="345" width="132" height="6" rx="3" fill="#626A70"/>
+    <rect x="516" y="361" width="146" height="6" rx="3" fill="#949BA0"/>
+    <rect x="516" y="377" width="108" height="6" rx="3" fill="#949BA0"/>
+    <rect x="516" y="392" width="64" height="5" rx="2.5" fill="#6593CF"/>
 
-  <rect x="64" y="282" rx="2" width="296" height="8" fill="#EAEBEC"/>
-  <rect x="64" y="300" rx="2" width="260" height="8" fill="#EAEBEC"/>
-  <rect x="64" y="318" rx="2" width="296" height="8" fill="#EAEBEC"/>
-  <rect x="64" y="336" rx="2" width="240" height="8" fill="#EAEBEC"/>
+    <rect x="566" y="430" width="134" height="48" rx="10" fill="#F4F0FA" stroke="#DED5EF"/>
+    <rect x="584" y="446" width="92" height="6" rx="3" fill="#7A7483"/>
+    <rect x="604" y="462" width="72" height="5" rx="2.5" fill="#A39DAA"/>
 
-  <!-- Code block -->
-  <rect x="64" y="368" rx="4" width="280" height="64" fill="#F7F7F2"/>
-  <rect x="80" y="382" rx="2" width="160" height="6" fill="#DEE0DD"/>
-  <rect x="80" y="396" rx="2" width="200" height="6" fill="#DEE0DD"/>
-  <rect x="80" y="410" rx="2" width="120" height="6" fill="#DEE0DD"/>
+    <rect x="500" y="498" width="188" height="70" rx="10" fill="#F4F6F3" stroke="#E2E5E0"/>
+    <rect x="500" y="498" width="3" height="70" rx="1.5" fill="#5BAA6A"/>
+    <rect x="516" y="516" width="146" height="6" rx="3" fill="#626A70"/>
+    <rect x="516" y="532" width="124" height="6" rx="3" fill="#949BA0"/>
+    <rect x="516" y="548" width="86" height="6" rx="3" fill="#949BA0"/>
+  </g>
 
-  <rect x="64" y="448" rx="2" width="280" height="8" fill="#EAEBEC"/>
-  <rect x="64" y="466" rx="2" width="240" height="8" fill="#EAEBEC"/>
-  <rect x="64" y="484" rx="2" width="200" height="8" fill="#EAEBEC"/>
-  <rect x="64" y="502" rx="2" width="180" height="8" fill="#EAEBEC"/>
-  <rect x="64" y="520" rx="2" width="140" height="8" fill="#EAEBEC"/>
-
-  <!-- ============= Chatbox (simplified) ============= -->
-  <rect x="380" y="220" width="360" height="320" rx="14" fill="#FFFFFF" stroke="#A78BFA" stroke-width="2"/>
-
-  <!-- Purple header: avatar + title only -->
-  <path d="M380 234 a14 14 0 0 1 14 -14 h332 a14 14 0 0 1 14 14 v40 h-360 z" fill="#8B5CF6"/>
-  <circle cx="408" cy="252" r="11" fill="#FFFFFF"/>
-  <rect x="430" y="247" rx="2" width="130" height="10" fill="#FFFFFF" opacity="0.95"/>
-
-  <!-- AI bubble 1 (2 lines) -->
-  <rect x="396" y="300" width="240" height="50" rx="14" fill="#F3F4F6"/>
-  <rect x="412" y="314" rx="2" width="200" height="7" fill="#4B5563"/>
-  <rect x="412" y="328" rx="2" width="160" height="7" fill="#4B5563"/>
-
-  <!-- User bubble (1 line, right-aligned) -->
-  <rect x="476" y="368" width="240" height="40" rx="14" fill="#8B5CF6"/>
-  <rect x="492" y="382" rx="2" width="180" height="7" fill="#FFFFFF" opacity="0.95"/>
-
-  <!-- AI bubble 2 (2 lines + simple citation pill) -->
-  <rect x="396" y="424" width="260" height="74" rx="14" fill="#F3F4F6"/>
-  <rect x="412" y="438" rx="2" width="220" height="7" fill="#4B5563"/>
-  <rect x="412" y="452" rx="2" width="180" height="7" fill="#4B5563"/>
-  <rect x="412" y="476" rx="6" width="56" height="14" fill="#EDE9FE" stroke="#C4B5FD"/>
-  <circle cx="423" cy="483" r="3" fill="#7C3AED"/>
-
-  <!-- Input bar + send -->
-  <rect x="396" y="514" width="280" height="20" rx="10" fill="#F3F4F6"/>
-  <circle cx="708" cy="524" r="12" fill="#8B5CF6"/>
-  <polygon points="700,518 714,524 700,530" fill="#FFFFFF"/>
+  <rect x="496" y="598" width="214" height="48" rx="8" fill="#FFFFFF" stroke="#B6A9DD" stroke-width="1.5"/>
+  <text x="508" y="627" fill="#9A9EA2" font-family="system-ui, sans-serif" font-size="10">Ask anything…</text>
+  <path d="M691 628v-13m-5 5 5-5 5 5" fill="none" stroke="#9A82D2" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
 </svg>

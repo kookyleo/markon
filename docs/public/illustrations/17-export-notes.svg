@@ -1,0 +1,65 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 800" width="800" height="800">
+  <defs>
+    <filter id="window-shadow" x="-12%" y="-12%" width="124%" height="130%">
+      <feDropShadow dx="0" dy="4" stdDeviation="8" flood-color="#1F2937" flood-opacity=".05"/>
+    </filter>
+  </defs>
+
+  <rect width="800" height="800" fill="#FAFAF7"/>
+
+  <!-- Export Notes editor: editable Markdown on the left, rendered preview on
+       the right, with copy and download actions in the native toolbar. -->
+  <g transform="translate(0 49)" filter="url(#window-shadow)">
+    <rect x="42" y="76" width="716" height="516" rx="18" fill="#FFFFFF" stroke="#E1E5E0"/>
+    <rect x="42" y="76" width="716" height="58" rx="18" fill="#F5F7F4"/>
+    <path d="M42 112h716v22H42z" fill="#F5F7F4"/>
+
+    <path d="m64 96 14 14m0-14-14 14" stroke="#69737A" stroke-width="2.2" stroke-linecap="round"/>
+    <text x="96" y="109" fill="#30383D" font-family="system-ui, sans-serif" font-size="15" font-weight="400">Export Notes</text>
+
+    <rect x="662" y="86" width="84" height="38" rx="6" fill="#78A7E3" stroke="#6896D1"/>
+    <text x="704" y="110" fill="#FFFFFF" font-family="system-ui, sans-serif" font-size="11" font-weight="650" text-anchor="middle">Copy Text</text>
+
+    <line x1="416" y1="134" x2="416" y2="592" stroke="#D5DDD7" stroke-width="3"/>
+
+    <!-- Markdown editor -->
+    <g transform="translate(-30 -34)" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="11">
+      <text x="102" y="209" fill="#788188">&gt;</text>
+      <rect x="120" y="198" width="194" height="8" rx="4" fill="#348D51"/>
+      <rect x="120" y="214" width="244" height="7" rx="3.5" fill="#60A776"/>
+      <rect x="120" y="229" width="214" height="7" rx="3.5" fill="#60A776"/>
+      <rect x="120" y="244" width="260" height="7" rx="3.5" fill="#60A776"/>
+
+      <rect x="102" y="284" width="76" height="8" rx="4" fill="#30383D"/>
+      <rect x="102" y="302" width="218" height="7" rx="3.5" fill="#727B82"/>
+
+      <text x="102" y="359" fill="#788188">&gt;</text>
+      <rect x="120" y="348" width="226" height="8" rx="4" fill="#348D51"/>
+      <rect x="120" y="364" width="256" height="7" rx="3.5" fill="#60A776"/>
+      <rect x="120" y="379" width="198" height="7" rx="3.5" fill="#60A776"/>
+
+      <rect x="102" y="421" width="58" height="8" rx="4" fill="#30383D"/>
+      <rect x="102" y="439" width="184" height="7" rx="3.5" fill="#727B82"/>
+    </g>
+
+    <!-- Rendered preview -->
+    <g transform="translate(0 -34)">
+      <rect x="444" y="198" width="4" height="98" rx="2" fill="#D4DFD7"/>
+      <rect x="462" y="204" width="236" height="9" rx="4.5" fill="#59636A"/>
+      <rect x="462" y="224" width="258" height="8" rx="4" fill="#7E878D"/>
+      <rect x="462" y="243" width="220" height="8" rx="4" fill="#7E878D"/>
+      <rect x="462" y="262" width="248" height="8" rx="4" fill="#7E878D"/>
+
+      <rect x="444" y="328" width="78" height="9" rx="4.5" fill="#2E363B"/>
+      <rect x="444" y="350" width="188" height="8" rx="4" fill="#687279"/>
+
+      <rect x="444" y="390" width="4" height="82" rx="2" fill="#D4DFD7"/>
+      <rect x="462" y="396" width="226" height="9" rx="4.5" fill="#59636A"/>
+      <rect x="462" y="416" width="248" height="8" rx="4" fill="#7E878D"/>
+      <rect x="462" y="435" width="204" height="8" rx="4" fill="#7E878D"/>
+
+      <rect x="444" y="510" width="58" height="9" rx="4.5" fill="#2E363B"/>
+      <rect x="444" y="532" width="164" height="8" rx="4" fill="#687279"/>
+    </g>
+  </g>
+</svg>

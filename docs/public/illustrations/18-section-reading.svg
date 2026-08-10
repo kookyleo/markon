@@ -1,0 +1,102 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 800" width="800" height="800">
+  <defs>
+    <filter id="shadow" x="-12%" y="-12%" width="124%" height="128%">
+      <feDropShadow dx="0" dy="4" stdDeviation="8" flood-color="#1F2937" flood-opacity=".05"/>
+    </filter>
+    <clipPath id="window-clip">
+      <rect x="42" y="72" width="716" height="656" rx="18"/>
+    </clipPath>
+  </defs>
+
+  <rect width="800" height="800" fill="#FAFAF7"/>
+
+  <g filter="url(#shadow)">
+    <rect x="42" y="72" width="716" height="656" rx="18" fill="#FFFFFF" stroke="#E1E5E0"/>
+    <g clip-path="url(#window-clip)">
+      <rect x="42" y="72" width="716" height="56" fill="#F5F7F4"/>
+      <circle cx="68" cy="100" r="6" fill="#FF6B63"/>
+      <circle cx="90" cy="100" r="6" fill="#F7BF47"/>
+      <circle cx="112" cy="100" r="6" fill="#36BE6A"/>
+      <rect x="312" y="91" width="176" height="18" rx="9" fill="#E7EAE6"/>
+
+      <!-- Persistent document outline. The highlighted group mirrors the
+           currently focused parent section and its nested headings. -->
+      <rect x="42" y="128" width="188" height="600" fill="#FAFBF9"/>
+      <line x1="230" y1="128" x2="230" y2="728" stroke="#D7E5FA" stroke-width="2"/>
+      <text x="66" y="164" fill="#39434A" font-family="system-ui, sans-serif" font-size="13" font-weight="750">TOC</text>
+
+      <g fill="#7D878D">
+        <rect x="66" y="190" width="112" height="8" rx="4"/>
+        <rect x="82" y="218" width="82" height="7" rx="3.5" opacity=".74"/>
+      </g>
+
+      <rect x="56" y="244" width="160" height="156" rx="10" fill="#EAF2FD"/>
+      <rect x="74" y="262" width="120" height="8" rx="4" fill="#4F5B63"/>
+      <rect x="88" y="292" width="84" height="7" rx="3.5" fill="#7A858B"/>
+      <rect x="88" y="322" width="62" height="8" rx="4" fill="#357FD0"/>
+      <rect x="88" y="350" width="76" height="7" rx="3.5" fill="#7A858B"/>
+      <rect x="88" y="378" width="68" height="7" rx="3.5" fill="#7A858B"/>
+
+      <g fill="#7D878D" opacity=".78">
+        <rect x="66" y="428" width="96" height="8" rx="4"/>
+        <rect x="66" y="458" width="118" height="8" rx="4"/>
+        <rect x="82" y="488" width="88" height="7" rx="3.5"/>
+        <rect x="82" y="518" width="102" height="7" rx="3.5"/>
+        <rect x="66" y="554" width="106" height="8" rx="4"/>
+        <rect x="66" y="590" width="76" height="8" rx="4"/>
+      </g>
+
+      <!-- Continuous document before the focused section. -->
+      <rect x="260" y="156" width="172" height="12" rx="6" fill="#2F393F"/>
+      <rect x="260" y="188" width="466" height="92" rx="8" fill="#FFFFFF" stroke="#D8DEE1"/>
+      <line x1="260" y1="218" x2="726" y2="218" stroke="#D8DEE1"/>
+      <line x1="410" y1="188" x2="410" y2="280" stroke="#D8DEE1"/>
+      <line x1="568" y1="188" x2="568" y2="280" stroke="#D8DEE1"/>
+      <rect x="278" y="202" width="90" height="7" rx="3.5" fill="#687279"/>
+      <rect x="432" y="202" width="96" height="7" rx="3.5" fill="#687279"/>
+      <rect x="590" y="202" width="78" height="7" rx="3.5" fill="#687279"/>
+      <rect x="278" y="238" width="112" height="6" rx="3" fill="#9AA2A7"/>
+      <rect x="432" y="238" width="110" height="6" rx="3" fill="#9AA2A7"/>
+      <rect x="590" y="238" width="88" height="6" rx="3" fill="#9AA2A7"/>
+      <rect x="278" y="258" width="90" height="6" rx="3" fill="#B2B9B6"/>
+      <rect x="432" y="258" width="120" height="6" rx="3" fill="#B2B9B6"/>
+      <rect x="590" y="258" width="106" height="6" rx="3" fill="#B2B9B6"/>
+      <rect x="260" y="300" width="420" height="7" rx="3.5" fill="#858E93"/>
+      <rect x="260" y="318" width="354" height="7" rx="3.5" fill="#A2AAA7"/>
+
+      <!-- Parent section boundary remains part of the continuous document. -->
+      <rect x="248" y="344" width="492" height="360" rx="12" fill="#FFFFFF" stroke="#A8C9FA" stroke-width="2.5"/>
+      <rect x="268" y="366" width="142" height="14" rx="7" fill="#263138"/>
+      <line x1="248" y1="398" x2="740" y2="398" stroke="#DCE7F8"/>
+
+      <!-- Current child section: heading actions and its content form one
+           focused reading card inside the parent section. -->
+      <rect x="266" y="418" width="456" height="150" rx="10" fill="#FFFFFF" stroke="#8DB7F3" stroke-width="2"/>
+      <path d="M276 418h436a10 10 0 0 1 10 10v36H266v-36a10 10 0 0 1 10-10z" fill="#EAF2FD"/>
+      <rect x="284" y="437" width="92" height="10" rx="5" fill="#2F393F"/>
+      <rect x="410" y="434" width="14" height="14" rx="3" fill="#FFFFFF" stroke="#7D878D"/>
+      <rect x="436" y="438" width="42" height="7" rx="3.5" fill="#7D878D"/>
+      <line x1="490" y1="433" x2="490" y2="449" stroke="#A8B0B5"/>
+      <rect x="502" y="438" width="38" height="7" rx="3.5" fill="#7D878D"/>
+      <line x1="552" y1="433" x2="552" y2="449" stroke="#A8B0B5"/>
+      <rect x="564" y="438" width="58" height="7" rx="3.5" fill="#A5ADB1"/>
+      <line x1="634" y1="433" x2="634" y2="449" stroke="#A8B0B5"/>
+      <rect x="646" y="438" width="44" height="7" rx="3.5" fill="#7D878D"/>
+
+      <rect x="284" y="486" width="28" height="8" rx="4" fill="#367FD1"/>
+      <rect x="322" y="486" width="354" height="8" rx="4" fill="#687279"/>
+      <rect x="284" y="507" width="406" height="7" rx="3.5" fill="#7F898E"/>
+      <rect x="284" y="528" width="372" height="7" rx="3.5" fill="#7F898E"/>
+      <rect x="284" y="549" width="214" height="7" rx="3.5" fill="#A0A8A5"/>
+
+      <!-- More subsections stay in flow inside the same parent boundary. -->
+      <rect x="268" y="594" width="76" height="11" rx="5.5" fill="#2F393F"/>
+      <circle cx="282" cy="632" r="3.5" fill="#59636A"/>
+      <rect x="296" y="628" width="382" height="7" rx="3.5" fill="#7F898E"/>
+      <circle cx="282" cy="654" r="3.5" fill="#59636A"/>
+      <rect x="296" y="650" width="336" height="7" rx="3.5" fill="#8F9894"/>
+      <circle cx="282" cy="676" r="3.5" fill="#59636A"/>
+      <rect x="296" y="672" width="364" height="7" rx="3.5" fill="#8F9894"/>
+    </g>
+  </g>
+</svg>

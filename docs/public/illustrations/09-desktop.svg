@@ -17,8 +17,8 @@
 
   <!-- Markdown file on desktop (abstract, no filename label) -->
   <g transform="translate(120 150)" filter="url(#sh)">
-    <rect x="0" y="0" width="64" height="84" rx="6" fill="#FFFFFF" stroke="#E5E7EB"/>
-    <path d="M 50 0 L 64 14 L 50 14 Z" fill="#F3F4F6"/>
+    <path d="M0 0h50l14 14v70H0z" fill="#FFFFFF" stroke="#E5E7EB" stroke-linejoin="round"/>
+    <path d="M50 0v14h14" fill="#F3F4F6" stroke="#E5E7EB" stroke-linejoin="round"/>
     <!-- title bar in brand green -->
     <rect x="10" y="22" width="36" height="6" rx="2" fill="#27ae60"/>
     <!-- paragraph lines -->

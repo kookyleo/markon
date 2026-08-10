@@ -1,0 +1,121 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 800" width="800" height="800">
+  <defs>
+    <filter id="shadow" x="-12%" y="-12%" width="124%" height="128%">
+      <feDropShadow dx="0" dy="4" stdDeviation="8" flood-color="#1F2937" flood-opacity=".05"/>
+    </filter>
+    <linearGradient id="fade" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#FFFFFF" stop-opacity="0"/>
+      <stop offset="1" stop-color="#FFFFFF" stop-opacity=".8"/>
+    </linearGradient>
+  </defs>
+
+  <rect width="800" height="800" fill="#FAFAF7"/>
+
+  <g filter="url(#shadow)">
+    <rect x="42" y="76" width="716" height="648" rx="18" fill="#FFFFFF" stroke="#E1E5E0"/>
+
+    <!-- Markdiff file filter and completed tree. -->
+    <rect x="42" y="76" width="220" height="648" rx="18" fill="#FBFCFA"/>
+    <path d="M244 76h18v648h-18z" fill="#FBFCFA"/>
+    <line x1="262" y1="76" x2="262" y2="724" stroke="#DDE3DF"/>
+    <text x="66" y="116" fill="#273138" font-family="system-ui, sans-serif" font-size="19" font-weight="760">Markdiff</text>
+    <rect x="66" y="134" width="54" height="24" rx="12" fill="#F1F3F0"/>
+    <rect x="79" y="143" width="28" height="7" rx="3.5" fill="#A0A8A5"/>
+    <rect x="66" y="178" width="172" height="42" rx="8" fill="#F7F9F7" stroke="#D8DEDA"/>
+    <rect x="82" y="195" width="54" height="8" rx="4" fill="#59636A"/>
+    <path d="m150 199 12 0m-5-5 5 5-5 5" fill="none" stroke="#8A9398" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
+    <rect x="176" y="195" width="36" height="8" rx="4" fill="#30383D"/>
+
+    <g font-family="system-ui, sans-serif">
+      <circle cx="74" cy="246" r="8" fill="#2AAE60"/>
+      <path d="m70 246 3 3 6-7" fill="none" stroke="#FFFFFF" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+      <text x="90" y="251" fill="#5F696F" font-size="11" font-weight="700">9 / 9 VIEWED</text>
+    </g>
+
+    <rect x="66" y="272" width="172" height="38" rx="8" fill="#FFFFFF" stroke="#D7DDD9"/>
+    <circle cx="84" cy="291" r="7" fill="none" stroke="#7D878D" stroke-width="2"/>
+    <path d="m89 296 6 6" stroke="#7D878D" stroke-width="2" stroke-linecap="round"/>
+    <rect x="104" y="287" width="76" height="7" rx="3.5" fill="#A0A8A5"/>
+
+    <path d="M72 344h7l4 4h12v13H72z" fill="none" stroke="#7B858B" stroke-width="1.5" stroke-linejoin="round"/>
+    <rect x="108" y="349" width="78" height="8" rx="4" fill="#39434A"/>
+
+    <g>
+      <line x1="84" y1="370" x2="84" y2="495" stroke="#E2E6E3"/>
+      <g transform="translate(96 384)">
+        <rect width="15" height="15" rx="4" fill="#EEF8F1" stroke="#2AAE60"/>
+        <path d="m4 8 3 3 5-7" fill="none" stroke="#2AAE60" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
+        <rect x="26" y="4" width="94" height="7" rx="3.5" fill="#626C72"/>
+      </g>
+      <g transform="translate(96 426)">
+        <rect width="15" height="15" rx="4" fill="#EEF8F1" stroke="#2AAE60"/>
+        <path d="m4 8 3 3 5-7" fill="none" stroke="#2AAE60" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
+        <rect x="26" y="4" width="106" height="7" rx="3.5" fill="#626C72"/>
+      </g>
+      <g transform="translate(96 468)">
+        <rect width="15" height="15" rx="4" fill="#EEF8F1" stroke="#2AAE60"/>
+        <path d="m4 8 3 3 5-7" fill="none" stroke="#2AAE60" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
+        <rect x="26" y="4" width="86" height="7" rx="3.5" fill="#626C72"/>
+      </g>
+    </g>
+
+    <!-- Every changed file is collapsed and checked as Viewed. -->
+    <g font-family="system-ui, sans-serif">
+      <rect x="262" y="76" width="496" height="52" fill="#F8FAF8"/>
+      <rect x="290" y="96" width="82" height="10" rx="5" fill="#4B565D"/>
+      <rect x="650" y="92" width="82" height="24" rx="7" fill="#FFFFFF" stroke="#C8D0CC"/>
+      <rect x="660" y="98" width="12" height="12" rx="3" fill="#2AAE60"/>
+      <path d="m663 104 3 3 5-7" fill="none" stroke="#FFFFFF" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
+      <text x="680" y="108" fill="#59636A" font-size="10" font-weight="700">VIEWED</text>
+
+      <g>
+        <rect x="262" y="128" width="496" height="62" fill="#FFFFFF" stroke="#DDE3DF"/>
+        <path d="m286 153 6 7 6-7" fill="none" stroke="#7D878D" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+        <rect x="310" y="151" width="156" height="9" rx="4.5" fill="#6A747A"/>
+        <text x="558" y="160" fill="#2AAE60" font-size="11" font-weight="750">+0</text>
+        <text x="588" y="160" fill="#D94A55" font-size="11" font-weight="750">−150</text>
+        <rect x="632" y="145" width="92" height="28" rx="7" fill="#F8FAF8" stroke="#CBD3CF"/>
+        <rect x="642" y="153" width="12" height="12" rx="3" fill="#2AAE60"/>
+        <path d="m645 159 3 3 5-7" fill="none" stroke="#FFFFFF" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
+        <text x="662" y="163" fill="#59636A" font-size="10" font-weight="700">Viewed</text>
+      </g>
+      <g transform="translate(0 62)">
+        <rect x="262" y="128" width="496" height="62" fill="#FFFFFF" stroke="#DDE3DF"/>
+        <path d="m286 153 6 7 6-7" fill="none" stroke="#7D878D" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+        <rect x="310" y="151" width="182" height="9" rx="4.5" fill="#6A747A"/>
+        <text x="558" y="160" fill="#2AAE60" font-size="11" font-weight="750">+0</text>
+        <text x="588" y="160" fill="#D94A55" font-size="11" font-weight="750">−225</text>
+        <rect x="632" y="145" width="92" height="28" rx="7" fill="#F8FAF8" stroke="#CBD3CF"/>
+        <rect x="642" y="153" width="12" height="12" rx="3" fill="#2AAE60"/>
+        <path d="m645 159 3 3 5-7" fill="none" stroke="#FFFFFF" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
+        <text x="662" y="163" fill="#59636A" font-size="10" font-weight="700">Viewed</text>
+      </g>
+      <g transform="translate(0 124)">
+        <rect x="262" y="128" width="496" height="62" fill="#FFFFFF" stroke="#DDE3DF"/>
+        <path d="m286 153 6 7 6-7" fill="none" stroke="#7D878D" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+        <rect x="310" y="151" width="168" height="9" rx="4.5" fill="#6A747A"/>
+        <text x="558" y="160" fill="#2AAE60" font-size="11" font-weight="750">+0</text>
+        <text x="588" y="160" fill="#D94A55" font-size="11" font-weight="750">−257</text>
+        <rect x="632" y="145" width="92" height="28" rx="7" fill="#F8FAF8" stroke="#CBD3CF"/>
+        <rect x="642" y="153" width="12" height="12" rx="3" fill="#2AAE60"/>
+        <path d="m645 159 3 3 5-7" fill="none" stroke="#FFFFFF" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
+        <text x="662" y="163" fill="#59636A" font-size="10" font-weight="700">Viewed</text>
+      </g>
+    </g>
+
+    <!-- A quiet completion state replaces the diff body after the checklist
+         reaches 100%. -->
+    <g transform="translate(510 500)">
+      <path d="m-18 22 24-52 34 38z" fill="#F6C54F" stroke="#E2A92F" stroke-width="2"/>
+      <path d="m-10 6 32 16m-25-33 31 16" stroke="#8D5AC6" stroke-width="5" stroke-linecap="round"/>
+      <path d="M0-38c-12-17-23-10-21-29M18-35c20-7 26-20 17-32M34-18c18 0 27-8 29-20" fill="none" stroke="#4B9BE8" stroke-width="3" stroke-linecap="round"/>
+      <circle cx="-25" cy="-50" r="4" fill="#EF6B78"/>
+      <rect x="45" y="-50" width="7" height="7" rx="2" fill="#2AAE60" transform="rotate(20 48.5 -46.5)"/>
+      <circle cx="58" cy="-20" r="4" fill="#F2B740"/>
+      <rect x="-42" y="-30" width="7" height="7" rx="2" fill="#4B9BE8" transform="rotate(-18 -38.5 -26.5)"/>
+    </g>
+    <rect x="420" y="556" width="180" height="11" rx="5.5" fill="#30383D"/>
+    <rect x="454" y="582" width="112" height="8" rx="4" fill="#2AAE60"/>
+    <rect x="404" y="610" width="212" height="48" fill="url(#fade)"/>
+  </g>
+</svg>

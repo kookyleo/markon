@@ -1,0 +1,229 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 800" width="800" height="800">
+  <defs>
+    <filter id="finder-window-shadow" x="-10%" y="-10%" width="120%" height="125%">
+      <feDropShadow dx="0" dy="4" stdDeviation="8" flood-color="#1F2937" flood-opacity=".045"/>
+    </filter>
+    <filter id="finder-button-shadow" x="-35%" y="-35%" width="170%" height="185%">
+      <feDropShadow dx="0" dy="3" stdDeviation="4" flood-color="#168A4A" flood-opacity=".22"/>
+    </filter>
+    <filter id="context-file-shadow" x="-20%" y="-20%" width="140%" height="140%">
+      <feDropShadow dx="0" dy="3" stdDeviation="4" flood-color="#111827" flood-opacity=".055"/>
+    </filter>
+    <filter id="context-menu-shadow" x="-20%" y="-20%" width="140%" height="140%">
+      <feDropShadow dx="0" dy="5" stdDeviation="6" flood-color="#111827" flood-opacity=".075"/>
+    </filter>
+    <linearGradient id="finder-opacity" gradientUnits="userSpaceOnUse" x1="400" y1="262" x2="378" y2="382">
+      <stop offset="0" stop-color="#FFFFFF"/>
+      <stop offset=".12" stop-color="#FFFFFF"/>
+      <stop offset=".9" stop-color="#000000"/>
+      <stop offset="1" stop-color="#000000"/>
+    </linearGradient>
+    <mask id="finder-fade" maskUnits="userSpaceOnUse" x="0" y="0" width="800" height="800">
+      <rect width="800" height="800" fill="url(#finder-opacity)"/>
+    </mask>
+  </defs>
+
+  <rect width="800" height="800" fill="#FAFAF7"/>
+
+  <!-- Finder toolbar and file list: copied as editable vector nodes. -->
+  <g mask="url(#finder-fade)" transform="translate(10 -11) scale(.975)">
+    <g opacity=".96" filter="url(#finder-window-shadow)">
+      <rect x="58" y="112" width="684" height="606" rx="22" fill="#FFFFFF" stroke="#D9DEDA"/>
+      <path d="M80 112h180v606H58V134a22 22 0 0 1 22-22z" fill="#F4F5F3"/>
+      <path d="M260 112h460a22 22 0 0 1 22 22v70H260z" fill="#F2F3F1"/>
+
+      <circle cx="88" cy="142" r="7" fill="#D8827C"/>
+      <circle cx="113" cy="142" r="7" fill="#D8B25E"/>
+      <circle cx="138" cy="142" r="7" fill="#65A878"/>
+
+      <g fill="none" stroke="#3D454A" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <circle cx="93" cy="222" r="10"/>
+        <path d="M93 216v6h-5"/>
+        <path d="M82 270h22v16H82zM82 275h22"/>
+        <circle cx="100" cy="270" r="3" fill="#3D454A"/>
+        <path d="m84 343 9-17 9 17M88 336h11"/>
+      </g>
+      <g fill="#323A3F" font-family="system-ui, sans-serif" font-size="13">
+        <text x="126" y="227">Recents</text>
+        <text x="126" y="282">Shared</text>
+        <text x="80" y="314" fill="#747A7E" font-size="11" font-weight="700">FAVORITES</text>
+        <text x="126" y="342">Applications</text>
+      </g>
+
+      <rect x="282" y="134" width="78" height="44" rx="22" fill="#FFFFFF"/>
+      <line x1="321" y1="143" x2="321" y2="169" stroke="#E1E3E1"/>
+      <path d="m305 148-8 8 8 8" fill="none" stroke="#596166" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/>
+      <path d="m337 148 8 8-8 8" fill="none" stroke="#A3A9AD" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/>
+      <text x="382" y="163" fill="#363D42" font-family="system-ui, sans-serif" font-size="18" font-weight="700">Projects</text>
+
+      <rect x="548" y="134" width="60" height="44" rx="22" fill="#FFFFFF"/>
+      <g fill="#5F676C">
+        <circle cx="558" cy="147" r="1.4"/>
+        <circle cx="558" cy="156" r="1.4"/>
+        <circle cx="558" cy="165" r="1.4"/>
+      </g>
+      <path d="M565 147h17m-17 9h17m-17 9h17" stroke="#5F676C" stroke-width="1.7" stroke-linecap="round"/>
+      <path d="m590 151 4-4 4 4m-8 10 4 4 4-4" fill="none" stroke="#5F676C" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
+      <rect x="622" y="134" width="44" height="44" rx="22" fill="#FFFFFF"/>
+      <g fill="none" stroke="#5F676C" stroke-width="1.6">
+        <rect x="635" y="147" width="7" height="7"/>
+        <rect x="646" y="147" width="7" height="7"/>
+        <rect x="635" y="158" width="7" height="7"/>
+        <rect x="646" y="158" width="7" height="7"/>
+      </g>
+      <rect x="680" y="134" width="44" height="44" rx="22" fill="#FFFFFF"/>
+      <circle cx="698" cy="153" r="9" fill="none" stroke="#5F676C" stroke-width="2.3"/>
+      <path d="m705 160 7 7" stroke="#5F676C" stroke-width="2.3" stroke-linecap="round"/>
+
+      <text x="284" y="232" fill="#7A8084" font-family="system-ui, sans-serif" font-size="11">NAME</text>
+      <text x="518" y="232" fill="#4A5054" font-family="system-ui, sans-serif" font-size="11" font-weight="650">DATE MODIFIED</text>
+      <text x="680" y="232" fill="#7A8084" font-family="system-ui, sans-serif" font-size="11">KIND</text>
+      <line x1="276" y1="246" x2="728" y2="246" stroke="#DEE2DE"/>
+
+      <g font-family="system-ui, sans-serif" font-size="12">
+        <path d="M288 273h10l3 3h16v16h-29z" fill="#8FA9BB" stroke="#718C9E" stroke-width="1.2" stroke-linejoin="round"/>
+        <text x="330" y="289" fill="#31383D" font-weight="650">product-docs</text>
+        <text x="518" y="289" fill="#6D7478">Today, 14:32</text>
+        <text x="680" y="289" fill="#6D7478">Folder</text>
+        <path d="M288 330h10l3 3h16v16h-29z" fill="#9AADB9" stroke="#7C919E" stroke-width="1.2" stroke-linejoin="round"/>
+        <text x="330" y="346" fill="#3B4247">notes</text>
+        <text x="518" y="346" fill="#72797D">Yesterday</text>
+        <text x="680" y="346" fill="#72797D">Folder</text>
+        <path d="M288 378h10l3 3h16v16h-29z" fill="#9AADB9" stroke="#7C919E" stroke-width="1.2" stroke-linejoin="round"/>
+        <text x="330" y="394" fill="#3B4247">research</text>
+        <text x="518" y="394" fill="#72797D">Monday</text>
+        <text x="680" y="394" fill="#72797D">Folder</text>
+      </g>
+    </g>
+
+    <g filter="url(#finder-button-shadow)">
+      <rect x="486" y="134" width="44" height="44" rx="11" fill="#27AE60" stroke="#15954D" stroke-width="1.3"/>
+      <text x="508" y="162" fill="#FFFFFF" font-family="system-ui, sans-serif" font-size="16" font-weight="800" text-anchor="middle">M↓</text>
+    </g>
+  </g>
+
+  <!-- File and context menus: copied as editable vector nodes. -->
+  <g transform="translate(50 270) scale(.875)">
+    <g transform="translate(120 150)" filter="url(#context-file-shadow)">
+      <path d="M0 0h50l14 14v70H0z" fill="#FFFFFF" stroke="#E5E7EB" stroke-linejoin="round"/>
+      <path d="M50 0v14h14" fill="#F3F4F6" stroke="#E5E7EB" stroke-linejoin="round"/>
+      <rect x="10" y="22" width="36" height="6" rx="2" fill="#27AE60"/>
+      <g fill="#9CA3AF">
+        <rect x="10" y="36" width="44" height="3" rx="1"/>
+        <rect x="10" y="42" width="36" height="3" rx="1"/>
+        <rect x="10" y="48" width="44" height="3" rx="1"/>
+        <rect x="10" y="54" width="32" height="3" rx="1"/>
+        <rect x="10" y="60" width="44" height="3" rx="1"/>
+        <rect x="10" y="66" width="40" height="3" rx="1"/>
+        <rect x="10" y="72" width="44" height="3" rx="1"/>
+      </g>
+    </g>
+
+    <g filter="url(#context-menu-shadow)">
+      <rect x="130" y="220" width="270" height="290" rx="12" fill="#FFFFFF" stroke="#E5E7EB"/>
+
+      <g transform="translate(146 232)">
+        <g transform="translate(0 6)" stroke="#6B7280" stroke-width="1.4" fill="none" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M12.5 8v5h-10V3h5.0M8 8l6-6M14 6V2h-4"/>
+        </g>
+        <rect x="28" y="11" width="80" height="6" rx="2" fill="#6B7280"/>
+      </g>
+
+      <g transform="translate(138 260)">
+        <rect width="254" height="32" rx="6" fill="#27AE60"/>
+        <g transform="translate(8 8)" stroke="#FFFFFF" stroke-width="1.4" fill="none" stroke-linecap="round" stroke-linejoin="round">
+          <rect x="2" y="3" width="12" height="10" rx="1.5"/>
+          <line x1="2" y1="6" x2="14" y2="6"/>
+          <circle cx="4" cy="4.5" r=".5" fill="#FFFFFF" stroke="none"/>
+        </g>
+        <rect x="36" y="13" width="120" height="6" rx="2" fill="#FFFFFF"/>
+        <polyline points="232,12 238,16 232,20" fill="none" stroke="#FFFFFF" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+      </g>
+
+      <g transform="translate(146 292)">
+        <g transform="translate(0 6)" stroke="#6B7280" stroke-width="1.4" fill="none" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M2.5 5h11M6 5V3.5h4V5M4 5l1 8.5h6L12 5"/>
+        </g>
+        <rect x="28" y="11" width="100" height="6" rx="2" fill="#6B7280"/>
+      </g>
+      <line x1="146" y1="324" x2="384" y2="324" stroke="#F3F4F6"/>
+
+      <g transform="translate(146 328)">
+        <g transform="translate(0 6)" stroke="#6B7280" stroke-width="1.4" fill="none" stroke-linecap="round">
+          <circle cx="8" cy="8" r="6"/>
+          <line x1="8" y1="7.5" x2="8" y2="11.5"/>
+          <circle cx="8" cy="5" r=".6" fill="#6B7280" stroke="none"/>
+        </g>
+        <rect x="28" y="11" width="64" height="6" rx="2" fill="#6B7280"/>
+      </g>
+
+      <g transform="translate(146 356)">
+        <g transform="translate(0 6)" stroke="#6B7280" stroke-width="1.4" fill="none" stroke-linecap="round" stroke-linejoin="round">
+          <path d="m11 2 3 3-9 9H2v-3zM9 4l3 3"/>
+        </g>
+        <rect x="28" y="11" width="72" height="6" rx="2" fill="#6B7280"/>
+      </g>
+
+      <g transform="translate(146 384)">
+        <g transform="translate(0 6)" stroke="#6B7280" stroke-width="1.4" fill="none" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M1 8c2.5-4 11.5-4 14 0-2.5 4-11.5 4-14 0z"/>
+          <circle cx="8" cy="8" r="2.2"/>
+        </g>
+        <rect x="28" y="11" width="84" height="6" rx="2" fill="#6B7280"/>
+      </g>
+      <line x1="146" y1="416" x2="384" y2="416" stroke="#F3F4F6"/>
+
+      <g transform="translate(146 420)">
+        <g transform="translate(0 6)" stroke="#6B7280" stroke-width="1.4" fill="none" stroke-linecap="round" stroke-linejoin="round">
+          <rect x="2" y="5" width="9" height="9" rx="1.5"/>
+          <path d="M5 5V2h9v9h-3"/>
+        </g>
+        <rect x="28" y="11" width="48" height="6" rx="2" fill="#6B7280"/>
+      </g>
+
+      <g transform="translate(146 448)">
+        <g transform="translate(0 6)" stroke="#6B7280" stroke-width="1.4" fill="none" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M8 10V2M5 5l3-3 3 3M3 9v5h10V9"/>
+        </g>
+        <rect x="28" y="11" width="60" height="6" rx="2" fill="#6B7280"/>
+      </g>
+      <line x1="146" y1="480" x2="384" y2="480" stroke="#F3F4F6"/>
+
+      <g transform="translate(146 484)">
+        <g transform="translate(0 6)" stroke="#6B7280" stroke-width="1.4" fill="none" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M8 1.5h6v6L7.5 14l-6-6z"/>
+          <circle cx="11" cy="4.5" r=".8" fill="#6B7280" stroke="none"/>
+        </g>
+        <rect x="28" y="11" width="56" height="6" rx="2" fill="#6B7280"/>
+      </g>
+    </g>
+
+    <!-- The submenu intentionally has no independent shadow. -->
+    <g>
+      <rect x="400" y="260" width="270" height="124" rx="12" fill="#FFFFFF" stroke="#E5E7EB"/>
+      <g transform="translate(418 272)">
+        <g transform="translate(0 6)">
+          <circle cx="8" cy="8" r="7" fill="#FBBF24"/>
+          <circle cx="8" cy="8" r="3" fill="#FFFFFF"/>
+        </g>
+        <rect x="28" y="11" width="120" height="6" rx="2" fill="#6B7280"/>
+      </g>
+      <line x1="418" y1="304" x2="652" y2="304" stroke="#F3F4F6"/>
+      <g transform="translate(410 308)">
+        <rect width="250" height="32" rx="6" fill="#27AE60"/>
+        <g transform="translate(8 8)">
+          <text x="8" y="12" font-family="system-ui, sans-serif" font-size="10" font-weight="800" fill="#FFFFFF" text-anchor="middle">M↓</text>
+        </g>
+        <rect x="36" y="13" width="78" height="6" rx="2" fill="#FFFFFF"/>
+        <rect x="124" y="14" width="40" height="4" rx="1" fill="#FFFFFF" opacity=".65"/>
+      </g>
+      <g transform="translate(418 340)">
+        <g transform="translate(0 6)">
+          <rect x=".5" y=".5" width="15" height="15" rx="2.5" fill="#FFFFFF" stroke="#D1D5DB"/>
+          <path d="M3 4h10M3 8h10M3 12h6" stroke="#9CA3AF"/>
+        </g>
+        <rect x="28" y="11" width="80" height="6" rx="2" fill="#6B7280"/>
+      </g>
+    </g>
+  </g>
+</svg>
