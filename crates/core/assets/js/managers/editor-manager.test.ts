@@ -64,6 +64,24 @@ describe('EditorManager', () => {
     let warnSpy: ReturnType<typeof vi.spyOn>;
     let errorSpy: ReturnType<typeof vi.spyOn>;
 
+    /**
+     * Managers created by the current test, so `afterEach` can close them.
+     *
+     * `open()` schedules a debounced `/api/preview` request. An editor left
+     * open at the end of a test keeps that timer alive, and it then fires
+     * inside the *next* test — landing a stray call, carrying the previous
+     * test's content, on that test's fetch mock. Whether it leaks depends on
+     * how the two tests' await points interleave, so it shows up as a flake
+     * under load rather than a reliable failure.
+     */
+    const managers: EditorManager[] = [];
+
+    function openEditorManager(filePath: string): EditorManager {
+        const manager = new EditorManager(filePath);
+        managers.push(manager);
+        return manager;
+    }
+
     beforeEach(() => {
         document.body.innerHTML = '';
         document.head.innerHTML = '';
@@ -87,6 +105,10 @@ describe('EditorManager', () => {
     });
 
     afterEach(() => {
+        // Force-close: a dirty buffer would otherwise stop at the confirm()
+        // prompt and leave the preview timer running into the next test.
+        Object.defineProperty(window, 'confirm', { value: () => true, writable: true, configurable: true });
+        managers.splice(0).forEach(manager => { manager.close(); });
         document.querySelectorAll<HTMLElement>('.cm-editor').forEach(dom => {
             EditorView.findFromDOM(dom)?.destroy();
         });
@@ -98,7 +120,7 @@ describe('EditorManager', () => {
 
     it('exposes isOpen()/isDirty() before and after open()', async () => {
         seedOriginalMarkdown('# hello');
-        const mgr = new EditorManager('docs/test.md');
+        const mgr = openEditorManager('docs/test.md');
         expect(mgr.isOpen()).toBe(false);
         expect(mgr.isDirty()).toBe(false);
         await mgr.open();
@@ -108,7 +130,7 @@ describe('EditorManager', () => {
 
     it('coalesces concurrent open() calls into one editor session', async () => {
         seedOriginalMarkdown('# hello');
-        const mgr = new EditorManager('docs/test.md');
+        const mgr = openEditorManager('docs/test.md');
 
         await Promise.all([
             mgr.open(),
@@ -133,7 +155,7 @@ describe('EditorManager', () => {
         })) as unknown as typeof fetch;
         vi.stubGlobal('fetch', fetchMock);
 
-        const mgr = new EditorManager('docs/test.md');
+        const mgr = openEditorManager('docs/test.md');
         await mgr.open();
 
         // Edit the buffer so save() has something to send.
@@ -181,7 +203,7 @@ describe('EditorManager', () => {
         }) as unknown as typeof fetch;
         vi.stubGlobal('fetch', fetchMock);
 
-        const mgr = new EditorManager('docs/test.md');
+        const mgr = openEditorManager('docs/test.md');
         await mgr.open();
         const view = getEditorView();
         replaceDocument(view, '# sent');
@@ -211,7 +233,7 @@ describe('EditorManager', () => {
 
     it('input events flip isDirty true and revert clears it back to false', async () => {
         seedOriginalMarkdown('hello');
-        const mgr = new EditorManager('a.md');
+        const mgr = openEditorManager('a.md');
         await mgr.open();
         const view = getEditorView();
         replaceDocument(view, 'hello!');
@@ -259,7 +281,7 @@ describe('EditorManager', () => {
         },
     ])('Enter continues $label and moves the caret atomically', async ({ source, cursor, expected, caret }) => {
         seedOriginalMarkdown(source);
-        const mgr = new EditorManager('a.md');
+        const mgr = openEditorManager('a.md');
         await mgr.open();
         const view = getEditorView();
         view.dispatch({ selection: { anchor: cursor } });
@@ -280,7 +302,7 @@ describe('EditorManager', () => {
 
     it('modified Enter keeps CodeMirror standard newline behavior', async () => {
         seedOriginalMarkdown('- item');
-        const mgr = new EditorManager('a.md');
+        const mgr = openEditorManager('a.md');
         await mgr.open();
         const view = getEditorView();
         view.dispatch({ selection: { anchor: view.state.doc.length } });
@@ -300,7 +322,7 @@ describe('EditorManager', () => {
 
     it('layout toggle persists "full" to localStorage and loads it back', async () => {
         seedOriginalMarkdown('x');
-        const mgr = new EditorManager('a.md');
+        const mgr = openEditorManager('a.md');
         await mgr.open();
         const fullBtn = document.querySelector<HTMLElement>('.editor-layout-btn[data-layout="full"]')!;
         fullBtn.click();
@@ -319,7 +341,7 @@ describe('EditorManager', () => {
             text: async () => '',
             json: async () => ({ html: '' }),
         })));
-        const mgr = new EditorManager('a.md');
+        const mgr = openEditorManager('a.md');
 
         await mgr.open({ mode: 'export', content: 'first' });
         document.querySelector<HTMLButtonElement>('.editor-tab-preview')?.click();
@@ -347,7 +369,7 @@ describe('EditorManager', () => {
             configurable: true,
         });
 
-        const mgr = new EditorManager('a.md');
+        const mgr = openEditorManager('a.md');
         await mgr.open({
             mode: 'export',
             exportFileName: 'Project charter',
@@ -386,7 +408,7 @@ describe('EditorManager', () => {
             text: async () => '',
             json: async () => ({ html: '' }),
         })));
-        const mgr = new EditorManager('a.md');
+        const mgr = openEditorManager('a.md');
         await mgr.open({ mode: 'export', exportFileName: 'notes', content: 'old body' });
         replaceDocument(getEditorView(), 'Renamed export.md\n\nnew body\n');
 
@@ -401,7 +423,7 @@ describe('EditorManager', () => {
 
     it('Escape key triggers close()', async () => {
         seedOriginalMarkdown('x');
-        const mgr = new EditorManager('a.md');
+        const mgr = openEditorManager('a.md');
         await mgr.open();
         expect(mgr.isOpen()).toBe(true);
 
@@ -415,7 +437,7 @@ describe('EditorManager', () => {
         const confirmMock = vi.fn(() => false); // user clicks Cancel
         Object.defineProperty(window, 'confirm', { value: confirmMock, writable: true, configurable: true });
 
-        const mgr = new EditorManager('a.md');
+        const mgr = openEditorManager('a.md');
         await mgr.open();
         replaceDocument(getEditorView(), 'changed');
         expect(mgr.isDirty()).toBe(true);
@@ -428,7 +450,7 @@ describe('EditorManager', () => {
 
     it('split divider drag persists pct to localStorage', async () => {
         seedOriginalMarkdown('x');
-        const mgr = new EditorManager('a.md');
+        const mgr = openEditorManager('a.md');
         await mgr.open();
         const split = document.querySelector<HTMLElement>('.editor-split')!;
         const divider = document.querySelector<HTMLElement>('.editor-split-divider')!;
@@ -470,7 +492,7 @@ describe('EditorManager', () => {
 
         // The preview update is debounced behind setTimeout(0).
         vi.useFakeTimers();
-        const mgr = new EditorManager('a.md');
+        const mgr = openEditorManager('a.md');
         const opening = mgr.open();
         // Drain timers to fire the initial schedulePreviewUpdate(0).
         await vi.runAllTimersAsync();
@@ -521,7 +543,7 @@ describe('EditorManager', () => {
         }) as unknown as typeof fetch;
         vi.stubGlobal('fetch', fetchMock);
 
-        const mgr = new EditorManager('a.md');
+        const mgr = openEditorManager('a.md');
         await mgr.open();
         await vi.waitFor(() => {
             expect(pending.filter(request => request.content.startsWith('preview-'))).toHaveLength(1);
