@@ -22,7 +22,7 @@
   "license": "Apache-2.0",
   "devDependencies": {
     "@eslint/js": "^9.39.4",
-    "esbuild": "^0.28.0",
+    "esbuild": "^0.28.2",
     "eslint": "^9.37.0",
     "globals": "^15.15.0",
     "jsdom": "^29.0.2",
