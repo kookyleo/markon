@@ -32,6 +32,7 @@ import { ModalManager, showConfirmDialog } from './components/modal';
 import { FloatingLayer } from './components/floating-layer';
 import { mergeAnnotationSnapshots } from './services/annotation-sync';
 import { currentPageNoteLink, noteLinkIdFromHash } from './services/note-link';
+import { ReadingProgressTracker } from './services/reading-progress';
 
 const INTERACTIVE_MARKDOWN_BODY_SELECTOR = '[data-markon-interactive-body]';
 
@@ -185,7 +186,24 @@ export class MarkonApp {
         // 11. Start chat (gated internally on Meta.flag('enable-chat'))
         this.#initChat();
 
+        // 12. Restore the reader's position — last, so folded sections,
+        // annotations, and note cards have already settled the layout.
+        this.#initReadingProgress();
+
         Logger.log('MarkonApp', 'Initialization complete');
+    }
+
+    /**
+     * Remember and restore where the reader stopped in this document.
+     *
+     * Device-local only — see {@link ReadingProgressTracker}. The tracker owns
+     * its own lifecycle for the life of the page: it flushes on `pagehide`, so
+     * a reload (including the external-edit auto-reload) keeps the position.
+     * @private
+     */
+    #initReadingProgress(): void {
+        if (!this.#markdownBody) return;
+        new ReadingProgressTracker(this.#markdownBody, this.#filePath).start();
     }
 
     /** Initialize Workspace-level chat when enabled. @private */
