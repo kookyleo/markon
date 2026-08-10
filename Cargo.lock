@@ -3664,7 +3664,6 @@ dependencies = [
  "futures-util",
  "getrandom 0.3.4",
  "globset",
- "grep-matcher",
  "grep-regex",
  "grep-searcher",
  "hmac",
@@ -3673,11 +3672,9 @@ dependencies = [
  "interprocess",
  "lazy_static",
  "local-ip-address",
- "log",
  "mime_guess",
  "notify",
  "open",
- "qr2term",
  "qrcode",
  "rayon",
  "regex",
@@ -3707,7 +3704,6 @@ dependencies = [
  "two-face",
  "urlencoding",
  "uuid",
- "walkdir",
 ]
 
 [[package]]
@@ -4912,16 +4908,6 @@ name = "pxfm"
 version = "0.1.30"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d55d956fa96f5ec02be2e13af0e20391a5aa83d6a074e3ad368959d0fab299ea"
-
-[[package]]
-name = "qr2term"
-version = "0.3.3"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "6867c60b38e9747a079a19614dbb5981a53f21b9a56c265f3bfdf6011a50a957"
-dependencies = [
- "crossterm",
- "qrcode",
-]
 
 [[package]]
 name = "qrcode"
@@ -8650,7 +8636,6 @@ dependencies = [
  "anyhow",
  "icns",
  "ico 0.4.0",
- "png 0.17.16",
  "resvg",
  "serde",
  "tiny-skia",

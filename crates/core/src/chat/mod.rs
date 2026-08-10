@@ -1,14 +1,14 @@
 //! AI chat ("read-only Claude Code") subsystem.
 //!
-//! Layout:
-//! - [`message`] — provider-agnostic message / content-block types.
+//! Layout (crate-private modules are named without a link):
+//! - `message`  — provider-agnostic message / content-block types.
 //! - [`config`]   — runtime chat config (provider choice, model, keys).
-//! - [`prompt`]   — cache-friendly system-prompt assembly.
-//! - [`provider`] — pluggable LLM provider trait + Anthropic / OpenAI impls.
-//! - [`tools`]    — read-only filesystem tools exposed to the LLM.
-//! - [`storage`]  — SQLite-backed thread & message persistence.
-//! - [`agent`]    — orchestrates provider stream + tool dispatch.
-//! - [`routes`]   — axum handlers (SSE chat endpoint + REST helpers).
+//! - `prompt`   — cache-friendly system-prompt assembly.
+//! - `provider` — pluggable LLM provider trait + Anthropic / OpenAI impls.
+//! - `tools`    — read-only filesystem tools exposed to the LLM.
+//! - `storage`  — SQLite-backed thread & message persistence.
+//! - `agent`    — orchestrates provider stream + tool dispatch.
+//! - `routes`   — axum handlers (SSE chat endpoint + REST helpers).
 //! - [`api`]      — types whose only public contract is the JSON wire format
 //!   for the chat HTTP / SSE surface. Consolidated here so callers can see
 //!   the wire schema at a glance instead of digging through implementation

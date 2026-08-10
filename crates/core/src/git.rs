@@ -322,10 +322,6 @@ pub fn branches(root: &Path) -> Result<Vec<GitBranch>> {
         .collect())
 }
 
-pub fn branch_count(root: &Path) -> Result<usize> {
-    Ok(branches(root)?.len())
-}
-
 /// Read-only, GitHub-style per-branch detail: the branch name, whether it is
 /// checked out / the repo default, its relative last-commit time, and how far it
 /// sits ahead/behind the default branch. `ahead`/`behind` are `None` for the
@@ -507,42 +503,6 @@ pub fn checkout_branch(root: &Path, branch: &str) -> Result<GitStatus> {
     }
     run_git_success(root, &["switch", branch])?;
     Ok(status(root))
-}
-
-pub fn last_commit_for_path(root: &Path, rel_path: &str) -> Result<Option<GitPathCommit>> {
-    ensure_repo(root)?;
-    if rel_path.trim().is_empty() {
-        return Ok(None);
-    }
-    let output = run_git(
-        root,
-        &[
-            "log",
-            "-1",
-            "--date=relative",
-            "--format=%s%x1f%cr",
-            "--",
-            rel_path,
-        ],
-    )?;
-    if !output.status.success() {
-        let stderr = String::from_utf8_lossy(&output.stderr);
-        if stderr.contains("does not have any commits") {
-            return Ok(None);
-        }
-        return Err(GitError::Command(stderr.trim().to_string()));
-    }
-    let line = String::from_utf8_lossy(&output.stdout)
-        .trim_end()
-        .to_string();
-    if line.is_empty() {
-        return Ok(None);
-    }
-    let (subject, time) = line.split_once('\x1f').unwrap_or((line.as_str(), ""));
-    Ok(Some(GitPathCommit {
-        subject: subject.to_string(),
-        time: time.to_string(),
-    }))
 }
 
 pub fn last_commits_for_paths(

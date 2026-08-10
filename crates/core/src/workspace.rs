@@ -135,7 +135,7 @@ impl WorkspaceEntry {
 }
 
 /// Workspace info as serialized to JSON by `GET /api/workspaces`. Lives here
-/// because it's built from [`WorkspaceEntry`] state, but its only public
+/// because it's built from `WorkspaceEntry` state, but its only public
 /// contract is the wire format — see `crate::server::api` for the canonical
 /// re-export.
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq)]
@@ -968,7 +968,7 @@ pub struct ServerLock {
     pub service_version: String,
     /// Per-instance ownership nonce. NOT a secret (management no longer rides the
     /// lock — it moved to the control socket) and never used for authentication;
-    /// it exists only so [`remove_if_owned`](Self::remove_if_owned) can tell "my
+    /// it exists only so `remove_if_owned` can tell "my
     /// lock" from one a newer server already replaced, keeping cleanup race-safe.
     /// `#[serde(default)]` keeps pre-nonce lock files readable (empty nonce).
     #[serde(default)]

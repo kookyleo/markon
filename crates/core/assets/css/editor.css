@@ -1170,11 +1170,6 @@ html[data-theme="dark"] .markdown-body h6.heading-focused {
     vertical-align: middle;
 }
 
-/* Print section container - hidden by default */
-.print-section-container {
-    display: none;
-}
-
 /* Collapsed section styles */
 .section-collapsed {
     cursor: pointer;
@@ -1189,11 +1184,6 @@ html[data-theme="dark"] .markdown-body h6.heading-focused {
 
 /* The expand/collapse toggle (.section-expand-toggle) needs no rules of its
    own — it is styled entirely by .section-action above. */
-
-/* Temporarily expanded section (viewed but expanded) */
-.section-collapsed.section-temp-expanded {
-    opacity: 1;
-}
 
 /* Placeholder row shown below a collapsed heading */
 .section-collapsed-placeholder {
@@ -1378,23 +1368,6 @@ html[data-theme="dark"] .markdown-body h6.heading-focused {
    ============================================================ */
 
 @media print {
-    /* When printing a specific section, hide everything else */
-    /* With unique marker IDs in cloned SVG, we can safely use display:none */
-    body:has(.print-section-container) > *:not(.print-section-container) {
-        display: none !important;
-    }
-
-    /* Show only the print section container */
-    .print-section-container {
-        display: block !important;
-    }
-
-    /* Hide interactive elements in print section container */
-    .print-section-container .section-action-separator,
-    .print-section-container .section-print-btn {
-        display: none !important;
-    }
-
     /* Hide viewed checkboxes and labels */
     .viewed-checkbox-label {
         display: none !important;
@@ -1450,25 +1423,6 @@ html[data-theme="dark"] .markdown-body h6.heading-focused {
 }
 
 /* Highlight flash animation for navigation */
-@keyframes highlight-flash {
-    0% {
-        background-color: transparent;
-        box-shadow: none;
-    }
-    50% {
-        background-color: rgba(255, 223, 0, 0.3);
-        box-shadow: 0 0 8px rgba(255, 223, 0, 0.5);
-    }
-    100% {
-        background-color: transparent;
-        box-shadow: none;
-    }
-}
-
-.highlight-flash {
-    animation: highlight-flash 1s ease-in-out;
-}
-
 /* ============================================================
    WORKSPACE SPOTLIGHT
    Reusable workspace file/content search used by document and workspace pages.
@@ -2098,14 +2052,6 @@ body.workspace-spotlight-open {
 
 .editor-save-btn.has-changes:hover {
     background-color: var(--mk-editor-btn-changes-bg-hover);
-}
-
-/* Editor status text — theme-following like the rest of the chrome. The
-   old prefers-color-scheme light override is gone: the editor now themes
-   through the --mk-editor-* preset layer (default "follow page"), so a
-   single base rule covers both themes. */
-.editor-status {
-    color: var(--markon-fg-muted);
 }
 
 /* ============================================================

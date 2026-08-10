@@ -234,21 +234,19 @@
 
 /* ── Shared modal frame component ─────────────────────────────
    Use `.markon-modal-frame` on popups that can use the pseudo-element inner
-   surface. Use `.markon-modal-frame-shell` with `.markon-modal-surface` when
-   the popup already owns a dedicated content/body element. */
+   surface. */
 .markon-modal-backdrop {
     background: transparent;
 }
 
 .markon-modal-layer.markon-modal-layer,
 .markon-modal-frame.markon-modal-frame,
-.markon-modal-frame-shell.markon-modal-frame-shell,
 .markon-chat-container.expanded.markon-chat-container.expanded,
 .markon-live-container.expanded.markon-live-container.expanded {
     z-index: var(--markon-z-modal-layer);
 }
 
-:where(.markon-modal-frame, .markon-modal-frame-shell),
+:where(.markon-modal-frame),
 .toc.markon-modal-frame,
 .markon-chat-container.expanded,
 .markon-live-container.expanded {
@@ -353,7 +351,6 @@
     cursor: grabbing;
 }
 
-.markon-modal-surface,
 .markon-chat-container.expanded .markon-chat-body,
 .markon-live-container.expanded .markon-live-body {
     border: 1px solid var(--markon-modal-surface-border);

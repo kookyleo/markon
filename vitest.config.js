@@ -6,7 +6,12 @@ import { defineConfig } from 'vitest/config';
 // Pure-logic modules can opt out via `// @vitest-environment node`.
 export default defineConfig({
   test: {
-    include: ['crates/core/assets/js/**/*.{test,spec}.{ts,js}'],
+    include: [
+      'crates/core/assets/js/**/*.{test,spec}.{ts,js}',
+      // The desktop shell ships plain JS under `crates/gui/ui/`; its tests live
+      // beside the crate rather than next to the module.
+      'crates/gui/tests/js/**/*.{test,spec}.js',
+    ],
     environment: 'jsdom',
     setupFiles: ['crates/core/assets/js/test/setup.ts'],
   },

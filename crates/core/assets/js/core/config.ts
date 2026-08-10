@@ -195,17 +195,6 @@ export const CONFIG = {
         CHAT_ONLY: 'chat-only',
     },
 
-    // WebSocket Message types
-    WS_MESSAGE_TYPES: {
-        ALL_ANNOTATIONS: 'all_annotations',
-        NEW_ANNOTATION: 'new_annotation',
-        DELETE_ANNOTATION: 'delete_annotation',
-        CLEAR_ANNOTATIONS: 'clear_annotations',
-        VIEWED_STATE: 'viewed_state',
-        LIVE_ACTION: 'live_action',
-        FILE_CHANGED: 'file_changed',
-    },
-
     // Collaboration Configuration — 8 bright, saturated colors. Greys and
     // near-black tones are deliberately excluded so they never collide with
     // the disabled/OFF state's muted ring. Index = user-facing label 1..8.
@@ -242,9 +231,6 @@ export const CONFIG = {
 /** Convenience alias: the literal-typed shortcut-name union derived from CONFIG. */
 export type ShortcutName = keyof typeof CONFIG.SHORTCUTS;
 
-/** WebSocket message-type literal union, matching CONFIG.WS_MESSAGE_TYPES values. */
-export type WsMessageType = (typeof CONFIG.WS_MESSAGE_TYPES)[keyof typeof CONFIG.WS_MESSAGE_TYPES];
-
 // Apply user shortcut overrides from Settings (injected as window.__MARKON_SHORTCUTS__).
 if (typeof window !== 'undefined' && window.__MARKON_SHORTCUTS__) {
     const entries = Object.entries(window.__MARKON_SHORTCUTS__) as [ShortcutName, Partial<ShortcutDef>][];
@@ -267,7 +253,6 @@ Object.freeze(CONFIG.SHORTCUTS);
 Object.freeze(CONFIG.SELECTORS);
 Object.freeze(CONFIG.SKIP_ELEMENTS);
 Object.freeze(CONFIG.META_TAGS);
-Object.freeze(CONFIG.WS_MESSAGE_TYPES);
 Object.freeze(CONFIG.COLLABORATION);
 Object.freeze(CONFIG.ANNOTATION_TYPES);
 Object.freeze(CONFIG.HTML_TAGS);

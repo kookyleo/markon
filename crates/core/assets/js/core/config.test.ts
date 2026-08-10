@@ -137,14 +137,14 @@ describe('i18n', () => {
 });
 
 describe('CONFIG immutability', () => {
-    it('freezes WS_MESSAGE_TYPES', () => {
-        expect(Object.isFrozen(CONFIG.WS_MESSAGE_TYPES)).toBe(true);
+    it('rejects mutation of a frozen sub-object', () => {
+        expect(Object.isFrozen(CONFIG.META_TAGS)).toBe(true);
         // Strict mode (TS modules are strict) makes mutation of a frozen
         // object throw. Wrap in a function so the assertion is reliable.
         expect(() => {
-            (CONFIG.WS_MESSAGE_TYPES as { ALL_ANNOTATIONS: string }).ALL_ANNOTATIONS = 'tampered';
+            (CONFIG.META_TAGS as { FILE_PATH: string }).FILE_PATH = 'tampered';
         }).toThrow(TypeError);
-        expect(CONFIG.WS_MESSAGE_TYPES.ALL_ANNOTATIONS).toBe('all_annotations');
+        expect(CONFIG.META_TAGS.FILE_PATH).toBe('file-path');
     });
 
     it('freezes the top-level CONFIG and key sub-objects', () => {

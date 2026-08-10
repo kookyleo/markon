@@ -7,7 +7,7 @@
 
 const { invoke } = window.__TAURI__.core;
 
-function buildTemplateFunc(tplStr) {
+export function buildTemplateFunc(tplStr) {
   return (info) => tplStr
     .replace(/\{app_version\}/g, info.app_version ?? '?')
     .replace(/\{os\}/g, info.os ?? '?')
@@ -16,7 +16,7 @@ function buildTemplateFunc(tplStr) {
     .replace(/\{ua\}/g, navigator.userAgent);
 }
 
-function buildLang(data) {
+export function buildLang(data) {
   if (!data) return null;
   const out = { ...data };
   out.bug  = { label: data['feedback.bug.label'],  tip: data['feedback.bug.tip'] };
