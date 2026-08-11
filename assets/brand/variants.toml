@@ -91,20 +91,31 @@ outputs = [
   { path = "crates/gui/icons/tray.png", size = 64 },
   # In-app About page (CSS mask — fill colour is irrelevant, alpha is used).
   { path = "crates/gui/ui/glyph.svg" },
-  # Docs site logo, dark-theme variant (white glyph on dark page).
+]
+
+# ── Docs site logo ──────────────────────────────────────────────────────────
+# Both themes crop tighter than the tray does: "2 4 28 24" trims the vertical
+# padding the glyph carries inside its 32-square, so the mark sits flush with
+# the site header text instead of floating above it. The tray keeps the square
+# "2 2 28 28" — its icon has to stay optically centred in a square slot, which
+# is why the docs logos are their own variants rather than extra outputs on
+# `tray-template`.
+[[variant]]
+name = "docs-logo-dark"
+wrap = "none"
+fg = "#ffffff"
+viewBox = "2 4 28 24"
+outputs = [
+  # Dark-theme variant (white glyph on a dark page).
   { path = "docs/public/logo-dark.svg" },
 ]
 
-# ── Bare glyph, dark (docs light-theme logo) ────────────────────────────────
-# The Windows / Linux tray icon used to come from this variant. It's moved
-# to the wrapped `app` variant above — a flat black glyph was nearly
-# invisible on Windows 11's dark taskbar and looked weak on any taskbar
-# without the auto-tint macOS provides.
 [[variant]]
 name = "glyph-dark"
 wrap = "none"
 fg = "#27ae60"
+viewBox = "2 4 28 24"
 outputs = [
-  # Docs site logo, light-theme variant (black glyph on light page).
+  # Light-theme variant (green glyph on a light page).
   { path = "docs/public/logo-light.svg" },
 ]
