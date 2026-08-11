@@ -10,8 +10,11 @@ env:
   # Minimum age (in minutes) before an RC can be auto-promoted.
   # Production value: 10080 (7 days). Set lower for testing.
   PROMOTE_MIN_MINUTES: "10080"
-  # Open issues with this label block auto-promotion.
-  BLOCKER_LABEL: "release-blocker"
+  # Open issues with this label block auto-promotion. Must match a label that
+  # actually exists in the repository — GitHub only lets an issue carry labels
+  # that have been created, so a name with no matching label silently disables
+  # the whole blocking mechanism.
+  BLOCKER_LABEL: "non-release"
 
 jobs:
   check-and-promote:

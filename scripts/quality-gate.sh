@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# Canonical quality gate, shared by scripts/bump-version.sh,
-# scripts/publish-crates.sh and .githooks/pre-push.
+# Canonical quality gate, shared by scripts/publish-crates.sh and
+# .githooks/pre-push.
 #
 # Gates, cheapest-first so the common failures surface fastest:
 #   Rust  (skipped if cargo absent):  fmt --check · clippy all-features -D warnings · test
