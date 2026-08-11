@@ -26,7 +26,9 @@ pub use transport::{
 };
 
 use crate::data_maintenance::{DataCleanupResult, DataCleanupStats};
-use crate::workspace::{expand_and_canonicalize, WorkspaceFlags, WorkspaceInfo};
+use crate::workspace::{
+    expand_and_canonicalize, WorkspaceFlags, WorkspaceInfo, WorkspaceOpenTarget,
+};
 
 /// Error talking to a running server's control socket.
 #[derive(Debug, thiserror::Error)]
@@ -237,6 +239,28 @@ impl RunningServer {
             ControlResponse::WorkspaceId(id) => Ok(id),
             _ => Err(ControlError::Unexpected),
         }
+    }
+
+    /// Register a user-opened path using the shared file-vs-directory scope.
+    ///
+    /// Native frontends resolve paths through [`WorkspaceOpenTarget`] and call
+    /// this method instead of choosing between directory and single-file control
+    /// requests themselves. That keeps CLI and GUI registration semantics tied
+    /// to the same core implementation.
+    pub async fn add_or_update_open_target(
+        &self,
+        target: &WorkspaceOpenTarget,
+        flags: WorkspaceFlags,
+        collaborator_access_code_hash: Option<&str>,
+    ) -> Result<String, ControlError> {
+        self.add_or_update_workspace_scoped(
+            &target.root.to_string_lossy(),
+            flags,
+            target.single_file.as_deref(),
+            collaborator_access_code_hash,
+            None,
+        )
+        .await
     }
 
     /// Register a workspace, or — if `path` is already registered — update its
