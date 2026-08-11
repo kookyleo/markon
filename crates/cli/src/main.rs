@@ -6,8 +6,8 @@ use markon_core::net::{available_bind_hosts, BindHostKind};
 use markon_core::server::{self, ServerConfig, WorkspaceInit};
 use markon_core::settings::AppSettings;
 use markon_core::workspace::{
-    expand_and_canonicalize, hash_access_code, ServerLock, WorkspaceFlags, WorkspaceOpenTarget,
-    WorkspaceRegistry,
+    expand_and_canonicalize, hash_access_code, ServerLock, WorkspaceFlags, WorkspaceInfo,
+    WorkspaceOpenTarget, WorkspaceRegistry,
 };
 use std::io::IsTerminal;
 use std::path::{Path, PathBuf};
@@ -279,6 +279,22 @@ fn display_workspace_path(path: &Path) -> String {
     path.to_string_lossy().to_string()
 }
 
+/// User-visible path for one workspace row.
+///
+/// A file-scoped workspace serves out of the file's *parent*, so `WorkspaceInfo.path`
+/// alone renders as the directory — indistinguishable from a directory workspace
+/// over the same folder, which is exactly what two entries for one folder look
+/// like after a file is opened. Joining `single_file` (the wire format documents
+/// this as required of any consumer that displays the path) shows what the
+/// workspace actually serves.
+fn display_workspace_scope(info: &WorkspaceInfo) -> String {
+    let root = Path::new(&info.path);
+    match info.single_file.as_deref() {
+        Some(file) => display_workspace_path(&root.join(file)),
+        None => display_workspace_path(root),
+    }
+}
+
 /// One row per workspace flag: (enabled, card label, tag label, form label).
 /// Single source of truth for flag order and naming across the card and table
 /// renderings and the interactive TUI edit form. The form label is the short,
@@ -522,7 +538,7 @@ async fn list_workspaces(
     match format {
         WorkspaceListFormat::Cards => {
             for (i, ws) in workspaces.iter().enumerate() {
-                let path = display_workspace_path(Path::new(&ws.path));
+                let path = display_workspace_scope(ws);
                 let url = server::build_workspace_url(
                     &url_base,
                     &server::workspace_url_path(&ws.id, None),
@@ -553,7 +569,7 @@ async fn list_workspaces(
                 .iter()
                 .enumerate()
                 .map(|(i, ws)| {
-                    let path = display_workspace_path(Path::new(&ws.path));
+                    let path = display_workspace_scope(ws);
                     let features = format_workspace_feature_tags(ws.flags, ws.search_ready);
                     let url = server::build_workspace_url(
                         &url_base,
@@ -760,8 +776,14 @@ async fn admin_browser_command(
     command: AdminCommands,
 ) -> Result<(), Box<dyn std::error::Error>> {
     let workspaces = server.list_workspaces().await?;
-    let redirect = workspaces
-        .first()
+    // The session has to land somewhere and there is no workspace index to land
+    // on, so the first entry wins. That is an arbitrary pick once more than one
+    // workspace is open — and a stable one, since the registry sorts by root and
+    // then by `single_file`, where `None` orders first: a directory workspace
+    // always outranks a file-scoped workspace over the same folder. Name the
+    // destination rather than letting the browser arrive somewhere unexplained.
+    let landing = workspaces.first();
+    let redirect = landing
         .map(|workspace| server::workspace_url_path(&workspace.id, None))
         .unwrap_or_else(|| "/".to_string());
     match command {
@@ -777,6 +799,19 @@ async fn admin_browser_command(
             println!("Open: {url}");
             println!("One-time administrator code: {code}");
             println!("Expires in 5 minutes and is invalidated after 5 failed attempts.");
+        }
+    }
+    if let Some(workspace) = landing {
+        println!(
+            "Opens workspace {}: {}",
+            workspace.id,
+            display_workspace_scope(workspace)
+        );
+        if workspaces.len() > 1 {
+            println!(
+                "({} workspaces are open — `markon ls` lists the rest.)",
+                workspaces.len()
+            );
         }
     }
     Ok(())
@@ -1352,6 +1387,36 @@ async fn main() {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn workspace_info(path: &str, single_file: Option<&str>) -> WorkspaceInfo {
+        WorkspaceInfo {
+            id: "abcd1234".to_string(),
+            path: path.to_string(),
+            flags: WorkspaceFlags::default(),
+            search_ready: true,
+            ephemeral: single_file.is_some(),
+            single_file: single_file.map(str::to_string),
+            collaborator_access_code_hash: String::new(),
+            alias: String::new(),
+        }
+    }
+
+    #[test]
+    fn listing_shows_the_file_a_single_file_workspace_serves() {
+        // A file-scoped workspace serves out of the parent directory, so showing
+        // `path` alone renders it identically to a directory workspace over the
+        // same folder — and both can be open at once, which is exactly when
+        // telling them apart matters.
+        let directory = workspace_info("/tmp/lab", None);
+        let single_file = workspace_info("/tmp/lab", Some("target.md"));
+
+        assert_eq!(display_workspace_scope(&directory), "/tmp/lab");
+        assert_eq!(display_workspace_scope(&single_file), "/tmp/lab/target.md");
+        assert_ne!(
+            display_workspace_scope(&directory),
+            display_workspace_scope(&single_file)
+        );
+    }
 
     #[test]
     fn admin_subcommands_parse_without_exposing_management_tokens() {
