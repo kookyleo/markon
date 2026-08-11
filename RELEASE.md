@@ -98,16 +98,23 @@ This mapping has to be revisited when the project reaches `1.0`.
 
 Merging the PR is the whole ritual. `auto-bump.yml` then rewrites
 `workspace.package.version` (and the `markon-core` `MAJOR.MINOR` dependency
-range when the minor moves), refreshes `Cargo.lock` via `cargo metadata`,
-and pushes a single `chore: bump to <version>` commit to main.
+range when the minor moves), refreshes `Cargo.lock` via `cargo metadata`, and
+opens a `chore: bump to <version>` pull request on a `release/bump-<version>`
+branch with auto-merge armed. It merges itself as soon as the required checks
+pass, and that merge is the push `auto-rc.yml` is waiting for.
 
-> **Why the bot pushes straight to main.** `main` is protected and the built-in
-> `GITHUB_TOKEN` cannot write to it, so the bump is pushed with
-> `RELEASE_PUSH_TOKEN` (an admin PAT, the same secret `promote.yml` already uses
-> for the Homebrew/Scoop tap commits). The commit skips CI, which is safe
-> because it lands on top of a commit that just passed the full suite and
-> changes nothing but two version fields. Quality is enforced on the PR, not on
-> the bump.
+> **Nothing writes to main directly.** Not the bump, not the tap refresh, not
+> an administrator. Branch protection is configured with *include
+> administrators* on, so every change — human or bot — arrives through a pull
+> request that has cleared the required checks. `RELEASE_PUSH_TOKEN` is still
+> needed, but not to bypass anything: a pull request opened with the built-in
+> `GITHUB_TOKEN` does not trigger CI, so auto-merge would sit forever waiting
+> on checks that never start. The PAT only makes the PR look like it came from
+> a person.
+
+> **The bump PR is labelled `release:skip`,** and `auto-bump.yml` additionally
+> ignores any merged branch whose name starts with `release/`. Without that,
+> merging a version bump would trigger a version bump, forever.
 
 ### 2. What happens automatically
 
@@ -194,15 +201,17 @@ re-run a failed publish, re-run that workflow — it is idempotent.
 and double as the personal taps. On a stable promote, `promote.yml` bumps their
 version + installer SHAs and commits them back to `main`.
 
-Because `main` is protected and the default `GITHUB_TOKEN` cannot bypass it,
-those pushes use the **`RELEASE_PUSH_TOKEN`** secret — a PAT from an admin
-account (fine-grained, only `Contents: Read and write`). Branch protection has
-`enforce_admins=off`, so an admin push bypasses. If the secret is absent the
-push is skipped with a warning (no job failure).
+The update goes up as a `release/taps-<version>` pull request with auto-merge
+armed, labelled `release:skip` so refreshing the taps does not cut yet another
+version. It needs the **`RELEASE_PUSH_TOKEN`** secret — a PAT (fine-grained,
+`Contents: Read and write` plus `Pull requests: Read and write`) — because a PR
+opened with the built-in `GITHUB_TOKEN` never triggers CI and would never
+auto-merge. If the secret is absent the update is skipped with a warning (no
+job failure).
 
-`auto-bump.yml` uses the same secret to push the version bump. It does **not**
-skip on absence: a missing token there means no version change, hence no RC and
-no release at all, so the job fails loudly instead of going quiet.
+`auto-bump.yml` uses the same secret for the same reason, but does **not** skip
+on absence: no token there means no version change, hence no RC and no release
+at all, so the job fails loudly instead of going quiet.
 
 ## Update Channels
 
