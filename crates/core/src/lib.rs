@@ -16,9 +16,3 @@ pub(crate) mod fswalk;
 pub(crate) mod markdown;
 pub(crate) mod markdown_ast;
 pub(crate) mod workspace_fs;
-
-/// Deliberately misformatted so `cargo fmt --check` fails. This branch exists
-/// only to prove that branch protection actually blocks a merge; it must never
-/// be merged. See the pull request body.
-#[allow(dead_code)]
-fn   protection_canary( )   ->   u8 {   42   }
