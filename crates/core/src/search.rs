@@ -86,7 +86,7 @@ impl SearchIndex {
         // text (CJK has no case, so jieba's output is unaffected). The same
         // analyzer runs at index and query time, so both sides lower-case
         // consistently — "Hello" matches "hello".
-        let analyzer = TextAnalyzer::builder(JiebaTokenizer {})
+        let analyzer = TextAnalyzer::builder(JiebaTokenizer::new())
             .filter(LowerCaser)
             .build();
         index.tokenizers().register("jieba", analyzer);
@@ -257,7 +257,11 @@ impl SearchIndex {
         );
 
         let query = query_parser.parse_query(query_str)?;
-        let top_docs = searcher.search(&query, &TopDocs::with_limit(limit))?;
+        // tantivy 0.26 dropped the blanket `Collector` impl on `TopDocs`; the
+        // ordering has to be picked explicitly. `order_by_score` is the former
+        // default, so ranking is unchanged.
+        let collector = TopDocs::with_limit(limit).order_by_score();
+        let top_docs = searcher.search(&query, &collector)?;
 
         let mut results = Vec::new();
         let snippet_generator = SnippetGenerator::create(&searcher, &query, self.field_content)?;

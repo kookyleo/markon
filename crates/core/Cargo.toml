@@ -32,8 +32,8 @@ name = "markon_core"
 path = "src/lib.rs"
 
 [dependencies]
-tantivy = "0.25"
-tantivy-jieba = "0.17"
+tantivy = "0.26"
+tantivy-jieba = "0.20"
 rusqlite = { version = "0.37.0", features = ["bundled", "limits"] }
 axum = { version = "0.8.9", features = ["ws"] }
 futures-util = "0.3.32"
