@@ -43,6 +43,65 @@ pub struct WorkspaceFlags {
     pub shared_annotation: bool,
 }
 
+/// Canonical workspace scope derived from a path a user explicitly opened.
+///
+/// This is shared by every native frontend so a file can never silently become
+/// a directory workspace in one surface while remaining file-scoped in another.
+/// Directories use themselves as the serving root. Files use their parent as the
+/// serving root and carry the file name separately, which lets relative assets
+/// resolve without exposing or indexing unrelated siblings.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct WorkspaceOpenTarget {
+    pub root: PathBuf,
+    pub single_file: Option<String>,
+}
+
+impl WorkspaceOpenTarget {
+    /// Resolve an existing file or directory into its canonical workspace scope.
+    pub fn resolve(path: &Path) -> std::io::Result<Self> {
+        let canonical = dunce::canonicalize(path)?;
+        if canonical.is_dir() {
+            return Ok(Self {
+                root: canonical,
+                single_file: None,
+            });
+        }
+
+        let root = canonical.parent().map(Path::to_path_buf).ok_or_else(|| {
+            std::io::Error::new(
+                std::io::ErrorKind::InvalidInput,
+                format!("opened file has no parent: {}", canonical.display()),
+            )
+        })?;
+        let single_file = canonical
+            .file_name()
+            .map(|name| name.to_string_lossy().into_owned())
+            .ok_or_else(|| {
+                std::io::Error::new(
+                    std::io::ErrorKind::InvalidInput,
+                    format!("opened file has no name: {}", canonical.display()),
+                )
+            })?;
+        Ok(Self {
+            root,
+            single_file: Some(single_file),
+        })
+    }
+
+    /// Route inside the workspace that should be opened initially.
+    pub fn initial_path(&self) -> Option<&str> {
+        self.single_file.as_deref()
+    }
+
+    /// Stable identity path used for hashing and user-visible workspace labels.
+    pub fn identity_path(&self) -> PathBuf {
+        match &self.single_file {
+            Some(file) => self.root.join(file),
+            None => self.root.clone(),
+        }
+    }
+}
+
 #[derive(Clone, Default)]
 pub struct WorkspaceConfig {
     pub path: PathBuf,
@@ -1093,6 +1152,35 @@ impl ServerLock {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn open_target_keeps_files_scoped_and_directories_whole() {
+        let temp_dir = tempfile::TempDir::new().unwrap();
+        let file = temp_dir.path().join("note.md");
+        std::fs::write(&file, "# note\n").unwrap();
+
+        let directory = WorkspaceOpenTarget::resolve(temp_dir.path()).unwrap();
+        assert_eq!(
+            directory.root,
+            dunce::canonicalize(temp_dir.path()).unwrap()
+        );
+        assert_eq!(directory.single_file, None);
+        assert_eq!(directory.initial_path(), None);
+        assert_eq!(directory.identity_path(), directory.root);
+
+        let single_file = WorkspaceOpenTarget::resolve(&file).unwrap();
+        assert_eq!(
+            single_file.root,
+            dunce::canonicalize(temp_dir.path()).unwrap()
+        );
+        assert_eq!(single_file.single_file.as_deref(), Some("note.md"));
+        assert_eq!(single_file.initial_path(), Some("note.md"));
+        assert_eq!(
+            single_file.identity_path(),
+            dunce::canonicalize(file).unwrap()
+        );
+    }
+
     #[test]
     fn hash_id_is_deterministic() {
         let p = std::path::Path::new("/tmp/test");

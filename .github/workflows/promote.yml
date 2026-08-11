@@ -144,23 +144,49 @@ jobs:
           git add bucket/markon.json
           git diff --cached --quiet || git commit -m "scoop: bump markon to $VER"
 
-      # Single push of whatever the two steps above committed. Uses the admin
-      # PAT to bypass branch protection; skips gracefully (no job failure) when
-      # the secret isn't configured.
-      - name: Push tap updates to main
+      # The tap updates go up as a pull request with auto-merge armed, not as a
+      # direct push. Branch protection applies to administrators, so no token
+      # here can write to main — and none needs to: the PR clears the same
+      # required checks as any other change and merges itself.
+      #
+      # The PAT is used so the PR is authored by a real account; a PR opened
+      # with the built-in GITHUB_TOKEN does not trigger CI, so auto-merge would
+      # wait forever on checks that never start.
+      - name: Open tap update pull request
         env:
+          GITHUB_TOKEN: ${{ secrets.RELEASE_PUSH_TOKEN }}
           RELEASE_PUSH_TOKEN: ${{ secrets.RELEASE_PUSH_TOKEN }}
+          STABLE: ${{ steps.ver.outputs.stable }}
         run: |
+          VER="${STABLE#v}"
           if git diff --quiet origin/main HEAD; then
-            echo "No cask/Scoop changes to push"
+            echo "No cask/Scoop changes to submit"
             exit 0
           fi
           if [ -z "$RELEASE_PUSH_TOKEN" ]; then
-            echo "::warning::RELEASE_PUSH_TOKEN not set — cask/Scoop commits were not pushed. Add a PAT (admin account, contents:write) as that secret to enable auto-updates."
+            echo "::warning::RELEASE_PUSH_TOKEN not set — cask/Scoop updates were not submitted. Add a PAT (contents:write, pull-requests:write) as that secret to enable auto-updates."
             exit 0
           fi
-          git push "https://x-access-token:${RELEASE_PUSH_TOKEN}@github.com/${{ github.repository }}.git" HEAD:main
-          echo "Pushed cask + Scoop updates to main"
+
+          BRANCH="release/taps-${VER}"
+          if git ls-remote --exit-code --heads origin "$BRANCH" >/dev/null 2>&1; then
+            echo "$BRANCH already exists — tap update for $VER is already in flight"
+            exit 0
+          fi
+          git push --quiet \
+            "https://x-access-token:${RELEASE_PUSH_TOKEN}@github.com/${{ github.repository }}.git" \
+            "HEAD:refs/heads/$BRANCH"
+
+          # release:skip: refreshing the tap manifests must not cut yet another
+          # version, which would update the taps again, and so on.
+          gh pr create \
+            --base main \
+            --head "$BRANCH" \
+            --label 'release:skip' \
+            --title "chore: update Homebrew cask and Scoop manifest for $VER" \
+            --body "Automated tap refresh for the \`$VER\` stable release. Labelled \`release:skip\` so it does not cut a version of its own."
+          gh pr merge "$BRANCH" --auto --squash
+          echo "Opened tap update PR on $BRANCH"
 
   publish-crates:
     needs: promote

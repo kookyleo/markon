@@ -152,16 +152,22 @@ async fn control_round_trips_every_method() {
         .alias
         .is_empty());
 
-    // add_single_file — registers a temporary single-file workspace under the
-    // same parent dir. It coexists with the dir workspace (distinct id) and the
-    // listed entry carries its single_file name and is marked ephemeral.
-    std::fs::write(dir.path().join("note.md"), "# note\n").unwrap();
+    // The shared open-target path registers a temporary single-file workspace
+    // under the same parent dir. It coexists with the dir workspace (distinct
+    // full-file identity) and is listed as ephemeral.
+    let note_path = dir.path().join("note.md");
+    std::fs::write(&note_path, "# note\n").unwrap();
+    let open_target = WorkspaceOpenTarget::resolve(&note_path).unwrap();
     let sf_id = h
         .client
-        .add_single_file(&dir_path, "note.md", flags, "")
+        .add_or_update_open_target(&open_target, flags, None)
         .await
         .unwrap();
     assert_ne!(sf_id, id);
+    assert_eq!(
+        sf_id,
+        crate::workspace::hash_id(&dunce::canonicalize(&note_path).unwrap(), "test-salt")
+    );
     let listed = h.client.list_workspaces().await.unwrap();
     assert_eq!(listed.len(), 2);
     let sf = listed.iter().find(|w| w.id == sf_id).unwrap();
