@@ -95,14 +95,19 @@ graph LR
 
 合并 PR 就是全部动作。随后 `auto-bump.yml` 会改写 `workspace.package.version`
 （中间位变动时同步改 `markon-core` 的 `MAJOR.MINOR` 依赖范围），用
-`cargo metadata` 刷新 `Cargo.lock`，并向 main 推一个
-`chore: bump to <version>` 提交。
+`cargo metadata` 刷新 `Cargo.lock`，然后在 `release/bump-<版本>` 分支上开一个
+`chore: bump to <版本>` 的 PR 并挂上 auto-merge。必需检查一过它自己合并，
+这次合并就是 `auto-rc.yml` 在等的那个 push。
 
-> **机器人为什么能直推 main。** `main` 是保护分支，内置的 `GITHUB_TOKEN` 写不进去，
-> 所以这个 bump 用 `RELEASE_PUSH_TOKEN`（管理员 PAT，与 `promote.yml` 更新
-> Homebrew / Scoop tap 时用的是同一个 secret）推送。该提交跳过 CI，这是安全的：
-> 它叠在一个刚刚跑完整套检查的提交之上，且只改两个版本字段。
-> 质量由 PR 把关，不由 bump 把关。
+> **没有任何人能直接写 main。** 版本号不行，tap 更新不行，管理员也不行。
+> 分支保护开启了「包含管理员」，所以每一次改动——人的还是机器人的——
+> 都必须经由一个通过了必需检查的 PR。`RELEASE_PUSH_TOKEN` 依然需要，
+> 但不是用来绕过任何东西：用内置 `GITHUB_TOKEN` 开的 PR 不会触发 CI，
+> auto-merge 就会永远等一个不会开始的检查。这个 PAT 只是让 PR 看起来像人开的。
+
+> **这个 bump PR 打了 `release:skip`**，并且 `auto-bump.yml` 还会忽略一切
+> 以 `release/` 开头的已合并分支。没有这两道保险，合并一次版本号变更
+> 就会触发下一次版本号变更，无限循环。
 
 ### 2. 自动化流程
 
@@ -187,12 +192,14 @@ CI 没检查过的工作区发出版本。发布失败时重跑该 workflow 即�
 兼作个人 tap。`promote.yml` 在晋升 stable 时会更新它们的版本号与安装包 SHA，
 并提交回 `main`。
 
-由于 `main` 受分支保护、默认 `GITHUB_TOKEN` 无法绕过，这两步的推送使用
-Secret **`RELEASE_PUSH_TOKEN`** —— 一个管理员账号的 PAT（fine-grained，
-仅需 `Contents: Read and write`）。分支保护 `enforce_admins=off`，管理员推送即可
-bypass。未配置该 secret 时推送会发出 warning 并跳过（不导致 job 失败）。
+更新会以 `release/taps-<版本>` 分支开成 PR 并挂上 auto-merge，打了
+`release:skip` 标签——刷新 tap 不应该再切出一个新版本。它需要 Secret
+**`RELEASE_PUSH_TOKEN`**（fine-grained PAT，需要 `Contents: Read and write`
+加 `Pull requests: Read and write`），因为用内置 `GITHUB_TOKEN` 开的 PR
+不会触发 CI，也就永远不会自动合并。未配置该 secret 时会发出 warning 并跳过
+（不导致 job 失败）。
 
-`auto-bump.yml` 推送版本号变更用的是同一个 secret，但它在缺失时**不跳过**：
+`auto-bump.yml` 出于同样理由使用同一个 secret，但它在缺失时**不跳过**：
 那里没有 token 就意味着版本号不变，进而没有 RC、完全不会发版，
 所以该 job 会直接报错失败，而不是悄悄放过。
 

@@ -1,8 +1,8 @@
 name: Auto Bump
 
-# Turn a merged pull request into a version bump on main. The bump is what the
-# rest of the release pipeline keys off: auto-rc.yml watches pushes to main that
-# change Cargo.toml's version, tags `vX.Y.Z-rc.N` and dispatches release.yml.
+# Turn a merged pull request into a version bump. The bump is what the rest of
+# the release pipeline keys off: auto-rc.yml watches pushes to main that change
+# Cargo.toml's version, tags `vX.Y.Z-rc.N` and dispatches release.yml.
 #
 # The level is read from the merged PR's labels, so the release decision is
 # recorded on the PR instead of being typed into a script by hand:
@@ -11,17 +11,19 @@ name: Auto Bump
 #   semver:breaking  -- 0.15.19 -> 0.16.0   (pre-1.0: breaking bumps MINOR)
 #   semver:patch     -- 0.15.19 -> 0.15.20  (also the default when unlabelled)
 #
-# Quality is gated on the PR, not here: a PR cannot merge without CI (Test /
-# Clippy / Format / TS Tests & Lint / Package), and this job only rewrites two
-# version fields on top of that already-green commit.
+# Nothing here writes to main directly. The bump goes up as its own pull
+# request on a `release/bump-<version>` branch with auto-merge armed, so it
+# clears the same required checks as any human change. That is what lets branch
+# protection apply to administrators too: no actor, human or bot, holds a
+# bypass.
 
 on:
   pull_request:
     types: [closed]
     branches: [main]
 
-# Serialize bumps. Two PRs merged back to back would otherwise race to push
-# main, and the loser would die on a non-fast-forward.
+# Serialize bumps so two PRs merged back to back cannot open competing bump
+# branches for the same version.
 concurrency:
   group: auto-bump
   cancel-in-progress: false
@@ -29,7 +31,14 @@ concurrency:
 jobs:
   bump:
     name: Bump version
-    if: github.event.pull_request.merged == true
+    # Merging the bump PR is itself a merge into main, which would re-trigger
+    # this workflow and cut a version for the version bump, forever. Skipping
+    # our own branches breaks that loop. The bump PR also carries release:skip,
+    # so the level check below would stop it too — this guard just makes the
+    # loop impossible rather than merely unlikely.
+    if: >-
+      github.event.pull_request.merged == true &&
+      !startsWith(github.event.pull_request.head.ref, 'release/')
     runs-on: ubuntu-latest
     steps:
       - name: Resolve bump level from PR labels
@@ -50,16 +59,18 @@ jobs:
           echo "level=$LEVEL" >> "$GITHUB_OUTPUT"
           echo "PR #${{ github.event.pull_request.number }} -> $LEVEL"
 
-      # main is protected and the default GITHUB_TOKEN cannot push to it, so a
-      # missing PAT means the bump silently never lands and no release is ever
-      # cut. Fail loudly instead.
+      # The PAT is not here to bypass anything — it is here so the bump PR is
+      # authored by a real account. Pull requests opened with the built-in
+      # GITHUB_TOKEN do not trigger other workflows, so CI would never run on
+      # the bump and auto-merge would wait on checks that never arrive. A
+      # missing token means no release is ever cut, so fail loudly.
       - name: Require RELEASE_PUSH_TOKEN
         if: steps.level.outputs.level != 'skip'
         env:
           TOKEN: ${{ secrets.RELEASE_PUSH_TOKEN }}
         run: |
           if [ -z "$TOKEN" ]; then
-            echo "::error::RELEASE_PUSH_TOKEN is not configured — the version bump cannot be pushed to protected main. Add a PAT (admin account, contents:write) as that secret."
+            echo "::error::RELEASE_PUSH_TOKEN is not configured — the bump pull request cannot be opened, so no release will be cut. Add a PAT (contents:write, pull-requests:write) as that secret"
             exit 1
           fi
 
@@ -75,9 +86,10 @@ jobs:
         with:
           toolchain: stable
 
-      - name: Bump, commit and push
+      - name: Open the bump pull request
         if: steps.level.outputs.level != 'skip'
         env:
+          GITHUB_TOKEN: ${{ secrets.RELEASE_PUSH_TOKEN }}
           LEVEL: ${{ steps.level.outputs.level }}
           PR: ${{ github.event.pull_request.number }}
           TITLE: ${{ github.event.pull_request.title }}
@@ -87,14 +99,11 @@ jobs:
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
 
-          # Each attempt re-derives the bump from whatever main currently is, so
-          # a push rejected by a concurrent commit is retried against the new
-          # tip rather than replaying a now-stale version number.
           attempt_bump() {
             git fetch --quiet origin main
             git reset --quiet --hard FETCH_HEAD
 
-            local OLD MAJOR MINOR PATCH NEW RANGE changed expected
+            local OLD MAJOR MINOR PATCH NEW RANGE changed expected BRANCH
             OLD=$(grep -m1 '^version = ' Cargo.toml | sed 's/.*"\(.*\)"/\1/')
             if ! [[ "$OLD" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
               echo "::error::could not read a MAJOR.MINOR.PATCH version from Cargo.toml (got '$OLD')"
@@ -140,23 +149,49 @@ jobs:
               return 2
             fi
 
+            # One branch per target version, so a re-run is idempotent and two
+            # bumps can never collide on the same ref.
+            BRANCH="release/bump-$NEW"
+            if git ls-remote --exit-code --heads origin "$BRANCH" >/dev/null 2>&1; then
+              echo "$BRANCH already exists — a bump to $NEW is already in flight"
+              return 0
+            fi
+
             git add Cargo.toml Cargo.lock
             git commit --quiet -m "chore: bump to $NEW" -m "Merged #${PR}: ${TITLE}"
-            git push origin HEAD:main
+            git push --quiet origin "HEAD:refs/heads/$BRANCH"
+
+            # release:skip keeps this PR from bumping the version again when it
+            # merges; the `release/` prefix guard on the job is the hard stop.
+            local body
+            body=$(printf '%s\n\n%s\n' \
+              "Automated version bump for #${PR} (\`${LEVEL}\`): \`$OLD\` → \`$NEW\`." \
+              "Merging this cuts \`v$NEW-rc.1\` via \`auto-rc.yml\`. Labelled \`release:skip\` so it does not bump the version again on its way in.")
+            gh pr create \
+              --base main \
+              --head "$BRANCH" \
+              --label 'release:skip' \
+              --title "chore: bump to $NEW" \
+              --body "$body"
+
+            # Merges itself once the required checks are green. Nothing here can
+            # bypass branch protection — the bot goes through the same gate as a
+            # person.
+            gh pr merge "$BRANCH" --auto --squash
           }
 
           for attempt in 1 2 3; do
             status=0
             attempt_bump || status=$?
             if [ "$status" -eq 0 ]; then
-              echo "version bump pushed on attempt $attempt"
+              echo "bump pull request opened on attempt $attempt"
               exit 0
             fi
             # 2 is the sanity-check failure above: retrying cannot fix it.
             if [ "$status" -eq 2 ]; then
               exit 1
             fi
-            echo "push rejected — main moved, retrying against the new tip"
+            echo "retrying against the current main"
           done
-          echo "::error::could not push the version bump to main after 3 attempts"
+          echo "::error::could not open the version bump pull request after 3 attempts"
           exit 1
