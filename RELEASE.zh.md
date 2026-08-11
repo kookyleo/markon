@@ -178,14 +178,8 @@ warning 并跳过（不影响 release 本身，方便 fork 和首次配置）。
 
 `markon-gui` 标记了 `publish = false`，仅通过 GitHub Release 分发。
 
-**手动发布**（如热修复或首次 CI 未就绪时）：
-
-```bash
-scripts/publish-crates.sh
-```
-
-流程与 CI job 一致，本地运行。需要 git 工作区干净 +
-`CARGO_REGISTRY_TOKEN` 环境变量（或提前 `cargo login`）。
+没有本地发布脚本。`promote.yml` 是通往 crates.io 的唯一路径，因此不可能从一份
+CI 没检查过的工作区发出版本。发布失败时重跑该 workflow 即可——它是幂等的。
 
 ### 7. Homebrew / Scoop 自动更新
 
