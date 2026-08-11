@@ -44,6 +44,35 @@ use crate::workspace_fs::WorkspaceFs;
 const WORKSPACE_WS_ROUTE: &str = "/_/{workspace_id}/ws";
 const DOCUMENT_STATE_ROUTE: &str = "/_/{workspace_id}/data/document-state";
 
+/// Build an actionable warning for a failed best-effort browser launch.
+///
+/// Passing a path makes the CLI open an administrator bootstrap automatically,
+/// but that commonly runs from an SSH or otherwise headless shell. Keep the
+/// low-level launcher error for diagnosis while making it clear that the
+/// already-started server is still usable and how to obtain administrator
+/// access from a manually opened browser.
+pub fn browser_open_failure_message(error: impl std::fmt::Display) -> String {
+    #[cfg(target_os = "linux")]
+    let environment_hint = {
+        let has_display = ["DISPLAY", "WAYLAND_DISPLAY"]
+            .iter()
+            .any(|name| std::env::var_os(name).is_some_and(|value| !value.is_empty()));
+        let has_browser_override =
+            std::env::var_os("BROWSER").is_some_and(|value| !value.is_empty());
+        if !has_display && !has_browser_override {
+            " this shell cannot launch a graphical browser (DISPLAY, WAYLAND_DISPLAY, and BROWSER are unset);"
+        } else {
+            ""
+        }
+    };
+    #[cfg(not(target_os = "linux"))]
+    let environment_hint = "";
+
+    format!(
+        "best-effort browser open failed: {error};{environment_hint} the server is still running. Open a workspace URL printed above manually; for administrator access, run `markon admin code` in another terminal."
+    )
+}
+
 /// Public wire-format types served by the (non-chat) HTTP surface.
 ///
 /// Everything re-exported here is part of the JSON contract that the browser
@@ -1417,7 +1446,7 @@ pub async fn start(config: ServerConfig) -> Result<(), String> {
         let nonce = admin_bootstraps.issue_url(redirect);
         let url = build_admin_bootstrap_url(&base, redirect, &nonce);
         if let Err(e) = open::that(&url) {
-            tracing::warn!("best-effort browser open failed: {e}");
+            tracing::warn!("{}", browser_open_failure_message(e));
         }
     }
 
@@ -7062,6 +7091,16 @@ mod tests {
     use axum::http::HeaderMap;
     use std::net::{IpAddr, Ipv4Addr, SocketAddr};
     use tower::ServiceExt;
+
+    #[test]
+    fn browser_open_failure_warning_explains_manual_recovery() {
+        let message = browser_open_failure_message("launcher exited with status 3");
+
+        assert!(message.contains("launcher exited with status 3"));
+        assert!(message.contains("the server is still running"));
+        assert!(message.contains("Open a workspace URL printed above manually"));
+        assert!(message.contains("`markon admin code`"));
+    }
 
     fn test_tera() -> Tera {
         let mut tera = Tera::default();

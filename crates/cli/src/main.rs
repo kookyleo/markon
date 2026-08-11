@@ -847,7 +847,7 @@ async fn forward_to_running_server(
                             rehome_admin_bootstrap_url(base_option, &redirect, &boot_url)
                         };
                         if let Err(e) = open::that(&browser_url) {
-                            tracing::warn!("best-effort browser open failed: {e}");
+                            tracing::warn!("{}", server::browser_open_failure_message(e));
                         }
                     }
                     Err(e) => tracing::warn!("failed to create browser admin session: {e}"),

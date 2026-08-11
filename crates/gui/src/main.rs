@@ -890,6 +890,7 @@ fn main() {
             commands::get_workspaces,
             commands::get_workspace_share_urls,
             commands::reconnect,
+            commands::open_workspace_folder,
             commands::open_url,
             commands::get_bind_hosts,
             commands::get_server_status,
@@ -1056,6 +1057,15 @@ mod tests {
         assert!(html.contains(
             "'auto_update', 'print_collapsed_content', 'auto_remove_single_file_workspaces',"
         ));
+    }
+
+    #[test]
+    fn workspace_menu_wires_platform_file_manager_action() {
+        let html = _UI_REEMBED_MARKER;
+
+        assert!(html.contains("class=\"ws-menu-item open-folder-item\""));
+        assert!(html.contains("invoke('open_workspace_folder', { workspaceId: ws.id })"));
+        assert!(html.contains("workspaceFileManagerLabel()"));
     }
 
     #[test]
