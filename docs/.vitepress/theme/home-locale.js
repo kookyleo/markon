@@ -27,16 +27,10 @@ export function readHomeLocaleCookie() {
   return normalizeLocale(value);
 }
 
-export function detectBrowserLocale() {
-  if (typeof navigator === 'undefined') return 'en';
-  const preferences = navigator.languages?.length
-    ? navigator.languages
-    : [navigator.language];
-  for (const preference of preferences) {
-    const detected = normalizeLocale(preference);
-    if (detected) return detected;
-  }
-  return 'en';
+function localeFromLocation() {
+  if (typeof window === 'undefined') return 'en';
+  const match = window.location.pathname.match(/\/(zh|ja)(?:\/|$)/);
+  return match?.[1] || 'en';
 }
 
 function writeHomeLocaleCookie(value) {
@@ -50,7 +44,7 @@ function writeHomeLocaleCookie(value) {
 
 export function initializeHomeLocale() {
   if (!initialized) {
-    locale.value = readHomeLocaleCookie() || detectBrowserLocale();
+    locale.value = localeFromLocation();
     initialized = true;
   }
   return locale.value;

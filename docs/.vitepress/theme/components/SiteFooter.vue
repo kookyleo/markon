@@ -1,26 +1,37 @@
 <script setup>
-import { computed, onMounted } from 'vue';
-import { withBase } from 'vitepress';
+import { computed } from 'vue';
+import { useData, useRoute } from 'vitepress';
+import { contentLocaleFromPath, localizedContentPath } from '../../content-locales';
 import { HOME_SHELL_COPY } from '../home-copy';
-import { useHomeLocale } from '../home-locale';
 
-const { locale, initializeHomeLocale } = useHomeLocale();
+const route = useRoute();
+const { site, theme } = useData();
+const locale = computed(() => contentLocaleFromPath(route.path, site.value.base));
 const copy = computed(() => HOME_SHELL_COPY[locale.value].footer);
+
+function localeHref(canonical) {
+  return localizedContentPath(
+    canonical,
+    locale.value,
+    theme.value.markonContentLocales,
+    site.value.base,
+  );
+}
 
 const groups = computed(() => [
   {
     title: copy.value.groups.docs,
     links: [
-      { label: copy.value.links.gettingStarted, href: withBase('/guide/getting-started') },
-      { label: copy.value.links.features, href: withBase('/features/') },
-      { label: copy.value.links.deployment, href: withBase('/advanced/data-and-privacy') },
+      { label: copy.value.links.gettingStarted, href: localeHref('/guide/getting-started') },
+      { label: copy.value.links.features, href: localeHref('/features/') },
+      { label: copy.value.links.deployment, href: localeHref('/advanced/data-and-privacy') },
     ],
   },
   {
     title: copy.value.groups.resources,
     links: [
-      { label: copy.value.links.download, href: withBase('/download') },
-      { label: copy.value.links.faq, href: withBase('/faq') },
+      { label: copy.value.links.download, href: localeHref('/download') },
+      { label: copy.value.links.faq, href: localeHref('/faq') },
     ],
   },
   {
@@ -32,14 +43,13 @@ const groups = computed(() => [
   },
 ]);
 
-onMounted(initializeHomeLocale);
 </script>
 
 <template>
   <footer class="markon-site-footer">
     <div class="markon-site-footer-main">
       <div class="markon-site-footer-brand">
-        <a :href="withBase('/')" aria-label="Markon home">Markon</a>
+        <a :href="localeHref('/')" aria-label="Markon home">Markon</a>
         <p>{{ copy.tagline }}</p>
       </div>
       <nav class="markon-site-footer-nav" :aria-label="copy.navigationLabel">
