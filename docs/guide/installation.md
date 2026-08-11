@@ -1,119 +1,96 @@
-# 安装
+# Installation
 
 <div class="feature-illustration">
-  <img src="/illustrations/11-platforms.svg" alt="全平台覆盖" />
+  <img src="/illustrations/11-platforms.svg" alt="Supported desktop platforms" />
 </div>
 
-Markon 提供桌面应用（GUI）和命令行（CLI）两种形态。
+Markon is available as a desktop application and as a command-line tool.
 
-## 桌面版
+## Desktop app
 
 ### macOS
 
-#### 通过 Homebrew 安装（推荐）
+#### Install with Homebrew (recommended)
 
 ```bash
 brew tap kookyleo/markon https://github.com/kookyleo/markon
 brew install --cask markon
 ```
 
-后续升级：
-
-```bash
-brew upgrade --cask markon
-```
-
-首次启动仍会遇到下面说的 Gatekeeper 提示 —— brew 本身只校验下载完整性，不管签名类型。想完全跳过提示，安装时加 `--no-quarantine`：
+Upgrade later with `brew upgrade --cask markon`. Markon currently uses an ad-hoc signature, so macOS may still show a Gatekeeper warning. To skip quarantine during installation, use:
 
 ```bash
 brew install --cask --no-quarantine markon
 ```
 
-#### 手动下载安装
+#### Install manually
 
 <DownloadButton mode="os" os="macos" />
 
-下载对应芯片的 `.dmg`，双击挂载后拖到 Applications 目录。
+Download the `.dmg` for your Mac, mount it, and drag Markon into Applications. On first launch, open **System Settings → Privacy & Security**, find the message that Markon was blocked, and choose **Open Anyway**.
 
-首次启动时，macOS Gatekeeper 会拒绝打开（因为应用使用的是 ad-hoc 签名，而非 Apple 颁发的证书）。打开 **系统设置 → 隐私与安全性**，滚动到下方 _Security_ 区，点击 **「Markon」 was blocked to protect your Mac** 旁的 **Open Anyway**；再次确认即可。之后启动不会再提示。
+![Allow Markon from macOS Privacy & Security settings](/screenshots/macos-gatekeeper.png)
 
-![macOS Gatekeeper：在系统设置点 Open Anyway，确认放行 Markon](/screenshots/macos-gatekeeper.png)
+::: details macOS Monterey and earlier
+If **Open Anyway** is unavailable, Control-click Markon.app in Applications, choose **Open**, then confirm **Open** in the dialog.
 
-::: details 较老版本 macOS（Monterey 及更早）
-
-如果系统设置中**没有**「Open Anyway」按钮，请改用右键方式：在 Finder 的 Applications 目录中，**右键**（或 Control+点击）Markon.app → 选择 **Open**，弹出的确认框中再点 **Open** 即可放行。
-
-![macOS 较老版本：右键打开放行 Markon](/screenshots/macos-gatekeeper-legacy.png)
-
+![Open Markon from the Finder context menu on older macOS versions](/screenshots/macos-gatekeeper-legacy.png)
 :::
 
 ### Windows
 
 <DownloadButton mode="os" os="windows" />
 
-下载对应 CPU 的 `-setup.exe`，双击运行安装。
+Download the `-setup.exe` for your CPU and run it. If SmartScreen shows “Windows protected your PC,” select **More info**, then **Run anyway**.
 
-NSIS 安装包未做代码签名，会触发 SmartScreen。在「Windows protected your PC」弹窗中点左下角 **More info**，展开后点右下角 **Run anyway** 即可。
+![Allow the Markon installer through Windows SmartScreen](/screenshots/windows-smartscreen.png)
 
-![Windows SmartScreen：点 More info 展开后选择 Run anyway](/screenshots/windows-smartscreen.png)
-
-#### 通过 Scoop 安装
-
-如果你已经安装了 [Scoop](https://scoop.sh/)：
+#### Install with Scoop
 
 ```powershell
 scoop bucket add kookyleo https://github.com/kookyleo/markon
 scoop install kookyleo/markon
 ```
 
-没装过 Scoop 的话，一行 PowerShell 即可：
-
-```powershell
-irm get.scoop.sh | iex
-```
-
-（首次可能需要先 `Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope CurrentUser`）
+If Scoop is not installed, see [scoop.sh](https://scoop.sh/) or run `irm get.scoop.sh | iex` in PowerShell.
 
 ### Linux
 
 <DownloadButton mode="os" os="linux" />
 
-下载 `.deb` 后安装：
+Install the Debian package:
 
 ```bash
 sudo dpkg -i Markon_*.deb
 ```
 
-或下载 `.AppImage` 直接运行：
+Or run the AppImage:
 
 ```bash
 chmod +x Markon_*.AppImage
 ./Markon_*.AppImage
 ```
 
-### 自动更新
+### Updates
 
-桌面版启动后会定时检查更新。在 **全局设置 → 更新通道** 可选择：
+The desktop app periodically checks for updates. Under **Global settings → Update channel**, choose **Stable** for releases that have completed the validation period, or **Candidate** to include RC previews.
 
-- **正式版** — 仅接收通过 7 天验证期的稳定版（默认）
-- **候选版** — 同时接收 RC 预览版，尝鲜新功能
+## CLI
 
-## CLI 版
-
-### Cargo（推荐）
+### Cargo (recommended)
 
 ```bash
 cargo install markon markond
 ```
 
-这会从 crates.io 安装两个二进制到 `~/.cargo/bin/`：
+This installs two binaries into `~/.cargo/bin/`:
 
-- [`markon`](https://crates.io/crates/markon) — CLI 与本地控制客户端；
-- [`markond`](https://crates.io/crates/markond) — 长期运行的后台服务。
+- [`markon`](https://crates.io/crates/markon), the CLI and local control client;
+- [`markond`](https://crates.io/crates/markond), the long-running background service.
 
-两者都应在 `PATH`。缺少 `markond` 时，CLI 会退回前台服务模式，当前终端会被服务占用。
+Both should be on `PATH`. If `markond` is missing, the CLI falls back to foreground service mode and occupies the current terminal.
 
-### 从源码
+### Build from source
 
 ```bash
 git clone https://github.com/kookyleo/markon.git
@@ -122,41 +99,24 @@ cargo install --path crates/markond
 cargo install --path crates/cli
 ```
 
-### 从 GitHub Releases
+### GitHub Releases
 
-桌面版已经随附后台服务，无需另行安装。若要在服务器或纯命令行环境中使用，请通过 Cargo 安装 `markon` 与 `markond`；也可以从 Releases 获取预编译的 CLI 文件（如有发布）。
+The desktop app bundles the service. For servers and CLI-only environments, install `markon` and `markond` through Cargo, or use prebuilt CLI assets when a release provides them.
 
-## 验证安装
+## Verify
 
 ```bash
 markon --version
 command -v markond
 ```
 
-`markond` 只由桌面端或 CLI 以临时配置启动，不需要日常手动调用。
+You normally do not invoke `markond` directly; the desktop app or CLI starts it with the appropriate temporary configuration.
 
-## 卸载
+## Uninstall
 
-**桌面版**：
+- **macOS:** move `/Applications/Markon.app` to Trash.
+- **Windows:** uninstall Markon from Installed apps.
+- **Linux:** run `sudo dpkg -r markon` for the Debian package, or delete the AppImage.
+- **CLI:** run `cargo uninstall markon markond`.
 
-- macOS：把 `/Applications/Markon.app` 扔进废纸篓
-- Windows：控制面板 → 卸载程序
-- Linux：`sudo dpkg -r markon`（deb）或删除 AppImage 文件
-
-**CLI 版**：
-
-```bash
-cargo uninstall markon markond
-```
-
-用户数据统一存放在用户主目录下的 `.markon/`：
-
-- macOS / Linux：`~/.markon/`
-- Windows：`%USERPROFILE%\.markon\`
-
-目录内主要文件：
-
-- `settings.json` — GUI 偏好与工作区列表
-- `annotation.sqlite` — 个人/共享批注、已读状态与对话数据库（可被 `MARKON_SQLITE_PATH` 覆盖）
-
-这些文件卸载时不会自动删除，如需清理请手动移除。
+User data remains in `~/.markon/` on macOS and Linux or `%USERPROFILE%\.markon\` on Windows. `settings.json` stores preferences and workspaces; `annotation.sqlite` stores annotations, Viewed state, and conversations. Remove these files manually only if you also want to erase your data.

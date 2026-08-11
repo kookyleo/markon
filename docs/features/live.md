@@ -1,64 +1,37 @@
-# 实时协作（Live）
+# Live collaboration
 
-<div class="feature-illustration">
-  <img src="/illustrations/06-live.svg" alt="Live 跟随阅读" />
-</div>
+<div class="feature-illustration"><img src="/illustrations/06-live.svg" alt="Follow a live reading session" /></div>
 
-远程讲解最怕听众不同步：主讲人已经翻到下一节，其他人还在找“你说的是哪一段”。**Markon Live** 让一端负责广播，让进入跟随模式的浏览器自动来到同一页面、同一位置，共享当前的阅读上下文。
+Markon Live lets one browser broadcast its reading context while browsers in Follow mode move to the same page, position, and focus.
 
-## 三种模式
+## Modes
 
-Live 通过页面右下角的悬浮协作球控制。每个浏览器独立选择自己的模式：
+- **Off:** read independently without sending or receiving actions.
+- **Broadcast:** publish page, scroll position, section focus, text selection, and Viewed changes.
+- **Follow:** receive those actions and navigate, scroll, and highlight accordingly.
 
-- **关闭（Off）**：不广播，也不跟随，保持独立阅读。
-- **主控（Broadcast）**：广播当前页面、滚动位置、Section 焦点、文字选区与 Viewed 状态。
-- **跟随（Follow）**：接收主控端的动作，自动导航、滚动并呈现对应焦点。
+Each browser chooses its own mode. People who do not follow remain independent.
 
-只有进入 Follow 的浏览器会同步主控内容；没有开启跟随的人仍可按自己的节奏阅读。
+## What synchronizes
 
-## 同步什么
+- page navigation and relative reading position in documents and diffs;
+- section focus selected by click or `j`/`k`;
+- text selections and clearing them;
+- Viewed changes.
 
-### 页面与阅读位置
+Each browser picks a representative color used for the collaboration orb, focus hint, and selection. No account or nickname is required.
 
-主控进入工作区内的其他页面或滚动文档时，跟随端会来到对应页面与位置。文档页和 diff 页都按各自的可滚动区域同步，不依赖双方拥有相同的窗口尺寸。
+## Enable Live
 
-### Section 焦点
+Turn on Live in the global defaults for new workspaces, on an individual workspace page, or with:
 
-主控通过点击或 `j` / `k` 切换 Section 时，跟随端会平滑定位到同一章节，并以主控端的代表色短暂提示焦点。
+```bash
+markon set <ID|INDEX> live on
+```
 
-### 文字选区
-
-主控选中文字时，跟随端会看到相同选区；清除选区也会同步。评审与讲解可以直接指向原文，不必再用“第三段第二行”描述位置。
-
-### Viewed 状态
-
-主控勾选或取消 Viewed 时，跟随端会同步这一动作，适合逐段带读或逐文件审阅。
-
-## 身份与颜色
-
-Live 不要求额外账号或昵称。每个浏览器选择一个代表色，主控广播时，协作球、焦点提示与选区会使用该颜色。颜色只用于区分当前动作来自哪一端，不改变文档内容。
-
-## 适合这些场景
-
-- **设计评审与技术讲解**：让跟随端自动来到主控所讲的位置。
-- **结对阅读**：同步 Section、选区与 Viewed 进度，减少口头定位。
-- **远程演示**：跨窗口尺寸同步页面和滚动位置，不要求共享整块屏幕。
-
-## 如何开启
-
-Live 默认关闭，可按工作区启用：
-
-1. 在 **General → Features enabled by default for new workspaces** 中勾选 **Live**，作为新工作区的默认设置。
-2. 在工作区设置页单独开启 **Live**。
-3. 使用 `markon set <ID|INDEX> live on` 为运行中的 Workspace 开启。
-
-## 快捷键
-
-| 快捷键 | 功能 |
+| Shortcut | Action |
 |---|---|
-| <kbd>l</kbd> | Follow ⇄ Broadcast；关闭状态下直接进入 Follow |
-| <kbd>Shift</kbd> + <kbd>l</kbd> | Off ⇄ 上一次使用的活动模式 |
+| <kbd>l</kbd> | Follow ⇄ Broadcast; from Off, enter Follow |
+| <kbd>Shift</kbd>+<kbd>l</kbd> | Off ⇄ last active mode |
 
----
-
-> Live 只在当前 Markon 服务与连接它的浏览器之间传递协作指令，不会调用外部云 Provider。公网链路是否加密取决于你的 HTTPS 或反向代理配置。
+Live exchanges instructions only between browsers connected to the same Markon service. It does not call an external cloud Provider; transport encryption depends on your HTTPS or proxy configuration.

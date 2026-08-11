@@ -1,66 +1,36 @@
 ---
-title: 源码编辑
-description: Markon 的懒加载 CodeMirror 编辑器、渲染选区定位、实时预览、保存与工作区边界。
+title: Source editing
+description: Lazy-loaded CodeMirror editing, rendered selection mapping, live preview, saving, and workspace boundaries.
 ---
 
-# 源码编辑
+# Source editing
 
-<div class="feature-illustration">
-  <img src="/illustrations/04-edit.svg" alt="Markon CodeMirror Markdown 编辑器" />
-</div>
+<div class="feature-illustration"><img src="/illustrations/04-edit.svg" alt="Markon Markdown source editor" /></div>
 
-开启 `Edit` 后，可以在阅读上下文中修改当前 Markdown。编辑器使用 CodeMirror，并作为独立 chunk 懒加载；只阅读文档时不会下载编辑器运行时。
+When `Edit` is enabled, you can change the current Markdown in its reading context. CodeMirror is loaded as a separate chunk only when the editor opens.
 
-## 打开方式
+## Open the editor
 
-| 入口 | 行为 |
+| Entry | Behavior |
 |---|---|
-| <kbd>e</kbd> | 打开当前文件源码 |
-| 选中文字 → Edit | 打开编辑器，并选中对应源码文本 |
-| 文件/行引用 | 打开后跳到指定 1-based 行号 |
+| <kbd>e</kbd> | Open the current file |
+| Select text → Edit | Open and select the corresponding source |
+| File/line citation | Jump to a 1-based line number |
 
-渲染器保留源码位置，能定位时优先按行；只有选区文本时则在源码中查找并选中。
+The renderer keeps source positions and falls back to finding selected text when an exact line mapping is unavailable.
 
-## 编辑界面
+## Editing interface
 
-- Markdown 语法高亮；
-- 行号；
-- Edit / Preview 双视图；
-- Preview 通过受 body limit 与 workspace capability 约束的服务端接口渲染；
-- 编辑与预览滚动联动；
-- 可拖动分隔条；
-- 保存中/已修改状态；
-- 主题、字体与 UI token 跟随全局设置。
+The editor provides Markdown highlighting, line numbers, Edit/Preview views, synchronized scrolling, a resizable split, dirty/saving state, and shared theme tokens. Preview is rendered by a server endpoint with body and workspace limits. Notes export reuses the editor in a non-saving `export` mode.
 
-导出 Notes 复用同一套编辑器，但运行在 `export` 模式：缓冲区不写源文件，Save 会下载 `.md`。
+## Save
 
-## 保存
+Use <kbd>Ctrl</kbd>/<kbd>Cmd</kbd>+<kbd>S</kbd>. The workspace must enable Edit; the Markdown path must remain within the workspace; the request must be same-origin and carry the workspace save capability. A successful request establishes a new baseline without marking text typed during the request as saved. Closing with unsaved changes requires confirmation.
 
-按 <kbd>Ctrl</kbd>/<kbd>Cmd</kbd>+<kbd>S</kbd> 或点击保存。保存请求必须满足：
+## External changes and conflicts
 
-- Workspace 开启 Edit；
-- 路径属于当前 Workspace；
-- 只写允许的 Markdown 文件；
-- 浏览器 same-origin；
-- 页面持有当前 Workspace 的 save capability。
+Markon watches workspace files and refreshes pages and indexes, but the editor does not provide OT, CRDT, or automatic Git merging. Concurrent saves may overwrite one another. AI edits perform drift checks before Apply; human editors should coordinate or use Git. Review written changes in [Git Working diff](/features/git).
 
-保存成功后，已发送到服务端的文档成为新 baseline。若请求期间用户继续输入，后续内容仍保持“未保存”，不会被错误标记为干净。
+## Permissions
 
-关闭编辑器时，未保存改动会触发确认。普通 edit 模式关闭后重新加载页面，显示服务端最新渲染。
-
-## 文件变化与冲突
-
-Markon 监听 Workspace 文件变化并更新页面/索引。当前浏览器编辑器不提供多人 OT/CRDT 或 Git merge：
-
-- 同一文件多人编辑时，后保存者可能覆盖先保存内容；
-- AI edit 在 Apply 前会做 drift 检测；
-- 人工编辑保存仍应通过 Git 或协作约定避免竞争。
-
-需要审阅改动时，可回到[Git Working diff](/features/git)查看实际写盘结果。
-
-## 与权限的关系
-
-- 管理员在 Edit 开启时可以编辑。
-- 协作者也只有在 Workspace 显式开启 Edit 后才能保存。
-- 开启 Chat 但关闭 Edit 时，Workspace AI 只有只读工具。
-- 同时开启 Chat + Edit 后，AI 才注册审批式 `edit_file`。
+Administrators and collaborators can save only when Edit is enabled. Chat without Edit has read-only tools; Chat plus Edit registers the approval-based `edit_file` tool.

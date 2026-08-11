@@ -1,52 +1,52 @@
 ---
-title: 命令行选项
-description: 以 crates/cli 的 Clap 定义为准的 markon 参数、子命令、服务行为与常用部署示例。
+title: Command-line options
+description: Markon CLI arguments, subcommands, service behavior, and common deployment examples.
 ---
 
-# 命令行选项
+# Command-line options
 
-`markon` 是 `markond` 后台服务的本地客户端。它负责解析配置、启动或连接服务、注册 Workspace，并通过当前用户专属的本地控制套接字执行管理操作。
+`markon` is the local client for the `markond` background service. It resolves configuration, starts or connects to the service, registers workspaces, and performs management operations through a per-user local control socket.
 
-## 安装
+## Install
 
 ```bash
 cargo install markon markond
 ```
 
-两个二进制都应位于 `PATH`。缺少 `markond` 时，`markon` 会在当前进程以前台模式提供服务。
+Both binaries should be on `PATH`. If `markond` is missing, `markon` serves the workspace in the foreground.
 
-## 语法
+## Syntax
 
 ```text
 markon [OPTIONS] [FILE]
 markon <COMMAND>
 ```
 
-`FILE` 可以是 Markdown 文件或目录；省略时使用当前目录。传入路径后默认尝试打开浏览器。
+`FILE` may be a Markdown file or a directory. When omitted, the current directory is used. Passing a path attempts to open the browser by default.
 
-::: tip 桌面版用户
-桌面版 **Tips** 页提供 CLI 命令生成器，可根据路径、地址与访问码生成命令或 shell alias。
+::: tip Desktop users
+The desktop **Tips** page includes a CLI command builder for paths, addresses, access codes, and shell aliases.
 
-![GUI 内置的 CLI 命令生成器](/screenshots/gui-cli-builder.png)
+![CLI command builder in the desktop app](/screenshots/gui-cli-builder.png)
 :::
 
-## 主选项
+## Main options
 
-| 选项 | 代码中的行为 |
+| Option | Behavior |
 |---|---|
-| `-p, --port <PORT>` | Web 端口，默认 `6419`；显式参数覆盖 settings |
-| `--host [IP]` | 指定绑定地址；只写 `--host` 时进入网卡选择器 |
-| `--entry [URL_PREFIX]` | 对外展示地址前缀，同时用于 QR 和 Host/origin allowlist |
-| `--qr [URL_PREFIX]` | `--entry` 的别名 |
-| `--trusted-host <HOST_OR_ORIGIN>` | 额外允许的精确 authority，可重复 |
-| `-b, --open-browser [BASE_URL]` | 打开浏览器；无值用本地地址，有值时用给定 base |
-| `--collaborator-access-code <CODE>` | 设置当前工作区协作者码；空字符串清除 |
-| `--print-collapsed-content` | 打印时强制包含折叠正文；默认显示折叠占位 |
-| `--salt <SALT>` | 高级 workspace-id salt 覆盖；已有安装不要随意修改 |
+| `-p, --port <PORT>` | Web port, default `6419`; overrides saved settings |
+| `--host [IP]` | Bind address; without a value, opens the interface picker |
+| `--entry [URL_PREFIX]` | Public URL prefix used for QR codes and the Host/origin allowlist |
+| `--qr [URL_PREFIX]` | Alias for `--entry` |
+| `--trusted-host <HOST_OR_ORIGIN>` | Additional exact authority; repeatable |
+| `-b, --open-browser [BASE_URL]` | Open a browser, using the local URL or the supplied base URL |
+| `--collaborator-access-code <CODE>` | Set the workspace collaborator code; an empty string clears it |
+| `--print-collapsed-content` | Include collapsed bodies in print output |
+| `--salt <SALT>` | Advanced workspace-ID salt override; do not change it on an existing installation |
 
-功能开关不再是启动参数。使用 `markon set`、桌面端或浏览器管理员页调整。
+Feature flags are managed with `markon set`, the desktop app, or the browser admin page.
 
-## 子命令
+## Subcommands
 
 ### `markon ls`
 
@@ -56,11 +56,7 @@ markon ls --format cards
 markon ls --format table
 ```
 
-- stdin/stdout 都是可用 TTY 时，裸命令启动交互式 TUI。
-- 非 TTY 或 `MARKON_NO_TUI` 已设置时，回退为静态 cards。
-- `--format` 可明确要求 cards 或 table。
-
-结果包含 workspace id/path、功能开关、Search ready 状态、本地/公网地址与 QR 信息。TUI 还能编辑功能、打开 Workspace、分享已开启 Shared 的协作者地址，以及进入数据清理。
+With interactive stdin and stdout, the bare command opens a TUI. Otherwise it falls back to cards. Results include workspace ID and path, feature flags, search readiness, local/public addresses, and QR details.
 
 ### `markon set`
 
@@ -68,18 +64,7 @@ markon ls --format table
 markon set <ID|INDEX> <FEATURE> <on|off>
 ```
 
-`FEATURE`：
-
-| 值 | 功能 |
-|---|---|
-| `search` | Tantivy/Jieba 内容索引与 Spotlight 搜索结果 |
-| `viewed` | H2–H6 Viewed 状态和章节动作 |
-| `edit` | CodeMirror 保存与 AI `edit_file` 提案 |
-| `live` | Broadcast / Follow |
-| `chat` | Workspace AI |
-| `shared` | 协作者读写批注/Viewed，并通过 WebSocket 同步 |
-
-示例：
+Features are `search`, `viewed`, `edit`, `live`, `chat`, and `shared`.
 
 ```bash
 markon set 1 edit on
@@ -92,7 +77,7 @@ markon set a1b2c3d4 chat off
 markon detach <ID|INDEX>
 ```
 
-从运行中注册表移除 Workspace，并持久化列表。不会删除源文件、settings 其它字段或 SQLite 历史。
+Removes a workspace from the running and persisted registries. It does not delete source files or SQLite history.
 
 ### `markon cleanup`
 
@@ -101,7 +86,7 @@ markon cleanup
 markon cleanup --yes
 ```
 
-统计并可选删除不属于任何活动 Workspace 的 annotations、Viewed 与 Chat 数据。执行前请先读[数据与隐私](/advanced/data-and-privacy)并备份数据库。
+Reports and optionally removes annotations, Viewed state, and Chat data that no active workspace owns. Back up the database and read [Data and privacy](/advanced/data-and-privacy) first.
 
 ### `markon admin`
 
@@ -110,16 +95,13 @@ markon admin open
 markon admin code
 ```
 
-- `open`：创建 60 秒有效、一次性 URL fragment nonce 并打开浏览器；
-- `code`：打印 5 分钟有效的手动配对码，适合 SSH/headless。
-
-两者兑换相同的短期 `HttpOnly` Admin session。loopback 不自动获得管理员角色。
+`open` launches a one-time URL-fragment nonce valid for 60 seconds. `code` prints a five-minute pairing code for SSH or headless use. Both exchange for the same short-lived `HttpOnly` admin session; loopback requests are not automatically administrators.
 
 ### `markon shutdown`
 
-请求后台服务优雅关闭并清理运行锁。
+Requests a graceful service shutdown and clears the runtime lock.
 
-### `markon bug` / `idea` / `ask`
+### `markon bug`, `idea`, and `ask`
 
 ```bash
 markon bug  [-t TITLE] [-b BODY]
@@ -127,9 +109,9 @@ markon idea [-t TITLE] [-b BODY]
 markon ask  [-t TITLE] [-b BODY]
 ```
 
-通过已认证的 `gh` 创建 GitHub Issue 或 Discussion；未提供 title/body 时进入交互输入或 `$EDITOR`。
+These use an authenticated `gh` client to create a GitHub issue or discussion.
 
-## 单服务、多工作区
+## One service, multiple workspaces
 
 ```bash
 markon project-a/
@@ -138,31 +120,29 @@ markon README.md
 markon ls
 ```
 
-第一次调用启动 `markond`，之后的调用连接现有服务。目录工作区写入 settings 并恢复；单文件工作区是否自动清理由全局设置控制。
+The first call starts `markond`; later calls connect to it. Directory workspaces are persisted and restored. Single-file cleanup follows the global setting. An incompatible service version is refreshed before a newer client sends control commands.
 
-若运行中的服务版本与当前 CLI 不兼容，CLI 会刷新服务状态，而不是把新客户端命令发给旧控制协议。
-
-## 地址与浏览器行为
+## Addresses and browser behavior
 
 ```bash
-markon README.md                 # 路径参数：默认尝试打开
-markon                           # 当前目录：默认不强制打开
-markon -b                        # 当前目录并打开本地地址
+markon README.md
+markon
+markon -b
 markon -b https://docs.example.com docs/
 ```
 
-`--open-browser BASE_URL` 会把 Workspace 路径附加到给定 base，适合反向代理入口。
+`--open-browser BASE_URL` appends the workspace path to the supplied base URL, which is useful behind a reverse proxy.
 
-## 监听示例
+## Binding examples
 
 ```bash
-markon docs/                     # 默认 settings host；新安装通常是 127.0.0.1
-markon docs/ --host              # 交互选择网卡
-markon docs/ --host 0.0.0.0      # 全接口
-markon docs/ --host 192.168.1.5  # 指定接口
+markon docs/
+markon docs/ --host
+markon docs/ --host 0.0.0.0
+markon docs/ --host 192.168.1.5
 ```
 
-局域网：
+For a LAN:
 
 ```bash
 markon docs/ --host 0.0.0.0 \
@@ -170,7 +150,7 @@ markon docs/ --host 0.0.0.0 \
   --collaborator-access-code guest-secret
 ```
 
-反向代理：
+Behind a reverse proxy:
 
 ```bash
 markon docs/ --host 127.0.0.1 \
@@ -178,24 +158,18 @@ markon docs/ --host 127.0.0.1 \
   --trusted-host https://docs.example.com
 ```
 
-![CLI 输出访问链接与 QR](/screenshots/cli-qr.png)
+![CLI output with access URLs and QR code](/screenshots/cli-qr.png)
 
-`--entry` 只描述外部 origin，不提供 TLS。公网部署见[反向代理](/advanced/reverse-proxy)。
+`--entry` describes the external origin; it does not provide TLS. See [Reverse proxy](/advanced/reverse-proxy).
 
-## 设置优先级
+## Setting precedence
 
-CLI 读取 `~/.markon/settings.json`。大体规则是：
+The CLI reads `~/.markon/settings.json`. Explicit command-line arguments override saved global settings, which override built-in defaults. Theme, language, custom CSS, shortcuts, providers, workspace registry, and default feature flags are shared with the desktop app.
 
-1. 本次显式命令行参数；
-2. 已保存全局设置；
-3. 内置默认值。
-
-主题、语言、自定义样式、快捷键、Provider、工作区列表和新工作区默认开关与桌面端共享。运行中 Workspace 注册表由服务拥有，GUI 保存偏好时不会用旧快照覆盖它。
-
-## 数据库覆盖
+## Database override
 
 ```bash
 MARKON_SQLITE_PATH=/srv/markon/annotation.sqlite markon docs/
 ```
 
-数据库保存批注、Viewed 与 Chat。是否启用 Shared 不改变存储位置，只改变协作者能力与广播。
+The database stores annotations, Viewed state, and Chat. Shared mode changes collaborator permissions and broadcasting, not the storage location.
