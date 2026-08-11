@@ -1,11 +1,11 @@
 ---
-title: 运行架构
-description: Markon 的 markond 服务、GUI/CLI 控制面、浏览器数据面、Workspace 持久化与权限边界。
+title: Architecture
+description: The markond service, GUI and CLI control planes, browser data plane, workspace persistence, and permission boundaries.
 ---
 
-# 运行架构
+# Architecture
 
-当前 Markon 由一个长期运行的后台服务和多个入口组成。桌面端与 CLI 不各自启动一套独立核心，而是共同连接 `markond`。
+Markon consists of one long-running background service and several entry points. The desktop app and CLI connect to the same `markond` service instead of starting independent cores.
 
 ```text
 ┌──────────────────┐   privileged local control socket   ┌──────────────────┐
@@ -22,75 +22,73 @@ description: Markon 的 markond 服务、GUI/CLI 控制面、浏览器数据面�
                                                           └──────────────────┘
 ```
 
-## 四个 crate 的职责
+## Crate responsibilities
 
-| 路径 | 职责 |
+| Path | Responsibility |
 |---|---|
-| `crates/core` | HTTP 路由、Markdown、搜索、Git、SQLite、Chat、控制协议与浏览器资源 |
-| `crates/markond` | 唯一持有 core 的后台服务；恢复工作区并同时提供 Web 与本地控制平面 |
-| `crates/cli` | `markon` 命令；启动或连接服务，通过控制套接字管理工作区 |
-| `crates/gui` | Tauri 2 桌面壳与设置界面；连接同一个控制套接字 |
+| `crates/core` | HTTP routes, Markdown, search, Git, SQLite, Chat, the control protocol, and browser assets |
+| `crates/markond` | The only service that owns core; restores workspaces and serves both Web and local control planes |
+| `crates/cli` | The `markon` command; starts or connects to the service and manages workspaces over the control socket |
+| `crates/gui` | Tauri 2 desktop shell and settings UI connected to the same control socket |
 
-`crates/xtask` 只负责图标等构建期维护，不参与运行时。
+`crates/xtask` only handles build-time maintenance such as icon generation.
 
-## 服务生命周期
+## Service lifecycle
 
-第一次运行 `markon <path>` 时：
+The first `markon <path>` invocation:
 
-1. CLI 读取 `~/.markon/settings.json`，解析监听地址、端口与工作区默认值。
-2. 如果没有兼容的运行中服务，CLI 启动同一 `PATH` 上的 `markond`。
-3. `markond` 恢复已持久化的目录工作区，建立 Web 监听与权限为本机用户的控制套接字。
-4. CLI 注册本次路径；传入文件路径时默认尝试打开浏览器。
+1. reads `~/.markon/settings.json` for the listen address, port, and workspace defaults;
+2. starts the compatible `markond` found on `PATH` if no service is running;
+3. lets `markond` restore persistent directory workspaces and create the Web listener and user-only control socket;
+4. registers the supplied path and normally opens a browser for file arguments.
 
-后续 `markon` 调用会连接已运行服务，而不是再占一个端口。若系统找不到 `markond`，CLI 会退回前台服务模式，但终端不能像后台模式一样立即返回。
+Later CLI calls connect to the running service instead of occupying another port. If `markond` is unavailable, the CLI falls back to foreground service mode. The desktop app shares the same service and workspace registry. Configuration writes merge owned fields so a stale desktop snapshot cannot overwrite service-side workspace updates.
 
-桌面应用也连接同一服务，所以 GUI 和 CLI 看到的是同一份工作区注册表。配置更新会合并各自负责的字段，避免桌面端的旧快照覆盖服务刚写入的工作区状态。
+## Workspace model
 
-## Workspace 模型
+### Directory workspaces
 
-### 目录工作区
+- Path, alias, feature switches, and the collaborator access-code hash live in `settings.json`.
+- The workspace is restored after process restarts.
+- Its URL id is derived from a persistent salt and canonical path and must remain stable across upgrades.
 
-- 路径、别名、功能开关与协作者访问码 hash 写入 `settings.json`。
-- 进程重启后恢复。
-- URL 中的 workspace id 由持久 salt 与规范化路径生成，升级后必须稳定。
+### Single-file workspaces
 
-### 单文件工作区
+- The full file path is the identity; the parent directory is the service boundary.
+- Only the document and explicitly referenced local resources inside that parent are exposed.
+- `auto_remove_single_file_workspaces` defaults to `true`; disabling it preserves these workspaces across restarts.
 
-- 以该文件完整路径作为身份，但服务边界是父目录。
-- 只开放正文文件及 Markdown 明确引用、且仍在父目录内的本地资源。
-- `auto_remove_single_file_workspaces` 默认为 `true`，启动恢复前自动清理；关闭后可以跨重启保留。
+### URL layers
 
-### URL 分层
-
-| 空间 | 示例 | 用途 |
+| Space | Example | Purpose |
 |---|---|---|
-| 文档空间 | `/{workspace_id}/path/to/file.md` | 与工作区文件系统映射的可读 URL |
-| 工作区功能空间 | `/_/{workspace_id}/git/history` | 搜索、Git、compare、settings、chat、WebSocket |
-| 全局系统空间 | `/_/css/...`、`/_/admin` | 资源与管理员引导 |
-| 浏览器 API | `/api/save`、`/api/chat/...` | 受 capability 与 same-origin 约束的程序接口 |
+| Document | `/{workspace_id}/path/to/file.md` | Readable URL mapped to the workspace filesystem |
+| Workspace features | `/_/{workspace_id}/git/history` | Search, Git, compare, settings, Chat, and WebSocket |
+| Global system | `/_/css/...`, `/_/admin` | Assets and administrator bootstrap |
+| Browser API | `/api/save`, `/api/chat/...` | Programmatic endpoints protected by capabilities and same-origin checks |
 
-增删工作区、设置别名、shutdown 等管理操作不暴露在 TCP 上，只走本地控制套接字。
+Workspace registration, aliases, and shutdown are local control-socket operations and are not exposed over TCP.
 
-## 权限不是 IP 角色
+## Permissions are not IP roles
 
-Markon 不把 loopback、局域网来源或反向代理头当作管理员身份证明：
+Markon does not treat loopback, LAN origin, or proxy headers as administrator identity:
 
-- **管理员会话**来自 `markon admin open` 或 `markon admin code`，可执行结构性操作。
-- **协作者**只能使用当前工作区已开启的 Edit、Chat、Shared 等能力。
-- **协作者访问码**控制非管理员浏览器是否能进入。
-- **Host allowlist**拒绝未登记 authority，防止 DNS rebinding。
-- 保存、设置、Git 写操作等还要求 same-origin 或工作区 capability。
+- **Administrator sessions** come from `markon admin open` or `markon admin code` and can perform structural operations.
+- **Collaborators** can only use enabled workspace capabilities such as Edit, Chat, and Shared.
+- **Collaborator access codes** gate entry for non-administrator browsers.
+- **The Host allowlist** rejects unregistered authorities to prevent DNS rebinding.
+- Save, settings, and Git write operations additionally require same-origin or an appropriate workspace capability.
 
-完整规则见[访问与权限](/features/access)。
+See [Access and permissions](/features/access) for the complete model.
 
-## 持久数据
+## Persistent data
 
 ```text
 ~/.markon/
-├── settings.json          # 全局设置、salt、工作区
-├── annotation.sqlite      # 批注、Viewed、Chat
-├── server.lock            # 运行端口、控制套接字、服务版本
-└── logs/markond.log       # 后台服务滚动日志
+├── settings.json          # global settings, salt, workspaces
+├── annotation.sqlite      # annotations, Viewed state, Chat
+├── server.lock            # port, control socket, service version
+└── logs/markond.log       # rolling background-service log
 ```
 
-`markond.log` 单文件上限为 2 MiB，并保留 3 份轮转备份。数据库路径可由设置或 `MARKON_SQLITE_PATH` 覆盖。备份、清理与隐私边界见[数据与隐私](/advanced/data-and-privacy)。
+`markond.log` is limited to 2 MiB and retains three rotated backups. The database path can be overridden by settings or `MARKON_SQLITE_PATH`. See [Data and privacy](/advanced/data-and-privacy) for backup and cleanup guidance.

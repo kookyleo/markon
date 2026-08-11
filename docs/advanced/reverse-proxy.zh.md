@@ -1,0 +1,181 @@
+# 反向代理
+
+本文介绍如何通过 Nginx / Apache / Caddy 把 Markon 暴露到公网域名下。
+
+## 访问控制
+
+Markon 不把 TCP 来源地址当作身份。浏览器默认是协作者，能力由工作区功能开关决定；管理与结构性写操作要求显式 Admin session。协作者访问码对所有非 Admin 浏览器生效，loopback 与同机反向代理都不会绕过。
+
+每个请求还必须命中 Host allowlist。`--entry https://docs.example.com` 会自动登记该 HTTPS origin；也可重复传 `--trusted-host https://docs.example.com`，或在 `settings.json` 的 `trusted_hosts` 数组中登记。未登记域名返回 421，以阻断 DNS rebinding。`X-Forwarded-For` / `X-Forwarded-Proto` 不参与身份授权。
+
+不过协作者访问码属于**应用层**控制，并不等同于网关层认证。真正对外暴露时，仍应配好 TLS 与反向代理。
+
+**把 Markon 挂到公网前，请先在网关层配好认证（协作者访问码可作为额外一层）。** 常见方案：
+
+- **Basic Auth（nginx）** — 在 `proxy_pass` 之前加两行：
+
+  ```nginx
+  auth_basic           "Markon";
+  auth_basic_user_file /etc/nginx/.htpasswd;
+  ```
+
+  完整示例见下方 Nginx 配置节。
+
+- **OAuth2 代理** — 在 Markon 上游挂 [oauth2-proxy](https://github.com/oauth2-proxy/oauth2-proxy)，对接 GitHub / Google 等 IdP。
+- **零信任隧道** — Cloudflare Access、Tailscale Funnel；流量在到达服务器之前已完成身份核验。
+- **网络层隔离** — Tailscale、WireGuard，或绑定 `--host 127.0.0.1` 仅本机访问，适合单人私有部署。
+
+如需对外提供只读访问，保持该 Workspace 的 `Edit`、`Chat`、`Shared` 关闭即可：协作者仍能浏览，并在 `Search` 开启时搜索，但没有正文、AI 或审阅状态写权限。管理与结构性操作继续要求显式 Admin session。网关层仍可按需要额外限制方法，但不要一刀切阻断 WebSocket upgrade 或门禁解锁所需请求。
+
+## 为什么需要反向代理
+
+- **绑定域名** — 用 `docs.example.com` 替代 `http://192.168.1.5:6419`
+- **HTTPS** — 通过代理层终止 TLS
+- **统一入口** — 多个内部服务共用 80/443 端口
+
+## Markon 侧配置
+
+让 Markon 只监听本地，由代理转发：
+
+```bash
+markon --host 127.0.0.1 -p 6419 \
+  -b https://docs.example.com \
+  --qr https://docs.example.com
+```
+
+关键点：
+
+- `--host 127.0.0.1` — 仅本地访问，安全
+- `-b https://docs.example.com` — 启动后浏览器打开公网 URL（不传 BASE 则只开本地地址）
+- `--qr https://docs.example.com`（`--entry` 别名）— 终端二维码与日志中的「accessible at」用公网 URL；不设这条会回落到内网 IP
+- `--entry` / `--trusted-host` 同时把精确域名加入 Host allowlist；HTTPS origin 下的访问 Cookie 自动带 `Secure`
+- 搜索、共享批注等工作区功能在浏览器工作区设置页启用
+
+## Nginx
+
+```nginx
+server {
+  listen 443 ssl http2;
+  server_name docs.example.com;
+
+  ssl_certificate     /path/to/fullchain.pem;
+  ssl_certificate_key /path/to/privkey.pem;
+
+  location / {
+    proxy_pass http://127.0.0.1:6419;
+    proxy_http_version 1.1;
+
+    # WebSocket 支持（Shared 与 Live 需要）
+    proxy_set_header Upgrade $http_upgrade;
+    proxy_set_header Connection "upgrade";
+
+    # 透传请求头
+    proxy_set_header Host $host;
+    proxy_set_header X-Real-IP $remote_addr;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    proxy_set_header X-Forwarded-Proto $scheme;
+
+    # WebSocket 长连接保活
+    proxy_read_timeout 86400;
+  }
+}
+```
+
+## Apache
+
+启用模块：
+
+```bash
+sudo a2enmod proxy proxy_http proxy_wstunnel rewrite ssl
+```
+
+VirtualHost 配置：
+
+```apache
+<VirtualHost *:443>
+  ServerName docs.example.com
+
+  SSLEngine on
+  SSLCertificateFile    /path/to/fullchain.pem
+  SSLCertificateKeyFile /path/to/privkey.pem
+
+  # WebSocket（Shared 与 Live）
+  RewriteEngine on
+  RewriteCond %{HTTP:Upgrade} websocket [NC]
+  RewriteCond %{HTTP:Connection} upgrade [NC]
+  RewriteRule ^/?(.*) "ws://127.0.0.1:6419/$1" [P,L]
+
+  ProxyPass        / http://127.0.0.1:6419/
+  ProxyPassReverse / http://127.0.0.1:6419/
+</VirtualHost>
+```
+
+## Caddy
+
+最简配置：
+
+```text
+docs.example.com {
+  reverse_proxy 127.0.0.1:6419
+}
+```
+
+Caddy 自动处理 HTTPS（Let's Encrypt）和 WebSocket，无需额外配置。
+
+## Systemd 服务
+
+`markon` 是启动或连接后台 `markond` 的本地客户端，完成后会正常退出。因此 systemd 单元应使用一次性初始化模式，而不是把 `markon` 当成长驻进程：
+
+```ini
+# /etc/systemd/system/markon.service
+[Unit]
+Description=Markon Markdown Renderer
+After=network.target
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+User=markon
+WorkingDirectory=/srv/docs
+ExecStart=/usr/local/bin/markon /srv/docs \
+  --host 127.0.0.1 -p 6419 \
+  --entry https://docs.example.com
+ExecStop=/usr/local/bin/markon shutdown
+Environment="MARKON_SQLITE_PATH=/var/lib/markon/annotation.sqlite"
+
+[Install]
+WantedBy=multi-user.target
+```
+
+启用：
+
+```bash
+sudo systemctl enable --now markon
+```
+
+这个单元负责在开机时初始化后台服务，并在停止单元时通过控制套接字关闭它。`markond` 由 `markon` 使用临时配置安全启动，不应手写 `markond --config` 调用；如果需要由服务管理器直接监护并自动拉起崩溃的 daemon，当前版本尚未提供稳定的静态配置入口。
+
+## 系统路径前缀
+
+Markon 使用 `/_/` 作为内部资源的保留前缀（CSS、JS、WebSocket）。在反向代理时：
+
+✅ **可以**正常代理：不需要特殊配置
+❌ **不要**在工作区根目录创建名为 `_` 的文件夹（单下划线）
+
+注意只有精确的 `/_/` 会冲突，`_build/`、`__pycache__/` 等不受影响。
+
+## 故障排查
+
+### WebSocket 连不上
+
+- 确认代理配置中加了 `Upgrade` 和 `Connection: upgrade` 头
+- Nginx 需要 `proxy_read_timeout` 够长（默认 60s 会断线）
+
+### QR 码打开的是内网 IP
+
+- 检查 `--qr` 参数是否传了正确的公网 URL
+
+### 浏览器打开空白
+
+- 检查 Markon 进程是否真的在跑：`curl http://127.0.0.1:6419`
+- 检查代理错误日志：Nginx 是 `/var/log/nginx/error.log`

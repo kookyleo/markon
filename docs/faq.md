@@ -1,174 +1,120 @@
 ---
-title: 常见问题
-description: Markon 安装、后台服务、Workspace、数据、权限、渲染、协作与性能的代码事实答疑。
+title: Frequently asked questions
+description: Answers about installation, workspaces, data, access, rendering, collaboration, and performance.
 ---
 
-# 常见问题
+# Frequently asked questions
 
-## 安装与启动
+## Installation and startup
 
-### 为什么 CLI 要装 `markon` 和 `markond`？
+### Why install both `markon` and `markond`?
 
-`markon` 是本地控制客户端，`markond` 是长期运行的服务。请同时安装：
+`markon` is the local control client; `markond` is the long-running service. Install both with `cargo install markon markond`. Without `markond` on `PATH`, the CLI falls back to foreground service mode and keeps the terminal occupied.
 
-```bash
-cargo install markon markond
-```
+### macOS cannot verify the developer
 
-如果 `PATH` 中找不到 `markond`，CLI 会退回前台服务模式，因此终端不会像正常后台模式那样立即返回。
+The current package uses an ad-hoc signature. After the first attempt, open **System Settings → Privacy & Security** and choose **Open Anyway**. On older macOS, Control-click Markon.app in Applications and choose Open.
 
-### macOS 提示无法验证开发者？
+### Windows SmartScreen blocks the installer
 
-当前 macOS 包使用 ad-hoc 签名。首次启动后到 **系统设置 → 隐私与安全性**，在 Markon 被阻止的提示旁选择 **仍要打开 / Open Anyway**。
+Choose **More info → Run anyway**. The current NSIS installer does not use a commercial signing certificate.
 
-![macOS Gatekeeper 放行 Markon](/screenshots/macos-gatekeeper.png)
+### How do I inspect or stop the service?
 
-较老 macOS 可在 Finder 的 Applications 中右键 Markon.app → Open。
+Use `markon ls` (or `markon ls --format table` in scripts) and `markon shutdown`.
 
-### Windows SmartScreen 阻止安装？
+## Workspaces
 
-当前 NSIS 安装器未做商业代码签名。选择 **More info / 更多信息 → Run anyway / 仍要运行**。
+### Can I open multiple files or directories?
 
-![Windows SmartScreen 放行 Markon](/screenshots/windows-smartscreen.png)
+Yes. One `markond` manages many workspaces. Directory workspaces survive restarts; single-file registry cleanup follows `auto_remove_single_file_workspaces` and is enabled by default.
 
-### 怎么确认后台服务？
+### Does a single-file workspace expose sibling files?
 
-```bash
-markon ls
-```
+No. It exposes the Markdown file and explicitly referenced assets that remain inside its parent directory. Unreferenced siblings, escaping paths, and escaping symlinks are rejected.
 
-交互终端打开 TUI；脚本中可用 `markon ls --format table`。停止服务用：
+### Does detach delete files or annotations?
 
-```bash
-markon shutdown
-```
+No. It removes the workspace registration only. SQLite history remains until you intentionally run `markon cleanup`.
 
-## Workspace
+### Why must workspace URLs remain stable?
 
-### 能同时打开多个文件或目录吗？
+The workspace ID participates in URLs and Chat associations and derives from a persistent salt plus canonical identity path. Do not casually replace the salt or expect moved files to keep path-based associations.
 
-可以。一个 `markond` 管理多个 Workspace：
+## Annotations, Viewed, and data
 
-```bash
-markon project-a/
-markon project-b/
-markon README.md
-```
+### Where is data stored?
 
-目录 Workspace 跨重启恢复；单文件是否自动清理由 `auto_remove_single_file_workspaces` 控制，默认清理。
+Settings are in `~/.markon/settings.json`, review and Chat data in `~/.markon/annotation.sqlite`, runtime metadata in `~/.markon/server.lock`, and logs in `~/.markon/logs/markond.log`. Uninstalling does not delete them.
 
-### 单文件 Workspace 会暴露同目录其它文件吗？
+### Do annotations fall back to LocalStorage?
 
-不会。它只开放该 Markdown 与它明确引用、并且仍在父目录内的本地资源。未引用兄弟文件、越界路径与逃逸 symlink 会被拒绝。
+No. SQLite is authoritative for annotations and Viewed. On permission or service failure the page becomes explicitly read-only. Pure UI preferences such as folding or panel positions may remain browser-local.
 
-### Detach 会删除文件或批注吗？
+### Does turning Shared off move data?
 
-不会。`markon detach` 只解除 Workspace 注册。历史审阅数据继续留在 SQLite，以便误操作后重新注册恢复；确定不要时再用 `markon cleanup`。
+No. Shared controls collaborator access and broadcasts, not the storage location.
 
-### Workspace URL 为什么要稳定？
+### How should I back up?
 
-workspace id 同时参与 URL 与 Chat 关联。它由持久 salt + 规范化身份路径生成。不要随意更换 `--salt`、删除 settings 中的 salt，或搬动文件后期待沿用旧的路径关联。
+Stop the service and copy both `settings.json` and `annotation.sqlite` so the workspace-ID salt and database come from the same point in time.
 
-## 批注、Viewed 与数据
+## Access and remote use
 
-### 数据保存在哪里？
+### Is a local browser automatically admin?
 
-```text
-~/.markon/settings.json
-~/.markon/annotation.sqlite
-~/.markon/server.lock
-~/.markon/logs/markond.log
-```
+No. Use `markon admin open` or `markon admin code`. Loopback, LAN source, and proxy headers never grant admin identity.
 
-数据库路径可用 `MARKON_SQLITE_PATH` 覆盖。卸载不会自动删除这些文件。
+### How do I gate collaborators?
 
-### 批注会降级到 LocalStorage 吗？
+Run `markon docs/ --collaborator-access-code guest-secret`. Only a salted hash persists. A workspace code overrides the global code. This does not replace TLS.
 
-不会。当前代码把 SQLite 作为批注与 Viewed 的唯一权威；浏览器不镜像、不迁移、不排队，也不在失败时静默回退。无权限或服务错误时页面保持只读并明确报错。
+### Can I expose Markon directly to the internet?
 
-纯 UI 偏好仍可以存在浏览器里，例如普通折叠、主题面板位置或 diff 展开状态。
+Put it behind an HTTPS reverse proxy, register exact `--entry`/`--trusted-host` origins, and consider gateway authentication. See [Reverse proxy](/advanced/reverse-proxy).
 
-### Shared 关闭后数据会搬回个人区吗？
+## Editing, Git, and AI
 
-不会。Shared 只改变协作者能否读写同一 SQLite 数据集，以及是否广播变化。关闭不会搬移或删除数据。
+### Does concurrent editing merge automatically?
 
-### 怎么备份？
+No OT/CRDT merge is provided; a later save may overwrite an earlier one. AI Apply performs drift detection, but normal editing still needs coordination or Git.
 
-停服后复制 settings 与 SQLite：
+### Does Markon push Git changes?
 
-```bash
-markon shutdown
-mkdir -p ~/.markon/backup-manual
-cp ~/.markon/settings.json ~/.markon/annotation.sqlite ~/.markon/backup-manual/
-```
+No. It reads local history/diffs and lets admins checkout or make a local commit. It never fetches, pulls, pushes, merges, or rebases.
 
-## 权限与远程访问
+### Does AI upload the entire workspace?
 
-### 本机浏览器是不是自动管理员？
+Not automatically. Messages, selections, `@` files, thread history, and file-tool results are sent to the configured Provider as used. Enable Chat only where that boundary is acceptable.
 
-不是。loopback、LAN 来源和代理头都不授予管理员身份。使用：
+### Can AI modify files directly?
 
-```bash
-markon admin open
-markon admin code
-```
+With Chat and Edit enabled, it can propose an exact replacement. Every proposal waits for Apply/Reject and checks drift. It cannot create, move, delete, or execute commands.
 
-### 怎么给协作者加门禁？
+## Rendering and performance
 
-```bash
-markon docs/ --collaborator-access-code guest-secret
-```
+### Which extensions are supported?
 
-明文只用于本次设置，settings 保存加盐 hash。Workspace 专属码覆盖全局码。它只是应用层门禁，不替代 TLS。
+GFM, footnotes, GitHub Alerts, emoji shortcodes, syntax highlighting, KaTeX, Mermaid, PlantUML, D2, Graphviz, Vega/Vega-Lite, ECharts, and Chart.js.
 
-### 可以直接暴露到公网吗？
+### What if a diagram or image is too large?
 
-应放在 HTTPS 反向代理后，登记精确 `--entry` / `--trusted-host`，并按需增加网关层认证。不要用 `X-Forwarded-For` 作为身份依据。
+Open the full-screen viewer for zoom, pan, pinch, box zoom, and fit-to-window controls.
 
-→ [反向代理](/advanced/reverse-proxy)
+### Does a large workspace duplicate all text in memory?
 
-## 编辑、Git 与 AI
+Search uses a temporary memory-mapped index; content is indexed but not duplicated as a stored field. Initial reads are batched in groups of 64, and watcher updates are coalesced.
 
-### 多人同时编辑会合并吗？
+### Can Markon export HTML or PDF?
 
-不会。当前没有 OT/CRDT；后保存可能覆盖先保存。用 Git 或协作约定避免竞争。AI edit 会在 Apply 前检查 drift，但普通编辑器不自动 merge。
+There is no static HTML exporter. Print a full page or section and choose Save as PDF. Notes export produces editable Markdown.
 
-### Markon 会 `git push` 吗？
+## Product scope
 
-不会。它读取本地 branches/tags/history/diff，并允许管理员 checkout 与创建本地 commit；不做 fetch、pull、push、merge 或 rebase。
+### How is this different from GitHub Markdown?
 
-### AI 会上传整个 Workspace 吗？
+Markon adds local workspaces, full-text search, annotations, Viewed progress, editing, rendered Git diffs, Live, Workspace AI, and custom themes.
 
-不会自动全量上传，但用户消息、选区、`@` 文件、thread 历史和模型工具读取的结果会发给已配置 Provider。只对愿意发送上下文的 Workspace 开启 Chat。
+### Is Markon a static-site generator or Obsidian replacement?
 
-### AI 可以直接修改文件吗？
-
-Chat + Edit 同时开启时，模型可以提出 exact-string edit。每一项都显示 diff 并等待 Apply/Reject；Apply 前检查 drift，应用后可 Undo。它不能创建、移动、删除文件或执行命令。
-
-## 渲染与性能
-
-### 支持哪些扩展？
-
-GFM、脚注、GitHub Alerts、emoji shortcode、语法高亮、KaTeX，以及 Mermaid、PlantUML、D2、DOT/Graphviz、Vega/Vega-Lite、ECharts、Chart.js。
-
-### 图表或图片太大怎么办？
-
-点击视觉查看按钮进入全屏查看器，可缩放、拖动、双指缩放、框选、适应窗口。按 <kbd>?</kbd> 查看当前快捷键。
-
-### 大 Workspace 会把全文复制到内存吗？
-
-搜索索引使用临时 MmapDirectory；全文参与索引但不作为 stored field 再存一份。初次构建按 64 文件一批读取，watcher 更新批量合并。实际占用仍取决于文件量、正文和图表复杂度。
-
-### 能导出 HTML 或 PDF 吗？
-
-没有静态 HTML 导出器。PDF 使用浏览器整页打印或 Markon 章节打印后选择“另存为 PDF”。Notes 可以导出为可编辑 Markdown。
-
-## 定位
-
-### Markon 和 GitHub Markdown 有什么区别？
-
-阅读样式以 GitHub 为基线，但 Markon 增加本地 Workspace、全文搜索、批注/Notes、Viewed、源码编辑、Git Rendered diff、Live、Workspace AI 与自定义主题。
-
-### Markon 是静态站点生成器或 Obsidian 替代品吗？
-
-不是。它不生成发布站点，也没有双链图谱和插件生态；重点是对本地 Markdown/Git Workspace 的阅读与审阅。
+No. It does not publish a generated site and does not target backlinks, graphs, or a plugin ecosystem. Its focus is reading and reviewing local Markdown/Git workspaces.

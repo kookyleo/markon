@@ -1,34 +1,34 @@
 ---
-title: 产品定位
-description: Markon 是什么、适合哪些工作流，以及它与 Markdown 预览器、静态站点生成器和 IDE 的区别。
+title: Product overview
+description: What Markon is, the workflows it serves, and how it differs from Markdown previewers, static site generators, and general-purpose IDEs.
 ---
 
-# 产品定位
+# Product overview
 
 <div class="feature-illustration">
-  <img src="/illustrations/01-rendering.svg" alt="Markon 阅读与审阅工作台" />
+  <img src="/illustrations/01-rendering.svg" alt="Markon reading and review workspace" />
 </div>
 
-**让人与 Agent 在文档中达成共识。**
+**Help people and agents reach agreement in documents.**
 
-设计通常都不是一次写就，而是在审阅、修订与再审阅中逐步收敛完成。Markon 是人与 Agent 共同打磨 Spec 的 Markdown IDE：阅读当前方案，批注反馈或直接修改，再审阅下一版的变化，如此往复，直到达成共识。
+Design is rarely finished in one pass. It converges through review, revision, and review again. Markon is a Markdown IDE for people and agents to refine Specs together: read the current proposal, leave feedback or edit it directly, then review what changed in the next version—repeat until everyone agrees.
 
-Markon 本地优先。它把一个本地文件、目录或 Git 仓库转成浏览器工作区，内容仍由你自己的机器或服务器保存。
+Markon is local-first. It turns a local file, directory, or Git repository into a browser workspace while the content remains on your own computer or server.
 
-## 解决什么问题
+## Problems it solves
 
-Markdown 经常不只是“看一眼预览”：
+Markdown often needs more than a quick preview:
 
-- 一份长设计文档需要高亮、Notes、章节进度与局部打印；
-- 一个仓库需要跨文件搜索、查看历史，并按渲染结果审阅 diff；
-- 无 GUI 服务器上的文档需要从本机浏览器安全访问；
-- 评审会希望所有参与者跟随主讲人所在章节；
-- 修改一个 typo 时，不想离开阅读上下文；
-- AI 回答必须从当前工作区取证，并能跳回原文件位置。
+- a long design document needs highlights, Notes, section progress, and focused printing;
+- a repository needs cross-file search, history, and rendered diff review;
+- documentation on a headless server needs safe access from a local browser;
+- review participants need to follow the presenter's active section;
+- a small typo should be editable without leaving the reading context;
+- AI answers need workspace evidence and links back to the original source.
 
-Markon 把这些动作收进同一个 Workspace，而不是要求你在预览器、浏览器搜索、Git 客户端、聊天工具和编辑器之间来回切换。
+Markon brings these tasks into one Workspace instead of making you switch among a previewer, browser search, Git client, chat tool, and editor.
 
-## 核心模型
+## Core model
 
 ```text
 local file / directory / Git repository
@@ -39,23 +39,23 @@ local file / directory / Git repository
       edit · diff · live · chat
 ```
 
-每个工作区有独立的 `Search`、`Viewed`、`Edit`、`Live`、`Chat`、`Shared` 开关。管理员决定开放哪些能力，协作者只能使用已开启的部分。
+Every workspace has independent `Search`, `Viewed`, `Edit`, `Live`, `Chat`, and `Shared` switches. Administrators decide which capabilities are available; collaborators can only use enabled capabilities.
 
-## 两种入口，一套服务
+## Two entry points, one service
 
-### 桌面应用
+### Desktop app
 
-Tauri 2 桌面端面向日常使用：
+The Tauri 2 desktop app is designed for everyday use:
 
-- 管理多个目录或单文件工作区；
-- 配置全局默认功能、主题、语言、快捷键、数据库与 AI Provider；
-- 系统托盘常驻；
-- macOS Finder 工具栏和 Windows 文件关联/右键入口；
-- Stable / RC 更新通道。
+- manage directory and single-file workspaces;
+- configure default features, theme, language, shortcuts, database, and AI providers;
+- remain available from the system tray;
+- integrate with the macOS Finder toolbar and Windows file associations;
+- receive Stable or RC updates.
 
 ### CLI
 
-`markon` 面向终端、SSH 和无桌面服务器：
+`markon` is the terminal, SSH, and headless-server entry point:
 
 ```bash
 cargo install markon markond
@@ -63,26 +63,26 @@ markon README.md
 markon docs/
 ```
 
-桌面端与 CLI 都连接同一个 `markond` 后台服务，不会各自维护一份工作区状态。详情见[运行架构](/guide/architecture)。
+The desktop app and CLI connect to the same `markond` background service and share one workspace registry. See [Architecture](/guide/architecture) for details.
 
-## 它是什么
+## What it is
 
-- **阅读工作台**：GitHub 风格正文、目录、视觉缩放、快捷键与主题。
-- **审阅工作台**：批注、Notes、Viewed、折叠、导出与章节打印。
-- **Git-aware 工作区**：branches、tags、history、working/commit/compare diff。
-- **本地协作面**：共享审阅状态与 Live 跟随，数据仍落在运行 Markon 的机器。
-- **受约束的 Workspace AI**：文件调查、引用回链，以及用户逐项批准的修改。
+- **A reading workbench:** GitHub-style rendering, table of contents, visual zoom, shortcuts, and themes.
+- **A review workbench:** annotations, Notes, Viewed state, folding, export, and section printing.
+- **A Git-aware workspace:** branches, tags, history, and working/commit/compare diffs.
+- **A local collaboration surface:** shared review state and Live following, stored on the Markon host.
+- **A constrained Workspace AI:** file investigation, source links, and user-approved edits.
 
-## 它不是什么
+## What it is not
 
-- **不是静态站点生成器**：没有 MkDocs / Hugo 的发布主题与站点构建模型。
-- **不是知识库笔记应用**：不提供双链图谱、插件市场或云同步账号体系。
-- **不是通用编程 IDE**：这里的 Markdown IDE 围绕 Spec 的阅读、审阅、版本比较与修订，不替代工程级语言服务、构建系统和调试器。
-- **不是完整 Git 客户端**：不负责 fetch、pull、push、merge 或远端凭据。
-- **不是多租户权限系统**：有 Admin/Collaborator 边界，但没有按账号、团队、角色的细粒度 RBAC。
+- **Not a static site generator:** it does not provide the publishing model of MkDocs or Hugo.
+- **Not a knowledge-base notebook:** it has no backlink graph, plugin marketplace, or cloud account system.
+- **Not a general programming IDE:** its Markdown IDE workflow focuses on reading, review, comparison, and revision of Specs.
+- **Not a complete Git client:** it does not fetch, pull, push, merge, or manage remote credentials.
+- **Not a multi-tenant authorization system:** it separates Admin and Collaborator capabilities, but does not implement account-, team-, or role-level RBAC.
 
-## 本地优先的真实边界
+## The actual local-first boundary
 
-渲染、搜索、Git、批注、Viewed 和 Live 都在本机完成。只有用户配置并启用 Workspace AI 后，消息、引用与工具读取的上下文才会发送给所选 Provider。
+Rendering, search, Git, annotations, Viewed state, and Live all run locally. Only after a user configures and enables Workspace AI are messages, references, and tool-read context sent to the selected provider.
 
-→ 继续：[快速上手](/guide/getting-started) · [产品能力](/features/) · [数据与隐私](/advanced/data-and-privacy)
+Continue with [Getting started](/guide/getting-started), [Feature overview](/features/), or [Data and privacy](/advanced/data-and-privacy).
