@@ -184,15 +184,9 @@ if a version is already on crates.io, the job treats it as success.
 
 `markon-gui` is marked `publish = false` and is distributed only via GitHub Release.
 
-**Manual publish** (e.g. outside the CI flow):
-
-```bash
-scripts/publish-crates.sh
-```
-
-Same steps as the CI job, but runs locally — useful for hotfixes or first
-publish when CI isn't set up yet. Requires clean git tree and
-`CARGO_REGISTRY_TOKEN` env (or prior `cargo login`).
+There is no local publish script. `promote.yml` is the only path to crates.io,
+so a release cannot be published from a working tree that CI never saw. To
+re-run a failed publish, re-run that workflow — it is idempotent.
 
 ### 7. Homebrew / Scoop auto-update
 

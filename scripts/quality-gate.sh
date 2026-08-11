@@ -1,15 +1,16 @@
 #!/usr/bin/env bash
-# Canonical quality gate, shared by scripts/publish-crates.sh and
-# .githooks/pre-push.
+# Canonical quality gate: the same checks CI runs, in one local command.
+# Run it before opening a pull request (see README.md).
 #
 # Gates, cheapest-first so the common failures surface fastest:
 #   Rust  (skipped if cargo absent):  fmt --check · clippy all-features -D warnings · test
 #   TS/JS (skipped if npm absent):    npm run lint · vitest
 #
 # Each toolchain is guarded so minimal/CI images without it aren't blocked.
-# Callers own the release-only steps: npm ci / npm run build (which must run
-# BEFORE any cargo compile — markon-core's build.rs embeds assets/dist/) and
-# the cargo publish dry-run.
+#
+# Run `npm run build` first if assets/dist/ is missing or stale — markon-core's
+# build.rs embeds it, so cargo compiles against whatever bundle is on disk.
+# Packaging itself is not checked here; CI's Package job owns that.
 set -euo pipefail
 
 cd "$(dirname "$0")/.."
