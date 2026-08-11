@@ -1,6 +1,7 @@
 import DefaultTheme from 'vitepress/theme';
 import { h } from 'vue';
 import DownloadButton from './components/DownloadButton.vue';
+import DocSectionFocus from './components/DocSectionFocus.vue';
 import SelectionFeedback from './components/SelectionFeedback.vue';
 import FeatureGallery from './components/FeatureGallery.vue';
 import HeroLogoSync from './components/HeroLogoSync.vue';
@@ -23,6 +24,7 @@ export default {
         h(SelectionFeedback),
         h(HeroLogoSync),
         h(HomeLocaleSync),
+        h(DocSectionFocus),
         h(HomeShortcuts),
       ],
     });
