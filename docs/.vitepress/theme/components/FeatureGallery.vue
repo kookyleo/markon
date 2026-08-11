@@ -1,11 +1,22 @@
 <script setup>
 import { computed } from 'vue';
-import { withBase } from 'vitepress';
+import { useData, useRoute, withBase } from 'vitepress';
+import { contentLocaleFromPath, localizedContentPath } from '../../content-locales';
 import { FEATURE_GALLERY_COPY } from '../feature-gallery-copy';
-import { useHomeLocale } from '../home-locale';
 
-const { locale } = useHomeLocale();
+const route = useRoute();
+const { site, theme } = useData();
+const locale = computed(() => contentLocaleFromPath(route.path, site.value.base));
 const content = computed(() => FEATURE_GALLERY_COPY[locale.value]);
+
+function contentHref(path) {
+  return localizedContentPath(
+    path,
+    locale.value,
+    theme.value.markonContentLocales,
+    site.value.base,
+  );
+}
 </script>
 
 <template>
@@ -16,7 +27,7 @@ const content = computed(() => FEATURE_GALLERY_COPY[locale.value]);
         <a
           v-for="item in group.items"
           :key="item.title"
-          :href="withBase(item.link)"
+          :href="contentHref(item.link)"
           class="card"
           data-feature-card
         >
@@ -88,15 +99,8 @@ const content = computed(() => FEATURE_GALLERY_COPY[locale.value]);
   transform: translateY(-2px);
 }
 
-.card.home-shortcut-current {
-  border-color: var(--vp-c-brand-1);
-  box-shadow: 0 0 0 3px var(--vp-c-brand-soft), 0 12px 30px rgb(0 0 0 / 6%);
-  outline: none;
-  transform: translateY(-2px);
-}
-
-.card:not(.home-shortcut-current):focus,
-.card:not(.home-shortcut-current):focus-visible {
+.card:focus,
+.card:focus-visible {
   border-color: var(--vp-c-divider);
   box-shadow: none;
   outline: none;

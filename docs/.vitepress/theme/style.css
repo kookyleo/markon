@@ -75,22 +75,46 @@ html {
   order: -1;
 }
 
+/* LocalePreference owns language navigation so desktop and mobile use one
+   icon, one fallback policy, and the same cookie behavior. */
+.VPNavBarTranslations,
+.VPNavScreenTranslations {
+  display: none !important;
+}
+
+.VPNavBar .content-body .VPNavBarAppearance::before,
+.VPNavBar .content-body .VPNavBarSocialLinks::before,
+.markon-locale::before {
+  margin: 0 12px;
+}
+
+.VPNavBar .VPNavBarSocialLinks {
+  margin-right: 0;
+}
+
 .markon-locale {
   position: relative;
   display: flex;
   align-items: center;
-  margin-left: 4px;
+  margin-left: 0;
+}
+
+.markon-locale::before {
+  width: 1px;
+  height: 24px;
+  background-color: var(--vp-c-divider);
+  content: '';
 }
 
 .markon-locale-trigger {
   display: inline-flex;
-  min-width: 64px;
+  min-width: 82px;
   height: 36px;
   align-items: center;
   justify-content: center;
-  gap: 7px;
+  gap: 8px;
+  padding: 0 10px;
   border: 0;
-  border-left: 1px solid var(--vp-c-divider);
   background: transparent;
   color: var(--vp-c-text-1);
   font-size: 13px;
@@ -103,31 +127,9 @@ html {
 }
 
 .markon-locale-icon {
-  position: relative;
-  display: inline-block;
-  width: 22px;
-  height: 20px;
-  flex: 0 0 22px;
-  color: currentColor;
-  font-size: 11px;
-  font-weight: 700;
-  line-height: 1;
-}
-
-.markon-locale-icon span {
-  position: absolute;
-}
-
-.markon-locale-icon span:first-child {
-  top: 1px;
-  left: 1px;
-}
-
-.markon-locale-icon span:last-child {
-  right: 0;
-  bottom: 1px;
-  padding: 1px 0 0 2px;
-  background: var(--vp-nav-bg-color, var(--vp-c-bg));
+  display: block;
+  flex: 0 0 1em;
+  font-size: 18px;
 }
 
 .markon-locale-chevron {
@@ -172,9 +174,20 @@ html {
   color: var(--vp-c-brand-1);
 }
 
+.markon-locale-menu button:disabled {
+  background: transparent;
+  color: var(--vp-c-text-3);
+  cursor: not-allowed;
+  opacity: 0.48;
+}
+
 .markon-locale-mobile {
   display: block;
   margin: 12px 0 0;
+}
+
+.markon-locale-mobile::before {
+  display: none;
 }
 
 .markon-locale-mobile .markon-locale-trigger {
@@ -222,12 +235,6 @@ html {
   margin-top: 0;
 }
 
-.VPHero.has-image .main.home-shortcut-current {
-  border-radius: 14px;
-  box-shadow: 0 0 0 3px var(--vp-c-brand-soft);
-  outline: none;
-}
-
 .markon-home-download-section {
   box-sizing: border-box;
   margin: 48px -16px 0;
@@ -237,10 +244,137 @@ html {
   scroll-margin-top: 96px;
 }
 
-.markon-home-download-section.home-shortcut-current {
-  border-color: var(--vp-c-brand-1);
-  box-shadow: 0 0 0 3px var(--vp-c-brand-soft);
+/* Markon-compatible hierarchical section focus --------------------------- */
+
+.VPDoc .vp-doc .heading-section {
+  --markon-section-radius: 12px;
+  position: relative;
+  padding: 4px 8px 5px;
+  border: 2px solid transparent;
+  border-radius: var(--markon-section-radius);
+  scroll-margin-top: 40px;
+}
+
+.VPDoc .vp-doc .heading-section[data-level='2'] {
+  margin-top: 32px;
+}
+
+.VPDoc .vp-doc .heading-section:is([data-level='3'], [data-level='4'], [data-level='5'], [data-level='6']) {
+  margin-top: 24px;
+}
+
+.VPDoc .vp-doc .heading-section:has(.heading-focused) {
+  border-color: color-mix(in srgb, var(--vp-c-brand-1) 30%, transparent);
+}
+
+.dark .VPDoc .vp-doc .heading-section:has(.heading-focused) {
+  border-color: color-mix(in srgb, var(--vp-c-brand-1) 40%, transparent);
+}
+
+.VPDocAsideOutline .outline-link.markon-outline-focused,
+.VPLocalNavOutlineDropdown .outline-link.markon-outline-focused {
+  color: var(--vp-c-brand-1);
+  font-weight: 600;
+}
+
+.VPDoc .vp-doc .heading-section > :is(h1, h2, h3, h4, h5, h6) {
+  position: relative;
+  margin-top: -4px;
+  margin-right: -8px;
+  margin-left: -8px;
+  padding: 4px 8px;
+}
+
+.VPDoc .vp-doc .heading-section > :is(h1, h2, h3, h4, h5, h6).heading-focused {
+  --markon-heading-focus-bg: color-mix(in srgb, var(--vp-c-brand-1) 10%, transparent);
+  border-bottom: 0;
+  border-radius: calc(var(--markon-section-radius) - 2px) calc(var(--markon-section-radius) - 2px) 0 0;
+  background-color: var(--markon-heading-focus-bg);
+}
+
+.dark .VPDoc .vp-doc .heading-section > :is(h1, h2, h3, h4, h5, h6).heading-focused {
+  --markon-heading-focus-bg: color-mix(in srgb, var(--vp-c-brand-1) 15%, transparent);
+}
+
+.VPDoc .vp-doc .heading-focused::before,
+.VPDoc .vp-doc .heading-focused::after {
+  position: absolute;
+  bottom: -5px;
+  width: 5px;
+  height: 5px;
+  background-color: var(--markon-heading-focus-bg);
+  content: '';
+  pointer-events: none;
+}
+
+.VPDoc .vp-doc .heading-focused::before {
+  left: 0;
+  mask: url("data:image/svg+xml,%3Csvg viewBox='0 0 5 5' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M5 0H0V5Q0 0 5 0Z' fill='black'/%3E%3C/svg%3E") 0 0 / 100% 100% no-repeat;
+}
+
+.VPDoc .vp-doc .heading-focused::after {
+  right: 0;
+  mask: url("data:image/svg+xml,%3Csvg viewBox='0 0 5 5' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M0 0H5V5Q5 0 0 0Z' fill='black'/%3E%3C/svg%3E") 0 0 / 100% 100% no-repeat;
+}
+
+.home-heading-section {
+  position: relative;
+  scroll-margin-top: 64px;
+}
+
+.home-heading-section:has(.heading-focused) {
   outline: none;
+}
+
+.home-section-heading {
+  position: relative;
+}
+
+.home-section-heading.heading-focused::before {
+  position: absolute;
+  z-index: 3;
+  top: 0;
+  bottom: 0;
+  left: -16px;
+  width: 3px;
+  border-radius: 999px;
+  background: var(--vp-c-brand-1);
+  content: '';
+  pointer-events: none;
+}
+
+.home-section-heading.heading-focused {
+  color: var(--vp-c-brand-1);
+}
+
+@media (min-width: 1400px) {
+  .VPDoc .vp-doc .heading-section {
+    padding: 12px 12px 0;
+  }
+
+  .VPDoc .vp-doc .heading-section > :is(h1, h2, h3, h4, h5, h6) {
+    margin-top: -14px;
+    margin-right: -14px;
+    margin-left: -14px;
+    padding: 12px;
+  }
+}
+
+@media print {
+  .VPDoc .vp-doc .heading-section,
+  .VPDoc .vp-doc .heading-section:has(.heading-focused) {
+    border-color: transparent;
+  }
+
+  .VPDoc .vp-doc .heading-focused,
+  .home-section-heading.heading-focused {
+    background: transparent;
+    box-shadow: none;
+  }
+
+  .home-section-heading.heading-focused::before {
+    display: none;
+  }
 }
 
 .markon-site-footer {

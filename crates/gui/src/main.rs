@@ -7,7 +7,7 @@ mod service;
 // settings moved to markon_core::settings
 
 use markon_core::settings::{AppSettings, WorkspaceSettings};
-use markon_core::workspace::{expand_and_canonicalize, WorkspaceFlags};
+use markon_core::workspace::{expand_and_canonicalize, WorkspaceFlags, WorkspaceOpenTarget};
 use service::ServiceConnection;
 use std::path::{Path, PathBuf};
 use std::sync::{
@@ -310,29 +310,14 @@ where
 // ── Path-open logic ───────────────────────────────────────────────────────────
 
 fn handle_open_path(app: &tauri::AppHandle, path: &Path) {
-    // dunce::canonicalize strips the Windows \\?\ verbatim prefix so the
-    // path shown in the workspace list matches what the user typed.
-    let canonical = match dunce::canonicalize(path) {
-        Ok(p) => p,
+    // Core owns both canonicalization and file-vs-directory scope so every
+    // frontend registers an explicitly opened path the same way.
+    let target = match WorkspaceOpenTarget::resolve(path) {
+        Ok(target) => target,
         Err(e) => {
             tracing::warn!("cannot resolve path {}: {}", path.display(), e);
             return;
         }
-    };
-
-    // Determine workspace root and per-file context.
-    //
-    // Files take the temporary single-file path: parent dir is the serving
-    // root (so co-located images resolve via relative URLs), but only the
-    // file itself + assets it references are reachable. The entry is persisted
-    // so the startup preference can restore or remove it. Directories keep the
-    // existing "the whole thing is the workspace" behavior.
-    let (ws_root, rel_path, single_file) = if canonical.is_dir() {
-        (canonical.clone(), None, None)
-    } else {
-        let parent = canonical.parent().unwrap().to_path_buf();
-        let file_name = canonical.file_name().unwrap().to_string_lossy().to_string();
-        (parent, Some(file_name.clone()), Some(file_name))
     };
 
     let state = app.state::<AppState>();
@@ -352,34 +337,22 @@ fn handle_open_path(app: &tauri::AppHandle, path: &Path) {
         }
     };
 
-    // Pure frontend: register the workspace on the service over its control
-    // socket, then mint the final page URL with a one-time admin fragment so
-    // the local browser upgrades in place — the same treatment `open_url` gives.
-    // Directories register the whole tree; files use the single-file add so only
-    // the pinned file (plus its assets) is reachable.
+    // Pure frontend: register the core-resolved target on the service, then mint
+    // the final page URL with a one-time admin fragment so the local browser
+    // upgrades in place — the same treatment `open_url` gives.
     let Some(remote) = state.server.lock().unwrap().handle() else {
         tracing::warn!("not connected to the markon service, cannot open path");
         return;
     };
-    let path_str = ws_root.to_string_lossy().to_string();
-    let id = tauri::async_runtime::block_on(async {
-        match &single_file {
-            Some(file_name) => {
-                remote
-                    .add_single_file(&path_str, file_name, flags, "")
-                    .await
-            }
-            None => remote.add_or_update_workspace(&path_str, flags, None).await,
-        }
-    });
+    let id = tauri::async_runtime::block_on(remote.add_or_update_open_target(&target, flags, None));
     let id = match id {
         Ok(id) => id,
         Err(e) => {
-            tracing::warn!(path = %path_str, "failed to open path on the markon service: {e}");
+            tracing::warn!(path = %target.identity_path().display(), "failed to open path on the markon service: {e}");
             return;
         }
     };
-    let redirect = markon_core::server::workspace_url_path(&id, rel_path.as_deref());
+    let redirect = markon_core::server::workspace_url_path(&id, target.initial_path());
     let url = match tauri::async_runtime::block_on(remote.admin_bootstrap(&redirect)) {
         Ok(url) => url,
         Err(e) => {
@@ -917,6 +890,7 @@ fn main() {
             commands::get_workspaces,
             commands::get_workspace_share_urls,
             commands::reconnect,
+            commands::open_workspace_folder,
             commands::open_url,
             commands::get_bind_hosts,
             commands::get_server_status,
@@ -1083,6 +1057,15 @@ mod tests {
         assert!(html.contains(
             "'auto_update', 'print_collapsed_content', 'auto_remove_single_file_workspaces',"
         ));
+    }
+
+    #[test]
+    fn workspace_menu_wires_platform_file_manager_action() {
+        let html = _UI_REEMBED_MARKER;
+
+        assert!(html.contains("class=\"ws-menu-item open-folder-item\""));
+        assert!(html.contains("invoke('open_workspace_folder', { workspaceId: ws.id })"));
+        assert!(html.contains("workspaceFileManagerLabel()"));
     }
 
     #[test]

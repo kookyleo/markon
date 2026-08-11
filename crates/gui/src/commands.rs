@@ -545,6 +545,34 @@ pub async fn set_alias(
         .map_err(remote_err)
 }
 
+/// Open a workspace's root directory in the platform file manager.
+///
+/// Resolve the path by workspace id on the trusted control plane instead of
+/// accepting an arbitrary frontend-supplied path. A single-file workspace has
+/// its containing directory as `path`, which is also the useful place to open.
+#[tauri::command]
+pub async fn open_workspace_folder(
+    workspace_id: String,
+    state: State<'_, AppState>,
+) -> Result<(), String> {
+    let remote = require_service(&state)?;
+    let path = remote
+        .list_workspaces()
+        .await
+        .map_err(remote_err)?
+        .into_iter()
+        .find(|workspace| workspace.id == workspace_id)
+        .map(|workspace| PathBuf::from(workspace.path))
+        .ok_or_else(|| "Workspace not found".to_string())?;
+    if !path.is_dir() {
+        return Err(format!(
+            "Workspace folder does not exist: {}",
+            path.display()
+        ));
+    }
+    open::that(path).map_err(|error| error.to_string())
+}
+
 #[tauri::command]
 pub async fn open_url(url: String, state: State<'_, AppState>) -> Result<(), String> {
     let (remote, base) = {

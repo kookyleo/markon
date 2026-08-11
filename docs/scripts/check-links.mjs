@@ -1,11 +1,12 @@
 import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
 import { dirname, extname, join, normalize, relative, resolve, sep } from 'node:path';
+import { localizedRouteForSource } from '../.vitepress/content-locales.js';
 
 const DOCS_ROOT = resolve(import.meta.dirname, '..');
 const PUBLIC_ROOT = join(DOCS_ROOT, 'public');
 const THEME_ROOT = join(DOCS_ROOT, '.vitepress');
 const THEME_EXTENSIONS = new Set(['.js', '.ts', '.vue']);
-const IGNORED_ROUTE_LITERALS = new Set(['/markon/']);
+const IGNORED_ROUTE_LITERALS = new Set(['/markon/', '/index.md']);
 
 function walk(directory, include, ignoredDirectories = []) {
   return readdirSync(directory, { withFileTypes: true }).flatMap((entry) => {
@@ -51,6 +52,17 @@ function anchorsFor(file) {
 }
 
 function markdownTarget(pathname, sourceFile) {
+  if (pathname.startsWith('/')) {
+    const cleanRoute = pathname.replace(/\.md$/, '').replace(/\.html$/, '');
+    const variants = cleanRoute.endsWith('/')
+      ? [cleanRoute, cleanRoute.slice(0, -1)]
+      : [cleanRoute, `${cleanRoute}/`];
+    for (const route of variants) {
+      if (routes.has(route)) return routes.get(route);
+    }
+    return null;
+  }
+
   const base = pathname.startsWith('/') ? DOCS_ROOT : dirname(sourceFile);
   const raw = normalize(join(base, pathname.replace(/^\//, '')));
   const candidates = extname(raw)
@@ -68,9 +80,7 @@ function assetTarget(pathname, sourceFile) {
 
 function routeFor(file) {
   const relativePath = relative(DOCS_ROOT, file).split(sep).join('/');
-  if (relativePath === 'index.md') return '/';
-  if (relativePath.endsWith('/index.md')) return `/${relativePath.slice(0, -'index.md'.length)}`;
-  return `/${relativePath.slice(0, -'.md'.length)}`;
+  return localizedRouteForSource(relativePath);
 }
 
 function strippedHref(href) {
@@ -88,6 +98,17 @@ const markdownFiles = walk(
 );
 const markdownSet = new Set(markdownFiles);
 const routes = new Map(markdownFiles.map((file) => [routeFor(file), file]));
+
+// LocalePreference links every translated route to its canonical English
+// counterpart at runtime, so these pages have an incoming path even when a
+// static navigation item is not repeated for every locale.
+for (const [route, file] of routes) {
+  const canonical = route.replace(/^\/(?:zh|ja)(?=\/)/, '');
+  if (canonical !== route && routes.has(canonical)) {
+    if (!incoming.has(file)) incoming.set(file, new Set());
+    incoming.get(file).add('locale-switcher');
+  }
+}
 
 function recordIncoming(target, source) {
   if (!markdownSet.has(target)) return;

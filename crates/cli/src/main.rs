@@ -6,7 +6,8 @@ use markon_core::net::{available_bind_hosts, BindHostKind};
 use markon_core::server::{self, ServerConfig, WorkspaceInit};
 use markon_core::settings::AppSettings;
 use markon_core::workspace::{
-    expand_and_canonicalize, hash_access_code, ServerLock, WorkspaceFlags, WorkspaceRegistry,
+    expand_and_canonicalize, hash_access_code, ServerLock, WorkspaceFlags, WorkspaceInfo,
+    WorkspaceOpenTarget, WorkspaceRegistry,
 };
 use std::io::IsTerminal;
 use std::path::{Path, PathBuf};
@@ -278,6 +279,22 @@ fn display_workspace_path(path: &Path) -> String {
     path.to_string_lossy().to_string()
 }
 
+/// User-visible path for one workspace row.
+///
+/// A file-scoped workspace serves out of the file's *parent*, so `WorkspaceInfo.path`
+/// alone renders as the directory — indistinguishable from a directory workspace
+/// over the same folder, which is exactly what two entries for one folder look
+/// like after a file is opened. Joining `single_file` (the wire format documents
+/// this as required of any consumer that displays the path) shows what the
+/// workspace actually serves.
+fn display_workspace_scope(info: &WorkspaceInfo) -> String {
+    let root = Path::new(&info.path);
+    match info.single_file.as_deref() {
+        Some(file) => display_workspace_path(&root.join(file)),
+        None => display_workspace_path(root),
+    }
+}
+
 /// One row per workspace flag: (enabled, card label, tag label, form label).
 /// Single source of truth for flag order and naming across the card and table
 /// renderings and the interactive TUI edit form. The form label is the short,
@@ -521,7 +538,7 @@ async fn list_workspaces(
     match format {
         WorkspaceListFormat::Cards => {
             for (i, ws) in workspaces.iter().enumerate() {
-                let path = display_workspace_path(Path::new(&ws.path));
+                let path = display_workspace_scope(ws);
                 let url = server::build_workspace_url(
                     &url_base,
                     &server::workspace_url_path(&ws.id, None),
@@ -552,7 +569,7 @@ async fn list_workspaces(
                 .iter()
                 .enumerate()
                 .map(|(i, ws)| {
-                    let path = display_workspace_path(Path::new(&ws.path));
+                    let path = display_workspace_scope(ws);
                     let features = format_workspace_feature_tags(ws.flags, ws.search_ready);
                     let url = server::build_workspace_url(
                         &url_base,
@@ -759,8 +776,14 @@ async fn admin_browser_command(
     command: AdminCommands,
 ) -> Result<(), Box<dyn std::error::Error>> {
     let workspaces = server.list_workspaces().await?;
-    let redirect = workspaces
-        .first()
+    // The session has to land somewhere and there is no workspace index to land
+    // on, so the first entry wins. That is an arbitrary pick once more than one
+    // workspace is open — and a stable one, since the registry sorts by root and
+    // then by `single_file`, where `None` orders first: a directory workspace
+    // always outranks a file-scoped workspace over the same folder. Name the
+    // destination rather than letting the browser arrive somewhere unexplained.
+    let landing = workspaces.first();
+    let redirect = landing
         .map(|workspace| server::workspace_url_path(&workspace.id, None))
         .unwrap_or_else(|| "/".to_string());
     match command {
@@ -778,6 +801,19 @@ async fn admin_browser_command(
             println!("Expires in 5 minutes and is invalidated after 5 failed attempts.");
         }
     }
+    if let Some(workspace) = landing {
+        println!(
+            "Opens workspace {}: {}",
+            workspace.id,
+            display_workspace_scope(workspace)
+        );
+        if workspaces.len() > 1 {
+            println!(
+                "({} workspaces are open — `markon ls` lists the rest.)",
+                workspaces.len()
+            );
+        }
+    }
     Ok(())
 }
 
@@ -786,9 +822,8 @@ async fn admin_browser_command(
 /// "attach to a live daemon" path and the "spawn a daemon, then attach" path so
 /// both render identically.
 struct ForwardPlan<'a> {
-    ws_root: &'a Path,
+    target: &'a WorkspaceOpenTarget,
     flags: WorkspaceFlags,
-    initial_path: Option<&'a str>,
     /// `Some(hash)` only when the CLI passed `--collaborator-access-code`; the
     /// running server then updates the workspace's collaborator hash to it.
     collaborator_hash_if_set: Option<&'a str>,
@@ -809,11 +844,7 @@ async fn forward_to_running_server(
     plan: &ForwardPlan<'_>,
 ) {
     match server
-        .add_or_update_workspace(
-            &plan.ws_root.to_string_lossy(),
-            plan.flags,
-            plan.collaborator_hash_if_set,
-        )
+        .add_or_update_open_target(plan.target, plan.flags, plan.collaborator_hash_if_set)
         .await
     {
         Ok(workspace_id) => {
@@ -825,19 +856,21 @@ async fn forward_to_running_server(
             } else {
                 lock_host.to_string()
             };
+            let identity_path = plan.target.identity_path();
             let summary = build_workspace_access_summary(
-                plan.ws_root,
+                &identity_path,
                 plan.flags,
                 &bind_host,
                 plan.advertised_host,
                 lock_port,
                 &workspace_id,
-                plan.initial_path,
+                plan.target.initial_path(),
                 plan.entry,
             );
             print_workspace_access_summary(&summary);
             if let Some(base_option) = plan.open_browser_target {
-                let redirect = server::workspace_url_path(&workspace_id, plan.initial_path);
+                let redirect =
+                    server::workspace_url_path(&workspace_id, plan.target.initial_path());
                 // The daemon mints the one-time bootstrap URL (nonce + its own
                 // bind-aware local base) over the control socket. An explicit
                 // trusted reverse-proxy origin remains an intentional override.
@@ -849,7 +882,7 @@ async fn forward_to_running_server(
                             rehome_admin_bootstrap_url(base_option, &redirect, &boot_url)
                         };
                         if let Err(e) = open::that(&browser_url) {
-                            tracing::warn!("best-effort browser open failed: {e}");
+                            tracing::warn!("{}", server::browser_open_failure_message(e));
                         }
                     }
                     Err(e) => tracing::warn!("failed to create browser admin session: {e}"),
@@ -870,6 +903,25 @@ fn workspace_init_to_daemon(w: &WorkspaceInit) -> DaemonWorkspace {
         single_file: w.single_file.clone(),
         collaborator_access_code_hash: w.collaborator_access_code_hash.clone(),
         alias: w.alias.clone(),
+    }
+}
+
+/// Build the in-process server form from the same core-resolved target used by
+/// control-socket registration. This protects the foreground fallback from
+/// accidentally widening a single-file open into its parent directory.
+fn workspace_init_for_open_target(
+    target: &WorkspaceOpenTarget,
+    flags: WorkspaceFlags,
+    collaborator_access_code_hash: String,
+    alias: String,
+) -> WorkspaceInit {
+    WorkspaceInit {
+        path: target.root.clone(),
+        flags,
+        initial_path: target.initial_path().map(str::to_string),
+        single_file: target.single_file.clone(),
+        collaborator_access_code_hash,
+        alias,
     }
 }
 
@@ -918,10 +970,11 @@ async fn main() {
         // Workspace-management commands talk to the running server over its
         // privileged control socket (recorded in the lock).
         let lock = ServerLock::read();
-        let (lock_host, lock_advertised, server) = match lock {
+        let (lock_host, lock_advertised, lock_entry, server) = match lock {
             Some(ref l) if l.is_alive() => (
                 l.host.clone(),
                 l.advertised_host.clone(),
+                l.entry.clone(),
                 RunningServer::from_lock(l),
             ),
             _ => {
@@ -944,6 +997,11 @@ async fn main() {
                 } else {
                     lock_host.clone()
                 };
+                // Public entry prefix for the printed/QR URLs: this invocation's
+                // own `--entry`/`--qr` wins; otherwise inherit the one the running
+                // daemon was started with (recorded in the lock), so a bare
+                // `markon ls` shows the daemon's public URLs instead of loopback.
+                let effective_entry = cli_entry.clone().or_else(|| lock_entry.clone());
                 match format {
                     // Explicit --format cards|table: static render, byte-for-byte
                     // as before.
@@ -953,7 +1011,7 @@ async fn main() {
                             &advertised_host,
                             &server,
                             fmt,
-                            cli_entry.as_deref(),
+                            effective_entry.as_deref(),
                         )
                         .await
                     }
@@ -970,7 +1028,7 @@ async fn main() {
                         // driving the IO reactor the async transport needs.
                         let handle = tokio::runtime::Handle::current();
                         let tui_server = server.clone();
-                        let tui_entry = cli_entry.clone();
+                        let tui_entry = effective_entry.clone();
                         let join = tokio::task::spawn_blocking(move || {
                             tui::ls::run(
                                 tui_server,
@@ -997,7 +1055,7 @@ async fn main() {
                             &advertised_host,
                             &server,
                             WorkspaceListFormat::Cards,
-                            cli_entry.as_deref(),
+                            effective_entry.as_deref(),
                         )
                         .await
                     }
@@ -1027,28 +1085,26 @@ async fn main() {
         return;
     }
 
-    let (ws_root, initial_path) = if let Some(ref file_str) = cli.file {
-        let path = Path::new(file_str);
-        let canonical = match dunce::canonicalize(path) {
-            Ok(p) => p,
+    let open_target = if let Some(ref file_str) = cli.file {
+        match WorkspaceOpenTarget::resolve(Path::new(file_str)) {
+            Ok(target) => target,
             Err(_) => {
                 eprintln!("Error: Path '{file_str}' not found.");
                 return;
             }
-        };
-        if canonical.is_dir() {
-            (canonical, None)
-        } else {
-            let parent = canonical.parent().unwrap().to_path_buf();
-            let filename = canonical.file_name().unwrap().to_string_lossy().to_string();
-            (parent, Some(filename))
         }
     } else {
-        (
-            std::env::current_dir().expect("Cannot determine working directory"),
-            None,
-        )
+        let current_dir = std::env::current_dir().expect("Cannot determine working directory");
+        match WorkspaceOpenTarget::resolve(&current_dir) {
+            Ok(target) => target,
+            Err(e) => {
+                eprintln!("Error: Cannot resolve working directory: {e}");
+                return;
+            }
+        }
     };
+    let ws_root = open_target.root.clone();
+    let initial_path = open_target.initial_path().map(str::to_string);
 
     // Workspace IDs are SHA-256(salt + path). For URLs to survive restarts the
     // salt must be stable. AppSettings::load() persists a random salt to
@@ -1057,21 +1113,13 @@ async fn main() {
     // (CLI / GUI) opens it. The port-derived fallback only kicks in when no
     // settings file exists yet.
     let mut settings = AppSettings::load();
-    let saved_workspace = settings
-        .workspaces
-        .iter()
-        .find(|w| w.single_file.is_none() && workspace_path_matches(&w.path, &ws_root));
+    let saved_workspace = settings.workspaces.iter().find(|w| {
+        w.single_file.as_deref() == open_target.single_file.as_deref()
+            && workspace_path_matches(&w.path, &ws_root)
+    });
     let flags = saved_workspace
         .map(|w| w.flags)
         .unwrap_or_else(|| default_workspace_flags(&settings));
-    let ws_init = WorkspaceInit {
-        path: ws_root.clone(),
-        flags,
-        initial_path: initial_path.clone(),
-        single_file: None,
-        collaborator_access_code_hash: String::new(),
-        alias: saved_workspace.map(|w| w.alias.clone()).unwrap_or_default(),
-    };
     let effective_salt = cli.salt.clone().unwrap_or_else(|| {
         if settings.salt.is_empty() {
             format!("markon:{}", cli.port)
@@ -1092,10 +1140,12 @@ async fn main() {
         cli.collaborator_access_code.as_deref(),
         &effective_salt,
     );
-    let ws_init = WorkspaceInit {
-        collaborator_access_code_hash: workspace_collaborator_access_code_hash.clone(),
-        ..ws_init
-    };
+    let ws_init = workspace_init_for_open_target(
+        &open_target,
+        flags,
+        workspace_collaborator_access_code_hash.clone(),
+        saved_workspace.map(|w| w.alias.clone()).unwrap_or_default(),
+    );
     let open_browser_target = cli.open_browser.clone().or_else(|| {
         if cli.file.is_some() {
             Some("local".to_string())
@@ -1126,21 +1176,24 @@ async fn main() {
                 .advertised_host
                 .clone()
                 .unwrap_or_else(|| advertised_host.clone());
+            // Same reasoning for the public entry prefix: this invocation's own
+            // `--entry`/`--qr` wins, else inherit the running daemon's (from the
+            // lock) so the printed/QR URLs match what it actually serves under.
+            let effective_entry = cli.entry.clone().or_else(|| lock.entry.clone());
             forward_to_running_server(
                 &server,
                 &lock.host,
                 lock.port,
                 &ForwardPlan {
-                    ws_root: &ws_root,
+                    target: &open_target,
                     flags,
-                    initial_path: initial_path.as_deref(),
                     collaborator_hash_if_set: cli
                         .collaborator_access_code
                         .as_ref()
                         .map(|_| workspace_collaborator_access_code_hash.as_str()),
                     configured_host: &configured_host,
                     advertised_host: &effective_advertised,
-                    entry: cli.entry.as_deref(),
+                    entry: effective_entry.as_deref(),
                     open_browser_target: open_browser_target.as_deref(),
                 },
             )
@@ -1175,7 +1228,8 @@ async fn main() {
         .iter()
         .filter(|w| !w.path.is_empty())
         .map(|w| {
-            let explicit = w.single_file.is_none() && workspace_path_matches(&w.path, &ws_root);
+            let explicit = w.single_file.as_deref() == open_target.single_file.as_deref()
+                && workspace_path_matches(&w.path, &ws_root);
             if explicit {
                 loaded_explicit_workspace = true;
             }
@@ -1255,9 +1309,8 @@ async fn main() {
                     server.host(),
                     server.port(),
                     &ForwardPlan {
-                        ws_root: &ws_root,
+                        target: &open_target,
                         flags,
-                        initial_path: initial_path.as_deref(),
                         collaborator_hash_if_set: cli
                             .collaborator_access_code
                             .as_ref()
@@ -1345,6 +1398,36 @@ async fn main() {
 mod tests {
     use super::*;
 
+    fn workspace_info(path: &str, single_file: Option<&str>) -> WorkspaceInfo {
+        WorkspaceInfo {
+            id: "abcd1234".to_string(),
+            path: path.to_string(),
+            flags: WorkspaceFlags::default(),
+            search_ready: true,
+            ephemeral: single_file.is_some(),
+            single_file: single_file.map(str::to_string),
+            collaborator_access_code_hash: String::new(),
+            alias: String::new(),
+        }
+    }
+
+    #[test]
+    fn listing_shows_the_file_a_single_file_workspace_serves() {
+        // A file-scoped workspace serves out of the parent directory, so showing
+        // `path` alone renders it identically to a directory workspace over the
+        // same folder — and both can be open at once, which is exactly when
+        // telling them apart matters.
+        let directory = workspace_info("/tmp/lab", None);
+        let single_file = workspace_info("/tmp/lab", Some("target.md"));
+
+        assert_eq!(display_workspace_scope(&directory), "/tmp/lab");
+        assert_eq!(display_workspace_scope(&single_file), "/tmp/lab/target.md");
+        assert_ne!(
+            display_workspace_scope(&directory),
+            display_workspace_scope(&single_file)
+        );
+    }
+
     #[test]
     fn admin_subcommands_parse_without_exposing_management_tokens() {
         let open = Cli::try_parse_from(["markon", "admin", "open"]).unwrap();
@@ -1361,6 +1444,26 @@ mod tests {
                 command: AdminCommands::Code
             })
         ));
+    }
+
+    #[test]
+    fn cli_open_init_preserves_single_file_scope() {
+        let file = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../README.md");
+        let target = WorkspaceOpenTarget::resolve(&file).unwrap();
+
+        let init = workspace_init_for_open_target(
+            &target,
+            WorkspaceFlags::default(),
+            String::new(),
+            String::new(),
+        );
+
+        assert_eq!(
+            init.path,
+            dunce::canonicalize(Path::new(env!("CARGO_MANIFEST_DIR")).join("../..")).unwrap()
+        );
+        assert_eq!(init.initial_path.as_deref(), Some("README.md"));
+        assert_eq!(init.single_file.as_deref(), Some("README.md"));
     }
 
     #[test]
