@@ -6,7 +6,8 @@ use markon_core::net::{available_bind_hosts, BindHostKind};
 use markon_core::server::{self, ServerConfig, WorkspaceInit};
 use markon_core::settings::AppSettings;
 use markon_core::workspace::{
-    expand_and_canonicalize, hash_access_code, ServerLock, WorkspaceFlags, WorkspaceRegistry,
+    expand_and_canonicalize, hash_access_code, ServerLock, WorkspaceFlags, WorkspaceOpenTarget,
+    WorkspaceRegistry,
 };
 use std::io::IsTerminal;
 use std::path::{Path, PathBuf};
@@ -786,9 +787,8 @@ async fn admin_browser_command(
 /// "attach to a live daemon" path and the "spawn a daemon, then attach" path so
 /// both render identically.
 struct ForwardPlan<'a> {
-    ws_root: &'a Path,
+    target: &'a WorkspaceOpenTarget,
     flags: WorkspaceFlags,
-    initial_path: Option<&'a str>,
     /// `Some(hash)` only when the CLI passed `--collaborator-access-code`; the
     /// running server then updates the workspace's collaborator hash to it.
     collaborator_hash_if_set: Option<&'a str>,
@@ -809,11 +809,7 @@ async fn forward_to_running_server(
     plan: &ForwardPlan<'_>,
 ) {
     match server
-        .add_or_update_workspace(
-            &plan.ws_root.to_string_lossy(),
-            plan.flags,
-            plan.collaborator_hash_if_set,
-        )
+        .add_or_update_open_target(plan.target, plan.flags, plan.collaborator_hash_if_set)
         .await
     {
         Ok(workspace_id) => {
@@ -825,19 +821,21 @@ async fn forward_to_running_server(
             } else {
                 lock_host.to_string()
             };
+            let identity_path = plan.target.identity_path();
             let summary = build_workspace_access_summary(
-                plan.ws_root,
+                &identity_path,
                 plan.flags,
                 &bind_host,
                 plan.advertised_host,
                 lock_port,
                 &workspace_id,
-                plan.initial_path,
+                plan.target.initial_path(),
                 plan.entry,
             );
             print_workspace_access_summary(&summary);
             if let Some(base_option) = plan.open_browser_target {
-                let redirect = server::workspace_url_path(&workspace_id, plan.initial_path);
+                let redirect =
+                    server::workspace_url_path(&workspace_id, plan.target.initial_path());
                 // The daemon mints the one-time bootstrap URL (nonce + its own
                 // bind-aware local base) over the control socket. An explicit
                 // trusted reverse-proxy origin remains an intentional override.
@@ -870,6 +868,25 @@ fn workspace_init_to_daemon(w: &WorkspaceInit) -> DaemonWorkspace {
         single_file: w.single_file.clone(),
         collaborator_access_code_hash: w.collaborator_access_code_hash.clone(),
         alias: w.alias.clone(),
+    }
+}
+
+/// Build the in-process server form from the same core-resolved target used by
+/// control-socket registration. This protects the foreground fallback from
+/// accidentally widening a single-file open into its parent directory.
+fn workspace_init_for_open_target(
+    target: &WorkspaceOpenTarget,
+    flags: WorkspaceFlags,
+    collaborator_access_code_hash: String,
+    alias: String,
+) -> WorkspaceInit {
+    WorkspaceInit {
+        path: target.root.clone(),
+        flags,
+        initial_path: target.initial_path().map(str::to_string),
+        single_file: target.single_file.clone(),
+        collaborator_access_code_hash,
+        alias,
     }
 }
 
@@ -1027,28 +1044,26 @@ async fn main() {
         return;
     }
 
-    let (ws_root, initial_path) = if let Some(ref file_str) = cli.file {
-        let path = Path::new(file_str);
-        let canonical = match dunce::canonicalize(path) {
-            Ok(p) => p,
+    let open_target = if let Some(ref file_str) = cli.file {
+        match WorkspaceOpenTarget::resolve(Path::new(file_str)) {
+            Ok(target) => target,
             Err(_) => {
                 eprintln!("Error: Path '{file_str}' not found.");
                 return;
             }
-        };
-        if canonical.is_dir() {
-            (canonical, None)
-        } else {
-            let parent = canonical.parent().unwrap().to_path_buf();
-            let filename = canonical.file_name().unwrap().to_string_lossy().to_string();
-            (parent, Some(filename))
         }
     } else {
-        (
-            std::env::current_dir().expect("Cannot determine working directory"),
-            None,
-        )
+        let current_dir = std::env::current_dir().expect("Cannot determine working directory");
+        match WorkspaceOpenTarget::resolve(&current_dir) {
+            Ok(target) => target,
+            Err(e) => {
+                eprintln!("Error: Cannot resolve working directory: {e}");
+                return;
+            }
+        }
     };
+    let ws_root = open_target.root.clone();
+    let initial_path = open_target.initial_path().map(str::to_string);
 
     // Workspace IDs are SHA-256(salt + path). For URLs to survive restarts the
     // salt must be stable. AppSettings::load() persists a random salt to
@@ -1057,21 +1072,13 @@ async fn main() {
     // (CLI / GUI) opens it. The port-derived fallback only kicks in when no
     // settings file exists yet.
     let mut settings = AppSettings::load();
-    let saved_workspace = settings
-        .workspaces
-        .iter()
-        .find(|w| w.single_file.is_none() && workspace_path_matches(&w.path, &ws_root));
+    let saved_workspace = settings.workspaces.iter().find(|w| {
+        w.single_file.as_deref() == open_target.single_file.as_deref()
+            && workspace_path_matches(&w.path, &ws_root)
+    });
     let flags = saved_workspace
         .map(|w| w.flags)
         .unwrap_or_else(|| default_workspace_flags(&settings));
-    let ws_init = WorkspaceInit {
-        path: ws_root.clone(),
-        flags,
-        initial_path: initial_path.clone(),
-        single_file: None,
-        collaborator_access_code_hash: String::new(),
-        alias: saved_workspace.map(|w| w.alias.clone()).unwrap_or_default(),
-    };
     let effective_salt = cli.salt.clone().unwrap_or_else(|| {
         if settings.salt.is_empty() {
             format!("markon:{}", cli.port)
@@ -1092,10 +1099,12 @@ async fn main() {
         cli.collaborator_access_code.as_deref(),
         &effective_salt,
     );
-    let ws_init = WorkspaceInit {
-        collaborator_access_code_hash: workspace_collaborator_access_code_hash.clone(),
-        ..ws_init
-    };
+    let ws_init = workspace_init_for_open_target(
+        &open_target,
+        flags,
+        workspace_collaborator_access_code_hash.clone(),
+        saved_workspace.map(|w| w.alias.clone()).unwrap_or_default(),
+    );
     let open_browser_target = cli.open_browser.clone().or_else(|| {
         if cli.file.is_some() {
             Some("local".to_string())
@@ -1131,9 +1140,8 @@ async fn main() {
                 &lock.host,
                 lock.port,
                 &ForwardPlan {
-                    ws_root: &ws_root,
+                    target: &open_target,
                     flags,
-                    initial_path: initial_path.as_deref(),
                     collaborator_hash_if_set: cli
                         .collaborator_access_code
                         .as_ref()
@@ -1175,7 +1183,8 @@ async fn main() {
         .iter()
         .filter(|w| !w.path.is_empty())
         .map(|w| {
-            let explicit = w.single_file.is_none() && workspace_path_matches(&w.path, &ws_root);
+            let explicit = w.single_file.as_deref() == open_target.single_file.as_deref()
+                && workspace_path_matches(&w.path, &ws_root);
             if explicit {
                 loaded_explicit_workspace = true;
             }
@@ -1255,9 +1264,8 @@ async fn main() {
                     server.host(),
                     server.port(),
                     &ForwardPlan {
-                        ws_root: &ws_root,
+                        target: &open_target,
                         flags,
-                        initial_path: initial_path.as_deref(),
                         collaborator_hash_if_set: cli
                             .collaborator_access_code
                             .as_ref()
@@ -1361,6 +1369,26 @@ mod tests {
                 command: AdminCommands::Code
             })
         ));
+    }
+
+    #[test]
+    fn cli_open_init_preserves_single_file_scope() {
+        let file = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../README.md");
+        let target = WorkspaceOpenTarget::resolve(&file).unwrap();
+
+        let init = workspace_init_for_open_target(
+            &target,
+            WorkspaceFlags::default(),
+            String::new(),
+            String::new(),
+        );
+
+        assert_eq!(
+            init.path,
+            dunce::canonicalize(Path::new(env!("CARGO_MANIFEST_DIR")).join("../..")).unwrap()
+        );
+        assert_eq!(init.initial_path.as_deref(), Some("README.md"));
+        assert_eq!(init.single_file.as_deref(), Some("README.md"));
     }
 
     #[test]
