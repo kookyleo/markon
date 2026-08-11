@@ -1,87 +1,87 @@
 ---
-title: 快速上手
-description: 用桌面版或 CLI 在 5 分钟内建立第一个 Markon Workspace，并了解管理员会话与功能开关。
+title: Getting started
+description: Create your first Markon Workspace with the desktop app or CLI, then learn the administrator session and feature switches.
 ---
 
-# 快速上手
+# Getting started
 
-本指南用最短路径建立一个目录工作区。若只想打开单个 Markdown 文件，直接把文件交给 Markon 即可。
+This guide takes the shortest path to a directory workspace. To open only one Markdown file, pass that file directly to Markon.
 
-## 桌面版
+## Desktop app
 
-### 1. 安装
+### 1. Install
 
 <DownloadButton />
 
-安装包覆盖 macOS Apple Silicon / Intel、Windows x64 / ARM64，以及 Linux amd64 / arm64。首次启动的系统安全提示见[安装说明](/guide/installation)。
+Packages are available for Apple Silicon and Intel Macs, Windows x64 and ARM64, and Linux amd64 and arm64. See [Installation](/guide/installation) for first-launch security prompts.
 
-### 2. 添加目录
+### 2. Add a directory
 
-启动 Markon，在 **Workspaces** 页点击左下角 `+`，选择包含 Markdown 的目录。
+Start Markon, select the **Workspaces** page, click `+` in the lower-left corner, and choose a directory containing Markdown files.
 
-也可以从系统文件管理器进入：
+You can also enter through the system file manager:
 
-- **macOS**：把 Markon.app 拖入 Finder 工具栏，在目标目录点图标；
-- **Windows**：在目录或 Markdown 文件的右键菜单中使用 Markon 打开。
+- **macOS:** drag Markon.app into the Finder toolbar, then click it in the target directory;
+- **Windows:** use Open with Markon from a directory or Markdown file's context menu.
 
-目录工作区会写入 `~/.markon/settings.json`，以后服务重启会恢复。
+Directory workspaces are recorded in `~/.markon/settings.json` and restored after the service restarts.
 
-### 3. 打开浏览器工作区
+### 3. Open the browser workspace
 
-点击工作区卡片的打开按钮。你会看到：
+Click the workspace card's open button. The workspace page contains:
 
-- 可展开的文件树；
-- Workspace 路径、别名和 id；
-- Search、Viewed、Edit、Live、Chat、Shared 六个开关；
-- Git 仓库的分支、历史与工作区改动；
-- 搜索入口与当前版本。
+- an expandable file tree;
+- workspace path, alias, and id;
+- Search, Viewed, Edit, Live, Chat, and Shared switches;
+- branch, history, and working-tree information for Git repositories;
+- search and current-version entry points.
 
-桌面端打开的浏览器会引导建立管理员会话，因此可以修改功能、增删文件、checkout 或 commit。单纯访问 URL 的浏览器不会因为来自本机就自动成为管理员。
+A browser opened by the desktop app is guided through an administrator session, so it can change features, manage files, check out branches, and commit. A browser does not become an administrator merely because it accesses a localhost URL.
 
-### 4. 选一条工作流
+### 4. Choose a workflow
 
-**阅读与搜索**
+**Read and search**
 
-1. 开启 Search。
-2. 打开 Markdown。
-3. 按 <kbd>/</kbd> 或 <kbd>g</kbd> 搜索文件和正文。
-4. 按 <kbd>?</kbd> 查看当前页面实际可用的快捷键。
+1. Enable Search.
+2. Open a Markdown file.
+3. Press <kbd>/</kbd> or <kbd>g</kbd> to search files and content.
+4. Press <kbd>?</kbd> to see the shortcuts available on the current page.
 
-**审阅长文档**
+**Review a long document**
 
-1. 开启 Viewed。
-2. 选中文字，建立高亮、删除线或 Note。
-3. 聚焦 H2–H6，用 <kbd>v</kbd> 标记 Viewed、<kbd>o</kbd> 独立折叠。
-4. 用标题操作导出当前章节 Notes 或打印章节。
+1. Enable Viewed.
+2. Select text and create a highlight, strikeout, or Note.
+3. Focus an H2–H6 heading; press <kbd>v</kbd> to mark it Viewed or <kbd>o</kbd> to fold it independently.
+4. Use heading actions to export Notes or print that section.
 
-**审阅 Git 改动**
+**Review Git changes**
 
-1. 回到工作区根页。
-2. 打开 **Working diff** 或某个 commit。
-3. 在 Rendered / Raw 间切换；Raw 还可选 Split / Unified。
-4. 用 Viewed 逐个处理文件，用 <kbd>j</kbd>/<kbd>k</kbd> 聚焦变更。
+1. Return to the workspace root.
+2. Open **Working diff** or a commit.
+3. Switch between Rendered and Raw; Raw also supports Split and Unified layouts.
+4. Use Viewed to process files and <kbd>j</kbd>/<kbd>k</kbd> to focus changes.
 
-## CLI / 服务器
+## CLI and servers
 
-### 1. 安装两个二进制
+### 1. Install both binaries
 
 ```bash
 cargo install markon markond
 ```
 
-`markon` 是本地控制客户端，`markond` 是后台服务。两者都应位于 `PATH`；如果找不到 `markond`，CLI 会退回前台服务模式。
+`markon` is the local control client and `markond` is the background service. Both should be on `PATH`. If the CLI cannot find `markond`, it falls back to foreground service mode.
 
-### 2. 打开文件或目录
+### 2. Open a file or directory
 
 ```bash
-markon README.md  # 路径参数默认尝试打开浏览器
-markon docs/      # 目录工作区
-markon -b         # 当前目录，并明确打开浏览器
+markon README.md  # path arguments open the browser by default
+markon docs/      # directory workspace
+markon -b         # current directory, explicitly open the browser
 ```
 
-第一次运行启动后台服务，后续调用把路径追加到同一服务。
+The first command starts the background service. Later commands add paths to the same service.
 
-### 3. 管理工作区
+### 3. Manage workspaces
 
 ```bash
 markon ls
@@ -91,49 +91,49 @@ markon detach 1
 markon shutdown
 ```
 
-交互式终端中的裸 `markon ls` 会打开 TUI；管道或重定向时输出静态 cards。也可用 `--format cards|table` 明确选择。
+Bare `markon ls` opens a TUI in an interactive terminal and prints static cards when piped or redirected. Use `--format cards|table` to choose explicitly.
 
-### 4. SSH 与管理员会话
+### 4. SSH and administrator sessions
 
-无桌面服务器上：
+On a headless server:
 
 ```bash
 markon admin code
 ```
 
-在浏览器的管理员引导页输入一次性配对码。管理浏览器会话与普通协作者严格分开。
+Enter the one-time pairing code on the browser's administrator bootstrap page. Administrator sessions remain separate from ordinary collaborator sessions.
 
-### 5. 局域网或反向代理
+### 5. LAN or reverse proxy
 
 ```bash
-# 局域网
+# LAN
 markon docs/ --host 0.0.0.0 --entry http://192.168.1.20:6419
 
-# HTTPS 反向代理
+# HTTPS reverse proxy
 markon docs/ --host 127.0.0.1 \
   --entry https://docs.example.com \
   --trusted-host https://docs.example.com
 ```
 
-`--entry` 既用于展示/二维码地址，也登记对应 Host/origin。公网部署仍须由反向代理提供 TLS，详见[反向代理](/advanced/reverse-proxy)。
+`--entry` supplies the displayed/QR-code address and registers its Host and origin. Public deployments still need TLS at the reverse proxy; see [Reverse proxy](/advanced/reverse-proxy).
 
-## 单文件工作区
+## Single-file workspaces
 
 ```bash
 markon path/to/README.md
 ```
 
-单文件工作区：
+A single-file workspace:
 
-- 搜索范围只有该文件；
-- 只开放正文与它明确引用、且仍在父目录内的本地资源；
-- 默认在下一次服务启动时自动移除；
-- 可在桌面全局设置关闭自动移除。
+- searches only that file;
+- exposes only the document and explicitly referenced local resources that remain inside its parent directory;
+- is removed automatically on the next service start by default;
+- can be retained by disabling automatic removal in desktop global settings.
 
-## 下一步
+## Next steps
 
-- [产品能力总览](/features/)
-- [运行架构](/guide/architecture)
-- [访问与权限](/features/access)
-- [数据与隐私](/advanced/data-and-privacy)
-- [命令行完整参考](/guide/cli)
+- [Feature overview](/features/)
+- [Architecture](/guide/architecture)
+- [Access and permissions](/features/access)
+- [Data and privacy](/advanced/data-and-privacy)
+- [Complete CLI reference](/guide/cli)
