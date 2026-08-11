@@ -6,11 +6,11 @@
 # Prerequisites:
 #   - CARGO_REGISTRY_TOKEN set (or `cargo login` already done)
 #   - Clean git working tree
-#   - Version already bumped via scripts/bump-version.sh and committed
+#   - Version already bumped on main by .github/workflows/auto-bump.yml
 #
 # Runs:
 #   1. Frontend build (npm ci && npm run build)
-#   2. All quality gates (scripts/quality-gate.sh, same as bump-version.sh)
+#   2. All quality gates (scripts/quality-gate.sh, same as .githooks/pre-push)
 #   3. cargo publish --dry-run -p markon-core
 #   4. cargo publish -p markon-core (lib, must go first)
 #   5. Wait for crates.io index propagation
@@ -48,7 +48,7 @@ step "npm ci && npm run build"
 npm ci || fail "npm ci failed"
 npm run build || fail "frontend build failed"
 
-# --- Quality gates (shared with bump-version.sh and .githooks/pre-push) ---
+# --- Quality gates (shared with .githooks/pre-push) ---
 scripts/quality-gate.sh || fail "Quality gates failed"
 
 # --- Dry run ---

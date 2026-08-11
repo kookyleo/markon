@@ -6,7 +6,8 @@ Markon 采用双通道（RC / Stable）发布模型，全流程 CI/CD 自动化�
 
 ```mermaid
 flowchart TD
-    A["Cargo.toml 版本变更 → push main"] --> B["Auto RC<br/>(auto-rc.yml)"]
+    A0["带标签的 PR 合并进 main"] --> A["Auto Bump<br/>(auto-bump.yml)<br/>写入 Cargo.toml 版本号"]
+    A --> B["Auto RC<br/>(auto-rc.yml)"]
     B --> C["打 Tag: v0.13.0-rc.1"]
     C --> D["gh workflow run release.yml<br/><i>dispatch 触发</i>"]
     D --> E["Release<br/>(release.yml)"]
@@ -15,13 +16,14 @@ flowchart TD
     G --> H["发布为 prerelease"]
     H --> I["上传 latest-rc.json<br/>到 updater release"]
 
-    I --> J{{"满 7 天的最新 RC<br/>无 release-blocker"}}
+    I --> J{{"满 7 天的最新 RC<br/>无 non-release"}}
     J --> K["Auto Promote<br/>(auto-promote.yml, 每日定时)"]
     K --> L["Promote<br/>(promote.yml)"]
     L --> M["复制 RC 资产 → 创建 stable release v0.13.0"]
     M --> N["上传 latest.json<br/>到 updater release"]
     N --> P["发布 markon-core + markon<br/>到 crates.io"]
 
+    style A0 fill:#8b5cf6,color:#fff
     style A fill:#4a9eff,color:#fff
     style E fill:#f59e0b,color:#fff
     style L fill:#10b981,color:#fff
@@ -37,7 +39,11 @@ flowchart TD
 ```mermaid
 graph LR
     subgraph "每次 push / PR 到 main"
-        CI["ci.yml<br/>test / clippy / fmt<br/>vitest / eslint"]
+        CI["ci.yml<br/>test / clippy / fmt<br/>package / vitest / eslint"]
+    end
+
+    subgraph "PR 合并时"
+        AB["auto-bump.yml"]
     end
 
     subgraph "Cargo.toml 版本变更时"
@@ -48,13 +54,15 @@ graph LR
         AP["auto-promote.yml"] -->|dispatch| PR["promote.yml"]
     end
 
+    AB -->|"推送版本号变更"| RC
     REL -->|"prerelease<br/>+ latest-rc.json"| UP["updater release"]
     PR -->|"stable release<br/>+ latest.json"| UP
 ```
 
 | Workflow | 触发方式 | 用途 |
 |----------|---------|------|
-| `ci.yml` | push / PR 到 main | test + clippy + fmt + vitest + eslint |
+| `ci.yml` | push / PR 到 main | test + clippy + fmt + 打包 dry-run + vitest + eslint |
+| `auto-bump.yml` | PR 以 merged 状态关闭（目标 main） | 读取 PR 标签 → 修改 `Cargo.toml` 版本号 → 推送到 main |
 | `auto-rc.yml` | push main 且 Cargo.toml 变更 | 检测版本变化 → 打 RC tag → 触发 Release |
 | `release.yml` | `workflow_dispatch` 或 tag push `v*` | 构建 + 签名 + 发布 + 上传 updater manifest |
 | `auto-promote.yml` | 每日 08:00 UTC 定时 + 手动 | 检查 RC 时间和 blocker → 触发 Promote |
@@ -63,25 +71,38 @@ graph LR
 
 ## 如何发布
 
-### 1. 修改版本号
+### 1. 给 Pull Request 打标签
 
-使用 bump 脚本——它在更新版本前强制运行所有质量门（fmt / clippy / 测试 / eslint），
-零 warning 策略。任何一步失败则中止，确保提交的版本号对应的一定是干净代码。
+没有 bump 命令要跑。版本号一律不手写，由 `auto-bump.yml` 从你合并的那个 PR 的
+标签推导而来——发版决定因此记录在 PR 上，事后可查。
 
-```bash
-scripts/bump-version.sh 0.13.2
-```
+| 标签 | 对 `0.15.19` 的效果 | 什么时候用 |
+|------|--------------------|-----------|
+| `semver:breaking` | → **`0.16.0`** | 命令行参数删改、配置或 lock 格式变更、`markon-core` 公开 API 变更——任何需要现有用户做出反应的改动 |
+| `semver:patch` | → **`0.15.20`** | 修复、新功能、依赖升级。与不打标签完全等价，打上它只是为了表态"我看过了，确实是修订级" |
+| *（不打标签）* | → **`0.15.20`** | 默认行为，保证 Dependabot 之类机器人开的 PR 不会卡住流水线 |
+| `release:skip` | **不改版本，不发版** | 纯文档、纯 CI、纯测试改动，没人需要为它出一个构建 |
 
-脚本会原子地完成更新、提交、推送：
-- `Cargo.toml` → `workspace.package.version`（主版本来源）
-- `Cargo.toml` → `workspace.dependencies.markon-core.version`（MAJOR.MINOR 范围）
-- `Cargo.lock`（通过 `cargo check`）
-- **仅** stage `Cargo.toml` + `Cargo.lock`（绝不使用 `-A`），以
-  `chore: bump to <version>` 提交后 `git push`，确保 bump commit 是
-  `origin/main` 的 HEAD——`auto-rc.yml` 依赖此 push 来启动发布流水线。
+优先级：`release:skip` > `semver:breaking` > 其余。
 
-> 也可以手动编辑（修改 `Cargo.toml` 中的 `workspace.package.version` 后
-> 自行 commit、push），但推荐使用脚本以保证一致性和质量门。
+**1.0 之前的映射规则。** 主版本号还是 `0` 时，破坏性变更抬的是**中间位**——
+`0.15.19 → 0.16.0`，而不是 `1.0.0`——因为主版本 `0` 本身已经表示"不承诺稳定"。
+新功能和修复都落在修订位。项目到达 `1.0` 时这套映射需要重新制定。
+
+> **`release:skip` 比看起来重要。** 因为不打标签默认按修订级处理，
+> **每个**合并的 PR 都会切出一个新版本——改一个 README 错别字也会。
+> 记得给这类无需发版的改动打上它。
+
+合并 PR 就是全部动作。随后 `auto-bump.yml` 会改写 `workspace.package.version`
+（中间位变动时同步改 `markon-core` 的 `MAJOR.MINOR` 依赖范围），用
+`cargo metadata` 刷新 `Cargo.lock`，并向 main 推一个
+`chore: bump to <version>` 提交。
+
+> **机器人为什么能直推 main。** `main` 是保护分支，内置的 `GITHUB_TOKEN` 写不进去，
+> 所以这个 bump 用 `RELEASE_PUSH_TOKEN`（管理员 PAT，与 `promote.yml` 更新
+> Homebrew / Scoop tap 时用的是同一个 secret）推送。该提交跳过 CI，这是安全的：
+> 它叠在一个刚刚跑完整套检查的提交之上，且只改两个版本字段。
+> 质量由 PR 把关，不由 bump 把关。
 
 ### 2. 自动化流程
 
@@ -103,7 +124,7 @@ sequenceDiagram
 
     Note over AP: 每日 08:00 UTC 定时
     AP->>GH: RC 发布满 7 天？
-    AP->>GH: 无 release-blocker issue？
+    AP->>GH: 无 non-release issue？
     AP->>Prom: gh workflow run promote.yml
     Prom->>GH: 复制资产 → stable release
     Prom->>GH: 上传 latest.json
@@ -119,13 +140,13 @@ sequenceDiagram
 每天选出**满 7 天的 RC 里最新的那个**，满足以下两条即晋升：
 
 - 比当前最新 stable 更新（不倒退、不重发）
-- 无 `release-blocker` 标签的 open issue
+- 无 `non-release` 标签的 open issue
 
 > 取「满 7 天里最新」而非「绝对最新」：否则高频发版时新 RC 永远没满 7 天，crates.io 会一直停在旧版（0.13.x 曾因此卡住一个月）。详细取舍见 `auto-promote.yml` 注释。
 
 ### 4. 阻止发布
 
-给任意 open issue 添加 `release-blocker` 标签即可阻止自动晋升。这是手动决策——发现严重 bug 时添加，修复后移除标签（或关闭 issue）。
+给任意 open issue 添加 `non-release` 标签即可阻止自动晋升。这是手动决策——发现严重 bug 时添加，修复后移除标签（或关闭 issue）。
 
 ### 5. 手动操作
 
@@ -176,6 +197,10 @@ scripts/publish-crates.sh
 Secret **`RELEASE_PUSH_TOKEN`** —— 一个管理员账号的 PAT（fine-grained，
 仅需 `Contents: Read and write`）。分支保护 `enforce_admins=off`，管理员推送即可
 bypass。未配置该 secret 时推送会发出 warning 并跳过（不导致 job 失败）。
+
+`auto-bump.yml` 推送版本号变更用的是同一个 secret，但它在缺失时**不跳过**：
+那里没有 token 就意味着版本号不变，进而没有 RC、完全不会发版，
+所以该 job 会直接报错失败，而不是悄悄放过。
 
 ## 更新通道
 

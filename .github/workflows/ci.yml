@@ -60,6 +60,58 @@ jobs:
       - name: Run tests
         run: cargo test --verbose
 
+  package:
+    name: Package
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Linux system dependencies
+        run: |
+          for attempt in 1 2 3; do
+            if sudo apt-get update && sudo apt-get install -y --no-install-recommends \
+              libwebkit2gtk-4.1-dev \
+              libappindicator3-dev \
+              librsvg2-dev \
+              libfontconfig1-dev \
+              pkg-config \
+              patchelf; then
+              exit 0
+            fi
+            sudo apt-get clean
+            sleep $((attempt * 10))
+          done
+          exit 1
+
+      - name: Setup Rust
+        uses: actions-rust-lang/setup-rust-toolchain@v1
+        with:
+          toolchain: stable
+
+      - name: Cache Rust dependencies
+        uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: ci-package
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Build frontend assets
+        run: npm install && npm run build
+
+      # Packages markon-core into the exact tarball crates.io would receive and
+      # compiles it. This is the ONLY check that catches packaging regressions —
+      # e.g. assets/dist/ dropped from `include` in crates/core/Cargo.toml. Plain
+      # `cargo test` always passes because the bundle exists on disk; only the
+      # packaged tarball reveals the gap, and by then the release is already cut.
+      #
+      # --allow-dirty is intentional: the included, gitignored assets/dist/ that
+      # the step above produces always reads as dirty.
+      - name: Verify markon-core would publish
+        run: cargo publish --dry-run -p markon-core --allow-dirty
+
   clippy:
     name: Clippy
     runs-on: ubuntu-latest

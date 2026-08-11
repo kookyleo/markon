@@ -1,12 +1,11 @@
 #!/usr/bin/env bash
 # Pre-push quality gate: run the full local suite before a push hits the remote,
 # so CI red is caught here instead of after a round-trip. Delegates to
-# scripts/quality-gate.sh — the same gates scripts/bump-version.sh and
-# scripts/publish-crates.sh enforce (minus their release-only bundle build /
-# publishability check).
+# scripts/quality-gate.sh — the same gates scripts/publish-crates.sh enforces
+# (minus its release-only bundle build / publishability check, which CI covers
+# on every PR via the Package job).
 #
 # Enable once per clone:  git config core.hooksPath .githooks
-#   (scripts/bump-version.sh arms this idempotently at release time.)
 # Bypass for a single push (e.g. a WIP branch):  git push --no-verify
 set -euo pipefail
 
