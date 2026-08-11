@@ -1,10 +1,18 @@
 <script setup>
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
-import { useRoute, withBase } from 'vitepress';
-import { useHomeLocale } from '../home-locale';
+import { useData, useRoute } from 'vitepress';
+import { contentLocaleFromPath, localizedContentPath } from '../../content-locales';
+import {
+  clearHeadingFocus,
+  navigateHeadings,
+} from '../section-focus';
 
-const { locale } = useHomeLocale();
 const route = useRoute();
+const { site, theme } = useData();
+const locale = computed(() => contentLocaleFromPath(route.path, site.value.base));
+const primaryModifier = ref('Ctrl');
+const canGoBack = ref(false);
+const canGoForward = ref(false);
 const isOpen = ref(false);
 const currentItemIndex = ref(-1);
 const closeButton = ref(null);
@@ -14,6 +22,9 @@ const COPY = {
     homeTitle: '首页导览与快捷键',
     docsTitle: '文档站功能与快捷键',
     close: '关闭',
+    or: '或',
+    back: '后退',
+    forward: '前进',
     homeGroups: [
       {
         title: '浏览',
@@ -26,7 +37,7 @@ const COPY = {
       {
         title: '前往',
         rows: [
-          { keys: ['/'], label: '打开文档搜索' },
+          { keys: ['/', 'Mod K'], alternatives: true, label: '打开文档搜索' },
           { keys: ['g'], label: '快速上手' },
           { keys: ['f'], label: '功能介绍' },
           { keys: ['d'], label: '下载 Markon' },
@@ -38,11 +49,11 @@ const COPY = {
       {
         title: '本站',
         rows: [
-          { keys: ['/'], label: '打开文档搜索' },
-          { keys: ['⌘ K', 'Ctrl K'], label: '打开文档搜索' },
+          { keys: ['/', 'Mod K'], alternatives: true, label: '打开文档搜索' },
           { keys: ['h'], label: '返回首页' },
           { keys: ['g'], label: '快速上手' },
           { keys: ['f'], label: '功能介绍' },
+          { keys: ['j', 'k'], label: '下一 / 上一章节' },
         ],
       },
       {
@@ -58,6 +69,9 @@ const COPY = {
     homeTitle: 'Home navigation & shortcuts',
     docsTitle: 'Documentation functions & shortcuts',
     close: 'Close',
+    or: 'or',
+    back: 'Back',
+    forward: 'Forward',
     homeGroups: [
       {
         title: 'Browse',
@@ -70,7 +84,7 @@ const COPY = {
       {
         title: 'Go to',
         rows: [
-          { keys: ['/'], label: 'Open documentation search' },
+          { keys: ['/', 'Mod K'], alternatives: true, label: 'Open documentation search' },
           { keys: ['g'], label: 'Getting started' },
           { keys: ['f'], label: 'Feature tour' },
           { keys: ['d'], label: 'Download Markon' },
@@ -82,11 +96,11 @@ const COPY = {
       {
         title: 'Site',
         rows: [
-          { keys: ['/'], label: 'Open documentation search' },
-          { keys: ['⌘ K', 'Ctrl K'], label: 'Open documentation search' },
+          { keys: ['/', 'Mod K'], alternatives: true, label: 'Open documentation search' },
           { keys: ['h'], label: 'Home' },
           { keys: ['g'], label: 'Getting started' },
           { keys: ['f'], label: 'Feature guide' },
+          { keys: ['j', 'k'], label: 'Next / previous section' },
         ],
       },
       {
@@ -102,6 +116,9 @@ const COPY = {
     homeTitle: 'ホームのナビゲーションとショートカット',
     docsTitle: 'ドキュメントの機能とショートカット',
     close: '閉じる',
+    or: 'または',
+    back: '戻る',
+    forward: '進む',
     homeGroups: [
       {
         title: '閲覧',
@@ -114,7 +131,7 @@ const COPY = {
       {
         title: '移動',
         rows: [
-          { keys: ['/'], label: 'ドキュメント検索を開く' },
+          { keys: ['/', 'Mod K'], alternatives: true, label: 'ドキュメント検索を開く' },
           { keys: ['g'], label: 'クイックスタート' },
           { keys: ['f'], label: '機能紹介' },
           { keys: ['d'], label: 'Markon をダウンロード' },
@@ -126,11 +143,11 @@ const COPY = {
       {
         title: 'サイト',
         rows: [
-          { keys: ['/'], label: 'ドキュメント検索を開く' },
-          { keys: ['⌘ K', 'Ctrl K'], label: 'ドキュメント検索を開く' },
+          { keys: ['/', 'Mod K'], alternatives: true, label: 'ドキュメント検索を開く' },
           { keys: ['h'], label: 'ホームへ戻る' },
           { keys: ['g'], label: 'クイックスタート' },
           { keys: ['f'], label: '機能紹介' },
+          { keys: ['j', 'k'], label: '次 / 前のセクション' },
         ],
       },
       {
@@ -147,10 +164,96 @@ const COPY = {
 const copy = computed(() => COPY[locale.value]);
 const isHome = ref(false);
 const panelTitle = computed(() => isHome.value ? copy.value.homeTitle : copy.value.docsTitle);
-const panelGroups = computed(() => isHome.value ? copy.value.homeGroups : copy.value.docsGroups);
+const historyRows = computed(() => [
+  canGoBack.value ? { keys: ['History Back'], label: copy.value.back } : null,
+  canGoForward.value ? { keys: ['History Forward'], label: copy.value.forward } : null,
+].filter(Boolean));
+const panelGroups = computed(() => {
+  const groups = isHome.value ? copy.value.homeGroups : copy.value.docsGroups;
+  if (!historyRows.value.length) return groups;
+  const navigationGroup = isHome.value ? 1 : 0;
+  return groups.map((group, index) => index === navigationGroup
+    ? { ...group, rows: [...group.rows, ...historyRows.value] }
+    : group);
+});
+
+const HISTORY_INDEX_KEY = '__markonDocsHistoryIndex';
+let historyIndex = 0;
+let furthestHistoryIndex = 0;
+let traversingHistory = false;
 
 function isHomePage() {
   return Boolean(document.querySelector('.VPHome'));
+}
+
+function platformModifier() {
+  const platform = navigator.userAgentData?.platform
+    || navigator.platform
+    || navigator.userAgent
+    || '';
+  return /Mac|iPhone|iPad|iPod/i.test(platform) ? '⌘' : 'Ctrl';
+}
+
+function displayKey(key) {
+  if (key === 'Mod K') return `${primaryModifier.value} K`;
+  if (key === 'History Back') return primaryModifier.value === '⌘' ? '⌘ [' : 'Alt ←';
+  if (key === 'History Forward') return primaryModifier.value === '⌘' ? '⌘ ]' : 'Alt →';
+  return key;
+}
+
+function updateHistoryAvailability() {
+  const navigationApi = window.navigation;
+  if (navigationApi && typeof navigationApi.canGoBack === 'boolean') {
+    canGoBack.value = navigationApi.canGoBack;
+    canGoForward.value = navigationApi.canGoForward;
+    return;
+  }
+  canGoBack.value = historyIndex > 0;
+  canGoForward.value = historyIndex < furthestHistoryIndex;
+}
+
+function replaceHistoryIndex(index) {
+  history.replaceState(
+    { ...(history.state || {}), [HISTORY_INDEX_KEY]: index },
+    '',
+  );
+}
+
+function initializeHistoryTracking() {
+  const existing = Number(history.state?.[HISTORY_INDEX_KEY]);
+  historyIndex = Number.isInteger(existing) ? existing : 0;
+  furthestHistoryIndex = historyIndex;
+  if (!Number.isInteger(existing)) replaceHistoryIndex(historyIndex);
+  updateHistoryAvailability();
+}
+
+function recordRouteNavigation() {
+  const existing = Number(history.state?.[HISTORY_INDEX_KEY]);
+  if (traversingHistory && Number.isInteger(existing)) {
+    historyIndex = existing;
+  } else {
+    historyIndex += 1;
+    furthestHistoryIndex = historyIndex;
+    replaceHistoryIndex(historyIndex);
+  }
+  traversingHistory = false;
+  requestAnimationFrame(updateHistoryAvailability);
+}
+
+function onPopState() {
+  traversingHistory = true;
+  requestAnimationFrame(updateHistoryAvailability);
+}
+
+function historyShortcutDirection(event) {
+  if (primaryModifier.value === '⌘') {
+    if (event.metaKey && !event.ctrlKey && !event.altKey && event.key === '[') return 'back';
+    if (event.metaKey && !event.ctrlKey && !event.altKey && event.key === ']') return 'forward';
+    return null;
+  }
+  if (event.altKey && !event.metaKey && !event.ctrlKey && event.key === 'ArrowLeft') return 'back';
+  if (event.altKey && !event.metaKey && !event.ctrlKey && event.key === 'ArrowRight') return 'forward';
+  return null;
 }
 
 function homeItems() {
@@ -160,33 +263,55 @@ function homeItems() {
   return [hero, ...cards, downloads].filter(item => item instanceof HTMLElement);
 }
 
+function homeHeading(item) {
+  if (!(item instanceof HTMLElement)) return null;
+  if (item.matches('.VPHero .main')) return item.querySelector('h1, .name');
+  if (item.matches('[data-feature-card]')) return item.querySelector('h3');
+  if (item.matches('.markon-home-download-section')) return item.querySelector('h2');
+  return null;
+}
+
+function prepareHomeSections() {
+  for (const item of homeItems()) {
+    item.classList.add('heading-section', 'home-heading-section');
+    const heading = homeHeading(item);
+    if (heading instanceof HTMLElement) heading.classList.add('home-section-heading');
+  }
+}
+
+function cleanupHomeSections() {
+  clearHeadingFocus();
+  document.querySelectorAll('.home-heading-section').forEach(item => {
+    item.classList.remove('heading-section', 'home-heading-section');
+    item.removeAttribute('tabindex');
+  });
+  document.querySelectorAll('.home-section-heading').forEach(heading => {
+    heading.classList.remove('home-section-heading');
+  });
+}
+
 function isTypingTarget(target) {
   if (!(target instanceof HTMLElement)) return false;
   return target.isContentEditable || ['INPUT', 'TEXTAREA', 'SELECT'].includes(target.tagName);
 }
 
 function clearCurrentItem() {
-  const activeItem = document.activeElement;
-  if (activeItem instanceof HTMLElement) activeItem.blur();
-  document.querySelectorAll('.home-shortcut-current').forEach(item => {
-    item.classList.remove('home-shortcut-current');
-  });
+  clearHeadingFocus();
+  currentItemIndex.value = -1;
 }
 
-function selectHomeItem(delta) {
+function selectHomeItem(direction) {
   const items = homeItems();
   if (!items.length) return;
-  if (currentItemIndex.value < 0) {
-    currentItemIndex.value = delta > 0 ? 0 : items.length - 1;
-  } else {
-    currentItemIndex.value = (currentItemIndex.value + delta + items.length) % items.length;
-  }
-  clearCurrentItem();
-  const item = items[currentItemIndex.value];
-  item.classList.add('home-shortcut-current');
+  prepareHomeSections();
+  const headings = items.map(homeHeading).filter(heading => heading instanceof HTMLElement);
+  const heading = navigateHeadings(headings, direction);
+  if (!heading) return;
+  const item = heading.closest('.home-heading-section');
+  currentItemIndex.value = items.indexOf(item);
+  if (!(item instanceof HTMLElement)) return;
   if (!item.hasAttribute('tabindex')) item.setAttribute('tabindex', '-1');
   item.focus({ preventScroll: true });
-  item.scrollIntoView({ behavior: 'smooth', block: 'center' });
 }
 
 function openCurrentItem() {
@@ -212,10 +337,19 @@ function scrollTarget(selector) {
 }
 
 function navigate(path) {
-  const href = withBase(path);
+  const href = localeHref(path);
   const target = document.querySelector(`a[href="${href}"]`);
   if (target instanceof HTMLElement) target.click();
   else window.location.assign(href);
+}
+
+function localeHref(path) {
+  return localizedContentPath(
+    path,
+    locale.value,
+    theme.value.markonContentLocales,
+    site.value.base,
+  );
 }
 
 async function openHelp() {
@@ -229,13 +363,33 @@ function closeHelp() {
 }
 
 function onKeydown(event) {
-  if (event.metaKey || event.ctrlKey || event.altKey) return;
   if (isTypingTarget(event.target)) return;
+
+  const historyDirection = historyShortcutDirection(event);
+  const canTraverse = historyDirection === 'back' ? canGoBack.value : canGoForward.value;
+  if (historyDirection) {
+    if (canTraverse) {
+      event.preventDefault();
+      closeHelp();
+      historyDirection === 'back' ? history.back() : history.forward();
+    }
+    return;
+  }
+
+  if (event.metaKey || event.ctrlKey || event.altKey) return;
 
   if (isOpen.value) {
     if (event.key === 'Escape' || event.key === '?') {
       event.preventDefault();
       closeHelp();
+    }
+    return;
+  }
+
+  if (event.key === 'Escape' && isHomePage()) {
+    if (currentItemIndex.value >= 0) {
+      event.preventDefault();
+      clearCurrentItem();
     }
     return;
   }
@@ -263,16 +417,16 @@ function onKeydown(event) {
     return;
   } else if (key === 'j') {
     event.preventDefault();
-    selectHomeItem(1);
+    selectHomeItem('next');
   } else if (key === 'k') {
     event.preventDefault();
-    selectHomeItem(-1);
+    selectHomeItem('prev');
   } else if (event.key === 'Enter' && currentItemIndex.value >= 0) {
     event.preventDefault();
     openCurrentItem();
   } else if (key === 'g') {
     event.preventDefault();
-    clickTarget(`.VPHero a[href="${withBase('/guide/getting-started')}"]`);
+    clickTarget(`.VPHero a[href="${localeHref('/guide/getting-started')}"]`);
   } else if (key === 'f') {
     event.preventDefault();
     scrollTarget('.feature-gallery');
@@ -288,24 +442,44 @@ function onFocusIn(event) {
   if (index >= 0) currentItemIndex.value = index;
 }
 
+function onHomeOutsidePointer(event) {
+  if (!isHomePage() || currentItemIndex.value < 0) return;
+  const target = event.target;
+  if (!(target instanceof Element) || target.closest('.home-heading-section')) return;
+  clearCurrentItem();
+}
+
 onMounted(() => {
+  primaryModifier.value = platformModifier();
+  initializeHistoryTracking();
   isHome.value = isHomePage();
+  if (isHome.value) requestAnimationFrame(prepareHomeSections);
   window.addEventListener('keydown', onKeydown);
+  window.addEventListener('popstate', onPopState);
+  window.navigation?.addEventListener('currententrychange', updateHistoryAvailability);
   document.addEventListener('focusin', onFocusIn);
+  document.addEventListener('mousedown', onHomeOutsidePointer);
+  document.addEventListener('touchstart', onHomeOutsidePointer, { passive: true });
 });
 
 watch(() => route.path, async () => {
   closeHelp();
+  cleanupHomeSections();
   currentItemIndex.value = -1;
   await nextTick();
-  clearCurrentItem();
   isHome.value = isHomePage();
+  if (isHome.value) requestAnimationFrame(prepareHomeSections);
+  recordRouteNavigation();
 });
 
 onBeforeUnmount(() => {
   window.removeEventListener('keydown', onKeydown);
+  window.removeEventListener('popstate', onPopState);
+  window.navigation?.removeEventListener('currententrychange', updateHistoryAvailability);
   document.removeEventListener('focusin', onFocusIn);
-  clearCurrentItem();
+  document.removeEventListener('mousedown', onHomeOutsidePointer);
+  document.removeEventListener('touchstart', onHomeOutsidePointer);
+  cleanupHomeSections();
 });
 </script>
 
@@ -322,7 +496,10 @@ onBeforeUnmount(() => {
             <h3>{{ group.title }}</h3>
             <div v-for="row in group.rows" :key="row.label" class="home-help-row">
               <span class="home-help-keys">
-                <kbd v-for="key in row.keys" :key="key">{{ key }}</kbd>
+                <template v-for="(key, index) in row.keys" :key="key">
+                  <span v-if="row.alternatives && index > 0" class="home-help-or">{{ copy.or }}</span>
+                  <kbd>{{ displayKey(key) }}</kbd>
+                </template>
               </span>
               <span>{{ row.label }}</span>
             </div>
@@ -346,7 +523,7 @@ onBeforeUnmount(() => {
 }
 
 .home-help-panel {
-  width: min(680px, 100%);
+  width: min(760px, 100%);
   overflow: hidden;
   border: 1px solid var(--vp-c-divider);
   border-radius: 14px;
@@ -407,7 +584,7 @@ onBeforeUnmount(() => {
 
 .home-help-row {
   display: grid;
-  grid-template-columns: 88px 1fr;
+  grid-template-columns: 116px minmax(0, 1fr);
   min-height: 38px;
   align-items: center;
   gap: 12px;
@@ -417,7 +594,14 @@ onBeforeUnmount(() => {
 
 .home-help-keys {
   display: flex;
+  align-items: center;
   gap: 5px;
+}
+
+.home-help-or {
+  color: var(--vp-c-text-3);
+  font-size: 11px;
+  line-height: 1;
 }
 
 .home-help-row kbd {

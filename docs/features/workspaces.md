@@ -1,77 +1,57 @@
 ---
-title: 工作区与文件浏览
-description: Markon 多工作区、单文件隔离、GitHub 风格目录页、文件操作与 Workspace Spotlight 入口。
+title: Workspaces and file browsing
+description: Markon multi-workspace management, single-file isolation, directory browsing, file operations, and Spotlight entry points.
 ---
 
-# 工作区与文件浏览
+# Workspaces and file browsing
 
-Markon 的基本单位是 **Workspace**。它既可以是一个目录，也可以是一个被严格限制范围的单文件。
+A **workspace** is Markon's basic unit. It can be a directory or a strictly scoped single file.
 
-## 目录页提供什么
+## Directory dashboard
 
-打开目录工作区后，根页面不是简单的链接列表，而是工作区仪表面：
+A directory workspace provides:
 
-- GitHub 风格的文件/目录列表，以及每项最近提交摘要和时间；
-- 可在树中原地展开子目录，展开状态写入 URL hash；
-- `All files` / `Markdown` 文件筛选；
-- 文件名、H1 文档标题与内容统一进入 Workspace Spotlight；
-- Git 仓库显示当前分支、分支/标签切换器、提交数和工作区改动；
-- 右侧显示六个功能开关与 Git 状态；
-- 别名、绝对路径、workspace id 和当前 URL 可直接复制。
+- a GitHub-style file tree with recent commit summaries;
+- inline directory expansion saved in the URL hash;
+- All files and Markdown filters;
+- file-name, H1-title, and content results in Workspace Spotlight;
+- branch, tag, commit, and working-tree information for Git repositories;
+- six workspace feature flags and Git status;
+- copyable aliases, absolute paths, workspace IDs, and URLs.
 
-表格列宽可以拖动，布局偏好保存在当前浏览器。窄屏会切换成适合移动端的单列布局。
+Column widths are resizable and saved in the browser. Narrow screens use a single-column layout.
 
-## 文件与目录操作
+## File and directory operations
 
-持有管理员会话时，目录页还可以：
-
-- 新建 Markdown 文件；
-- 新建目录；
-- 删除文件；
-- 修改 Workspace 别名；
-- 调整 `Search`、`Viewed`、`Edit`、`Live`、`Chat`、`Shared` 开关。
-
-这些接口会再次校验管理员角色、same-origin 和工作区路径，协作者不能通过直接构造请求获得结构性写权限。
+With an admin session, you can create Markdown files and directories, delete files, rename the workspace alias, and change `Search`, `Viewed`, `Edit`, `Live`, `Chat`, and `Shared`. Every endpoint rechecks the admin role, same origin, and workspace path; collaborators cannot gain structural write access by constructing requests manually.
 
 ## Workspace Spotlight
 
-按 <kbd>/</kbd> 或 <kbd>g</kbd> 打开统一查找器。结果分为：
+Press <kbd>/</kbd> or <kbd>g</kbd> to search file names, paths, top-level H1 titles, and indexed content. Arrow keys move, Enter opens, and Esc closes. File navigation remains available when Search is disabled. See [Workspace Spotlight](/features/search).
 
-- 文件名与路径；
-- Markdown 的首个顶层 H1 文档标题；
-- 全文命中及上下文片段。
+## Directory persistence
 
-可以用方向键移动、Enter 打开、Esc 关闭。Search 未开启时仍可使用文件导航；内容索引结果取决于该工作区的 Search 开关。
+Directory workspaces are stored in `~/.markon/settings.json`. Paths, aliases, flags, and stable workspace IDs survive a service restart. Registering the same path updates the existing entry. `markon detach <id|index>` unregisters it without deleting files or review history.
 
-→ 搜索实现与限制见 [Workspace Spotlight](/features/search)。
+## Single-file isolation
 
-## 目录工作区的持久性
+Opening one `.md` or `.markdown` file creates a single-file workspace:
 
-目录工作区记录在 `~/.markon/settings.json` 中。重新启动 `markond` 后，路径、别名、功能开关和 workspace id 都会恢复。
+- search covers only that file;
+- unrelated sibling files are inaccessible;
+- explicitly referenced images, styles, audio, and video may be read only within the parent directory;
+- escaping `../`, absolute paths, and out-of-bound symlinks are rejected.
 
-同一路径重复注册不会创建第二份工作区，而是更新现有条目的功能状态。`markon ls` 展示当前注册表；`markon detach <id|序号>` 只解除注册，不删除目录或文档。
+`auto_remove_single_file_workspaces` controls whether these workspaces are removed from the registry on the next service start and defaults to enabled.
 
-## 单文件隔离
-
-用 Markon 打开一个 `.md` / `.markdown` 文件时会建立单文件工作区：
-
-- 搜索只覆盖该文件；
-- 未引用的同目录文件不可访问；
-- 明确引用的图片、样式、音频、视频等资源可以读取，但规范化后必须仍位于父目录内；
-- 逃出父目录的 `../`、绝对路径与越界 symlink 会被拒绝。
-
-设置项 `auto_remove_single_file_workspaces` 控制这些工作区是否在下次服务启动时自动移除，默认为开启。
-
-## 多入口共享同一注册表
-
-桌面端、`markon` CLI 和浏览器管理员页看到的是同一个服务状态：
+## One shared registry
 
 ```bash
-markon docs/                 # 注册或打开目录
-markon README.md             # 注册或打开单文件
-markon ls                    # 交互式浏览；非 TTY 时输出静态 cards
-markon set 1 edit on         # 修改第 1 个工作区
-markon detach 1              # 解除注册，不删除文件
+markon docs/
+markon README.md
+markon ls
+markon set 1 edit on
+markon detach 1
 ```
 
-完整命令见[命令行选项](/guide/cli)。
+The desktop app, CLI, and browser admin page all observe the same service registry. See [Command-line options](/guide/cli).

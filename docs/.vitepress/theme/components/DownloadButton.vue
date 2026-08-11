@@ -2,7 +2,6 @@
 import { computed, onMounted, ref } from 'vue';
 import { useData } from 'vitepress';
 import { fetchLatestRelease } from '../latest-release';
-import { useHomeLocale } from '../home-locale';
 
 const props = defineProps({
   // 'primary': big auto-detected button + collapsible others
@@ -13,8 +12,7 @@ const props = defineProps({
   os: { type: String, default: null },
 });
 
-const { theme, lang, frontmatter } = useData();
-const { locale: homeLocale } = useHomeLocale();
+const { theme, lang } = useData();
 const release = ref(theme.value.markonRelease);
 
 const COPY = {
@@ -56,7 +54,6 @@ const COPY = {
   },
 };
 const localeKey = computed(() => {
-  if (frontmatter.value.layout === 'home') return homeLocale.value;
   return lang.value.startsWith('ja') ? 'ja' : lang.value.startsWith('en') ? 'en' : 'zh';
 });
 const copy = computed(() => COPY[localeKey.value]);

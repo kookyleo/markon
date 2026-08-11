@@ -1,62 +1,35 @@
 ---
-title: 章节进度与折叠
-description: Markon 的 H2–H6 Viewed 状态、独立折叠、本地 UI 偏好与章节级操作。
+title: Viewed progress and folding
+description: H2–H6 Viewed state, independent folding, local UI preferences, and section actions.
 ---
 
-# 章节进度与折叠
+# Viewed progress and folding
 
 <div class="feature-illustration">
-  <img src="/illustrations/03-viewed.svg" alt="Markon 章节 Viewed 状态" />
+  <img src="/illustrations/03-viewed.svg" alt="Section Viewed state" />
 </div>
 
-开启 `Viewed` 后，Markon 以 H2–H6 章节为单位追踪审阅进度。Viewed 与折叠相关联，但不是同一个状态。
+When `Viewed` is enabled, Markon tracks review progress by H2–H6 section. Viewed and folding interact but remain distinct states.
 
 ## Viewed
 
-- 标记某标题 Viewed 时，该章节同时折叠；
-- 取消 Viewed 时展开；
-- H1 下方显示整页进度与批量操作；
-- TOC 反映 Viewed 状态；
-- Viewed 保存到 SQLite；
-- Shared 开启后，协作者同步同一 Viewed 数据。
+Marking a heading Viewed folds its section; clearing Viewed expands it. H1 shows page progress and bulk actions, the TOC reflects the state, and values are stored in SQLite. Shared workspaces synchronize the same Viewed dataset. Press <kbd>v</kbd> for the focused section.
 
-<kbd>v</kbd> 切换当前聚焦章节。聚焦来自滚动位置、TOC 导航或 <kbd>j</kbd>/<kbd>k</kbd> 标题导航。
+## Independent folding
 
-## 独立折叠
+Press <kbd>o</kbd> to fold or expand the current section without changing Viewed. Each H2–H6 range is calculated by heading level. Fold state is a browser UI preference, is not written to SQLite, and is not synchronized. Notes temporarily expand their source section.
 
-<kbd>o</kbd> 只切换当前章节显示，不改变 Viewed：
+Print output uses placeholders for folded content by default. `print_collapsed_content` or `--print-collapsed-content` forces inclusion.
 
-- H2–H6 都可以独立折叠；
-- 嵌套章节按 heading level 计算范围；
-- 折叠后插入可点击占位；
-- 打开折叠区内的 Note 时会临时展开，关闭后恢复；
-- 普通折叠偏好保存在当前浏览器，不写 SQLite，也不在 Shared 客户端之间同步。
+## Heading actions
 
-打印时默认用占位表示折叠内容；全局 `print_collapsed_content` 或 CLI `--print-collapsed-content` 可强制包含。
+Focused H2–H6 headings offer Viewed, Print, Fold/Expand, and Export Notes with a section count. H1 offers all-viewed/all-unviewed, fold/unfold all, whole-page print, and whole-page export. A section extends until the next heading at the same or a higher level.
 
-## 标题操作
+## Storage and permissions
 
-聚焦 H2–H6 后出现：
-
-- Viewed；
-- Print；
-- Collapse / Expand；
-- Export Notes 及当前章节计数。
-
-H1 工具栏提供：
-
-- 全部 Viewed / 全部未读；
-- 全部折叠 / 全部展开；
-- 整页打印；
-- 整页 Notes 导出。
-
-章节范围从当前 heading 到下一个同级或更高层 heading 之前。
-
-## 存储与权限
-
-| 状态 | 存储 | 共享 |
+| State | Storage | Shared |
 |---|---|---|
-| Viewed | SQLite `viewed_state` | Shared 开启时 |
-| Collapse | 浏览器 UI 偏好 | 不共享 |
+| Viewed | SQLite `viewed_state` | When Shared is enabled |
+| Fold | Browser UI preference | Never |
 
-Shared 关闭时只有管理员可读写 SQLite Viewed；协作者页面保持只读。详情见[共享批注](/advanced/shared-annotations)。
+With Shared off, only an administrator can read and write SQLite Viewed state. See [Shared annotations](/advanced/shared-annotations).
