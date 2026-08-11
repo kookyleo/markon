@@ -532,7 +532,7 @@
     .ws-more { position: relative; flex-shrink: 0; }
     .ws-more-menu {
       position: absolute; right: 0; top: 30px; z-index: 20;
-      min-width: 140px;
+      min-width: 190px;
       padding: 4px;
       background: var(--surface);
       border: 1px solid var(--border);
@@ -548,6 +548,7 @@
       font-size: 13px; cursor: default;
     }
     .ws-menu-item:hover { background: var(--surface-2); }
+    .ws-menu-separator { height: 1px; margin: 4px 6px; background: var(--border); }
     .ws-menu-danger { color: var(--danger); }
     .ws-menu-danger:hover { background: rgba(255,59,48,0.1); }
     .ws-alias-panel {
@@ -2321,7 +2322,9 @@
               </svg>
             </button>
             <div class="ws-more-menu" style="display:none">
+              <button class="ws-menu-item open-folder-item" type="button">${workspaceFileManagerLabel()}</button>
               <button class="ws-menu-item set-alias-item" type="button">${T('ws.alias.tip')}</button>
+              <div class="ws-menu-separator"></div>
               <button class="ws-menu-item ws-menu-danger remove-item" type="button">${T('ws.remove')}</button>
             </div>
             <div class="ws-alias-panel" style="display:none">
@@ -2455,6 +2458,14 @@
           input.focus();
           input.select();
         });
+        card.querySelector('.open-folder-item').addEventListener('click', async () => {
+          closeAll();
+          try {
+            await invoke('open_workspace_folder', { workspaceId: ws.id });
+          } catch (e) {
+            window.alert(T('ws.file_manager.fail') + ': ' + e);
+          }
+        });
         card.querySelector('.remove-item').addEventListener('click', async () => {
           closeAll();
           await invoke('remove_workspace', { id: ws.id });
@@ -2557,6 +2568,7 @@
   let lang = 'en';
   let t = i18n[lang];
   let systemLocale = 'en'; // will be updated from Rust
+  let systemOs = '';
   let bindHosts = [
     { address: '127.0.0.1', kind: 'localhost' },
     { address: '::1', kind: 'localhost' },
@@ -2566,6 +2578,16 @@
 
   function T(key) {
     return (t[key] ?? i18n.en[key] ?? key);
+  }
+
+  function workspaceFileManagerLabel() {
+    const platform = navigator.platform || navigator.userAgent || '';
+    const os = systemOs || (platform.includes('Mac')
+      ? 'macos'
+      : platform.includes('Win') ? 'windows' : 'other');
+    if (os === 'macos') return T('ws.file_manager.macos');
+    if (os === 'windows') return T('ws.file_manager.windows');
+    return T('ws.file_manager.other');
   }
 
   function renderWorkspaceAddTip() {
@@ -2919,6 +2941,7 @@
       const info = await invoke('get_system_info');
       document.getElementById('ver-label').textContent = `v${info.app_version}`;
       systemLocale = info.locale;
+      systemOs = info.os || '';
       // Respect saved language setting; fallback to system locale.
       s = await invoke('get_settings');
       const langPref = s.language ?? 'auto';
