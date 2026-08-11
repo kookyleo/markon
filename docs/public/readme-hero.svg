@@ -1,0 +1,38 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="760" viewBox="0 0 1600 760">
+  <defs>
+    <filter id="card-shadow" x="-25%" y="-25%" width="150%" height="165%">
+      <feDropShadow dx="0" dy="18" stdDeviation="22" flood-color="#17251d" flood-opacity=".15"/>
+    </filter>
+    <clipPath id="clip-520">
+      <rect width="520" height="520" rx="24"/>
+    </clipPath>
+    <clipPath id="clip-560">
+      <rect width="560" height="560" rx="26"/>
+    </clipPath>
+  </defs>
+
+  <rect width="1600" height="760" fill="#fff"/>
+
+  <!-- Workspace: the repository and its context. -->
+  <g transform="translate(78 166) rotate(-8 260 260)" filter="url(#card-shadow)">
+    <rect width="520" height="520" rx="24" fill="#fafaf7" stroke="#dfe5df" stroke-width="2"/>
+    <image href="illustrations/13-workspace.svg" width="520" height="520" clip-path="url(#clip-520)"/>
+  </g>
+
+  <!-- Chat: the agent joins the document without becoming the whole product. -->
+  <g transform="translate(1002 158) rotate(8 260 260)" filter="url(#card-shadow)">
+    <rect width="520" height="520" rx="24" fill="#fafaf7" stroke="#dfe5df" stroke-width="2"/>
+    <image href="illustrations/12-chat.svg" width="520" height="520" clip-path="url(#clip-520)"/>
+  </g>
+
+  <!-- Section reading and Markdiff form the foreground read-review loop. -->
+  <g transform="translate(334 92) rotate(-3 280 280)" filter="url(#card-shadow)">
+    <rect width="560" height="560" rx="26" fill="#fafaf7" stroke="#dfe5df" stroke-width="2"/>
+    <image href="illustrations/18-section-reading.svg" width="560" height="560" clip-path="url(#clip-560)"/>
+  </g>
+
+  <g transform="translate(706 94) rotate(3 280 280)" filter="url(#card-shadow)">
+    <rect width="560" height="560" rx="26" fill="#fafaf7" stroke="#dfe5df" stroke-width="2"/>
+    <image href="illustrations/14-git-diff.svg" width="560" height="560" clip-path="url(#clip-560)"/>
+  </g>
+</svg>
