@@ -103,7 +103,7 @@ features = [
 ]
 
 [dependencies.supramark-diagram]
-version = "0.1.4"
+version = "0.1.6"
 
 [dev-dependencies]
 tempfile = "3.27"
