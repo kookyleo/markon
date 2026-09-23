@@ -12,14 +12,21 @@ env:
 jobs:
   test:
     name: Test
+    timeout-minutes: 45
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
 
       - name: Install Linux system dependencies
+        # A mirror outage here once stalled this step silently for six hours
+        # (2026-08-19, three jobs across two workflows), because nothing in
+        # these workflows had a timeout and apt itself waits indefinitely.
+        timeout-minutes: 10
         run: |
           for attempt in 1 2 3; do
-            if sudo apt-get update && sudo apt-get install -y --no-install-recommends \
+            if sudo apt-get -o Acquire::Retries=3 -o Acquire::http::Timeout=30 \
+              -o Acquire::https::Timeout=30 update \
+              && sudo apt-get install -y --no-install-recommends \
               libwebkit2gtk-4.1-dev \
               libappindicator3-dev \
               librsvg2-dev \
@@ -49,7 +56,10 @@ jobs:
           node-version: '20'
 
       - name: Build frontend assets
-        run: npm install && npm run build
+        # `npm ci` and not `npm install`: install silently rewrites the
+        # lockfile to whatever satisfies package.json, so drift never fails a
+        # PR and surfaces weeks later in promote.yml, which does run `npm ci`.
+        run: npm ci --no-audit --no-fund && npm run build
 
       # Surface test-only compile errors (e.g. `#[cfg(test)]` literals
       # falling out of sync with struct definitions) before they cascade
@@ -62,14 +72,21 @@ jobs:
 
   package:
     name: Package
+    timeout-minutes: 45
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
 
       - name: Install Linux system dependencies
+        # A mirror outage here once stalled this step silently for six hours
+        # (2026-08-19, three jobs across two workflows), because nothing in
+        # these workflows had a timeout and apt itself waits indefinitely.
+        timeout-minutes: 10
         run: |
           for attempt in 1 2 3; do
-            if sudo apt-get update && sudo apt-get install -y --no-install-recommends \
+            if sudo apt-get -o Acquire::Retries=3 -o Acquire::http::Timeout=30 \
+              -o Acquire::https::Timeout=30 update \
+              && sudo apt-get install -y --no-install-recommends \
               libwebkit2gtk-4.1-dev \
               libappindicator3-dev \
               librsvg2-dev \
@@ -99,7 +116,10 @@ jobs:
           node-version: '20'
 
       - name: Build frontend assets
-        run: npm install && npm run build
+        # `npm ci` and not `npm install`: install silently rewrites the
+        # lockfile to whatever satisfies package.json, so drift never fails a
+        # PR and surfaces weeks later in promote.yml, which does run `npm ci`.
+        run: npm ci --no-audit --no-fund && npm run build
 
       # Packages markon-core into the exact tarball crates.io would receive and
       # compiles it. This is the ONLY check that catches packaging regressions —
@@ -114,14 +134,21 @@ jobs:
 
   clippy:
     name: Clippy
+    timeout-minutes: 45
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
 
       - name: Install Linux system dependencies
+        # A mirror outage here once stalled this step silently for six hours
+        # (2026-08-19, three jobs across two workflows), because nothing in
+        # these workflows had a timeout and apt itself waits indefinitely.
+        timeout-minutes: 10
         run: |
           for attempt in 1 2 3; do
-            if sudo apt-get update && sudo apt-get install -y --no-install-recommends \
+            if sudo apt-get -o Acquire::Retries=3 -o Acquire::http::Timeout=30 \
+              -o Acquire::https::Timeout=30 update \
+              && sudo apt-get install -y --no-install-recommends \
               libwebkit2gtk-4.1-dev \
               libappindicator3-dev \
               librsvg2-dev \
@@ -152,13 +179,17 @@ jobs:
           node-version: '20'
 
       - name: Build frontend assets
-        run: npm install && npm run build
+        # `npm ci` and not `npm install`: install silently rewrites the
+        # lockfile to whatever satisfies package.json, so drift never fails a
+        # PR and surfaces weeks later in promote.yml, which does run `npm ci`.
+        run: npm ci --no-audit --no-fund && npm run build
 
       - name: Run clippy
         run: cargo clippy --all-targets --all-features -- -D warnings
 
   fmt:
     name: Format
+    timeout-minutes: 15
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -174,6 +205,7 @@ jobs:
 
   icons:
     name: Brand Icons
+    timeout-minutes: 20
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -194,6 +226,7 @@ jobs:
 
   ts:
     name: TS Tests & Lint
+    timeout-minutes: 20
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -204,7 +237,7 @@ jobs:
           node-version: '20'
 
       - name: Install dependencies
-        run: npm install
+        run: npm ci --no-audit --no-fund
 
       - name: Run tests
         run: npm test
