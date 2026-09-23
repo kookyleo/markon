@@ -3745,9 +3745,9 @@ dependencies = [
 
 [[package]]
 name = "mermaid-little"
-version = "11.14.0-4"
+version = "11.14.0-6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "77d2b4884532e5bd89678ebad08f4485e97308a145aa98b7f7b3522326f4f4a5"
+checksum = "923040559438d5d2b2684c71f57ef18c41c2aa841030ee1964ee7909774f2819"
 dependencies = [
  "dagre",
  "env_logger",
@@ -3761,6 +3761,7 @@ dependencies = [
  "supramark-diagram-core",
  "supramark-font-metrics",
  "thiserror 1.0.69",
+ "unicode-width 0.1.14",
 ]
 
 [[package]]
@@ -6104,9 +6105,9 @@ checksum = "13c2bddecc57b384dee18652358fb23172facb8a2c51ccc10d74c157bdea3292"
 
 [[package]]
 name = "supramark-diagram"
-version = "0.1.4"
+version = "0.1.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "be621b23e2785651bad2dab18331b8ef196dc84304416c3c28140dc9b6cd8132"
+checksum = "0afe7dd345759b9c2a0a2b55cef71ca86a2878dd09813e57882f054a26972fb8"
 dependencies = [
  "d2-little",
  "graphviz-anywhere",
@@ -6118,9 +6119,9 @@ dependencies = [
 
 [[package]]
 name = "supramark-diagram-core"
-version = "0.1.0"
+version = "0.1.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d12c3914dedc09ea91b71fd8c9ffca160a6a639528684b373c995706fc78f42d"
+checksum = "23b84b53aba3f87834d7e109395f3d3f46ad7c38b8db9eaefac9650418b7f8f2"
 dependencies = [
  "serde",
  "serde_json",
@@ -6129,9 +6130,9 @@ dependencies = [
 
 [[package]]
 name = "supramark-font-metrics"
-version = "0.1.0"
+version = "0.1.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b2ae7ea5b6a8329cfb2fc3f5622fe2015e27ca23b98dcd050f1dba48e911847d"
+checksum = "fb772624559d41ce2ccab6869ed57213f4fc3860317fd5170dd09d27983cbf44"
 dependencies = [
  "js-sys",
  "ttf-parser 0.21.1",
