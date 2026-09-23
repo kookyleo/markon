@@ -2381,9 +2381,9 @@ dependencies = [
 
 [[package]]
 name = "graphviz-anywhere"
-version = "0.2.5"
+version = "0.2.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d6c40ef9e5984936739e692c1bf1ddeff82b1262e3704c92c8e5a7e2dbdeafa8"
+checksum = "08dfb64b2ad89d8b8c05a4e870567312800ed6e35ede2ace26b7723691da78fe"
 dependencies = [
  "supramark-diagram-core",
  "thiserror 1.0.69",
