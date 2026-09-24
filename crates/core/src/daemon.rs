@@ -14,7 +14,7 @@
 //! process that runs the server constructs them locally.
 
 use serde::{Deserialize, Serialize};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use crate::server::{ServerConfig, WorkspaceInit};
 use crate::workspace::WorkspaceFlags;
@@ -221,6 +221,68 @@ fn temp_suffix() -> u128 {
         .unwrap_or(0)
 }
 
+/// Directory holding the rolling log `markond` writes (`~/.markon/logs`).
+///
+/// Canonical for both the writer (`markond`, which creates it) and the readers
+/// (front-ends that need to point a user at it after a failed start), so the
+/// two cannot drift apart.
+pub fn log_dir() -> Option<PathBuf> {
+    dirs::home_dir().map(|home| home.join(".markon").join("logs"))
+}
+
+/// Path of `markond`'s rolling log. See [`log_dir`].
+pub fn log_path() -> Option<PathBuf> {
+    log_dir().map(|dir| dir.join("markond.log"))
+}
+
+/// Size of the log right now, or 0 when it is absent / unreadable.
+///
+/// Recorded before a spawn so that [`error_logged_since`] can restrict itself to
+/// what *this* attempt appended.
+fn log_len() -> u64 {
+    log_path()
+        .and_then(|path| std::fs::metadata(path).ok())
+        .map(|meta| meta.len())
+        .unwrap_or(0)
+}
+
+/// The last `ERROR` record appended to the log past `offset`, if any.
+///
+/// A plain tail of the log would surface an unrelated failure from days ago and
+/// present it as the reason this start timed out. Reading only from the offset
+/// captured before the spawn keeps the answer to entries this attempt produced —
+/// no clock comparison, no staleness window. A shorter file means the log
+/// rotated mid-start, so the whole current file is new and is read from 0.
+fn error_logged_since(offset: u64) -> Option<String> {
+    error_appended_to(&log_path()?, offset)
+}
+
+/// [`error_logged_since`] against an explicit path, so the scan is testable
+/// without reaching for the real `$HOME`.
+fn error_appended_to(path: &Path, offset: u64) -> Option<String> {
+    use std::io::{Read, Seek, SeekFrom};
+
+    let mut file = std::fs::File::open(path).ok()?;
+    let len = file.metadata().ok()?.len();
+    let start = if len < offset { 0 } else { offset };
+    if len == start {
+        return None;
+    }
+    file.seek(SeekFrom::Start(start)).ok()?;
+    let mut appended = Vec::new();
+    // Bounded: a daemon that fails to start writes a handful of lines, and the
+    // interesting one is among them. The cap only guards against reading a
+    // multi-megabyte log if some future code path spawns while the daemon is
+    // logging heavily.
+    file.take(256 * 1024).read_to_end(&mut appended).ok()?;
+
+    String::from_utf8_lossy(&appended)
+        .lines()
+        .rev()
+        .find(|line| line.contains("ERROR"))
+        .map(|line| line.trim().to_string())
+}
+
 /// Bounded readiness poll: wait until the just-spawned daemon publishes its
 /// discovery lock and that lock reports a live control socket, returning it.
 ///
@@ -264,6 +326,14 @@ async fn wait_for_ready() -> Option<crate::workspace::ServerLock> {
 /// or [`ErrorKind::TimedOut`](std::io::ErrorKind::TimedOut) when the daemon never
 /// became ready. Callers wanting to fall back to running in the foreground can
 /// distinguish a spawn failure from a readiness timeout by the error kind.
+///
+/// The daemon is spawned with its stdio at `/dev/null` (it must outlive this
+/// process), so a start failure leaves no trace on the front-end's terminal. The
+/// timeout error therefore carries the log's location and the last error the
+/// daemon logged during *this* attempt — otherwise the user is told only that
+/// something timed out, while the actual cause (a refused bind, an unwritable
+/// state directory, a control-socket path over the `sun_path` limit) sits
+/// unread in the log.
 pub async fn spawn_and_connect(
     config: DaemonConfig,
 ) -> std::io::Result<crate::control::RunningServer> {
@@ -271,6 +341,9 @@ pub async fn spawn_and_connect(
 
     let markond = locate_markond()?;
     let config_path = write_daemon_config(&config)?;
+    // Captured before the spawn so a timeout reports only what this attempt
+    // logged (see `error_logged_since`).
+    let log_offset = log_len();
 
     let mut command = std::process::Command::new(&markond);
     command
@@ -309,9 +382,23 @@ pub async fn spawn_and_connect(
         Some(lock) => Ok(crate::control::RunningServer::from_lock(&lock)),
         None => Err(std::io::Error::new(
             std::io::ErrorKind::TimedOut,
-            "the markon server did not become ready in time",
+            readiness_timeout_message(log_offset),
         )),
     }
+}
+
+/// The timeout error's message: the bare fact, then where to look, then the
+/// daemon's own last error when this attempt produced one.
+fn readiness_timeout_message(log_offset: u64) -> String {
+    let mut message = String::from("the markon server did not become ready in time");
+    let Some(path) = log_path() else {
+        return message;
+    };
+    if let Some(line) = error_logged_since(log_offset) {
+        message.push_str(&format!("\n  markond reported: {line}"));
+    }
+    message.push_str(&format!("\n  full log: {}", path.display()));
+    message
 }
 
 #[cfg(test)]
@@ -374,5 +461,79 @@ mod tests {
         assert!(server.bound_listener.is_none());
         assert!(server.management_token.is_none());
         assert!(server.admin_bootstraps.is_none());
+    }
+
+    /// A start failure must not be explained with an error from a previous run:
+    /// only the region appended after the recorded offset is scanned.
+    #[test]
+    fn reports_only_errors_appended_after_the_offset() {
+        use std::io::Write;
+
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("markond.log");
+        let mut file = std::fs::File::create(&path).unwrap();
+        writeln!(file, "2026-09-01 ERROR stale failure from last week").unwrap();
+        file.flush().unwrap();
+        let offset = std::fs::metadata(&path).unwrap().len();
+
+        // Nothing new yet: no cause to report, even though the log holds an error.
+        assert_eq!(error_appended_to(&path, offset), None);
+
+        writeln!(file, "2026-09-24  INFO starting markond").unwrap();
+        writeln!(file, "2026-09-24 ERROR failed to bind control socket").unwrap();
+        writeln!(file, "2026-09-24  INFO shutting down").unwrap();
+        file.flush().unwrap();
+
+        let found = error_appended_to(&path, offset).expect("the new error is reported");
+        assert!(found.ends_with("failed to bind control socket"), "{found}");
+    }
+
+    /// The last error wins: a cascade ends with the most specific failure.
+    #[test]
+    fn reports_the_last_error_in_the_appended_region() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("markond.log");
+        std::fs::write(&path, "ERROR first\nINFO between\nERROR second\n").unwrap();
+
+        assert_eq!(error_appended_to(&path, 0).as_deref(), Some("ERROR second"));
+    }
+
+    /// A log that rotated mid-start is shorter than the recorded offset; the whole
+    /// current file is then new and must be read from the beginning.
+    #[test]
+    fn rereads_from_the_start_when_the_log_rotated() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("markond.log");
+        std::fs::write(&path, "ERROR after rotation\n").unwrap();
+
+        assert_eq!(
+            error_appended_to(&path, 4096).as_deref(),
+            Some("ERROR after rotation")
+        );
+    }
+
+    #[test]
+    fn no_error_logged_yields_nothing() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("markond.log");
+        std::fs::write(&path, "INFO started\nWARN slow\n").unwrap();
+
+        assert_eq!(error_appended_to(&path, 0), None);
+        // A missing log is not an error either.
+        assert_eq!(error_appended_to(&dir.path().join("absent.log"), 0), None);
+    }
+
+    /// The bare fact comes first so existing output keeps its shape; the log
+    /// pointer is appended, not substituted.
+    #[test]
+    fn timeout_message_leads_with_the_timeout_then_points_at_the_log() {
+        let message = readiness_timeout_message(u64::MAX);
+        assert!(
+            message.starts_with("the markon server did not become ready in time"),
+            "{message}"
+        );
+        if let Some(path) = log_path() {
+            assert!(message.contains(&path.display().to_string()), "{message}");
+        }
     }
 }
