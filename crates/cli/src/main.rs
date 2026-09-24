@@ -1327,8 +1327,11 @@ async fn main() {
             // Readiness timeout is a hard error (the daemon spawned but never came
             // up); any other error means we couldn't spawn it at all, so fall back
             // to running the server in the foreground.
+            // The message carries the daemon's own last error and the log path
+            // (markond's stdio goes to /dev/null, so nothing else reaches this
+            // terminal); print it whole rather than restating the bare timeout.
             Err(e) if e.kind() == std::io::ErrorKind::TimedOut => {
-                eprintln!("Error: the Markon server did not become ready in time.");
+                eprintln!("Error: {e}");
                 std::process::exit(1);
             }
             Err(e) => {
