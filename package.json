@@ -28,7 +28,7 @@
     "jsdom": "^29.0.2",
     "typescript": "^6.0.3",
     "typescript-eslint": "^8.62.1",
-    "vitest": "^4.1.4"
+    "vitest": "^4.1.11"
   },
   "dependencies": {
     "@codemirror/commands": "^6.10.4",
