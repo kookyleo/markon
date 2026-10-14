@@ -196,7 +196,7 @@ function initTocTracking(): void {
         heading.classList.add('heading-focused');
     }
 
-    // ── TOC click: schedule selected + smooth scroll ──
+    // ── TOC click: schedule selected + immediate scroll ──
     tocLinks.forEach((link) => {
         link.addEventListener('click', (e) => {
             const href = link.getAttribute('href');
@@ -211,7 +211,7 @@ function initTocTracking(): void {
                     scheduleActive(targetId);
                     focusHeading(targetElement);
                     const targetTop = targetElement.getBoundingClientRect().top + window.scrollY - 20;
-                    window.scrollTo({ top: targetTop, behavior: 'smooth' });
+                    window.scrollTo({ top: targetTop, behavior: 'instant' });
                     history.pushState(null, '', href);
                     if (tocContainer && window.innerWidth <= 1400) {
                         tocContainer.classList.remove('active');
