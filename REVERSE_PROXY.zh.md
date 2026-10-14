@@ -6,7 +6,7 @@
 
 Markon 内建协作者访问码与显式管理员会话。浏览器管理权限基于 capability：loopback 请求和同机反向代理都不会成为管理员。使用 `markon admin open` 或 `markon admin code` 创建管理员浏览器会话。
 
-每个请求还必须命中 Host allowlist。请为每个代理 origin 传入 `--public-url https://md.example.com` 或可重复的 `--trusted-host https://md.example.com`。HTTPS origin 会让访问 Cookie 自动带 `Secure`；未知 Host 返回 421，以阻断 DNS rebinding。任何转发 IP / 协议头都不参与身份授权。
+每个请求还必须命中 Host allowlist。请为每个代理 origin 传入 `--public-base-url https://md.example.com` 或可重复的 `--trusted-host https://md.example.com`。HTTPS origin 会让访问 Cookie 自动带 `Secure`；未知 Host 返回 421，以阻断 DNS rebinding。任何转发 IP / 协议头都不参与身份授权。
 
 通过反向代理对外暴露时，仍应在网关层增加认证作为额外外围。常见方案：
 
@@ -336,7 +336,7 @@ location /_/ {
 如果看到 "Mixed Content" 错误：
 - HTTPS 页面必须使用 `wss://` 协议
 - Markon 已自动处理，无需手动配置
-- 用 `--public-url` 或 `--trusted-host` 登记 HTTPS origin；转发头不参与授权
+- 用 `--public-base-url` 或 `--trusted-host` 登记 HTTPS origin；转发头不参与授权
 
 ---
 

@@ -107,15 +107,15 @@ markon admin code
 
 ```bash
 # 局域网
-markon docs/ --host 0.0.0.0 --public-url http://192.168.1.20:6419
+markon docs/ --host 0.0.0.0 --public-base-url http://192.168.1.20:6419
 
 # HTTPS 反向代理
 markon docs/ --host 127.0.0.1 \
-  --public-url https://docs.example.com \
+  --public-base-url https://docs.example.com \
   --trusted-host https://docs.example.com
 ```
 
-`--public-url` 既用于展示/二维码地址，也登记对应 Host/origin。公网部署仍须由反向代理提供 TLS，详见[反向代理](/zh/advanced/reverse-proxy)。
+`--public-base-url` 既用于展示/二维码地址，也登记对应 Host/origin。公网部署仍须由反向代理提供 TLS，详见[反向代理](/zh/advanced/reverse-proxy)。
 
 ## 单文件工作区
 

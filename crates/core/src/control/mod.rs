@@ -68,12 +68,12 @@ pub struct RunningServer {
     /// `markond` package version from the discovery lock. Empty for a legacy
     /// daemon that predates versioned discovery.
     service_version: String,
-    /// The public URL prefix (`--public-url`) active in the *owning*
-    /// server process (from the lock). A controller without its own public URL
+    /// The public base URL (`--public-base-url`) active in the *owning*
+    /// server process (from the lock). A controller without its own public base URL
     /// uses this to build featured/QR URLs against the daemon's public
     /// address instead of loopback. `None` for a socket-only handle or a
     /// pre-field lock.
-    web_public_url: Option<String>,
+    web_public_base_url: Option<String>,
 }
 
 impl RunningServer {
@@ -87,7 +87,7 @@ impl RunningServer {
             web_host: String::new(),
             web_advertised_host: None,
             service_version: String::new(),
-            web_public_url: None,
+            web_public_base_url: None,
         }
     }
 
@@ -107,7 +107,7 @@ impl RunningServer {
             web_host: lock.host.clone(),
             web_advertised_host: lock.advertised_host.clone(),
             service_version: lock.service_version.clone(),
-            web_public_url: lock.entry.clone(),
+            web_public_base_url: lock.entry.clone(),
         }
     }
 
@@ -150,18 +150,24 @@ impl RunningServer {
         &self.service_version
     }
 
-    /// The public URL prefix (`--public-url`) the *owning* server was
+    /// The public base URL (`--public-base-url`) the *owning* server was
     /// started with, or `None` when this handle predates the field or was built
-    /// socket-only. A controller with no `--public-url` of its own prefers this so
+    /// socket-only. A controller with no `--public-base-url` of its own prefers this so
     /// featured / QR URLs point at the daemon's public address, not loopback.
-    pub fn public_url(&self) -> Option<&str> {
-        self.web_public_url.as_deref()
+    pub fn public_base_url(&self) -> Option<&str> {
+        self.web_public_base_url.as_deref()
     }
 
-    /// Compatibility accessor for callers predating `public_url`.
-    #[deprecated(note = "use public_url")]
+    /// Compatibility accessor for callers using the former name.
+    #[deprecated(note = "use public_base_url")]
+    pub fn public_url(&self) -> Option<&str> {
+        self.public_base_url()
+    }
+
+    /// Compatibility accessor for callers using the original entry name.
+    #[deprecated(note = "use public_base_url")]
     pub fn entry(&self) -> Option<&str> {
-        self.public_url()
+        self.public_base_url()
     }
 
     /// Best-effort liveness probe, mirroring

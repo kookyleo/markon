@@ -62,4 +62,4 @@ Cleanup is irreversible. Back up the database and re-register any workspace you 
 
 ## Before public exposure
 
-Terminate TLS at a reverse proxy, register exact `--public-url`/`--trusted-host` origins, consider gateway authentication, enable Edit/Chat/Shared only where needed, and protect settings/database permissions. See [Reverse proxy](/advanced/reverse-proxy).
+Terminate TLS at a reverse proxy, register exact `--public-base-url`/`--trusted-host` origins, consider gateway authentication, enable Edit/Chat/Shared only where needed, and protect settings/database permissions. See [Reverse proxy](/advanced/reverse-proxy).

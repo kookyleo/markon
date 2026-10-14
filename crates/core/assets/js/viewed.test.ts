@@ -71,6 +71,7 @@ describe('SectionViewedManager', () => {
     let warnSpy: ReturnType<typeof vi.spyOn>;
 
     beforeEach(() => {
+        vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
         document.body.innerHTML = '';
         document.head.innerHTML = '';
         seedMeta('can-manage', 'true');
@@ -84,11 +85,9 @@ describe('SectionViewedManager', () => {
     });
 
     afterEach(() => {
-        // Finish pending CSS transitions before jsdom is disposed, so fallback
-        // timers cannot call into a window that belongs to an earlier test.
-        document.querySelectorAll('.markdown-body *').forEach((element) => {
-            element.dispatchEvent(new TransitionEvent('transitionend', { propertyName: 'opacity' }));
-        });
+        // Finish transition fallbacks even for elements detached during a test,
+        // before jsdom disposes their window.
+        vi.runOnlyPendingTimers();
         vi.useRealTimers();
         logSpy.mockRestore();
         warnSpy.mockRestore();
