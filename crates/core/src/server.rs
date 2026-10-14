@@ -44,7 +44,7 @@ use crate::workspace_fs::WorkspaceFs;
 const WORKSPACE_WS_ROUTE: &str = "/_/{workspace_id}/ws";
 const DOCUMENT_STATE_ROUTE: &str = "/_/{workspace_id}/data/document-state";
 
-/// Build an actionable warning for a failed best-effort browser launch.
+/// Build a diagnostic for a failed best-effort browser launch.
 ///
 /// Passing a path makes the CLI open an administrator bootstrap automatically,
 /// but that commonly runs from an SSH or otherwise headless shell. Keep the
@@ -52,6 +52,13 @@ const DOCUMENT_STATE_ROUTE: &str = "/_/{workspace_id}/data/document-state";
 /// already-started server is still usable and how to obtain administrator
 /// access from a manually opened browser.
 pub fn browser_open_failure_message(error: impl std::fmt::Display) -> String {
+    // Launcher errors include the full command, including one-time login URLs.
+    static NONCE: std::sync::OnceLock<regex::Regex> = std::sync::OnceLock::new();
+    let nonce = NONCE.get_or_init(|| {
+        regex::Regex::new(r#"(bootstrap_nonce=)[^&\s"'<>]+"#).expect("valid nonce redaction regex")
+    });
+    let error = error.to_string();
+    let error = nonce.replace_all(&error, "${1}[redacted]");
     #[cfg(target_os = "linux")]
     let environment_hint = {
         let has_display = ["DISPLAY", "WAYLAND_DISPLAY"]
@@ -71,6 +78,13 @@ pub fn browser_open_failure_message(error: impl std::fmt::Display) -> String {
     format!(
         "best-effort browser open failed: {error};{environment_hint} the server is still running. Open a workspace URL printed above manually; for administrator access, run `markon admin code` in another terminal."
     )
+}
+
+/// Report a recoverable launch failure without presenting it as a server error.
+pub fn report_browser_open_failure(error: impl std::fmt::Display) {
+    tracing::debug!("{}", browser_open_failure_message(error));
+    eprintln!("Note: Browser not opened. Open the URL above manually.");
+    eprintln!("      Administrator access: markon admin code");
 }
 
 /// Public wire-format types served by the (non-chat) HTTP surface.
@@ -1450,7 +1464,7 @@ pub async fn start(config: ServerConfig) -> Result<(), String> {
         let nonce = admin_bootstraps.issue_url(redirect);
         let url = build_admin_bootstrap_url(&base, redirect, &nonce);
         if let Err(e) = open::that(&url) {
-            tracing::warn!("{}", browser_open_failure_message(e));
+            report_browser_open_failure(e);
         }
     }
 
@@ -7097,13 +7111,24 @@ mod tests {
     use tower::ServiceExt;
 
     #[test]
-    fn browser_open_failure_warning_explains_manual_recovery() {
+    fn browser_open_failure_diagnostic_explains_manual_recovery() {
         let message = browser_open_failure_message("launcher exited with status 3");
 
         assert!(message.contains("launcher exited with status 3"));
         assert!(message.contains("the server is still running"));
         assert!(message.contains("Open a workspace URL printed above manually"));
         assert!(message.contains("`markon admin code`"));
+    }
+
+    #[test]
+    fn browser_open_failure_diagnostic_redacts_login_nonce() {
+        let message = browser_open_failure_message(
+            "Launcher \"xdg-open\" \"http://localhost/file.md#bootstrap_nonce=secret-token\" failed with exit status 3",
+        );
+
+        assert!(!message.contains("secret-token"));
+        assert!(message.contains("bootstrap_nonce=[redacted]"));
+        assert!(message.contains("exit status 3"));
     }
 
     fn test_tera() -> Tera {

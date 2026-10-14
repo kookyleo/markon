@@ -196,11 +196,12 @@ struct CliColors {
 
 impl CliColors {
     fn detect() -> Self {
+        let term = std::env::var_os("TERM");
         let enabled = std::io::stdout().is_terminal()
             && std::env::var_os("NO_COLOR").is_none()
-            && std::env::var("TERM")
-                .map(|term| term != "dumb")
-                .unwrap_or(true);
+            && std::env::var_os("CLICOLOR").as_deref() != Some(std::ffi::OsStr::new("0"))
+            && known_color_terminal(term.as_deref())
+            && enable_ansi_output();
         Self { enabled }
     }
 
@@ -246,12 +247,76 @@ impl CliColors {
     }
 }
 
+/// Prefer plain text to guessing from COLORTERM, TERM_PROGRAM, or FORCE_COLOR.
+/// Windows consoles often omit TERM; their capability is checked with Win32.
+fn known_color_terminal(term: Option<&std::ffi::OsStr>) -> bool {
+    let Some(term) = term else {
+        return cfg!(windows);
+    };
+    matches!(
+        term.to_str(),
+        Some(
+            "ansi"
+                | "linux"
+                | "xterm"
+                | "xterm-color"
+                | "xterm-256color"
+                | "xterm-direct"
+                | "xterm-kitty"
+                | "screen"
+                | "screen-256color"
+                | "screen-256color-bce"
+                | "screen.xterm-256color"
+                | "tmux"
+                | "tmux-256color"
+                | "rxvt"
+                | "rxvt-unicode"
+                | "rxvt-unicode-256color"
+                | "alacritty"
+                | "foot"
+                | "foot-extra"
+                | "foot-direct"
+                | "kitty"
+                | "wezterm"
+                | "st"
+                | "st-256color"
+                | "putty"
+                | "putty-256color"
+                | "cygwin"
+        )
+    )
+}
+
+#[cfg(not(windows))]
+fn enable_ansi_output() -> bool {
+    true
+}
+
+#[cfg(windows)]
+fn enable_ansi_output() -> bool {
+    use std::os::windows::io::AsRawHandle;
+    use windows_sys::Win32::System::Console::{
+        GetConsoleMode, SetConsoleMode, ENABLE_PROCESSED_OUTPUT, ENABLE_VIRTUAL_TERMINAL_PROCESSING,
+    };
+
+    // Check the actual console rather than accepting an environment hint.
+    // SAFETY: stdout owns the borrowed handle; mode is a valid writable DWORD.
+    unsafe {
+        let handle = std::io::stdout().as_raw_handle();
+        let mut mode = 0;
+        if GetConsoleMode(handle, &mut mode) == 0 {
+            return false;
+        }
+        let ansi_mode = mode | ENABLE_PROCESSED_OUTPUT | ENABLE_VIRTUAL_TERMINAL_PROCESSING;
+        mode == ansi_mode || SetConsoleMode(handle, ansi_mode) != 0
+    }
+}
+
 /// Whether an interactive full-screen TUI should launch for a bare `markon ls`.
 ///
 /// Requires both stdin and stdout to be real terminals AND a usable `TERM`
-/// (set and not `dumb`), mirroring [`CliColors::detect`]'s capability gate — a
-/// whole-screen alternate-screen app is far more invasive than color, so a
-/// dumb/limited terminal (or `TERM` unset) falls back to static cards instead
+/// (set and not `dumb`). A dumb/limited terminal (or `TERM` unset) falls back
+/// to static cards instead
 /// of emitting alternate-screen / cursor-hide escapes as literal garbage.
 /// `MARKON_NO_TUI` is an explicit escape hatch for PTY environments that
 /// report a terminal but should stay non-interactive.
@@ -776,12 +841,7 @@ async fn admin_browser_command(
     command: AdminCommands,
 ) -> Result<(), Box<dyn std::error::Error>> {
     let workspaces = server.list_workspaces().await?;
-    // The session has to land somewhere and there is no workspace index to land
-    // on, so the first entry wins. That is an arbitrary pick once more than one
-    // workspace is open — and a stable one, since the registry sorts by root and
-    // then by `single_file`, where `None` orders first: a directory workspace
-    // always outranks a file-scoped workspace over the same folder. Name the
-    // destination rather than letting the browser arrive somewhere unexplained.
+    // Use the registry's stable order to choose a landing workspace.
     let landing = workspaces.first();
     let redirect = landing
         .map(|workspace| server::workspace_url_path(&workspace.id, None))
@@ -797,21 +857,11 @@ async fn admin_browser_command(
         AdminCommands::Code => {
             let (url, code) = server.admin_bootstrap_code(&redirect).await?;
             println!("Open: {url}");
-            println!("One-time administrator code: {code}");
-            println!("Expires in 5 minutes and is invalidated after 5 failed attempts.");
-        }
-    }
-    if let Some(workspace) = landing {
-        println!(
-            "Opens workspace {}: {}",
-            workspace.id,
-            display_workspace_scope(workspace)
-        );
-        if workspaces.len() > 1 {
             println!(
-                "({} workspaces are open — `markon ls` lists the rest.)",
-                workspaces.len()
+                "One-time administrator code: {}",
+                CliColors::detect().title(&code)
             );
+            println!("Expires in 5 minutes and is invalidated after 5 failed attempts.");
         }
     }
     Ok(())
@@ -882,7 +932,7 @@ async fn forward_to_running_server(
                             rehome_admin_bootstrap_url(base_option, &redirect, &boot_url)
                         };
                         if let Err(e) = open::that(&browser_url) {
-                            tracing::warn!("{}", server::browser_open_failure_message(e));
+                            server::report_browser_open_failure(e);
                         }
                     }
                     Err(e) => tracing::warn!("failed to create browser admin session: {e}"),
@@ -1397,6 +1447,43 @@ async fn main() {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn unknown_or_monochrome_terminals_use_plain_text() {
+        for term in [
+            "",
+            "dumb",
+            "unknown",
+            "vt100",
+            "xterm-mono",
+            "screen-m",
+            "custom-terminal",
+        ] {
+            assert!(
+                !known_color_terminal(Some(std::ffi::OsStr::new(term))),
+                "{term}"
+            );
+        }
+        assert_eq!(known_color_terminal(None), cfg!(windows));
+    }
+
+    #[test]
+    fn common_color_terminals_allow_basic_ansi_styles() {
+        for term in [
+            "xterm",
+            "xterm-256color",
+            "screen",
+            "tmux-256color",
+            "linux",
+            "xterm-kitty",
+            "foot",
+        ] {
+            assert!(
+                known_color_terminal(Some(std::ffi::OsStr::new(term))),
+                "{term}"
+            );
+        }
+    }
 
     fn workspace_info(path: &str, single_file: Option<&str>) -> WorkspaceInfo {
         WorkspaceInfo {
