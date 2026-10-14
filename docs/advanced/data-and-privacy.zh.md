@@ -100,7 +100,7 @@ Cleanup 是不可逆的数据删除。先备份数据库，并确认需要保留
 协作者访问码是应用层门禁，不提供链路加密。公网部署至少应：
 
 - 在反向代理终止 TLS；
-- 登记精确 `--entry` 或 `--trusted-host`；
+- 登记精确 `--public-url` 或 `--trusted-host`；
 - 视场景增加网关层认证；
 - 只为需要的工作区开启 Edit、Chat 与 Shared；
 - 保护 `settings.json` 与数据库文件权限。

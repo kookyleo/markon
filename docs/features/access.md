@@ -38,7 +38,7 @@ Only a salted hash is persisted. Successful unlock writes a scope-specific, HMAC
 Every request must match an exact Host allowlist. Custom DNS and proxy origins must be registered:
 
 ```bash
-markon --entry https://docs.example.com
+markon --public-url https://docs.example.com
 markon --trusted-host https://docs.example.com
 ```
 

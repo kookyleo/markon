@@ -64,6 +64,7 @@ pub struct DaemonConfig {
     pub port: u16,
     #[serde(default = "default_theme")]
     pub theme: String,
+    /// Public URL base. Keep the legacy `qr` JSON key for handoff compatibility.
     #[serde(default)]
     pub qr: Option<String>,
     #[serde(default)]
@@ -86,6 +87,42 @@ pub struct DaemonConfig {
     pub collaborator_access_code_hash: String,
     #[serde(default)]
     pub print_collapsed_content: bool,
+}
+
+impl DaemonConfig {
+    /// Resolve the persisted defaults shared by CLI and desktop cold starts.
+    pub fn from_settings(settings: &crate::settings::AppSettings, port: u16) -> Self {
+        let config = settings.to_server_config(port);
+        Self {
+            host: config.host,
+            advertised_host: config.advertised_host,
+            trusted_hosts: config.trusted_hosts,
+            port: config.port,
+            theme: config.theme,
+            qr: config.qr,
+            open_browser: None,
+            db_path: config.db_path,
+            salt: config.salt,
+            workspaces: config
+                .initial_workspaces
+                .into_iter()
+                .map(|workspace| DaemonWorkspace {
+                    path: workspace.path,
+                    flags: workspace.flags,
+                    initial_path: workspace.initial_path,
+                    single_file: workspace.single_file,
+                    collaborator_access_code_hash: workspace.collaborator_access_code_hash,
+                    alias: workspace.alias,
+                })
+                .collect(),
+            language: config.language,
+            shortcuts_json: config.shortcuts_json,
+            styles_css: config.styles_css,
+            default_chat_mode: config.default_chat_mode,
+            collaborator_access_code_hash: config.collaborator_access_code_hash,
+            print_collapsed_content: config.print_collapsed_content,
+        }
+    }
 }
 
 fn default_theme() -> String {

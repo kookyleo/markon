@@ -107,15 +107,15 @@ Enter the one-time pairing code on the browser's administrator bootstrap page. A
 
 ```bash
 # LAN
-markon docs/ --host 0.0.0.0 --entry http://192.168.1.20:6419
+markon docs/ --host 0.0.0.0 --public-url http://192.168.1.20:6419
 
 # HTTPS reverse proxy
 markon docs/ --host 127.0.0.1 \
-  --entry https://docs.example.com \
+  --public-url https://docs.example.com \
   --trusted-host https://docs.example.com
 ```
 
-`--entry` supplies the displayed/QR-code address and registers its Host and origin. Public deployments still need TLS at the reverse proxy; see [Reverse proxy](/advanced/reverse-proxy).
+`--public-url` supplies the displayed/QR-code address and registers its Host and origin. Public deployments still need TLS at the reverse proxy; see [Reverse proxy](/advanced/reverse-proxy).
 
 ## Single-file workspaces
 

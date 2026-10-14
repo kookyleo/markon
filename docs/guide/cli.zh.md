@@ -36,10 +36,9 @@ markon <COMMAND>
 |---|---|
 | `-p, --port <PORT>` | Web 端口，默认 `6419`；显式参数覆盖 settings |
 | `--host [IP]` | 指定绑定地址；只写 `--host` 时进入网卡选择器 |
-| `--entry [URL_PREFIX]` | 对外展示地址前缀，同时用于 QR 和 Host/origin allowlist |
-| `--qr [URL_PREFIX]` | `--entry` 的别名 |
+| `--public-url [URL]` | 对外访问链接、二维码和允许访问的域名；保存为默认值 |
 | `--trusted-host <HOST_OR_ORIGIN>` | 额外允许的精确 authority，可重复 |
-| `-b, --open-browser [BASE_URL]` | 打开浏览器；无值用本地地址，有值时用给定 base |
+| `-b, --open-browser [URL]` | 打开浏览器；无值用本地地址，有值时用给定 base |
 | `--collaborator-access-code <CODE>` | 设置当前工作区协作者码；空字符串清除 |
 | `--print-collapsed-content` | 打印时强制包含折叠正文；默认显示折叠占位 |
 | `--salt <SALT>` | 高级 workspace-id salt 覆盖；已有安装不要随意修改 |
@@ -151,7 +150,28 @@ markon -b                        # 当前目录并打开本地地址
 markon -b https://docs.example.com docs/
 ```
 
-`--open-browser BASE_URL` 会把 Workspace 路径附加到给定 base，适合反向代理入口。
+`--open-browser URL` 会把 Workspace 路径附加到给定 base，适合反向代理入口。
+
+### 对外地址与持久化
+
+`--public-url` 设置分享链接和二维码使用的地址；`--open-browser` 设置本次打开浏览器的行为。两者可以使用不同地址：
+
+```bash
+# 分享使用域名，本机浏览器使用本地地址
+markon docs/ --public-url https://md.example.com --open-browser
+
+# 本机浏览器也使用域名
+markon docs/ --open-browser https://md.example.com
+
+# 清除保存的对外地址，恢复自动选择本地／局域网地址
+markon --public-url "" ls
+```
+
+显式传入的对外 URL 会写入 `~/.markon/settings.json` 的 `public_url` 字段，后续调用、服务重启和桌面端都使用它。旧配置缺少该字段时默认为空。也可以在已有配置中将 `public_url` 字段设为所需的 HTTP(S) URL，保留其它字段。
+
+修改保存的对外地址后，下一次 CLI 调用会按需刷新后台服务，更新访问白名单，同时保留当前工作区、端口和监听地址。`markon admin code` 也使用该对外地址。浏览器默认仍使用本地地址；`--open-browser URL` 仅覆盖本次打开地址，不写入配置。
+
+兼容旧脚本：`--entry`、`--qr` 仍是 `--public-url` 的别名。只写 `--public-url` 而不提供 URL，会为本次调用生成本地二维码，不修改已保存的默认值。
 
 ## 监听示例
 
@@ -166,7 +186,7 @@ markon docs/ --host 192.168.1.5  # 指定接口
 
 ```bash
 markon docs/ --host 0.0.0.0 \
-  --entry http://192.168.1.20:6419 \
+  --public-url http://192.168.1.20:6419 \
   --collaborator-access-code guest-secret
 ```
 
@@ -174,13 +194,13 @@ markon docs/ --host 0.0.0.0 \
 
 ```bash
 markon docs/ --host 127.0.0.1 \
-  --entry https://docs.example.com \
+  --public-url https://docs.example.com \
   --trusted-host https://docs.example.com
 ```
 
-![CLI 输出访问链接与 QR](/screenshots/cli-qr.png)
+![CLI 访问链接与二维码（输出节选）](/screenshots/cli-qr.png)
 
-`--entry` 只描述外部 origin，不提供 TLS。公网部署见[反向代理](/zh/advanced/reverse-proxy)。
+`--public-url` 只描述外部 origin，不提供 TLS。公网部署见[反向代理](/zh/advanced/reverse-proxy)。
 
 ## 设置优先级
 

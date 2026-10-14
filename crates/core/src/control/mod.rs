@@ -62,18 +62,18 @@ pub struct RunningServer {
     web_host: String,
     /// The advertised host active in the *owning* server process (from the lock).
     /// A controller (GUI/CLI) attached to a daemon another process started with a
-    /// different `--entry` must build featured/QR URLs from this, not its own
-    /// preference. `None` for a socket-only handle or a pre-field lock.
+    /// different LAN-address preference must build featured/QR URLs from this,
+    /// not its own preference. `None` for a socket-only handle or a pre-field lock.
     web_advertised_host: Option<String>,
     /// `markond` package version from the discovery lock. Empty for a legacy
     /// daemon that predates versioned discovery.
     service_version: String,
-    /// The public entry URL prefix (`--entry`/`--qr`) active in the *owning*
-    /// server process (from the lock). A controller that got no `--entry` of its
-    /// own uses this to build featured/QR URLs against the daemon's public
+    /// The public URL prefix (`--public-url`) active in the *owning*
+    /// server process (from the lock). A controller without its own public URL
+    /// uses this to build featured/QR URLs against the daemon's public
     /// address instead of loopback. `None` for a socket-only handle or a
     /// pre-field lock.
-    web_entry: Option<String>,
+    web_public_url: Option<String>,
 }
 
 impl RunningServer {
@@ -87,7 +87,7 @@ impl RunningServer {
             web_host: String::new(),
             web_advertised_host: None,
             service_version: String::new(),
-            web_entry: None,
+            web_public_url: None,
         }
     }
 
@@ -107,7 +107,7 @@ impl RunningServer {
             web_host: lock.host.clone(),
             web_advertised_host: lock.advertised_host.clone(),
             service_version: lock.service_version.clone(),
-            web_entry: lock.entry.clone(),
+            web_public_url: lock.entry.clone(),
         }
     }
 
@@ -138,8 +138,8 @@ impl RunningServer {
 
     /// The advertised host active in the *owning* server process (from the lock),
     /// or `None` when this handle predates the field or was built socket-only. A
-    /// controller must prefer this over its own `--entry` preference when building
-    /// featured / QR URLs, so the address it prints matches the address the daemon
+    /// controller must prefer this over its own LAN-address preference when
+    /// building featured / QR URLs, so the printed address matches the daemon
     /// actually serves under.
     pub fn advertised_host(&self) -> Option<&str> {
         self.web_advertised_host.as_deref()
@@ -150,12 +150,18 @@ impl RunningServer {
         &self.service_version
     }
 
-    /// The public entry URL prefix (`--entry`/`--qr`) the *owning* server was
+    /// The public URL prefix (`--public-url`) the *owning* server was
     /// started with, or `None` when this handle predates the field or was built
-    /// socket-only. A controller with no `--entry` of its own prefers this so
+    /// socket-only. A controller with no `--public-url` of its own prefers this so
     /// featured / QR URLs point at the daemon's public address, not loopback.
+    pub fn public_url(&self) -> Option<&str> {
+        self.web_public_url.as_deref()
+    }
+
+    /// Compatibility accessor for callers predating `public_url`.
+    #[deprecated(note = "use public_url")]
     pub fn entry(&self) -> Option<&str> {
-        self.web_entry.as_deref()
+        self.public_url()
     }
 
     /// Best-effort liveness probe, mirroring
