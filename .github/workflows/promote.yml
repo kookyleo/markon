@@ -108,7 +108,14 @@ jobs:
           text = p.read_text()
           text = re.sub(r'version "[^"]*"', f'version "$VER"', text, count=1)
           text = re.sub(r'(sha256 arm:\s+)"[^"]*"', rf'\g<1>"$ARM_SHA"', text, count=1)
-          text = re.sub(r'(\s+intel:\s+)"[^"]*"', rf'\g<1>"$X64_SHA"', text, count=1)
+          # Only match the checksum line; the architecture map also has intel:.
+          text = re.sub(
+              r'(^\s*intel:\s+)"[^"]*"',
+              rf'\g<1>"$X64_SHA"',
+              text,
+              count=1,
+              flags=re.MULTILINE,
+          )
           p.write_text(text)
           PY
 
