@@ -3566,7 +3566,7 @@ dependencies = [
 
 [[package]]
 name = "markon"
-version = "0.15.27"
+version = "0.15.28"
 dependencies = [
  "clap",
  "crossterm",
@@ -3584,7 +3584,7 @@ dependencies = [
 
 [[package]]
 name = "markon-core"
-version = "0.15.27"
+version = "0.15.28"
 dependencies = [
  "arc-swap",
  "async-trait",
@@ -3642,7 +3642,7 @@ dependencies = [
 
 [[package]]
 name = "markon-gui"
-version = "0.15.27"
+version = "0.15.28"
 dependencies = [
  "dirs",
  "dunce",
@@ -3668,7 +3668,7 @@ dependencies = [
 
 [[package]]
 name = "markond"
-version = "0.15.27"
+version = "0.15.28"
 dependencies = [
  "dirs",
  "markon-core",
