@@ -1446,8 +1446,8 @@
                 <input type="number" id="cli-port" value="6419">
               </div>
               <div class="cli-field cli-field-full">
-                <span data-i18n="cli.lbl.entry"></span>
-                <input type="text" id="cli-qr" data-i18n-placeholder="cli.entry.tip">
+                <span data-i18n="cli.lbl.public_url"></span>
+                <input type="text" id="cli-public-url" data-i18n-placeholder="cli.public_url.tip">
               </div>
               <div class="cli-field cli-field-full">
                 <span data-i18n="cli.lbl.collab_access"></span>
@@ -1684,6 +1684,8 @@
     document.querySelector(`input[name="port_mode"][value="${mode}"]`).checked = true;
     document.getElementById('port').value = s.port;
     document.getElementById('host').value = s.host;
+    document.getElementById('cli-public-url').value = s.public_url || '';
+    buildCliCmd();
     preservedAdvertisedHost = s.advertised_host || '';
     document.getElementById('theme').value = s.theme || 'auto';
     currentWebStyles = { ...(s.web_styles || {}) };
@@ -1874,7 +1876,6 @@
       await refreshDataCleanupStats();
     }
   });
-  void refreshDataCleanupStats();
 
   // Wire change handlers: save + live-apply where applicable.
   ['port', 'host'].forEach(id =>
@@ -2959,6 +2960,8 @@
     // Load settings AFTER locale is resolved so all UI renders in correct
     // language. Reuses the settings fetched above; re-fetches if that failed.
     try { s = await loadSettings(s); } catch (e) { console.error('loadSettings threw:', e); }
+    // Cleanup labels use T(), so initialize after the translation state is ready.
+    void refreshDataCleanupStats();
     // Belt-and-suspenders: the Page Styles + Keyboard Shortcuts lists render at
     // the tail of loadSettings, so any earlier throw would leave them empty.
     // Render them directly if still unpopulated.
@@ -3080,7 +3083,7 @@
   });
 
   // ── CLI command builder ──────────────────────────────────────────────
-  const cliIds = ['cli-path','cli-port','cli-host','cli-qr','cli-collab-access','cli-open'];
+  const cliIds = ['cli-path','cli-port','cli-host','cli-public-url','cli-collab-access','cli-open'];
   const cliOutput = document.getElementById('cli-output');
   const cliAliasOutput = document.getElementById('cli-alias-output');
 
@@ -3093,12 +3096,12 @@
     const path  = document.getElementById('cli-path').value.trim() || '.';
     const port  = document.getElementById('cli-port').value;
     const host  = document.getElementById('cli-host').value;
-    const qr    = document.getElementById('cli-qr').value.trim();
+    const publicUrl = document.getElementById('cli-public-url').value.trim();
     const collaboratorAccess = document.getElementById('cli-collab-access').value.trim();
     let parts = ['markon'];
     if (port && port !== '6419') parts.push(`-p ${port}`);
     if (host) parts.push(`--host ${host}`);
-    if (qr) parts.push(`--entry ${shellArg(qr)}`);
+    if (publicUrl) parts.push(`--public-url ${shellArg(publicUrl)}`);
     if (collaboratorAccess) parts.push(`--collaborator-access-code ${shellArg(collaboratorAccess)}`);
     if (document.getElementById('cli-open').checked)   parts.push('-b');
     parts.push(shellArg(path));

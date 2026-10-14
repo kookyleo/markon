@@ -88,11 +88,19 @@ fn workspace_share_urls(
     advertised_host: &str,
     port: u16,
     workspace_id: &str,
+    public_url: Option<&str>,
 ) -> Vec<server::ReachableUrl> {
-    workspace_share_urls_from_origins(
-        server::reachable_urls(bind_host, advertised_host, port).all,
-        workspace_id,
-    )
+    let mut origins = server::reachable_urls(bind_host, advertised_host, port).all;
+    if let Some(url) = public_url.filter(|url| *url != "missing") {
+        origins.insert(
+            0,
+            server::ReachableUrl {
+                label: String::new(),
+                url: url.to_owned(),
+            },
+        );
+    }
+    workspace_share_urls_from_origins(origins, workspace_id)
 }
 
 fn workspace_share_urls_from_origins(
@@ -252,6 +260,8 @@ pub async fn save_settings(
     // The current GUI has no trusted-host editor; preserve manually configured
     // reverse-proxy/mDNS entries instead of treating an omitted field as clear.
     settings.trusted_hosts = persisted.trusted_hosts;
+    // The public URL is configured by the CLI or directly in settings.json.
+    settings.public_url = persisted.public_url;
     settings.example_workspace_hidden = persisted.example_workspace_hidden;
     // The salt determines every workspace id and is never part of the settings
     // form, so the round-trip must preserve it — a dropped salt would reset all
@@ -273,6 +283,7 @@ pub async fn save_settings(
             baseline.workspaces = settings.workspaces.clone();
             baseline.collaborator_access_code_hash = settings.collaborator_access_code_hash.clone();
             baseline.trusted_hosts = settings.trusted_hosts.clone();
+            baseline.public_url = settings.public_url.clone();
             baseline.example_workspace_hidden = settings.example_workspace_hidden;
             baseline.salt = settings.salt.clone();
             baseline
@@ -521,11 +532,16 @@ pub async fn get_workspace_share_urls(
     if !workspace.flags.shared_annotation {
         return Ok(Vec::new());
     }
+    // A CLI may have refreshed the service since this GUI attached. Read the
+    // current discovery metadata so shared links use the origin actually served.
+    let public_url = markon_core::control::RunningServer::discover()
+        .and_then(|server| server.public_url().map(str::to_owned));
     Ok(workspace_share_urls(
         remote.host(),
         remote.advertised_host().unwrap_or_default(),
         remote.port(),
         &workspace.id,
+        public_url.as_deref().or_else(|| remote.public_url()),
     ))
 }
 
@@ -942,5 +958,19 @@ mod tests {
                 url: "http://192.168.1.20:1618/abc123/".into(),
             }]
         );
+    }
+
+    #[test]
+    fn shared_workspace_uses_public_url_when_service_is_bound_to_loopback() {
+        let urls = workspace_share_urls(
+            "127.0.0.1",
+            "",
+            6419,
+            "abc123",
+            Some("https://md.example.com"),
+        );
+        assert_eq!(urls.len(), 1);
+        assert_eq!(urls[0].url, "https://md.example.com/abc123/");
+        assert!(!urls[0].url.contains("bootstrap_nonce"));
     }
 }

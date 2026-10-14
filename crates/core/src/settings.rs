@@ -38,6 +38,27 @@ fn default_single_file() -> Option<String> {
     None
 }
 
+/// Normalize a public HTTP(S) base URL; an empty value clears the default.
+pub fn normalize_public_url(value: &str) -> Result<String, String> {
+    let value = value.trim();
+    if value.is_empty() {
+        return Ok(String::new());
+    }
+    let url = reqwest::Url::parse(value)
+        .map_err(|_| "public URL must be an absolute http:// or https:// URL".to_string())?;
+    if !matches!(url.scheme(), "http" | "https") || url.host_str().is_none() {
+        return Err("public URL must be an absolute http:// or https:// URL".to_string());
+    }
+    if !url.username().is_empty()
+        || url.password().is_some()
+        || url.query().is_some()
+        || url.fragment().is_some()
+    {
+        return Err("public URL must not contain credentials, a query, or a fragment".to_string());
+    }
+    Ok(url.as_str().trim_end_matches('/').to_string())
+}
+
 /// A stable, per-device identifier used only as a last-resort recovery salt
 /// when settings cannot be read or parsed and therefore cannot safely be
 /// rewritten. Normal loads must preserve the persisted random salt verbatim.
@@ -236,6 +257,10 @@ pub struct AppSettings {
     /// boundary (for reverse proxies, mDNS, or custom local DNS).
     #[serde(default)]
     pub trusted_hosts: Vec<String>,
+    /// Default public URL for access links, QR codes, and allowed origins.
+    /// Empty keeps the automatically selected local/LAN address.
+    #[serde(default)]
+    pub public_url: String,
     pub theme: String,
     /// Unified language for the desktop panel, tray, rendered pages and editor.
     #[serde(default = "default_auto")]
@@ -323,6 +348,7 @@ impl Default for AppSettings {
             host: "127.0.0.1".to_string(),
             advertised_host: String::new(),
             trusted_hosts: Vec::new(),
+            public_url: String::new(),
             theme: "auto".to_string(),
             language: "auto".to_string(),
             web_theme: "auto".to_string(),
@@ -482,6 +508,7 @@ impl AppSettings {
         recover_field(object, "host", &mut settings.host);
         recover_field(object, "advertised_host", &mut settings.advertised_host);
         recover_field(object, "trusted_hosts", &mut settings.trusted_hosts);
+        recover_field(object, "public_url", &mut settings.public_url);
         recover_field(object, "theme", &mut settings.theme);
         recover_field(object, "language", &mut settings.language);
         recover_field(object, "web_theme", &mut settings.web_theme);
@@ -569,6 +596,7 @@ impl AppSettings {
     ///   before the auto-default fix don't show blank dropdowns
     /// - canonicalize default_chat_mode so downstream code can compare directly
     fn normalize(&mut self) {
+        self.public_url = normalize_public_url(&self.public_url).unwrap_or_default();
         use std::collections::HashSet;
         let mut seen = HashSet::new();
         self.workspaces
@@ -629,9 +657,32 @@ impl AppSettings {
         self.save_at(&home)
     }
 
+    /// The configured public URL, without the empty-string fallback marker.
+    pub fn public_url(&self) -> Option<&str> {
+        (!self.public_url.is_empty()).then_some(self.public_url.as_str())
+    }
+
+    /// Update only the public URL in the latest on-disk settings snapshot.
+    pub fn save_public_url(&mut self, value: &str) -> Result<(), String> {
+        let home = dirs::home_dir().expect("HOME directory required");
+        self.save_public_url_at(&home, value)
+    }
+
+    fn save_public_url_at(&mut self, home: &Path, value: &str) -> Result<(), String> {
+        let value = normalize_public_url(value)?;
+        Self::with_settings_write_lock(home, || {
+            let mut merged = Self::read_for_locked_merge_at(home)?.unwrap_or_else(|| self.clone());
+            merged.public_url = value;
+            merged.save_at_unlocked(home)?;
+            *self = merged;
+            Ok(())
+        })
+    }
+
     /// Save GUI-owned preferences while the live server registry remains
     /// authoritative for workspace membership/flags and its global access-code
-    /// hash. This applies both to an embedded server and to an attached daemon.
+    /// hash. Preserve the public URL configured outside the GUI form as well.
+    /// This applies both to an embedded server and to an attached daemon.
     /// Merge those fields from disk under the cross-process write lock before
     /// replacing the file, and update this in-memory snapshot to the result.
     pub fn save_preserving_server_owned_state(&mut self) -> Result<(), String> {
@@ -670,6 +721,7 @@ impl AppSettings {
             if let Some(latest) = Self::read_for_locked_merge_at(home)? {
                 self.workspaces = latest.workspaces;
                 self.collaborator_access_code_hash = latest.collaborator_access_code_hash;
+                self.public_url = latest.public_url;
                 if !latest.salt.is_empty() {
                     self.salt = latest.salt;
                 }
@@ -698,7 +750,7 @@ impl AppSettings {
             trusted_hosts: self.trusted_hosts.clone(),
             port,
             theme: self.theme.clone(),
-            qr: None,
+            qr: self.public_url().map(str::to_owned),
             open_browser: None,
             shared_annotation: initial_workspaces.iter().any(|w| w.flags.shared_annotation),
             db_path: self.db_path.clone(),
@@ -889,6 +941,108 @@ mod tests {
         fn drop(&mut self) {
             let _ = std::fs::remove_dir_all(&self.0);
         }
+    }
+
+    #[test]
+    fn public_url_defaults_preserve_legacy_workspace_identity() {
+        let home = TempHome::new("public-url-legacy");
+        let workspace = home.path().join("docs");
+        std::fs::create_dir_all(&workspace).unwrap();
+        let original = AppSettings {
+            salt: "persistent-salt".into(),
+            workspaces: vec![WorkspaceSettings {
+                path: workspace.to_string_lossy().into_owned(),
+                ..WorkspaceSettings::default()
+            }],
+            ..AppSettings::default()
+        };
+        original.save_at(home.path()).unwrap();
+        let path = AppSettings::settings_path_at(home.path());
+        let mut legacy = serde_json::to_value(&original).unwrap();
+        legacy.as_object_mut().unwrap().remove("public_url");
+        std::fs::write(path, serde_json::to_vec(&legacy).unwrap()).unwrap();
+
+        let mut loaded = AppSettings::load_at(home.path());
+        assert_eq!(loaded.public_url(), None);
+        loaded
+            .save_public_url_at(home.path(), "https://md.example.com/")
+            .unwrap();
+        let reloaded = AppSettings::load_at(home.path());
+        assert_eq!(reloaded.public_url(), Some("https://md.example.com"));
+        assert_eq!(reloaded.salt, original.salt);
+        assert_eq!(reloaded.workspaces, original.workspaces);
+        assert_eq!(
+            hash_id(&workspace, &reloaded.salt),
+            hash_id(&workspace, &original.salt)
+        );
+        assert_eq!(
+            crate::daemon::DaemonConfig::from_settings(&reloaded, 6419)
+                .qr
+                .as_deref(),
+            reloaded.public_url()
+        );
+    }
+
+    #[test]
+    fn public_url_update_merges_latest_settings_and_can_be_cleared() {
+        let home = TempHome::new("public-url-merge");
+        let mut stale = AppSettings::load_at(home.path());
+        let mut latest = stale.clone();
+        latest.theme = "dark".into();
+        latest.collaborator_access_code_hash = "new-access-hash".into();
+        latest.workspaces.push(WorkspaceSettings {
+            path: home.path().to_string_lossy().into_owned(),
+            alias: "new workspace".into(),
+            ..WorkspaceSettings::default()
+        });
+        latest.save_at(home.path()).unwrap();
+        stale
+            .save_public_url_at(home.path(), "https://md.example.com")
+            .unwrap();
+        assert_eq!(stale.theme, latest.theme);
+        assert_eq!(stale.salt, latest.salt);
+        assert_eq!(stale.workspaces, latest.workspaces);
+        assert_eq!(
+            stale.collaborator_access_code_hash,
+            latest.collaborator_access_code_hash
+        );
+
+        let before = std::fs::read(AppSettings::settings_path_at(home.path())).unwrap();
+        assert!(stale
+            .save_public_url_at(home.path(), "javascript:alert(1)")
+            .is_err());
+        assert_eq!(
+            std::fs::read(AppSettings::settings_path_at(home.path())).unwrap(),
+            before
+        );
+        stale.save_public_url_at(home.path(), "").unwrap();
+        let cleared = AppSettings::load_at(home.path());
+        assert_eq!(cleared.public_url(), None);
+        assert_eq!(cleared.workspaces, latest.workspaces);
+        assert_eq!(cleared.salt, latest.salt);
+    }
+
+    #[test]
+    fn public_url_accepts_only_http_bases_without_embedded_credentials() {
+        for value in [
+            "md.example.com",
+            "file:///tmp/docs",
+            "ftp://md.example.com",
+            "https://user:password@md.example.com",
+            "https://md.example.com?q=1",
+            "https://md.example.com/#secret",
+        ] {
+            assert!(normalize_public_url(value).is_err(), "{value}");
+        }
+        assert_eq!(
+            normalize_public_url(" https://MD.example.com/docs/ ").unwrap(),
+            "https://md.example.com/docs"
+        );
+        assert_eq!(
+            normalize_public_url("http://[::1]:6419/").unwrap(),
+            "http://[::1]:6419"
+        );
+        assert_eq!(normalize_public_url(" ").unwrap(), "");
     }
 
     // First load generates a non-empty salt and persists it; second load
@@ -1535,6 +1689,10 @@ mod tests {
         // A stale controller snapshot changes a GUI-owned preference. Its save
         // must retain the daemon's current workspace/global-code/salt fields.
         let mut gui_settings = base.clone();
+        let mut cli_settings = base.clone();
+        cli_settings
+            .save_public_url_at(home.path(), "https://md.example.com")
+            .unwrap();
         gui_settings.theme = "dark".into();
         gui_settings.workspaces = base.workspaces.clone();
         gui_settings.collaborator_access_code_hash = "stale-hash".into();
@@ -1545,6 +1703,7 @@ mod tests {
         assert_eq!(after_gui.theme, "dark");
         assert_eq!(after_gui.salt, "persistent-salt");
         assert_eq!(after_gui.collaborator_access_code_hash, "server-hash");
+        assert_eq!(after_gui.public_url(), Some("https://md.example.com"));
         assert_eq!(after_gui.workspaces.len(), 1);
         assert_eq!(after_gui.workspaces[0].path, live_root.to_string_lossy());
 
@@ -1557,6 +1716,7 @@ mod tests {
         assert!(registry.update_flags(&id, flags));
         let final_settings = AppSettings::load_at(home.path());
         assert_eq!(final_settings.theme, "dark");
+        assert_eq!(final_settings.public_url(), Some("https://md.example.com"));
         assert_eq!(final_settings.salt, "persistent-salt");
         assert_eq!(final_settings.workspaces[0].flags, flags);
         assert_eq!(daemon_settings.lock().unwrap().theme, "dark");

@@ -51,7 +51,7 @@ pub fn run(
     bind_host: String,
     advertised_host: String,
     port: u16,
-    entry: Option<String>,
+    public_base: Option<String>,
 ) -> Result<(), Box<dyn Error + Send + Sync>> {
     debug_assert_ne!(
         handle.runtime_flavor(),
@@ -60,8 +60,12 @@ pub fn run(
          deadlock the reactor on a current_thread runtime",
     );
 
-    let (url_base, use_entry_url) =
-        crate::resolve_workspace_list_base(&bind_host, &advertised_host, port, entry.as_deref());
+    let (url_base, use_public_url) = crate::resolve_workspace_list_base(
+        &bind_host,
+        &advertised_host,
+        port,
+        public_base.as_deref(),
+    );
 
     // Initial fetch before touching the terminal: an error here propagates
     // cleanly (non-zero exit) with no raw-mode side effects.
@@ -71,7 +75,7 @@ pub fn run(
         server,
         handle,
         url_base,
-        use_entry_url,
+        use_public_url,
         workspaces,
         selected: 0,
         screen: Screen::List,
@@ -91,11 +95,11 @@ pub fn run(
 struct App {
     server: RunningServer,
     handle: Handle,
-    /// Stable local base URL, or an explicit `--entry` prefix, for workspace URLs.
+    /// Stable local base URL, or an explicit `--public-url` prefix, for workspace URLs.
     url_base: String,
-    /// An explicit `--entry` remains authoritative even though local launches
+    /// An explicit `--public-url` remains authoritative even though local launches
     /// otherwise use the stable loopback origin.
-    use_entry_url: bool,
+    use_public_url: bool,
     workspaces: Vec<WorkspaceInfo>,
     selected: usize,
     screen: Screen,
@@ -198,7 +202,7 @@ impl App {
                     let redirect = server::workspace_url_path(&ws.id, None);
                     match self.handle.block_on(self.server.admin_bootstrap(&redirect)) {
                         Ok(issued_url) => {
-                            let url = if self.use_entry_url {
+                            let url = if self.use_public_url {
                                 crate::rehome_admin_bootstrap_url(
                                     &self.url_base,
                                     &redirect,

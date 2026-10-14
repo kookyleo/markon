@@ -14,10 +14,9 @@
 
 use crate::commands::effective_port;
 use markon_core::control::RunningServer;
-use markon_core::daemon::{DaemonConfig, DaemonWorkspace};
+use markon_core::daemon::DaemonConfig;
 use markon_core::settings::AppSettings;
 use markon_core::workspace::WorkspaceFlags;
-use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 
 /// The GUI's live handle to the markon service. `None` server = detached.
@@ -76,50 +75,9 @@ impl ServiceConnection {
     }
 }
 
-/// Project one persisted [`WorkspaceSettings`](markon_core::settings::WorkspaceSettings)
-/// onto its declarative [`DaemonWorkspace`] wire form. Mirrors the CLI's
-/// `workspace_init_to_daemon` and `AppSettings::to_server_config` mapping so the
-/// daemon starts with exactly the workspaces the GUI persisted.
-fn workspaces_for_daemon(settings: &AppSettings) -> Vec<DaemonWorkspace> {
-    settings
-        .workspaces
-        .iter()
-        .filter(|w| !w.path.is_empty())
-        .map(|w| DaemonWorkspace {
-            path: PathBuf::from(&w.path),
-            flags: w.flags,
-            initial_path: w.single_file.clone(),
-            single_file: w.single_file.clone(),
-            collaborator_access_code_hash: w.collaborator_access_code_hash.clone(),
-            alias: w.alias.clone(),
-        })
-        .collect()
-}
-
-/// Build the declarative [`DaemonConfig`] the GUI hands to `markond` — the same
-/// mechanism the CLI uses. Runtime handles (listener, registry, tokens) are
-/// never part of this; the daemon constructs them itself.
+/// Build the daemon configuration from the defaults shared with the CLI.
 pub fn daemon_config_from_settings(settings: &AppSettings, port: u16) -> DaemonConfig {
-    DaemonConfig {
-        host: settings.host.clone(),
-        advertised_host: settings.advertised_host.clone(),
-        trusted_hosts: settings.trusted_hosts.clone(),
-        port,
-        theme: settings.theme.clone(),
-        qr: None,
-        // The daemon never opens a browser itself; the GUI opens URLs over the
-        // control socket (admin bootstrap) when the user asks.
-        open_browser: None,
-        db_path: settings.db_path.clone(),
-        salt: Some(settings.salt.clone()),
-        workspaces: workspaces_for_daemon(settings),
-        language: Some(settings.language.clone()),
-        shortcuts_json: settings.render_shortcuts_json(),
-        styles_css: settings.render_styles_css(),
-        default_chat_mode: settings.default_chat_mode.clone(),
-        collaborator_access_code_hash: settings.collaborator_access_code_hash.clone(),
-        print_collapsed_content: settings.print_collapsed_content,
-    }
+    DaemonConfig::from_settings(settings, port)
 }
 
 /// Forward every workspace that remains persisted after startup pruning to an

@@ -153,7 +153,7 @@ Markon 的用户数据**独立于进程**,持久在 `~/.markon/`:
 - **可选协作者访问码门禁**(认证层,见 `server.rs` 的 access gate / `access_scope_for`)——
   对所有非 Admin 浏览器一致生效,不因 loopback 绕过;两级就近覆盖(全局 + 按工作区)。
 - **Host / Origin 边界**:每个请求的 Host 必须属于 localhost、实际绑定 / advertised 地址、
-  `--entry` 或显式 `trusted_hosts`。`Origin == Host` 只负责同源,不能替代 Host allowlist;
+  `--public-url` 或显式 `trusted_hosts`。`Origin == Host` 只负责同源,不能替代 Host allowlist;
   这两层共同阻断 DNS rebinding。反向代理头不参与身份授权。
 - **Cookie**:协作者与 Admin cookie 均使用 HMAC-SHA256;显式 HTTPS origin 下追加 `Secure`。
   Cookie 算法升级会让旧 cookie 一次性失效,不影响任何持久化数据。

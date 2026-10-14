@@ -84,6 +84,11 @@ describe('SectionViewedManager', () => {
     });
 
     afterEach(() => {
+        // Finish pending CSS transitions before jsdom is disposed, so fallback
+        // timers cannot call into a window that belongs to an earlier test.
+        document.querySelectorAll('.markdown-body *').forEach((element) => {
+            element.dispatchEvent(new TransitionEvent('transitionend', { propertyName: 'opacity' }));
+        });
         vi.useRealTimers();
         logSpy.mockRestore();
         warnSpy.mockRestore();

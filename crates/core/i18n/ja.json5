@@ -188,10 +188,10 @@
     "tips.cli":        "コマンドビルダーで CLI コマンドを生成、コピーして使用",
     "cli.lbl.path":    "対象ディレクトリ/ファイル",
     "cli.lbl.server":  "リッスン",
-    "cli.lbl.entry":   "エントリ",
+    "cli.lbl.public_url":   "公開 URL",
     "cli.lbl.collab_access": "共同編集者コード",
     "cli.path.ph":     "ディレクトリまたはファイルパス",
-    "cli.entry.tip":   "プロキシドメイン/グローバル IP (QR コードおよび外部アクセス用、任意)",
+    "cli.public_url.tip":   "プロキシまたは LAN／公開 URL。生成コマンドの実行時に既定値として保存",
     "cli.collab_access.tip": "任意のワークスペース共同編集者コード",
     "cli.open":        "ブラウザを自動で開く",
 

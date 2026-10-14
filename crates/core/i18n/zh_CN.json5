@@ -187,10 +187,10 @@
     "tips.cli":        "使用命令行构建器生成 Cli 命令, 粘贴使用",
     "cli.lbl.path":    "目标目录/文件",
     "cli.lbl.server":  "监听",
-    "cli.lbl.entry":   "入口",
+    "cli.lbl.public_url":   "对外地址",
     "cli.lbl.collab_access": "协作者访问码",
     "cli.path.ph":     "目录或文件路径",
-    "cli.entry.tip":   "代理域名/公网 IP，用于 QR 码和外部访问 (可选)",
+    "cli.public_url.tip":   "代理域名或局域网／公网 URL；执行生成的命令后保存为默认值",
     "cli.collab_access.tip": "可选的工作区协作者访问码",
     "cli.open":        "自动打开浏览器",
 
