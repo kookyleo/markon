@@ -95,9 +95,9 @@ pub fn run(
 struct App {
     server: RunningServer,
     handle: Handle,
-    /// Stable local base URL, or an explicit `--public-url` prefix, for workspace URLs.
+    /// Stable local base URL, or an explicit `--public-base-url` prefix, for workspace URLs.
     url_base: String,
-    /// An explicit `--public-url` remains authoritative even though local launches
+    /// An explicit `--public-base-url` remains authoritative even though local launches
     /// otherwise use the stable loopback origin.
     use_public_url: bool,
     workspaces: Vec<WorkspaceInfo>,

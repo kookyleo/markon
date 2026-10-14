@@ -44,7 +44,7 @@ Turning Shared off removes collaborator capability and broadcasting without movi
 ```bash
 markon docs/ \
   --host 0.0.0.0 \
-  --public-url http://192.168.1.20:6419 \
+  --public-base-url http://192.168.1.20:6419 \
   --collaborator-access-code guest-secret
 ```
 

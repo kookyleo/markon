@@ -188,10 +188,10 @@
     "tips.cli":        "Generate a CLI command with the builder below, paste to use",
     "cli.lbl.path":    "Target dir/file",
     "cli.lbl.server":  "Listen",
-    "cli.lbl.public_url":   "Public URL",
+    "cli.lbl.public_base_url":   "Public base URL",
     "cli.lbl.collab_access": "Collaborator code",
     "cli.path.ph":     "Directory or file path",
-    "cli.public_url.tip":   "Proxy or LAN/public URL; saved when the generated command runs",
+    "cli.public_base_url.tip":   "HTTP(S) base URL, e.g. https://md.example.com; saved when the generated command runs",
     "cli.collab_access.tip": "Optional workspace collaborator code",
     "cli.open":        "Auto-open browser",
 

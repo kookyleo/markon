@@ -107,6 +107,8 @@ Markon 的用户数据**独立于进程**,持久在 `~/.markon/`:
   `normalize()` **绝不重置 `salt` 或 `workspaces`**。
 - **不得**对 `AppSettings` 启用 `deny_unknown_fields`——保留「旧版本读新文件时忽略未知字段」
   的降级兼容。
+- 对外基础 URL 使用 `public_base_url` 字段;读取时兼容 v0.15.28 的 `public_url`,
+  写回时统一使用新名称。此迁移不得改变 `salt`、工作区列表或数据库数据。
 
 ## 4. chat 数据(次要)
 
@@ -153,7 +155,7 @@ Markon 的用户数据**独立于进程**,持久在 `~/.markon/`:
 - **可选协作者访问码门禁**(认证层,见 `server.rs` 的 access gate / `access_scope_for`)——
   对所有非 Admin 浏览器一致生效,不因 loopback 绕过;两级就近覆盖(全局 + 按工作区)。
 - **Host / Origin 边界**:每个请求的 Host 必须属于 localhost、实际绑定 / advertised 地址、
-  `--public-url` 或显式 `trusted_hosts`。`Origin == Host` 只负责同源,不能替代 Host allowlist;
+  `--public-base-url` 或显式 `trusted_hosts`。`Origin == Host` 只负责同源,不能替代 Host allowlist;
   这两层共同阻断 DNS rebinding。反向代理头不参与身份授权。
 - **Cookie**:协作者与 Admin cookie 均使用 HMAC-SHA256;显式 HTTPS origin 下追加 `Secure`。
   Cookie 算法升级会让旧 cookie 一次性失效,不影响任何持久化数据。

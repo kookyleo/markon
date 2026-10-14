@@ -36,7 +36,7 @@ The desktop **Tips** page includes a CLI command builder for paths, addresses, a
 |---|---|
 | `-p, --port <PORT>` | Web port, default `6419`; overrides saved settings |
 | `--host [IP]` | Bind address; without a value, opens the interface picker |
-| `--public-url [URL]` | Public URL for access links, QR codes and allowed origins; saved as the default |
+| `--public-base-url [URL]` | Public HTTP(S) base URL for links, QR codes and allowed origins; saved as the default |
 | `--trusted-host <HOST_OR_ORIGIN>` | Additional exact authority; repeatable |
 | `-b, --open-browser [URL]` | Open a browser, using the local URL or the supplied base URL |
 | `--collaborator-access-code <CODE>` | Set the workspace collaborator code; an empty string clears it |
@@ -132,26 +132,26 @@ markon -b https://docs.example.com docs/
 
 `--open-browser URL` appends the workspace path to the supplied base URL, which is useful behind a reverse proxy.
 
-### Public URLs and persistence
+### Public base URL and persistence
 
-`--public-url` sets the address used in shared links and QR codes. `--open-browser` controls this invocation's browser launch. They can use different addresses:
+`--public-base-url` sets the public HTTP(S) base URL, such as `https://md.example.com` or `http://192.168.1.20:6419`. Include the scheme: a bare domain is not accepted. Do not supply a full document link; Markon appends the workspace and file paths. `--open-browser` controls this invocation's browser launch. They can use different addresses:
 
 ```bash
 # Advertise the domain while opening a local browser URL
-markon docs/ --public-url https://md.example.com --open-browser
+markon docs/ --public-base-url https://md.example.com --open-browser
 
 # Open the saved domain in this invocation's browser as well
 markon docs/ --open-browser https://md.example.com
 
-# Clear the saved public URL and restore automatic local/LAN addressing
-markon --public-url "" ls
+# Clear the saved public base URL and restore automatic local/LAN addressing
+markon --public-base-url "" ls
 ```
 
-An explicit public URL is saved in the `public_url` field of `~/.markon/settings.json` and reused by later invocations, service restarts and the desktop app. Older settings default to an empty value. To edit the default manually, set that field to the desired HTTP(S) URL in your existing configuration, preserving its other fields.
+An explicit public base URL is saved in the `public_base_url` field of `~/.markon/settings.json` and reused by later invocations, service restarts and the desktop app. Older settings retain their `public_url` value, or default to empty when neither key is present. To edit the default manually, set that field to the desired HTTP(S) URL in your existing configuration, preserving its other fields.
 
-After changing the saved URL, the next CLI invocation refreshes the daemon when needed so its allowed origins match, preserving the live workspaces, port and bind address. `markon admin code` also uses the public URL. Browser launches still default to a local address; `--open-browser URL` overrides only this invocation and is not saved.
+After changing the saved URL, the next CLI invocation refreshes the daemon when needed so its allowed origins match, preserving the live workspaces, port and bind address. `markon admin code` also uses the public base URL. Browser launches still default to a local address; `--open-browser URL` overrides only this invocation and is not saved.
 
-For older scripts, `--entry` and `--qr` remain aliases for `--public-url`. A bare `--public-url` requests a local QR code for this invocation without changing the saved default.
+For older scripts, `--public-url`, `--entry` and `--qr` remain aliases for `--public-base-url`. The old `public_url` settings key is still accepted; subsequent writes use `public_base_url`. A bare `--public-base-url` requests a local QR code for this invocation without changing the saved default.
 
 ## Binding examples
 
@@ -166,7 +166,7 @@ For a LAN:
 
 ```bash
 markon docs/ --host 0.0.0.0 \
-  --public-url http://192.168.1.20:6419 \
+  --public-base-url http://192.168.1.20:6419 \
   --collaborator-access-code guest-secret
 ```
 
@@ -174,13 +174,13 @@ Behind a reverse proxy:
 
 ```bash
 markon docs/ --host 127.0.0.1 \
-  --public-url https://docs.example.com \
+  --public-base-url https://docs.example.com \
   --trusted-host https://docs.example.com
 ```
 
 ![CLI access URLs and QR code (output excerpt)](/screenshots/cli-qr.png)
 
-`--public-url` describes the external origin; it does not provide TLS. See [Reverse proxy](/advanced/reverse-proxy).
+`--public-base-url` sets the external base URL and registers its origin; it does not provide TLS. See [Reverse proxy](/advanced/reverse-proxy).
 
 ## Setting precedence
 

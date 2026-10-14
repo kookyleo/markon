@@ -36,7 +36,7 @@ markon <COMMAND>
 |---|---|
 | `-p, --port <PORT>` | Web 端口，默认 `6419`；显式参数覆盖 settings |
 | `--host [IP]` | 指定绑定地址；只写 `--host` 时进入网卡选择器 |
-| `--public-url [URL]` | 对外访问链接、二维码和允许访问的域名；保存为默认值 |
+| `--public-base-url [URL]` | 对外 HTTP(S) 基础 URL，用于生成链接、二维码及允许的来源；保存为默认值 |
 | `--trusted-host <HOST_OR_ORIGIN>` | 额外允许的精确 authority，可重复 |
 | `-b, --open-browser [URL]` | 打开浏览器；无值用本地地址，有值时用给定 base |
 | `--collaborator-access-code <CODE>` | 设置当前工作区协作者码；空字符串清除 |
@@ -152,26 +152,28 @@ markon -b https://docs.example.com docs/
 
 `--open-browser URL` 会把 Workspace 路径附加到给定 base，适合反向代理入口。
 
-### 对外地址与持久化
+### 对外基础 URL 与持久化
 
-`--public-url` 设置分享链接和二维码使用的地址；`--open-browser` 设置本次打开浏览器的行为。两者可以使用不同地址：
+`--public-base-url` 设置对外访问的 HTTP(S) 基础 URL，例如 `https://md.example.com` 或 `http://192.168.1.20:6419`。必须包含协议，不能只写域名，也不要填具体文档的完整链接；Markon 会自动追加工作区和文件路径。
+
+`--open-browser` 设置本次打开浏览器的行为。两者可以使用不同地址：
 
 ```bash
 # 分享使用域名，本机浏览器使用本地地址
-markon docs/ --public-url https://md.example.com --open-browser
+markon docs/ --public-base-url https://md.example.com --open-browser
 
 # 本机浏览器也使用域名
 markon docs/ --open-browser https://md.example.com
 
 # 清除保存的对外地址，恢复自动选择本地／局域网地址
-markon --public-url "" ls
+markon --public-base-url "" ls
 ```
 
-显式传入的对外 URL 会写入 `~/.markon/settings.json` 的 `public_url` 字段，后续调用、服务重启和桌面端都使用它。旧配置缺少该字段时默认为空。也可以在已有配置中将 `public_url` 字段设为所需的 HTTP(S) URL，保留其它字段。
+显式传入的对外基础 URL 会写入 `~/.markon/settings.json` 的 `public_base_url` 字段，后续调用、服务重启和桌面端都使用它。旧配置中的 `public_url` 会自动沿用；两个字段都缺少时默认为空。也可以在已有配置中将 `public_base_url` 字段设为所需的 HTTP(S) URL，保留其它字段。
 
 修改保存的对外地址后，下一次 CLI 调用会按需刷新后台服务，更新访问白名单，同时保留当前工作区、端口和监听地址。`markon admin code` 也使用该对外地址。浏览器默认仍使用本地地址；`--open-browser URL` 仅覆盖本次打开地址，不写入配置。
 
-兼容旧脚本：`--entry`、`--qr` 仍是 `--public-url` 的别名。只写 `--public-url` 而不提供 URL，会为本次调用生成本地二维码，不修改已保存的默认值。
+兼容旧脚本：`--public-url`、`--entry`、`--qr` 仍是 `--public-base-url` 的别名。旧配置中的 `public_url` 字段仍可读取，写回时改用 `public_base_url`。只写 `--public-base-url` 而不提供 URL，会为本次调用生成本地二维码，不修改已保存的默认值。
 
 ## 监听示例
 
@@ -186,7 +188,7 @@ markon docs/ --host 192.168.1.5  # 指定接口
 
 ```bash
 markon docs/ --host 0.0.0.0 \
-  --public-url http://192.168.1.20:6419 \
+  --public-base-url http://192.168.1.20:6419 \
   --collaborator-access-code guest-secret
 ```
 
@@ -194,13 +196,13 @@ markon docs/ --host 0.0.0.0 \
 
 ```bash
 markon docs/ --host 127.0.0.1 \
-  --public-url https://docs.example.com \
+  --public-base-url https://docs.example.com \
   --trusted-host https://docs.example.com
 ```
 
 ![CLI 访问链接与二维码（输出节选）](/screenshots/cli-qr.png)
 
-`--public-url` 只描述外部 origin，不提供 TLS。公网部署见[反向代理](/zh/advanced/reverse-proxy)。
+`--public-base-url` 设置对外基础 URL，并登记其中的 origin；不提供 TLS。公网部署见[反向代理](/zh/advanced/reverse-proxy)。
 
 ## 设置优先级
 

@@ -1446,8 +1446,8 @@
                 <input type="number" id="cli-port" value="6419">
               </div>
               <div class="cli-field cli-field-full">
-                <span data-i18n="cli.lbl.public_url"></span>
-                <input type="text" id="cli-public-url" data-i18n-placeholder="cli.public_url.tip">
+                <span data-i18n="cli.lbl.public_base_url"></span>
+                <input type="text" id="cli-public-base-url" data-i18n-placeholder="cli.public_base_url.tip">
               </div>
               <div class="cli-field cli-field-full">
                 <span data-i18n="cli.lbl.collab_access"></span>
@@ -1684,7 +1684,7 @@
     document.querySelector(`input[name="port_mode"][value="${mode}"]`).checked = true;
     document.getElementById('port').value = s.port;
     document.getElementById('host').value = s.host;
-    document.getElementById('cli-public-url').value = s.public_url || '';
+    document.getElementById('cli-public-base-url').value = s.public_base_url || '';
     buildCliCmd();
     preservedAdvertisedHost = s.advertised_host || '';
     document.getElementById('theme').value = s.theme || 'auto';
@@ -3083,7 +3083,7 @@
   });
 
   // ── CLI command builder ──────────────────────────────────────────────
-  const cliIds = ['cli-path','cli-port','cli-host','cli-public-url','cli-collab-access','cli-open'];
+  const cliIds = ['cli-path','cli-port','cli-host','cli-public-base-url','cli-collab-access','cli-open'];
   const cliOutput = document.getElementById('cli-output');
   const cliAliasOutput = document.getElementById('cli-alias-output');
 
@@ -3096,12 +3096,12 @@
     const path  = document.getElementById('cli-path').value.trim() || '.';
     const port  = document.getElementById('cli-port').value;
     const host  = document.getElementById('cli-host').value;
-    const publicUrl = document.getElementById('cli-public-url').value.trim();
+    const publicBaseUrl = document.getElementById('cli-public-base-url').value.trim();
     const collaboratorAccess = document.getElementById('cli-collab-access').value.trim();
     let parts = ['markon'];
     if (port && port !== '6419') parts.push(`-p ${port}`);
     if (host) parts.push(`--host ${host}`);
-    if (publicUrl) parts.push(`--public-url ${shellArg(publicUrl)}`);
+    if (publicBaseUrl) parts.push(`--public-base-url ${shellArg(publicBaseUrl)}`);
     if (collaboratorAccess) parts.push(`--collaborator-access-code ${shellArg(collaboratorAccess)}`);
     if (document.getElementById('cli-open').checked)   parts.push('-b');
     parts.push(shellArg(path));

@@ -129,7 +129,7 @@ pub struct ServerConfig {
     pub trusted_hosts: Vec<String>,
     pub port: u16,
     pub theme: String,
-    /// Public URL base; retains its legacy field name for existing Rust callers.
+    /// Public base URL; retains its legacy field name for existing Rust callers.
     pub qr: Option<String>,
     pub open_browser: Option<String>,
     pub shared_annotation: bool,
@@ -1346,11 +1346,11 @@ pub async fn start(config: ServerConfig) -> Result<(), String> {
     let admin_code_bind_host = host.clone();
     let admin_code_advertised_host = advertised_host.clone();
     let admin_code_port = addr.port();
-    let admin_code_public_url = qr.clone().filter(|url| url != "missing");
+    let admin_code_public_base_url = qr.clone().filter(|url| url != "missing");
     let admin_bootstrap_code_fn: crate::control::AdminBootstrapCodeFn =
         Arc::new(move |redirect: &str| {
             let code = admin_bootstraps_for_code.issue_code(redirect);
-            let admin_code_base = admin_code_public_url.clone().unwrap_or_else(|| {
+            let admin_code_base = admin_code_public_base_url.clone().unwrap_or_else(|| {
                 featured_base_url(
                     &admin_code_bind_host,
                     &admin_code_advertised_host,
@@ -1392,7 +1392,7 @@ pub async fn start(config: ServerConfig) -> Result<(), String> {
             host: host.clone(),
             advertised_host: Some(advertised_host.clone()),
             service_version: env!("CARGO_PKG_VERSION").to_string(),
-            // Record the public entry prefix (`--public-url`) so a later
+            // Record the public entry prefix (`--public-base-url`) so a later
             // `markon ls`/GUI that attaches without its own entry can reproduce
             // the daemon's featured/QR URLs instead of falling back to loopback.
             entry: qr.clone(),

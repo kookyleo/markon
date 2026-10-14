@@ -64,7 +64,7 @@ pub struct DaemonConfig {
     pub port: u16,
     #[serde(default = "default_theme")]
     pub theme: String,
-    /// Public URL base. Keep the legacy `qr` JSON key for handoff compatibility.
+    /// Public base URL. Keep the legacy `qr` JSON key for handoff compatibility.
     #[serde(default)]
     pub qr: Option<String>,
     #[serde(default)]
