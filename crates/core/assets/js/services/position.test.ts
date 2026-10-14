@@ -54,7 +54,7 @@ describe('Position.constrainToViewport', () => {
 });
 
 describe('Position.smartScrollToHeading', () => {
-    it('invokes window.scrollTo with smooth behavior when section fits viewport', () => {
+    it('jumps immediately when section fits viewport', () => {
         const heading = document.createElement('h2');
         heading.className = 'heading-section';
         document.body.appendChild(heading);
@@ -66,7 +66,7 @@ describe('Position.smartScrollToHeading', () => {
 
         Position.smartScrollToHeading(heading);
         expect(calls.length).toBe(1);
-        expect(calls[0]?.behavior).toBe('smooth');
+        expect(calls[0]?.behavior).toBe('instant');
         // top = 200 + scrollY(0) - HEADING_TOP_MARGIN(64)
         expect(calls[0]?.top).toBe(200 - 64);
     });
@@ -82,6 +82,7 @@ describe('Position.smartScrollToHeading', () => {
         window.scrollTo = ((opts?: ScrollToOptions) => { calls.push(opts); });
 
         Position.smartScrollToHeading(heading);
+        expect(calls[0]?.behavior).toBe('instant');
         // top = 300 + 0 - HEADING_TOP_MARGIN_TIGHT(5)
         expect(calls[0]?.top).toBe(295);
     });
