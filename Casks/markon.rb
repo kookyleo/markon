@@ -1,9 +1,9 @@
 cask "markon" do
   arch arm: "aarch64", intel: "x64"
 
-  version "0.15.28"
-  sha256 arm:   "ea7337008fc74fb62ba28dec7a9b4fd8e1e19b2490873d5b726634a7295f9a3f",
-         intel: "3fc5d5cf5d72ad299a7d0a7ca45de3a5eaae429f1fbf0fdfbd033ff57f6d5e66"
+  version "0.15.29"
+  sha256 arm:   "96011e53f2a8856ac71c27a6a3e7918de206596aff19328f66172cc86287fd86",
+         intel: "ee4b74c3cdd7ccd939da3ab7ea85f5580063f2c2b2a3db27fb54de770b321170"
 
   url "https://github.com/kookyleo/markon/releases/download/v#{version}/Markon_#{version}_#{arch}.dmg",
       verified: "github.com/kookyleo/markon/"
