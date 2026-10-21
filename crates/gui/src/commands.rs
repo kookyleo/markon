@@ -1040,7 +1040,7 @@ mod tests {
             for path in [&root, &note] {
                 let target = WorkspaceOpenTarget::resolve(path).unwrap();
                 let id = remote
-                    .add_or_update_open_target(&target, existing_flags.clone(), Some(&saved_hash))
+                    .add_or_update_open_target(&target, existing_flags, Some(&saved_hash))
                     .await
                     .unwrap();
                 remote.set_alias(&id, "Review workspace").await.unwrap();
@@ -1053,7 +1053,7 @@ mod tests {
                     .unwrap();
 
                 assert_eq!(
-                    open_workspace_with_defaults(&remote, &target, defaults.clone())
+                    open_workspace_with_defaults(&remote, &target, defaults)
                         .await
                         .unwrap(),
                     id
@@ -1076,7 +1076,7 @@ mod tests {
             // A sibling file must remain a separate identity and inherit the
             // current defaults instead of adopting the directory's flags.
             let target = WorkspaceOpenTarget::resolve(&sibling).unwrap();
-            let id = open_workspace_with_defaults(&remote, &target, defaults.clone())
+            let id = open_workspace_with_defaults(&remote, &target, defaults)
                 .await
                 .unwrap();
             let workspaces = remote.list_workspaces().await.unwrap();
