@@ -84,7 +84,7 @@ export interface LiveSelectionAction {
     endOffset?: number;
 }
 
-/** Viewed-checkbox toggle broadcast. */
+/** Legacy wire shape. Progress sync uses committed Share state, not Live. */
 export interface LiveViewedAction {
     action: 'viewed';
     clientId: string;
@@ -206,16 +206,16 @@ export class CollaborationManager {
         // --markon-live-user custom property).
         this._updateUIState();
 
-        this.app.ws.on('live_action', (msg) => {
-            // The wire-level type for `data` is broad (string action); we
-            // narrow into our discriminated union via the runtime checks
-            // inside `handleLiveAction`.
-            this.handleLiveAction(msg.data as unknown as LiveAction);
-        });
-
-        if (this.isBroadcasting) {
-            this._broadcastNavigation();
-            this._broadcastViewport();
+        if (this.liveEnabled) {
+            this.app.ws.on('live_action', (msg) => {
+                // Legacy frames remain parseable, but handleLiveAction keeps
+                // persistent progress out of the Live context channel.
+                this.handleLiveAction(msg.data as unknown as LiveAction);
+            });
+            if (this.isBroadcasting) {
+                this._broadcastNavigation();
+                this._broadcastViewport();
+            }
         }
 
         Logger.log('Live', `Initialized (clientId=${this.clientId}, mode=${this.mode})`);
@@ -260,6 +260,9 @@ export class CollaborationManager {
     }
 
     handleLiveAction(data: LiveAction): void {
+        // Ignore old progress frames before route/focus handling as well:
+        // even their reading context must not turn into a second data path.
+        if (!this.liveEnabled || data.action === 'viewed') return;
         if (data.clientId === this.clientId) return;
         if (!this.isFollowing) return;
         if (!this._sameWorkspace(data.workspaceId)) return;
@@ -300,8 +303,6 @@ export class CollaborationManager {
             } else {
                 this._applySelection(data);
             }
-        } else if (data.action === 'viewed') {
-            this._applyViewed(data);
         } else if (data.action === 'viewport') {
             this._applyViewport(data);
         }
@@ -376,26 +377,6 @@ export class CollaborationManager {
             } else {
                 target.scrollTo({ left: data.scrollX, top: data.scrollY, behavior: 'smooth' });
             }
-        } finally {
-            setTimeout(() => { this._applyingRemote = false; }, 250);
-        }
-    }
-
-    _applyViewed(data: LiveViewedAction): void {
-        if (!data.headingId) return;
-        const cb = document.querySelector<HTMLInputElement>(
-            `.viewed-checkbox[data-heading-id="${CSS.escape(data.headingId)}"]`,
-        );
-        if (!cb) return;
-        const next = !!data.checked;
-        if (cb.checked === next) return;
-        this._applyingRemote = true;
-        try {
-            // Route through the native change event so viewed.js runs its
-            // usual collapse/expand + localStorage-persist logic on the
-            // follower — we don't reimplement any of it.
-            cb.checked = next;
-            cb.dispatchEvent(new Event('change', { bubbles: true }));
         } finally {
             setTimeout(() => { this._applyingRemote = false; }, 250);
         }
@@ -490,7 +471,7 @@ export class CollaborationManager {
     }
 
     broadcastAction(action: string, extraData: Record<string, unknown> = {}): void {
-        if (!this.isBroadcasting || !this.app.ws) return;
+        if (!this.liveEnabled || action === 'viewed' || !this.isBroadcasting || !this.app.ws) return;
         void this.app.ws.send({
             type: 'live_action',
             data: {
@@ -552,21 +533,6 @@ export class CollaborationManager {
         document.addEventListener('selectionchange', () => {
             if (timer) clearTimeout(timer);
             timer = setTimeout(() => this._broadcastSelection(article), 120);
-        });
-    }
-
-    // Watch user-initiated Viewed-checkbox toggles and broadcast them. The
-    // native `change` event only fires on real user interaction, so
-    // programmatic `.checked = X` from viewed.js's own batch updates
-    // (updateCheckboxes / mark-all, etc.) won't echo back through here.
-    _observeViewed(): void {
-        document.addEventListener('change', (e) => {
-            if (this._applyingRemote) return;
-            const cb = e.target as HTMLInputElement | null;
-            if (!cb?.classList?.contains('viewed-checkbox')) return;
-            const id = cb.dataset?.['headingId'];
-            if (!id) return;
-            this.broadcastAction('viewed', { headingId: id, checked: cb.checked });
         });
     }
 
@@ -743,12 +709,13 @@ export class CollaborationManager {
             });
         }
 
-        // Live sync is Workspace-level: route + viewport are available on
-        // every page; document pages add section/selection/viewed semantics.
-        this._observeFocusedSection();
-        this._observeSelection();
-        this._observeViewed();
-        this._observeViewport();
+        // Share-only identity controls never install Live observers. Section
+        // progress belongs exclusively to Share's committed state channel.
+        if (this.liveEnabled) {
+            this._observeFocusedSection();
+            this._observeSelection();
+            this._observeViewport();
+        }
 
         // Any local user input clears the "remote selection" marker so the
         // popover is suppressed only while the rendered selection still

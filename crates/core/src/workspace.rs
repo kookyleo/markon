@@ -29,8 +29,12 @@ const WATCH_MAX_BATCH_DELAY: std::time::Duration = std::time::Duration::from_sec
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct WorkspaceFlags {
+    /// Legacy persisted preference. Search is a baseline capability; this value
+    /// is retained for settings and native API compatibility only.
     #[serde(default)]
     pub enable_search: bool,
+    /// Legacy persisted preference. Progress is always available, subject to
+    /// the document-state authorization policy rather than this value.
     #[serde(default)]
     pub enable_viewed: bool,
     #[serde(default)]
@@ -166,7 +170,7 @@ pub(crate) enum WorkspaceEvent {
 
 impl WorkspaceEntry {
     pub(crate) fn search_ready(&self) -> bool {
-        self.enable_search.load(Ordering::Relaxed) && self.search_index.load().is_some()
+        self.search_index.load().is_some()
     }
 
     pub(crate) fn flags(&self) -> WorkspaceFlags {
@@ -499,19 +503,15 @@ impl WorkspaceRegistry {
         match single_file {
             Some(name) => {
                 // Seed scoped assets from the file's current content, then watch
-                // for external edits to keep it fresh. When search is enabled,
-                // build an index scoped to ONLY this file (no parent WalkDir, no
+                // for external edits to keep it fresh. Always build a search
+                // index scoped to ONLY this file (no parent WalkDir, no
                 // sibling leakage); the single-file watcher refreshes it on edit.
                 refresh_allowed_assets(&entry, &name);
-                if config.flags.enable_search {
-                    spawn_search_indexer(entry.clone());
-                }
+                spawn_search_indexer(entry.clone());
                 spawn_single_file_watcher(config.path, entry.clone(), name);
             }
             None => {
-                if config.flags.enable_search {
-                    spawn_search_indexer(entry.clone());
-                }
+                spawn_search_indexer(entry.clone());
                 spawn_directory_watcher(config.path, entry.clone());
             }
         }
@@ -524,9 +524,9 @@ impl WorkspaceRegistry {
             return false;
         };
         drop(guard);
-        let was_search = entry
+        entry
             .enable_search
-            .swap(flags.enable_search, Ordering::Relaxed);
+            .store(flags.enable_search, Ordering::Relaxed);
         entry
             .enable_viewed
             .store(flags.enable_viewed, Ordering::Relaxed);
@@ -542,15 +542,14 @@ impl WorkspaceRegistry {
         entry
             .shared_annotation
             .store(flags.shared_annotation, Ordering::Relaxed);
-        let _ = entry.config_tx.send(());
-        // Mirror the spawn/clear semantics for both directory and single-file
-        // workspaces: turning search on spawns the appropriate indexer, turning
-        // it off drops the index so we stop serving stale results and free RAM.
-        if flags.enable_search && !was_search && entry.search_index.load().is_none() {
-            spawn_search_indexer(entry);
-        } else if !flags.enable_search && was_search {
-            entry.search_index.store(None);
+        if !flags.enable_chat || !flags.enable_edit {
+            // A proposal created under an earlier grant must not survive a
+            // revoke/re-enable cycle and become applicable again later.
+            entry.pending_edits.abandon_all();
         }
+        let _ = entry.config_tx.send(());
+        // Legacy search/progress values are preserved for wire and persistence
+        // compatibility. They never change baseline capability availability.
         self.notify_persist();
         true
     }
@@ -561,6 +560,7 @@ impl WorkspaceRegistry {
             // registry. Wake all config/collaboration sockets as well so an
             // already-upgraded connection cannot outlive a detached workspace.
             entry.stopped.store(true, Ordering::Relaxed);
+            entry.pending_edits.abandon_all();
             let _ = entry.config_tx.send(());
             self.notify_persist();
         }
@@ -1546,42 +1546,109 @@ mod tests {
         assert!(registry.remove(&id));
     }
 
-    /// The search toggle must work for single-file workspaces too: turning it
-    /// on spawns the file-scoped indexer, turning it off clears the index.
+    /// Legacy false values cannot disable baseline search, including pinned
+    /// file scopes. Updating old flags must not drop a populated index.
     #[test]
-    fn single_file_workspace_search_toggle_spawns_and_clears() {
-        let temp_dir = tempfile::TempDir::new().unwrap();
-        let dir = temp_dir.path();
-        std::fs::write(dir.join("note.md"), "# Note\ntoggletoken here.").unwrap();
+    fn baseline_search_survives_legacy_false_flags() {
+        for single_file in [None, Some("note.md".to_string())] {
+            let temp_dir = tempfile::TempDir::new().unwrap();
+            let dir = temp_dir.path();
+            std::fs::write(dir.join("note.md"), "# Note\nbaselinetoken here.").unwrap();
+            std::fs::write(dir.join("sibling.md"), "privatesiblingtoken").unwrap();
 
-        let registry = WorkspaceRegistry::new("test-salt".into());
-        // Start with search OFF.
+            let registry = WorkspaceRegistry::new("test-salt".into());
+            let id = registry.add(WorkspaceConfig {
+                path: dir.to_path_buf(),
+                flags: WorkspaceFlags::default(),
+                single_file: single_file.clone(),
+                ..Default::default()
+            });
+            let entry = registry.get(&id).unwrap();
+            let index = wait_for_index(&entry);
+            assert!(
+                !entry.flags().enable_search,
+                "preserve persisted legacy values"
+            );
+            assert!(entry.search_ready());
+            assert_eq!(index.search("baselinetoken", 10).unwrap().len(), 1);
+            if single_file.is_some() {
+                assert!(index.search("privatesiblingtoken", 10).unwrap().is_empty());
+            }
+
+            assert!(registry.update_flags(
+                &id,
+                WorkspaceFlags {
+                    enable_search: true,
+                    ..Default::default()
+                }
+            ));
+            assert!(registry.update_flags(&id, WorkspaceFlags::default()));
+            assert!(entry.search_ready());
+            assert!(Arc::ptr_eq(
+                &index,
+                &entry.search_index.load_full().unwrap()
+            ));
+            assert_eq!(index.search("baselinetoken", 10).unwrap().len(), 1);
+            assert!(registry.remove(&id));
+        }
+    }
+
+    #[test]
+    fn capability_revocation_and_detach_abandon_pending_edits() {
+        use crate::chat::edits::Resolution;
+        let directory = tempfile::tempdir().unwrap();
+        let registry = WorkspaceRegistry::new("pending-revocation-test".into());
+        let enabled = WorkspaceFlags {
+            enable_edit: true,
+            enable_chat: true,
+            ..Default::default()
+        };
         let id = registry.add(WorkspaceConfig {
-            path: dir.to_path_buf(),
-            flags: WorkspaceFlags::default(),
-            single_file: Some("note.md".into()),
-            collaborator_access_code_hash: String::new(),
+            path: directory.path().to_path_buf(),
+            flags: enabled,
             ..Default::default()
         });
         let entry = registry.get(&id).unwrap();
-        assert!(entry.search_index.load().is_none());
-
-        // Turn search ON → file-scoped index appears.
-        registry.update_flags(
+        for revoked in [
+            WorkspaceFlags {
+                enable_edit: false,
+                ..enabled
+            },
+            WorkspaceFlags {
+                enable_chat: false,
+                ..enabled
+            },
+        ] {
+            let mut decision = entry.pending_edits.insert(
+                "pending".into(),
+                "doc.md".into(),
+                "old".into(),
+                "new".into(),
+                1,
+            );
+            assert!(registry.update_flags(&id, revoked));
+            assert!(matches!(decision.try_recv(), Ok(Resolution::Abandoned)));
+            assert!(entry.pending_edits.snapshot("pending").is_none());
+            assert!(registry.update_flags(&id, enabled));
+            assert!(entry.pending_edits.snapshot("pending").is_none());
+        }
+        let mut decision = entry.pending_edits.insert(
+            "pending".into(),
+            "doc.md".into(),
+            "old".into(),
+            "new".into(),
+            1,
+        );
+        assert!(registry.update_flags(
             &id,
             WorkspaceFlags {
-                enable_search: true,
-                ..Default::default()
-            },
-        );
-        let idx = wait_for_index(&entry);
-        assert_eq!(idx.search("toggletoken", 10).unwrap().len(), 1);
-
-        // Turn search OFF → index is cleared.
-        registry.update_flags(&id, WorkspaceFlags::default());
-        assert!(
-            entry.search_index.load().is_none(),
-            "disabling search must clear the single-file index"
-        );
+                shared_annotation: true,
+                ..enabled
+            }
+        ));
+        assert!(entry.pending_edits.snapshot("pending").is_some());
+        assert!(registry.remove(&id));
+        assert!(matches!(decision.try_recv(), Ok(Resolution::Abandoned)));
+        assert!(entry.pending_edits.snapshot("pending").is_none());
     }
 }

@@ -12,7 +12,7 @@ Markon 的用户数据**独立于进程**,持久在 `~/.markon/`:
 | 文件 | 内容 | 关联键 |
 |---|---|---|
 | `settings.json` | 配置、workspace 列表、**salt** | — |
-| `annotation.sqlite` | 批注、已读状态、chat 线程 | 见 §2 / §4 |
+| `annotation.sqlite` | 批注、章节进度状态、chat 线程 | 见 §2 / §4 |
 | `server.lock` | 运行中服务的 Web 端口 + 控制套接字路径 + 绑定 host + 服务版本 | — |
 
 进程(CLI / GUI / daemon)重启、版本升级,都**不得**使既有 workspace URL 失效,
@@ -53,7 +53,7 @@ Markon 的用户数据**独立于进程**,持久在 `~/.markon/`:
   数据 / 操作都放在这里,例如 `compare`, `git`, `files`, `settings`, `chat`, `search`。
   批注 / Live 协作 WebSocket 也只能使用 `/_/{workspace_id}/ws`,使访问码门禁和资源能力在
   HTTP upgrade 前就能绑定到明确 workspace。
-  这样不会占用用户文件名空间,也能在视觉上明确区分“内容 URL”和“工具 URL”。
+  这样不会占用用户文件名空间,也能在视觉上明确区分「内容 URL」和「工具 URL」。
 - **全局系统空间**:`/_/...`。静态资源、unlock、dev reload 等不属于某个文件路径的系统能力
   放在这里。`/_/ws/{workspace_id}` 仅保留为工作区配置变更通知通道,不是协作数据通道。
 - **JSON / 数据 API**:`/api/...`。保存、chat agent、preview 等**面向浏览器**的程序接口保持在
@@ -67,28 +67,24 @@ Markon 的用户数据**独立于进程**,持久在 `~/.markon/`:
 实现约束:后端新增 URL 必须优先通过 `server.rs` 中的 route helper 生成;前端新增 URL 必须优先
 通过 `crates/core/assets/js/core/routes.ts` 生成,避免在组件里散落手写字符串。
 
-## 2. 批注与已读数据
+## 2. 批注与进度数据
 
 - **表结构**(`crates/core/src/server.rs`,均以 `CREATE TABLE IF NOT EXISTS` 建立):
   - `annotations(id TEXT PRIMARY KEY, file_path TEXT, data TEXT)`
   - `viewed_state(file_path TEXT PRIMARY KEY, state TEXT, updated_at)`
-- **关联键是文件的绝对路径 `file_path`,不是 `workspace_id`**。⇒ 批注 / 已读的存活只取决于
-  **文件路径是否不变**,与版本号、与 URL 是否变化**都无关**。
+  - `personal_annotations(subject_id, id, file_path, data, PRIMARY KEY(subject_id, id))`，并建立主体／路径索引
+  - `personal_viewed_state(subject_id, file_path, state, updated_at, PRIMARY KEY(subject_id, file_path))`
+- **关联键是文件的绝对路径 `file_path`,不是 `workspace_id`**。⇒ 批注 / 进度的存活只取决于
+  **文件路径是否不变**,与版本号、与 URL 是否变化**都无关**。新增浏览器私有表还需包含稳定浏览器主体作为隔离键；原表语义保持。
 - **库位置**:默认 `~/.markon/annotation.sqlite`,可由 `MARKON_SQLITE_PATH` 环境变量或
   settings 的 `db_path` 覆盖(`server.rs`)。
-- **SQLite 始终是管理员个人数据的权威存储**:是否开启 `shared_annotation` 只决定批注 / 已读
-  是否通过 WebSocket 向协作者广播和展示,不得再切换持久化后端。浏览器变更统一先经同源
-  document-state HTTP 接口写入 SQLite;WebSocket 不接受批注 / 已读写库请求,只承担广播输出。
-  **浏览器 `localStorage` 不得读写文档批注或章节已读状态**,也不得作为迁移源、离线队列或权限
-  失败时的静默降级。服务不可用时操作必须明确失败;无管理员 / 共享权限时页面保持只读,原生选择
-  与复制不受影响。纯界面偏好(主题、面板位置、diff 折叠等)仍可保留在浏览器本地。
-- **访问边界**:非共享状态下仅显式 Admin session 可读写 SQLite 中的个人批注 / 已读;开启共享后
-  Collaborator 才获得同一数据集的读取、写入和实时广播能力。loopback 本身仍不构成管理员身份。
-  GUI / CLI 的管理端打开动作必须携带 Admin bootstrap,并按实际 bind 选择可达 origin:
-  `0.0.0.0` / loopback bind 优先稳定的 `127.0.0.1`,具体网卡地址 bind 则必须使用该地址。
-  浏览器页面不提供分享入口。只有开启 `shared_annotation` 的 Workspace 才在本机管理端显示
-  分享操作;候选地址必须按运行中服务的实际 bind 计算,复制出的协作者链接不得携带 Admin
-  bootstrap 能力。
+- **SQLite 始终是个人与共同审阅数据的权威存储**：浏览器变更统一先经同源 document-state HTTP 接口写入 SQLite；WebSocket 不接受批注 / 进度写库请求，只承担当前 Shared 作用域的广播输出。不得因关闭 Share 改用 LocalStorage。
+  章节 Read 写入使用 `patch_viewed_state`，只提交本次变化的 heading 与布尔值；服务在同一数据库锁内读取、合并、写回并将共同作用域的完整结果入队广播，避免不同章节并发更新互相覆盖或广播倒序。旧 `save_viewed_state` 仅保留完整替换兼容语义，新版交互不得用它回写旧快照。前端必须保留初始加载期间和提交中的本地意图，并通过可重连的 WebSocketManager 订阅进度，不能只监听首个原生连接。
+  **浏览器 `localStorage` 不得读写文档批注或章节进度状态**，也不得作为迁移源、离线队列或失败时的静默降级。服务不可用时操作必须明确失败。纯界面偏好（主题、面板位置、diff 折叠等）仍可保留在浏览器本地。
+- **个人与共同作用域**：任何通过工作区门禁的浏览器都可使用个人 Annotate、Progress 与 Export Notes，不需要 Admin 或 Share。Share 关闭时，非管理员浏览器使用独立于 Admin 的私有身份 Cookie，按浏览器主体与文件绝对路径隔离到同一 SQLite 的新增私有表；管理员既有批注与章节进度保留在原表。Share 开启时共同读写原表中的审阅数据并广播，不自动发布、合并、复制或删除浏览器私有数据；关闭后恢复 Personal 数据。
+  技术作用域为 `owner` / `personal` / `shared`，界面分别显示 Personal / Personal / Shared。owner 继续使用原有 `annotations` / `viewed_state`，Share 开启后这份既有数据集对协作者开放；此行为不复制或导入浏览器私有表。当前作用域必须明确显示。私有身份 `markon_personal_review` Cookie 独立于 Admin：256 位随机主体、持久 salt 下独立 domain HMAC 签名、365 天、HttpOnly / SameSite=Lax / Path=/，显式 HTTPS 追加 Secure；Lax 用于从外站打开公开文档时保留已有私有身份，同源写入与门禁校验不变。Cookie 只在通过门禁的 HTML GET 或 document-state GET 签发，私有写入需已有身份且作用域匹配。清除或过期会失去相应 Personal 数据入口，但不删除 SQLite 行。私有身份不是账号，不能把昵称/颜色当作身份认证，也不承诺跨设备个人同步。loopback 本身不构成管理员身份，Admin 只控制管理操作。
+  GUI / CLI 管理端打开动作继续携带 Admin bootstrap，并按实际 bind 选择可达 origin：`0.0.0.0` / loopback bind 优先稳定的 `127.0.0.1`，具体网卡地址 bind 则必须使用该地址。
+  本机管理端的 Share 链接不得携带 Admin bootstrap；浏览器个人数据不得随复制协作者地址自动发布。
 - **批注内容兼容**:`annotations.data` 是完整 Annotation JSON。锚点新增能力只能以可选字段扩展;
   当前 `anchor.version = 2` 追加有序 `fragments`,同时保留原 `position / exact / prefix /
   suffix` 平面锚点。读取端必须继续接受没有 `version / fragments` 的历史批注,不得要求数据库迁移。
@@ -110,6 +106,14 @@ Markon 的用户数据**独立于进程**,持久在 `~/.markon/`:
 - 对外基础 URL 使用 `public_base_url` 字段;读取时兼容 v0.15.28 的 `public_url`,
   写回时统一使用新名称。此迁移不得改变 `salt`、工作区列表或数据库数据。
 
+### 3.1 基础能力与高级能力兼容
+
+- Search、Annotate、Progress 和 Export Notes 是基础能力，任何通过工作区门禁的浏览器无需 Admin 或额外开关即可使用个人审阅；Share 只控制进入共同数据作用域。
+- 高级能力开关仅为 `Edit · Chat · Live · Share`，按此顺序展示；新安装的四项默认关闭，既有高级开关值保持。
+- 工作区字段 `enable_search` / `enable_viewed` 和全局默认字段 `default_search` / `default_viewed` 保留读取兼容；旧 `false` 不再关闭基础能力。有效运行配置始终提供 Search 与 Progress，不改变 salt、workspace identity、文件绝对路径关联或既有 SQLite 数据。
+- CLI 首选 `share`，继续接受 `shared` 等旧别名。旧 `search` / `viewed` / `progress` 的 `on` 兼容为空操作并提示，`off` 明确拒绝。不得把旧字段清理变成 URL 或数据迁移。
+- 完整命名与范围见 [PRODUCT_NAMING.md](PRODUCT_NAMING.md)。
+
 ## 4. chat 数据(次要)
 
 - `chat_threads` / `chat_messages` 按 `workspace_id` 关联(`crates/core/src/chat/storage.rs`)。
@@ -122,7 +126,7 @@ Markon 的用户数据**独立于进程**,持久在 `~/.markon/`:
   (实践:存到 `~/.markon/backup-pre-<version>/`)。
 - **升级后验证清单**:
   1. `markon ls` 列出的每个 workspace id 与升级前**逐一一致**(URL 未变);
-  2. 任一 workspace 的批注 / 已读在页面上仍可见(数据未丢);
+  2. 任一 workspace 的批注 / 进度在页面上仍可见(数据未丢);
   3. `settings.json` 的 `salt` 与升级前相同。
   4. wildcard / loopback bind 下切换本机网络/IP 后,GUI/CLI 仍以稳定 loopback origin 打开;
      具体网卡 bind 下则使用该 bind 地址,同一路径的 SQLite 批注可见。

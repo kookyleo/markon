@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { VisualZoomManager } from './visual-zoom-manager';
 import { KeyboardShortcutsManager } from './keyboard-shortcuts';
+import { CONFIG } from '../core/config';
 
 function seedMarkdown(html: string): HTMLElement {
     document.body.innerHTML = `<article class="markdown-body"><div id="main-content">${html}</div></article>`;
@@ -92,6 +93,26 @@ describe('VisualZoomManager', () => {
         manager.init();
 
         expect(document.querySelector<HTMLElement>('.markon-visual-zoom-shell')?.style.width).toBe('212px');
+    });
+
+    it('uses saved shortcut bindings in both visual controls and the features panel', () => {
+        const resetBinding = CONFIG.SHORTCUTS.VISUAL_ZOOM_RESET;
+        const original = { ...resetBinding };
+        try {
+            Object.assign(resetBinding, { key: "'", shift: false, ctrl: false });
+            const body = seedMarkdown('<img src="/assets/diagram.svg" alt="Architecture">');
+            manager = new VisualZoomManager(body);
+            manager.init();
+            click(document.querySelector('[data-visual-zoom-trigger]')!);
+            const reset = document.querySelector('[data-visual-zoom-action="reset"]')!;
+            expect(reset.getAttribute('title')).toBe("Reset (' / r)");
+            expect(reset.getAttribute('aria-label')).toBe("Reset (' / r)");
+            keydown(document, '?');
+            const row = document.querySelector('.shortcut-item[data-shortcut-name="VISUAL_ZOOM_RESET"]')!;
+            expect(row.querySelector('kbd')?.textContent).toBe("'");
+        } finally {
+            Object.assign(resetBinding, original);
+        }
     });
 
     it('uses intrinsic width for svg images that layout as full-width before decoration', () => {

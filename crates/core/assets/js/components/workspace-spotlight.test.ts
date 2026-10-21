@@ -106,8 +106,8 @@ describe('WorkspaceSpotlight', () => {
         expect(document.querySelector('.workspace-spotlight-result.is-current')).not.toBeNull();
     });
 
-    it('merges file-name matches and content matches in the same Spotlight panel', async () => {
-        const nav = new WorkspaceSpotlight({ workspaceId: 'ws', enableContentSearch: true });
+    it('searches content even when a legacy caller passes a disabled search flag', async () => {
+        const nav = new WorkspaceSpotlight({ workspaceId: 'ws', enableContentSearch: false });
         nav.open();
         await flush();
 

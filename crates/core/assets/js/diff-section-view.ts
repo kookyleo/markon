@@ -13,6 +13,8 @@ import {
     persistCollapsedSet,
     loadViewedSet,
     persistViewedSet,
+    viewedStorageKey,
+    collapseStorageKey,
     loadShowViewed,
     VIEWED_CHANGED_EVENT,
     SHOW_VIEWED_EVENT,
@@ -86,6 +88,7 @@ export abstract class DiffSectionView {
     #showViewed = true;
     #anchor: DiffAnchor | null = null;
     #expansion: ExpansionStore | null = null;
+    #events = new AbortController();
     protected scrollElement: HTMLElement | null = null;
 
     constructor(root: HTMLElement) {
@@ -98,13 +101,36 @@ export abstract class DiffSectionView {
                 this.#showViewed = detail.showViewed;
                 this.#applyViewedVisibility();
             }
-        });
+        }, { signal: this.#events.signal });
         document.addEventListener('markon:diff-annotations-ready', () => {
             this.#syncExportNotesButtons();
-        });
+        }, { signal: this.#events.signal });
         document.addEventListener('markon:diff-notes-count-changed', () => {
             this.#syncExportNotesButtons();
-        });
+        }, { signal: this.#events.signal });
+        document.addEventListener(VIEWED_CHANGED_EVENT, (event) => {
+            if (!this.root.isConnected) return;
+            const detail = (event as CustomEvent<{
+                viewed?: unknown; collapsed?: unknown; storageKey?: unknown;
+            }>).detail;
+            if (detail?.storageKey !== undefined && detail.storageKey !== viewedStorageKey(this.root.dataset['diffDataUrl'])) return;
+            const paths = (value: unknown): Set<string> | null => Array.isArray(value)
+                ? new Set(value.filter((path): path is string => typeof path === 'string'))
+                : null;
+            this.#syncProgressState(
+                paths(detail?.viewed) ?? loadViewedSet(this.root.dataset['diffDataUrl'], this.#viewed),
+                paths(detail?.collapsed) ?? loadCollapsedSet(this.root.dataset['diffDataUrl'], this.#collapsed),
+            );
+        }, { signal: this.#events.signal });
+        window.addEventListener('storage', (event) => {
+            if (!this.root.isConnected) return;
+            const url = this.root.dataset['diffDataUrl'];
+            const viewedKey = viewedStorageKey(url);
+            const collapsedKey = collapseStorageKey(url);
+            if (!viewedKey || (event.key !== null && event.key !== viewedKey && event.key !== collapsedKey)) return;
+            this.#syncProgressState(loadViewedSet(url, this.#viewed), loadCollapsedSet(url, this.#collapsed));
+            this.#emitProgressChanged();
+        }, { signal: this.#events.signal });
     }
 
     // ── Hooks for subclasses ────────────────────────────────────────────────────
@@ -134,6 +160,7 @@ export abstract class DiffSectionView {
 
     // ── Public API ──────────────────────────────────────────────────────────────
     async load(): Promise<void> {
+        if (this.#events.signal.aborted) return;
         const url = this.root.dataset['diffDataUrl'] ? fullDataUrl(this.root.dataset['diffDataUrl']) : undefined;
         if (!url) return;
         if (this.#selectedPath === null) this.#selectedPath = selectedPathFromLocation();
@@ -147,18 +174,20 @@ export abstract class DiffSectionView {
             const response = await fetch(url, { headers: { Accept: 'application/json' } });
             if (!response.ok) throw new Error(await response.text());
             const payload: unknown = await response.json();
+            if (this.#events.signal.aborted) return;
             if (!isMarkdownDiffData(payload)) throw new Error('Invalid Markdown diff payload');
             this.#data = payload;
             this.root.dataset['diffLoadedUrl'] = url;
             this.#render();
         } catch (error) {
+            if (this.#events.signal.aborted) return;
             delete this.root.dataset['diffLoadedUrl'];
             this.#setMessage(
                 `Failed to load diff: ${error instanceof Error ? error.message : String(error)}`,
                 true,
             );
         } finally {
-            delete this.root.dataset['diffLoadingUrl'];
+            if (!this.#events.signal.aborted) delete this.root.dataset['diffLoadingUrl'];
         }
     }
 
@@ -193,6 +222,14 @@ export abstract class DiffSectionView {
         // Native CSS sticky + IntersectionObserver handle resize automatically.
     }
 
+    /** Release cross-view/storage subscriptions when the page replaces this view. */
+    destroy(): void {
+        this.#events.abort();
+        this.#destroyVirtualizer();
+        delete this.root.dataset['diffLoadedUrl'];
+        delete this.root.dataset['diffLoadingUrl'];
+    }
+
     // ── Render pipeline ─────────────────────────────────────────────────────────
     #render(): void {
         const data = this.#data;
@@ -222,8 +259,8 @@ export abstract class DiffSectionView {
         pane.classList.add(this.virtualizedClass);
 
         this.#files = files;
-        this.#collapsed = loadCollapsedSet(this.root.dataset['diffDataUrl']);
-        this.#viewed = loadViewedSet(this.root.dataset['diffDataUrl']);
+        this.#collapsed = loadCollapsedSet(this.root.dataset['diffDataUrl'], this.#collapsed);
+        this.#viewed = loadViewedSet(this.root.dataset['diffDataUrl'], this.#viewed);
         this.#showViewed = loadShowViewed(this.root.dataset['diffDataUrl']);
         this.#expansion = expansionStore(this.root.dataset['diffDataUrl']);
         this.#sections = new Map();
@@ -324,7 +361,7 @@ export abstract class DiffSectionView {
             collapsed: this.#collapsed.has(file.path),
             viewed: this.#viewed.has(file.path),
             onToggleCollapse: () => this.#toggleCollapsed(file.path),
-            onToggleViewed: () => this.#toggleViewed(file.path),
+            onToggleViewed: (viewed: boolean) => this.#setViewed(file.path, viewed),
             onDeleted: () => {
                 const entry = this.#sections.get(file.path);
                 entry?.section.remove();
@@ -474,12 +511,22 @@ export abstract class DiffSectionView {
 
     #toggleCollapsed(path: string): void {
         const entry = this.#sections.get(path);
-        const collapse = !this.#collapsed.has(path);
+        const collapse = entry ? !entry.section.classList.contains('is-collapsed') : !this.#collapsed.has(path);
+        this.#setCollapsed(path, collapse);
+    }
+
+    #setCollapsed(path: string, collapse: boolean): void {
+        // Another loaded mode/tab may have changed a different file. Merge
+        // only this file's intent into the latest persisted fold set.
+        this.#collapsed = loadCollapsedSet(this.root.dataset['diffDataUrl'], this.#collapsed);
         if (collapse) this.#collapsed.add(path);
         else this.#collapsed.delete(path);
         persistCollapsedSet(this.root.dataset['diffDataUrl'], this.#collapsed);
-        if (!entry) return;
+        const entry = this.#sections.get(path);
+        if (entry) this.#applyCollapsedState(entry, collapse);
+    }
 
+    #applyCollapsedState(entry: SectionEntry, collapse: boolean): void {
         const scrollEl = this.scrollElement;
         const beforeTop = entry.section.getBoundingClientRect().top;
         entry.section.classList.toggle('is-collapsed', collapse);
@@ -499,33 +546,45 @@ export abstract class DiffSectionView {
         }
     }
 
-    /** Toggle the "Viewed" mark (checkbox). Marking viewed folds the file and
-     *  un-viewing expands it (GitHub PR behaviour) — but this is the ONLY thing
-     *  that drives viewed; the chevron/double-click fold without ever touching
-     *  it, so a viewed file can be reopened for re-reading and stays viewed. */
-    #toggleViewed(path: string): void {
-        const nowViewed = !this.#viewed.has(path);
-        if (nowViewed) this.#viewed.add(path);
+    /** Marking progress folds this file; unmarking expands it. The checkbox's
+     * explicit checked intent must not be inverted against a stale view copy. */
+    #setViewed(path: string, viewed: boolean): void {
+        this.#viewed = loadViewedSet(this.root.dataset['diffDataUrl'], this.#viewed);
+        if (viewed) this.#viewed.add(path);
         else this.#viewed.delete(path);
         persistViewedSet(this.root.dataset['diffDataUrl'], this.#viewed);
-
-        if (nowViewed !== this.#collapsed.has(path)) {
-            // Fold state needs to follow the new viewed state; #toggleCollapsed
-            // rebuilds the header (which re-reads the viewed mark for the box).
-            this.#toggleCollapsed(path);
-        } else {
-            // Fold already matches — just refresh the header so the checkbox
-            // reflects the new viewed mark.
-            const entry = this.#sections.get(path);
-            entry?.section.firstElementChild?.replaceWith(this.#createFileHeader(entry.file));
-        }
-        // When the "Viewed files" filter is off, a freshly-viewed file should
-        // hide (and un-viewing should reveal it).
+        this.#setCollapsed(path, viewed);
         this.#applyViewedVisibility();
-        // Tell the sidebar funnel so its file list re-filters.
-        document.dispatchEvent(
-            new CustomEvent(VIEWED_CHANGED_EVENT, { detail: { viewed: [...this.#viewed] } }),
-        );
+        this.#emitProgressChanged();
+    }
+
+    #emitProgressChanged(): void {
+        document.dispatchEvent(new CustomEvent(VIEWED_CHANGED_EVENT, {
+            detail: {
+                viewed: [...this.#viewed],
+                collapsed: [...this.#collapsed],
+                storageKey: viewedStorageKey(this.root.dataset['diffDataUrl']),
+            },
+        }));
+    }
+
+    /** Synchronize another mode/tab without persisting again or rebuilding an
+     * unchanged header. This keeps native label activation a single action. */
+    #syncProgressState(viewed: Set<string>, collapsed: Set<string>): void {
+        this.#viewed = viewed;
+        this.#collapsed = collapsed;
+        for (const [path, entry] of this.#sections) {
+            const folded = collapsed.has(path);
+            if (entry.section.classList.contains('is-collapsed') !== folded) {
+                this.#applyCollapsedState(entry, folded);
+            } else {
+                const checkbox = entry.section.querySelector<HTMLInputElement>('.md-diff-file-check input');
+                if (checkbox) checkbox.checked = viewed.has(path);
+                const label = entry.section.querySelector<HTMLElement>('.md-diff-file-check');
+                if (label) label.title = _t(viewed.has(path) ? 'web.diff.progress.unmark.tip' : 'web.diff.progress.tip');
+            }
+        }
+        this.#applyViewedVisibility();
     }
 
     /** Hide sections for viewed files while the "Viewed files" filter is off.
@@ -562,15 +621,17 @@ export abstract class DiffSectionView {
         }
         const el = document.createElement('div');
         el.className = className;
-        el.innerHTML =
-            '<div class="md-diff-viewed-empty-emoji">🎉</div>' +
-            '<div class="md-diff-viewed-empty-title">All done — every changed file is marked Viewed.</div>';
+        el.innerHTML = '<div class="md-diff-viewed-empty-emoji">🎉</div>';
+        const title = document.createElement('div');
+        title.className = 'md-diff-viewed-empty-title';
+        title.textContent = _t('web.diff.progress.complete');
+        el.appendChild(title);
         const actions = document.createElement('div');
         actions.className = 'md-diff-viewed-empty-actions';
         const link = document.createElement('button');
         link.type = 'button';
         link.className = 'md-diff-viewed-empty-link';
-        link.textContent = kind === 'empty' ? 'Show all files' : 'Hide all Viewed files';
+        link.textContent = _t(kind === 'empty' ? 'web.diff.progress.show_all' : 'web.diff.progress.hide');
         link.addEventListener('click', () => {
             // The funnel checkbox is phrased as the inverse of showViewed:
             // checked = hide viewed, unchecked = show viewed.
