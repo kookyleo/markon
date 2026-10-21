@@ -1,9 +1,9 @@
 ---
-title: Markdown 渲染
+title: Markdown 渲染（Markdown）
 description: Markon 的 Supramark AST、GFM 扩展、数学、图表、本地媒体、安全过滤与视觉缩放能力。
 ---
 
-# Markdown 渲染
+# Markdown 渲染（Markdown）
 
 Markon 使用 Supramark 解析 Markdown AST，再由服务端生成 HTML。阅读页沿用 GitHub 风格的浅色/深色基线，并叠加工作区能力。
 

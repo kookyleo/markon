@@ -51,12 +51,15 @@ Branches 页面展示当前分支、默认分支与 ahead/behind 信息；Tags �
 
 - 文件树与侧栏折叠；
 - 按 Added / Modified / Deleted 等状态过滤；
-- 逐文件 Viewed 与隐藏已读文件；
-- `j` / `k` 逐变更聚焦；
-- `n` / `p` 上下文件；
+- 逐文件进度（File Progress）、已读（Read）复选框与隐藏已读文件（Hide Read Files）；
+- `n` / `p` 上下变更块；
 - `m` 切换 Raw / Rendered；
 - 在 diff 上建立批注、统计 Notes、导出文件范围 Notes；
 - 从改动文件跳回当前工作区版本。
+
+文件进度仍归 Progress 功能组；每个文件用「已读 / Read」复选框表示状态，操作提示为「标为已读 / Mark as read」或「标为未读 / Mark as unread」。计数采用 `n / total read`，例如 `2 / 5 read`；中文显示已读数量。Hide Read Files 隐藏已读文件，取消后仍可查看。
+
+文件已读／未读状态保存在当前浏览器；Share 共享的是正文 H2–H6 章节进度，不同步这里的文件进度。
 
 ## 管理员操作
 

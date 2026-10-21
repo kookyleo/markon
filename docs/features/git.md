@@ -27,7 +27,9 @@ Raw and Rendered views share structured backend data.
 
 ## Rendered and Raw
 
-Rendered compares Markdown AST blocks and marks word-level changes while folding unchanged context. Raw shows source lines in Split or Unified layout. Both support file/status filtering, per-file Viewed state, `j`/`k` change navigation, `n`/`p` file navigation, `m` view switching, annotations, Notes export, and links back to the workspace version.
+Rendered compares Markdown AST blocks and marks word-level changes while folding unchanged context. Raw shows source lines in Split or Unified layout. Both support file/status filtering, per-file Progress state, `n`/`p` change navigation, `m` view switching, annotations, Notes export, and links back to the workspace version.
+
+File Progress belongs to the Progress capability. Each file uses a Read checkbox; its tooltip changes between Mark as read and Mark as unread. The counter reads `n / total read`, such as `2 / 5 read`, and Hide Read Files filters out checked files. File read state stays in the current browser, separate from the shared H2–H6 section progress provided by Share.
 
 ## Admin operations
 

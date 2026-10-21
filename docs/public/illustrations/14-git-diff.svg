@@ -1,4 +1,6 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 800" width="800" height="800">
+  <title>Markdiff with local file progress</title>
+  <desc>The file list shows two of five files with Read status, a Hide Read Files filter, and a Read checkbox for the current file. File progress is saved only in this browser.</desc>
   <defs>
     <filter id="shadow" x="-12%" y="-12%" width="124%" height="130%">
       <feDropShadow dx="0" dy="4" stdDeviation="8" flood-color="#1f2937" flood-opacity=".045"/>
@@ -30,8 +32,11 @@
   <path d="M109 263h21" stroke="#9A9FA4" stroke-width="1.5"/>
   <path d="m126 259 4 4-4 4" fill="none" stroke="#9A9FA4" stroke-width="1.5"/>
   <text x="142" y="268" fill="#34383D" font-family="system-ui, sans-serif" font-size="12">Worktree</text>
-  <rect x="56" y="300" width="86" height="20" rx="10" fill="#F7F8F5" stroke="#E1E3DF"/>
-  <rect x="148" y="300" width="74" height="20" rx="10" fill="#F7F8F5" stroke="#E1E3DF"/>
+  <rect x="56" y="300" width="70" height="20" rx="10" fill="#F7F8F5" stroke="#E1E3DF"/>
+  <text x="63" y="313" fill="#59636A" font-family="system-ui, sans-serif" font-size="9">2 / 5 read</text>
+  <rect x="132" y="300" width="100" height="20" rx="10" fill="#F7F8F5" stroke="#E1E3DF"/>
+  <text x="141" y="313" fill="#59636A" font-family="system-ui, sans-serif" font-size="9">Hide Read Files</text>
+  <text x="56" y="333" fill="#8B9095" font-family="system-ui, sans-serif" font-size="9">File Progress · this browser</text>
   <line x1="56" y1="342" x2="230" y2="342" stroke="#E5E7E3"/>
 
   <rect x="56" y="363" width="144" height="34" rx="7" fill="#FFFFFF" stroke="#D8DAD7"/>
@@ -69,7 +74,7 @@
   <rect x="654" y="145" width="8" height="8" rx="2" fill="#DE7E77"/>
   <rect x="674" y="137" width="66" height="26" rx="7" fill="#FFFFFF" stroke="#D5D8D4"/>
   <rect x="682" y="144" width="12" height="12" rx="3" fill="#FFFFFF" stroke="#A8ADA9"/>
-  <text x="700" y="154" fill="#4A4F54" font-family="system-ui, sans-serif" font-size="10">Viewed</text>
+  <text x="700" y="154" fill="#4A4F54" font-family="system-ui, sans-serif" font-size="10">Read</text>
 
   <!-- Rendered diff content -->
   <line x1="290" y1="216" x2="732" y2="216" stroke="#DFE1DE" stroke-dasharray="3 4"/>

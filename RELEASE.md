@@ -2,6 +2,12 @@
 
 Markon uses a dual-channel (RC / Stable) release model with fully automated CI/CD pipelines.
 
+## Capability compatibility notice
+
+Search and Progress are now essential capabilities; older saved false values no longer disable them. Only Edit, Chat, Live, and Share remain optional workspace switches. Existing advanced values, workspace IDs, URLs, annotations, and progress records are preserved. Legacy `markon set ... search/viewed/progress on` is accepted as a no-op; `off` is rejected. Use `share` for new commands; `shared` remains an alias. Include this behavior change in the release notes for the version shipping it. See [product naming and compatibility](PRODUCT_NAMING.md).
+
+Personal Annotate, Progress, and Export Notes are available to every browser admitted through the workspace gate, independent of Admin or Share. Non-admin Personal data uses additive browser-isolated SQLite tables and a separate identity cookie; admin legacy/common data stays in the original tables. Share chooses common review data without automatically publishing or merging browser-private Personal data. Clearing site data or cookie expiry loses access to that browser's Personal records; it is not an account or cross-device personal sync.
+
 ## Overview
 
 ```mermaid

@@ -1,4 +1,6 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 800" width="800" height="800">
+  <title>Actions and shortcuts in the current review scope</title>
+  <desc>A Personal document example with optional Edit, Chat, and Live enabled. Essential Review and Output actions also work in Shared. Personal review requires neither Admin nor Share. This is a sample of registered actions, not a directory of every product capability.</desc>
   <defs>
     <filter id="window-shadow" x="-12%" y="-12%" width="124%" height="130%">
       <feDropShadow dx="0" dy="4" stdDeviation="8" flood-color="#1F2937" flood-opacity=".04"/>
@@ -53,57 +55,56 @@
     <line x1="132" y1="184" x2="668" y2="184" stroke="#D8DEE3"/>
 
     <path d="m154 146 14 14m0-14-14 14" stroke="#69737A" stroke-width="2.2" stroke-linecap="round"/>
-    <text x="186" y="159" fill="#30383D" font-family="system-ui, sans-serif" font-size="15" font-weight="400">Help &amp; shortcuts</text>
+    <text x="186" y="159" fill="#30383D" font-family="system-ui, sans-serif" font-size="15" font-weight="400">Actions &amp; Shortcuts</text>
 
-    <g transform="translate(0 -14)">
-    <text x="162" y="232" fill="#737E86" font-family="system-ui, sans-serif" font-size="11" font-weight="750" letter-spacing=".8">GENERAL</text>
-    <text x="418" y="232" fill="#737E86" font-family="system-ui, sans-serif" font-size="11" font-weight="750" letter-spacing=".8">WORKSPACE</text>
+    <text x="644" y="159" fill="#737E86" font-family="system-ui, sans-serif" font-size="11" text-anchor="end">Personal</text>
 
-    <!-- The ? row is highlighted as the universal entry point. -->
-    <rect x="152" y="248" width="232" height="52" rx="10" fill="#EAF2FD" stroke="#BDD3F3"/>
-    <rect x="166" y="258" width="38" height="32" rx="7" fill="#FFFFFF" stroke="#78A5ED" stroke-width="1.5"/>
-    <text x="185" y="280" fill="#356FB9" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="16" font-weight="700" text-anchor="middle">?</text>
-    <rect x="220" y="270" width="132" height="8" rx="4" fill="#5278A8"/>
-
-    <g font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="13" font-weight="650" text-anchor="middle">
-      <rect x="166" y="322" width="56" height="30" rx="6" fill="#F7F8F9" stroke="#C7CFD5"/>
-      <text x="194" y="342" fill="#4C565D">⌘ Z</text>
-      <rect x="238" y="333" width="98" height="7" rx="3.5" fill="#919AA0"/>
-
-      <rect x="166" y="374" width="50" height="30" rx="6" fill="#F7F8F9" stroke="#C7CFD5"/>
-      <text x="191" y="394" fill="#4C565D">Esc</text>
-      <rect x="232" y="385" width="128" height="7" rx="3.5" fill="#919AA0"/>
-
-      <rect x="166" y="426" width="56" height="30" rx="6" fill="#F7F8F9" stroke="#C7CFD5"/>
-      <text x="194" y="446" fill="#4C565D">⌘ K</text>
-      <rect x="238" y="437" width="104" height="7" rx="3.5" fill="#919AA0"/>
-
-      <rect x="166" y="478" width="64" height="30" rx="6" fill="#F7F8F9" stroke="#C7CFD5"/>
-      <text x="198" y="498" fill="#4C565D">Space</text>
-      <rect x="246" y="489" width="112" height="7" rx="3.5" fill="#919AA0"/>
-
-      <rect x="422" y="258" width="38" height="30" rx="6" fill="#F7F8F9" stroke="#C7CFD5"/>
-      <text x="441" y="278" fill="#4C565D">/</text>
-      <rect x="476" y="269" width="132" height="7" rx="3.5" fill="#919AA0"/>
-
-      <rect x="422" y="322" width="38" height="30" rx="6" fill="#F7F8F9" stroke="#C7CFD5"/>
-      <text x="441" y="342" fill="#4C565D">E</text>
-      <rect x="476" y="333" width="114" height="7" rx="3.5" fill="#919AA0"/>
-
-      <rect x="422" y="374" width="38" height="30" rx="6" fill="#F7F8F9" stroke="#C7CFD5"/>
-      <text x="441" y="394" fill="#4C565D">V</text>
-      <rect x="476" y="385" width="126" height="7" rx="3.5" fill="#919AA0"/>
-
-      <rect x="422" y="426" width="38" height="30" rx="6" fill="#F7F8F9" stroke="#C7CFD5"/>
-      <text x="441" y="446" fill="#4C565D">L</text>
-      <rect x="476" y="437" width="102" height="7" rx="3.5" fill="#919AA0"/>
-
-      <rect x="422" y="478" width="38" height="30" rx="6" fill="#F7F8F9" stroke="#C7CFD5"/>
-      <text x="441" y="498" fill="#4C565D">C</text>
-      <rect x="476" y="489" width="120" height="7" rx="3.5" fill="#919AA0"/>
-    </g>
-
-    </g>
-
+    <!-- A sample of actions registered on a Personal document page, with
+         optional Edit, Chat, and Live. Review and Output need no Admin or Share. -->
+    <text x="162" y="214" fill="#737E86" font-family="system-ui, sans-serif" font-size="10" font-weight="750" letter-spacing=".7">GLOBAL</text>
+    <rect x="152" y="224" width="232" height="34" rx="8" fill="#EAF2FD" stroke="#BDD3F3"/>
+    <rect x="166" y="228" width="38" height="26" rx="6" fill="#FFFFFF" stroke="#78A5ED"/>
+    <text x="185" y="246" fill="#356FB9" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12" font-weight="650" text-anchor="middle">?</text>
+    <text x="218" y="246" fill="#626C74" font-family="system-ui, sans-serif" font-size="11">Actions &amp; Shortcuts</text>
+    <rect x="166" y="263" width="44" height="26" rx="6" fill="#F7F8F9" stroke="#C7CFD5"/>
+    <text x="188" y="281" fill="#4C565D" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12" font-weight="650" text-anchor="middle">Esc</text>
+    <text x="224" y="281" fill="#626C74" font-family="system-ui, sans-serif" font-size="11">Close / clear focus</text>
+    <text x="162" y="307" fill="#737E86" font-family="system-ui, sans-serif" font-size="10" font-weight="750" letter-spacing=".7">WORKSPACE</text>
+    <rect x="166" y="318" width="38" height="26" rx="6" fill="#F7F8F9" stroke="#C7CFD5"/>
+    <text x="185" y="336" fill="#4C565D" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12" font-weight="650" text-anchor="middle">/</text>
+    <text x="218" y="336" fill="#626C74" font-family="system-ui, sans-serif" font-size="11">Spotlight</text>
+    <text x="162" y="362" fill="#737E86" font-family="system-ui, sans-serif" font-size="10" font-weight="750" letter-spacing=".7">READING</text>
+    <rect x="166" y="373" width="38" height="26" rx="6" fill="#F7F8F9" stroke="#C7CFD5"/>
+    <text x="185" y="391" fill="#4C565D" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12" font-weight="650" text-anchor="middle">o</text>
+    <text x="218" y="391" fill="#626C74" font-family="system-ui, sans-serif" font-size="11">Fold / Unfold</text>
+    <text x="162" y="417" fill="#737E86" font-family="system-ui, sans-serif" font-size="10" font-weight="750" letter-spacing=".7">REVIEW</text>
+    <rect x="166" y="428" width="38" height="26" rx="6" fill="#F7F8F9" stroke="#C7CFD5"/>
+    <text x="185" y="446" fill="#4C565D" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12" font-weight="650" text-anchor="middle">v</text>
+    <text x="218" y="446" fill="#626C74" font-family="system-ui, sans-serif" font-size="11">Progress</text>
+    <rect x="166" y="463" width="56" height="26" rx="6" fill="#F7F8F9" stroke="#C7CFD5"/>
+    <text x="194" y="481" fill="#4C565D" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12" font-weight="650" text-anchor="middle">⌘ z</text>
+    <text x="236" y="481" fill="#626C74" font-family="system-ui, sans-serif" font-size="11">Undo</text>
+    <text x="418" y="214" fill="#737E86" font-family="system-ui, sans-serif" font-size="10" font-weight="750" letter-spacing=".7">OUTPUT</text>
+    <rect x="422" y="228" width="38" height="26" rx="6" fill="#F7F8F9" stroke="#C7CFD5"/>
+    <text x="441" y="246" fill="#4C565D" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12" font-weight="650" text-anchor="middle">x</text>
+    <text x="474" y="246" fill="#626C74" font-family="system-ui, sans-serif" font-size="11">Export Notes</text>
+    <text x="418" y="307" fill="#737E86" font-family="system-ui, sans-serif" font-size="10" font-weight="750" letter-spacing=".7">EDIT</text>
+    <rect x="422" y="318" width="38" height="26" rx="6" fill="#F7F8F9" stroke="#C7CFD5"/>
+    <text x="441" y="336" fill="#4C565D" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12" font-weight="650" text-anchor="middle">e</text>
+    <text x="474" y="336" fill="#626C74" font-family="system-ui, sans-serif" font-size="11">Edit source</text>
+    <text x="418" y="362" fill="#737E86" font-family="system-ui, sans-serif" font-size="10" font-weight="750" letter-spacing=".7">WORKSPACE AI</text>
+    <rect x="422" y="373" width="38" height="26" rx="6" fill="#F7F8F9" stroke="#C7CFD5"/>
+    <text x="441" y="391" fill="#4C565D" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12" font-weight="650" text-anchor="middle">c</text>
+    <text x="474" y="391" fill="#626C74" font-family="system-ui, sans-serif" font-size="11">Open Chat</text>
+    <text x="418" y="417" fill="#737E86" font-family="system-ui, sans-serif" font-size="10" font-weight="750" letter-spacing=".7">LIVE</text>
+    <rect x="422" y="428" width="38" height="26" rx="6" fill="#F7F8F9" stroke="#C7CFD5"/>
+    <text x="441" y="446" fill="#4C565D" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12" font-weight="650" text-anchor="middle">l</text>
+    <text x="474" y="446" fill="#626C74" font-family="system-ui, sans-serif" font-size="11">Present / Follow</text>
+    <line x1="152" y1="499" x2="648" y2="499" stroke="#E6E9EC"/>
+    <text x="162" y="514" fill="#737E86" font-family="system-ui, sans-serif" font-size="9">Click an action or press its shortcut. Esc or ? closes this panel.</text>
+  </g>
+  <g fill="#69737A" font-family="system-ui, sans-serif" font-size="13" text-anchor="middle">
+    <text x="400" y="646">Review and Output work in Personal or Shared</text>
+    <text x="400" y="672">Personal needs no Admin or Share</text>
   </g>
 </svg>

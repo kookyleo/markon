@@ -17,7 +17,7 @@ Markon 本地优先。它把一个本地文件、目录或 Git 仓库转成浏�
 
 ## 解决什么问题
 
-Markdown 经常不只是“看一眼预览”：
+Markdown 经常不只是「看一眼预览」：
 
 - 一份长设计文档需要高亮、Notes、章节进度与局部打印；
 - 一个仓库需要跨文件搜索、查看历史，并按渲染结果审阅 diff；
@@ -39,7 +39,7 @@ local file / directory / Git repository
       edit · diff · live · chat
 ```
 
-每个工作区有独立的 `Search`、`Viewed`、`Edit`、`Live`、`Chat`、`Shared` 开关。管理员决定开放哪些能力，协作者只能使用已开启的部分。
+阅读、Search、Annotate、Progress、Git 审阅与输出属于基础能力。每个工作区有独立的 `Edit`、`Chat`、`Live`、`Share` 四个高级能力开关，由管理员按需开启；Personal 审阅不需要 Admin 或 Share，Share 用于选择共同审阅数据。
 
 ## 两种入口，一套服务
 
@@ -68,7 +68,7 @@ markon docs/
 ## 它是什么
 
 - **阅读工作台**：GitHub 风格正文、目录、视觉缩放、快捷键与主题。
-- **审阅工作台**：批注、Notes、Viewed、折叠、导出与章节打印。
+- **审阅工作台**：批注、Notes、Progress、折叠、导出与章节打印。
 - **Git-aware 工作区**：branches、tags、history、working/commit/compare diff。
 - **本地协作面**：共享审阅状态与 Live 跟随，数据仍落在运行 Markon 的机器。
 - **受约束的 Workspace AI**：文件调查、引用回链，以及用户逐项批准的修改。
@@ -83,6 +83,6 @@ markon docs/
 
 ## 本地优先的真实边界
 
-渲染、搜索、Git、批注、Viewed 和 Live 都在本机完成。只有用户配置并启用 Workspace AI 后，消息、引用与工具读取的上下文才会发送给所选 Provider。
+渲染、搜索、Git、批注、Progress 和 Live 都在本机完成。只有用户配置并启用 Workspace AI 后，消息、引用与工具读取的上下文才会发送给所选 Provider。
 
 → 继续：[快速上手](/zh/guide/getting-started) · [产品能力](/zh/features/) · [数据与隐私](/zh/advanced/data-and-privacy)

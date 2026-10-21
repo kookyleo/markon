@@ -1,23 +1,25 @@
 ---
-title: Shared annotations
-description: Shared annotations and Viewed state with SQLite authority, HTTP writes, and WebSocket broadcasts.
+title: Share
+description: Share annotations and section progress markers with collaborators, using SQLite authority and live updates.
 ---
 
-# Shared annotations
+# Share
 
-<div class="feature-illustration"><img src="/illustrations/07-sync.svg" alt="Shared annotation synchronization" /></div>
+<div class="feature-illustration"><img src="/illustrations/07-sync.svg" alt="Share annotations and reading progress" /></div>
 
-Shared is not a storage mode. Annotations and Viewed always live in local SQLite; enabling Shared lets unlocked collaborators use the same dataset and receive live events.
+**Share** lets collaborators read, edit, and synchronize the same annotations and section progress markers. The data always lives in local SQLite. Personal review works without Share; this switch selects common review data and live updates.
+
+Share is the capability name. Shared names the common review scope, describes an already shared state, or is an ordinary English adjective. Older interfaces may still label this capability Shared. The CLI uses `share` and retains `shared` as an alias; the configuration field `shared_annotation` and this page's URL remain unchanged.
 
 ## Enable
 
-Turn on `Shared` from an admin workspace page or run:
+Turn on `Share` from an admin workspace page or run:
 
 ```bash
-markon set <ID|INDEX> shared on
+markon set <ID|INDEX> share on
 ```
 
-Three-color highlights, strikethrough, Notes, and H2–H6 Viewed state are shared. Ordinary fold state remains a per-browser UI preference.
+Three-color highlights, strikethrough, Notes, and H2–H6 section progress markers are shared. Reading-position memory, ordinary folding, and Markdiff's per-file progress remain browser-local. Live provides presentation following separately.
 
 ## Data flow
 
@@ -30,14 +32,22 @@ Browser A ── same-origin HTTP command ──▶ SQLite
 
 WebSockets broadcast successful changes but do not accept database writes. Reconnecting clients reload authoritative server state rather than merging an offline copy.
 
-## Permissions
+## Personal and Shared scopes
 
-| Shared | Administrator | Collaborator |
+Every browser admitted to the workspace can use Annotate, Progress, and Export Notes. Admin is not a prerequisite for these essential capabilities.
+
+| Share | Current scope | Review data |
 |---|---|---|
-| Off | Read/write review state | Read-only page |
-| On | Read/write same state | Read/write after unlocking, with live sync |
+| Off | Personal | Non-admin browsers have isolated Personal records; administrators retain their existing records |
+| On | Shared | Everyone in the workspace reads and writes the same common records, with live sync |
 
-Turning Shared off removes collaborator capability and broadcasting without moving or deleting records.
+Both scopes persist in the same SQLite database. Browser-private records use new private tables; existing administrator/common records retain the original tables. Enabling Share does not automatically publish or merge browser-private Personal data. Turning it off restores Personal access without moving or deleting either dataset. The interface displays Personal or Shared so the active scope is clear.
+
+Administrator Personal data uses the original owner tables, the same legacy dataset that Share exposes as common review. Enabling Share therefore makes those existing owner records available to collaborators. The browser-private Personal tables remain separate and are never automatically imported. API scopes are `owner`, `personal`, and `shared`; the interface labels both owner and browser-private scopes Personal.
+
+A private identity cookie, separate from Admin, gives the browser access to its Personal records. Clearing browser site data loses that access. It is not an account, and there is no account recovery or cross-device synchronization of Personal records. Nicknames and colors do not authenticate the private identity.
+
+Edit and Chat follow their own workspace switches. Share does not grant source editing, AI, or administrative permissions. Live provides presentation following separately and does not publish Personal review data.
 
 ## Multiple devices
 
@@ -48,8 +58,8 @@ markon docs/ \
   --collaborator-access-code guest-secret
 ```
 
-`markon ls` can copy a collaborator URL only for workspaces with Shared enabled; it never includes admin bootstrap credentials.
+`markon ls` can copy a collaborator URL only for workspaces with Share enabled; it never includes admin bootstrap credentials.
 
 The database defaults to `~/.markon/annotation.sqlite` or `%USERPROFILE%\.markon\annotation.sqlite` and can be overridden with `MARKON_SQLITE_PATH`.
 
-Shared works well for small-team reviews and multi-device reading. It does not provide per-user private annotations, RBAC, approval workflows, audit logs, or offline automatic merging. Back up `settings.json` and SQLite while stopped; use `markon cleanup` only after confirming orphaned data is no longer needed. See [Data and privacy](/advanced/data-and-privacy).
+Share works well for small-team reviews and multi-device reading. Browser-isolated Personal review is available with Share off; it does not provide account-based cross-device private synchronization, RBAC, approval workflows, audit logs, or offline automatic merging. Back up `settings.json` and SQLite while stopped; use `markon cleanup` only after confirming orphaned data is no longer needed. See [Data and privacy](/advanced/data-and-privacy).

@@ -9,6 +9,11 @@
   </defs>
   <rect width="800" height="800" fill="#FAFAF7"/>
 
+  <g font-family="system-ui, sans-serif">
+    <text x="60" y="88" fill="#30383D" font-size="32" font-weight="650">Live</text>
+    <text x="60" y="118" fill="#69737A" font-size="17">Present · Follow · Off</text>
+  </g>
+
   <!-- Follower (back layer, left) — smaller, secondary, sparser content -->
   <g filter="url(#sh)">
     <rect x="60" y="220" width="290" height="420" rx="14" fill="#FFFFFF" stroke="#E5E7EB"/>
@@ -17,6 +22,7 @@
     <circle cx="82" cy="239" r="5" fill="#FF5F57"/>
     <circle cx="98" cy="239" r="5" fill="#FEBC2E"/>
     <circle cx="114" cy="239" r="5" fill="#28C840"/>
+    <text x="142" y="243" fill="#69737A" font-family="system-ui, sans-serif" font-size="12">Follow</text>
 
     <!-- title -->
     <rect x="82" y="288" rx="3" width="150" height="13" fill="#4B5563"/>
@@ -24,7 +30,7 @@
     <!-- single paragraph above focus -->
     <rect x="82" y="334" rx="2" width="230" height="6" fill="#D1D5DB"/>
 
-    <!-- focused paragraph — the broadcaster's focus mirrored onto the follower (orange, same as the pulse) -->
+    <!-- focused paragraph — the presenter's focus mirrored onto the follower (orange, same as the pulse) -->
     <rect x="70" y="376" width="270" height="52" rx="10" fill="none" stroke="#FF8A3D" stroke-width="1.5"/>
     <rect x="86" y="392" rx="2" width="226" height="6" fill="#9CA3AF"/>
     <rect x="86" y="406" rx="2" width="190" height="6" fill="#9CA3AF"/>
@@ -36,7 +42,7 @@
     <rect x="82" y="540" rx="2" width="220" height="6" fill="#D1D5DB"/>
   </g>
 
-  <!-- Broadcaster (front layer, right) — wider frame, content centered with breathing room on both sides -->
+  <!-- Presenter (front layer, right) — wider frame, content centered with breathing room on both sides -->
   <g filter="url(#sh)">
     <rect x="283" y="140" width="425" height="520" rx="14" fill="#FFFFFF" stroke="#E5E7EB"/>
     <path d="M 283 154 a14 14 0 0 1 14 -14 h397 a14 14 0 0 1 14 14 v18 h-425 z" fill="#F8F9FA"/>
@@ -44,11 +50,12 @@
     <circle cx="305" cy="159" r="5" fill="#FF5F57"/>
     <circle cx="321" cy="159" r="5" fill="#FEBC2E"/>
     <circle cx="337" cy="159" r="5" fill="#28C840"/>
+    <text x="690" y="163" fill="#69737A" font-family="system-ui, sans-serif" font-size="12" text-anchor="end">Present</text>
 
     <!-- title (left-aligned to the content column, matching the follower) -->
     <rect x="345" y="202" rx="3" width="200" height="14" fill="#4B5563"/>
 
-    <!-- focused paragraph — the broadcaster's own selection (light blue, distinct from the orange pulse it emits) -->
+    <!-- focused paragraph — the presenter's own selection (light blue, distinct from the orange pulse it emits) -->
     <rect x="345" y="284" width="300" height="58" rx="10" fill="none" stroke="#60A5FA" stroke-width="1.5"/>
     <rect x="363" y="302" rx="2" width="260" height="6" fill="#9CA3AF"/>
     <rect x="363" y="316" rx="2" width="220" height="6" fill="#9CA3AF"/>
@@ -68,8 +75,8 @@
     <rect x="345" y="602" rx="2" width="190" height="6" fill="#D1D5DB"/>
   </g>
 
-  <!-- Bidirectional broadcast pulse: centred between both views so the
-       synchronisation reads as a shared signal rather than a one-way push. -->
+  <!-- Shared context pulse: the presenter shares reading context with the
+       follower. This does not grant control over the follower's source files. -->
   <g pointer-events="none">
     <!-- inner signal -->
     <path d="M296 300 Q282 313 296 326" fill="none" stroke="#FF8A3D" stroke-width="3" stroke-linecap="round" opacity=".9"/>
@@ -90,4 +97,5 @@
     <circle cx="310" cy="313" r="11" fill="#FFFFFF" stroke="#FF8A3D" stroke-width="2" opacity=".95"/>
     <circle cx="310" cy="313" r="6" fill="#F59E0B"/>
   </g>
+  <text x="400" y="722" fill="#69737A" font-family="system-ui, sans-serif" font-size="16" text-anchor="middle">Sync reading context · Off reads independently</text>
 </svg>

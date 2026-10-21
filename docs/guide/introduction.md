@@ -39,7 +39,7 @@ local file / directory / Git repository
       edit · diff · live · chat
 ```
 
-Every workspace has independent `Search`, `Viewed`, `Edit`, `Live`, `Chat`, and `Shared` switches. Administrators decide which capabilities are available; collaborators can only use enabled capabilities.
+Reading, Search, Annotate, Progress, Git review, and output are essential capabilities. Each workspace has four independent advanced switches: `Edit`, `Chat`, `Live`, and `Share`. Administrators choose these advanced capabilities; Personal review requires neither Admin nor Share; Share selects common review data.
 
 ## Two entry points, one service
 
@@ -68,7 +68,7 @@ The desktop app and CLI connect to the same `markond` background service and sha
 ## What it is
 
 - **A reading workbench:** GitHub-style rendering, table of contents, visual zoom, shortcuts, and themes.
-- **A review workbench:** annotations, Notes, Viewed state, folding, export, and section printing.
+- **A review workbench:** annotations, Notes, Progress state, folding, export, and section printing.
 - **A Git-aware workspace:** branches, tags, history, and working/commit/compare diffs.
 - **A local collaboration surface:** shared review state and Live following, stored on the Markon host.
 - **A constrained Workspace AI:** file investigation, source links, and user-approved edits.
@@ -83,6 +83,6 @@ The desktop app and CLI connect to the same `markond` background service and sha
 
 ## The actual local-first boundary
 
-Rendering, search, Git, annotations, Viewed state, and Live all run locally. Only after a user configures and enables Workspace AI are messages, references, and tool-read context sent to the selected provider.
+Rendering, search, Git, annotations, Progress state, and Live all run locally. Only after a user configures and enables Workspace AI are messages, references, and tool-read context sent to the selected provider.
 
 Continue with [Getting started](/guide/getting-started), [Feature overview](/features/), or [Data and privacy](/advanced/data-and-privacy).

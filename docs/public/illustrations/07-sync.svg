@@ -1,4 +1,6 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 800" width="800" height="800">
+  <title>Share selects common annotations and section progress</title>
+  <desc>The devices are in Shared scope and synchronize common Annotate and Section Progress data. Share off still permits Personal review. Browser-private Personal records stay separate in SQLite and are not automatically published or merged. The private browser cookie is not an account or cross-device personal sync.</desc>
   <defs>
     <filter id="sh" x="-20%" y="-20%" width="140%" height="140%">
       <feGaussianBlur in="SourceAlpha" stdDeviation="6"/>
@@ -8,6 +10,12 @@
     </filter>
   </defs>
   <rect width="800" height="800" fill="#FAFAF7"/>
+
+  <g font-family="system-ui, sans-serif">
+    <text x="80" y="110" fill="#30383D" font-size="32" font-weight="650">Share</text>
+    <text x="80" y="142" fill="#69737A" font-size="17">Annotate + Section Progress</text>
+    <text x="720" y="110" fill="#69737A" font-size="14" text-anchor="end">Shared</text>
+  </g>
 
   <g transform="translate(-70 -134) scale(1.2)">
   <!-- arc — wider span (240) for a more relaxed sweep, low crest -->
@@ -28,6 +36,12 @@
     <rect x="-26" y="-10" width="36" height="6" rx="2" fill="#14532D"/>
   </g>
 
+  <!-- Section progress travels alongside highlights, strikes, and text notes. -->
+  <g transform="translate(520 320)">
+    <rect x="-13" y="-13" width="26" height="26" rx="6" fill="#FFFFFF" stroke="#16A34A" filter="url(#sh)"/>
+    <path d="m-6 0 4 4 8-9" fill="none" stroke="#16A34A" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+  </g>
+
   <!-- MacBook -->
   <g transform="translate(160 380)" filter="url(#sh)">
     <rect x="0" y="0" width="280" height="180" rx="10" fill="#1F2937"/>
@@ -42,7 +56,9 @@
     <rect x="24" y="106" rx="2" width="220" height="6" fill="#9CA3AF"/>
     <rect x="24" y="124" rx="2" width="160" height="6" fill="#9CA3AF"/>
     <rect x="60" y="120" rx="2" width="120" height="10" fill="#86E5A4" opacity="0.75"/>
-    <rect x="24" y="142" rx="2" width="180" height="6" fill="#9CA3AF"/>
+    <rect x="24" y="138" width="12" height="12" rx="3" fill="#FFFFFF" stroke="#16A34A"/>
+    <path d="m27 144 2 2 4-5" fill="none" stroke="#16A34A" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+    <text x="44" y="148" fill="#69737A" font-family="system-ui, sans-serif" font-size="10">Section 2</text>
   </g>
   <!-- MacBook base -->
   <g>
@@ -76,11 +92,18 @@
       <rect x="18" y="178" rx="2" width="104" height="5" fill="#9CA3AF"/>
       <rect x="18" y="190" rx="2" width="80" height="5" fill="#9CA3AF"/>
       <rect x="18" y="202" rx="2" width="104" height="5" fill="#9CA3AF"/>
-      <rect x="18" y="214" rx="2" width="60" height="5" fill="#9CA3AF"/>
+      <rect x="18" y="214" width="12" height="12" rx="3" fill="#FFFFFF" stroke="#16A34A"/>
+      <path d="m21 220 2 2 4-5" fill="none" stroke="#16A34A" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+      <text x="38" y="224" fill="#69737A" font-family="system-ui, sans-serif" font-size="9">Section 2</text>
     </g>
   </g>
 
   <!-- ground line -->
   <line x1="80" y1="660" x2="720" y2="660" stroke="#E5E7EB" stroke-width="1"/>
+  </g>
+  <text x="400" y="712" fill="#69737A" font-family="system-ui, sans-serif" font-size="16" text-anchor="middle">Fold · Resume · File Progress stay local</text>
+  <g fill="#69737A" font-family="system-ui, sans-serif" font-size="14" text-anchor="middle">
+    <text x="400" y="742">Browser-private Personal is not published or merged</text>
+    <text x="400" y="768">Personal review works with Share off</text>
   </g>
 </svg>

@@ -1,9 +1,9 @@
 ---
-title: 章节打印
+title: 打印（Print）
 description: 按整页或 H2–H6 章节打印 Markon 渲染结果，并保留代码、图表与批注。
 ---
 
-# 章节打印
+# 打印（Print）
 
 <div class="feature-illustration">
   <img src="/illustrations/08-print.svg" alt="章节打印" />
@@ -47,7 +47,7 @@ description: 按整页或 H2–H6 章节打印 Markon 渲染结果，并保留�
 
 自动隐藏：
 
-- Viewed 复选框；
+- Progress 复选框；
 - Edit、Print、Collapse / Expand 等交互入口；
 - TOC、搜索框与快捷键面板；
 - 屏幕专用的 Note 卡片容器。
@@ -71,8 +71,8 @@ description: 按整页或 H2–H6 章节打印 Markon 渲染结果，并保留�
 
 ## 典型场景
 
-- **快速生成 PDF** — 打印对话框选择“另存为 PDF”；
+- **快速生成 PDF** — 打印对话框选择「另存为 PDF」；
 - **纸质归档** — 把某一章节打印存档；
 - **演示/分享** — 生成只含相关章节的 PDF。
 
-如果要继续编辑评审文字，而不是保留页面样式，请使用[导出 Notes](/zh/features/export)。
+如果要继续编辑评审文字，而不是保留页面样式，请使用[导出文字批注（Export Notes）](/zh/features/export)。

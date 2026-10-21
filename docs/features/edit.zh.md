@@ -1,9 +1,9 @@
 ---
-title: 源码编辑
+title: 源码编辑（Edit）
 description: Markon 的懒加载 CodeMirror 编辑器、渲染选区定位、实时预览、保存与工作区边界。
 ---
 
-# 源码编辑
+# 源码编辑（Edit）
 
 <div class="feature-illustration">
   <img src="/illustrations/04-edit.svg" alt="Markon CodeMirror Markdown 编辑器" />
@@ -32,7 +32,7 @@ description: Markon 的懒加载 CodeMirror 编辑器、渲染选区定位、实
 - 保存中/已修改状态；
 - 主题、字体与 UI token 跟随全局设置。
 
-导出 Notes 复用同一套编辑器，但运行在 `export` 模式：缓冲区不写源文件，Save 会下载 `.md`。
+导出文字批注（Export Notes） 复用同一套编辑器，但运行在 `export` 模式：缓冲区不写源文件，Save 会下载 `.md`。
 
 ## 保存
 
@@ -44,7 +44,7 @@ description: Markon 的懒加载 CodeMirror 编辑器、渲染选区定位、实
 - 浏览器 same-origin；
 - 页面持有当前 Workspace 的 save capability。
 
-保存成功后，已发送到服务端的文档成为新 baseline。若请求期间用户继续输入，后续内容仍保持“未保存”，不会被错误标记为干净。
+保存成功后，已发送到服务端的文档成为新 baseline。若请求期间用户继续输入，后续内容仍保持「未保存」，不会被错误标记为干净。
 
 关闭编辑器时，未保存改动会触发确认。普通 edit 模式关闭后重新加载页面，显示服务端最新渲染。
 
