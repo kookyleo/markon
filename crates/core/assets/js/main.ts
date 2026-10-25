@@ -14,7 +14,7 @@ import { Position } from './services/position';
 import { Text } from './services/text';
 import { StorageManager } from './managers/storage-manager';
 import { WebSocketManager } from './managers/websocket-manager';
-import { AnnotationManager, type Annotation } from './managers/annotation-manager';
+import { AnnotationManager, isValidAnnotation, type Annotation } from './managers/annotation-manager';
 import { NoteManager } from './managers/note-manager';
 import { PopoverManager, type PopoverActionPayload } from './managers/popover-manager';
 import { UndoManager, type UndoOperation } from './managers/undo-manager';
@@ -837,6 +837,10 @@ export class MarkonApp {
                     Logger.warn('WebSocket', `Dropped annotation with invalid id: ${String(anno?.id)}`);
                     return;
                 }
+                if (!isValidAnnotation(anno)) {
+                    Logger.warn('WebSocket', 'Dropped annotation with invalid anchor');
+                    return;
+                }
                 annotations.push(anno);
             });
 
@@ -863,6 +867,10 @@ export class MarkonApp {
             const incoming = message.annotation as Annotation;
             if (!validId(incoming?.id)) {
                 Logger.warn('WebSocket', `Dropped new_annotation with invalid id: ${String(incoming?.id)}`);
+                return;
+            }
+            if (!isValidAnnotation(incoming)) {
+                Logger.warn('WebSocket', 'Dropped new_annotation with invalid anchor');
                 return;
             }
             // Belt-and-braces: a stray dupe (legacy peer, replay) still gets filtered.

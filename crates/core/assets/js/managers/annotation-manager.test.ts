@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import {
     AnnotationManager,
+    isValidAnnotation,
     type Annotation,
     type AnnotationStorage,
     type AnnotationChangeEvent,
@@ -81,6 +82,28 @@ describe('AnnotationManager', () => {
         errorSpy.mockRestore();
     });
 
+    it('load() skips legacy annotations without anchors so valid highlights still render', async () => {
+        const article = setupArticle('<p>hello world</p>');
+        const creator = new AnnotationManager(makeStorage(), article);
+        const valid = creator.createAnnotation(
+            makeRange(article.querySelector('p')!.firstChild!, 0, 5),
+            'highlight-yellow',
+            'span',
+        );
+        const legacy = { ...valid, id: 'anno-legacy', anchor: undefined } as unknown as Annotation;
+        const storage = makeStorage([legacy, valid]);
+        const mgr = new AnnotationManager(storage, article);
+
+        await mgr.load();
+
+        expect(() => mgr.applyToDOM()).not.toThrow();
+        expect(mgr.getAll()).toEqual([valid]);
+        expect(article.querySelector(`[data-annotation-id="${valid.id}"]`)?.textContent).toBe('hello');
+        expect(storage.saveAnnotation).not.toHaveBeenCalled();
+        expect(storage.deleteAnnotation).not.toHaveBeenCalled();
+        expect(storage.clearAnnotations).not.toHaveBeenCalled();
+    });
+
     it('createAnnotation builds the canonical schema fields', () => {
         const article = setupArticle('<p>hello world</p>');
         const storage = makeStorage();
@@ -103,6 +126,22 @@ describe('AnnotationManager', () => {
         expect(anno.text).toBe('hello');
         expect(anno.note).toBeNull();
         expect(typeof anno.createdAt).toBe('number');
+    });
+
+    it('handles missing anchors in direct DOM application and document ordering', () => {
+        const article = setupArticle('<p>hello world</p>');
+        const mgr = new AnnotationManager(makeStorage(), article);
+        const valid = mgr.createAnnotation(
+            makeRange(article.querySelector('p')!.firstChild!, 0, 5),
+            'highlight-yellow',
+            'span',
+        );
+        const legacy = { ...valid, id: 'anno-legacy', anchor: undefined } as unknown as Annotation;
+        mgr.replaceAll([legacy, valid]);
+
+        expect(mgr.getAllInDocumentOrder()).toEqual([valid, legacy]);
+        expect(() => mgr.applyToDOM([legacy, valid])).not.toThrow();
+        expect(article.querySelector(`[data-annotation-id="${valid.id}"]`)?.textContent).toBe('hello');
     });
 
     it('createAnnotation with a note carries the note string through', () => {
@@ -784,5 +823,25 @@ describe('AnnotationManager', () => {
         const onlyB = mgr.getGroupedByHeading(new Set([b.id]));
         expect(onlyB).toHaveLength(1);
         expect(itemAt(onlyB, 0).heading?.text).toBe('Section B');
+    });
+});
+
+describe('isValidAnnotation', () => {
+    it.each([
+        undefined, null, false, 5, 'anchor', [], {},
+        { position: undefined }, { position: null }, { position: '0' },
+        { position: NaN }, { position: Infinity },
+    ])('rejects an invalid anchor: %j', (anchor) => {
+        expect(isValidAnnotation({ anchor })).toBe(false);
+    });
+
+    it.each([undefined, null, false, 42, 'annotation', {}])('rejects a missing annotation or anchor: %j', (annotation) => {
+        expect(isValidAnnotation(annotation)).toBe(false);
+    });
+
+    it('accepts legacy flat anchors without version or fragments', () => {
+        expect(isValidAnnotation({
+            anchor: { position: 0, exact: 'hello', prefix: '', suffix: '' },
+        })).toBe(true);
     });
 });

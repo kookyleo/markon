@@ -44,4 +44,20 @@ describe('mergeAnnotationSnapshots', () => {
         expect(result.merged.map(a => a.id)).toEqual(['anno-shared', 'anno-local']);
         expect(result.missingFromShared.map(a => a.id)).toEqual(['anno-local']);
     });
+
+    it('ignores malformed anchors in both snapshots without replacing a valid local annotation', () => {
+        const local = makeAnnotation('anno-local', 10);
+        const shared = makeAnnotation('anno-shared', 5);
+        const missingAnchor = { ...local, anchor: undefined } as unknown as Annotation;
+        const nullAnchor = { ...local, id: 'anno-null', anchor: null } as unknown as Annotation;
+        const invalidPosition = { ...shared, id: 'anno-invalid', anchor: { position: '0' } } as unknown as Annotation;
+
+        const result = mergeAnnotationSnapshots(
+            [nullAnchor, local, invalidPosition],
+            [missingAnchor, shared, invalidPosition],
+        );
+
+        expect(result.merged).toEqual([shared, local]);
+        expect(result.missingFromShared).toEqual([local]);
+    });
 });

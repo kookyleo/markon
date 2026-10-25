@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { MarkonApp } from './main';
+import type { Annotation } from './managers/annotation-manager';
 
 /**
  * MarkonApp integration tests.
@@ -161,6 +162,59 @@ describe('MarkonApp', () => {
         // No WS manager unless shared / live is enabled.
         expect(m.wsManager).toBeNull();
     });
+
+    it.each(['load', 'new_annotation', 'all_annotations'] as const)(
+        '%s skips malformed annotations and still renders valid notes and author badges',
+        async (source) => {
+            const body = seedMarkdownBody();
+            vi.stubGlobal('WebSocket', MockWS);
+            const valid: Annotation = {
+                id: 'anno-valid',
+                type: 'has-note',
+                tagName: 'span',
+                anchor: { position: 5, exact: 'World', prefix: 'Hello', suffix: '' },
+                text: 'World',
+                note: 'Keep this note',
+                createdAt: 1,
+                author: { color: '#123456', name: 'Alice' },
+            };
+            const invalid = [undefined, null, false, 5, 'anchor', [], {}, { position: '5' }]
+                .map((anchor, index) => ({ ...valid, id: `anno-invalid-${index}`, anchor }));
+            vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
+                ok: true,
+                status: 200,
+                json: () => Promise.resolve({
+                    annotations: source === 'load' ? [...invalid, valid] : [],
+                    viewed_state: {},
+                }),
+            }));
+            const app = new MarkonApp({ filePath: 'docs/x.md', isSharedMode: true });
+            await app.init();
+            const ws = itemAt(MockWS.instances, 0);
+            const { annotationManager, wsManager } = app.getManagers();
+
+            try {
+                if (source === 'all_annotations') {
+                    ws.dispatchMessage({ type: source, annotations: [...invalid, valid] });
+                } else if (source === 'new_annotation') {
+                    invalid.forEach(annotation => ws.dispatchMessage({ type: source, annotation }));
+                    expect(annotationManager?.getAll()).toEqual([]);
+                    ws.dispatchMessage({ type: source, annotation: valid });
+                }
+
+                expect(annotationManager?.getAll()).toEqual([valid]);
+                const highlight = body.querySelector<HTMLElement>('[data-annotation-id="anno-valid"]');
+                expect(highlight?.textContent).toBe('World');
+                expect(highlight?.dataset['authorName']).toBe('Alice');
+                const card = document.querySelector('.note-card-margin[data-annotation-id="anno-valid"]');
+                expect(card?.textContent).toContain('Keep this note');
+                expect(card?.querySelector('.note-author-name')?.textContent).toBe('Alice');
+                expect(document.querySelector('[data-annotation-id^="anno-invalid-"]')).toBeNull();
+            } finally {
+                wsManager?.disconnect();
+            }
+        },
+    );
 
     it('toggles the selection toolbar from its shortcut and lists it in help', async () => {
         seedMarkdownBody();

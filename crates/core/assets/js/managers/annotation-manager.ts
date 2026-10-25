@@ -96,6 +96,18 @@ export interface Annotation {
     author?: Author;
 }
 
+/** Minimum anchor shape required to render persisted or peer annotations. */
+export function isValidAnnotation(annotation: unknown): annotation is Annotation {
+    if (!annotation || typeof annotation !== 'object' || !('anchor' in annotation)) return false;
+    const anchor = annotation.anchor;
+    return anchor !== null
+        && typeof anchor === 'object'
+        && !Array.isArray(anchor)
+        && 'position' in anchor
+        && typeof anchor.position === 'number'
+        && Number.isFinite(anchor.position);
+}
+
 /** Storage strategy contract used by AnnotationManager.
  *
  * Mutating methods return the op_id used for the outgoing WebSocket frame
@@ -156,7 +168,7 @@ export class AnnotationManager {
     }
 
     async load(): Promise<void> {
-        this.#annotations = await this.#storage.loadAnnotations();
+        this.#annotations = (await this.#storage.loadAnnotations()).filter(isValidAnnotation);
         Logger.log('AnnotationManager', `Loaded ${this.#annotations.length} annotations`);
     }
 
@@ -200,8 +212,8 @@ export class AnnotationManager {
             const ai = positions.get(a.id) ?? Number.POSITIVE_INFINITY;
             const bi = positions.get(b.id) ?? Number.POSITIVE_INFINITY;
             if (ai !== bi) return ai - bi;
-            const ap = typeof a.anchor.position === 'number' ? a.anchor.position : Number.POSITIVE_INFINITY;
-            const bp = typeof b.anchor.position === 'number' ? b.anchor.position : Number.POSITIVE_INFINITY;
+            const ap = typeof a.anchor?.position === 'number' ? a.anchor.position : Number.POSITIVE_INFINITY;
+            const bp = typeof b.anchor?.position === 'number' ? b.anchor.position : Number.POSITIVE_INFINITY;
             if (ap !== bp) return ap - bp;
             return a.createdAt - b.createdAt;
         });
@@ -535,8 +547,9 @@ export class AnnotationManager {
         // Each annotation re-anchors independently against the live DOM, and
         // wrapping preserves text content, so application order doesn't affect
         // correctness. Sort by anchor position for deterministic ordering.
-        const sorted = [...annotations].sort(
-            (a, b) => a.anchor.position - b.anchor.position,
+        const sorted = annotations.filter(isValidAnnotation).sort(
+            (a, b) => (a.anchor?.position ?? Number.POSITIVE_INFINITY)
+                - (b.anchor?.position ?? Number.POSITIVE_INFINITY),
         );
 
         sorted.forEach(anno => this.#applyAnnotation(anno));
