@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import {
     AnnotationManager,
+    isValidAnnotation,
     type Annotation,
     type AnnotationStorage,
     type AnnotationChangeEvent,
@@ -81,6 +82,135 @@ describe('AnnotationManager', () => {
         errorSpy.mockRestore();
     });
 
+    it('load() skips legacy annotations without anchors so valid highlights still render', async () => {
+        const article = setupArticle('<p>hello world</p>');
+        const creator = new AnnotationManager(makeStorage(), article);
+        const valid = creator.createAnnotation(
+            makeRange(article.querySelector('p')!.firstChild!, 0, 5),
+            'highlight-yellow',
+            'span',
+        );
+        const legacy = { ...valid, id: 'anno-legacy', anchor: undefined } as unknown as Annotation;
+        const storage = makeStorage([legacy, valid]);
+        const mgr = new AnnotationManager(storage, article);
+
+        await mgr.load();
+
+        expect(() => mgr.applyToDOM()).not.toThrow();
+        expect(mgr.getAll()).toEqual([valid]);
+        expect(article.querySelector(`[data-annotation-id="${valid.id}"]`)?.textContent).toBe('hello');
+        expect(storage.saveAnnotation).not.toHaveBeenCalled();
+        expect(storage.deleteAnnotation).not.toHaveBeenCalled();
+        expect(storage.clearAnnotations).not.toHaveBeenCalled();
+    });
+
+    it.each(['add', 'edit', 'delete', 'clear', 'remote'] as const)(
+        'discards an HTTP refresh invalidated by a successful %s and reads authoritative state again',
+        async action => {
+            const article = setupArticle('<p>hello world</p>');
+            const storage = makeStorage();
+            const mgr = new AnnotationManager(storage, article);
+            const original = mgr.createAnnotation(makeRange(article.querySelector('p')!.firstChild!, 0, 5), 'has-note', 'span', 'original');
+            const changed = { ...original, id: action === 'add' ? 'anno-added' : original.id, note: 'updated' };
+            mgr.replaceAll([original]);
+            let resolveRead!: (annotations: Annotation[]) => void;
+            const first = new Promise<Annotation[]>(resolve => { resolveRead = resolve; });
+            const expected = action === 'add' ? [original, changed]
+                : action === 'edit' || action === 'remote' ? [changed] : [];
+            const load = vi.fn<() => Promise<Annotation[]>>().mockReturnValueOnce(first).mockResolvedValue(expected);
+            const refresh = mgr.refreshSharedSnapshot(load);
+            if (action === 'add' || action === 'edit' || action === 'remote') await mgr.add(changed, action === 'remote');
+            if (action === 'delete') await mgr.delete(original.id);
+            if (action === 'clear') await mgr.clear();
+            resolveRead([original]);
+            await refresh;
+            expect(mgr.getAll()).toEqual(expected);
+        },
+    );
+
+    it.each(['add', 'edit', 'delete', 'clear'] as const)('coalesces refreshes and lets newer remote state supersede an earlier local %s', async action => {
+        const article = setupArticle('<p>hello world</p>');
+        const mgr = new AnnotationManager(makeStorage(), article);
+        const original = mgr.createAnnotation(makeRange(article.querySelector('p')!.firstChild!, 0, 5), 'has-note', 'span', 'original');
+        mgr.replaceAll([original]);
+        if (action === 'add' || action === 'edit') await mgr.add({ ...original, note: 'older local edit' });
+        if (action === 'delete') await mgr.delete(original.id);
+        if (action === 'clear') await mgr.clear();
+        const peer = { ...original, note: 'newer remote edit' };
+        const authoritative = action === 'add' ? [] : [peer];
+        let resolveRead!: (annotations: Annotation[]) => void;
+        const first = new Promise<Annotation[]>(resolve => { resolveRead = resolve; });
+        const load = vi.fn<() => Promise<Annotation[]>>().mockReturnValueOnce(first).mockResolvedValue(authoritative);
+        const refresh = mgr.refreshSharedSnapshot(load);
+        expect(mgr.refreshSharedSnapshot(load)).toBe(refresh);
+        resolveRead([]);
+        await refresh;
+        expect(mgr.getAll()).toEqual(authoritative);
+    });
+
+    it.each(['add', 'edit', 'delete', 'clear'] as const)(
+        'applies a pending local %s after a snapshot arrives during its HTTP write',
+        async action => {
+            const article = setupArticle('<p>hello world</p>');
+            const storage = makeStorage();
+            const mgr = new AnnotationManager(storage, article);
+            const original = mgr.createAnnotation(makeRange(article.querySelector('p')!.firstChild!, 0, 5), 'has-note', 'span', 'original');
+            const peer = { ...original, id: 'anno-peer' };
+            const changed = { ...original, id: action === 'add' ? 'anno-added' : original.id, note: 'local' };
+            mgr.replaceAll([original, peer]);
+            let resolveWrite!: (opId: string | null) => void;
+            const pending = new Promise<string | null>(resolve => { resolveWrite = resolve; });
+            vi.mocked(storage.saveAnnotation).mockReturnValue(pending);
+            vi.mocked(storage.deleteAnnotation).mockReturnValue(pending);
+            vi.mocked(storage.clearAnnotations).mockReturnValue(pending);
+            const write = action === 'add' || action === 'edit' ? mgr.add(changed)
+                : action === 'delete' ? mgr.delete(original.id) : mgr.clear();
+            await mgr.refreshSharedSnapshot(async () => [peer, original]);
+            resolveWrite(null);
+            await write;
+            expect(mgr.getAll()).toEqual(action === 'add' ? [peer, original, changed]
+                : action === 'edit' ? [peer, changed]
+                    : action === 'delete' ? [peer] : []);
+        },
+    );
+
+    it('filters malformed anchors from a fresh HTTP snapshot without writing storage', async () => {
+        const article = setupArticle('<p>hello world</p>');
+        const storage = makeStorage();
+        const mgr = new AnnotationManager(storage, article);
+        const valid = mgr.createAnnotation(makeRange(article.querySelector('p')!.firstChild!, 0, 5), 'has-note', 'span', 'valid note');
+        const malformed = { ...valid, id: 'anno-invalid', anchor: { ...valid.anchor, fragments: [null] } } as unknown as Annotation;
+        await mgr.refreshSharedSnapshot(async () => [malformed, valid]);
+        expect(mgr.getAll()).toEqual([valid]);
+        expect(() => mgr.applyToDOM()).not.toThrow();
+        expect(storage.saveAnnotation).not.toHaveBeenCalled();
+        expect(storage.deleteAnnotation).not.toHaveBeenCalled();
+    });
+
+    it('keeps visible state after refresh failure and permits a later refresh', async () => {
+        const article = setupArticle('<p>hello world</p>');
+        const mgr = new AnnotationManager(makeStorage(), article);
+        const original = mgr.createAnnotation(makeRange(article.querySelector('p')!.firstChild!, 0, 5), 'has-note', 'span', 'original');
+        mgr.replaceAll([original]);
+        await expect(mgr.refreshSharedSnapshot(async () => { throw new Error('offline'); })).rejects.toThrow('offline');
+        expect(mgr.getAll()).toEqual([original]);
+        await mgr.refreshSharedSnapshot(async () => []);
+        expect(mgr.getAll()).toEqual([]);
+    });
+
+    it('does not publish a refresh after its view is disposed', async () => {
+        const article = setupArticle('<p>hello world</p>');
+        const mgr = new AnnotationManager(makeStorage(), article);
+        let current = true;
+        let resolveRead!: (annotations: Annotation[]) => void;
+        const response = new Promise<Annotation[]>(resolve => { resolveRead = resolve; });
+        const refresh = mgr.refreshSharedSnapshot(() => response, () => current);
+        current = false;
+        resolveRead([mgr.createAnnotation(makeRange(article.querySelector('p')!.firstChild!, 0, 5), 'has-note', 'span', 'late')]);
+        await expect(refresh).resolves.toBe(false);
+        expect(mgr.getAll()).toEqual([]);
+    });
+
     it('createAnnotation builds the canonical schema fields', () => {
         const article = setupArticle('<p>hello world</p>');
         const storage = makeStorage();
@@ -103,6 +233,22 @@ describe('AnnotationManager', () => {
         expect(anno.text).toBe('hello');
         expect(anno.note).toBeNull();
         expect(typeof anno.createdAt).toBe('number');
+    });
+
+    it('handles missing anchors in direct DOM application and document ordering', () => {
+        const article = setupArticle('<p>hello world</p>');
+        const mgr = new AnnotationManager(makeStorage(), article);
+        const valid = mgr.createAnnotation(
+            makeRange(article.querySelector('p')!.firstChild!, 0, 5),
+            'highlight-yellow',
+            'span',
+        );
+        const legacy = { ...valid, id: 'anno-legacy', anchor: undefined } as unknown as Annotation;
+        mgr.replaceAll([legacy, valid]);
+
+        expect(mgr.getAllInDocumentOrder()).toEqual([valid, legacy]);
+        expect(() => mgr.applyToDOM([legacy, valid])).not.toThrow();
+        expect(article.querySelector(`[data-annotation-id="${valid.id}"]`)?.textContent).toBe('hello');
     });
 
     it('createAnnotation with a note carries the note string through', () => {
@@ -784,5 +930,53 @@ describe('AnnotationManager', () => {
         const onlyB = mgr.getGroupedByHeading(new Set([b.id]));
         expect(onlyB).toHaveLength(1);
         expect(itemAt(onlyB, 0).heading?.text).toBe('Section B');
+    });
+});
+
+describe('isValidAnnotation', () => {
+    it.each([
+        undefined, null, false, 5, 'anchor', [], {},
+        { position: undefined }, { position: null }, { position: '0' },
+        { position: NaN }, { position: Infinity },
+    ])('rejects an invalid anchor: %j', (anchor) => {
+        expect(isValidAnnotation({ anchor })).toBe(false);
+    });
+
+    it.each([undefined, null, false, 42, 'annotation', {}])('rejects a missing annotation or anchor: %j', (annotation) => {
+        expect(isValidAnnotation(annotation)).toBe(false);
+    });
+
+    const quote = { position: 0, exact: 'hello', prefix: '', suffix: '' };
+
+    it.each([
+        { position: 0, exact: 'hello' },
+        { position: 0, exact: 'hello', prefix: '' },
+        { position: 0, exact: 'hello', suffix: '' },
+        { ...quote, exact: undefined },
+        { ...quote, exact: 1 },
+        { ...quote, prefix: null },
+        { ...quote, prefix: 1 },
+        { ...quote, suffix: null },
+        { ...quote, suffix: false },
+        { ...quote, version: 2, fragments: 'hello' },
+        { ...quote, version: 2, fragments: {} },
+        { ...quote, version: 2, fragments: null },
+        { ...quote, version: 2, fragments: [null] },
+        { ...quote, version: 2, fragments: [{ position: 0, exact: 'hello' }] },
+        { ...quote, version: 2, fragments: [{ ...quote, position: Infinity }] },
+        { ...quote, fragments: [{ ...quote, exact: null }] },
+    ])('rejects incomplete quotes or malformed fragments: %j', (anchor) => {
+        expect(isValidAnnotation({ anchor })).toBe(false);
+    });
+
+    it.each([
+        quote,
+        { position: 0, exact: '', prefix: '', suffix: '' },
+        { ...quote, version: 2 },
+        { ...quote, version: 2, fragments: [] },
+        { ...quote, version: 2, fragments: [{ ...quote, blockTag: 'P' }] },
+        { ...quote, version: 2, fragments: [quote] },
+    ])('accepts legacy flat anchors and valid structural fragments: %j', (anchor) => {
+        expect(isValidAnnotation({ anchor })).toBe(true);
     });
 });

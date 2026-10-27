@@ -89,29 +89,29 @@ export const CONFIG = {
         HELP: { key: '?', ctrl: false, shift: false, desc: _t('web.kbd.help'), cat: 'global' },
         THEME_PANEL: { key: 't', ctrl: false, shift: false, desc: _t('web.kbd.theme'), cat: 'global' },
 
-        // Core functionality
-        UNDO: { key: 'z', ctrl: true, shift: false, desc: _t('web.kbd.undo'), cat: 'core' },
-        REDO: { key: 'z', ctrl: true, shift: true, desc: _t('web.kbd.redo'), cat: 'core' },
-        REDO_ALT: { key: 'y', ctrl: true, shift: false, desc: _t('web.kbd.redo.alt'), cat: 'core' },
-        ESCAPE: { key: 'Escape', ctrl: false, shift: false, desc: _t('web.kbd.escape'), cat: 'core' },
-        TOGGLE_TOC: { key: '\\', ctrl: true, shift: false, desc: _t('web.kbd.toc'), cat: 'core' },
-        TOGGLE_SELECTION_TOOLBAR: { key: 'a', ctrl: false, shift: false, desc: _t('web.kbd.selection_toolbar'), cat: 'core' },
-        SEARCH: { key: '/', ctrl: false, shift: false, desc: _t('web.kbd.search'), cat: 'search', feature: 'workspace_spotlight' },
-        EXPORT_NOTES: { key: 'x', ctrl: false, shift: false, desc: _t('web.kbd.exportnotes'), cat: 'core' },
-        WORKSPACE_NAVIGATOR: { key: 'g', ctrl: false, shift: false, desc: _t('web.kbd.workspace_nav'), cat: 'search', feature: 'workspace_spotlight' },
+        // Annotation actions require access to document state.
+        UNDO: { key: 'z', ctrl: true, shift: false, desc: _t('web.kbd.undo'), cat: 'review' },
+        REDO: { key: 'z', ctrl: true, shift: true, desc: _t('web.kbd.redo'), cat: 'review', feature: 'redo' },
+        REDO_ALT: { key: 'y', ctrl: true, shift: false, desc: _t('web.kbd.redo.alt'), cat: 'review', feature: 'redo' },
+        ESCAPE: { key: 'Escape', ctrl: false, shift: false, desc: _t('web.kbd.escape'), cat: 'global' },
+        TOGGLE_TOC: { key: '\\', ctrl: true, shift: false, desc: _t('web.kbd.toc'), cat: 'reading' },
+        TOGGLE_SELECTION_TOOLBAR: { key: 'a', ctrl: false, shift: false, desc: _t('web.kbd.selection_toolbar'), cat: 'review' },
+        SEARCH: { key: '/', ctrl: false, shift: false, desc: _t('web.kbd.search'), cat: 'workspace', feature: 'workspace_spotlight' },
+        EXPORT_NOTES: { key: 'x', ctrl: false, shift: false, desc: _t('web.kbd.exportnotes'), cat: 'output' },
+        WORKSPACE_NAVIGATOR: { key: 'g', ctrl: false, shift: false, desc: _t('web.kbd.workspace_nav'), cat: 'workspace', feature: 'workspace_spotlight' },
 
         // Navigation
-        PREV_HEADING: { key: 'k', ctrl: false, shift: false, desc: _t('web.kbd.prevheading'), cat: 'nav' },
-        NEXT_HEADING: { key: 'j', ctrl: false, shift: false, desc: _t('web.kbd.nextheading'), cat: 'nav' },
-        PREV_ANNOTATION: { key: 'k', ctrl: true, shift: false, desc: _t('web.kbd.prevanno'), cat: 'nav' },
-        NEXT_ANNOTATION: { key: 'j', ctrl: true, shift: false, desc: _t('web.kbd.nextanno'), cat: 'nav' },
-        SCROLL_HALF_PAGE_DOWN: { key: ' ', ctrl: false, shift: false, desc: _t('web.kbd.scroll'), cat: 'nav' },
+        PREV_HEADING: { key: 'k', ctrl: false, shift: false, desc: _t('web.kbd.prevheading'), cat: 'reading' },
+        NEXT_HEADING: { key: 'j', ctrl: false, shift: false, desc: _t('web.kbd.nextheading'), cat: 'reading' },
+        PREV_ANNOTATION: { key: 'k', ctrl: true, shift: false, desc: _t('web.kbd.prevanno'), cat: 'review' },
+        NEXT_ANNOTATION: { key: 'j', ctrl: true, shift: false, desc: _t('web.kbd.nextanno'), cat: 'review' },
+        SCROLL_HALF_PAGE_DOWN: { key: ' ', ctrl: false, shift: false, desc: _t('web.kbd.scroll'), cat: 'reading' },
 
         // Section control
-        TOGGLE_SECTION_COLLAPSE: { key: 'o', ctrl: false, shift: false, desc: _t('web.kbd.collapse'), cat: 'viewed' },
+        TOGGLE_SECTION_COLLAPSE: { key: 'o', ctrl: false, shift: false, desc: _t('web.kbd.collapse'), cat: 'reading' },
 
-        // Viewed functionality (requires enabling)
-        TOGGLE_VIEWED: { key: 'v', ctrl: false, shift: false, desc: _t('web.kbd.viewed'), cat: 'viewed' },
+        // Progress markers require document-state access.
+        TOGGLE_VIEWED: { key: 'v', ctrl: false, shift: false, desc: _t('web.kbd.viewed'), cat: 'review' },
 
         // Edit functionality (requires enabling)
         EDIT: { key: 'e', ctrl: false, shift: false, desc: _t('web.kbd.edit'), cat: 'edit' },
@@ -131,9 +131,9 @@ export const CONFIG = {
         TOGGLE_CHAT_ALT: { key: 'c', ctrl: false, shift: true,  desc: _t('web.kbd.chat.alt'), cat: 'chat' },
 
         // Compare / diff view (rendered ⇄ raw). Registered only on the diff page.
-        DIFF_TOGGLE_VIEW: { key: 'm', ctrl: false, shift: false, desc: _t('web.kbd.diff.view'), cat: 'diff' },
-        DIFF_NEXT_FILE:   { key: 'n', ctrl: false, shift: false, desc: _t('web.kbd.diff.nextfile'), cat: 'diff' },
-        DIFF_PREV_FILE:   { key: 'p', ctrl: false, shift: false, desc: _t('web.kbd.diff.prevfile'), cat: 'diff' },
+        DIFF_TOGGLE_VIEW: { key: 'm', ctrl: false, shift: false, desc: _t('web.kbd.diff.view'), cat: 'review' },
+        DIFF_NEXT_FILE:   { key: 'n', ctrl: false, shift: false, desc: _t('web.kbd.diff.nextfile'), cat: 'review' },
+        DIFF_PREV_FILE:   { key: 'p', ctrl: false, shift: false, desc: _t('web.kbd.diff.prevfile'), cat: 'review' },
 
         // Visual fullscreen viewer. Registered only while the viewer is open.
         VISUAL_ZOOM_IN: { key: '+', ctrl: false, shift: false, desc: _t('web.kbd.visual.zoom_in'), cat: 'visual', feature: 'visual_zoom_in' },
@@ -186,6 +186,8 @@ export const CONFIG = {
         FILE_PATH: 'file-path',
         WORKSPACE_ID: 'workspace-id',
         CAN_MANAGE: 'can-manage',
+        CAN_ANNOTATE: 'can-annotate',
+        REVIEW_SCOPE: 'review-scope',
         SHARED_ANNOTATION: 'shared-annotation',
         ENABLE_SEARCH: 'enable-search',
         ENABLE_VIEWED: 'enable-viewed',

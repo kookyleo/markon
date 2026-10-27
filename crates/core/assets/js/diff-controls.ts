@@ -15,9 +15,11 @@ import {
     loadViewedSet,
     loadShowViewed,
     persistShowViewed,
+    viewedStorageKey,
     VIEWED_CHANGED_EVENT,
     SHOW_VIEWED_EVENT,
 } from './diff-file-header';
+import { i18n } from './core/config';
 
 type View = 'rendered' | 'raw';
 type CleanupMenu = HTMLElement & { __cleanup?: (() => void) | null };
@@ -46,6 +48,8 @@ function initFilter(): void {
     const filterBtn = document.querySelector<HTMLElement>('[data-diff-filter-toggle]');
     const filterMenu = document.querySelector<CleanupMenu>('[data-diff-filter-menu]');
     const showViewedInput = document.querySelector<HTMLInputElement>('[data-diff-show-viewed]');
+    const progressLabel = document.querySelector<HTMLElement>('[data-diff-progress-hide-label]');
+    if (progressLabel) progressLabel.textContent = i18n.t('web.diff.progress.hide');
     // Same data URL the content views key their Viewed set on (shell attr).
     const dataUrl = document.querySelector('[data-diff-shell]')?.getAttribute('data-diff-data-url') || '';
 
@@ -67,7 +71,8 @@ function initFilter(): void {
         if (!total) { countWrap.hidden = true; return; }
         let viewed = 0;
         filePaths.forEach((p) => { if (viewedSet.has(p)) viewed += 1; });
-        countText.textContent = `${viewed} / ${total} viewed`;
+        countText.textContent = i18n.t('web.diff.progress.count')
+            .replace('{marked}', String(viewed)).replace('{total}', String(total));
         countWrap.hidden = false;
         countWrap.classList.toggle('is-complete', viewed === total);
     };
@@ -158,7 +163,8 @@ function initFilter(): void {
     }
     // Content view toggled a file's Viewed state → re-evaluate the sidebar.
     document.addEventListener(VIEWED_CHANGED_EVENT, (e) => {
-        const detail = (e as CustomEvent<{ viewed?: unknown }>).detail;
+        const detail = (e as CustomEvent<{ viewed?: unknown; storageKey?: unknown }>).detail;
+        if (detail?.storageKey !== undefined && detail.storageKey !== viewedStorageKey(dataUrl)) return;
         viewedSet = Array.isArray(detail?.viewed) ? new Set(detail.viewed.filter((item): item is string => typeof item === 'string')) : loadViewedSet(dataUrl);
         applyFilter();
         updateViewedCount();

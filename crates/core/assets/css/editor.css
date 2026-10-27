@@ -1309,6 +1309,7 @@ html[data-theme="dark"] .markdown-body h6.heading-focused {
     color: var(--markon-fg-muted);
     cursor: default;
     text-decoration: none;
+    opacity: 0.55;
 }
 
 .viewed-toolbar-separator {

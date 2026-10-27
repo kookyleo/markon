@@ -1,9 +1,9 @@
-# 访问权限
+# 访问与权限（Access）
 
 Markon 不需要注册账号，但权限建立在显式 capability 上，而不是访问来源：
 
 - **管理员**持有短期、`HttpOnly` 的 Admin session，可执行管理和结构性操作。
-- **其它浏览器是协作者**，能力由工作区的**功能开关**决定，并受**协作者访问码**门禁约束。
+- **其它浏览器是协作者**，可用能力受数据权限和工作区的**高级能力开关**约束，并受**协作者访问码**门禁约束。
 - loopback、反向代理来源 IP、`X-Forwarded-For` 都不会自动授予管理员身份。
 
 ## 显式管理员会话
@@ -12,7 +12,7 @@ Markon 不需要注册账号，但权限建立在显式 capability 上，而不�
 
 - 修改工作区的功能开关（features）、别名（alias）；
 - `git commit` / `checkout`；
-- 增删文件、编辑并保存正文。
+- 增删文件；Edit 开启时编辑并保存正文。
 
 增删 Workspace、停止服务等服务级管理已经完全移出 TCP，只能由本机 GUI / CLI 通过控制套接字执行。
 
@@ -28,14 +28,14 @@ markon admin code
 
 fragment nonce 有 256 bit 随机性，页面读取后会立即清除地址栏 fragment，再通过同源 POST 兑换会话；手动码最多允许 5 次失败。Admin session 默认 12 小时有效，服务重启后失效。长期 management token 只存在于 0600 lock file / 原生进程中，不会进入 HTML、URL、JavaScript 或浏览器存储。
 
-## 协作者（按功能开关）
+## 协作者与高级能力
 
-未持有 Admin session 的浏览器都是**协作者**，无论连接来自 loopback、局域网还是反向代理。协作者能做什么，取决于该工作区开了哪些功能开关：
+未持有 Admin session 的浏览器都是**协作者**，无论连接来自 loopback、局域网还是反向代理。阅读、导航、Search、Annotate、Progress、Export Notes、Fold、Print 是通过工作区门禁后即可使用的基础能力。Share 关闭时，非管理员浏览器隔离持久化自己的 Personal 审阅数据，不需要管理员会话；四个高级开关只开放额外工作流：
 
-- `edit` 开 → 可编辑并保存正文；
-- `chat` 开 → 可用 AI 助手；
-- `shared`（共享批注）开 → 可读写批注与 Viewed 状态；
-- 其余功能开关同理，就近生效。
+- Edit（`edit`）开 → 可编辑并保存正文；
+- Chat（`chat`）开 → 可用工作区 AI；
+- Share（`share`，兼容旧 `shared`）开 → 切换到同一份共同批注与章节 Progress，不自动发布或合并浏览器私有 Personal 数据；
+- Live（`live`）开 → 可使用同步演示，不额外授予审阅数据写入权限。
 
 协作者**不能**做管理 / 结构性操作：不能改功能开关或别名、不能 `git commit` / `checkout`、不能增删文件。这些一律要求 Admin session（原生 CLI / GUI 则使用 management token）。增删 Workspace 与 shutdown 只能走本机控制套接字。
 
@@ -101,7 +101,7 @@ markon --trusted-host https://docs.example.com
 
 除了创建浏览器 Admin session，本机 CLI 还能通过 management token 直接管理工作区：
 
-- `markon set <id|序号> <feature> <on|off>` —— 开关某工作区的功能。feature 名：`search` / `viewed` / `edit` / `live` / `chat` / `shared`。例如：`markon set 3 edit on`。
+- `markon set <id|序号> <feature> <on|off>` —— 开关某工作区的功能。高级 feature 名：`edit` / `chat` / `live` / `share`（兼容旧 `shared`）。Search 与 Progress 无需开启，旧命令兼容规则见 CLI 说明。例如：`markon set 3 edit on`。
 - `markon ls` / `markon detach <id|序号>` / `markon shutdown` —— 列出 / 移除工作区、关闭服务。
 
 详见[命令行选项](/zh/guide/cli)。
@@ -109,4 +109,4 @@ markon --trusted-host https://docs.example.com
 ## 局限
 
 - 协作者访问码是**应用层**的门禁，不替代 HTTPS / 反向代理等传输层安全措施。
-- 管理与结构性操作要求 Admin session / management token；若要让协作者做某类协作（编辑、批注、AI），请由管理员为对应工作区打开相应功能开关。
+- 管理与结构性操作要求 Admin session / management token；个人批注无需管理权限或 Share；源码编辑、AI 与共同审阅分别由 Edit、Chat、Share 按需开启。

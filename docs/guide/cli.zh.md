@@ -43,7 +43,7 @@ markon <COMMAND>
 | `--print-collapsed-content` | 打印时强制包含折叠正文；默认显示折叠占位 |
 | `--salt <SALT>` | 高级 workspace-id salt 覆盖；已有安装不要随意修改 |
 
-功能开关不再是启动参数。使用 `markon set`、桌面端或浏览器管理员页调整。
+高级能力开关不再是启动参数。使用 `markon set`、桌面端或浏览器管理员页调整。
 
 ## 子命令
 
@@ -59,7 +59,7 @@ markon ls --format table
 - 非 TTY 或 `MARKON_NO_TUI` 已设置时，回退为静态 cards。
 - `--format` 可明确要求 cards 或 table。
 
-结果包含 workspace id/path、功能开关、Search ready 状态、本地/公网地址与 QR 信息。TUI 还能编辑功能、打开 Workspace、分享已开启 Shared 的协作者地址，以及进入数据清理。
+结果包含 workspace id/path、四个高级开关、独立的 Search ready 状态、本地/公网地址与 QR 信息。TUI 还能编辑功能、打开 Workspace、分享已开启 Share 的协作者地址，以及进入数据清理。
 
 ### `markon set`
 
@@ -71,12 +71,12 @@ markon set <ID|INDEX> <FEATURE> <on|off>
 
 | 值 | 功能 |
 |---|---|
-| `search` | Tantivy/Jieba 内容索引与 Spotlight 搜索结果 |
-| `viewed` | H2–H6 Viewed 状态和章节动作 |
 | `edit` | CodeMirror 保存与 AI `edit_file` 提案 |
-| `live` | Broadcast / Follow |
-| `chat` | Workspace AI |
-| `shared` | 协作者读写批注/Viewed，并通过 WebSocket 同步 |
+| `chat` | 工作区 AI（Workspace AI），短名 Chat |
+| `live` | 同步演示（Live），Present / Follow |
+| `share` | 共享批注与阅读进度（Share），允许协作者读写并同步批注与章节进度 |
+
+`shared`、`annotation`、`notes` 仍作为 `share` 的兼容别名。Search 和 Progress 属于基础能力；旧 `search`、`viewed`、`progress` 的 `on` 命令接受并提示无需开启，`off` 明确拒绝。旧配置中的 `false` 不再禁用基础能力。
 
 示例：
 
@@ -100,7 +100,7 @@ markon cleanup
 markon cleanup --yes
 ```
 
-统计并可选删除不属于任何活动 Workspace 的 annotations、Viewed 与 Chat 数据。执行前请先读[数据与隐私](/zh/advanced/data-and-privacy)并备份数据库。
+统计并可选删除不属于任何活动 Workspace 的 annotations、Progress 与 Chat 数据。执行前请先读[数据与隐私](/zh/advanced/data-and-privacy)并备份数据库。
 
 ### `markon admin`
 
@@ -212,7 +212,7 @@ CLI 读取 `~/.markon/settings.json`。大体规则是：
 2. 已保存全局设置；
 3. 内置默认值。
 
-主题、语言、自定义样式、快捷键、Provider、工作区列表和新工作区默认开关与桌面端共享。运行中 Workspace 注册表由服务拥有，GUI 保存偏好时不会用旧快照覆盖它。
+主题、语言、自定义样式、快捷键、Provider、工作区列表和新工作区默认高级开关与桌面端共享。运行中 Workspace 注册表由服务拥有，GUI 保存偏好时不会用旧快照覆盖它。
 
 ## 数据库覆盖
 
@@ -220,4 +220,4 @@ CLI 读取 `~/.markon/settings.json`。大体规则是：
 MARKON_SQLITE_PATH=/srv/markon/annotation.sqlite markon docs/
 ```
 
-数据库保存批注、Viewed 与 Chat。是否启用 Shared 不改变存储位置，只改变协作者能力与广播。
+数据库保存批注、Progress 与 Chat。Share 选择 Personal 或共同审阅作用域及广播，两个作用域始终使用同一 SQLite；不自动发布或合并浏览器私有记录。

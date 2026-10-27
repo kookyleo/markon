@@ -5,7 +5,7 @@ description: Markon 阅读页、Workspace Spotlight、Live、Chat、diff 与视�
 
 # 键盘快捷键
 
-按 <kbd>?</kbd> 打开当前页面的功能面板。面板只列出该页面、当前 Workspace 开关与运行状态真正可用的快捷键，因此它比静态列表更权威。
+按 <kbd>?</kbd> 打开当前页面的操作与快捷键（Actions & Shortcuts）面板。面板只列出该页面、当前 Workspace 开关与运行状态真正可用的快捷键，因此它比静态列表更权威。
 
 ## 文档站首页
 
@@ -13,7 +13,7 @@ description: Markon 阅读页、Workspace Spotlight、Live、Chat、diff 与视�
 
 | 快捷键 | 功能 |
 |---|---|
-| <kbd>?</kbd> | 打开首页功能与快捷键面板 |
+| <kbd>?</kbd> | 打开首页操作与快捷键（Actions & Shortcuts）面板 |
 | <kbd>j</kbd> / <kbd>k</kbd> | 选择下一张 / 上一张功能介绍卡片 |
 | <kbd>Enter</kbd> | 打开当前选中的功能介绍卡片 |
 | <kbd>/</kbd> 或 <kbd>Ctrl</kbd>/<kbd>Cmd</kbd>+<kbd>K</kbd> | 打开文档搜索 |
@@ -25,7 +25,7 @@ description: Markon 阅读页、Workspace Spotlight、Live、Chat、diff 与视�
 
 | 快捷键 | 功能 |
 |---|---|
-| <kbd>?</kbd> | 功能与快捷键面板 |
+| <kbd>?</kbd> | 操作与快捷键（Actions & Shortcuts）面板 |
 | <kbd>t</kbd> | 主题面板 |
 | <kbd>Esc</kbd> | 关闭当前浮层、取消选择或清除焦点 |
 | <kbd>a</kbd> | 临时启用/禁用当前页选区工具条 |
@@ -43,7 +43,7 @@ description: Markon 阅读页、Workspace Spotlight、Live、Chat、diff 与视�
 | <kbd>j</kbd> / <kbd>k</kbd> | 下 / 上一个标题 |
 | <kbd>Ctrl</kbd>/<kbd>Cmd</kbd>+<kbd>j</kbd> / <kbd>k</kbd> | 下 / 上一条批注 |
 | <kbd>Space</kbd> | 向下平滑滚动约 1/3 页 |
-| <kbd>v</kbd> | 切换当前章节 Viewed |
+| <kbd>v</kbd> | 切换当前章节已读／未读（Read / Unread，归 Progress） |
 | <kbd>o</kbd> | 独立折叠/展开当前章节 |
 | <kbd>x</kbd> | 导出当前页 Notes |
 | <kbd>e</kbd> | 打开源码编辑器 |
@@ -52,7 +52,7 @@ description: Markon 阅读页、Workspace Spotlight、Live、Chat、diff 与视�
 
 | 快捷键 | 功能 |
 |---|---|
-| <kbd>l</kbd> | Broadcast ⇄ Follow；Off 时直接进入上次/默认活动态 |
+| <kbd>l</kbd> | Present ⇄ Follow；Off 时直接进入上次/默认活动态 |
 | <kbd>Shift</kbd>+<kbd>l</kbd> | Off ⇄ 上一次活动模式 |
 | <kbd>c</kbd> | 用默认 surface 打开 Chat |
 | <kbd>Shift</kbd>+<kbd>c</kbd> | 用与默认相反的 surface 打开 Chat |
@@ -62,10 +62,12 @@ description: Markon 阅读页、Workspace Spotlight、Live、Chat、diff 与视�
 | 快捷键 | 功能 |
 |---|---|
 | <kbd>m</kbd> | Raw ⇄ Rendered |
-| <kbd>n</kbd> / <kbd>p</kbd> | 下 / 上一个文件 |
-| <kbd>j</kbd> / <kbd>k</kbd> | 下 / 上一个变更块 |
+| <kbd>n</kbd> / <kbd>p</kbd> | 下 / 上一个变更块 |
+| <kbd>x</kbd> | 导出当前作用域的 diff 文字批注 |
 
-Raw 的 Split/Unified 由视图菜单选择；文件 Viewed、过滤和侧栏状态有各自可点击控件。
+Raw 的 Split/Unified 由视图菜单选择；文件 Read 复选框、Hide Read Files 过滤和侧栏状态有各自可点击控件。
+
+文档页的 <kbd>o</kbd> 只改变本地折叠，<kbd>v</kbd> 操作当前 Personal / Shared 章节进度。批注、Progress 与 Export Notes 不需要 Admin 或 Share；标题旁的导出入口在计数为零时仍显示并禁用，不打开空导出编辑器。
 
 ## 视觉查看器
 

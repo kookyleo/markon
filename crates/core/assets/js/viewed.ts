@@ -3,7 +3,7 @@
  *
  * Adds GitHub PR-style "Viewed" checkboxes to section headings.
  *  - Collapse / expand sections
- *  - Persist state to SQLite when the owner/shared session permits it
+ *  - Persist personal or shared progress to SQLite
  *  - Click collapsed heading to expand
  *  - Phase 3: Batch operations + TOC highlighting
  *
@@ -12,7 +12,7 @@
  */
 
 import type { StorageManager } from './managers/storage-manager';
-import type { WebSocketManager } from './managers/websocket-manager';
+import type { WebSocketManager, WsHandler } from './managers/websocket-manager';
 
 const _t = (window.__MARKON_I18N__?.t) || ((k: string): string => k);
 
@@ -65,15 +65,6 @@ type NoteFocusReveal = {
 };
 
 /**
- * Subset of `WebSocketManager` that ViewedManager actually uses. Kept as a
- * structural interface so we don't pull a managers-layer import into a
- * standalone IIFE bundle, and to make it trivial to stub in tests.
- */
-interface OpIdAwareWs {
-    isOwnEcho(opId: string | null | undefined): boolean;
-}
-
-/**
  * SectionViewedManager — owns viewed checkboxes, collapsed sections, the
  * "All Viewed" toolbar and the (optional) shared-mode WebSocket sync.
  */
@@ -81,10 +72,10 @@ export class SectionViewedManager {
     isSharedMode: boolean;
     ws: WebSocket | null;
     /**
-     * Optional op_id-aware dedup adapter (the main `WebSocketManager`). HTTP
-     * persistence records outgoing ids there so matching WS echoes are dropped.
+     * Reconnect-aware review transport. Own commit echoes update the canonical
+     * state without overriding a newer local click or independent folding.
      */
-    wsManager: OpIdAwareWs | null;
+    wsManager: WebSocketManager | null;
     filePath: string;
     viewedState: ViewedState;
     collapsedState: CollapsedState;
@@ -97,6 +88,16 @@ export class SectionViewedManager {
     private noteFocusRevealSeq: number;
     private preserveExpansionOnNextSharedState: boolean;
     private storageManager: StorageManager | null;
+    private storageReady = false;
+    private confirmedState: ViewedState = {};
+    private serverStateGeneration = 0;
+    private inFlightOperations = new Map<string, { observed: boolean }>();
+    private changeRevision = 0;
+    private pendingChanges = new Map<string, { value: boolean; revision: number }>();
+    private subscribedManager: WebSocketManager | null = null;
+    private nativeListenerSocket: WebSocket | null = null;
+    private managedStateHandler: WsHandler<'viewed_state'> | null = null;
+    private expansionFrames = new Map<string, number>();
 
     /** Latest WS handler — kept so we can detach it before re-attaching. */
     private _wsMessageHandler: ((event: MessageEvent) => void) | null;
@@ -121,14 +122,9 @@ export class SectionViewedManager {
         this.preserveExpansionOnNextSharedState = false;
         this.storageManager = null;
 
-        // Viewed state is writable only by the administrator, or by a
-        // collaborator when shared annotations are explicitly enabled.
-        const enableViewedMeta = document.querySelector('meta[name="enable-viewed"]');
-        const canManage = document.querySelector('meta[name="can-manage"]')?.getAttribute('content') === 'true';
-        const sharedAnnotation =
-            document.querySelector('meta[name="shared-annotation"]')?.getAttribute('content') === 'true';
-        const configured = enableViewedMeta ? enableViewedMeta.getAttribute('content') === 'true' : true;
-        this.enableViewed = configured && (canManage || sharedAnnotation);
+        // Progress is essential for every admitted reader. The service selects
+        // their personal or shared dataset without exposing another reader's data.
+        this.enableViewed = document.querySelector('meta[name="can-annotate"]')?.getAttribute('content') !== 'false';
         this.revealSeq = 0;
 
         if (this.isSharedMode && this.ws) {
@@ -152,10 +148,8 @@ export class SectionViewedManager {
         this.updateExportNotesButtons();
         document.addEventListener('markon:notes-count-changed', () => this.updateExportNotesButtons());
 
-        // 3. Toolbar — only if viewed is enabled.
-        if (this.enableViewed) {
-            this.createToolbar();
-        }
+        // 3. Page actions remain available independently of Viewed permissions.
+        this.createToolbar();
 
         // 4. Apply saved section expansion state. Viewed state supplies the
         // default collapsed posture; explicit collapse/expand choices override it.
@@ -165,59 +159,79 @@ export class SectionViewedManager {
         this.setupEventListeners();
     }
 
-    /** Attach the canonical SQLite store after MarkonApp has initialized it. */
+    /** Attach SQLite without letting its initial snapshot undo early clicks. */
     async attachStorage(storage: StorageManager, wsManager: WebSocketManager | null): Promise<void> {
         await this.ready;
         this.storageManager = storage;
         this.wsManager = wsManager;
-        if (wsManager) {
-            this.ws = wsManager.getWebSocket();
-            this.setupWebSocketListeners();
-        }
-        this.viewedState = await storage.loadViewedState();
+        const generation = this.serverStateGeneration;
+        this.setupWebSocketListeners();
+        const snapshot = await storage.loadViewedState();
+        if (generation === this.serverStateGeneration) this.confirmedState = { ...snapshot };
+        this.storageReady = true;
         this.stateLoaded = true;
+        this.viewedState = this.withPendingChanges(this.confirmedState);
         this.updateCheckboxes();
         this.applyViewedState();
+        // Clicks made before or during hydration are submitted after the loaded
+        // scope is known, rather than discarded or written as an empty snapshot.
+        this.saveState();
     }
 
-    setupWebSocketListeners(): void {
-        if (!this.ws) return;
+    private withPendingChanges(state: ViewedState): ViewedState {
+        const next = { ...state };
+        this.pendingChanges.forEach(({ value }, id) => { next[id] = value; });
+        return next;
+    }
 
-        if (this._wsMessageHandler) {
-            this.ws.removeEventListener('message', this._wsMessageHandler);
+    private receiveViewedState: WsHandler<'viewed_state'> = (data): void => {
+        const ownEcho = this.wsManager?.isOwnEcho(data.op_id) ?? false;
+        if (data.op_id) {
+            const operation = this.inFlightOperations.get(data.op_id);
+            if (operation) operation.observed = true;
         }
+        this.confirmedState = { ...(data.state ?? {}) };
+        this.serverStateGeneration++;
+        this.viewedState = this.withPendingChanges(this.confirmedState);
+        this.stateLoaded = true;
+        if (!document.querySelector('.viewed-checkbox')) return;
+        this.updateCheckboxes();
+        if (ownEcho || this.preserveExpansionOnNextSharedState) {
+            this.preserveExpansionOnNextSharedState = false;
+            this.updateTocHighlights();
+            this.updateAllViewedCheckbox();
+        } else {
+            this.applyViewedState();
+        }
+    };
+
+    setupWebSocketListeners(): void {
+        // The manager survives reconnects and replays snapshots received before
+        // attachment. Listening only to its first native socket loses both.
+        if (this.subscribedManager && this.subscribedManager !== this.wsManager) {
+            if (this.managedStateHandler) this.subscribedManager.off('viewed_state', this.managedStateHandler);
+            this.subscribedManager = null;
+        }
+        if (this.nativeListenerSocket && this._wsMessageHandler) {
+            this.nativeListenerSocket.removeEventListener('message', this._wsMessageHandler);
+            this.nativeListenerSocket = null;
+        }
+        if (this.wsManager) {
+            if (this.subscribedManager === this.wsManager) return;
+            this.managedStateHandler ??= this.receiveViewedState;
+            this.subscribedManager = this.wsManager;
+            this.wsManager.on('viewed_state', this.managedStateHandler);
+            return;
+        }
+        if (!this.ws) return;
+        // Preserve compatibility with callers supplying a raw WebSocket only.
         this._wsMessageHandler = (event: MessageEvent): void => {
             try {
-                const data = JSON.parse(event.data as string) as {
-                    type?: string;
-                    state?: ViewedState;
-                    op_id?: string | null;
-                };
-                if (data.type !== 'viewed_state') return;
-
-                // Protocol-level echo dedup: drop frames originated by this tab.
-                if (this.wsManager && this.wsManager.isOwnEcho(data.op_id)) {
-                    return;
-                }
-
-                this.viewedState = data.state ?? {};
-                this.stateLoaded = true;
-
-                if (document.querySelector('.viewed-checkbox')) {
-                    if (this.preserveExpansionOnNextSharedState) {
-                        this.preserveExpansionOnNextSharedState = false;
-                        this.updateCheckboxes();
-                        this.updateTocHighlights();
-                        this.updateAllViewedCheckbox();
-                    } else {
-                        this.updateCheckboxes();
-                        this.applyViewedState();
-                    }
-                }
-            } catch {
-                // Not a viewed message, ignore
-            }
+                const data = JSON.parse(event.data as string) as Parameters<WsHandler<'viewed_state'>>[0];
+                if (data.type === 'viewed_state') this.receiveViewedState(data);
+            } catch { /* Ignore frames unrelated to review state. */ }
         };
+        this.nativeListenerSocket = this.ws;
         this.ws.addEventListener('message', this._wsMessageHandler);
     }
 
@@ -227,6 +241,8 @@ export class SectionViewedManager {
             const headingId = checkbox.dataset['headingId'];
             if (headingId) {
                 checkbox.checked = !!this.viewedState[headingId];
+                const label = checkbox.closest<HTMLLabelElement>('.viewed-checkbox-label');
+                if (label) label.title = _t(checkbox.checked ? 'web.viewed.unmark' : 'web.viewed.mark');
             }
         });
     }
@@ -244,14 +260,14 @@ export class SectionViewedManager {
 
             const actions: { type: string; create: () => HTMLElement }[] = [];
 
-            // 1. Viewed feature (optional, controlled by config)
+            // 1. Progress marker (requires access to document state)
             if (this.enableViewed) {
                 actions.push({
                     type: 'viewed',
                     create: () => {
                         const label = document.createElement('label');
                         label.className = 'viewed-checkbox-label';
-                        label.title = _t('web.viewed.mark');
+                        label.title = _t(this.viewedState[headingId] ? 'web.viewed.unmark' : 'web.viewed.mark');
 
                         const checkbox = document.createElement('input');
                         checkbox.type = 'checkbox';
@@ -454,6 +470,11 @@ export class SectionViewedManager {
     }
 
     collapseSection(headingId: string): void {
+        const pendingFrame = this.expansionFrames.get(headingId);
+        if (pendingFrame !== undefined) {
+            cancelAnimationFrame(pendingFrame);
+            this.expansionFrames.delete(headingId);
+        }
         const heading = document.getElementById(headingId);
         if (!heading) return;
 
@@ -510,6 +531,9 @@ export class SectionViewedManager {
         const heading = document.getElementById(headingId);
         if (!heading) return;
 
+        const pendingFrame = this.expansionFrames.get(headingId);
+        if (pendingFrame !== undefined) cancelAnimationFrame(pendingFrame);
+        this.expansionFrames.delete(headingId);
         const content = this.getSectionContent(heading);
 
         heading.classList.remove('section-collapsed');
@@ -529,9 +553,14 @@ export class SectionViewedManager {
             content.forEach((el) => void el.offsetHeight);
 
             // Trigger expand animation.
-            requestAnimationFrame(() => {
-                this.revealContent(content);
+            const frame = requestAnimationFrame(() => {
+                if (this.expansionFrames.get(headingId) !== frame) return;
+                this.expansionFrames.delete(headingId);
+                if (heading.isConnected && !heading.classList.contains('section-collapsed')) {
+                    this.revealContent(content);
+                }
             });
+            this.expansionFrames.set(headingId, frame);
         }
 
         this.syncToggleBtn(heading, false);
@@ -927,7 +956,7 @@ export class SectionViewedManager {
 
         this.updateCheckboxes();
         this.updateTocHighlights();
-        this.saveState();
+        this.saveState({ [headingId]: isViewed });
         this.saveCollapsedState();
 
         this.updateAllViewedCheckbox();
@@ -954,6 +983,8 @@ export class SectionViewedManager {
             // Recursion guard.
             this.updatingAllViewedCheckbox = true;
             this.allViewedCheckbox.checked = allViewed;
+            const label = this.allViewedCheckbox.closest<HTMLLabelElement>('.viewed-all-label');
+            if (label) label.title = _t(allViewed ? 'web.viewed.all.unmark.tip' : 'web.viewed.all.tip');
             this.updatingAllViewedCheckbox = false;
         }
     }
@@ -976,12 +1007,53 @@ export class SectionViewedManager {
         localStorage.setItem(collapsedStorageKey(this.filePath), JSON.stringify(this.collapsedState));
     }
 
-    saveState(): void {
-        if (this.storageManager) {
-            void this.storageManager.saveViewedState(this.viewedState).catch((error: unknown) => {
-                alert(error instanceof Error ? error.message : String(error));
+    saveState(changes?: ViewedState): void {
+        if (changes) {
+            const revision = ++this.changeRevision;
+            Object.entries(changes).forEach(([id, value]) => {
+                this.pendingChanges.set(id, { value, revision });
             });
         }
+        if (!this.storageManager || !this.storageReady || !this.pendingChanges.size) return;
+        const entries = new Map([...this.pendingChanges].filter(([id]) => !changes || id in changes));
+        const patch = Object.fromEntries([...entries].map(([id, entry]) => [id, entry.value]));
+        if (!entries.size) return;
+        const operation = { observed: false };
+        let opId: string | null = null;
+        void this.storageManager.patchViewedState(patch, (preparedId) => {
+            opId = preparedId;
+            if (opId) this.inFlightOperations.set(opId, operation);
+        }).then(() => {
+            // Once our own commit was observed, a later canonical WS state
+            // can include another reader's newer change and stays authoritative.
+            if (!operation.observed) {
+                this.confirmedState = { ...this.confirmedState, ...patch };
+            }
+            entries.forEach((entry, id) => {
+                if (this.pendingChanges.get(id)?.revision === entry.revision) this.pendingChanges.delete(id);
+            });
+            this.viewedState = this.withPendingChanges(this.confirmedState);
+            this.updateCheckboxes();
+            this.updateTocHighlights();
+            this.updateAllViewedCheckbox();
+        }).catch((error: unknown) => {
+            let reverted = false;
+            entries.forEach((entry, id) => {
+                // Failure of an older request must never undo a newer click.
+                if (this.pendingChanges.get(id)?.revision !== entry.revision) return;
+                this.pendingChanges.delete(id);
+                this.collapsedState[id] = !!this.confirmedState[id];
+                reverted = true;
+            });
+            if (!reverted) return;
+            this.viewedState = this.withPendingChanges(this.confirmedState);
+            this.updateCheckboxes();
+            this.applyViewedState();
+            this.saveCollapsedState();
+            alert(error instanceof Error ? error.message : String(error));
+        }).finally(() => {
+            if (opId) this.inFlightOperations.delete(opId);
+        });
     }
 
     applyViewedState(): void {
@@ -1053,58 +1125,74 @@ export class SectionViewedManager {
         const h1 = document.querySelector<HTMLElement>('.markdown-body h1');
         if (!h1) return;
 
-        const label = document.createElement('label');
-        label.className = 'viewed-checkbox-label viewed-all-label';
-        label.title = _t('web.viewed.all.tip');
+        const hasSections = document.querySelector(SECTION_HEADINGS_SELECTOR) !== null;
 
-        const checkbox = document.createElement('input');
-        checkbox.type = 'checkbox';
-        checkbox.className = 'viewed-checkbox viewed-all-checkbox';
-        checkbox.tabIndex = -1;
-
-        const text = document.createElement('span');
-        text.className = 'viewed-text';
-        text.textContent = _t('web.viewed.all');
-
-        label.appendChild(checkbox);
-        label.appendChild(text);
-
-        // Assemble the bar. All-Viewed goes FIRST so the title's action row
-        // matches the per-section rows (Viewed | Print | Collapse) — uniform
-        // across the page.
         const toolbar = document.createElement('span');
         toolbar.className = 'viewed-toolbar';
-        toolbar.appendChild(label);
-        // Each "| label" is one non-breaking unit (.viewed-toolbar-item) — the
-        // separator stays glued to its label and a multi-word label never
-        // splits. Whitespace BETWEEN units is the only break opportunity, so
-        // the bar wraps unit-by-unit, never mid-unit.
-        toolbar.insertAdjacentHTML('beforeend', `
-            <span class="viewed-toolbar-item"><span class="viewed-toolbar-separator">|</span><a class="btn-collapse-all">${_t('web.viewed.collapseall')}</a></span>
-            <span class="viewed-toolbar-item"><span class="viewed-toolbar-separator">|</span><a class="btn-expand-all">${_t('web.viewed.expandall')}</a></span>
-            <span class="viewed-toolbar-item"><span class="viewed-toolbar-separator">|</span><a class="btn-print-page">${_t('web.viewed.print')}</a></span>
-            <span class="viewed-toolbar-item"><span class="viewed-toolbar-separator">|</span><a class="btn-export-notes" title="${_t('web.export.tip')}">${_t('web.export.label')}</a></span>
-        `);
 
-        // The bar is a child of the <h1> and flows inline after the title:
-        // it simply wraps line-by-line when it doesn't fit, like the per-section
-        // action rows. No measuring, no whole-bar relocation.
-        h1.appendChild(toolbar);
+        if (this.enableViewed && hasSections) {
+            const label = document.createElement('label');
+            label.className = 'viewed-checkbox-label viewed-all-label';
+            label.title = _t('web.viewed.all.tip');
 
-        this.allViewedCheckbox = checkbox;
-        this.updatingAllViewedCheckbox = false;
+            const checkbox = document.createElement('input');
+            checkbox.type = 'checkbox';
+            checkbox.className = 'viewed-checkbox viewed-all-checkbox';
+            checkbox.tabIndex = -1;
 
-        checkbox.addEventListener('change', (e) => {
-            // Recursion guard for programmatic updates.
-            if (this.updatingAllViewedCheckbox) return;
+            const text = document.createElement('span');
+            text.className = 'viewed-text';
+            text.textContent = _t('web.viewed.all');
 
-            const target = e.target as HTMLInputElement;
-            if (target.checked) {
-                this.markAllViewed();
-            } else {
-                this.markAllUnviewed();
+            label.appendChild(checkbox);
+            label.appendChild(text);
+
+            toolbar.appendChild(label);
+
+            this.allViewedCheckbox = checkbox;
+            this.updatingAllViewedCheckbox = false;
+
+            checkbox.addEventListener('change', (e) => {
+                // Recursion guard for programmatic updates.
+                if (this.updatingAllViewedCheckbox) return;
+
+                const target = e.target as HTMLInputElement;
+                if (target.checked) {
+                    this.markAllViewed();
+                } else {
+                    this.markAllUnviewed();
+                }
+            });
+        }
+
+        // Keep the same action order as section rows: Viewed, Print, Notes,
+        // then folding. Each separator stays attached to its following action.
+        const actions = [
+            { className: 'btn-print-page', label: _t('web.viewed.print') },
+            { className: 'btn-export-notes', label: _t('web.export.label'), title: _t('web.export.tip') },
+            ...(hasSections ? [
+                { className: 'btn-collapse-all', label: _t('web.viewed.collapseall') },
+                { className: 'btn-expand-all', label: _t('web.viewed.expandall') },
+            ] : []),
+        ];
+        for (const action of actions) {
+            const item = document.createElement('span');
+            item.className = 'viewed-toolbar-item';
+            if (toolbar.childElementCount > 0) {
+                const separator = document.createElement('span');
+                separator.className = 'viewed-toolbar-separator';
+                separator.textContent = '|';
+                item.appendChild(separator);
             }
-        });
+            const link = document.createElement('a');
+            link.className = action.className;
+            link.textContent = action.label;
+            if ('title' in action && action.title) link.title = action.title;
+            item.appendChild(link);
+            toolbar.append(' ', item);
+        }
+
+        h1.appendChild(toolbar);
 
         toolbar.querySelector<HTMLElement>('.btn-collapse-all')?.addEventListener('click', () => this.collapseAll());
         toolbar.querySelector<HTMLElement>('.btn-expand-all')?.addEventListener('click', () => this.expandAll());
@@ -1159,14 +1247,10 @@ export class SectionViewedManager {
 
         this.updateCheckboxes();
         this.updateTocHighlights();
-        this.saveState();
+        this.saveState(Object.fromEntries(this.sectionHeadingIds().map(id => [id, true])));
         this.saveCollapsedState();
 
-        if (this.allViewedCheckbox) {
-            this.updatingAllViewedCheckbox = true;
-            this.allViewedCheckbox.checked = true;
-            this.updatingAllViewedCheckbox = false;
-        }
+        this.updateAllViewedCheckbox();
     }
 
     markAllUnviewed(): void {
@@ -1181,7 +1265,7 @@ export class SectionViewedManager {
         // unchecks the All-Viewed box against the freshly emptied state.
         this.applyViewedState();
         this.updateTocHighlights();
-        this.saveState();
+        this.saveState(Object.fromEntries(this.sectionHeadingIds().map(id => [id, false])));
         this.saveCollapsedState();
     }
 

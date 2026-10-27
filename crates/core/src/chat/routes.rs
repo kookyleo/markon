@@ -21,9 +21,10 @@ use axum::{
 use futures::StreamExt;
 use serde::{Deserialize, Serialize};
 use std::convert::Infallible;
+use std::future::Future;
 use std::sync::atomic::Ordering;
 use std::sync::Arc;
-use tokio::sync::mpsc;
+use tokio::sync::{broadcast, mpsc};
 use tokio_stream::wrappers::ReceiverStream;
 
 use crate::chat::agent::{auto_title, Agent, AgentEvent, AgentRequest};
@@ -36,7 +37,7 @@ use crate::chat::storage::{ChatStorage, StorageError, Thread};
 use crate::chat::tools::{looks_binary, ToolRegistry, MAX_FILE_BYTES};
 use crate::server::AppState;
 use crate::settings::AppSettings;
-use crate::workspace::WorkspaceEntry;
+use crate::workspace::{WorkspaceEntry, WorkspaceRegistry};
 
 /// Cap how many tool-use rounds the agent will run for a single user turn,
 /// independent of the model's `max_tokens`. 8 leaves headroom for "look it
@@ -581,6 +582,9 @@ async fn chat_stream_handler(
         Ok(w) => w,
         Err(e) => return e.into_response(),
     };
+    // Subscribe before the async request preparation so a concurrent revoke
+    // cannot be missed between authorization and spawning the provider turn.
+    let config_rx = ws.config_tx.subscribe();
     let storage = match storage_for(&state) {
         Ok(s) => s,
         Err(e) => return e.into_response(),
@@ -661,9 +665,8 @@ async fn chat_stream_handler(
     // Build agent. `edit_file` is registered only when --enable-edit is on
     // for this workspace — the cross-flag gate the design committed to.
     let provider = provider::build(runtime_cfg.clone());
-    let tools = Arc::new(ToolRegistry::for_workspace(
-        ws.enable_edit.load(Ordering::Relaxed),
-    ));
+    let edit_enabled = ws.enable_edit.load(Ordering::Relaxed);
+    let tools = Arc::new(ToolRegistry::for_workspace(edit_enabled));
     let agent = Agent::new(provider, tools, storage);
 
     let agent_req = AgentRequest {
@@ -685,7 +688,16 @@ async fn chat_stream_handler(
 
     let (tx, rx) = mpsc::channel::<AgentEvent>(64);
     tokio::spawn(async move {
-        agent.run(agent_req, tx).await;
+        let run = agent.run(agent_req, tx.clone());
+        run_with_chat_capabilities(
+            state.workspace_registry,
+            ws,
+            edit_enabled,
+            config_rx,
+            tx,
+            run,
+        )
+        .await;
     });
 
     let stream = ReceiverStream::new(rx).map(|ev| {
@@ -700,6 +712,44 @@ async fn chat_stream_handler(
     Sse::new(stream)
         .keep_alive(KeepAlive::default())
         .into_response()
+}
+
+/// A live turn must obey current permissions, including clients that ignore
+/// the configuration WebSocket's reload notification. Dropping `work` also
+/// cancels provider streams and removes any turn-owned pending edit guard.
+async fn run_with_chat_capabilities<F: Future<Output = ()>>(
+    registry: Arc<WorkspaceRegistry>,
+    workspace: Arc<WorkspaceEntry>,
+    edit_enabled: bool,
+    mut config: broadcast::Receiver<()>,
+    sink: mpsc::Sender<AgentEvent>,
+    work: F,
+) {
+    tokio::pin!(work);
+    loop {
+        let registered = registry
+            .get(&workspace.id)
+            .is_some_and(|entry| Arc::ptr_eq(&entry, &workspace));
+        if !registered
+            || !workspace.enable_chat.load(Ordering::Relaxed)
+            || (edit_enabled && !workspace.enable_edit.load(Ordering::Relaxed))
+        {
+            let _ = sink.try_send(AgentEvent::Error {
+                message: "Chat turn stopped because workspace capabilities changed".into(),
+            });
+            return;
+        }
+        tokio::select! {
+            biased;
+            changed = config.recv() => {
+                if matches!(changed, Err(broadcast::error::RecvError::Closed)) {
+                    return;
+                }
+            }
+            () = sink.closed() => return,
+            () = &mut work => return,
+        }
+    }
 }
 
 // ── helpers for chat stream handler ──────────────────────────────────────────
@@ -837,6 +887,105 @@ mod tests {
             workspace_id,
             storage,
         }
+    }
+
+    #[tokio::test]
+    async fn running_chat_turn_stops_on_chat_edit_revocation_or_detach() {
+        for revoke in ["chat", "edit", "detach"] {
+            let enabled = WorkspaceFlags {
+                enable_chat: true,
+                enable_edit: true,
+                ..Default::default()
+            };
+            let env = build_env_with_flags(enabled);
+            let registry = env.state.workspace_registry.clone();
+            let entry = registry.get(&env.workspace_id).unwrap();
+            let config = entry.config_tx.subscribe();
+            let (sink, mut events) = mpsc::channel(4);
+            let (started, ready) = tokio::sync::oneshot::channel();
+            let task = tokio::spawn(run_with_chat_capabilities(
+                registry.clone(),
+                entry,
+                true,
+                config,
+                sink,
+                async move {
+                    let _ = started.send(());
+                    std::future::pending::<()>().await;
+                },
+            ));
+            ready.await.unwrap();
+            match revoke {
+                "chat" => {
+                    registry.update_flags(
+                        &env.workspace_id,
+                        WorkspaceFlags {
+                            enable_chat: false,
+                            ..enabled
+                        },
+                    );
+                }
+                "edit" => {
+                    registry.update_flags(
+                        &env.workspace_id,
+                        WorkspaceFlags {
+                            enable_edit: false,
+                            ..enabled
+                        },
+                    );
+                }
+                _ => {
+                    registry.remove(&env.workspace_id);
+                }
+            }
+            tokio::time::timeout(std::time::Duration::from_secs(1), task)
+                .await
+                .unwrap()
+                .unwrap();
+            assert!(matches!(
+                events.recv().await,
+                Some(AgentEvent::Error { .. })
+            ));
+        }
+    }
+
+    #[tokio::test]
+    async fn unrelated_capability_updates_keep_read_only_chat_turn_running() {
+        let enabled = WorkspaceFlags {
+            enable_chat: true,
+            ..Default::default()
+        };
+        let env = build_env_with_flags(enabled);
+        let registry = env.state.workspace_registry.clone();
+        let entry = registry.get(&env.workspace_id).unwrap();
+        let config = entry.config_tx.subscribe();
+        let (sink, _events) = mpsc::channel(4);
+        let (started, ready) = tokio::sync::oneshot::channel();
+        let (finish, finished) = tokio::sync::oneshot::channel();
+        let task = tokio::spawn(run_with_chat_capabilities(
+            registry.clone(),
+            entry,
+            false,
+            config,
+            sink,
+            async move {
+                let _ = started.send(());
+                let _ = finished.await;
+            },
+        ));
+        ready.await.unwrap();
+        registry.update_flags(
+            &env.workspace_id,
+            WorkspaceFlags {
+                enable_live: true,
+                shared_annotation: true,
+                ..enabled
+            },
+        );
+        tokio::task::yield_now().await;
+        assert!(!task.is_finished());
+        finish.send(()).unwrap();
+        task.await.unwrap();
     }
 
     async fn body_json(resp: axum::response::Response) -> serde_json::Value {

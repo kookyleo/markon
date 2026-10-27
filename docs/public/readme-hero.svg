@@ -1,4 +1,6 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="760" viewBox="0 0 1600 760">
+<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="760" viewBox="0 0 1600 760" role="img" aria-labelledby="hero-title hero-description">
+  <title id="hero-title">Markon: workspaces, reading, review, and Workspace AI</title>
+  <desc id="hero-description">A workspace with optional Edit, Chat, Live, and Share capabilities, focused section reading with All Read and Read progress checkboxes plus page and section actions, rendered Markdiff with browser-local Read file status, and Workspace AI. Search and Progress are included.</desc>
   <defs>
     <filter id="card-shadow" x="-25%" y="-25%" width="150%" height="165%">
       <feDropShadow dx="0" dy="18" stdDeviation="22" flood-color="#17251d" flood-opacity=".15"/>

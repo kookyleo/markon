@@ -15,7 +15,7 @@ A section begins at the selected heading and ends immediately before the next he
 
 ## Preserved output
 
-Print keeps GitHub-style typography, syntax-highlighted code, supported diagram SVGs, tables, lists, quotes, highlights, strikethrough, and Note content. It hides Viewed controls, editor/print/fold actions, TOC, search, shortcuts, and screen-only Note containers.
+Print keeps GitHub-style typography, syntax-highlighted code, supported diagram SVGs, tables, lists, quotes, highlights, strikethrough, and Note content. It hides Progress controls, editor/print/fold actions, TOC, search, shortcuts, and screen-only Note containers.
 
 ## Browser limitations
 

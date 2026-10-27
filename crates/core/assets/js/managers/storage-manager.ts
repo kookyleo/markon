@@ -14,6 +14,7 @@ import { makeOpId, type WebSocketManager } from './websocket-manager';
 type DocumentSnapshot = {
     annotations: Annotation[];
     viewed_state: Record<string, boolean>;
+    scope?: 'owner' | 'personal' | 'shared';
 };
 
 export class StorageManager {
@@ -24,6 +25,7 @@ export class StorageManager {
     #snapshot: Promise<DocumentSnapshot> | null = null;
     #annotations: Annotation[] = [];
     #viewedState: Record<string, boolean> = {};
+    #scope: DocumentSnapshot['scope'];
     #writeQueue: Promise<void> = Promise.resolve();
 
     constructor(
@@ -42,17 +44,22 @@ export class StorageManager {
         Logger.log('StorageManager', 'Using SQLite-backed document state');
     }
 
+    async #readSnapshot(): Promise<DocumentSnapshot> {
+        const query = new URLSearchParams({ path: this.#filePath });
+        const response = await fetch(
+            `${workspaceDocumentStateUrl(this.#workspaceId)}?${query.toString()}`,
+            { credentials: 'same-origin', cache: 'no-store' },
+        );
+        if (!response.ok) {
+            throw new Error(`document state load failed (${response.status}): ${await response.text()}`);
+        }
+        return await response.json() as DocumentSnapshot;
+    }
+
     async #loadSnapshot(): Promise<DocumentSnapshot> {
         this.#snapshot ??= (async () => {
-            const query = new URLSearchParams({ path: this.#filePath });
-            const response = await fetch(
-                `${workspaceDocumentStateUrl(this.#workspaceId)}?${query.toString()}`,
-                { credentials: 'same-origin', cache: 'no-store' },
-            );
-            if (!response.ok) {
-                throw new Error(`document state load failed (${response.status}): ${await response.text()}`);
-            }
-            const snapshot = await response.json() as DocumentSnapshot;
+            const snapshot = await this.#readSnapshot();
+            this.#scope = snapshot.scope;
             this.#annotations = [...(snapshot.annotations ?? [])];
             this.#viewedState = { ...(snapshot.viewed_state ?? {}) };
             return {
@@ -63,7 +70,10 @@ export class StorageManager {
         return this.#snapshot;
     }
 
-    async #post(command: Record<string, unknown>): Promise<string | null> {
+    async #post(command: Record<string, unknown>, onOperation?: (opId: string | null) => void): Promise<string | null> {
+        // Resolve the identity and data scope before the first write, including
+        // callers that mark progress before explicitly loading annotations.
+        await this.#loadSnapshot();
         let opId: string | null = null;
         if (this.#isSharedMode && this.#wsManager?.isConnected()) {
             opId = makeOpId();
@@ -71,14 +81,18 @@ export class StorageManager {
             command['op_id'] = opId;
         }
 
+        onOperation?.(opId);
+
         // Independent fetches are not ordered. Serialize all mutations for one
         // document so a slow earlier viewed-state write cannot overwrite the
         // user's newest state.
         const run = async (): Promise<void> => {
+            const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+            if (this.#scope) headers['X-Markon-Review-Scope'] = this.#scope;
             const response = await fetch(workspaceDocumentStateUrl(this.#workspaceId), {
                 method: 'POST',
                 credentials: 'same-origin',
-                headers: { 'Content-Type': 'application/json' },
+                headers,
                 body: JSON.stringify(command),
             });
             if (!response.ok) {
@@ -94,6 +108,18 @@ export class StorageManager {
     async loadAnnotations(): Promise<Annotation[]> {
         await this.#loadSnapshot();
         return [...this.#annotations];
+    }
+
+    /** Fresh annotations for shared reconnect reconciliation. Do not replace
+     * the initialization cache or independently loaded/patched progress. */
+    async reloadAnnotations(): Promise<Annotation[]> {
+        await this.#loadSnapshot();
+        await this.#writeQueue;
+        const snapshot = await this.#readSnapshot();
+        if (snapshot.scope !== this.#scope) {
+            throw new Error('Review scope changed; reload the page before refreshing annotations');
+        }
+        return [...(snapshot.annotations ?? [])];
     }
 
     async saveAnnotation(annotation: Annotation): Promise<string | null> {
@@ -135,12 +161,25 @@ export class StorageManager {
     }
 
     async saveViewedState(viewedState: Record<string, boolean>): Promise<void> {
+        const snapshot = { ...viewedState };
         await this.#post({
             action: 'save_viewed_state',
             path: this.#filePath,
-            state: viewedState,
+            state: snapshot,
         });
-        this.#viewedState = { ...viewedState };
+        this.#viewedState = snapshot;
+    }
+
+    async patchViewedState(changes: Record<string, boolean>, onOperation?: (opId: string | null) => void): Promise<void> {
+        // Capture the click now, before loading or waiting behind older writes.
+        const snapshot = { ...changes };
+        if (!Object.keys(snapshot).length) return;
+        await this.#post({
+            action: 'patch_viewed_state',
+            path: this.#filePath,
+            changes: snapshot,
+        }, onOperation);
+        this.#viewedState = { ...this.#viewedState, ...snapshot };
     }
 
     async clearViewedState(): Promise<void> {
@@ -154,6 +193,10 @@ export class StorageManager {
 
     isSharedMode(): boolean {
         return this.#isSharedMode;
+    }
+
+    getReviewScope(): DocumentSnapshot['scope'] {
+        return this.#scope;
     }
 
     getFilePath(): string {

@@ -53,8 +53,18 @@ pub struct DataCleanupResult {
 struct OrphanKeys {
     annotation_ids: Vec<String>,
     viewed_paths: Vec<String>,
+    personal_annotations: Vec<(String, String, String)>,
+    personal_viewed_paths: Vec<(String, String)>,
     chat_thread_ids: Vec<String>,
     chat_message_count: usize,
+}
+
+fn table_exists(conn: &Connection, name: &str) -> rusqlite::Result<bool> {
+    conn.query_row(
+        "SELECT EXISTS(SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?1)",
+        [name],
+        |row| row.get(0),
+    )
 }
 
 fn database_bytes(conn: &Connection) -> u64 {
@@ -118,6 +128,31 @@ fn collect(
             }
         }
     }
+    // Personal review tables are additive. Maintenance also runs against old
+    // databases and must not create missing tables as a side effect of a scan.
+    if table_exists(conn, "personal_annotations")? {
+        let mut stmt = conn
+            .prepare("SELECT subject_id, id, file_path, length(data) FROM personal_annotations")?;
+        let rows = stmt.query_map([], |row| {
+            Ok((
+                row.get::<_, String>(0)?,
+                row.get::<_, String>(1)?,
+                row.get::<_, String>(2)?,
+                row.get::<_, u64>(3).unwrap_or(0),
+            ))
+        })?;
+        for row in rows {
+            let (subject, id, path, bytes) = row?;
+            stats.annotations_total += 1;
+            annotation_files.insert(path.clone());
+            if !file_is_active(&path, workspaces) {
+                stats.orphaned_annotations += 1;
+                stats.orphaned_payload_bytes = stats.orphaned_payload_bytes.saturating_add(bytes);
+                orphaned_annotation_files.insert(path.clone());
+                keys.personal_annotations.push((subject, id, path));
+            }
+        }
+    }
     stats.annotation_files_total = annotation_files.len();
     stats.orphaned_annotation_files = orphaned_annotation_files.len();
 
@@ -133,6 +168,27 @@ fn collect(
                 stats.orphaned_viewed_files += 1;
                 stats.orphaned_payload_bytes = stats.orphaned_payload_bytes.saturating_add(bytes);
                 keys.viewed_paths.push(path);
+            }
+        }
+    }
+
+    if table_exists(conn, "personal_viewed_state")? {
+        let mut stmt =
+            conn.prepare("SELECT subject_id, file_path, length(state) FROM personal_viewed_state")?;
+        let rows = stmt.query_map([], |row| {
+            Ok((
+                row.get::<_, String>(0)?,
+                row.get::<_, String>(1)?,
+                row.get::<_, u64>(2).unwrap_or(0),
+            ))
+        })?;
+        for row in rows {
+            let (subject, path, bytes) = row?;
+            stats.viewed_files_total += 1;
+            if !file_is_active(&path, workspaces) {
+                stats.orphaned_viewed_files += 1;
+                stats.orphaned_payload_bytes = stats.orphaned_payload_bytes.saturating_add(bytes);
+                keys.personal_viewed_paths.push((subject, path));
             }
         }
     }
@@ -213,6 +269,20 @@ pub fn cleanup_orphaned_data(
         )
         .map_err(|error| error.to_string())?;
     }
+    for (subject, id, path) in &keys.personal_annotations {
+        tx.execute(
+            "DELETE FROM personal_annotations WHERE subject_id = ?1 AND id = ?2 AND file_path = ?3",
+            params![subject, id, path],
+        )
+        .map_err(|error| error.to_string())?;
+    }
+    for (subject, path) in &keys.personal_viewed_paths {
+        tx.execute(
+            "DELETE FROM personal_viewed_state WHERE subject_id = ?1 AND file_path = ?2",
+            params![subject, path],
+        )
+        .map_err(|error| error.to_string())?;
+    }
     // Delete messages explicitly instead of relying on a connection-local
     // foreign_keys pragma, then remove their owning threads.
     for thread_id in &keys.chat_thread_ids {
@@ -232,8 +302,8 @@ pub fn cleanup_orphaned_data(
         .map_err(|error| error.to_string())?;
 
     Ok(DataCleanupResult {
-        deleted_annotations: keys.annotation_ids.len(),
-        deleted_viewed_files: keys.viewed_paths.len(),
+        deleted_annotations: keys.annotation_ids.len() + keys.personal_annotations.len(),
+        deleted_viewed_files: keys.viewed_paths.len() + keys.personal_viewed_paths.len(),
         deleted_chat_threads: keys.chat_thread_ids.len(),
         deleted_chat_messages: keys.chat_message_count,
         database_bytes_after: database_bytes(conn),
@@ -318,6 +388,8 @@ mod tests {
         assert_eq!(after.viewed_files_total, 1);
         assert_eq!(after.chat_threads_total, 1);
         assert_eq!(after.orphaned_items(), 0);
+        assert!(!table_exists(&conn, "personal_annotations").unwrap());
+        assert!(!table_exists(&conn, "personal_viewed_state").unwrap());
     }
 
     #[test]
@@ -344,5 +416,99 @@ mod tests {
         .unwrap();
         let stats = data_cleanup_stats(&conn, &registry).unwrap();
         assert_eq!(stats.orphaned_annotations, 1);
+    }
+
+    #[test]
+    fn private_cleanup_preserves_active_subjects_and_aggregates_legacy_rows() {
+        let active = tempfile::tempdir().unwrap();
+        let closed = tempfile::tempdir().unwrap();
+        let kept = active.path().join("kept.md");
+        let sibling = active.path().join("sibling.md");
+        let orphan = closed.path().join("closed.md");
+        for path in [&kept, &sibling, &orphan] {
+            std::fs::write(path, "# review").unwrap();
+        }
+        let registry = WorkspaceRegistry::new("private-cleanup".into());
+        registry.add(WorkspaceConfig {
+            path: active.path().to_path_buf(),
+            single_file: Some("kept.md".into()),
+            ..Default::default()
+        });
+        let mut conn = Connection::open_in_memory().unwrap();
+        schema(&conn);
+        crate::personal_state::init(&conn).unwrap();
+        conn.execute(
+            "INSERT INTO annotations VALUES ('shared-kept', ?1, '{}'), ('same-id', ?2, '{}')",
+            params![kept.to_string_lossy(), orphan.to_string_lossy()],
+        )
+        .unwrap();
+        conn.execute(
+            "INSERT INTO viewed_state(file_path, state) VALUES (?1, '{}'), (?2, '{}')",
+            params![kept.to_string_lossy(), orphan.to_string_lossy()],
+        )
+        .unwrap();
+        for (subject, id, path) in [
+            ("a", "same-id", &kept),
+            ("b", "same-id", &sibling),
+            ("a", "closed", &orphan),
+            ("b", "kept", &kept),
+        ] {
+            crate::personal_state::upsert_annotation(
+                &conn,
+                subject,
+                id,
+                &path.to_string_lossy(),
+                "{}",
+            )
+            .unwrap();
+        }
+        for (subject, path) in [("a", &kept), ("b", &kept), ("a", &sibling), ("b", &orphan)] {
+            crate::personal_state::save_viewed_state(&conn, subject, &path.to_string_lossy(), "{}")
+                .unwrap();
+        }
+
+        // An overlapping directory scope keeps sibling records active even
+        // though the single-file scope by itself would not include them.
+        let directory_id = registry.add(WorkspaceConfig {
+            path: active.path().to_path_buf(),
+            ..Default::default()
+        });
+        let overlapping = data_cleanup_stats(&conn, &registry).unwrap();
+        assert_eq!(overlapping.orphaned_annotations, 2);
+        assert_eq!(overlapping.orphaned_viewed_files, 2);
+        registry.remove(&directory_id);
+
+        let stats = data_cleanup_stats(&conn, &registry).unwrap();
+        assert_eq!(stats.annotations_total, 6);
+        assert_eq!(stats.annotation_files_total, 3);
+        assert_eq!(stats.orphaned_annotations, 3);
+        assert_eq!(stats.orphaned_annotation_files, 2);
+        assert_eq!(stats.viewed_files_total, 6);
+        assert_eq!(stats.orphaned_viewed_files, 3);
+        assert_eq!(stats.orphaned_payload_bytes, 12);
+        let result = cleanup_orphaned_data(&mut conn, &registry).unwrap();
+        assert_eq!(result.deleted_annotations, 3);
+        assert_eq!(result.deleted_viewed_files, 3);
+        let after = data_cleanup_stats(&conn, &registry).unwrap();
+        assert_eq!(after.annotations_total, 3);
+        assert_eq!(after.annotation_files_total, 1);
+        assert_eq!(after.viewed_files_total, 3);
+        assert_eq!(after.orphaned_items(), 0);
+        assert_eq!(
+            conn.query_row(
+                "SELECT COUNT(*) FROM personal_annotations WHERE subject_id = 'a' AND id = 'same-id' AND file_path = ?1",
+                [kept.to_string_lossy()], |row| row.get::<_, usize>(0),
+            ).unwrap(),
+            1,
+        );
+        assert_eq!(
+            conn.query_row(
+                "SELECT COUNT(*) FROM personal_viewed_state WHERE file_path = ?1",
+                [kept.to_string_lossy()],
+                |row| row.get::<_, usize>(0),
+            )
+            .unwrap(),
+            2,
+        );
     }
 }

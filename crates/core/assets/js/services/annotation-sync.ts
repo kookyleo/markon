@@ -1,4 +1,4 @@
-import type { Annotation } from '../managers/annotation-manager';
+import { isValidAnnotation, type Annotation } from '../managers/annotation-manager';
 
 export interface AnnotationMergeResult {
     /** Shared data wins on id conflict; local-only annotations are appended. */
@@ -8,8 +8,8 @@ export interface AnnotationMergeResult {
 }
 
 const annotationOrder = (a: Annotation, b: Annotation): number => {
-    const ap = typeof a.anchor.position === 'number' ? a.anchor.position : Number.POSITIVE_INFINITY;
-    const bp = typeof b.anchor.position === 'number' ? b.anchor.position : Number.POSITIVE_INFINITY;
+    const ap = typeof a.anchor?.position === 'number' ? a.anchor.position : Number.POSITIVE_INFINITY;
+    const bp = typeof b.anchor?.position === 'number' ? b.anchor.position : Number.POSITIVE_INFINITY;
     if (ap !== bp) return ap - bp;
     return a.createdAt - b.createdAt;
 };
@@ -27,10 +27,10 @@ export function mergeAnnotationSnapshots(
     sharedSnapshot: Annotation[],
 ): AnnotationMergeResult {
     const mergedById = new Map<string, Annotation>();
-    sharedSnapshot.forEach(annotation => mergedById.set(annotation.id, annotation));
+    sharedSnapshot.filter(isValidAnnotation).forEach(annotation => mergedById.set(annotation.id, annotation));
 
     const missingFromShared: Annotation[] = [];
-    currentLocal.forEach((annotation) => {
+    currentLocal.filter(isValidAnnotation).forEach((annotation) => {
         if (mergedById.has(annotation.id)) return;
         mergedById.set(annotation.id, annotation);
         missingFromShared.push(annotation);

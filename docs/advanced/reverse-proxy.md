@@ -41,7 +41,7 @@ server {
 }
 ```
 
-WebSocket upgrade is required for Shared and Live.
+WebSocket upgrade is required for Share and Live.
 
 ## Apache
 
