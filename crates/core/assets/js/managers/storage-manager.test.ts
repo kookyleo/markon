@@ -90,6 +90,61 @@ describe('StorageManager SQLite-only document state', () => {
         expect(localStorage.length).toBe(0);
     });
 
+    it('reloads fresh annotations without replacing cached annotations, scope, or newer progress', async () => {
+        const old = makeAnno({ id: 'anno-old' });
+        const latest = makeAnno({ id: 'anno-latest' });
+        const fetchMock = vi.fn()
+            .mockResolvedValueOnce(snapshotResponse([old], { intro: false }, 'shared'))
+            .mockResolvedValueOnce(emptyResponse())
+            .mockResolvedValueOnce(snapshotResponse([latest], { intro: false }, 'shared'));
+        vi.stubGlobal('fetch', fetchMock);
+        const manager = new StorageManager('/docs/foo.md', true, null, 'abc123');
+        expect(await manager.loadAnnotations()).toEqual([old]);
+        await manager.patchViewedState({ intro: true });
+        expect(await manager.reloadAnnotations()).toEqual([latest]);
+        expect(await manager.loadAnnotations()).toEqual([old]);
+        expect(await manager.loadViewedState()).toEqual({ intro: true });
+        expect(manager.getReviewScope()).toBe('shared');
+    });
+
+    it('rejects a fresh annotation read after a review scope change', async () => {
+        const old = makeAnno({ id: 'anno-old' });
+        vi.stubGlobal('fetch', vi.fn()
+            .mockResolvedValueOnce(snapshotResponse([old], {}, 'shared'))
+            .mockResolvedValueOnce(snapshotResponse([], {}, 'personal')));
+        const manager = new StorageManager('/docs/foo.md', true, null, 'abc123');
+        await manager.loadAnnotations();
+        await expect(manager.reloadAnnotations()).rejects.toThrow('Review scope changed');
+        expect(manager.getReviewScope()).toBe('shared');
+        expect(await manager.loadAnnotations()).toEqual([old]);
+    });
+
+    it('reads fresh annotations after an already queued local commit completes', async () => {
+        let releaseWrite!: () => void;
+        const pendingWrite = new Promise<void>(resolve => { releaseWrite = resolve; });
+        const annotation = makeAnno({ id: 'anno-committed' });
+        let serverAnnotations: Annotation[] = [];
+        let startedWrite!: () => void;
+        const started = new Promise<void>(resolve => { startedWrite = resolve; });
+        vi.stubGlobal('fetch', vi.fn(async (_url: string, init?: RequestInit) => {
+            if (init?.method === 'POST') {
+                startedWrite();
+                await pendingWrite;
+                serverAnnotations = [annotation];
+                return emptyResponse();
+            }
+            return snapshotResponse([...serverAnnotations]);
+        }));
+        const manager = new StorageManager('/docs/foo.md', true, null, 'abc123');
+        await manager.loadAnnotations();
+        const write = manager.saveAnnotation(annotation);
+        await started;
+        const read = manager.reloadAnnotations();
+        releaseWrite();
+        await write;
+        expect(await read).toEqual([annotation]);
+    });
+
     it('persists an annotation through HTTP and records its shared broadcast op id', async () => {
         const { fake } = makeFakeWs(true);
         const fetchMock = vi.fn(async (_url: string, init?: RequestInit) =>

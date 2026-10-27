@@ -182,7 +182,7 @@ async function initSharedDiff(options: {
     chat?: boolean;
     snapshots?: Map<string, Annotation[]>;
     onWrite?: (command: ReviewWrite) => void;
-} = {}): Promise<{ writes: ReviewWrite[] }> {
+} = {}): Promise<{ writes: ReviewWrite[]; snapshots: Map<string, Annotation[]> }> {
     document.head.innerHTML = `
         <meta name="workspace-id" content="ws-review">
         <meta name="shared-annotation" content="${options.shared ?? true}">
@@ -204,6 +204,7 @@ async function initSharedDiff(options: {
         </article>
     `;
     const writes: ReviewWrite[] = [];
+    const snapshots = new Map(options.snapshots);
     vi.stubGlobal('fetch', vi.fn(async (input: string | URL | Request, init?: RequestInit) => {
         const url = new URL(String(input), 'http://markon.test');
         if (!url.pathname.includes('/document-state')) {
@@ -218,7 +219,7 @@ async function initSharedDiff(options: {
         return {
             ok: true, status: 200, text: async (): Promise<string> => '',
             json: async () => ({
-                annotations: options.snapshots?.get(url.searchParams.get('path') ?? '') ?? [],
+                annotations: snapshots.get(url.searchParams.get('path') ?? '') ?? [],
                 viewed_state: {},
                 scope: options.scope ?? (options.shared === false ? 'personal' : 'shared'),
             }),
@@ -230,7 +231,11 @@ async function initSharedDiff(options: {
     }
     await window.markonDiffAnnotations?.notesCount();
     await Promise.resolve();
-    return { writes };
+    return { writes, snapshots };
+}
+
+async function flushReview(): Promise<void> {
+    await new Promise(resolve => setTimeout(resolve, 0));
 }
 
 function selectDiffText(path = '/abs/alpha.md', old = false): void {
@@ -282,14 +287,16 @@ describe('shared diff document synchronization', () => {
     });
 
     it('subscribes once per canonical file and applies peer upserts, deletes, and clears without persisting again', async () => {
-        const { writes } = await initSharedDiff();
+        const { writes, snapshots } = await initSharedDiff();
         expect(ReviewSocket.instances).toHaveLength(2);
         const alpha = socketFor('/abs/alpha.md');
         const beta = socketFor('/abs/beta.md');
         expect(alpha.url).toBe('ws://localhost:3000/_/ws-review/ws');
         expect(JSON.parse(alpha.sent[0]!)).toEqual({ type: 'hello', target: { kind: 'document', path: '/abs/alpha.md' } });
         const first = annotation('anno-alpha', 'brown fox', 'The quick ', ' jumps.', 'first note');
+        snapshots.set('/abs/alpha.md', [first]);
         alpha.receive({ type: 'all_annotations', annotations: [first] });
+        await flushReview();
         await expect(window.markonDiffAnnotations?.notesCount()).resolves.toBe(1);
         expect(bodyFor('/abs/alpha.md').querySelector('.md-diff-change-card-old [data-annotation-id]')).toBeNull();
         expect(bodyFor('/abs/alpha.md').querySelectorAll('.new-side [data-annotation-id]')).toHaveLength(1);
@@ -312,16 +319,49 @@ describe('shared diff document synchronization', () => {
         expect(alpha.sent).toHaveLength(1); // hello only; review writes never go over WS
     });
 
-    it('merges the initial shared snapshot after HTTP state and replaces stale state on reconnect', async () => {
+    it('reloads current shared state after initial and reconnect snapshots', async () => {
         const http = annotation('anno-http', 'brown fox', 'The quick ', ' jumps.', 'HTTP note');
-        await initSharedDiff({ snapshots: new Map([['/abs/alpha.md', [http]]]) });
+        const { snapshots } = await initSharedDiff({ snapshots: new Map([['/abs/alpha.md', [http]]]) });
         const alpha = socketFor('/abs/alpha.md');
-        alpha.receive({ type: 'all_annotations', annotations: [{ ...http, note: 'server wins' }, annotation('anno-extra', 'quick', 'The ', ' brown fox jumps.', 'extra')] });
+        const latest = [{ ...http, note: 'server wins' }, annotation('anno-extra', 'quick', 'The ', ' brown fox jumps.', 'extra')];
+        snapshots.set('/abs/alpha.md', latest);
+        alpha.receive({ type: 'all_annotations', annotations: latest });
+        await flushReview();
         await expect(window.markonDiffAnnotations?.notesCount()).resolves.toBe(2);
         expect(bodyFor('/abs/alpha.md').querySelectorAll('.new-side [data-annotation-id]')).toHaveLength(2);
+        snapshots.set('/abs/alpha.md', []);
         alpha.receive({ type: 'all_annotations', annotations: [] });
+        await flushReview();
         await expect(window.markonDiffAnnotations?.notesCount()).resolves.toBe(0);
         expect(bodyFor('/abs/alpha.md').querySelector('[data-annotation-id]')).toBeNull();
+    });
+
+    it('removes HTTP annotations deleted before the first shared socket snapshot', async () => {
+        const http = annotation('anno-http-deleted', 'brown fox', 'The quick ', ' jumps.', 'deleted during handshake');
+        const { snapshots } = await initSharedDiff({ snapshots: new Map([['/abs/alpha.md', [http]]]) });
+        await expect(window.markonDiffAnnotations?.notesCount()).resolves.toBe(1);
+        snapshots.set('/abs/alpha.md', []);
+        socketFor('/abs/alpha.md').receive({ type: 'all_annotations', annotations: [] });
+        await flushReview();
+        await expect(window.markonDiffAnnotations?.notesCount()).resolves.toBe(0);
+        expect(bodyFor('/abs/alpha.md').querySelector('[data-annotation-id]')).toBeNull();
+    });
+
+    it('retains locally committed highlights while removing stale HTTP notes in the first snapshot', async () => {
+        const http = annotation('anno-http-deleted', 'brown fox', 'The quick ', ' jumps.', 'stale HTTP note');
+        const { writes, snapshots } = await initSharedDiff({ snapshots: new Map([['/abs/alpha.md', [http]]]) });
+        selectDiffText('/abs/beta.md');
+        document.querySelector<HTMLElement>('[data-action="highlight-yellow"]')?.click();
+        await vi.waitFor(() => expect(bodyFor('/abs/beta.md').querySelector('[data-annotation-id]')).not.toBeNull());
+        snapshots.set('/abs/alpha.md', []);
+        socketFor('/abs/alpha.md').receive({ type: 'all_annotations', annotations: [] });
+        await flushReview();
+        snapshots.set('/abs/beta.md', writes.flatMap(write => write.annotation ? [write.annotation] : []));
+        socketFor('/abs/beta.md').receive({ type: 'all_annotations', annotations: [] });
+        await flushReview();
+        await expect(window.markonDiffAnnotations?.notesCount()).resolves.toBe(0);
+        expect(bodyFor('/abs/alpha.md').querySelector('[data-annotation-id]')).toBeNull();
+        expect(bodyFor('/abs/beta.md').querySelector('[data-annotation-id]')?.getAttribute('data-annotation-id')).toBe(writes[0]?.annotation?.id);
     });
 
     it.each(['personal', 'owner'] as const)('does not connect a review socket for actual %s scope despite stale Share metadata', async scope => {

@@ -32,7 +32,6 @@ import { TOCNavigator } from './navigators/toc-navigator';
 import { AnnotationNavigator } from './navigators/annotation-navigator';
 import { ModalManager, showConfirmDialog } from './components/modal';
 import { FloatingLayer } from './components/floating-layer';
-import { mergeAnnotationSnapshots } from './services/annotation-sync';
 import { currentPageNoteLink, noteLinkIdFromHash } from './services/note-link';
 import { ReadingProgressTracker } from './services/reading-progress';
 
@@ -155,15 +154,18 @@ export class MarkonApp {
         // 3. Load data
         await this.#loadData();
 
-        // 3b. Now that managers exist and the (empty) shared load is done, wire
-        // the shared-annotation WS handlers. WebSocketManager replays the
-        // server's buffered connect-time `all_annotations` into them here.
+        // 3b. Wire shared updates after the HTTP baseline and before connecting.
+        // Snapshot notifications trigger a fresh read guarded against concurrent
+        // local commits and incoming peer changes.
         if (this.#isSharedMode) {
             this.#setupWebSocketHandlers();
             // Gate annotation author colouring on shared mode — attribution is
             // meaningless for a single local user.
             document.body.classList.add('markon-shared');
         }
+        // Install snapshot reconciliation before starting the handshake. The
+        // transport remains independent of basic review initialization.
+        this.#connectCollaboration();
 
         // 4. Apply to DOM
         await this.#applyToDOM();
@@ -241,11 +243,8 @@ export class MarkonApp {
             this.ws = this.#wsManager;
 
 
-            // NOTE: shared-annotation message handlers (all_annotations, …) are
-            // registered later, after #initManagers + #loadData — they need the
-            // managers to exist, and they must run *after* the (empty) shared
-            // load so the server's connect-time `all_annotations` push isn't
-            // clobbered. The frame is buffered by WebSocketManager until then.
+            // Shared-annotation handlers are registered after managers and the
+            // HTTP baseline exist. Connect only after those handlers are ready.
 
             // External-edit auto-reload: applies to any workspace whose pages
             // hold a WS connection, not just shared-annotation ones.
@@ -272,9 +271,6 @@ export class MarkonApp {
             this.#storage,
             this.#isSharedMode ? this.#wsManager : null,
         );
-        // Connect after the HTTP baseline so a delayed initial WS snapshot
-        // cannot predate it. The handshake still never blocks basic review.
-        this.#connectCollaboration();
     }
 
     #connectCollaboration(): void {
@@ -840,7 +836,6 @@ export class MarkonApp {
         const validId = (id: unknown): id is string =>
             typeof id === 'string' && /^anno-[A-Za-z0-9-]{1,64}$/.test(id);
 
-        let firstSnapshot = true;
         const renderSharedAnnotations = (): void => {
             if (!annotationManager || !noteManager) return;
             const popup = document.querySelector<HTMLElement>('.note-popup');
@@ -858,27 +853,17 @@ export class MarkonApp {
             this.#dispatchNotesCountChanged();
         };
 
-        ws.on('all_annotations', (message) => {
-            if (!annotationManager || !noteManager) return;
-            const inbound = (message.annotations ?? []) as Annotation[];
-            const annotations: Annotation[] = [];
-            inbound.forEach((anno) => {
-                if (!validId(anno?.id)) {
-                    Logger.warn('WebSocket', `Dropped annotation with invalid id: ${String(anno?.id)}`);
-                    return;
-                }
-                annotations.push(anno);
+        ws.on('all_annotations', () => {
+            const storage = this.#storage;
+            if (!annotationManager || !noteManager || !storage) return;
+            void annotationManager.refreshSharedSnapshot(
+                async () => (await storage.reloadAnnotations()).filter(annotation => validId(annotation?.id)),
+                () => !!this.#markdownBody?.isConnected,
+            ).then(updated => {
+                if (updated) renderSharedAnnotations();
+            }).catch((error: unknown) => {
+                Logger.warn('WebSocket', 'Could not refresh shared annotations:', error);
             });
-
-            // The first WS snapshot can overlap HTTP initialization and local
-            // commits. Later snapshots are authoritative after reconnect,
-            // including deletions made while this tab was disconnected.
-            const next = firstSnapshot
-                ? mergeAnnotationSnapshots(annotationManager.getAll(), annotations).merged
-                : annotations;
-            firstSnapshot = false;
-            annotationManager.replaceAll(next);
-            renderSharedAnnotations();
         });
 
         ws.on('new_annotation', (message) => {

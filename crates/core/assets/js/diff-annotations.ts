@@ -24,7 +24,6 @@ import { Meta } from './services/dom';
 import { workspaceFileNoteLink } from './services/note-link';
 import { StorageManager } from './managers/storage-manager';
 import { WebSocketManager } from './managers/websocket-manager';
-import { mergeAnnotationSnapshots } from './services/annotation-sync';
 import { AnnotationManager, type Annotation } from './managers/annotation-manager';
 import { EditorManager } from './managers/editor-manager';
 import { NoteManager } from './managers/note-manager';
@@ -232,21 +231,19 @@ class DiffAnnotationCoordinator {
 
     #wireReviewSocket(ctx: PerFileContext, socket: WebSocketManager): void {
         const current = (): boolean => !this.#disposed && this.#contexts.get(ctx.absPath) === ctx;
-        let firstSnapshot = true;
-        socket.on('all_annotations', (message) => {
+        socket.on('all_annotations', () => {
             if (!current()) return;
-            const inbound = Array.isArray(message.annotations) ? message.annotations : [];
-            const annotations = inbound.map(reviewAnnotation).filter((annotation): annotation is Annotation => annotation !== null);
-            // HTTP state was loaded first. Preserve locally committed additions
-            // made while the initial WS handshake was pending; shared ids win.
-            // Reconnect snapshots replace stale state, including offline deletes.
-            const next = firstSnapshot
-                ? mergeAnnotationSnapshots(ctx.annotationManager.getAll(), annotations).merged
-                : annotations;
-            firstSnapshot = false;
-            ctx.annotationManager.replaceAll(next);
-            this.#renderContext(ctx);
-            this.#emitNotesChanged();
+            void ctx.annotationManager.refreshSharedSnapshot(
+                async () => (await ctx.storage.reloadAnnotations())
+                    .map(reviewAnnotation).filter((annotation): annotation is Annotation => annotation !== null),
+                current,
+            ).then(updated => {
+                if (!updated) return;
+                this.#renderContext(ctx);
+                this.#emitNotesChanged();
+            }).catch((error: unknown) => {
+                Logger.warn('DiffAnnotations', 'Could not refresh shared annotations:', error);
+            });
         });
         socket.on('new_annotation', (message) => {
             if (!current() || socket.isOwnEcho(message.op_id)) return;

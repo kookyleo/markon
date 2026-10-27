@@ -128,6 +128,8 @@ export class AnnotationManager {
     #storage: AnnotationStorage;
     #markdownBody: HTMLElement;
     #onChange: AnnotationChangeCallback | null = null;
+    #stateGeneration = 0;
+    #snapshotRefresh: Promise<boolean> | null = null;
     /** Optional surface boundary, such as the new side of a rendered diff. */
     #surfaceReject: RejectFn | undefined;
     /** New anchors additionally omit Markon-injected controls from their text
@@ -178,6 +180,34 @@ export class AnnotationManager {
         this.#annotations = [...annotations];
         this.#triggerChange('replace', annotations);
         Logger.log('AnnotationManager', `Replaced annotations in memory: ${annotations.length}`);
+    }
+
+    /** A WebSocket snapshot can predate concurrent HTTP commits. Read current
+     * SQLite data instead, retrying only when a successful mutation or newer
+     * snapshot invalidated this read. Concurrent refreshes share one worker. */
+    refreshSharedSnapshot(
+        load: () => Promise<Annotation[]>,
+        isCurrent: () => boolean = () => true,
+    ): Promise<boolean> {
+        this.#stateGeneration++;
+        if (this.#snapshotRefresh) return this.#snapshotRefresh;
+        const refresh = async (): Promise<boolean> => {
+            while (isCurrent()) {
+                const generation = this.#stateGeneration;
+                const annotations = await load();
+                if (!isCurrent()) return false;
+                if (generation !== this.#stateGeneration) {
+                    // Yield before re-reading during sustained collaboration.
+                    await new Promise(resolve => setTimeout(resolve, 0));
+                    continue;
+                }
+                this.replaceAll(annotations);
+                return true;
+            }
+            return false;
+        };
+        this.#snapshotRefresh = refresh().finally(() => { this.#snapshotRefresh = null; });
+        return this.#snapshotRefresh;
     }
 
     /**
@@ -503,7 +533,9 @@ export class AnnotationManager {
             await this.#storage.deleteAnnotation(id);
         }
 
-        this.#annotations.splice(index, 1);
+        // A snapshot can replace/reorder the list while the HTTP write waits.
+        const currentIndex = this.#annotations.findIndex(annotation => annotation.id === id);
+        if (currentIndex >= 0) this.#annotations.splice(currentIndex, 1);
 
         // Fire the change callback.
         this.#triggerChange('delete', deleted);
@@ -790,6 +822,7 @@ export class AnnotationManager {
     }
 
     #triggerChange(action: AnnotationChangeAction, data: Annotation | Annotation[]): void {
+        this.#stateGeneration++;
         if (this.#onChange) {
             this.#onChange({
                 action,

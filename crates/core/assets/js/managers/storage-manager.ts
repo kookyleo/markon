@@ -44,17 +44,21 @@ export class StorageManager {
         Logger.log('StorageManager', 'Using SQLite-backed document state');
     }
 
+    async #readSnapshot(): Promise<DocumentSnapshot> {
+        const query = new URLSearchParams({ path: this.#filePath });
+        const response = await fetch(
+            `${workspaceDocumentStateUrl(this.#workspaceId)}?${query.toString()}`,
+            { credentials: 'same-origin', cache: 'no-store' },
+        );
+        if (!response.ok) {
+            throw new Error(`document state load failed (${response.status}): ${await response.text()}`);
+        }
+        return await response.json() as DocumentSnapshot;
+    }
+
     async #loadSnapshot(): Promise<DocumentSnapshot> {
         this.#snapshot ??= (async () => {
-            const query = new URLSearchParams({ path: this.#filePath });
-            const response = await fetch(
-                `${workspaceDocumentStateUrl(this.#workspaceId)}?${query.toString()}`,
-                { credentials: 'same-origin', cache: 'no-store' },
-            );
-            if (!response.ok) {
-                throw new Error(`document state load failed (${response.status}): ${await response.text()}`);
-            }
-            const snapshot = await response.json() as DocumentSnapshot;
+            const snapshot = await this.#readSnapshot();
             this.#scope = snapshot.scope;
             this.#annotations = [...(snapshot.annotations ?? [])];
             this.#viewedState = { ...(snapshot.viewed_state ?? {}) };
@@ -104,6 +108,18 @@ export class StorageManager {
     async loadAnnotations(): Promise<Annotation[]> {
         await this.#loadSnapshot();
         return [...this.#annotations];
+    }
+
+    /** Fresh annotations for shared reconnect reconciliation. Do not replace
+     * the initialization cache or independently loaded/patched progress. */
+    async reloadAnnotations(): Promise<Annotation[]> {
+        await this.#loadSnapshot();
+        await this.#writeQueue;
+        const snapshot = await this.#readSnapshot();
+        if (snapshot.scope !== this.#scope) {
+            throw new Error('Review scope changed; reload the page before refreshing annotations');
+        }
+        return [...(snapshot.annotations ?? [])];
     }
 
     async saveAnnotation(annotation: Annotation): Promise<string | null> {

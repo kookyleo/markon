@@ -2,6 +2,7 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { MarkonApp } from './main';
 import { FloatingLayer } from './components/floating-layer';
 import { WebSocketManager } from './managers/websocket-manager';
+import type { Annotation } from './managers/annotation-manager';
 
 /**
  * MarkonApp integration tests.
@@ -32,6 +33,13 @@ async function flush(): Promise<void> {
     await Promise.resolve();
     await new Promise((resolve) => setTimeout(resolve, 0));
     await Promise.resolve();
+}
+
+function serveAnnotations(annotations: Annotation[]): void {
+    vi.mocked(fetch).mockResolvedValue({
+        ok: true, status: 200, text: async () => '',
+        json: async () => ({ annotations, viewed_state: {} }),
+    } as Response);
 }
 
 function silenceLogs(): { restore: () => void } {
@@ -369,7 +377,9 @@ describe('MarkonApp', () => {
         const range = document.createRange();
         range.selectNodeContents(body.querySelector('p')!);
         const original = annotationManager.createAnnotation(range, 'has-note', 'span', 'Original note');
+        serveAnnotations([original]);
         socket.dispatchMessage({ type: 'all_annotations', annotations: [original] });
+        await flush();
         const selector = `[data-annotation-id="${original.id}"]`;
         const highlight = body.querySelector<HTMLElement>(selector)!;
         noteManager.showNotePopup(highlight, original.id);
@@ -408,7 +418,7 @@ describe('MarkonApp', () => {
         wsManager.disconnect();
     });
 
-    it('merges the initial shared snapshot but replaces stale annotations on reconnect', async () => {
+    it('reloads committed annotations after delayed initial and reconnect snapshots', async () => {
         seedMeta('shared-annotation', 'true');
         seedMeta('file-path', '/docs/shared.md');
         vi.stubGlobal('WebSocket', MockWS);
@@ -421,13 +431,15 @@ describe('MarkonApp', () => {
         const range = document.createRange();
         range.selectNodeContents(body.querySelector('p')!);
         const committed = annotationManager.createAnnotation(range, 'has-note', 'span', 'Committed before WS');
-        await annotationManager.add(committed, true);
+        await annotationManager.add(committed);
         annotationManager.applyToDOM();
         noteManager.render();
         const fetchCount = vi.mocked(fetch).mock.calls.length;
 
-        // A locally committed addition can race the initial handshake snapshot.
+        // The delayed WS payload predates our commit; the fresh GET sees it.
+        serveAnnotations([committed]);
         socket.dispatchMessage({ type: 'all_annotations', annotations: [] });
+        await flush();
         expect(annotationManager.getById(committed.id)).not.toBeNull();
         expect(app.notesCount()).toBe(1);
         const highlight = body.querySelector<HTMLElement>(`[data-annotation-id="${committed.id}"]`)!;
@@ -435,7 +447,9 @@ describe('MarkonApp', () => {
 
         // A reconnect snapshot must reflect a deletion made while disconnected.
         const dispatch = vi.spyOn(document, 'dispatchEvent');
+        serveAnnotations([]);
         socket.dispatchMessage({ type: 'all_annotations', annotations: [] });
+        await flush();
         expect(annotationManager.getAll()).toEqual([]);
         expect(body.querySelector('[data-annotation-id]')).toBeNull();
         expect(noteManager.getNoteCardsData()).toEqual([]);
@@ -443,7 +457,51 @@ describe('MarkonApp', () => {
         expect(app.notesCount()).toBe(0);
         const event = dispatch.mock.calls.at(-1)?.[0];
         expect((event as CustomEvent<{ count: number }>).detail.count).toBe(0);
-        expect(vi.mocked(fetch).mock.calls).toHaveLength(fetchCount);
+        expect(vi.mocked(fetch).mock.calls).toHaveLength(fetchCount + 2);
+        wsManager.disconnect();
+    });
+
+    it('replaces stale HTTP state and retains only local commits made during a reconnect', async () => {
+        seedMeta('shared-annotation', 'true');
+        seedMeta('file-path', '/docs/shared.md');
+        vi.stubGlobal('WebSocket', MockWS);
+        const body = seedMarkdownBody();
+        const http: Annotation = {
+            id: 'anno-http', type: 'has-note', tagName: 'span',
+            anchor: { position: 0, exact: 'World', prefix: '', suffix: '' },
+            text: 'World', note: 'deleted before the socket subscribed', createdAt: 1,
+        };
+        vi.mocked(fetch).mockResolvedValue({
+            ok: true, status: 200, text: async () => '',
+            json: async () => ({ annotations: [http], viewed_state: {} }),
+        } as Response);
+        const app = new MarkonApp({ filePath: '/docs/shared.md', isSharedMode: true });
+        await app.init();
+        const { annotationManager, wsManager } = app.getManagers();
+        if (!annotationManager || !wsManager) throw new Error('Missing shared managers');
+        const socket = itemAt(MockWS.instances, 0);
+        expect(app.notesCount()).toBe(1);
+        serveAnnotations([]);
+        socket.dispatchMessage({ type: 'all_annotations', annotations: [] });
+        await flush();
+        expect(app.notesCount()).toBe(0);
+        expect(annotationManager.getAll()).toEqual([]);
+
+        socket.dispatchMessage({ type: 'new_annotation', annotation: { ...http, id: 'anno-peer' } });
+        socket.readyState = MockWS.CLOSED;
+        socket.onclose?.({ code: 1006, reason: '', wasClean: false } as CloseEvent);
+        const range = document.createRange();
+        range.selectNodeContents(body.querySelector('p')!);
+        const local = annotationManager.createAnnotation(range, 'has-note', 'span', 'committed while disconnected');
+        await annotationManager.add(local);
+        await wsManager.connect();
+        serveAnnotations([local]);
+        itemAt(MockWS.instances, 1).dispatchMessage({ type: 'all_annotations', annotations: [] });
+        await flush();
+        expect(annotationManager.getAll()).toEqual([local]);
+        expect(app.notesCount()).toBe(1);
+        expect(body.querySelector('[data-annotation-id="anno-peer"]')).toBeNull();
+        expect(body.querySelector(`[data-annotation-id="${local.id}"]`)).not.toBeNull();
         wsManager.disconnect();
     });
 
