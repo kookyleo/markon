@@ -128,12 +128,13 @@ impl Write for RollingLogWriter {
 }
 
 fn open_log_writer() -> std::io::Result<(PathBuf, RollingLogWriter)> {
-    let log_dir = dirs::home_dir()
-        .ok_or_else(|| std::io::Error::other("HOME directory required"))?
-        .join(".markon")
-        .join("logs");
-    std::fs::create_dir_all(&log_dir)?;
-    let path = log_dir.join("markond.log");
+    // Same helper the front-ends use to point a user at this file after a failed
+    // start, so writer and readers cannot drift apart.
+    let path = markon_core::daemon::log_path()
+        .ok_or_else(|| std::io::Error::other("HOME directory required"))?;
+    if let Some(log_dir) = path.parent() {
+        std::fs::create_dir_all(log_dir)?;
+    }
     let writer = RollingLogWriter::open(path.clone(), LOG_MAX_BYTES, LOG_BACKUPS)?;
     Ok((path, writer))
 }
