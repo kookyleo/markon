@@ -23,7 +23,7 @@
 //! the tool itself does not re-check the flags.
 
 use crate::chat::agent::AgentEvent;
-use crate::chat::edits::Resolution;
+use crate::chat::edits::{PendingEditStore, Resolution};
 use crate::chat::tools::{
     looks_binary, path_to_forward_slash, Tool, ToolContext, ToolError, MAX_FILE_BYTES,
 };
@@ -33,6 +33,19 @@ use serde_json::json;
 use std::path::Path;
 
 pub(crate) struct EditFileTool;
+
+/// Dropping an agent turn (capability revocation or disconnect) must also
+/// remove its pending proposal, so an old card cannot apply it after reopening.
+struct PendingEditGuard<'a> {
+    store: &'a PendingEditStore,
+    id: &'a str,
+}
+
+impl Drop for PendingEditGuard<'_> {
+    fn drop(&mut self) {
+        let _ = self.store.resolve(self.id, Resolution::Abandoned);
+    }
+}
 
 #[derive(Deserialize)]
 struct EditFileInput {
@@ -161,6 +174,10 @@ impl Tool for EditFileTool {
             args.new_string.clone(),
             line,
         );
+        let _pending = PendingEditGuard {
+            store,
+            id: &edit_id,
+        };
         let _ = sink
             .send(AgentEvent::EditPending {
                 id: edit_id.clone(),
@@ -174,7 +191,11 @@ impl Tool for EditFileTool {
 
         // 6. Wait for the user. If the receiver errors (sender dropped without
         //    sending — possible during shutdown), treat as abandonment.
-        let resolution = rx.await.unwrap_or(Resolution::Abandoned);
+        let resolution = tokio::select! {
+            biased;
+            () = sink.closed() => Resolution::Abandoned,
+            resolution = rx => resolution.unwrap_or(Resolution::Abandoned),
+        };
 
         // 7. Translate to a tool_result the model can reason about.
         match resolution {
@@ -380,6 +401,45 @@ mod tests {
         match err {
             ToolError::InvalidArgument(msg) => assert!(msg.contains("user rejected"), "got {msg}"),
             other => panic!("unexpected error {other:?}"),
+        }
+    }
+
+    #[tokio::test]
+    async fn disconnect_or_cancel_removes_pending_proposal_without_writing() {
+        for cancel in [false, true] {
+            let (directory, context, store, mut events) = ctx_with_state();
+            let path = directory.path().join("doc.md");
+            std::fs::write(&path, "old text").unwrap();
+            let task = tokio::spawn(async move {
+                EditFileTool
+                    .run(
+                        &context,
+                        json!({
+                            "path": "doc.md", "old_string": "old", "new_string": "new"
+                        }),
+                    )
+                    .await
+            });
+            let id = match events.recv().await.unwrap() {
+                AgentEvent::EditPending { id, .. } => id,
+                other => panic!("expected pending edit, got {other:?}"),
+            };
+            assert!(store.snapshot(&id).is_some());
+            if cancel {
+                task.abort();
+            } else {
+                drop(events);
+            }
+            let outcome = tokio::time::timeout(std::time::Duration::from_secs(1), task)
+                .await
+                .unwrap();
+            if cancel {
+                assert!(outcome.unwrap_err().is_cancelled());
+            } else {
+                assert!(outcome.unwrap().is_err());
+            }
+            assert!(store.snapshot(&id).is_none());
+            assert_eq!(std::fs::read_to_string(path).unwrap(), "old text");
         }
     }
 }

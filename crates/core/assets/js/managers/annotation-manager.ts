@@ -96,6 +96,29 @@ export interface Annotation {
     author?: Author;
 }
 
+function isValidQuote(quote: unknown): quote is TextAnchor {
+    return quote !== null
+        && typeof quote === 'object'
+        && !Array.isArray(quote)
+        && 'position' in quote
+        && typeof quote.position === 'number'
+        && Number.isFinite(quote.position)
+        && 'exact' in quote && typeof quote.exact === 'string'
+        && 'prefix' in quote && typeof quote.prefix === 'string'
+        && 'suffix' in quote && typeof quote.suffix === 'string';
+}
+
+/** Anchor fields consumed by rendering and export, including legacy flat quotes. */
+export function isValidAnnotation(annotation: unknown): annotation is Annotation {
+    if (!annotation || typeof annotation !== 'object' || !('anchor' in annotation)) return false;
+    const anchor = annotation.anchor;
+    if (!isValidQuote(anchor)) return false;
+    // Export also consumes fragments without checking the version. Validate any
+    // present list, while retaining the flat fallback for omitted/empty lists.
+    return anchor.fragments === undefined
+        || (Array.isArray(anchor.fragments) && anchor.fragments.every(isValidQuote));
+}
+
 /** Storage strategy contract used by AnnotationManager.
  *
  * Mutating methods return the op_id used for the outgoing WebSocket frame
@@ -128,6 +151,8 @@ export class AnnotationManager {
     #storage: AnnotationStorage;
     #markdownBody: HTMLElement;
     #onChange: AnnotationChangeCallback | null = null;
+    #stateGeneration = 0;
+    #snapshotRefresh: Promise<boolean> | null = null;
     /** Optional surface boundary, such as the new side of a rendered diff. */
     #surfaceReject: RejectFn | undefined;
     /** New anchors additionally omit Markon-injected controls from their text
@@ -156,7 +181,7 @@ export class AnnotationManager {
     }
 
     async load(): Promise<void> {
-        this.#annotations = await this.#storage.loadAnnotations();
+        this.#annotations = (await this.#storage.loadAnnotations()).filter(isValidAnnotation);
         Logger.log('AnnotationManager', `Loaded ${this.#annotations.length} annotations`);
     }
 
@@ -180,6 +205,34 @@ export class AnnotationManager {
         Logger.log('AnnotationManager', `Replaced annotations in memory: ${annotations.length}`);
     }
 
+    /** A WebSocket snapshot can predate concurrent HTTP commits. Read current
+     * SQLite data instead, retrying only when a successful mutation or newer
+     * snapshot invalidated this read. Concurrent refreshes share one worker. */
+    refreshSharedSnapshot(
+        load: () => Promise<Annotation[]>,
+        isCurrent: () => boolean = () => true,
+    ): Promise<boolean> {
+        this.#stateGeneration++;
+        if (this.#snapshotRefresh) return this.#snapshotRefresh;
+        const refresh = async (): Promise<boolean> => {
+            while (isCurrent()) {
+                const generation = this.#stateGeneration;
+                const annotations = await load();
+                if (!isCurrent()) return false;
+                if (generation !== this.#stateGeneration) {
+                    // Yield before re-reading during sustained collaboration.
+                    await new Promise(resolve => setTimeout(resolve, 0));
+                    continue;
+                }
+                this.replaceAll(annotations.filter(isValidAnnotation));
+                return true;
+            }
+            return false;
+        };
+        this.#snapshotRefresh = refresh().finally(() => { this.#snapshotRefresh = null; });
+        return this.#snapshotRefresh;
+    }
+
     /**
      * Return annotations sorted by their current position in the document,
      * derived from the rendered `[data-annotation-id]` wrappers. An
@@ -200,8 +253,8 @@ export class AnnotationManager {
             const ai = positions.get(a.id) ?? Number.POSITIVE_INFINITY;
             const bi = positions.get(b.id) ?? Number.POSITIVE_INFINITY;
             if (ai !== bi) return ai - bi;
-            const ap = typeof a.anchor.position === 'number' ? a.anchor.position : Number.POSITIVE_INFINITY;
-            const bp = typeof b.anchor.position === 'number' ? b.anchor.position : Number.POSITIVE_INFINITY;
+            const ap = typeof a.anchor?.position === 'number' ? a.anchor.position : Number.POSITIVE_INFINITY;
+            const bp = typeof b.anchor?.position === 'number' ? b.anchor.position : Number.POSITIVE_INFINITY;
             if (ap !== bp) return ap - bp;
             return a.createdAt - b.createdAt;
         });
@@ -503,7 +556,9 @@ export class AnnotationManager {
             await this.#storage.deleteAnnotation(id);
         }
 
-        this.#annotations.splice(index, 1);
+        // A snapshot can replace/reorder the list while the HTTP write waits.
+        const currentIndex = this.#annotations.findIndex(annotation => annotation.id === id);
+        if (currentIndex >= 0) this.#annotations.splice(currentIndex, 1);
 
         // Fire the change callback.
         this.#triggerChange('delete', deleted);
@@ -535,8 +590,9 @@ export class AnnotationManager {
         // Each annotation re-anchors independently against the live DOM, and
         // wrapping preserves text content, so application order doesn't affect
         // correctness. Sort by anchor position for deterministic ordering.
-        const sorted = [...annotations].sort(
-            (a, b) => a.anchor.position - b.anchor.position,
+        const sorted = annotations.filter(isValidAnnotation).sort(
+            (a, b) => (a.anchor?.position ?? Number.POSITIVE_INFINITY)
+                - (b.anchor?.position ?? Number.POSITIVE_INFINITY),
         );
 
         sorted.forEach(anno => this.#applyAnnotation(anno));
@@ -790,6 +846,7 @@ export class AnnotationManager {
     }
 
     #triggerChange(action: AnnotationChangeAction, data: Annotation | Annotation[]): void {
+        this.#stateGeneration++;
         if (this.#onChange) {
             this.#onChange({
                 action,

@@ -12,7 +12,7 @@ use futures_util::{stream::StreamExt, SinkExt};
 use qrcode::render::unicode::Dense1x2;
 use qrcode::{EcLevel, QrCode};
 use rayon::prelude::*;
-use rusqlite::{params, Connection};
+use rusqlite::{params, Connection, OptionalExtension};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use similar::{ChangeTag, TextDiff};
@@ -34,6 +34,7 @@ use crate::markdown::{
     MarkdownRenderer,
 };
 use crate::markdown_ast;
+use crate::personal_state;
 use crate::search::{SearchQuery, SearchResult};
 use crate::workspace::{
     ct_eq, expand_and_canonicalize, generate_token, ServerLock, WorkspaceConfig, WorkspaceEntry,
@@ -1012,6 +1013,7 @@ pub async fn start(config: ServerConfig) -> Result<(), String> {
         [],
     )
     .expect("Failed to create viewed_state table");
+    personal_state::init(&conn).expect("Failed to create personal review tables");
     crate::chat::storage::ChatStorage::init(&conn).expect("Failed to create chat tables");
     let db = Some(Arc::new(Mutex::new(conn)));
 
@@ -1271,6 +1273,12 @@ pub async fn start(config: ServerConfig) -> Result<(), String> {
     // Administrator-rendered pages contain privileged controls. Never let a
     // browser reuse them after a daemon restart invalidates the admin cookie.
     let app = app.layer(axum::middleware::from_fn(prevent_admin_response_caching));
+    // Seed browser-private identity in the HTML response before its scripts can
+    // load multiple documents concurrently (for example in a Markdiff page).
+    let app = app.layer(axum::middleware::from_fn_with_state(
+        state.clone(),
+        ensure_personal_review_identity,
+    ));
     // Access-code gate over every workspace-scoped route (no-op when unset).
     let app = app.layer(axum::middleware::from_fn_with_state(
         state.clone(),
@@ -2008,6 +2016,67 @@ async fn prevent_admin_response_caching(
     response
 }
 
+/// Issue private review identity on an authorized HTML response, before the
+/// browser starts its scripts. The document-state GET remains a lazy bootstrap
+/// for direct API clients. Identity never grants access to the workspace.
+async fn ensure_personal_review_identity(
+    State(state): State<AppState>,
+    req: axum::extract::Request,
+    next: axum::middleware::Next,
+) -> Response {
+    let should_initialize = req.method() == axum::http::Method::GET
+        && req.extensions().get::<AccessRole>() == Some(&AccessRole::Collaborator)
+        && access_gated_workspace(req.uri().path())
+            .and_then(|id| state.workspace_registry.get(&id))
+            .is_some_and(|entry| {
+                !entry
+                    .shared_annotation
+                    .load(std::sync::atomic::Ordering::Relaxed)
+            })
+        && personal_state::subject_from_cookie(
+            &state.access_secret,
+            req.headers()
+                .get(header::COOKIE)
+                .and_then(|value| value.to_str().ok()),
+            access_now_unix(),
+        )
+        .is_none();
+    let secure = state.allowed_hosts.is_secure_header(
+        req.headers()
+            .get(header::HOST)
+            .and_then(|value| value.to_str().ok()),
+    );
+    let mut response = next.run(req).await;
+    if should_initialize
+        && response.status().is_success()
+        && response
+            .headers()
+            .get(header::CONTENT_TYPE)
+            .and_then(|value| value.to_str().ok())
+            .is_some_and(|value| value.starts_with("text/html"))
+    {
+        match personal_state::issue_cookie(&state.access_secret, access_now_unix(), secure) {
+            Ok((_, cookie)) => {
+                response.headers_mut().append(
+                    header::SET_COOKIE,
+                    cookie
+                        .parse()
+                        .expect("personal review cookie is an ASCII header"),
+                );
+                response.headers_mut().insert(
+                    header::CACHE_CONTROL,
+                    axum::http::HeaderValue::from_static("private, no-store"),
+                );
+            }
+            Err(error) => {
+                tracing::error!("could not initialize personal review identity: {error}");
+                return StatusCode::INTERNAL_SERVER_ERROR.into_response();
+            }
+        }
+    }
+    response
+}
+
 /// Global DNS-rebinding boundary: only authorities derived from the bind/
 /// advertised addresses or explicitly trusted origins are accepted.
 async fn require_allowed_host(
@@ -2283,6 +2352,7 @@ struct DocumentStateQuery {
 struct DocumentStateResponse {
     annotations: Vec<serde_json::Value>,
     viewed_state: serde_json::Value,
+    scope: &'static str,
 }
 
 #[derive(Deserialize)]
@@ -2311,6 +2381,12 @@ enum DocumentStateCommand {
         #[serde(default)]
         op_id: Option<String>,
     },
+    PatchViewedState {
+        path: String,
+        changes: serde_json::Value,
+        #[serde(default)]
+        op_id: Option<String>,
+    },
 }
 
 impl DocumentStateCommand {
@@ -2319,17 +2395,98 @@ impl DocumentStateCommand {
             Self::SaveAnnotation { path, .. }
             | Self::DeleteAnnotation { path, .. }
             | Self::ClearAnnotations { path, .. }
-            | Self::SaveViewedState { path, .. } => path,
+            | Self::SaveViewedState { path, .. }
+            | Self::PatchViewedState { path, .. } => path,
         }
     }
 }
 
-fn document_state_access_allowed(role: Option<AccessRole>, entry: &WorkspaceEntry) -> bool {
-    role == Some(AccessRole::Admin)
-        || (role == Some(AccessRole::Collaborator)
-            && entry
-                .shared_annotation
-                .load(std::sync::atomic::Ordering::Relaxed))
+#[derive(Clone, Debug)]
+enum DocumentReviewScope {
+    Owner,
+    Shared,
+    Personal(String),
+}
+
+impl DocumentReviewScope {
+    fn name(&self) -> &'static str {
+        match self {
+            Self::Owner => "owner",
+            Self::Shared => "shared",
+            Self::Personal(_) => "personal",
+        }
+    }
+
+    fn subject(&self) -> Option<&str> {
+        match self {
+            Self::Personal(subject) => Some(subject),
+            Self::Owner | Self::Shared => None,
+        }
+    }
+}
+
+fn document_review_scope(
+    state: &AppState,
+    role: Option<AccessRole>,
+    entry: &WorkspaceEntry,
+    headers: &axum::http::HeaderMap,
+    initialize_personal: bool,
+) -> Result<(DocumentReviewScope, Option<String>), (StatusCode, &'static str)> {
+    let Some(role) = role else {
+        return Err((StatusCode::FORBIDDEN, "Workspace access required"));
+    };
+    if entry
+        .shared_annotation
+        .load(std::sync::atomic::Ordering::Relaxed)
+    {
+        return Ok((DocumentReviewScope::Shared, None));
+    }
+    if role == AccessRole::Admin {
+        return Ok((DocumentReviewScope::Owner, None));
+    }
+    let cookie = headers
+        .get(header::COOKIE)
+        .and_then(|value| value.to_str().ok());
+    if let Some(subject) =
+        personal_state::subject_from_cookie(&state.access_secret, cookie, access_now_unix())
+    {
+        return Ok((DocumentReviewScope::Personal(subject), None));
+    }
+    if !initialize_personal {
+        return Err((
+            StatusCode::CONFLICT,
+            "Personal review identity is missing or expired; reload document state before saving",
+        ));
+    }
+    let secure = state.allowed_hosts.is_secure_header(
+        headers
+            .get(header::HOST)
+            .and_then(|value| value.to_str().ok()),
+    );
+    match personal_state::issue_cookie(&state.access_secret, access_now_unix(), secure) {
+        Ok((subject, cookie)) => Ok((DocumentReviewScope::Personal(subject), Some(cookie))),
+        Err(error) => {
+            tracing::error!("could not initialize personal review identity: {error}");
+            Err((
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "Could not initialize personal review identity",
+            ))
+        }
+    }
+}
+
+fn check_document_review_scope(
+    headers: &axum::http::HeaderMap,
+    scope: &DocumentReviewScope,
+) -> Result<(), (StatusCode, &'static str)> {
+    match headers.get("X-Markon-Review-Scope") {
+        Some(value) if value.to_str().ok() == Some(scope.name()) => Ok(()),
+        None if !matches!(scope, DocumentReviewScope::Personal(_)) => Ok(()),
+        _ => Err((
+            StatusCode::CONFLICT,
+            "Review scope changed or is missing; reload document state before saving",
+        )),
+    }
 }
 
 fn authorize_document_path(entry: &WorkspaceEntry, path: &str) -> Option<String> {
@@ -2347,27 +2504,83 @@ async fn handle_document_state(
     State(state): State<AppState>,
     AxumPath(workspace_id): AxumPath<String>,
     role: Option<Extension<AccessRole>>,
+    headers: axum::http::HeaderMap,
     Query(query): Query<DocumentStateQuery>,
 ) -> Response {
     let Some(entry) = state.workspace_registry.get(&workspace_id) else {
         return StatusCode::NOT_FOUND.into_response();
     };
-    if !document_state_access_allowed(role.map(|Extension(role)| role), &entry) {
-        return StatusCode::FORBIDDEN.into_response();
-    }
     let Some(file_path) = authorize_document_path(&entry, &query.path) else {
         return StatusCode::NOT_FOUND.into_response();
     };
-    let Some(db) = state.db else {
+    let Some(db) = state.db.clone() else {
         return StatusCode::SERVICE_UNAVAILABLE.into_response();
     };
-    let annotations = load_annotations(db.clone(), file_path.clone()).await;
-    let viewed_state = load_viewed_state(db, file_path).await;
-    Json(DocumentStateResponse {
+    let (scope, cookie) = match document_review_scope(
+        &state,
+        role.map(|Extension(role)| role),
+        &entry,
+        &headers,
+        true,
+    ) {
+        Ok(scope) => scope,
+        Err(response) => return response.into_response(),
+    };
+    let (annotations, viewed_state) = if let Some(subject) = scope.subject() {
+        let subject = subject.to_owned();
+        let result = tokio::task::spawn_blocking(move || {
+            let conn = db.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+            personal_state::load(&conn, &subject, &file_path)
+        })
+        .await;
+        match result {
+            Ok(Ok(snapshot)) => snapshot,
+            result => {
+                tracing::error!(?result, "could not load personal review state");
+                return StatusCode::INTERNAL_SERVER_ERROR.into_response();
+            }
+        }
+    } else {
+        let annotations = load_annotations(db.clone(), file_path.clone()).await;
+        let viewed_state = load_viewed_state(db, file_path).await;
+        (annotations, viewed_state)
+    };
+    let mut response = Json(DocumentStateResponse {
         annotations,
         viewed_state,
+        scope: scope.name(),
     })
-    .into_response()
+    .into_response();
+    response.headers_mut().insert(
+        header::CACHE_CONTROL,
+        axum::http::HeaderValue::from_static("private, no-store"),
+    );
+    if let Some(cookie) = cookie {
+        response.headers_mut().append(
+            header::SET_COOKIE,
+            cookie
+                .parse()
+                .expect("personal review cookie is an ASCII header"),
+        );
+    }
+    response
+}
+
+fn valid_annotation_anchor(anchor: &serde_json::Value) -> bool {
+    fn valid_quote(quote: &serde_json::Value) -> bool {
+        quote.is_object()
+            && quote["position"].as_f64().is_some_and(f64::is_finite)
+            && ["exact", "prefix", "suffix"]
+                .iter()
+                .all(|field| quote[*field].is_string())
+    }
+
+    valid_quote(anchor)
+        && anchor.get("fragments").is_none_or(|fragments| {
+            fragments
+                .as_array()
+                .is_some_and(|fragments| fragments.iter().all(valid_quote))
+        })
 }
 
 fn valid_annotation_id(id: &str) -> bool {
@@ -2379,17 +2592,84 @@ fn valid_annotation_id(id: &str) -> bool {
             .all(|byte| byte.is_ascii_alphanumeric() || byte == b'-')
 }
 
+/// Apply only this interaction's heading changes to the latest stored map.
+/// The caller holds the canonical database mutex until its committed-state
+/// broadcast is queued; this keeps concurrent documents/tabs in commit order.
+fn patch_viewed_state(
+    conn: &Connection,
+    subject: Option<&str>,
+    file_path: &str,
+    changes: &serde_json::Value,
+) -> Result<Option<serde_json::Value>, String> {
+    let changes = changes
+        .as_object()
+        .ok_or_else(|| "viewed changes must be an object".to_string())?;
+    if changes.values().any(|value| !value.is_boolean()) {
+        return Err("viewed changes must contain only boolean values".to_string());
+    }
+    // An empty patch is deliberately not the legacy 'clear all' operation.
+    if changes.is_empty() {
+        return Ok(None);
+    }
+    let current = if let Some(subject) = subject {
+        personal_state::load_viewed_state(conn, subject, file_path)?
+    } else {
+        let saved = conn
+            .query_row(
+                "SELECT state FROM viewed_state WHERE file_path = ?1",
+                [file_path],
+                |row| row.get::<_, String>(0),
+            )
+            .optional()
+            .map_err(|error| error.to_string())?
+            .unwrap_or_else(|| "{}".to_string());
+        serde_json::from_str(&saved).map_err(|error| error.to_string())?
+    };
+    let mut merged = current
+        .as_object()
+        .cloned()
+        .ok_or_else(|| "stored viewed state must be an object".to_string())?;
+    merged.extend(
+        changes
+            .iter()
+            .map(|(key, value)| (key.clone(), value.clone())),
+    );
+    let merged = serde_json::Value::Object(merged);
+    let state_json = serde_json::to_string(&merged).map_err(|error| error.to_string())?;
+    if let Some(subject) = subject {
+        personal_state::save_viewed_state(conn, subject, file_path, &state_json)
+            .map_err(|error| error.to_string())?;
+    } else {
+        conn.execute(
+            "INSERT OR REPLACE INTO viewed_state (file_path, state, updated_at) VALUES (?1, ?2, CURRENT_TIMESTAMP)",
+            params![file_path, state_json],
+        ).map_err(|error| error.to_string())?;
+    }
+    Ok(Some(merged))
+}
+
 async fn handle_document_state_command(
     State(state): State<AppState>,
     AxumPath(workspace_id): AxumPath<String>,
     role: Option<Extension<AccessRole>>,
+    headers: axum::http::HeaderMap,
     Json(command): Json<DocumentStateCommand>,
 ) -> Response {
     let Some(entry) = state.workspace_registry.get(&workspace_id) else {
         return StatusCode::NOT_FOUND.into_response();
     };
-    if !document_state_access_allowed(role.map(|Extension(role)| role), &entry) {
-        return StatusCode::FORBIDDEN.into_response();
+    let (scope, _) = match document_review_scope(
+        &state,
+        role.map(|Extension(role)| role),
+        &entry,
+        &headers,
+        false,
+    ) {
+        Ok(scope) => scope,
+        Err(response) => return response.into_response(),
+    };
+    if let Err(response) = check_document_review_scope(&headers, &scope) {
+        return response.into_response();
     }
     let Some(file_path) = authorize_document_path(&entry, command.path()) else {
         return StatusCode::NOT_FOUND.into_response();
@@ -2397,13 +2677,14 @@ async fn handle_document_state_command(
     let Some(db) = state.db.clone() else {
         return StatusCode::SERVICE_UNAVAILABLE.into_response();
     };
-    let shared = entry
-        .shared_annotation
-        .load(std::sync::atomic::Ordering::Relaxed);
-    let channel = format!("document:{file_path}");
-    let events = entry.events_tx.clone();
+    // A private write never acquires a shared event sink, even if Share is
+    // enabled while its SQLite worker is running.
+    let shared_events = matches!(scope, DocumentReviewScope::Shared)
+        .then(|| (entry.events_tx.clone(), format!("document:{file_path}")));
+    let subject = scope.subject().map(str::to_owned);
 
-    let outcome = tokio::task::spawn_blocking(move || -> Result<Vec<WebSocketMessage>, String> {
+    let broadcast_entry = entry.clone();
+    let outcome = tokio::task::spawn_blocking(move || -> Result<(), String> {
         let conn = db
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
@@ -2420,10 +2701,16 @@ async fn handle_document_state_command(
                 if !valid_annotation_id(id) {
                     return Err("invalid annotation id".to_string());
                 }
+                if !valid_annotation_anchor(&annotation["anchor"]) {
+                    return Err("annotation anchor must contain valid quote fields and fragments".to_string());
+                }
                 let data = serde_json::to_string(&annotation).map_err(|e| e.to_string())?;
-                if !upsert_annotation_for_file(&conn, id, &file_path, &data)
-                    .map_err(|e| e.to_string())?
-                {
+                let saved = if let Some(subject) = subject.as_deref() {
+                    personal_state::upsert_annotation(&conn, subject, id, &file_path, &data)
+                } else {
+                    upsert_annotation_for_file(&conn, id, &file_path, &data)
+                }.map_err(|error| error.to_string())?;
+                if !saved {
                     return Err("annotation id belongs to another document".to_string());
                 }
                 broadcasts.push(WebSocketMessage::NewAnnotation { annotation, op_id });
@@ -2432,19 +2719,27 @@ async fn handle_document_state_command(
                 if !valid_annotation_id(&id) {
                     return Err("invalid annotation id".to_string());
                 }
-                conn.execute(
-                    "DELETE FROM annotations WHERE id = ?1 AND file_path = ?2",
-                    params![id, file_path],
-                )
-                .map_err(|e| e.to_string())?;
+                if let Some(subject) = subject.as_deref() {
+                    personal_state::delete_annotation(&conn, subject, &id, &file_path)
+                        .map_err(|error| error.to_string())?;
+                } else {
+                    conn.execute(
+                        "DELETE FROM annotations WHERE id = ?1 AND file_path = ?2",
+                        params![id, file_path],
+                    ).map_err(|error| error.to_string())?;
+                }
                 broadcasts.push(WebSocketMessage::DeleteAnnotation { id, op_id });
             }
             DocumentStateCommand::ClearAnnotations { op_id, .. } => {
-                conn.execute(
-                    "DELETE FROM annotations WHERE file_path = ?1",
-                    [file_path.as_str()],
-                )
-                .map_err(|e| e.to_string())?;
+                if let Some(subject) = subject.as_deref() {
+                    personal_state::clear_annotations(&conn, subject, &file_path)
+                        .map_err(|error| error.to_string())?;
+                } else {
+                    conn.execute(
+                        "DELETE FROM annotations WHERE file_path = ?1",
+                        [file_path.as_str()],
+                    ).map_err(|error| error.to_string())?;
+                }
                 broadcasts.push(WebSocketMessage::ClearAnnotations { op_id });
             }
             DocumentStateCommand::SaveViewedState {
@@ -2456,30 +2751,44 @@ async fn handle_document_state_command(
                     return Err("viewed state must be an object".to_string());
                 }
                 let state_json = serde_json::to_string(&viewed).map_err(|e| e.to_string())?;
-                conn.execute(
-                    "INSERT OR REPLACE INTO viewed_state (file_path, state, updated_at) VALUES (?1, ?2, CURRENT_TIMESTAMP)",
-                    params![file_path, state_json],
-                )
-                .map_err(|e| e.to_string())?;
+                if let Some(subject) = subject.as_deref() {
+                    personal_state::save_viewed_state(&conn, subject, &file_path, &state_json)
+                        .map_err(|error| error.to_string())?;
+                } else {
+                    conn.execute(
+                        "INSERT OR REPLACE INTO viewed_state (file_path, state, updated_at) VALUES (?1, ?2, CURRENT_TIMESTAMP)",
+                        params![file_path, state_json],
+                    ).map_err(|error| error.to_string())?;
+                }
                 broadcasts.push(WebSocketMessage::ViewedState {
                     state: viewed,
                     op_id,
                 });
             }
+            DocumentStateCommand::PatchViewedState { changes, op_id, .. } => {
+                if let Some(state) = patch_viewed_state(
+                    &conn, subject.as_deref(), &file_path, &changes,
+                )? {
+                    broadcasts.push(WebSocketMessage::ViewedState { state, op_id });
+                }
+            }
         }
-        Ok(broadcasts)
-    })
-    .await;
-
-    match outcome {
-        Ok(Ok(broadcasts)) => {
-            if shared {
+        // Queue while still holding the same lock used for the write. Moving
+        // this after spawn_blocking().await can broadcast an older commit last.
+        if broadcast_entry.shared_annotation.load(std::sync::atomic::Ordering::Relaxed) {
+            if let Some((events, channel)) = shared_events {
                 for message in broadcasts {
                     broadcast_msg(&events, &channel, &message);
                 }
             }
-            StatusCode::NO_CONTENT.into_response()
         }
+        drop(conn);
+        Ok(())
+    })
+    .await;
+
+    match outcome {
+        Ok(Ok(())) => StatusCode::NO_CONTENT.into_response(),
         Ok(Err(error)) => (StatusCode::BAD_REQUEST, error).into_response(),
         Err(error) => {
             tracing::error!("document-state worker failed: {error}");
@@ -3682,10 +3991,25 @@ async fn handle_workspace_update_features(
     AxumPath(workspace_id): AxumPath<String>,
     Json(payload): Json<UpdateWorkspaceFeaturesRequest>,
 ) -> Response {
-    if state
-        .workspace_registry
-        .update_flags(&workspace_id, payload.flags)
-    {
+    let Some(workspace) = state.workspace_registry.get(&workspace_id) else {
+        return (
+            StatusCode::NOT_FOUND,
+            Json(UpdateWorkspaceFeaturesResponse {
+                success: false,
+                message: "Workspace not found".to_string(),
+            }),
+        )
+            .into_response();
+    };
+    // The browser controls only advanced capabilities. Ignore legacy baseline
+    // fields, including their serde defaults when older clients omit them.
+    let current = workspace.flags();
+    let flags = WorkspaceFlags {
+        enable_search: current.enable_search,
+        enable_viewed: current.enable_viewed,
+        ..payload.flags
+    };
+    if state.workspace_registry.update_flags(&workspace_id, flags) {
         Json(UpdateWorkspaceFeaturesResponse {
             success: true,
             message: "Workspace features updated".to_string(),
@@ -3753,9 +4077,6 @@ async fn workspace_search_results(
     let Some(ws) = state.workspace_registry.get(workspace_id) else {
         return Json(Vec::new());
     };
-    if !ws.enable_search.load(std::sync::atomic::Ordering::Relaxed) {
-        return Json(Vec::new());
-    }
     let Some(idx) = ws.search_index.load_full() else {
         return Json(Vec::new()); // still indexing
     };
@@ -5106,6 +5427,17 @@ fn render_git_diff_page(
         ),
     );
     context.insert("can_manage", &can_manage);
+    context.insert("can_annotate", &true);
+    context.insert(
+        "review_scope",
+        &if flags.shared_annotation {
+            "shared"
+        } else if can_manage {
+            "owner"
+        } else {
+            "personal"
+        },
+    );
     context.insert("shared_annotation", &flags.shared_annotation);
     context.insert("enable_live", &flags.enable_live);
     context.insert("enable_chat", &flags.enable_chat);
@@ -6287,9 +6619,20 @@ fn render_markdown_file(
             context.insert("referenced_assets", &rendered.referenced_assets);
             let flags = ws.flags();
             context.insert("shared_annotation", &flags.shared_annotation);
-            context.insert("enable_viewed", &flags.enable_viewed);
-            context.insert("enable_search", &flags.enable_search);
+            context.insert("enable_viewed", &true);
+            context.insert("enable_search", &true);
             context.insert("can_manage", &can_manage);
+            context.insert("can_annotate", &true);
+            context.insert(
+                "review_scope",
+                &if flags.shared_annotation {
+                    "shared"
+                } else if can_manage {
+                    "owner"
+                } else {
+                    "personal"
+                },
+            );
             // Edit/chat are collaboration abilities gated by their flags.
             // Structural writes require an explicit administrator session.
             context.insert("enable_edit", &flags.enable_edit);
@@ -6671,22 +7014,16 @@ fn render_directory_listing(
     let flags = ws.flags();
     let feature_statuses = vec![
         WorkspaceFeatureStatus {
-            key: "enable_search",
-            label: "Search",
-            label_key: "web.ws.feature.search",
-            enabled: flags.enable_search,
-        },
-        WorkspaceFeatureStatus {
-            key: "enable_viewed",
-            label: "Viewed tracking",
-            label_key: "web.ws.feature.viewed",
-            enabled: flags.enable_viewed,
-        },
-        WorkspaceFeatureStatus {
             key: "enable_edit",
             label: "Edit",
             label_key: "web.ws.feature.edit",
             enabled: flags.enable_edit,
+        },
+        WorkspaceFeatureStatus {
+            key: "enable_chat",
+            label: "Chat",
+            label_key: "web.ws.feature.chat",
+            enabled: flags.enable_chat,
         },
         WorkspaceFeatureStatus {
             key: "enable_live",
@@ -6695,14 +7032,8 @@ fn render_directory_listing(
             enabled: flags.enable_live,
         },
         WorkspaceFeatureStatus {
-            key: "enable_chat",
-            label: "AI Chat",
-            label_key: "web.ws.feature.chat",
-            enabled: flags.enable_chat,
-        },
-        WorkspaceFeatureStatus {
             key: "shared_annotation",
-            label: "Shared notes",
+            label: "Share",
             label_key: "web.ws.feature.shared",
             enabled: flags.shared_annotation,
         },
@@ -6761,6 +7092,17 @@ fn render_directory_listing(
             .unwrap_or_default(),
     );
     context.insert("can_manage", &can_manage);
+    context.insert("can_annotate", &true);
+    context.insert(
+        "review_scope",
+        &if flags.shared_annotation {
+            "shared"
+        } else if can_manage {
+            "owner"
+        } else {
+            "personal"
+        },
+    );
     context.insert("shared_annotation", &flags.shared_annotation);
     context.insert("current_dir", &current_dir.display().to_string());
     context.insert("history_url", &workspace_git_history_url(workspace_id));
@@ -6796,7 +7138,7 @@ fn render_directory_listing(
     context.insert("show_parent", &show_parent);
     context.insert("parent_link", &parent_link);
     context.insert("breadcrumb", &breadcrumb);
-    context.insert("enable_search", &flags.enable_search);
+    context.insert("enable_search", &true);
     context.insert("enable_live", &flags.enable_live);
     context.insert("enable_chat", &flags.enable_chat);
 
@@ -8572,8 +8914,141 @@ mod tests {
         .unwrap());
     }
 
+    #[test]
+    fn annotation_anchor_validation_preserves_legacy_and_fragment_fallbacks() {
+        let quote = json!({ "position": 0, "exact": "note", "prefix": "", "suffix": "" });
+        for anchor in [
+            quote.clone(),
+            json!({ "position": 0, "exact": "", "prefix": "", "suffix": "" }),
+            json!({ "version": 2, "fragments": [], "position": 0, "exact": "note", "prefix": "", "suffix": "" }),
+            json!({ "version": 2, "fragments": [quote], "position": 0, "exact": "note", "prefix": "", "suffix": "" }),
+        ] {
+            assert!(valid_annotation_anchor(&anchor), "{anchor}");
+        }
+    }
+
     #[tokio::test]
-    async fn document_state_is_always_sqlite_for_admin_and_shared_only_for_collaborators() {
+    async fn document_state_rejects_invalid_annotation_anchors_without_changing_existing_rows() {
+        let root = tempfile::tempdir().unwrap();
+        let file = root.path().join("note.md");
+        fs::write(&file, "# note").unwrap();
+        let registry = Arc::new(WorkspaceRegistry::new("annotation-anchor".into()));
+        let id = add_test_workspace(&registry, root.path().to_path_buf(), all_flags());
+        let mut events = registry.get(&id).unwrap().events_tx.subscribe();
+        let conn = Connection::open_in_memory().unwrap();
+        conn.execute(
+            "CREATE TABLE annotations (id TEXT PRIMARY KEY, file_path TEXT NOT NULL, data TEXT NOT NULL)",
+            [],
+        )
+        .unwrap();
+        let path = dunce::canonicalize(&file)
+            .unwrap()
+            .to_string_lossy()
+            .into_owned();
+        let legacy = r#"{"id":"anno-legacy","text":"legacy"}"#;
+        assert!(upsert_annotation_for_file(&conn, "anno-legacy", &path, legacy).unwrap());
+        let db = Arc::new(Mutex::new(conn));
+        let mut state = test_state(registry);
+        state.db = Some(db.clone());
+        let quote = json!({ "position": 0, "exact": "note", "prefix": "", "suffix": "" });
+        let with_fragments = |fragments| {
+            let mut anchor = quote.clone();
+            anchor["version"] = json!(2);
+            anchor["fragments"] = fragments;
+            anchor
+        };
+
+        for (index, anchor) in [
+            None,
+            Some(json!(null)),
+            Some(json!([])),
+            Some(json!("bad")),
+            Some(json!(1)),
+            Some(json!(true)),
+            Some(json!({ "position": 0, "exact": "note" })),
+            Some(json!({ "position": 0, "exact": "note", "prefix": "" })),
+            Some(json!({ "position": 0, "exact": "note", "suffix": "" })),
+            Some(json!({ "position": "0", "exact": "note", "prefix": "", "suffix": "" })),
+            Some(json!({ "position": 0, "exact": 1, "prefix": "", "suffix": "" })),
+            Some(json!({ "position": 0, "exact": "note", "prefix": null, "suffix": "" })),
+            Some(json!({ "position": 0, "exact": "note", "prefix": "", "suffix": false })),
+            Some(with_fragments(json!("note"))),
+            Some(with_fragments(json!({}))),
+            Some(with_fragments(json!(null))),
+            Some(with_fragments(json!([null]))),
+            Some(with_fragments(json!([{ "position": 0, "exact": "note" }]))),
+            Some({
+                let mut anchor = with_fragments(
+                    json!([{ "position": 0, "exact": null, "prefix": "", "suffix": "" }]),
+                );
+                anchor.as_object_mut().unwrap().remove("version");
+                anchor
+            }),
+        ]
+        .into_iter()
+        .enumerate()
+        {
+            let mut annotation = json!({ "id": format!("anno-{index}") });
+            if let Some(anchor) = anchor {
+                annotation["anchor"] = anchor;
+            } else {
+                annotation["id"] = json!("anno-legacy");
+            }
+            let response = handle_document_state_command(
+                State(state.clone()),
+                AxumPath(id.clone()),
+                Some(Extension(AccessRole::Collaborator)),
+                axum::http::HeaderMap::new(),
+                Json(DocumentStateCommand::SaveAnnotation {
+                    path: path.clone(),
+                    annotation,
+                    op_id: None,
+                }),
+            )
+            .await;
+            assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+            assert_eq!(
+                response_text(response).await,
+                "annotation anchor must contain valid quote fields and fragments"
+            );
+        }
+
+        let rows: Vec<String> = db
+            .lock()
+            .unwrap()
+            .prepare("SELECT data FROM annotations")
+            .unwrap()
+            .query_map([], |row| row.get(0))
+            .unwrap()
+            .collect::<rusqlite::Result<_>>()
+            .unwrap();
+        assert_eq!(rows, vec![legacy.to_string()]);
+        assert!(matches!(
+            events.try_recv(),
+            Err(tokio::sync::broadcast::error::TryRecvError::Empty)
+        ));
+
+        let response = handle_document_state_command(
+            State(state),
+            AxumPath(id),
+            Some(Extension(AccessRole::Collaborator)),
+            axum::http::HeaderMap::new(),
+            Json(DocumentStateCommand::SaveAnnotation {
+                path,
+                annotation: json!({
+                    "id": "anno-valid",
+                    "anchor": { "position": 0, "exact": "note", "prefix": "", "suffix": "" }
+                }),
+                op_id: None,
+            }),
+        )
+        .await;
+        assert_eq!(response.status(), StatusCode::NO_CONTENT);
+        assert!(events.try_recv().is_ok());
+    }
+
+    #[tokio::test]
+    async fn document_state_preserves_legacy_owner_and_shared_storage() {
         let root = tempfile::tempdir().unwrap();
         let file = root.path().join("note.md");
         fs::write(&file, "# note").unwrap();
@@ -8606,6 +9081,7 @@ mod tests {
             State(state.clone()),
             AxumPath(id.clone()),
             Some(Extension(AccessRole::Collaborator)),
+            axum::http::HeaderMap::new(),
             Json(DocumentStateCommand::SaveAnnotation {
                 path: path.clone(),
                 annotation: annotation.clone(),
@@ -8613,12 +9089,13 @@ mod tests {
             }),
         )
         .await;
-        assert_eq!(denied.status(), StatusCode::FORBIDDEN);
+        assert_eq!(denied.status(), StatusCode::CONFLICT);
 
         let saved = handle_document_state_command(
             State(state.clone()),
             AxumPath(id.clone()),
             Some(Extension(AccessRole::Admin)),
+            axum::http::HeaderMap::new(),
             Json(DocumentStateCommand::SaveAnnotation {
                 path: path.clone(),
                 annotation,
@@ -8635,6 +9112,7 @@ mod tests {
             State(state.clone()),
             AxumPath(id.clone()),
             Some(Extension(AccessRole::Admin)),
+            axum::http::HeaderMap::new(),
             Query(DocumentStateQuery { path: path.clone() }),
         )
         .await;
@@ -8651,6 +9129,7 @@ mod tests {
             State(state.clone()),
             AxumPath(id.clone()),
             None,
+            axum::http::HeaderMap::new(),
             Query(DocumentStateQuery { path: path.clone() }),
         )
         .await;
@@ -8667,6 +9146,7 @@ mod tests {
             State(state.clone()),
             AxumPath(id.clone()),
             Some(Extension(AccessRole::Collaborator)),
+            axum::http::HeaderMap::new(),
             Json(DocumentStateCommand::SaveAnnotation {
                 path: path.clone(),
                 annotation: shared_annotation,
@@ -8688,10 +9168,1100 @@ mod tests {
             State(state),
             AxumPath(id),
             Some(Extension(AccessRole::Collaborator)),
+            axum::http::HeaderMap::new(),
             Query(DocumentStateQuery { path }),
         )
         .await;
         assert_eq!(shared.status(), StatusCode::OK);
+    }
+
+    fn review_test_state(root: &FsPath) -> (AppState, String, String) {
+        fs::write(root.join("note.md"), "# Note\n\n## Section\n").unwrap();
+        fs::write(root.join("second.md"), "# Second\n").unwrap();
+        let registry = Arc::new(WorkspaceRegistry::new("personal-review-tests".into()));
+        let id = add_test_workspace(&registry, root.to_path_buf(), WorkspaceFlags::default());
+        let mut state = test_state(registry);
+        let conn = Connection::open_in_memory().unwrap();
+        init_review_test_db(&conn);
+        state.db = Some(Arc::new(Mutex::new(conn)));
+        let path = dunce::canonicalize(root.join("note.md"))
+            .unwrap()
+            .to_string_lossy()
+            .into_owned();
+        (state, id, path)
+    }
+
+    fn init_review_test_db(conn: &Connection) {
+        conn.execute_batch(
+            "CREATE TABLE IF NOT EXISTS annotations (id TEXT PRIMARY KEY, file_path TEXT NOT NULL, data TEXT NOT NULL);
+             CREATE TABLE IF NOT EXISTS viewed_state (file_path TEXT PRIMARY KEY, state TEXT NOT NULL, updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP);",
+        ).unwrap();
+        personal_state::init(conn).unwrap();
+    }
+
+    fn review_test_router(state: AppState) -> Router {
+        Router::new()
+            .route(
+                DOCUMENT_STATE_ROUTE,
+                get(handle_document_state)
+                    .post(handle_document_state_command)
+                    .route_layer(axum::middleware::from_fn(require_same_origin)),
+            )
+            .route(
+                "/{workspace_id}/review-page",
+                get(|| async { Html("<h1>Review</h1>") }),
+            )
+            .layer(axum::middleware::from_fn_with_state(
+                state.clone(),
+                ensure_personal_review_identity,
+            ))
+            .layer(axum::middleware::from_fn_with_state(
+                state.clone(),
+                require_access_code,
+            ))
+            .layer(axum::middleware::from_fn_with_state(
+                state.clone(),
+                require_allowed_host,
+            ))
+            .with_state(state)
+    }
+
+    fn review_request(
+        method: &str,
+        id: &str,
+        path: &str,
+        cookie: Option<&str>,
+        scope: Option<&str>,
+        body: Option<serde_json::Value>,
+    ) -> axum::http::Request<axum::body::Body> {
+        let uri = if method == "GET" {
+            format!(
+                "/_/{id}/data/document-state?path={}",
+                urlencoding::encode(path)
+            )
+        } else {
+            format!("/_/{id}/data/document-state")
+        };
+        let mut builder = axum::http::Request::builder()
+            .method(method)
+            .uri(uri)
+            .header(header::HOST, "localhost:6419")
+            .header(header::ORIGIN, "http://localhost:6419");
+        if let Some(cookie) = cookie {
+            builder = builder.header(header::COOKIE, cookie);
+        }
+        if let Some(scope) = scope {
+            builder = builder.header("X-Markon-Review-Scope", scope);
+        }
+        if body.is_some() {
+            builder = builder.header(header::CONTENT_TYPE, "application/json");
+        }
+        builder
+            .body(body.map_or_else(axum::body::Body::empty, |body| {
+                axum::body::Body::from(body.to_string())
+            }))
+            .unwrap()
+    }
+
+    async fn review_get(app: &Router, id: &str, path: &str, cookie: Option<&str>) -> Response {
+        app.clone()
+            .oneshot(review_request("GET", id, path, cookie, None, None))
+            .await
+            .unwrap()
+    }
+
+    async fn review_post(
+        app: &Router,
+        id: &str,
+        path: &str,
+        cookie: Option<&str>,
+        scope: Option<&str>,
+        mut command: serde_json::Value,
+    ) -> Response {
+        command["path"] = serde_json::Value::String(path.to_owned());
+        app.clone()
+            .oneshot(review_request(
+                "POST",
+                id,
+                path,
+                cookie,
+                scope,
+                Some(command),
+            ))
+            .await
+            .unwrap()
+    }
+
+    fn review_cookie(response: &Response) -> String {
+        response
+            .headers()
+            .get(header::SET_COOKIE)
+            .unwrap()
+            .to_str()
+            .unwrap()
+            .split(';')
+            .next()
+            .unwrap()
+            .to_owned()
+    }
+
+    async fn review_snapshot(response: Response) -> serde_json::Value {
+        assert_eq!(response.status(), StatusCode::OK);
+        serde_json::from_str(&response_text(response).await).unwrap()
+    }
+
+    fn review_note(note: &str) -> serde_json::Value {
+        serde_json::json!({"action":"save_annotation","annotation":{
+            "id":"anno-same-id", "note":note,
+            "anchor":{"position":0,"exact":"note","prefix":"","suffix":""}
+        }})
+    }
+
+    #[tokio::test]
+    async fn viewed_patches_merge_concurrent_headings_and_broadcast_committed_state() {
+        let root = tempfile::tempdir().unwrap();
+        let (state, id, path) = review_test_state(root.path());
+        assert!(state.workspace_registry.update_flags(
+            &id,
+            WorkspaceFlags {
+                shared_annotation: true,
+                ..Default::default()
+            }
+        ));
+        let mut events = state
+            .workspace_registry
+            .get(&id)
+            .unwrap()
+            .events_tx
+            .subscribe();
+        let app = review_test_router(state);
+        // Both clients start from the same empty snapshot, then change different headings.
+        for _ in 0..2 {
+            assert_eq!(
+                review_snapshot(review_get(&app, &id, &path, None).await).await["viewed_state"],
+                serde_json::json!({})
+            );
+        }
+        let a =
+            serde_json::json!({"action":"patch_viewed_state","changes":{"a":true},"op_id":"op-a"});
+        let b =
+            serde_json::json!({"action":"patch_viewed_state","changes":{"b":true},"op_id":"op-b"});
+        let (a, b) = tokio::join!(
+            review_post(&app, &id, &path, None, Some("shared"), a),
+            review_post(&app, &id, &path, None, Some("shared"), b)
+        );
+        assert_eq!(a.status(), StatusCode::NO_CONTENT);
+        assert_eq!(b.status(), StatusCode::NO_CONTENT);
+        let expected = serde_json::json!({"a":true,"b":true});
+        assert_eq!(
+            review_snapshot(review_get(&app, &id, &path, None).await).await["viewed_state"],
+            expected
+        );
+        let mut messages = Vec::new();
+        for _ in 0..2 {
+            let WorkspaceEvent::Channel { channel, payload } = events.try_recv().unwrap() else {
+                panic!("expected a document event");
+            };
+            assert_eq!(channel, format!("document:{path}"));
+            let message: serde_json::Value = serde_json::from_str(&payload).unwrap();
+            assert_eq!(message["type"], "viewed_state");
+            messages.push(message);
+        }
+        assert_eq!(messages[0]["state"].as_object().unwrap().len(), 1);
+        assert_eq!(messages[1]["state"], expected);
+        let mut op_ids: Vec<_> = messages
+            .iter()
+            .map(|message| message["op_id"].as_str().unwrap())
+            .collect();
+        op_ids.sort_unstable();
+        assert_eq!(op_ids, ["op-a", "op-b"]);
+
+        // For one heading, the later committed change wins without removing other headings.
+        let response = review_post(
+            &app,
+            &id,
+            &path,
+            None,
+            Some("shared"),
+            serde_json::json!({"action":"patch_viewed_state","changes":{"a":false}}),
+        )
+        .await;
+        assert_eq!(response.status(), StatusCode::NO_CONTENT);
+        let expected = serde_json::json!({"a":false,"b":true});
+        assert_eq!(
+            review_snapshot(review_get(&app, &id, &path, None).await).await["viewed_state"],
+            expected
+        );
+        let WorkspaceEvent::Channel { payload, .. } = events.try_recv().unwrap() else {
+            panic!("expected a document event");
+        };
+        assert_eq!(
+            serde_json::from_str::<serde_json::Value>(&payload).unwrap()["state"],
+            expected
+        );
+    }
+
+    #[tokio::test]
+    async fn viewed_patches_preserve_personal_owner_isolation_and_legacy_replace() {
+        let root = tempfile::tempdir().unwrap();
+        let (state, id, path) = review_test_state(root.path());
+        let mut events = state
+            .workspace_registry
+            .get(&id)
+            .unwrap()
+            .events_tx
+            .subscribe();
+        let admin =
+            admin_auth::make_admin_cookie(&state.management_token, access_now_unix(), false);
+        let app = review_test_router(state);
+        let a = review_cookie(&review_get(&app, &id, &path, None).await);
+        let b = review_cookie(&review_get(&app, &id, &path, None).await);
+        for (cookie, scope, changes) in [
+            (&admin, "owner", serde_json::json!({"owner":true})),
+            (&a, "personal", serde_json::json!({"a":true})),
+            (&a, "personal", serde_json::json!({"b":false})),
+            (&b, "personal", serde_json::json!({"other":true})),
+        ] {
+            assert_eq!(
+                review_post(
+                    &app,
+                    &id,
+                    &path,
+                    Some(cookie),
+                    Some(scope),
+                    serde_json::json!({"action":"patch_viewed_state","changes":changes}),
+                )
+                .await
+                .status(),
+                StatusCode::NO_CONTENT
+            );
+        }
+        for (cookie, expected) in [
+            (&admin, serde_json::json!({"owner":true})),
+            (&a, serde_json::json!({"a":true,"b":false})),
+            (&b, serde_json::json!({"other":true})),
+        ] {
+            assert_eq!(
+                review_snapshot(review_get(&app, &id, &path, Some(cookie)).await).await
+                    ["viewed_state"],
+                expected
+            );
+        }
+        // Legacy save still replaces the complete map; a later patch merges into that map.
+        for command in [
+            serde_json::json!({"action":"save_viewed_state","state":{"legacy":true}}),
+            serde_json::json!({"action":"patch_viewed_state","changes":{"next":true}}),
+        ] {
+            assert_eq!(
+                review_post(&app, &id, &path, Some(&a), Some("personal"), command)
+                    .await
+                    .status(),
+                StatusCode::NO_CONTENT
+            );
+        }
+        assert_eq!(
+            review_snapshot(review_get(&app, &id, &path, Some(&a)).await).await["viewed_state"],
+            serde_json::json!({"legacy":true,"next":true})
+        );
+        assert!(matches!(
+            events.try_recv(),
+            Err(tokio::sync::broadcast::error::TryRecvError::Empty)
+        ));
+    }
+
+    #[tokio::test]
+    async fn viewed_patches_validate_changes_and_retain_scope_origin_path_gates() {
+        let root = tempfile::tempdir().unwrap();
+        let (state, id, path) = review_test_state(root.path());
+        let app = review_test_router(state.clone());
+        let browser = review_cookie(&review_get(&app, &id, &path, None).await);
+        let patch = serde_json::json!({"action":"patch_viewed_state","changes":{"valid":true}});
+        assert_eq!(
+            review_post(&app, &id, &path, None, Some("personal"), patch.clone())
+                .await
+                .status(),
+            StatusCode::CONFLICT
+        );
+        assert_eq!(
+            review_post(
+                &app,
+                &id,
+                &path,
+                Some(&browser),
+                Some("shared"),
+                patch.clone()
+            )
+            .await
+            .status(),
+            StatusCode::CONFLICT
+        );
+        let outside = tempfile::NamedTempFile::new().unwrap();
+        assert_eq!(
+            review_post(
+                &app,
+                &id,
+                &outside.path().to_string_lossy(),
+                Some(&browser),
+                Some("personal"),
+                patch.clone()
+            )
+            .await
+            .status(),
+            StatusCode::NOT_FOUND
+        );
+        let mut cross_origin_patch = patch.clone();
+        cross_origin_patch["path"] = serde_json::json!(path);
+        let mut request = review_request(
+            "POST",
+            &id,
+            &path,
+            Some(&browser),
+            Some("personal"),
+            Some(cross_origin_patch),
+        );
+        request
+            .headers_mut()
+            .insert(header::ORIGIN, "https://untrusted.example".parse().unwrap());
+        assert_eq!(
+            app.clone().oneshot(request).await.unwrap().status(),
+            StatusCode::FORBIDDEN
+        );
+
+        assert!(state.workspace_registry.update_flags(
+            &id,
+            WorkspaceFlags {
+                shared_annotation: true,
+                ..Default::default()
+            }
+        ));
+        let mut events = state
+            .workspace_registry
+            .get(&id)
+            .unwrap()
+            .events_tx
+            .subscribe();
+        for changes in [
+            serde_json::json!([]),
+            serde_json::json!(null),
+            serde_json::json!({"a":"true"}),
+            serde_json::json!({"a":true,"b":1}),
+        ] {
+            assert_eq!(
+                review_post(
+                    &app,
+                    &id,
+                    &path,
+                    None,
+                    Some("shared"),
+                    serde_json::json!({"action":"patch_viewed_state","changes":changes})
+                )
+                .await
+                .status(),
+                StatusCode::BAD_REQUEST
+            );
+        }
+        assert_eq!(
+            review_post(
+                &app,
+                &id,
+                &path,
+                None,
+                Some("shared"),
+                serde_json::json!({"action":"patch_viewed_state"})
+            )
+            .await
+            .status(),
+            StatusCode::UNPROCESSABLE_ENTITY
+        );
+        assert_eq!(
+            review_post(
+                &app,
+                &id,
+                &path,
+                None,
+                Some("shared"),
+                serde_json::json!({"action":"patch_viewed_state","changes":{}})
+            )
+            .await
+            .status(),
+            StatusCode::NO_CONTENT
+        );
+        assert_eq!(
+            review_snapshot(review_get(&app, &id, &path, None).await).await["viewed_state"],
+            serde_json::json!({})
+        );
+        assert!(matches!(
+            events.try_recv(),
+            Err(tokio::sync::broadcast::error::TryRecvError::Empty)
+        ));
+        let conn = state.db.as_ref().unwrap().lock().unwrap();
+        assert_eq!(
+            conn.query_row("SELECT COUNT(*) FROM viewed_state", [], |row| row
+                .get::<_, i64>(0))
+                .unwrap(),
+            0
+        );
+        assert_eq!(
+            conn.query_row("SELECT COUNT(*) FROM personal_viewed_state", [], |row| row
+                .get::<_, i64>(
+                0
+            ))
+            .unwrap(),
+            0
+        );
+    }
+
+    #[tokio::test]
+    async fn personal_document_state_rejects_malformed_anchors_without_overwriting_notes() {
+        let root = tempfile::tempdir().unwrap();
+        let (state, id, path) = review_test_state(root.path());
+        let mut events = state
+            .workspace_registry
+            .get(&id)
+            .unwrap()
+            .events_tx
+            .subscribe();
+        let app = review_test_router(state.clone());
+        let browser = review_cookie(&review_get(&app, &id, &path, None).await);
+        assert_eq!(
+            review_post(
+                &app,
+                &id,
+                &path,
+                Some(&browser),
+                Some("personal"),
+                review_note("preserved")
+            )
+            .await
+            .status(),
+            StatusCode::NO_CONTENT
+        );
+        let before = review_snapshot(review_get(&app, &id, &path, Some(&browser)).await).await;
+        for anchor in [
+            None,
+            Some(json!({ "position": 0, "exact": "note" })),
+            Some(
+                json!({ "position": 0, "exact": "note", "prefix": "", "suffix": "", "version": 2, "fragments": [null] }),
+            ),
+            Some(
+                json!({ "position": 0, "exact": "note", "prefix": "", "suffix": "", "fragments": "note" }),
+            ),
+        ] {
+            let mut command = review_note("must not overwrite");
+            if let Some(anchor) = anchor {
+                command["annotation"]["anchor"] = anchor;
+            } else {
+                command["annotation"]
+                    .as_object_mut()
+                    .unwrap()
+                    .remove("anchor");
+            }
+            let rejected =
+                review_post(&app, &id, &path, Some(&browser), Some("personal"), command).await;
+            assert_eq!(rejected.status(), StatusCode::BAD_REQUEST);
+            assert!(response_text(rejected).await.contains("anchor"));
+            assert_eq!(
+                review_snapshot(review_get(&app, &id, &path, Some(&browser)).await).await,
+                before
+            );
+        }
+        assert!(matches!(
+            events.try_recv(),
+            Err(tokio::sync::broadcast::error::TryRecvError::Empty)
+        ));
+        let conn = state.db.as_ref().unwrap().lock().unwrap();
+        assert_eq!(
+            conn.query_row("SELECT COUNT(*) FROM personal_annotations", [], |row| row
+                .get::<_, i64>(
+                0
+            ))
+            .unwrap(),
+            1
+        );
+        assert_eq!(
+            conn.query_row("SELECT COUNT(*) FROM annotations", [], |row| row
+                .get::<_, i64>(0))
+                .unwrap(),
+            0
+        );
+    }
+
+    #[tokio::test]
+    async fn personal_document_state_isolates_browsers_and_preserves_owner_data() {
+        let root = tempfile::tempdir().unwrap();
+        let (state, id, path) = review_test_state(root.path());
+        let mut events = state
+            .workspace_registry
+            .get(&id)
+            .unwrap()
+            .events_tx
+            .subscribe();
+        let admin =
+            admin_auth::make_admin_cookie(&state.management_token, access_now_unix(), false);
+        let app = review_test_router(state.clone());
+        let first = review_get(&app, &id, &path, None).await;
+        let a = review_cookie(&first);
+        assert_eq!(review_snapshot(first).await["scope"], "personal");
+        let second = review_get(&app, &id, &path, None).await;
+        let b = review_cookie(&second);
+        assert_ne!(a, b);
+        assert!(review_snapshot(second).await["annotations"]
+            .as_array()
+            .unwrap()
+            .is_empty());
+
+        // The same annotation ID may exist independently in all three datasets.
+        for (cookie, scope, text) in [
+            (&admin, None, "owner"),
+            (&a, Some("personal"), "A"),
+            (&b, Some("personal"), "B"),
+        ] {
+            assert_eq!(
+                review_post(&app, &id, &path, Some(cookie), scope, review_note(text))
+                    .await
+                    .status(),
+                StatusCode::NO_CONTENT
+            );
+        }
+        for (cookie, progress) in [
+            (&a, serde_json::json!({"a":true})),
+            (&b, serde_json::json!({"b":true})),
+        ] {
+            let command = serde_json::json!({"action":"save_viewed_state","state":progress});
+            assert_eq!(
+                review_post(&app, &id, &path, Some(cookie), Some("personal"), command)
+                    .await
+                    .status(),
+                StatusCode::NO_CONTENT
+            );
+        }
+        let second_path = dunce::canonicalize(root.path().join("second.md"))
+            .unwrap()
+            .to_string_lossy()
+            .into_owned();
+        assert_eq!(
+            review_post(
+                &app,
+                &id,
+                &second_path,
+                Some(&a),
+                Some("personal"),
+                review_note("moved")
+            )
+            .await
+            .status(),
+            StatusCode::BAD_REQUEST
+        );
+        assert_eq!(
+            review_post(
+                &app,
+                &id,
+                &second_path,
+                Some(&a),
+                Some("personal"),
+                serde_json::json!({"action":"delete_annotation","id":"anno-same-id"})
+            )
+            .await
+            .status(),
+            StatusCode::NO_CONTENT
+        );
+        let owner = review_snapshot(review_get(&app, &id, &path, Some(&admin)).await).await;
+        let a_state = review_snapshot(review_get(&app, &id, &path, Some(&a)).await).await;
+        let b_state = review_snapshot(review_get(&app, &id, &path, Some(&b)).await).await;
+        assert_eq!(owner["scope"], "owner");
+        assert_eq!(owner["annotations"][0]["note"], "owner");
+        assert_eq!(owner["viewed_state"], serde_json::json!({}));
+        assert_eq!(a_state["annotations"][0]["note"], "A");
+        assert_eq!(a_state["viewed_state"], serde_json::json!({"a":true}));
+        assert_eq!(b_state["annotations"][0]["note"], "B");
+        assert_eq!(b_state["viewed_state"], serde_json::json!({"b":true}));
+
+        let clear = serde_json::json!({"action":"clear_annotations"});
+        assert_eq!(
+            review_post(&app, &id, &path, Some(&a), Some("personal"), clear)
+                .await
+                .status(),
+            StatusCode::NO_CONTENT
+        );
+        assert!(
+            review_snapshot(review_get(&app, &id, &path, Some(&a)).await).await["annotations"]
+                .as_array()
+                .unwrap()
+                .is_empty()
+        );
+        assert_eq!(
+            review_snapshot(review_get(&app, &id, &path, Some(&b)).await).await["annotations"][0]
+                ["note"],
+            "B"
+        );
+        assert_eq!(
+            review_snapshot(review_get(&app, &id, &path, Some(&admin)).await).await["annotations"]
+                [0]["note"],
+            "owner"
+        );
+        assert!(matches!(
+            events.try_recv(),
+            Err(tokio::sync::broadcast::error::TryRecvError::Empty)
+        ));
+        let conn = state.db.as_ref().unwrap().lock().unwrap();
+        assert_eq!(
+            conn.query_row("SELECT COUNT(*) FROM annotations", [], |row| row
+                .get::<_, i64>(0))
+                .unwrap(),
+            1
+        );
+    }
+
+    #[tokio::test]
+    async fn personal_state_returns_after_share_is_revoked_without_publishing_or_merging() {
+        let root = tempfile::tempdir().unwrap();
+        let (state, id, path) = review_test_state(root.path());
+        let app = review_test_router(state.clone());
+        let browser = review_cookie(&review_get(&app, &id, &path, None).await);
+        let mut events = state
+            .workspace_registry
+            .get(&id)
+            .unwrap()
+            .events_tx
+            .subscribe();
+        assert_eq!(
+            review_post(
+                &app,
+                &id,
+                &path,
+                Some(&browser),
+                Some("personal"),
+                review_note("private")
+            )
+            .await
+            .status(),
+            StatusCode::NO_CONTENT
+        );
+        assert_eq!(
+            review_post(
+                &app,
+                &id,
+                &path,
+                Some(&browser),
+                Some("personal"),
+                serde_json::json!({"action":"save_viewed_state","state":{"private":true}})
+            )
+            .await
+            .status(),
+            StatusCode::NO_CONTENT
+        );
+        assert!(matches!(
+            events.try_recv(),
+            Err(tokio::sync::broadcast::error::TryRecvError::Empty)
+        ));
+        assert!(state.workspace_registry.update_flags(
+            &id,
+            WorkspaceFlags {
+                shared_annotation: true,
+                ..Default::default()
+            }
+        ));
+        let shared = review_snapshot(review_get(&app, &id, &path, Some(&browser)).await).await;
+        assert_eq!(shared["scope"], "shared");
+        assert!(shared["annotations"].as_array().unwrap().is_empty());
+        assert_eq!(shared["viewed_state"], serde_json::json!({}));
+        // Older shared clients without a scope header remain compatible.
+        assert_eq!(
+            review_post(&app, &id, &path, Some(&browser), None, review_note("team"))
+                .await
+                .status(),
+            StatusCode::NO_CONTENT
+        );
+        assert!(matches!(
+            events.try_recv(),
+            Ok(WorkspaceEvent::Channel { .. })
+        ));
+        assert_eq!(
+            review_snapshot(review_get(&app, &id, &path, None).await).await["annotations"][0]
+                ["note"],
+            "team"
+        );
+        assert!(state
+            .workspace_registry
+            .update_flags(&id, WorkspaceFlags::default()));
+        let personal = review_snapshot(review_get(&app, &id, &path, Some(&browser)).await).await;
+        assert_eq!(personal["scope"], "personal");
+        assert_eq!(personal["annotations"][0]["note"], "private");
+        assert_eq!(
+            personal["viewed_state"],
+            serde_json::json!({"private":true})
+        );
+        let admin =
+            admin_auth::make_admin_cookie(&state.management_token, access_now_unix(), false);
+        assert_eq!(
+            review_snapshot(review_get(&app, &id, &path, Some(&admin)).await).await["annotations"]
+                [0]["note"],
+            "team"
+        );
+    }
+
+    #[tokio::test]
+    async fn review_scope_headers_prevent_stale_pages_from_writing_another_dataset() {
+        let root = tempfile::tempdir().unwrap();
+        let (state, id, path) = review_test_state(root.path());
+        let app = review_test_router(state.clone());
+        let browser = review_cookie(&review_get(&app, &id, &path, None).await);
+        let admin =
+            admin_auth::make_admin_cookie(&state.management_token, access_now_unix(), false);
+        let elevated = format!("{browser}; {admin}");
+        // A private page must not become an owner page after administrator login.
+        assert_eq!(
+            review_post(
+                &app,
+                &id,
+                &path,
+                Some(&elevated),
+                Some("personal"),
+                review_note("wrong owner")
+            )
+            .await
+            .status(),
+            StatusCode::CONFLICT
+        );
+        // An owner page must not become private after its admin session expires.
+        assert_eq!(
+            review_post(
+                &app,
+                &id,
+                &path,
+                Some(&browser),
+                Some("owner"),
+                review_note("wrong private")
+            )
+            .await
+            .status(),
+            StatusCode::CONFLICT
+        );
+        assert_eq!(
+            review_post(
+                &app,
+                &id,
+                &path,
+                Some(&browser),
+                None,
+                review_note("missing scope")
+            )
+            .await
+            .status(),
+            StatusCode::CONFLICT
+        );
+        assert!(state.workspace_registry.update_flags(
+            &id,
+            WorkspaceFlags {
+                shared_annotation: true,
+                ..Default::default()
+            }
+        ));
+        for stale_scope in ["personal", "owner"] {
+            assert_eq!(
+                review_post(
+                    &app,
+                    &id,
+                    &path,
+                    Some(&browser),
+                    Some(stale_scope),
+                    review_note("not published")
+                )
+                .await
+                .status(),
+                StatusCode::CONFLICT
+            );
+        }
+        assert!(state
+            .workspace_registry
+            .update_flags(&id, WorkspaceFlags::default()));
+        for cookie in [&browser, &elevated] {
+            assert_eq!(
+                review_post(
+                    &app,
+                    &id,
+                    &path,
+                    Some(cookie),
+                    Some("shared"),
+                    review_note("not copied")
+                )
+                .await
+                .status(),
+                StatusCode::CONFLICT
+            );
+        }
+        let conn = state.db.as_ref().unwrap().lock().unwrap();
+        for table in [
+            "annotations",
+            "personal_annotations",
+            "viewed_state",
+            "personal_viewed_state",
+        ] {
+            assert_eq!(
+                conn.query_row(&format!("SELECT COUNT(*) FROM {table}"), [], |row| row
+                    .get::<_, i64>(0))
+                    .unwrap(),
+                0,
+                "{table}"
+            );
+        }
+    }
+
+    #[tokio::test]
+    async fn personal_review_rejects_missing_forged_identity_body_subjects_and_cross_origin() {
+        let root = tempfile::tempdir().unwrap();
+        let (state, id, path) = review_test_state(root.path());
+        let app = review_test_router(state.clone());
+        let browser = review_cookie(&review_get(&app, &id, &path, None).await);
+        let expired = personal_state::issue_cookie(&state.access_secret, 0, false)
+            .unwrap()
+            .1;
+        let forged = format!("{}x", browser);
+        for cookie in [
+            None,
+            Some("markon_personal_review="),
+            Some(forged.as_str()),
+            Some(expired.as_str()),
+        ] {
+            let response = review_post(
+                &app,
+                &id,
+                &path,
+                cookie,
+                Some("personal"),
+                review_note("rejected"),
+            )
+            .await;
+            assert_eq!(response.status(), StatusCode::CONFLICT);
+            assert!(response_text(response).await.contains("identity"));
+        }
+        let mut command = review_note("spoofed");
+        command["subject_id"] = serde_json::json!("another-browser");
+        assert_eq!(
+            review_post(&app, &id, &path, Some(&browser), Some("personal"), command)
+                .await
+                .status(),
+            StatusCode::UNPROCESSABLE_ENTITY
+        );
+        for method in ["GET", "POST"] {
+            let body = (method == "POST").then(|| serde_json::json!({"action":"save_annotation","path":path,"annotation":{"id":"anno-cross","note":"cross-origin"}}));
+            let mut request =
+                review_request(method, &id, &path, Some(&browser), Some("personal"), body);
+            request
+                .headers_mut()
+                .insert(header::ORIGIN, "https://untrusted.example".parse().unwrap());
+            assert_eq!(
+                app.clone().oneshot(request).await.unwrap().status(),
+                StatusCode::FORBIDDEN
+            );
+        }
+        let outside = tempfile::NamedTempFile::new().unwrap();
+        let outside_path = outside.path().to_string_lossy();
+        assert_eq!(
+            review_get(&app, &id, &outside_path, Some(&browser))
+                .await
+                .status(),
+            StatusCode::NOT_FOUND
+        );
+        assert_eq!(
+            review_post(
+                &app,
+                &id,
+                &outside_path,
+                Some(&browser),
+                Some("personal"),
+                review_note("outside")
+            )
+            .await
+            .status(),
+            StatusCode::NOT_FOUND
+        );
+        assert!(
+            review_snapshot(review_get(&app, &id, &path, Some(&browser)).await).await
+                ["annotations"]
+                .as_array()
+                .unwrap()
+                .is_empty()
+        );
+    }
+
+    #[tokio::test]
+    async fn personal_review_identity_does_not_bypass_the_access_gate_or_single_file_scope() {
+        let root = tempfile::tempdir().unwrap();
+        let (mut state, id, path) = review_test_state(root.path());
+        let browser = personal_state::issue_cookie(&state.access_secret, access_now_unix(), false)
+            .unwrap()
+            .1;
+        state.collaborator_access_code_hash = Arc::new(crate::workspace::hash_access_code(
+            &state.access_secret,
+            "private-code",
+        ));
+        let app = review_test_router(state.clone());
+        let denied = review_get(&app, &id, &path, Some(&browser)).await;
+        assert!(!denied.headers().contains_key(header::SET_COOKIE));
+        assert!(response_text(denied).await.contains("access"));
+        assert_eq!(
+            review_post(
+                &app,
+                &id,
+                &path,
+                Some(&browser),
+                Some("personal"),
+                review_note("gate")
+            )
+            .await
+            .status(),
+            StatusCode::UNAUTHORIZED
+        );
+        let access = make_access_cookie(
+            &state.access_secret,
+            &[(
+                "s:collaborator".to_owned(),
+                state.collaborator_access_code_hash.as_str().to_owned(),
+            )],
+            access_now_unix() + 1000,
+            false,
+        );
+        let authorized = format!("{browser}; {access}");
+        assert_eq!(
+            review_snapshot(review_get(&app, &id, &path, Some(&authorized)).await).await["scope"],
+            "personal"
+        );
+
+        let registry = Arc::new(WorkspaceRegistry::new("single-review".into()));
+        let single_id = registry.add(WorkspaceConfig {
+            path: dunce::canonicalize(root.path()).unwrap(),
+            single_file: Some("note.md".into()),
+            ..Default::default()
+        });
+        let mut single_state = test_state(registry);
+        single_state.db = state.db.clone();
+        let app = review_test_router(single_state);
+        let sibling = dunce::canonicalize(root.path().join("second.md"))
+            .unwrap()
+            .to_string_lossy()
+            .into_owned();
+        assert_eq!(
+            review_get(&app, &single_id, &sibling, Some(&browser))
+                .await
+                .status(),
+            StatusCode::NOT_FOUND
+        );
+        assert_eq!(
+            review_post(
+                &app,
+                &single_id,
+                &sibling,
+                Some(&browser),
+                Some("personal"),
+                review_note("sibling")
+            )
+            .await
+            .status(),
+            StatusCode::NOT_FOUND
+        );
+    }
+
+    #[tokio::test]
+    async fn html_initializes_one_identity_before_parallel_document_state_reads() {
+        let root = tempfile::tempdir().unwrap();
+        let (state, id, path) = review_test_state(root.path());
+        let app = review_test_router(state);
+        let html = app
+            .clone()
+            .oneshot(
+                axum::http::Request::builder()
+                    .uri(format!("/{id}/review-page"))
+                    .header(header::HOST, "localhost:6419")
+                    .body(axum::body::Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(html.status(), StatusCode::OK);
+        let browser = review_cookie(&html);
+        assert_eq!(
+            html.headers().get(header::CACHE_CONTROL).unwrap(),
+            "private, no-store"
+        );
+        let second_path = dunce::canonicalize(root.path().join("second.md"))
+            .unwrap()
+            .to_string_lossy()
+            .into_owned();
+        let (first, second) = tokio::join!(
+            review_get(&app, &id, &path, Some(&browser)),
+            review_get(&app, &id, &second_path, Some(&browser)),
+        );
+        assert!(!first.headers().contains_key(header::SET_COOKIE));
+        assert!(!second.headers().contains_key(header::SET_COOKIE));
+        assert_eq!(review_snapshot(first).await["scope"], "personal");
+        assert_eq!(review_snapshot(second).await["scope"], "personal");
+        let reload = app
+            .oneshot(
+                axum::http::Request::builder()
+                    .uri(format!("/{id}/review-page"))
+                    .header(header::HOST, "localhost:6419")
+                    .header(header::COOKIE, browser)
+                    .body(axum::body::Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert!(!reload.headers().contains_key(header::SET_COOKIE));
+    }
+
+    #[tokio::test]
+    async fn personal_review_cookie_and_sqlite_rows_survive_server_restart() {
+        let root = tempfile::tempdir().unwrap();
+        let database = tempfile::NamedTempFile::new().unwrap();
+        let (mut state, id, path) = review_test_state(root.path());
+        let conn = Connection::open(database.path()).unwrap();
+        init_review_test_db(&conn);
+        state.db = Some(Arc::new(Mutex::new(conn)));
+        let app = review_test_router(state.clone());
+        let browser = review_cookie(&review_get(&app, &id, &path, None).await);
+        assert_eq!(
+            review_post(
+                &app,
+                &id,
+                &path,
+                Some(&browser),
+                Some("personal"),
+                review_note("persisted")
+            )
+            .await
+            .status(),
+            StatusCode::NO_CONTENT
+        );
+        assert_eq!(
+            review_post(
+                &app,
+                &id,
+                &path,
+                Some(&browser),
+                Some("personal"),
+                serde_json::json!({"action":"save_viewed_state","state":{"saved":true}})
+            )
+            .await
+            .status(),
+            StatusCode::NO_CONTENT
+        );
+        drop(app);
+        drop(state);
+        let (mut restarted, restarted_id, restarted_path) = review_test_state(root.path());
+        assert_eq!(restarted_id, id);
+        let conn = Connection::open(database.path()).unwrap();
+        init_review_test_db(&conn);
+        restarted.db = Some(Arc::new(Mutex::new(conn)));
+        // Admin sessions are ephemeral; personal identity uses the persistent salt.
+        restarted.management_token = Arc::new("different-management-token".into());
+        let app = review_test_router(restarted);
+        let loaded = review_get(&app, &restarted_id, &restarted_path, Some(&browser)).await;
+        assert!(!loaded.headers().contains_key(header::SET_COOKIE));
+        let body = review_snapshot(loaded).await;
+        assert_eq!(body["scope"], "personal");
+        assert_eq!(body["annotations"][0]["note"], "persisted");
+        assert_eq!(body["viewed_state"], serde_json::json!({"saved":true}));
     }
 
     #[test]
@@ -9266,7 +10836,18 @@ mod tests {
         let body = html_escape::decode_html_entities(&response_text(response).await).to_string();
         assert!(body.contains("data-workspace-feature-form"));
         assert!(body.contains(&format!(r#"data-update-url="/_/{id}/settings/features""#)));
-        assert!(body.contains(r#"data-feature-key="enable_search""#));
+        assert!(!body.contains(r#"data-feature-key="enable_search""#));
+        assert!(!body.contains(r#"data-feature-key="enable_viewed""#));
+        let positions: Vec<_> = [
+            "enable_edit",
+            "enable_chat",
+            "enable_live",
+            "shared_annotation",
+        ]
+        .iter()
+        .map(|key| body.find(&format!(r#"data-feature-key="{key}""#)).unwrap())
+        .collect();
+        assert!(positions.windows(2).all(|pair| pair[0] < pair[1]));
         assert!(body.contains(r#"type="checkbox""#));
         assert!(!body.contains("data-share-controls"));
 
@@ -9287,7 +10868,33 @@ mod tests {
         assert_eq!(response.status(), StatusCode::OK);
         let body: serde_json::Value = serde_json::from_str(&response_text(response).await).unwrap();
         assert_eq!(body["success"], true);
-        assert_eq!(registry.get(&id).unwrap().flags(), next_flags);
+        assert_eq!(
+            registry.get(&id).unwrap().flags(),
+            WorkspaceFlags {
+                enable_search: true,
+                enable_viewed: false,
+                ..next_flags
+            }
+        );
+        // New browser clients send only advanced capabilities. Deserializing
+        // omitted legacy fields must not reset their stored values either.
+        let advanced_only: UpdateWorkspaceFeaturesRequest =
+            serde_json::from_value(serde_json::json!({
+                "enable_edit": true,
+                "enable_chat": true,
+                "enable_live": true,
+                "shared_annotation": true
+            }))
+            .unwrap();
+        let response = handle_workspace_update_features(
+            State(state.clone()),
+            AxumPath(id.clone()),
+            Json(advanced_only),
+        )
+        .await;
+        assert_eq!(response.status(), StatusCode::OK);
+        assert!(registry.get(&id).unwrap().flags().enable_search);
+        assert!(!registry.get(&id).unwrap().flags().enable_viewed);
 
         let response = handle_workspace_root(
             State(state.clone()),
@@ -9318,6 +10925,49 @@ mod tests {
             ..next_flags
         };
         assert!(registry.update_flags(&id, disabled_flags));
+    }
+
+    #[tokio::test]
+    async fn legacy_false_flags_keep_search_and_progress_available() {
+        let dir = tempfile::tempdir().unwrap();
+        fs::write(
+            dir.path().join("README.md"),
+            "# Baseline\nuniquebaselinereview",
+        )
+        .unwrap();
+        let registry = Arc::new(WorkspaceRegistry::new("baseline-availability-test".into()));
+        let id = add_test_workspace(
+            &registry,
+            dir.path().to_path_buf(),
+            WorkspaceFlags::default(),
+        );
+        let state = test_state(registry.clone());
+        for _ in 0..200 {
+            if registry.get(&id).unwrap().search_ready() {
+                break;
+            }
+            tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+        }
+        let Json(results) = workspace_search_results(&state, &id, "uniquebaselinereview").await;
+        assert_eq!(results.len(), 1);
+
+        let response = handle_workspace_path(
+            State(state),
+            AxumPath((id.clone(), "README.md".to_string())),
+            Some(Extension(AccessRole::Admin)),
+            axum::http::HeaderMap::new(),
+        )
+        .await
+        .into_response();
+        assert_eq!(response.status(), StatusCode::OK);
+        let body = response_text(response).await;
+        assert!(body.contains(r#"name="enable-viewed" content="true""#));
+        assert!(body.contains(r#"name="enable-search" content="true""#));
+        assert_eq!(
+            registry.get(&id).unwrap().flags(),
+            WorkspaceFlags::default()
+        );
+        assert!(registry.remove(&id));
     }
 
     /// New model: edit/chat are collaboration abilities gated purely by the

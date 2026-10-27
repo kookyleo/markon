@@ -32,7 +32,7 @@ description: 用桌面版或 CLI 在 5 分钟内建立第一个 Markon Workspace
 
 - 可展开的文件树；
 - Workspace 路径、别名和 id；
-- Search、Viewed、Edit、Live、Chat、Shared 六个开关；
+- Edit、Chat、Live、Share 四个高级能力开关；
 - Git 仓库的分支、历史与工作区改动；
 - 搜索入口与当前版本。
 
@@ -42,16 +42,16 @@ description: 用桌面版或 CLI 在 5 分钟内建立第一个 Markon Workspace
 
 **阅读与搜索**
 
-1. 开启 Search。
+1. Search 默认提供，等待内容索引就绪。
 2. 打开 Markdown。
 3. 按 <kbd>/</kbd> 或 <kbd>g</kbd> 搜索文件和正文。
 4. 按 <kbd>?</kbd> 查看当前页面实际可用的快捷键。
 
 **审阅长文档**
 
-1. 开启 Viewed。
+1. 通过工作区门禁后直接使用 Annotate 与 Progress；Share 关闭时为 Personal，开启时切换共同数据。
 2. 选中文字，建立高亮、删除线或 Note。
-3. 聚焦 H2–H6，用 <kbd>v</kbd> 标记 Viewed、<kbd>o</kbd> 独立折叠。
+3. 聚焦 H2–H6，用 <kbd>v</kbd> 切换已读（Read）状态、<kbd>o</kbd> 独立折叠。
 4. 用标题操作导出当前章节 Notes 或打印章节。
 
 **审阅 Git 改动**
@@ -59,7 +59,7 @@ description: 用桌面版或 CLI 在 5 分钟内建立第一个 Markon Workspace
 1. 回到工作区根页。
 2. 打开 **Working diff** 或某个 commit。
 3. 在 Rendered / Raw 间切换；Raw 还可选 Split / Unified。
-4. 用 Viewed 逐个处理文件，用 <kbd>j</kbd>/<kbd>k</kbd> 聚焦变更。
+4. 用文件的 Read 复选框记录 Progress，用 <kbd>j</kbd>/<kbd>k</kbd> 聚焦变更。
 
 ## CLI / 服务器
 
@@ -86,7 +86,7 @@ markon -b         # 当前目录，并明确打开浏览器
 ```bash
 markon ls
 markon set 1 edit on
-markon set 1 shared on
+markon set 1 share on
 markon detach 1
 markon shutdown
 ```

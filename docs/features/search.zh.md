@@ -27,7 +27,7 @@ H1 提取走与渲染器一致的 Supramark AST，因此支持 Setext 标题与 
 
 ## 全文搜索
 
-开启 `Search` 后，服务为 Markdown 建立 Tantivy 索引：
+全文搜索（Search）是基础能力，服务自动为 Markdown 建立 Tantivy 索引：
 
 | 字段 | 行为 |
 |---|---|
@@ -63,4 +63,4 @@ H1 提取走与渲染器一致的 Supramark AST，因此支持 Setext 标题与 
 - 不跨 Workspace 搜索。
 - 查询使用 Tantivy QueryParser，不提供站点级高级查询 UI。
 - 代码块仍是 Markdown content 的一部分，会进入索引。
-- Search 关闭时不建立内容索引，但文件导航仍可用。
+- 内容结果需要等待索引就绪；建立索引期间文件导航仍可用。

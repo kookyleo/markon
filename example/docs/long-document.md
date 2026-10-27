@@ -40,7 +40,7 @@ Git tests should use a copied workspace with a baseline commit.
 
 ## Section 10: Notes
 
-Shared notes and annotations can attach to this section during manual review.
+Highlights, strikethrough, and Notes can attach to this section during manual review; Share selects common review data; personal review remains available with Share off.
 
 ## Section 11: HTML
 

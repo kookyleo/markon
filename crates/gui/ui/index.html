@@ -502,7 +502,14 @@
       color: var(--text-2);
       overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
     }
-    /* Row 2: per-workspace feature flags */
+    /* Advanced controls and the independent basic Search index status. */
+    .ws-search-status {
+      align-self: center;
+      margin-left: auto;
+      padding: 3px 7px;
+      font-size: 11.5px;
+      color: var(--text-3);
+    }
     .ws-flags {
       display: flex;
       gap: 1px;
@@ -1183,27 +1190,19 @@
         <div class="section-title" data-i18n="sec.defaults"></div>
         <div class="section-body">
           <div class="pref-row">
-            <span class="pref-label" data-i18n="pref.def.search"></span>
-            <label class="switch"><input type="checkbox" id="default_search"><div class="switch-track"></div></label>
-          </div>
-          <div class="pref-row">
-            <span class="pref-label" data-i18n="pref.def.viewed"></span>
-            <label class="switch"><input type="checkbox" id="default_viewed"><div class="switch-track"></div></label>
-          </div>
-          <div class="pref-row">
-            <span class="pref-label" data-i18n="pref.def.edit"></span>
+            <span class="pref-label" data-i18n="ws.flag.edit" data-i18n-title="ws.flag.edit.tip"></span>
             <label class="switch"><input type="checkbox" id="default_edit"><div class="switch-track"></div></label>
           </div>
           <div class="pref-row">
-            <span class="pref-label" data-i18n="pref.def.live"></span>
-            <label class="switch"><input type="checkbox" id="default_live"><div class="switch-track"></div></label>
-          </div>
-          <div class="pref-row">
-            <span class="pref-label" data-i18n="pref.def.chat"></span>
+            <span class="pref-label" data-i18n="ws.flag.chat" data-i18n-title="ws.flag.chat.tip"></span>
             <label class="switch"><input type="checkbox" id="default_chat"><div class="switch-track"></div></label>
           </div>
           <div class="pref-row">
-            <span class="pref-label" data-i18n="pref.def.shared"></span>
+            <span class="pref-label" data-i18n="ws.flag.live" data-i18n-title="ws.flag.live.tip"></span>
+            <label class="switch"><input type="checkbox" id="default_live"><div class="switch-track"></div></label>
+          </div>
+          <div class="pref-row">
+            <span class="pref-label" data-i18n="ws.flag.shared" data-i18n-title="ws.flag.shared.tip"></span>
             <label class="switch"><input type="checkbox" id="default_shared"><div class="switch-track"></div></label>
           </div>
         </div>
@@ -1476,38 +1475,57 @@
         <div class="section tips-section">
           <div class="section-title" data-i18n="tips.features"></div>
           <div class="section-body tips-body tips-features">
+            <div class="section-title" data-i18n="tips.essentials"></div>
+            <div class="tip-feature">
+              <p><span class="tip-feature-title" data-i18n="tips.feat.workspace.title"></span></p>
+              <p data-i18n="tips.feat.workspace.desc"></p>
+            </div>
             <div class="tip-feature">
               <p><span class="tip-feature-title" data-i18n="tips.feat.search.title"></span><span class="tip-feature-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg></span></p>
               <p data-i18n="tips.feat.search.desc"></p>
+            </div>
+            <div class="tip-feature">
+              <p><span class="tip-feature-title" data-i18n="tips.feat.reading.title"></span></p>
+              <p data-i18n="tips.feat.reading.desc"></p>
             </div>
             <div class="tip-feature">
               <p><span class="tip-feature-title" data-i18n="tips.feat.viewed.title"></span><span class="tip-feature-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg></span></p>
               <p data-i18n="tips.feat.viewed.desc"></p>
             </div>
             <div class="tip-feature">
-              <p><span class="tip-feature-title" data-i18n="tips.feat.edit.title"></span><span class="tip-feature-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.12 2.12 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg></span></p>
-              <p data-i18n="tips.feat.edit.desc"></p>
-            </div>
-            <div class="tip-feature">
               <p><span class="tip-feature-title" data-i18n="tips.feat.annot.title"></span><span class="tip-feature-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg></span></p>
               <p data-i18n="tips.feat.annot.desc"></p>
             </div>
             <div class="tip-feature">
-              <p><span class="tip-feature-title" data-i18n="tips.feat.shared.title"></span><span class="tip-feature-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg></span></p>
-              <p data-i18n="tips.feat.shared.desc"></p>
+              <p><span class="tip-feature-title" data-i18n="tips.feat.review.title"></span></p>
+              <p data-i18n="tips.feat.review.desc"></p>
+            </div>
+            <div class="tip-feature">
+              <p><span class="tip-feature-title" data-i18n="tips.feat.export.title"></span></p>
+              <p data-i18n="tips.feat.export.desc"></p>
             </div>
             <div class="tip-feature">
               <p><span class="tip-feature-title" data-i18n="tips.feat.print.title"></span><span class="tip-feature-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><polyline points="6 9 6 2 18 2 18 9"/><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><rect x="6" y="14" width="12" height="8"/></svg></span></p>
               <p data-i18n="tips.feat.print.desc"></p>
+            </div>
+            <div class="section-title" data-i18n="tips.advanced"></div>
+            <div class="tip-feature">
+              <p><span class="tip-feature-title" data-i18n="tips.feat.edit.title"></span><span class="tip-feature-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.12 2.12 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg></span></p>
+              <p data-i18n="tips.feat.edit.desc"></p>
+            </div>
+            <div class="tip-feature">
+              <p><span class="tip-feature-title" data-i18n="tips.feat.chat.title"></span><span class="tip-feature-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg></span></p>
+              <p data-i18n="tips.feat.chat.desc"></p>
             </div>
             <div class="tip-feature">
               <p><span class="tip-feature-title" data-i18n="tips.feat.live.title"></span><span class="tip-feature-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M2 16.1A5 5 0 0 1 5.9 20"/><path d="M2 12.05A9 9 0 0 1 9.95 20"/><path d="M2 8.05A13 13 0 0 1 13.95 20"/><circle cx="4.5" cy="19.5" r="1.5" fill="currentColor"/></svg></span></p>
               <p data-i18n="tips.feat.live.desc"></p>
             </div>
             <div class="tip-feature">
-              <p><span class="tip-feature-title" data-i18n="tips.feat.chat.title"></span><span class="tip-feature-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg></span></p>
-              <p data-i18n="tips.feat.chat.desc"></p>
+              <p><span class="tip-feature-title" data-i18n="tips.feat.shared.title"></span><span class="tip-feature-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg></span></p>
+              <p data-i18n="tips.feat.shared.desc"></p>
             </div>
+            <div class="section-title" data-i18n="tips.settings"></div>
             <div class="tip-feature">
               <p><span class="tip-feature-title" data-i18n="tips.feat.access.title"></span><span class="tip-feature-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg></span></p>
               <p data-i18n="tips.feat.access.desc"></p>
@@ -1599,6 +1617,9 @@
   // Kept only to round-trip older settings.json files. Address selection is
   // now a per-workspace Share action, so there is no global GUI control.
   let preservedAdvertisedHost = '';
+  // Legacy defaults remain in settings for older clients; they no longer gate
+  // the built-in Search and Progress capabilities. Preserve their saved values.
+  let preservedBasicDefaults = { default_search: true, default_viewed: true };
 
   // ── Tab navigation ──────────────────────────────────────────────────────
   function activateTab(name) {
@@ -1679,6 +1700,10 @@
   // the caller can reuse the resolved object.
   async function loadSettings(s) {
     s = s ?? await invoke('get_settings');
+    preservedBasicDefaults = {
+      default_search: s.default_search ?? true,
+      default_viewed: s.default_viewed ?? true,
+    };
     await loadBindHosts(s.host);
     const mode = s.port_mode ?? 'spec';
     document.querySelector(`input[name="port_mode"][value="${mode}"]`).checked = true;
@@ -1696,8 +1721,6 @@
     document.getElementById('tray_resident').checked = s.tray_resident ?? true;
     document.getElementById('auto_remove_single_file_workspaces').checked = s.auto_remove_single_file_workspaces ?? true;
     document.getElementById('print_collapsed_content').checked = s.print_collapsed_content ?? false;
-    document.getElementById('default_search').checked = s.default_search ?? true;
-    document.getElementById('default_viewed').checked = s.default_viewed ?? true;
     document.getElementById('default_edit').checked = s.default_edit ?? false;
     document.getElementById('default_live').checked = s.default_live ?? false;
     document.getElementById('default_shared').checked = s.default_shared_annotation ?? false;
@@ -1750,8 +1773,7 @@
       web_editor_theme: 'follow',
       web_language: language,
       db_path:   currentDbPath || null,
-      default_search: document.getElementById('default_search').checked,
-      default_viewed: document.getElementById('default_viewed').checked,
+      ...preservedBasicDefaults,
       default_edit: document.getElementById('default_edit').checked,
       default_live: document.getElementById('default_live').checked,
       default_chat: document.getElementById('default_chat').checked,
@@ -2033,8 +2055,7 @@
     });
   }
   [
-    'default_search', 'default_viewed', 'default_edit', 'default_live', 'default_shared',
-    'default_chat', 'chat_provider',
+    'default_edit', 'default_chat', 'default_live', 'default_shared', 'chat_provider',
     'chat_anthropic_model', 'chat_anthropic_key', 'chat_anthropic_base',
     'chat_openai_model',    'chat_openai_key',    'chat_openai_base',
     'auto_update', 'print_collapsed_content', 'auto_remove_single_file_workspaces',
@@ -2216,7 +2237,17 @@
     });
   });
 
+  // A focus/tab refresh must not replace disabled controls with an older
+  // snapshot while a capability save is still running. Coalesce that refresh
+  // until all pending workspace updates have finished.
+  const workspaceRefresh = { inFlight: new Set(), pending: false, revision: 0 };
   async function refreshWorkspaces() {
+    if (workspaceRefresh.inFlight.size) {
+      workspaceRefresh.pending = true;
+      return;
+    }
+    workspaceRefresh.pending = false;
+    const revision = workspaceRefresh.revision;
     let all;
     try {
       all = await invoke('get_workspaces');
@@ -2228,9 +2259,16 @@
       }
       return;
     }
+    // A save may have started or even finished after this request was sent.
+    // Discard its older snapshot and fetch again once all saves are complete.
+    if (workspaceRefresh.inFlight.size || revision !== workspaceRefresh.revision) {
+      workspaceRefresh.pending = true;
+      if (!workspaceRefresh.inFlight.size) return refreshWorkspaces();
+      return;
+    }
     // Single-file (Open-With) workspaces ARE listed now — surfaced as dashed
     // "single file" cards so they can be configured/shared like any workspace.
-    // They stay transient (not persisted): they vanish when the app exits.
+    // Startup cleanup for these cards follows auto_remove_single_file_workspaces.
     const workspaces = all;
     const list = document.getElementById('ws-list');
     list.innerHTML = '';
@@ -2252,16 +2290,15 @@
       card.className = 'ws-card';
       card.dataset.id = ws.id;
 
-      // Per-workspace feature flags (second row). Order here defines the index
-      // used by the change handler below, so keep it in sync with that.
+      // Only advanced capabilities have workspace toggles. Save by key so
+      // regrouping controls cannot change which persisted field is updated.
       const flagDefs = [
-        { key: 'search',     label: T('ws.flag.search'), tip: ws.enable_search && ws.search_ready ? T('ws.flag.search.ready') : T('ws.flag.search.tip'), checked: ws.enable_search },
-        { key: 'viewed',     label: T('ws.flag.viewed'), tip: T('ws.flag.viewed.tip'), checked: ws.enable_viewed },
-        { key: 'edit',       label: T('ws.flag.edit'),   tip: T('ws.flag.edit.tip'),   checked: ws.enable_edit },
-        { key: 'live',       label: T('ws.flag.live'),   tip: T('ws.flag.live.tip'),   checked: ws.enable_live },
-        { key: 'chat',       label: T('ws.flag.chat'),   tip: T('ws.flag.chat.tip'),   checked: ws.enable_chat },
-        { key: 'annotation', label: T('ws.flag.shared'), tip: T('ws.flag.shared.tip'), checked: ws.shared_annotation },
+        { key: 'edit',   label: T('ws.flag.edit'),   tip: T('ws.flag.edit.tip'),   checked: ws.enable_edit },
+        { key: 'chat',   label: T('ws.flag.chat'),   tip: T('ws.flag.chat.tip'),   checked: ws.enable_chat },
+        { key: 'live',   label: T('ws.flag.live'),   tip: T('ws.flag.live.tip'),   checked: ws.enable_live },
+        { key: 'shared', label: T('ws.flag.shared'), tip: T('ws.flag.shared.tip'), checked: ws.shared_annotation },
       ];
+      const searchStatus = `<span class="ws-search-status" role="status">${esc(T(ws.search_ready ? 'ws.flag.search.ready' : 'ws.search.indexing'))}</span>`;
       const flagsHtml = flagDefs.map(f =>
         `<label class="ws-flag ${f.checked ? 'checked' : ''}" title="${esc(f.tip)}">
           <input type="checkbox" data-flag="${f.key}" ${f.checked ? 'checked' : ''}>
@@ -2337,7 +2374,7 @@
             </div>
           </div>
         </div>
-        <div class="ws-flags">${flagsHtml}</div>
+        <div class="ws-flags">${flagsHtml}${searchStatus}</div>
       `;
 
       // Open in browser
@@ -2411,24 +2448,44 @@
       card.querySelectorAll('.ws-flag input').forEach(cb => {
         cb.addEventListener('change', async () => {
           const checks = card.querySelectorAll('.ws-flag input');
+          const checked = key => card.querySelector(`.ws-flag input[data-flag="${key}"]`).checked;
+          const previous = Array.from(checks, c => c.closest('.ws-flag').classList.contains('checked'));
+          // Lock the whole feature group while its complete snapshot is saved,
+          // so a second toggle cannot race and overwrite the first request.
+          checks.forEach(c => { c.disabled = true; });
+          workspaceRefresh.inFlight.add(ws.id);
+          workspaceRefresh.revision += 1;
           try {
             await invoke('update_workspace', {
               request: {
                 id: ws.id,
-                enableSearch:     checks[0].checked,
-                enableViewed:     checks[1].checked,
-                enableEdit:       checks[2].checked,
-                enableLive:       checks[3].checked,
-                enableChat:       checks[4].checked,
-                sharedAnnotation: checks[5].checked,
+                // Keep legacy values unchanged for API/config compatibility.
+                enableSearch:     ws.enable_search,
+                enableViewed:     ws.enable_viewed,
+                enableEdit:       checked('edit'),
+                enableChat:       checked('chat'),
+                enableLive:       checked('live'),
+                sharedAnnotation: checked('shared'),
               },
             });
             checks.forEach(c => {
               c.closest('.ws-flag').classList.toggle('checked', c.checked);
             });
-            // Re-render so the Search flag can pick up its search_ready state.
-            refreshWorkspaces();
-          } catch (e) { window.alert(T('ws.update.fail') + ': ' + e); }
+            // Refresh after unlocking, once concurrent workspace saves finish.
+            workspaceRefresh.pending = true;
+          } catch (e) {
+            checks.forEach((c, index) => {
+              c.checked = previous[index];
+              c.closest('.ws-flag').classList.toggle('checked', previous[index]);
+            });
+            window.alert(T('ws.update.fail') + ': ' + e);
+          } finally {
+            workspaceRefresh.inFlight.delete(ws.id);
+            checks.forEach(c => { c.disabled = false; });
+            if (workspaceRefresh.pending && !workspaceRefresh.inFlight.size) {
+              refreshWorkspaces();
+            }
+          }
         });
       });
 
@@ -3358,6 +3415,7 @@
     NEW_WORKSPACE:  { key: 'n', ctrl: true, shift: false },
     SEARCH:         { key: '/', ctrl: false, shift: false },
     WORKSPACE_NAVIGATOR: { key: 'g', ctrl: false, shift: false },
+    EXPORT_NOTES:   { key: 'x', ctrl: false, shift: false },
     PREV_HEADING:   { key: 'k', ctrl: false, shift: false },
     NEXT_HEADING:   { key: 'j', ctrl: false, shift: false },
     PREV_ANNOTATION:{ key: 'k', ctrl: true, shift: false },
@@ -3373,6 +3431,16 @@
     DIFF_TOGGLE_VIEW:   { key: 'm', ctrl: false, shift: false },
     DIFF_NEXT_FILE:     { key: 'n', ctrl: false, shift: false },
     DIFF_PREV_FILE:     { key: 'p', ctrl: false, shift: false },
+    VISUAL_ZOOM_IN:      { key: '+', ctrl: false, shift: false },
+    VISUAL_ZOOM_IN_ALT:  { key: '=', ctrl: false, shift: false },
+    VISUAL_ZOOM_OUT:     { key: '-', ctrl: false, shift: false },
+    VISUAL_ZOOM_RESET:   { key: '0', ctrl: false, shift: false },
+    VISUAL_ZOOM_RESET_ALT: { key: 'r', ctrl: false, shift: false },
+    VISUAL_ZOOM_FIT:     { key: 'f', ctrl: false, shift: false },
+    VISUAL_ZOOM_FIT_CMD: { key: '0', ctrl: true, shift: false },
+    VISUAL_ZOOM_TOOL:    { key: 'z', ctrl: false, shift: false },
+    VISUAL_ZOOM_TOOL_OUT: { key: 'z', ctrl: false, shift: true },
+    VISUAL_ZOOM_CLOSE:   { key: 'Escape', ctrl: false, shift: false },
   };
 
   // i18n keys for shortcut descriptions (reuse web.kbd.* keys)
@@ -3383,6 +3451,7 @@
     THEME_PANEL: 'web.kbd.theme',
     NEW_WORKSPACE: 'ws.add.hint',
     SEARCH: 'web.kbd.search', WORKSPACE_NAVIGATOR: 'web.kbd.workspace_nav',
+    EXPORT_NOTES: 'web.kbd.exportnotes',
     PREV_HEADING: 'web.kbd.prevheading',
     NEXT_HEADING: 'web.kbd.nextheading', PREV_ANNOTATION: 'web.kbd.prevanno',
     NEXT_ANNOTATION: 'web.kbd.nextanno', SCROLL_HALF_PAGE_DOWN: 'web.kbd.scroll',
@@ -3393,6 +3462,12 @@
     DIFF_TOGGLE_VIEW: 'web.kbd.diff.view',
     DIFF_NEXT_FILE: 'web.kbd.diff.nextfile',
     DIFF_PREV_FILE: 'web.kbd.diff.prevfile',
+    VISUAL_ZOOM_IN: 'web.kbd.visual.zoom_in', VISUAL_ZOOM_IN_ALT: 'web.kbd.visual.zoom_in',
+    VISUAL_ZOOM_OUT: 'web.kbd.visual.zoom_out',
+    VISUAL_ZOOM_RESET: 'web.kbd.visual.reset', VISUAL_ZOOM_RESET_ALT: 'web.kbd.visual.reset',
+    VISUAL_ZOOM_FIT: 'web.kbd.visual.fit', VISUAL_ZOOM_FIT_CMD: 'web.kbd.visual.fit',
+    VISUAL_ZOOM_TOOL: 'web.kbd.visual.tool', VISUAL_ZOOM_TOOL_OUT: 'web.kbd.visual.tool_out',
+    VISUAL_ZOOM_CLOSE: 'web.kbd.visual.close',
   };
 
   // Render layout: each row holds one or more shortcut names. Multi-name rows
@@ -3409,6 +3484,7 @@
     ['THEME_PANEL'],
     ['NEW_WORKSPACE'],
     ['SEARCH', 'WORKSPACE_NAVIGATOR'],
+    ['EXPORT_NOTES'],
     ['PREV_HEADING'],
     ['NEXT_HEADING'],
     ['PREV_ANNOTATION'],
@@ -3424,6 +3500,13 @@
     ['DIFF_TOGGLE_VIEW'],
     ['DIFF_NEXT_FILE'],
     ['DIFF_PREV_FILE'],
+    ['VISUAL_ZOOM_IN', 'VISUAL_ZOOM_IN_ALT'],
+    ['VISUAL_ZOOM_OUT'],
+    ['VISUAL_ZOOM_RESET', 'VISUAL_ZOOM_RESET_ALT'],
+    ['VISUAL_ZOOM_FIT', 'VISUAL_ZOOM_FIT_CMD'],
+    ['VISUAL_ZOOM_TOOL'],
+    ['VISUAL_ZOOM_TOOL_OUT'],
+    ['VISUAL_ZOOM_CLOSE'],
   ];
 
   let currentShortcuts = {}; // user overrides only

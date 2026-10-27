@@ -1,4 +1,6 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 800" width="800" height="800">
+  <title>Document and section actions in focused reading</title>
+  <desc>Personal review; the same essential page and section actions also work in Shared. No administrator or Share switch is needed for Personal review. The page toolbar and focused H3 toolbar use the same order: Read progress status, Print, Export Notes with its scope count, and Fold. The page toolbar also offers Unfold All. Section focus remains part of the continuous document.</desc>
   <defs>
     <filter id="shadow" x="-12%" y="-12%" width="124%" height="128%">
       <feDropShadow dx="0" dy="4" stdDeviation="8" flood-color="#1F2937" flood-opacity=".05"/>
@@ -23,7 +25,7 @@
            currently focused parent section and its nested headings. -->
       <rect x="42" y="128" width="188" height="600" fill="#FAFBF9"/>
       <line x1="230" y1="128" x2="230" y2="728" stroke="#D7E5FA" stroke-width="2"/>
-      <text x="66" y="164" fill="#39434A" font-family="system-ui, sans-serif" font-size="13" font-weight="750">TOC</text>
+      <text x="66" y="164" fill="#39434A" font-family="system-ui, sans-serif" font-size="13" font-weight="750">Outline</text>
 
       <g fill="#7D878D">
         <rect x="66" y="190" width="112" height="8" rx="4"/>
@@ -47,7 +49,22 @@
       </g>
 
       <!-- Continuous document before the focused section. -->
-      <rect x="260" y="156" width="172" height="12" rx="6" fill="#2F393F"/>
+      <text x="260" y="164" fill="#2F393F" font-family="system-ui, sans-serif" font-size="16" font-weight="700">Reading Guide</text>
+      <text x="660" y="161" fill="#9AA2A7" font-family="system-ui, sans-serif" font-size="10">Personal</text>
+      <!-- Persistent H1 actions: document scope. -->
+      <g font-family="system-ui, sans-serif" font-size="10" fill="#7D878D">
+        <rect x="260" y="176" width="12" height="12" rx="3" fill="#FFFFFF" stroke="#7D878D"/>
+        <text x="279" y="186">All Read</text>
+        <line x1="329" y1="175" x2="329" y2="190" stroke="#A8B0B5"/>
+        <text x="341" y="186">Print</text>
+        <line x1="377" y1="175" x2="377" y2="190" stroke="#A8B0B5"/>
+        <text x="389" y="186">Export Notes (3)</text>
+        <line x1="481" y1="175" x2="481" y2="190" stroke="#A8B0B5"/>
+        <text x="493" y="186">Fold All</text>
+        <line x1="545" y1="175" x2="545" y2="190" stroke="#A8B0B5"/>
+        <text x="557" y="186">Unfold All</text>
+      </g>
+      <g transform="translate(0 12)">
       <rect x="260" y="188" width="466" height="92" rx="8" fill="#FFFFFF" stroke="#D8DEE1"/>
       <line x1="260" y1="218" x2="726" y2="218" stroke="#D8DEE1"/>
       <line x1="410" y1="188" x2="410" y2="280" stroke="#D8DEE1"/>
@@ -64,6 +81,7 @@
       <rect x="260" y="300" width="420" height="7" rx="3.5" fill="#858E93"/>
       <rect x="260" y="318" width="354" height="7" rx="3.5" fill="#A2AAA7"/>
 
+      </g>
       <!-- Parent section boundary remains part of the continuous document. -->
       <rect x="248" y="344" width="492" height="360" rx="12" fill="#FFFFFF" stroke="#A8C9FA" stroke-width="2.5"/>
       <rect x="268" y="366" width="142" height="14" rx="7" fill="#263138"/>
@@ -73,15 +91,18 @@
            focused reading card inside the parent section. -->
       <rect x="266" y="418" width="456" height="150" rx="10" fill="#FFFFFF" stroke="#8DB7F3" stroke-width="2"/>
       <path d="M276 418h436a10 10 0 0 1 10 10v36H266v-36a10 10 0 0 1 10-10z" fill="#EAF2FD"/>
-      <rect x="284" y="437" width="92" height="10" rx="5" fill="#2F393F"/>
-      <rect x="410" y="434" width="14" height="14" rx="3" fill="#FFFFFF" stroke="#7D878D"/>
-      <rect x="436" y="438" width="42" height="7" rx="3.5" fill="#7D878D"/>
-      <line x1="490" y1="433" x2="490" y2="449" stroke="#A8B0B5"/>
-      <rect x="502" y="438" width="38" height="7" rx="3.5" fill="#7D878D"/>
-      <line x1="552" y1="433" x2="552" y2="449" stroke="#A8B0B5"/>
-      <rect x="564" y="438" width="58" height="7" rx="3.5" fill="#A5ADB1"/>
-      <line x1="634" y1="433" x2="634" y2="449" stroke="#A8B0B5"/>
-      <rect x="646" y="438" width="44" height="7" rx="3.5" fill="#7D878D"/>
+      <text x="284" y="446" fill="#2F393F" font-family="system-ui, sans-serif" font-size="13" font-weight="700">Details</text>
+      <!-- Focused H3 actions: this section and its descendants. -->
+      <g font-family="system-ui, sans-serif" font-size="10" fill="#7D878D">
+        <rect x="352" y="434" width="14" height="14" rx="3" fill="#FFFFFF" stroke="#7D878D"/>
+        <text x="374" y="445">Read</text>
+        <line x1="409" y1="433" x2="409" y2="449" stroke="#A8B0B5"/>
+        <text x="421" y="445">Print</text>
+        <line x1="457" y1="433" x2="457" y2="449" stroke="#A8B0B5"/>
+        <text x="469" y="445">Export Notes (2)</text>
+        <line x1="561" y1="433" x2="561" y2="449" stroke="#A8B0B5"/>
+        <text x="573" y="445">Fold</text>
+      </g>
 
       <rect x="284" y="486" width="28" height="8" rx="4" fill="#367FD1"/>
       <rect x="322" y="486" width="354" height="8" rx="4" fill="#687279"/>
@@ -99,4 +120,5 @@
       <rect x="296" y="672" width="364" height="7" rx="3.5" fill="#8F9894"/>
     </g>
   </g>
+  <text x="400" y="765" fill="#69737A" font-family="system-ui, sans-serif" font-size="13" text-anchor="middle">Personal or Shared · Personal needs no Admin or Share</text>
 </svg>

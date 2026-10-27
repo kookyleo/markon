@@ -303,8 +303,10 @@ pub struct AppSettings {
     /// on the next process launch. Directory workspaces are never affected.
     #[serde(default = "default_true")]
     pub auto_remove_single_file_workspaces: bool,
+    /// Legacy preference retained for compatibility; Search is always enabled.
     #[serde(default = "default_true")]
     pub default_search: bool,
+    /// Legacy preference retained for compatibility; Progress is always enabled.
     #[serde(default = "default_true")]
     pub default_viewed: bool,
     #[serde(default)]
@@ -1202,6 +1204,41 @@ mod tests {
             serde_json::from_str(&std::fs::read_to_string(&p).unwrap()).unwrap();
         assert_eq!(saved["salt"], "historical-random-salt");
         assert_eq!(saved["workspaces"][0]["path"], "/tmp/docs");
+    }
+
+    #[test]
+    fn legacy_baseline_preferences_survive_settings_round_trip() {
+        let home = TempHome::new("legacy-baseline-preferences");
+        let mut settings = AppSettings::load_at(home.path());
+        settings.default_search = false;
+        settings.default_viewed = false;
+        settings.workspaces = vec![WorkspaceSettings {
+            path: "/tmp/legacy-baseline".into(),
+            flags: WorkspaceFlags {
+                enable_edit: true,
+                ..Default::default()
+            },
+            ..Default::default()
+        }];
+        let salt = settings.salt.clone();
+        let id = hash_id(Path::new(&settings.workspaces[0].path), &salt);
+        settings.save_at(home.path()).unwrap();
+
+        let loaded = AppSettings::load_at(home.path());
+        assert_eq!(loaded.salt, salt);
+        assert!(!loaded.default_search);
+        assert!(!loaded.default_viewed);
+        assert_eq!(loaded.workspaces.len(), 1);
+        assert_eq!(
+            hash_id(Path::new(&loaded.workspaces[0].path), &loaded.salt),
+            id
+        );
+        assert_eq!(loaded.workspaces[0].flags, settings.workspaces[0].flags);
+        let config = loaded.to_server_config(6419);
+        assert_eq!(
+            config.initial_workspaces[0].flags,
+            settings.workspaces[0].flags
+        );
     }
 
     /// Repro: a per-workspace collaborator access-code hash must survive the

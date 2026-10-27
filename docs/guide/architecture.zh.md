@@ -76,7 +76,7 @@ description: Markon 的 markond 服务、GUI/CLI 控制面、浏览器数据面�
 Markon 不把 loopback、局域网来源或反向代理头当作管理员身份证明：
 
 - **管理员会话**来自 `markon admin open` 或 `markon admin code`，可执行结构性操作。
-- **协作者**只能使用当前工作区已开启的 Edit、Chat、Shared 等能力。
+- **协作者**通过工作区门禁后即可阅读并进行 Personal 审阅；Edit、Chat、Live 和共同 Share 审阅按需开启。
 - **协作者访问码**控制非管理员浏览器是否能进入。
 - **Host allowlist**拒绝未登记 authority，防止 DNS rebinding。
 - 保存、设置、Git 写操作等还要求 same-origin 或工作区 capability。
@@ -88,7 +88,7 @@ Markon 不把 loopback、局域网来源或反向代理头当作管理员身份�
 ```text
 ~/.markon/
 ├── settings.json          # 全局设置、salt、工作区
-├── annotation.sqlite      # 批注、Viewed、Chat
+├── annotation.sqlite      # 批注、Progress、Chat
 ├── server.lock            # 运行端口、控制套接字、服务版本
 └── logs/markond.log       # 后台服务滚动日志
 ```

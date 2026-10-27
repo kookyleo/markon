@@ -15,4 +15,5 @@ pub(crate) mod assets;
 pub(crate) mod fswalk;
 pub(crate) mod markdown;
 pub(crate) mod markdown_ast;
+pub(crate) mod personal_state;
 pub(crate) mod workspace_fs;

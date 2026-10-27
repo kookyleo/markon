@@ -72,6 +72,7 @@ function itemAt<T>(items: ArrayLike<T>, index: number): T {
 describe('CollaborationManager', () => {
     beforeEach(() => {
         document.body.innerHTML = '';
+        document.querySelector('meta[name="shared-annotation"]')?.remove();
         localStorage.clear();
         sessionStorage.clear();
         vi.spyOn(console, 'log').mockImplementation(() => {});
@@ -95,6 +96,7 @@ describe('CollaborationManager', () => {
             w.__TEST_LAYERS__ = [];
         }
         document.body.innerHTML = '';
+        document.querySelector('meta[name="shared-annotation"]')?.remove();
         localStorage.clear();
         sessionStorage.clear();
         vi.restoreAllMocks();
@@ -162,7 +164,8 @@ describe('CollaborationManager', () => {
     });
 
     it('handleLiveAction: drops frames whose clientId matches our own', () => {
-        const mgr = new CollaborationManager({ enableLive: false });
+        const mgr = new CollaborationManager({ enableLive: true });
+        mgr.liveEnabled = true;
         mgr.setMode(LiveMode.FOLLOW);
         const before = mgr.activeLeader;
         mgr.handleLiveAction({
@@ -176,7 +179,8 @@ describe('CollaborationManager', () => {
 
     it('handleLiveAction: in Follow mode applies focus_section to the matching heading', () => {
         const article = setupArticle();
-        const mgr = new CollaborationManager({ enableLive: false });
+        const mgr = new CollaborationManager({ enableLive: true });
+        mgr.liveEnabled = true;
         mgr.setMode(LiveMode.FOLLOW);
 
         // XPath of the second h2 inside the second .heading-section.
@@ -200,7 +204,8 @@ describe('CollaborationManager', () => {
 
     it('handleLiveAction: a "selection" frame with cleared=true clears the local selection', () => {
         const article = setupArticle();
-        const mgr = new CollaborationManager({ enableLive: false });
+        const mgr = new CollaborationManager({ enableLive: true });
+        mgr.liveEnabled = true;
         mgr.setMode(LiveMode.FOLLOW);
 
         // Seed a non-empty selection so the cleared frame has something to
@@ -308,4 +313,88 @@ describe('CollaborationManager', () => {
         expect(focused).toBeTruthy();
         expect(focused?.id).toBe('intro');
     });
+
+    it.each([false, true])('ignores legacy Live progress frames with Share=%s', (share) => {
+        const article = setupArticle();
+        const checkbox = document.createElement('input');
+        checkbox.type = 'checkbox';
+        checkbox.className = 'viewed-checkbox';
+        checkbox.dataset['headingId'] = 'intro';
+        article.appendChild(checkbox);
+        const changed = vi.fn();
+        checkbox.addEventListener('change', changed);
+        const meta = document.createElement('meta');
+        meta.name = 'shared-annotation';
+        meta.content = String(share);
+        document.head.appendChild(meta);
+        localStorage.setItem('markon-live-mode', 'follow');
+        const { ws, dispatchLiveAction } = makeFakeWs();
+        const manager = new CollaborationManager({ enableLive: true, ws });
+        manager.init();
+        trackLayers(manager);
+        const navigate = vi.spyOn(manager, '_applyNavigation').mockImplementation(() => {});
+
+        dispatchLiveAction({
+            action: 'viewed', clientId: 'remote', color: '#3451B2',
+            headingId: 'intro', checked: true, route: '/another-page',
+        });
+
+        expect(checkbox.checked).toBe(false);
+        expect(changed).not.toHaveBeenCalled();
+        expect(navigate).not.toHaveBeenCalled();
+        expect(manager.activeLeader).toBeNull();
+    });
+
+    it.each([
+        [false, false], [false, true], [true, false], [true, true],
+    ])('never emits Live progress with Live=%s Share=%s', (live, share) => {
+        const article = setupArticle();
+        const checkbox = document.createElement('input');
+        checkbox.type = 'checkbox';
+        checkbox.className = 'viewed-checkbox';
+        checkbox.dataset['headingId'] = 'intro';
+        article.appendChild(checkbox);
+        const meta = document.createElement('meta');
+        meta.name = 'shared-annotation';
+        meta.content = String(share);
+        document.head.appendChild(meta);
+        localStorage.setItem('markon-live-mode', 'broadcast');
+        const { ws, sent } = makeFakeWs();
+        const manager = new CollaborationManager({ enableLive: live, ws });
+        manager.init();
+        trackLayers(manager);
+
+        checkbox.checked = true;
+        checkbox.dispatchEvent(new Event('change', { bubbles: true }));
+        manager.broadcastAction('viewed', { headingId: 'intro', checked: true });
+
+        expect(sent.some((frame) => (frame as { data?: { action?: string } }).data?.action === 'viewed')).toBe(false);
+    });
+
+    it.each(['broadcast', 'follow'])('Share-only ignores saved Live mode %s', (mode) => {
+        const article = setupArticle();
+        const meta = document.createElement('meta');
+        meta.name = 'shared-annotation';
+        meta.content = 'true';
+        document.head.appendChild(meta);
+        localStorage.setItem('markon-live-mode', mode);
+        const { ws, sent, dispatchLiveAction } = makeFakeWs();
+        const manager = new CollaborationManager({ enableLive: false, ws });
+        manager.init();
+        trackLayers(manager);
+        expect(manager.panel).not.toBeNull();
+        expect(manager.panel?.querySelector('.mode-btn')).toBeNull();
+
+        manager.broadcastAction('navigate', { route: '/another-page' });
+        const remote: LiveAction = {
+            action: 'focus_section', clientId: 'remote', color: '#3451B2',
+            xpath: '//article[1]/DIV[1]/H2[1]',
+        };
+        dispatchLiveAction(remote);
+        manager.handleLiveAction(remote);
+
+        expect(sent).toEqual([]);
+        expect(article.querySelector('.heading-focused')).toBeNull();
+    });
+
 });

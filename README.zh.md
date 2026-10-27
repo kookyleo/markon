@@ -24,15 +24,18 @@
 
 ## Features
 
-- [**Markdown 渲染**](https://kookyleo.github.io/markon/features/rendering) — GFM、Alerts、脚注、Emoji、KaTeX、Mermaid、PlantUML、D2、Graphviz、Vega 等。
-- [**Workspace Spotlight**](https://kookyleo.github.io/markon/features/search) — 跨工作区搜索文件名、路径、标题与正文。
-- [**Annotations & Notes**](https://kookyleo.github.io/markon/features/annotations) — 高亮、划掉、评论、撤销、重做与导出审阅 Notes。
-- [**Viewed & folding**](https://kookyleo.github.io/markon/features/viewed) — 按 Section 记录阅读进度，并折叠已经完成的内容。
+- [**Markdown 渲染（Markdown）**](https://kookyleo.github.io/markon/features/rendering) — GFM、Alerts、脚注、Emoji、KaTeX、Mermaid、PlantUML、D2、Graphviz、Vega 等。
+- [**统一查找与搜索（Spotlight / Search）**](https://kookyleo.github.io/markon/features/search) — 在当前工作区内搜索文件名、路径、标题与正文。
+- [**批注（Annotate）**](https://kookyleo.github.io/markon/features/annotations) — 高亮 Highlight、删除线 Strike、文字批注 Note、批注导航 Navigate 与撤销重做 Undo / Redo。
+- [**进度标记与折叠（Progress / Fold）**](https://kookyleo.github.io/markon/features/viewed) — 通过已读（Read）／全部已读（All Read）复选框记录章节进度，并折叠已读内容。
 - [**Git & Markdiff**](https://kookyleo.github.io/markon/features/git) — 用渲染结果或原始源码审阅工作区改动、提交、分支与标签。
-- [**Editing**](https://kookyleo.github.io/markon/features/edit) — 从渲染选区直达 Markdown 源码，对照预览完成修改。
-- [**Live**](https://kookyleo.github.io/markon/features/live) — 在演示中同步 Section 焦点、文字选区与 Viewed 状态。
-- [**共享批注**](https://kookyleo.github.io/markon/advanced/shared-annotations) — 在多个浏览器之间同步批注与阅读进度。
-- [**Workspace AI**](https://kookyleo.github.io/markon/features/chat) — 调查文件、引用出处，并提出需要用户批准的修改。
+- [**源码编辑（Edit）**](https://kookyleo.github.io/markon/features/edit) — 从渲染选区直达 Markdown 源码，对照预览完成修改。
+- [**同步演示（Live）**](https://kookyleo.github.io/markon/features/live) — 在演示中同步页面、阅读位置、Section 焦点与文字选区。
+- [**共享批注与阅读进度（Share）**](https://kookyleo.github.io/markon/advanced/shared-annotations) — 在多个浏览器之间同步批注与章节进度标记。
+- [**工作区 AI（Workspace AI / Chat）**](https://kookyleo.github.io/markon/features/chat) — 调查文件、引用出处，并提出需要用户批准的修改。
+- **导出与打印（Output）** — [导出文字批注（Export Notes）](https://kookyleo.github.io/markon/features/export)为 Markdown，或[打印（Print）](https://kookyleo.github.io/markon/features/print)整页与章节。
+
+阅读、Search、Annotate、Progress、Git 审阅、Export Notes 与 Print 是基础能力。工作区仅为 **Edit · Chat · Live · Share** 提供高级开关；通过工作区门禁后即可 Personal 审阅，Share 用于切换共同审阅数据。
 
 ## 即刻开始
 
@@ -54,7 +57,7 @@ markon -b          # 打开当前目录
 
 ## 数据与隐私
 
-渲染、搜索、Git 检查、批注、Viewed 与 Live 都在运行 Markon 的机器上完成。Workspace AI 是可选功能，只有它实际读取的上下文会发送给你配置的 Provider；其工具只能访问工作区，不能执行命令，每次写入建议都必须由用户批准。完整边界请阅读[数据与隐私](https://kookyleo.github.io/markon/advanced/data-and-privacy)和[访问与权限](https://kookyleo.github.io/markon/features/access)。
+渲染、搜索、Git 检查、批注、Progress 与 Live 都在运行 Markon 的机器上完成。Workspace AI 是可选功能，只有它实际读取的上下文会发送给你配置的 Provider；其工具只能访问工作区，不能执行命令，每次写入建议都必须由用户批准。完整边界请阅读[数据与隐私](https://kookyleo.github.io/markon/advanced/data-and-privacy)和[访问与权限](https://kookyleo.github.io/markon/features/access)。
 
 ## 开发
 
@@ -66,7 +69,7 @@ cargo build
 scripts/quality-gate.sh
 ```
 
-浏览器资源以 TypeScript bundle 的形式嵌入 `markon-core`。质量门禁会执行 Rust 格式检查、Clippy、Rust 测试、TypeScript 检查与 Vitest。架构及持久化兼容约束见 [ARCHITECTURE.md](ARCHITECTURE.md)。
+浏览器资源以 TypeScript bundle 的形式嵌入 `markon-core`。质量门禁会执行 Rust 格式检查、Clippy、Rust 测试、TypeScript 检查与 Vitest。架构及持久化兼容约束见 [ARCHITECTURE.md](ARCHITECTURE.md)，产品能力名称和术语边界见 [PRODUCT_NAMING.md](PRODUCT_NAMING.md)。
 
 ## 项目
 

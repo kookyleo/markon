@@ -1,6 +1,6 @@
 # 反向代理配置指南
 
-当使用 `--shared-annotation` 模式时，需要确保反向代理正确支持 WebSocket 连接。
+开启「共享批注与阅读进度 / Share」或 Live 时，需要确保反向代理正确支持 WebSocket 连接。Share 通过 `markon set <ID|INDEX> share on` 启用。
 
 ## 访问控制
 
@@ -39,13 +39,13 @@ Markon 内建协作者访问码与显式管理员会话。浏览器管理权限�
 - **零信任隧道** — Cloudflare Access 或 Tailscale Funnel，流量到达服务器之前已完成身份验证。
 - **网络层隔离** — Tailscale、WireGuard，或直接只绑本地（`--host 127.0.0.1`），适合单人或完全私有部署。
 
-> 目前 Markon 应用层不支持「只读公开共享」。若需对外提供只读视图，须在代理层限制写入方法（禁止 `PUT`/`POST`/`DELETE`），或关闭 `--shared-annotation` 与 `--edit`。
+> 若要限制协作者修改原文件和共同审阅记录，关闭工作区的 Edit、Chat 与 Share。通过门禁后仍可浏览、Search 搜索，并持久化自己的 Personal 批注与进度；这不是禁止一切写入的纯只读模式。管理操作继续要求显式管理员会话。代理层不要一刀切禁止所有 POST：协作者门禁解锁等正常操作也需要它。
 
 ## 系统路径说明
 
 Markon 使用 `/_/` 作为系统资源的统一前缀，避免与用户文件路径冲突：
 
-- `/_/ws` - WebSocket 连接端点（仅 shared-annotation 模式）
+- `/_/{workspace_id}/ws` - 协作 WebSocket 端点（Share 或 Live 开启时使用）
 - `/_/css/*` - CSS 样式文件
 - `/_/js/*` - JavaScript 脚本文件
 - `/_/favicon.svg` - 网站图标（SVG 格式）
@@ -131,13 +131,7 @@ md.example.com {
     RewriteEngine on
     RewriteCond %{HTTP:Upgrade} websocket [NC]
     RewriteCond %{HTTP:Connection} upgrade [NC]
-    RewriteRule ^/_/ws$ "ws://127.0.0.1:6419/_/ws" [P,L]
-
-    # WebSocket 连接
-    <Location "/_/ws">
-        ProxyPass ws://127.0.0.1:6419/_/ws
-        ProxyPassReverse ws://127.0.0.1:6419/_/ws
-    </Location>
+    RewriteRule ^/_/([^/]+)/ws$ "ws://127.0.0.1:6419/_/$1/ws" [P,L]
 
     # 系统资源（CSS、JS、Favicon）
     <Location "/_/">
@@ -254,7 +248,7 @@ server {
 curl -i -N -H "Connection: Upgrade" -H "Upgrade: websocket" \
      -H "Sec-WebSocket-Version: 13" \
      -H "Sec-WebSocket-Key: test" \
-     http://md.example.com/_/ws
+     http://md.example.com/_/{workspace_id}/ws
 ```
 
 应该看到 `101 Switching Protocols` 响应。
@@ -305,7 +299,7 @@ journalctl -u caddy -f
 #### 浏览器控制台日志
 
 查看详细的 WebSocket 日志：
-- `[WebSocket] Page protocol: https:, WS URL: wss://.../_/ws` - 协议自动检测
+- `[WebSocket] Page protocol: https:, WS URL: wss://.../_/{workspace_id}/ws` - 协议自动检测
 - `[WebSocket] Sent file path: README.md` - 发送文件路径
 - `[WebSocket] Connected successfully` - 连接成功
 - `[WebSocket] Connection stable, reset reconnect counter` - 连接稳定
@@ -349,8 +343,10 @@ location /_/ {
 markon README.md
 # 访问 http://localhost:6419
 
-# 共享注释模式（启用 WebSocket）
-markon README.md --shared-annotation
+# 注册工作区，再按实际 ID 或序号开启 Share
+markon README.md
+markon ls
+markon set <ID|INDEX> share on
 # 协作 WebSocket URL: ws://localhost:6419/_/{workspace_id}/ws
 ```
 
@@ -391,6 +387,6 @@ echo "# Static" > static/readme.md
 
 1. ✅ **系统路径**：所有系统资源都在 `/_/` 下
 2. ✅ **无冲突**：用户可以创建任何文件/目录
-3. ✅ **WebSocket**：共享注释模式需要 `/_/ws` 支持
+3. ✅ **WebSocket**：Share 和 Live 需要 `/_/{workspace_id}/ws` 的 WebSocket 支持
 4. ✅ **HTTPS**：自动使用 `wss://` 协议
 5. ✅ **简单配置**：大多数反向代理只需要一个 `location /_/` 规则

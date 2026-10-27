@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { SectionViewedManager } from './viewed';
 import type { StorageManager } from './managers/storage-manager';
+import { WebSocketManager } from './managers/websocket-manager';
 
 /**
  * Tests for the section viewed manager.
@@ -58,11 +59,12 @@ function itemAt<T>(items: ArrayLike<T>, index: number): T {
 function fakeStorage(viewedState: Record<string, boolean> = {}) {
     const storage = {
         loadViewedState: vi.fn(async () => ({ ...viewedState })),
-        saveViewedState: vi.fn(async () => {}),
+        patchViewedState: vi.fn(async (_changes: Record<string, boolean>, _onOperation?: (id: string | null) => void) => {}),
     };
     return {
         storage: storage as unknown as StorageManager,
-        saveViewedState: storage.saveViewedState,
+        loadViewedState: storage.loadViewedState,
+        patchViewedState: storage.patchViewedState,
     };
 }
 
@@ -151,7 +153,8 @@ describe('SectionViewedManager', () => {
         );
         expect(parentButton?.textContent).toBe('web.export.label (2)');
         expect(childButton?.textContent).toBe('web.export.label (1)');
-        expect(document.querySelector('.viewed-toolbar')).toBeNull();
+        expect(document.querySelector('.viewed-toolbar')).not.toBeNull();
+        expect(document.querySelector('.viewed-all-checkbox')).not.toBeNull();
 
         childButton?.click();
         expect(exportNotes).toHaveBeenCalledWith(childButton, 'h3-b');
@@ -166,6 +169,89 @@ describe('SectionViewedManager', () => {
         expect(exportNotes).not.toHaveBeenCalled();
     });
 
+    it('keeps H1 export disabled at zero and updates its click gate as notes appear and disappear', async () => {
+        buildNestedArticle();
+        let count = 0;
+        const exportNotes = vi.fn();
+        window.markonNotesCount = () => count;
+        window.markonExportNotes = exportNotes;
+        const mgr = new SectionViewedManager(false, null);
+        await mgr.ready;
+
+        const link = document.querySelector<HTMLElement>('h1 .btn-export-notes');
+        expect(link).not.toBeNull();
+        if (!link) throw new Error('Missing page export action');
+
+        for (const nextCount of [0, 2, 0]) {
+            count = nextCount;
+            exportNotes.mockClear();
+            document.dispatchEvent(new CustomEvent('markon:notes-count-changed'));
+            const disabled = count === 0;
+            expect(link.textContent).toBe(`web.export.label (${count})`);
+            expect(link.classList.contains('is-disabled')).toBe(disabled);
+            expect(link.getAttribute('aria-disabled')).toBe(String(disabled));
+            expect(link.getAttribute('tabindex')).toBe(disabled ? '-1' : null);
+
+            const event = new MouseEvent('click', { bubbles: true, cancelable: true });
+            link.dispatchEvent(event);
+            expect(event.defaultPrevented).toBe(disabled);
+            if (disabled) expect(exportNotes).not.toHaveBeenCalled();
+            else expect(exportNotes).toHaveBeenCalledExactlyOnceWith(link);
+        }
+    });
+
+    it.each([
+        [false, false, false],
+        [false, false, true],
+        [false, true, false],
+        [false, true, true],
+        [true, false, false],
+        [true, false, true],
+        [true, true, false],
+        [true, true, true],
+    ])('keeps personal progress available independently of legacy toggles and roles (legacy=%s, admin=%s, Share=%s)', async (viewed, admin, shared) => {
+        document.querySelector('meta[name="can-manage"]')?.setAttribute('content', String(admin));
+        seedMeta('enable-viewed', String(viewed));
+        seedMeta('shared-annotation', String(shared));
+        buildArticle(['h2-a', 'h3-b']);
+        const print = vi.spyOn(window, 'print').mockImplementation(() => {});
+        window.markonNotesCount = () => 1;
+        window.markonExportNotes = vi.fn();
+
+        const mgr = new SectionViewedManager(false, null);
+        await mgr.ready;
+
+        const toolbar = document.querySelector<HTMLElement>('h1 > .viewed-toolbar')!;
+        const canView = true;
+        expect(toolbar.querySelector('.viewed-all-checkbox') !== null).toBe(canView);
+        expect(document.querySelector('h2 .viewed-checkbox') !== null).toBe(canView);
+        expect(toolbar.textContent?.trim().startsWith('|')).toBe(false);
+        const actions = [...toolbar.querySelectorAll('a')];
+        expect(actions.map(action => action.className)).toEqual([
+            'btn-print-page', 'btn-export-notes', 'btn-collapse-all', 'btn-expand-all',
+        ]);
+
+        toolbar.querySelector<HTMLElement>('.btn-print-page')?.click();
+        expect(print).toHaveBeenCalledOnce();
+        toolbar.querySelector<HTMLElement>('.btn-export-notes')?.click();
+        expect(window.markonExportNotes).toHaveBeenCalledWith(toolbar.querySelector('.btn-export-notes'));
+        toolbar.querySelector<HTMLElement>('.btn-collapse-all')?.click();
+        expect(document.querySelectorAll('.section-collapsed')).toHaveLength(2);
+        toolbar.querySelector<HTMLElement>('.btn-expand-all')?.click();
+        expect(document.querySelectorAll('.section-collapsed')).toHaveLength(0);
+        expect(mgr.viewedState).toEqual({});
+    });
+
+    it('offers page print and export without empty bulk controls for a title-only document', async () => {
+        buildArticle([]);
+        const mgr = new SectionViewedManager(false, null);
+        await mgr.ready;
+
+        expect(document.querySelector('.btn-print-page')).not.toBeNull();
+        expect(document.querySelector('.btn-export-notes')?.getAttribute('aria-disabled')).toBe('true');
+        expect(document.querySelector('.viewed-all-checkbox, .btn-collapse-all, .btn-expand-all')).toBeNull();
+    });
+
     it('toggleViewed persists to SQLite and keeps only collapse preference in localStorage', async () => {
         seedMeta('file-path', 'docs/x.md');
         seedMeta('enable-viewed', 'true');
@@ -175,12 +261,16 @@ describe('SectionViewedManager', () => {
         await mgr.ready;
         const sqlite = fakeStorage();
         await mgr.attachStorage(sqlite.storage, null);
+        expect(document.querySelector('#h2-a .viewed-checkbox-label')?.getAttribute('title'))
+            .toBe('web.viewed.mark');
 
         mgr.toggleViewed('h2-a', true);
+        expect(document.querySelector('#h2-a .viewed-checkbox-label')?.getAttribute('title'))
+            .toBe('web.viewed.unmark');
         const heading = document.getElementById('h2-a');
         expect(heading?.classList.contains('section-collapsed')).toBe(true);
 
-        expect(sqlite.saveViewedState).toHaveBeenCalledWith({ 'h2-a': true });
+        expect(sqlite.patchViewedState).toHaveBeenCalledWith({ 'h2-a': true }, expect.any(Function));
         expect(localStorage.getItem('markon-viewed-docs/x.md')).toBeNull();
 
         const collapsedRaw = localStorage.getItem('markon-collapsed-docs/x.md');
@@ -527,11 +617,193 @@ describe('SectionViewedManager', () => {
         await mgr.ready;
 
         mgr.markAllViewed();
+        expect(document.querySelector('.viewed-all-label')?.getAttribute('title'))
+            .toBe('web.viewed.all.unmark.tip');
         expect(mgr.viewedState).toEqual({ 'h2-a': true, 'h2-b': true, 'h2-c': true });
         expect(document.querySelectorAll('.section-collapsed').length).toBeGreaterThanOrEqual(3);
 
         mgr.markAllUnviewed();
+        expect(document.querySelector('.viewed-all-label')?.getAttribute('title'))
+            .toBe('web.viewed.all.tip');
+        expect(document.querySelector('#h2-a .viewed-checkbox-label')?.getAttribute('title'))
+            .toBe('web.viewed.mark');
         expect(mgr.viewedState).toEqual({});
+    });
+
+    it('retains a real checkbox click made before the initial SQLite snapshot returns', async () => {
+        buildArticle(['h2-a', 'h2-b']);
+        const mgr = new SectionViewedManager(false, null);
+        await mgr.ready;
+        const sqlite = fakeStorage();
+        let finishLoad!: (state: Record<string, boolean>) => void;
+        sqlite.loadViewedState.mockReturnValueOnce(new Promise(resolve => { finishLoad = resolve; }));
+        const attached = mgr.attachStorage(sqlite.storage, null);
+        await Promise.resolve();
+
+        document.querySelector<HTMLInputElement>('#h2-a .viewed-checkbox')!.click();
+        expect(mgr.viewedState['h2-a']).toBe(true);
+        expect(sqlite.patchViewedState).not.toHaveBeenCalled();
+        finishLoad({ 'h2-b': true });
+        await attached;
+        await Promise.resolve();
+
+        expect(mgr.viewedState).toEqual({ 'h2-a': true, 'h2-b': true });
+        expect(document.querySelector<HTMLInputElement>('#h2-a .viewed-checkbox')?.checked).toBe(true);
+        expect(sqlite.patchViewedState).toHaveBeenCalledWith({ 'h2-a': true }, expect.any(Function));
+    });
+
+    it('retains All Read and Unread intentions made before storage attaches', async () => {
+        buildArticle(['h2-a', 'h2-b']);
+        const mgr = new SectionViewedManager(false, null);
+        await mgr.ready;
+        const all = document.querySelector<HTMLInputElement>('.viewed-all-checkbox')!;
+        all.click();
+        document.querySelector<HTMLInputElement>('#h2-a .viewed-checkbox')!.click();
+        const sqlite = fakeStorage();
+        await mgr.attachStorage(sqlite.storage, null);
+        await Promise.resolve();
+        expect(mgr.viewedState).toEqual({ 'h2-a': false, 'h2-b': true });
+        expect(all.checked).toBe(false);
+        expect(sqlite.patchViewedState).toHaveBeenCalledWith(
+            { 'h2-a': false, 'h2-b': true }, expect.any(Function),
+        );
+    });
+
+    it('keeps a pending click when an older shared frame arrives and preserves other headings', async () => {
+        buildArticle(['h2-a', 'h2-b']);
+        const socket = new EventTarget() as unknown as WebSocket;
+        const mgr = new SectionViewedManager(true, socket);
+        await mgr.ready;
+        const sqlite = fakeStorage();
+        await mgr.attachStorage(sqlite.storage, null);
+        let commit!: () => void;
+        sqlite.patchViewedState.mockReturnValueOnce(new Promise(resolve => { commit = resolve; }));
+        document.querySelector<HTMLInputElement>('#h2-a .viewed-checkbox')!.click();
+        socket.dispatchEvent(new MessageEvent('message', {
+            data: JSON.stringify({ type: 'viewed_state', state: { 'h2-a': false, 'h2-b': true } }),
+        }));
+        expect(mgr.viewedState).toEqual({ 'h2-a': true, 'h2-b': true });
+        commit();
+        await Promise.resolve();
+        await Promise.resolve();
+        expect(mgr.viewedState).toEqual({ 'h2-a': true, 'h2-b': true });
+    });
+
+    it('rolls back a failed latest click while an older failure cannot undo a newer click', async () => {
+        buildArticle(['h2-a']);
+        const mgr = new SectionViewedManager(false, null);
+        await mgr.ready;
+        const sqlite = fakeStorage();
+        await mgr.attachStorage(sqlite.storage, null);
+        const alert = vi.spyOn(window, 'alert').mockImplementation(() => {});
+        let failFirst!: (error: Error) => void;
+        let commitSecond!: () => void;
+        sqlite.patchViewedState.mockReturnValueOnce(new Promise((_resolve, reject) => { failFirst = reject; }));
+        sqlite.patchViewedState.mockReturnValueOnce(new Promise(resolve => { commitSecond = resolve; }));
+        const checkbox = document.querySelector<HTMLInputElement>('#h2-a .viewed-checkbox')!;
+        checkbox.click();
+        checkbox.click();
+        failFirst(new Error('First write failed'));
+        await Promise.resolve();
+        await Promise.resolve();
+        expect(checkbox.checked).toBe(false);
+        expect(alert).not.toHaveBeenCalled();
+        commitSecond();
+        await Promise.resolve();
+        await Promise.resolve();
+
+        sqlite.patchViewedState.mockRejectedValueOnce(new Error('Latest write failed'));
+        checkbox.click();
+        await Promise.resolve();
+        await Promise.resolve();
+        await Promise.resolve();
+        expect(checkbox.checked).toBe(false);
+        expect(document.getElementById('h2-a')?.classList.contains('section-collapsed')).toBe(false);
+        expect(alert).toHaveBeenCalledWith('Latest write failed');
+    });
+
+    it('cancels an older expansion frame when Read folds the section again', async () => {
+        buildArticle(['h2-a']);
+        const mgr = new SectionViewedManager(false, null);
+        await mgr.ready;
+        const callbacks: FrameRequestCallback[] = [];
+        vi.spyOn(window, 'requestAnimationFrame').mockImplementation(callback => {
+            callbacks.push(callback);
+            return callbacks.length;
+        });
+        const cancel = vi.spyOn(window, 'cancelAnimationFrame').mockImplementation(() => {});
+        mgr.toggleViewed('h2-a', true);
+        mgr.toggleViewed('h2-a', false);
+        mgr.toggleViewed('h2-a', true);
+        callbacks.forEach(callback => callback(0));
+        expect(cancel).toHaveBeenCalled();
+        expect(document.getElementById('h2-a')?.classList.contains('section-collapsed')).toBe(true);
+        expect(document.querySelector('p')?.classList.contains('section-content-hidden')).toBe(true);
+    });
+
+    it('replays managed snapshots and continues receiving progress after the native socket changes', async () => {
+        class Socket {
+            static OPEN = 1;
+            static instances: Socket[] = [];
+            readyState = 1;
+            onopen: (() => void) | null = null;
+            onclose: (() => void) | null = null;
+            onerror: (() => void) | null = null;
+            onmessage: ((event: MessageEvent) => void) | null = null;
+            constructor() {
+                Socket.instances.push(this);
+                queueMicrotask(() => this.onopen?.());
+            }
+            send(): void {}
+            close(): void { this.readyState = 3; }
+            receive(state: Record<string, boolean>, opId?: string): void {
+                this.onmessage?.(new MessageEvent('message', {
+                    data: JSON.stringify({ type: 'viewed_state', state, op_id: opId }),
+                }));
+            }
+        }
+        vi.stubGlobal('WebSocket', Socket);
+        const transport = new WebSocketManager('ws1', { kind: 'document', path: '/docs/read.md' });
+        try {
+            buildArticle(['h2-a', 'h2-b']);
+            const mgr = new SectionViewedManager(false, null);
+            await mgr.ready;
+            await transport.connect();
+            Socket.instances[0]!.receive({ 'h2-b': true });
+            const subscribe = vi.spyOn(transport, 'on');
+            const sqlite = fakeStorage();
+            await mgr.attachStorage(sqlite.storage, transport);
+            mgr.setupWebSocketListeners();
+            expect(subscribe).toHaveBeenCalledTimes(1);
+            expect(mgr.viewedState['h2-b']).toBe(true);
+
+            transport.disconnect();
+            await transport.connect();
+            expect(Socket.instances).toHaveLength(2);
+            Socket.instances[1]!.receive({ 'h2-a': true });
+            expect(mgr.viewedState).toEqual({ 'h2-a': true });
+            expect(document.querySelector<HTMLInputElement>('#h2-a .viewed-checkbox')?.checked).toBe(true);
+
+            // An own echo can arrive before HTTP completes. A subsequent peer
+            // edit is newer than that commit and must survive its HTTP response.
+            let commit!: () => void;
+            sqlite.patchViewedState.mockImplementationOnce((_changes, prepared) => {
+                prepared?.('local-operation');
+                transport.recordOutgoing('local-operation');
+                return new Promise(resolve => { commit = resolve; });
+            });
+            mgr.toggleViewed('h2-b', true);
+            Socket.instances[1]!.receive({ 'h2-a': true, 'h2-b': true }, 'local-operation');
+            Socket.instances[1]!.receive({ 'h2-a': true, 'h2-b': false }, 'peer-operation');
+            expect(mgr.viewedState['h2-b']).toBe(true);
+            commit();
+            await Promise.resolve();
+            await Promise.resolve();
+            expect(mgr.viewedState['h2-b']).toBe(false);
+        } finally {
+            transport.disconnect();
+            vi.unstubAllGlobals();
+        }
     });
 
     it('updateTocHighlights mirrors viewedState onto .toc-item elements', async () => {

@@ -75,10 +75,13 @@ document.querySelectorAll<HTMLElement>('[data-file-filter-switch]').forEach((gro
 setFileFilter('markdown');
 
 // ── Workspace feature toggles (live POST) ───────────────────────────────────
+const ADVANCED_FEATURE_KEYS = new Set(['enable_edit', 'enable_chat', 'enable_live', 'shared_annotation']);
+
 function featurePayload(inputs: HTMLInputElement[]): Record<string, boolean> {
     const payload: Record<string, boolean> = {};
     inputs.forEach((input) => {
-        payload[input.getAttribute('data-feature-key') || ''] = input.checked;
+        const key = input.getAttribute('data-feature-key') || '';
+        if (ADVANCED_FEATURE_KEYS.has(key)) payload[key] = input.checked;
     });
     return payload;
 }
@@ -97,7 +100,8 @@ function syncFeatureSwitch(input: HTMLInputElement): void {
 function setupWorkspaceFeatureForm(): void {
     const form = document.querySelector<HTMLElement>('[data-workspace-feature-form]');
     if (!form) return;
-    const inputs = Array.from(form.querySelectorAll<HTMLInputElement>('input[data-feature-key]'));
+    const inputs = Array.from(form.querySelectorAll<HTMLInputElement>('input[data-feature-key]'))
+        .filter(input => ADVANCED_FEATURE_KEYS.has(input.dataset['featureKey'] || ''));
     inputs.forEach(syncFeatureSwitch);
     if (form.getAttribute('data-can-edit') !== 'true') return;
     inputs.forEach((input) => {
@@ -117,7 +121,9 @@ function setupWorkspaceFeatureForm(): void {
                         let data: { success?: boolean; message?: string } = {};
                         try { data = text ? JSON.parse(text) as { success?: boolean; message?: string } : {}; } catch { /* ignore */ }
                         if (!resp.ok || data.success === false) throw new Error(data.message || text || resp.statusText);
-                        setFeaturePending(form, false);
+                        // Page capabilities and shortcut registrations come from
+                        // server-rendered flags; reload them together after saving.
+                        window.location.reload();
                     });
                 })
                 .catch((err: unknown) => {

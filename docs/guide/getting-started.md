@@ -32,7 +32,7 @@ Click the workspace card's open button. The workspace page contains:
 
 - an expandable file tree;
 - workspace path, alias, and id;
-- Search, Viewed, Edit, Live, Chat, and Shared switches;
+- four advanced switches: Edit, Chat, Live, and Share;
 - branch, history, and working-tree information for Git repositories;
 - search and current-version entry points.
 
@@ -42,16 +42,16 @@ A browser opened by the desktop app is guided through an administrator session, 
 
 **Read and search**
 
-1. Enable Search.
+1. Search is available automatically; wait for the content index to become ready.
 2. Open a Markdown file.
 3. Press <kbd>/</kbd> or <kbd>g</kbd> to search files and content.
 4. Press <kbd>?</kbd> to see the shortcuts available on the current page.
 
 **Review a long document**
 
-1. Enable Viewed.
+1. Annotate and Progress are available after workspace access. Share off uses Personal data; Share on selects common data.
 2. Select text and create a highlight, strikeout, or Note.
-3. Focus an H2–H6 heading; press <kbd>v</kbd> to mark it Viewed or <kbd>o</kbd> to fold it independently.
+3. Focus an H2–H6 heading; press <kbd>v</kbd> to toggle its Read checkbox or <kbd>o</kbd> to fold it independently.
 4. Use heading actions to export Notes or print that section.
 
 **Review Git changes**
@@ -59,7 +59,7 @@ A browser opened by the desktop app is guided through an administrator session, 
 1. Return to the workspace root.
 2. Open **Working diff** or a commit.
 3. Switch between Rendered and Raw; Raw also supports Split and Unified layouts.
-4. Use Viewed to process files and <kbd>j</kbd>/<kbd>k</kbd> to focus changes.
+4. Use each file's Read checkbox to track Progress, and <kbd>j</kbd>/<kbd>k</kbd> to focus changes.
 
 ## CLI and servers
 
@@ -86,7 +86,7 @@ The first command starts the background service. Later commands add paths to the
 ```bash
 markon ls
 markon set 1 edit on
-markon set 1 shared on
+markon set 1 share on
 markon detach 1
 markon shutdown
 ```
