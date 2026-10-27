@@ -74,7 +74,7 @@ Workspace registration, aliases, and shutdown are local control-socket operation
 Markon does not treat loopback, LAN origin, or proxy headers as administrator identity:
 
 - **Administrator sessions** come from `markon admin open` or `markon admin code` and can perform structural operations.
-- **Collaborators** can only use enabled workspace capabilities such as Edit, Chat, and Shared.
+- **Collaborators** can use essential reading and Personal review after workspace access; Edit, Chat, Live, and common Share review are optional.
 - **Collaborator access codes** gate entry for non-administrator browsers.
 - **The Host allowlist** rejects unregistered authorities to prevent DNS rebinding.
 - Save, settings, and Git write operations additionally require same-origin or an appropriate workspace capability.
@@ -86,7 +86,7 @@ See [Access and permissions](/features/access) for the complete model.
 ```text
 ~/.markon/
 ├── settings.json          # global settings, salt, workspaces
-├── annotation.sqlite      # annotations, Viewed state, Chat
+├── annotation.sqlite      # annotations, Progress state, Chat
 ├── server.lock            # port, control socket, service version
 └── logs/markond.log       # rolling background-service log
 ```

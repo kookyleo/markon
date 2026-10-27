@@ -173,4 +173,25 @@ mod tests {
         let parsed: serde_json::Value = serde_json::from_str(&json_str).unwrap();
         assert!(parsed.is_object());
     }
+
+    #[test]
+    fn all_languages_parse_and_have_the_same_keys() {
+        let english = LANGS.iter().find(|lang| lang.key == "en").unwrap();
+        let parse = |entry: &LangEntry| -> serde_json::Map<String, serde_json::Value> {
+            serde_json::from_str(&strip_json5_comments(entry.data))
+                .unwrap_or_else(|error| panic!("invalid translation file {}: {error}", entry.value))
+        };
+        let english = parse(english);
+        let expected: std::collections::BTreeSet<_> = english.keys().cloned().collect();
+        for entry in LANGS {
+            let data = parse(entry);
+            let keys: std::collections::BTreeSet<_> = data.keys().cloned().collect();
+            assert_eq!(
+                keys, expected,
+                "translation keys differ for {}",
+                entry.value
+            );
+            assert!(data.values().all(serde_json::Value::is_string));
+        }
+    }
 }

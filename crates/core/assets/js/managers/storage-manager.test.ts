@@ -27,7 +27,8 @@ function makeAnno(overrides: Partial<Annotation> & { id: string }): Annotation {
 function snapshotResponse(
     annotations: Annotation[] = [],
     viewedState: Record<string, boolean> = {},
-) {
+    scope?: DocumentSnapshotForTest['scope'],
+): { ok: boolean; status: number; text: () => Promise<string>; json: () => Promise<DocumentSnapshotForTest> } {
     return {
         ok: true,
         status: 200,
@@ -35,6 +36,7 @@ function snapshotResponse(
         json: async (): Promise<DocumentSnapshotForTest> => ({
             annotations,
             viewed_state: viewedState,
+            ...(scope ? { scope } : {}),
         }),
     };
 }
@@ -50,6 +52,7 @@ function emptyResponse() {
 type DocumentSnapshotForTest = {
     annotations: Annotation[];
     viewed_state: Record<string, boolean>;
+    scope?: 'owner' | 'personal' | 'shared';
 };
 
 describe('StorageManager SQLite-only document state', () => {
@@ -85,6 +88,61 @@ describe('StorageManager SQLite-only document state', () => {
             '/_/abc123/data/document-state?path=%2Fdocs%2Ffoo.md',
         );
         expect(localStorage.length).toBe(0);
+    });
+
+    it('reloads fresh annotations without replacing cached annotations, scope, or newer progress', async () => {
+        const old = makeAnno({ id: 'anno-old' });
+        const latest = makeAnno({ id: 'anno-latest' });
+        const fetchMock = vi.fn()
+            .mockResolvedValueOnce(snapshotResponse([old], { intro: false }, 'shared'))
+            .mockResolvedValueOnce(emptyResponse())
+            .mockResolvedValueOnce(snapshotResponse([latest], { intro: false }, 'shared'));
+        vi.stubGlobal('fetch', fetchMock);
+        const manager = new StorageManager('/docs/foo.md', true, null, 'abc123');
+        expect(await manager.loadAnnotations()).toEqual([old]);
+        await manager.patchViewedState({ intro: true });
+        expect(await manager.reloadAnnotations()).toEqual([latest]);
+        expect(await manager.loadAnnotations()).toEqual([old]);
+        expect(await manager.loadViewedState()).toEqual({ intro: true });
+        expect(manager.getReviewScope()).toBe('shared');
+    });
+
+    it('rejects a fresh annotation read after a review scope change', async () => {
+        const old = makeAnno({ id: 'anno-old' });
+        vi.stubGlobal('fetch', vi.fn()
+            .mockResolvedValueOnce(snapshotResponse([old], {}, 'shared'))
+            .mockResolvedValueOnce(snapshotResponse([], {}, 'personal')));
+        const manager = new StorageManager('/docs/foo.md', true, null, 'abc123');
+        await manager.loadAnnotations();
+        await expect(manager.reloadAnnotations()).rejects.toThrow('Review scope changed');
+        expect(manager.getReviewScope()).toBe('shared');
+        expect(await manager.loadAnnotations()).toEqual([old]);
+    });
+
+    it('reads fresh annotations after an already queued local commit completes', async () => {
+        let releaseWrite!: () => void;
+        const pendingWrite = new Promise<void>(resolve => { releaseWrite = resolve; });
+        const annotation = makeAnno({ id: 'anno-committed' });
+        let serverAnnotations: Annotation[] = [];
+        let startedWrite!: () => void;
+        const started = new Promise<void>(resolve => { startedWrite = resolve; });
+        vi.stubGlobal('fetch', vi.fn(async (_url: string, init?: RequestInit) => {
+            if (init?.method === 'POST') {
+                startedWrite();
+                await pendingWrite;
+                serverAnnotations = [annotation];
+                return emptyResponse();
+            }
+            return snapshotResponse([...serverAnnotations]);
+        }));
+        const manager = new StorageManager('/docs/foo.md', true, null, 'abc123');
+        await manager.loadAnnotations();
+        const write = manager.saveAnnotation(annotation);
+        await started;
+        const read = manager.reloadAnnotations();
+        releaseWrite();
+        await write;
+        expect(await read).toEqual([annotation]);
     });
 
     it('persists an annotation through HTTP and records its shared broadcast op id', async () => {
@@ -156,29 +214,57 @@ describe('StorageManager SQLite-only document state', () => {
     it('serializes viewed-state writes so an older request cannot win', async () => {
         let releaseFirst!: () => void;
         const firstResponse = new Promise<void>((resolve) => { releaseFirst = resolve; });
-        const fetchMock = vi.fn(async (_url: string, _init?: RequestInit) => {
-            if (fetchMock.mock.calls.length === 1) await firstResponse;
+        let writes = 0;
+        const fetchMock = vi.fn(async (_url: string, init?: RequestInit) => {
+            if (init?.method !== 'POST') return snapshotResponse([], {}, 'personal');
+            if (++writes === 1) await firstResponse;
             return emptyResponse();
         });
         vi.stubGlobal('fetch', fetchMock);
         const manager = new StorageManager('/docs/foo.md', false, null, 'abc123');
+        await manager.loadViewedState();
 
         const older = manager.saveViewedState({ section: false });
         await Promise.resolve();
         const newer = manager.saveViewedState({ section: true });
         await Promise.resolve();
-        expect(fetchMock).toHaveBeenCalledTimes(1);
+        await vi.waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2));
 
         releaseFirst();
         await older;
         await newer;
-        const bodies = fetchMock.mock.calls.map(([, init]) =>
+        const bodies = fetchMock.mock.calls.filter(([, init]) => init?.method === 'POST').map(([, init]) =>
             JSON.parse(init?.body as string) as { state: Record<string, boolean> },
         );
         expect(bodies.map(body => body.state)).toEqual([
             { section: false },
             { section: true },
         ]);
+    });
+
+    it('captures mutable progress objects before snapshot loading or queued writes', async () => {
+        const bodies: Record<string, unknown>[] = [];
+        vi.stubGlobal('fetch', vi.fn(async (_url: string, init?: RequestInit) => {
+            if (init?.method !== 'POST') return snapshotResponse([], {}, 'personal');
+            bodies.push(JSON.parse(init.body as string) as Record<string, unknown>);
+            return emptyResponse();
+        }));
+        const manager = new StorageManager('/docs/foo.md', false, null, 'abc123');
+        const state = { section: false };
+        const first = manager.saveViewedState(state);
+        state.section = true;
+        const second = manager.saveViewedState(state);
+        await Promise.all([first, second]);
+        expect(bodies.map(body => body['state'])).toEqual([{ section: false }, { section: true }]);
+
+        bodies.length = 0;
+        const changes = { section: true };
+        const read = manager.patchViewedState(changes);
+        changes.section = false;
+        const unread = manager.patchViewedState(changes);
+        await Promise.all([read, unread]);
+        expect(bodies.map(body => body['changes'])).toEqual([{ section: true }, { section: false }]);
+        expect(bodies.map(body => body['action'])).toEqual(['patch_viewed_state', 'patch_viewed_state']);
     });
 
     it('deletes and clears annotations only after the service commits them', async () => {
@@ -228,5 +314,21 @@ describe('StorageManager SQLite-only document state', () => {
         expect(localStorage.getItem('unrelated-preference')).toBe('keep');
         expect(localStorage.getItem('markon-annotations-foo.md')).toBeNull();
         expect(localStorage.getItem('markon-viewed-foo.md')).toBeNull();
+    });
+
+    it('binds writes to the loaded personal scope and rejects a changed shared scope without fallback', async () => {
+        const writes: RequestInit[] = [];
+        vi.stubGlobal('fetch', vi.fn(async (_url: string, init?: RequestInit) => {
+            if (init?.method !== 'POST') return snapshotResponse([], {}, 'personal');
+            writes.push(init);
+            return { ok: false, status: 409, text: async (): Promise<string> => 'Review scope changed' };
+        }));
+        const manager = new StorageManager('/docs/foo.md', false, null, 'abc123');
+
+        await expect(manager.saveViewedState({ intro: true })).rejects.toThrow('document state save failed (409)');
+        expect(manager.getReviewScope()).toBe('personal');
+        expect(writes).toHaveLength(1);
+        expect(writes[0]?.headers).toMatchObject({ 'X-Markon-Review-Scope': 'personal' });
+        expect(localStorage.length).toBe(0);
     });
 });

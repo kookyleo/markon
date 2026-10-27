@@ -1,6 +1,6 @@
 # Reverse Proxy Configuration Guide
 
-When using `--shared-annotation` mode, ensure your reverse proxy correctly supports WebSocket connections.
+When Share or Live is enabled, ensure your reverse proxy supports WebSocket connections. Enable Share with `markon set <ID|INDEX> share on`.
 
 ## Authentication
 
@@ -39,13 +39,13 @@ Before exposing Markon through a reverse proxy, configure authentication at the 
 - **Zero-trust tunnels** — Cloudflare Access or Tailscale Funnel enforce identity before traffic ever reaches the server.
 - **Network-level isolation** — Tailscale, WireGuard, or LAN-only binding (`--host 127.0.0.1`) are sufficient for single-user or fully private deployments.
 
-> **Read-only public sharing** is not currently supported at the application layer. If you want a public read-only view, you must enforce that restriction in the proxy (e.g., block `PUT`/`POST`/`DELETE` methods, or disable `--shared-annotation` and `--edit`).
+> To keep source files and common review records unchanged by collaborators, keep Edit, Chat, and Share off. Browsers can still read, search, and persist their own Personal annotations and progress after workspace admission; management operations require an explicit admin session. Avoid blocking all POST requests at the proxy, since normal access-code unlocking also needs POST.
 
 ## System Path Overview
 
 Markon uses `/_/` as a unified prefix for all system resources to avoid conflicts with user file paths:
 
-- `/_/ws` - WebSocket endpoint (shared-annotation mode only)
+- `/_/{workspace_id}/ws` - collaboration WebSocket endpoint (when Share or Live is enabled)
 - `/_/css/*` - CSS stylesheets
 - `/_/js/*` - JavaScript files
 - `/_/favicon.svg` - Favicon (SVG format)
@@ -131,13 +131,7 @@ md.example.com {
     RewriteEngine on
     RewriteCond %{HTTP:Upgrade} websocket [NC]
     RewriteCond %{HTTP:Connection} upgrade [NC]
-    RewriteRule ^/_/ws$ "ws://127.0.0.1:6419/_/ws" [P,L]
-
-    # WebSocket connection
-    <Location "/_/ws">
-        ProxyPass ws://127.0.0.1:6419/_/ws
-        ProxyPassReverse ws://127.0.0.1:6419/_/ws
-    </Location>
+    RewriteRule ^/_/([^/]+)/ws$ "ws://127.0.0.1:6419/_/$1/ws" [P,L]
 
     # System resources (CSS, JS, Favicon)
     <Location "/_/">
@@ -254,7 +248,7 @@ If WebSocket connects but immediately disconnects (error 1006), it's usually a r
 curl -i -N -H "Connection: Upgrade" -H "Upgrade: websocket" \
      -H "Sec-WebSocket-Version: 13" \
      -H "Sec-WebSocket-Key: test" \
-     http://md.example.com/_/ws
+     http://md.example.com/_/{workspace_id}/ws
 ```
 
 Should see `101 Switching Protocols` response.
@@ -305,7 +299,7 @@ journalctl -u caddy -f
 #### Browser Console Logs
 
 Check detailed WebSocket logs:
-- `[WebSocket] Page protocol: https:, WS URL: wss://.../_/ws` - Protocol auto-detection
+- `[WebSocket] Page protocol: https:, WS URL: wss://.../_/{workspace_id}/ws` - Protocol auto-detection
 - `[WebSocket] Sent file path: README.md` - Sending file path
 - `[WebSocket] Connected successfully` - Connection successful
 - `[WebSocket] Connection stable, reset reconnect counter` - Connection stable
@@ -349,8 +343,10 @@ Without reverse proxy, access directly:
 markon README.md
 # Visit http://localhost:6419
 
-# Shared annotation mode (WebSocket enabled)
-markon README.md --shared-annotation
+# Register the workspace, then enable Share using its actual ID or index
+markon README.md
+markon ls
+markon set <ID|INDEX> share on
 # Collaboration URL: ws://localhost:6419/_/{workspace_id}/ws
 ```
 
@@ -391,6 +387,6 @@ Access:
 
 1. ✅ **System paths**: All system resources under `/_/`
 2. ✅ **No conflicts**: Users can create any files/directories
-3. ✅ **WebSocket**: Shared annotation mode requires `/_/ws` support
+3. ✅ **WebSocket**: Share and Live require WebSocket support at `/_/{workspace_id}/ws`
 4. ✅ **HTTPS**: Automatically uses `wss://` protocol
 5. ✅ **Simple config**: Most proxies only need one `location /_/` rule

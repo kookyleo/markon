@@ -119,4 +119,4 @@ You normally do not invoke `markond` directly; the desktop app or CLI starts it 
 - **Linux:** run `sudo dpkg -r markon` for the Debian package, or delete the AppImage.
 - **CLI:** run `cargo uninstall markon markond`.
 
-User data remains in `~/.markon/` on macOS and Linux or `%USERPROFILE%\.markon\` on Windows. `settings.json` stores preferences and workspaces; `annotation.sqlite` stores annotations, Viewed state, and conversations. Remove these files manually only if you also want to erase your data.
+User data remains in `~/.markon/` on macOS and Linux or `%USERPROFILE%\.markon\` on Windows. `settings.json` stores preferences and workspaces; `annotation.sqlite` stores annotations, Progress state, and conversations. Remove these files manually only if you also want to erase your data.

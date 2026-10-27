@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { MarkdownDiffPage } from './markdown-diff';
+import { SHOW_VIEWED_EVENT, VIEWED_CHANGED_EVENT } from './diff-file-header';
 
 interface TestBlock {
     index: number;
@@ -193,6 +194,135 @@ describe('MarkdownDiffPage rendered diff', () => {
         expect(JSON.parse(stored!)).toContain('doc.md');
     });
 
+    it.each(['checkbox', 'label'] as const)('marks and unmarks once through a native %s click', async (target) => {
+        const root = mountRoot();
+        await new MarkdownDiffPage(root).load();
+        const viewedChanged = vi.fn();
+        document.addEventListener(VIEWED_CHANGED_EVENT, viewedChanged);
+        const clickMark = (): void => {
+            const control = root.querySelector<HTMLElement>(target === 'checkbox'
+                ? '.md-diff-file-check input' : '.md-diff-file-check span');
+            expect(control).not.toBeNull();
+            control!.click();
+        };
+        try {
+            clickMark();
+            expect(viewedChanged).toHaveBeenCalledOnce();
+            expect(root.querySelector<HTMLInputElement>('.md-diff-file-check input')?.checked).toBe(true);
+            expect(JSON.parse(localStorage.getItem('markon:diff:viewed:/diff.json')!)).toEqual(['doc.md']);
+            expect(root.querySelector<HTMLElement>('.md-diff-file-section')?.hidden).toBe(true);
+            document.dispatchEvent(new CustomEvent(SHOW_VIEWED_EVENT, { detail: { showViewed: true } }));
+            clickMark();
+            expect(viewedChanged).toHaveBeenCalledTimes(2);
+            expect(root.querySelector<HTMLInputElement>('.md-diff-file-check input')?.checked).toBe(false);
+            expect(root.querySelector<HTMLElement>('.md-diff-file-section')?.hidden).toBe(false);
+            expect(root.querySelectorAll('.md-diff-block').length).toBeGreaterThan(0);
+            expect(JSON.parse(localStorage.getItem('markon:diff:viewed:/diff.json')!)).toEqual([]);
+        } finally {
+            document.removeEventListener(VIEWED_CHANGED_EVENT, viewedChanged);
+        }
+    });
+
+    it('retains marks committed by another already-loaded view when marking a different file', async () => {
+        const payload = diffPayload() as { files: { path: string }[] };
+        payload.files.push({ ...payload.files[0]!, path: 'other.md' });
+        fetchSpy.mockResolvedValue({ ok: true, json: async () => payload });
+        const first = mountRoot();
+        await new MarkdownDiffPage(first).load();
+        const second = first.cloneNode(true) as HTMLElement;
+        delete second.dataset['diffLoadedUrl'];
+        document.body.appendChild(second);
+        await new MarkdownDiffPage(second).load();
+
+        first.querySelector<HTMLInputElement>('[data-file-path="doc.md"] .md-diff-file-check input')!.click();
+        second.querySelector<HTMLInputElement>('[data-file-path="other.md"] .md-diff-file-check input')!.click();
+
+        expect(new Set(JSON.parse(localStorage.getItem('markon:diff:viewed:/diff.json')!)))
+            .toEqual(new Set(['doc.md', 'other.md']));
+        expect(first.querySelector<HTMLInputElement>('[data-file-path="other.md"] .md-diff-file-check input')?.checked).toBe(true);
+        expect(second.querySelector<HTMLInputElement>('[data-file-path="doc.md"] .md-diff-file-check input')?.checked).toBe(true);
+        expect(new Set(JSON.parse(localStorage.getItem('markon:diff:collapsed:/diff.json')!)))
+            .toEqual(new Set(['doc.md', 'other.md']));
+    });
+
+    it('merges the latest persisted marks even before a cross-tab storage event arrives', async () => {
+        const root = mountRoot();
+        const page = new MarkdownDiffPage(root);
+        await page.load();
+        localStorage.setItem('markon:diff:viewed:/diff.json', JSON.stringify(['other.md']));
+        localStorage.setItem('markon:diff:collapsed:/diff.json', JSON.stringify(['other.md']));
+
+        root.querySelector<HTMLInputElement>('.md-diff-file-check input')!.click();
+
+        expect(new Set(JSON.parse(localStorage.getItem('markon:diff:viewed:/diff.json')!)))
+            .toEqual(new Set(['doc.md', 'other.md']));
+        expect(new Set(JSON.parse(localStorage.getItem('markon:diff:collapsed:/diff.json')!)))
+            .toEqual(new Set(['doc.md', 'other.md']));
+        // A duplicate change carries the same checked intent, not another toggle.
+        root.querySelector<HTMLInputElement>('.md-diff-file-check input')!
+            .dispatchEvent(new Event('change', { bubbles: true }));
+        expect(root.querySelector<HTMLInputElement>('.md-diff-file-check input')?.checked).toBe(true);
+        await page.load();
+        expect(root.querySelector<HTMLInputElement>('.md-diff-file-check input')?.checked).toBe(true);
+        page.destroy();
+    });
+
+    it('syncs matching cross-tab storage changes once without rebuilding unchanged headers and releases listeners on destroy', async () => {
+        const root = mountRoot();
+        const page = new MarkdownDiffPage(root);
+        await page.load();
+        await page.load();
+        const changed = vi.fn();
+        document.addEventListener(VIEWED_CHANGED_EVENT, changed);
+        const storage = (key: string): void => {
+            window.dispatchEvent(new StorageEvent('storage', { key }));
+        };
+        try {
+            localStorage.setItem('markon:diff:viewed:/diff.json', JSON.stringify(['doc.md']));
+            localStorage.setItem('markon:diff:collapsed:/diff.json', JSON.stringify(['doc.md']));
+            storage('markon:diff:viewed:/unrelated.json');
+            expect(root.querySelector<HTMLInputElement>('.md-diff-file-check input')?.checked).toBe(false);
+            expect(changed).not.toHaveBeenCalled();
+
+            storage('markon:diff:viewed:/diff.json');
+            expect(changed).toHaveBeenCalledOnce();
+            expect(root.querySelector<HTMLInputElement>('.md-diff-file-check input')?.checked).toBe(true);
+            expect(root.querySelector<HTMLElement>('.md-diff-file-section')?.hidden).toBe(true);
+            const header = root.querySelector('.md-diff-file-header');
+            storage('markon:diff:viewed:/diff.json');
+            expect(root.querySelector('.md-diff-file-header')).toBe(header);
+            expect(changed).toHaveBeenCalledTimes(2);
+
+            page.destroy();
+            changed.mockClear();
+            localStorage.setItem('markon:diff:viewed:/diff.json', '[]');
+            localStorage.setItem('markon:diff:collapsed:/diff.json', '[]');
+            storage('markon:diff:viewed:/diff.json');
+            expect(changed).not.toHaveBeenCalled();
+            expect(root.querySelector<HTMLInputElement>('.md-diff-file-check input')?.checked).toBe(true);
+        } finally {
+            page.destroy();
+            document.removeEventListener(VIEWED_CHANGED_EVENT, changed);
+        }
+    });
+
+    it('keeps current-session progress when browser storage is unavailable', async () => {
+        const payload = diffPayload() as { files: { path: string }[] };
+        payload.files.push({ ...payload.files[0]!, path: 'other.md' });
+        fetchSpy.mockResolvedValue({ ok: true, json: async () => payload });
+        const root = mountRoot();
+        const page = new MarkdownDiffPage(root);
+        await page.load();
+        vi.spyOn(localStorage, 'getItem').mockImplementation(() => { throw new Error('blocked'); });
+        vi.spyOn(localStorage, 'setItem').mockImplementation(() => { throw new Error('blocked'); });
+
+        for (const path of ['doc.md', 'other.md']) {
+            root.querySelector<HTMLInputElement>(`[data-file-path="${path}"] .md-diff-file-check input`)!.click();
+        }
+        expect([...root.querySelectorAll<HTMLInputElement>('.md-diff-file-check input')].every(input => input.checked)).toBe(true);
+        page.destroy();
+    });
+
     it('restores collapsed files from localStorage on load (fold only, not Viewed)', async () => {
         localStorage.clear();
         localStorage.setItem('markon:diff:collapsed:/diff.json', JSON.stringify(['doc.md']));
@@ -226,11 +356,11 @@ describe('MarkdownDiffPage rendered diff', () => {
         expect(content.querySelectorAll('.md-diff-block').length).toBeGreaterThan(0);
     });
 
-    it('offers Export notes in the all-done empty state', async () => {
+    it('offers Export Notes in the all-done empty state', async () => {
         localStorage.clear();
         localStorage.setItem('markon:diff:viewed:/diff.json', JSON.stringify(['doc.md']));
         window.__MARKON_I18N__ = {
-            t: (key: string) => key === 'web.export.label' ? 'Export notes' : key,
+            t: (key: string) => key === 'web.export.label' ? 'Export Notes' : key,
         };
         const exportNotes = vi.fn().mockResolvedValue(true);
         window.markonDiffAnnotations = {
@@ -247,7 +377,7 @@ describe('MarkdownDiffPage rendered diff', () => {
         const empty = root.querySelector<HTMLElement>('.md-diff-viewed-empty')!;
         expect(empty).toBeTruthy();
         const buttons = [...empty.querySelectorAll<HTMLButtonElement>('.md-diff-viewed-empty-link')];
-        expect(buttons.map(button => button.textContent)).toEqual(['Show all files', 'Export notes (4)']);
+        expect(buttons.map(button => button.textContent)).toEqual(['web.diff.progress.show_all', 'Export Notes (4)']);
         const exportButton = itemAt(buttons, 1);
         expect(exportButton.disabled).toBe(false);
 
@@ -260,7 +390,7 @@ describe('MarkdownDiffPage rendered diff', () => {
         localStorage.setItem('markon:diff:viewed:/diff.json', JSON.stringify(['doc.md']));
         localStorage.setItem('markon:diff:showviewed:/diff.json', '1');
         window.__MARKON_I18N__ = {
-            t: (key: string) => key === 'web.export.label' ? 'Export notes' : key,
+            t: (key: string) => key === 'web.export.label' ? 'Export Notes' : key,
         };
         const exportNotes = vi.fn().mockResolvedValue(false);
         window.markonDiffAnnotations = {
@@ -282,7 +412,7 @@ describe('MarkdownDiffPage rendered diff', () => {
         expect(done).toBeTruthy();
         expect(done.compareDocumentPosition(content.querySelector('.md-diff-file-section')!) & Node.DOCUMENT_POSITION_PRECEDING).toBeTruthy();
         const buttons = [...done.querySelectorAll<HTMLButtonElement>('.md-diff-viewed-empty-link')];
-        expect(buttons.map(button => button.textContent)).toEqual(['Hide all Viewed files', 'Export notes (0)']);
+        expect(buttons.map(button => button.textContent)).toEqual(['web.diff.progress.hide', 'Export Notes (0)']);
         const exportButton = itemAt(buttons, 1);
         expect(exportButton.disabled).toBe(true);
         exportButton.click();

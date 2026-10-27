@@ -21,7 +21,7 @@ const _t = (key: string, ...args: unknown[]): string => i18n.t(key, ...args);
 
 /** Category render order. Global first; any registered category not listed
  *  here is appended after, in CONFIG declaration order. */
-const CAT_ORDER = ['global', 'core', 'nav', 'diff', 'search', 'visual', 'edit', 'viewed', 'live', 'chat'];
+const CAT_ORDER = ['global', 'workspace', 'reading', 'review', 'visual', 'output', 'edit', 'chat', 'live'];
 
 type ShortcutInvoker = (name: ShortcutName) => void;
 type ShortcutsPanelElement = HTMLElement & { __markonShortcutCleanup?: () => void };
@@ -41,7 +41,7 @@ const escapeHtml = (value: string): string =>
     })[ch] ?? ch);
 
 /** Pretty-print one shortcut's key combo into individual <kbd> tokens. */
-const formatShortcut = (shortcut: ShortcutDef): string[] => {
+export const formatShortcut = (shortcut: ShortcutDef): string[] => {
     const modKey = PlatformUtils.isMac() ? '⌘' : 'Ctrl';
     const keys: string[] = [];
     if (shortcut.ctrl) keys.push(modKey);

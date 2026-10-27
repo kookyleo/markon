@@ -11,7 +11,7 @@ Press <kbd>?</kbd> for the current page's authoritative shortcut panel. It lists
 
 | Shortcut | Action |
 |---|---|
-| <kbd>?</kbd> | Feature and shortcut panel |
+| <kbd>?</kbd> | Actions & Shortcuts |
 | <kbd>j</kbd> / <kbd>k</kbd> | Next/previous feature card |
 | <kbd>Enter</kbd> | Open selected feature |
 | <kbd>/</kbd> or <kbd>Ctrl</kbd>/<kbd>Cmd</kbd>+<kbd>K</kbd> | Documentation search |
@@ -21,14 +21,14 @@ Press <kbd>?</kbd> for the current page's authoritative shortcut panel. It lists
 
 | Shortcut | Action |
 |---|---|
-| <kbd>?</kbd> | Shortcut panel |
+| <kbd>?</kbd> | Actions & Shortcuts |
 | <kbd>t</kbd> | Theme panel |
 | <kbd>Esc</kbd> | Close, deselect, or clear focus |
 | <kbd>a</kbd> | Toggle the selection toolbar |
 | <kbd>Ctrl</kbd>/<kbd>Cmd</kbd>+<kbd>\\</kbd> | Toggle/focus TOC |
 | <kbd>/</kbd> or <kbd>g</kbd> | Workspace Spotlight |
 | <kbd>j</kbd> / <kbd>k</kbd> | Next/previous heading |
-| <kbd>v</kbd> | Toggle Viewed |
+| <kbd>v</kbd> | Toggle section Read / Unread (Progress) |
 | <kbd>o</kbd> | Fold/unfold section |
 | <kbd>x</kbd> | Export page Notes |
 | <kbd>e</kbd> | Source editor |
@@ -42,8 +42,10 @@ Undo is <kbd>Ctrl</kbd>/<kbd>Cmd</kbd>+<kbd>Z</kbd>; redo adds Shift or uses <kb
 | <kbd>l</kbd> / <kbd>Shift</kbd>+<kbd>l</kbd> | Change Live active mode / toggle Off |
 | <kbd>c</kbd> / <kbd>Shift</kbd>+<kbd>c</kbd> | Default / alternate Chat surface |
 | <kbd>m</kbd> | Raw ⇄ Rendered diff |
-| <kbd>n</kbd> / <kbd>p</kbd> | Next/previous diff file |
-| <kbd>j</kbd> / <kbd>k</kbd> | Next/previous change |
+| <kbd>n</kbd> / <kbd>p</kbd> | Next/previous changed block |
+| <kbd>x</kbd> | Export diff Notes from the current scope |
+
+On document pages, `o` changes local folding, while `v` changes the current Personal / Shared section Read / Unread state. Annotate, Progress, and Notes export need no Admin or Share switch; empty exports do not open an editor. Heading export controls remain visible but disabled when their Note count is zero.
 
 ## Visual viewer
 

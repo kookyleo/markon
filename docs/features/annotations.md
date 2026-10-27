@@ -1,9 +1,9 @@
 ---
-title: Annotations and Notes
+title: Annotate
 description: Cross-block text anchors, three highlight colors, strikethrough, Notes, undo/redo, and SQLite persistence.
 ---
 
-# Annotations and Notes
+# Annotate
 
 <div class="feature-illustration">
   <img src="/illustrations/05-annotate.svg" alt="Markon annotations and Notes" />
@@ -11,7 +11,13 @@ description: Cross-block text anchors, three highlight colors, strikethrough, No
 
 Select text to open the selection toolbar and record a highlight, strikethrough, or Note.
 
-## Annotation types
+## Naming and scope
+
+**Annotate** is the capability that includes Highlight, Strike, and Note. A **Note** is written feedback attached to source text; highlights and strikethrough without written feedback are also part of Annotate. Notes is the plural of Note. `Annotation` is the technical record type used by the implementation.
+
+Use Annotate for the capability and Note for written feedback. **Export Notes** exports only records with nonempty written feedback; clearing all annotations also removes standalone highlights and strikethrough. Replies to existing Notes remain a planned capability.
+
+## Ways to annotate
 
 | Type | Typical use |
 |---|---|
@@ -37,10 +43,17 @@ Wide screens use margin cards; narrow screens use source-adjacent popups. Clicki
 
 ## Persistence and permissions
 
-`annotation.sqlite` is the only annotation authority; there is no LocalStorage fallback. With Shared off, an explicit admin session can read and write review state. With Shared on, administrators and unlocked collaborators use the same dataset, and successful HTTP writes are broadcast over WebSocket. Failures remain explicit and the page stays read-only.
+`annotation.sqlite` is the only annotation authority; there is no LocalStorage fallback. Every browser admitted to the workspace can use Annotate, Progress, and Export Notes without an admin session or Share.
 
-Annotations are associated with absolute file paths, so moving a file changes the association.
+| Scope | Review data |
+|---|---|
+| Personal (Share off) | Non-admin browsers use an isolated private identity; existing administrator data keeps its original storage |
+| Shared (Share on) | Everyone in the workspace reads and writes the same common dataset, with live updates |
+
+Both scopes persist in the same SQLite database. Browser-private records use new private tables; existing administrator/common records keep the original tables. Switching scopes does not automatically publish or merge browser-private Personal data; turning Share off returns to Personal. The interface identifies the current scope.
+
+The private identity cookie is separate from Admin. Clearing browser site data loses access to that browser's Personal records; this is not an account system or cross-device personal synchronization. A nickname and color are attribution, not identity credentials. Source-file paths remain absolute association keys. Changes use same-origin HTTP; Shared changes broadcast over WebSocket. Service failures are explicit and never fall back to browser storage.
 
 ## Clear, export, and print
 
-The footer can clear a file's annotations after confirmation. H1 and section actions can [export Notes](/features/export), and print output retains highlights, strikethrough, and Notes. Diff pages support the same annotation workflow. See [Shared annotations](/advanced/shared-annotations) and [Data and privacy](/advanced/data-and-privacy).
+The footer can clear a file's annotations after confirmation. Clearing annotations preserves section progress; use the All Read checkbox to manage read/unread section progress separately. H1 and section actions can [export Notes](/features/export), and print output retains highlights, strikethrough, and Notes. Diff pages support the same annotation workflow. See [Share](/advanced/shared-annotations) and [Data and privacy](/advanced/data-and-privacy).

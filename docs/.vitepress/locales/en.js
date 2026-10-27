@@ -25,31 +25,66 @@ export const en = {
       ],
       '/features/': [
         {
-          text: 'Workspace',
+          text: 'Features',
           items: [
             { text: 'Feature overview', link: '/features/' },
-            { text: 'Workspaces and files', link: '/features/workspaces' },
-            { text: 'Markdown rendering', link: '/features/rendering' },
-            { text: 'Workspace Spotlight', link: '/features/search' },
-            { text: 'Git browsing and diffs', link: '/features/git' },
           ],
         },
         {
-          text: 'Reading and review',
+          text: 'Workspace',
           items: [
-            { text: 'Annotations and Notes', link: '/features/annotations' },
-            { text: 'Section progress and folding', link: '/features/viewed' },
+            { text: 'Workspace / Files', link: '/features/workspaces' },
+            { text: 'Spotlight / Search', link: '/features/search' },
+          ],
+        },
+        {
+          text: 'Reading',
+          items: [
+            { text: 'Markdown / Viewer', link: '/features/rendering' },
+            { text: 'Outline / Focus / Fold / Resume', link: '/features/viewed' },
+          ],
+        },
+        {
+          text: 'Review',
+          items: [
+            { text: 'Annotate', link: '/features/annotations' },
+            { text: 'Progress', link: '/features/viewed' },
+            { text: 'Git / Markdiff', link: '/features/git' },
+          ],
+        },
+        {
+          text: 'Edit',
+          items: [
+            { text: 'Edit', link: '/features/edit' },
+          ],
+        },
+        {
+          text: 'Workspace AI',
+          items: [
+            { text: 'Chat', link: '/features/chat' },
+          ],
+        },
+        {
+          text: 'Team',
+          items: [
+            { text: 'Live', link: '/features/live' },
+            { text: 'Share', link: '/advanced/shared-annotations' },
+          ],
+        },
+        {
+          text: 'Output',
+          items: [
             { text: 'Export Notes', link: '/features/export' },
-            { text: 'Section printing', link: '/features/print' },
-            { text: 'Source editing', link: '/features/edit' },
+            { text: 'Print', link: '/features/print' },
           ],
         },
         {
-          text: 'Collaboration and AI',
+          text: 'Settings',
           items: [
-            { text: 'Live presentation', link: '/features/live' },
-            { text: 'Workspace AI', link: '/features/chat' },
-            { text: 'Access and permissions', link: '/features/access' },
+            { text: 'Access', link: '/features/access' },
+            { text: 'Privacy', link: '/advanced/data-and-privacy' },
+            { text: 'Theme / Typography', link: '/advanced/custom-styles' },
+            { text: 'Actions / Shortcuts', link: '/advanced/shortcuts' },
           ],
         },
       ],
@@ -58,7 +93,7 @@ export const en = {
           text: 'Deployment, data, and customization',
           items: [
             { text: 'Data and privacy', link: '/advanced/data-and-privacy' },
-            { text: 'Shared annotations', link: '/advanced/shared-annotations' },
+            { text: 'Share', link: '/advanced/shared-annotations' },
             { text: 'Reverse proxy', link: '/advanced/reverse-proxy' },
             { text: 'Custom styles', link: '/advanced/custom-styles' },
             { text: 'Keyboard shortcuts', link: '/advanced/shortcuts' },

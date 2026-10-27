@@ -3,12 +3,12 @@
 Markon does not require accounts. Permission comes from explicit capabilities, not network origin:
 
 - an **administrator** holds a short-lived `HttpOnly` admin session;
-- every other browser is a **collaborator**, governed by workspace flags and an optional collaborator access code;
+- every other browser is a **collaborator**, governed by review scope, advanced workspace switches, and an optional collaborator access code;
 - loopback, proxy IPs, and `X-Forwarded-For` never grant admin status.
 
 ## Explicit admin sessions
 
-Administrators may change flags and aliases, commit or checkout, and create/delete/edit files. Service-level workspace registration, removal, and shutdown remain on the local GUI/CLI control socket.
+Administrators may change flags and aliases, commit or checkout, and create/delete files. Source editing and saving require Edit to be enabled. Service-level workspace registration, removal, and shutdown remain on the local GUI/CLI control socket.
 
 ```bash
 markon admin open  # one-time fragment nonce, valid for 60 seconds
@@ -19,7 +19,7 @@ Both produce the same 12-hour session, invalidated by service restart. Long-live
 
 ## Collaborator capabilities
 
-Workspace flags grant specific actions: `edit` allows saving, `chat` allows AI, and `shared` allows annotations and Viewed state. Collaborators cannot change flags or aliases, commit/checkout, create/delete files, register/detach workspaces, or stop the service.
+Reading, navigation, Search, Annotate, Progress, Export Notes, Fold, and Print are essential after workspace access. Edit enables source saving, Chat enables Workspace AI, Live enables synchronized presentation, and Share selects common annotations and section Progress. With Share off, non-admin browsers persist isolated Personal review data; an admin session is not required for basic review. Collaborators cannot change flags or aliases, commit/checkout, create/delete files, register/detach workspaces, or stop the service.
 
 ## Collaborator access codes
 

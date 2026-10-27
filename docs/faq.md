@@ -41,7 +41,7 @@ No. It removes the workspace registration only. SQLite history remains until you
 
 The workspace ID participates in URLs and Chat associations and derives from a persistent salt plus canonical identity path. Do not casually replace the salt or expect moved files to keep path-based associations.
 
-## Annotations, Viewed, and data
+## Annotate, Progress, and data
 
 ### Where is data stored?
 
@@ -49,11 +49,13 @@ Settings are in `~/.markon/settings.json`, review and Chat data in `~/.markon/an
 
 ### Do annotations fall back to LocalStorage?
 
-No. SQLite is authoritative for annotations and Viewed. On permission or service failure the page becomes explicitly read-only. Pure UI preferences such as folding or panel positions may remain browser-local.
+No. SQLite is authoritative for annotations and section progress. Permission or service failures do not create a local fallback copy. Folding, panel positions, reading-position memory, and Markdiff's per-file progress are separate browser-local state.
 
-### Does turning Shared off move data?
+### Does turning Share off move data?
 
-No. Shared controls collaborator access and broadcasts, not the storage location.
+No. Share switches between Personal and common Shared review data in the same SQLite. It never automatically publishes or merges browser-private Personal records. Turning Share off restores Personal access without moving or deleting either dataset.
+
+Every admitted browser can annotate, track section Progress, and export Notes without Admin or Share. Non-admin Personal records are isolated by a private browser identity cookie. Clearing site data loses that access; there is no account recovery or cross-device personal synchronization.
 
 ### How should I back up?
 
@@ -113,7 +115,7 @@ There is no static HTML exporter. Print a full page or section and choose Save a
 
 ### How is this different from GitHub Markdown?
 
-Markon adds local workspaces, full-text search, annotations, Viewed progress, editing, rendered Git diffs, Live, Workspace AI, and custom themes.
+Markon adds local workspaces, full-text search, annotations, progress markers, editing, rendered Git diffs, Live, Workspace AI, and custom themes.
 
 ### Is Markon a static-site generator or Obsidian replacement?
 

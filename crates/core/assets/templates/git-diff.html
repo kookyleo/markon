@@ -7,6 +7,8 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta name="workspace-id" content="{{ workspace_id }}">
     <meta name="can-manage" content="{{ can_manage | default(value=false) }}">
+    <meta name="can-annotate" content="{{ can_annotate | default(value=true) }}">
+    <meta name="review-scope" content="{{ review_scope | default(value='personal') }}">
     <meta name="shared-annotation" content="{{ shared_annotation }}">
     <meta name="is-worktree-diff" content="{{ is_worktree_diff }}">
     <meta name="diff-editable" content="{{ diff_editable }}">
@@ -77,6 +79,12 @@
             margin: 0;
             font-size: 18px;
             line-height: 1.25;
+        }
+        [data-review-scope-label] {
+            color: var(--markon-fg-muted);
+            font-size: var(--markon-ui-font-size);
+            font-weight: normal;
+            margin-left: 0.5em;
         }
         .git-diff-titlebox {
             min-width: 0;
@@ -1664,7 +1672,7 @@
                 <section class="git-diff-summary">
                     <div class="git-diff-titlebox">
                         <div class="git-diff-titletext">
-                            <h1 class="git-diff-title">Markdiff</h1>
+                            <h1 class="git-diff-title">Markdiff <small data-review-scope-label>Personal</small></h1>
                             <div class="git-diff-ws-path"><span class="git-diff-ws-name">{% if workspace_alias %}{{ workspace_alias }}{% else %}{{ workspace_display_path | split(pat="/") | last }}{% endif %}</span><a class="git-diff-ws-full" href="{{ files_url }}" title="{{ workspace_display_path }}">{{ workspace_display_path }}</a></div>
                         </div>
                         <button type="button" class="git-sidebar-toggle" data-sidebar-toggle
@@ -1738,7 +1746,7 @@
                             <div class="git-filter-menu" role="menu" hidden data-diff-filter-menu>
                                 <label class="git-filter-opt">
                                     <input type="checkbox" class="git-filter-opt-input" data-diff-show-viewed>
-                                    <span>Hide Viewed files</span>
+                                    <span data-diff-progress-hide-label>Hide Read Files</span>
                                 </label>
                             </div>
                         </div>

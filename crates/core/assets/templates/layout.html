@@ -8,6 +8,8 @@
     <meta name="file-path" content="{{ file_path }}">
     <meta name="workspace-id" content="{{ workspace_id }}">
     <meta name="can-manage" content="{{ can_manage | default(value=false) }}">
+    <meta name="can-annotate" content="{{ can_annotate | default(value=true) }}">
+    <meta name="review-scope" content="{{ review_scope | default(value='personal') }}">
     <meta name="shared-annotation" content="{{ shared_annotation }}">
     <meta name="enable-viewed" content="{{ enable_viewed }}">
     <meta name="enable-search" content="{{ enable_search }}">
@@ -462,12 +464,12 @@
         /* Note markers + colour-pick highlights live in editor.css, driven by
            the --markon-hl-* tokens (single source, theme-agnostic). */
 
-        /* Link colors in markdown body */
-        .markdown-body a:link,
-        .markdown-body a:visited,
-        .markdown-body a:hover,
-        .markdown-body a:active,
-        .markdown-body a:focus {
+        /* Content links have destinations; toolbar action anchors do not. */
+        .markdown-body a[href]:link,
+        .markdown-body a[href]:visited,
+        .markdown-body a[href]:hover,
+        .markdown-body a[href]:active,
+        .markdown-body a[href]:focus {
             color: var(--markon-accent) !important;
         }
 
@@ -819,6 +821,7 @@
             color: var(--markon-fg-muted);
             cursor: default;
             text-decoration: none;
+            opacity: 0.55;
         }
 
         /* Remove H1 bottom margin when followed by viewed toolbar */
@@ -928,11 +931,13 @@
     <footer class="container footer">
         <a href="https://kookyleo.github.io/markon/" id="footer-text">Powered by markon</a>
         <span class="footer-separator"> | </span>
-        {% if can_manage or shared_annotation %}<a href="#" class="footer-clear-link" id="clear-annot-text" onclick="clearPageAnnotations(event, window.ws, window.isSharedAnnotationMode); return false;">Clear Annotations in this page</a>{% endif %}
+        <span data-review-scope-label>Personal</span>
+        <span class="footer-separator"> | </span>
+        {% if can_annotate | default(value=true) %}<a href="#" class="footer-clear-link" id="clear-annot-text" onclick="clearPageAnnotations(event, window.ws, window.isSharedAnnotationMode); return false;">Clear Annotations in this page</a>{% endif %}
         <span class="footer-separator"> | </span>
         <a href="https://github.com/kookyleo/markon/issues/new?title=%5BFeedback%5D%20&body=One-line%20summary%3A%0A%0A%23%23%20Environment%0A-%20markon%20version%3A%0A-%20OS%3A%0A-%20Browser%3A%0A%0A%23%23%20Steps%20to%20reproduce%0A1.%0A%0A%23%23%20Expected%0A%0A%23%23%20Actual%0A" id="feedback-link-text" target="_blank" rel="noopener noreferrer">Feedback</a>
         <span class="footer-separator"> | </span>
-        <a href="#" id="kbd-link-text" onclick="window.shortcutsManager.showHelp(); return false;">Features & Shortcuts (?)</a>
+        <a href="#" id="kbd-link-text" onclick="window.shortcutsManager.showHelp(); return false;">Actions & Shortcuts (?)</a>
         <span class="footer-separator"> | </span>
         <a href="https://github.com/kookyleo/markon/releases" id="footer-version" target="_blank" rel="noopener noreferrer" title="markon version">v{{ version }}</a>
     </footer>

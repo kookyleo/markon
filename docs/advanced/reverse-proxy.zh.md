@@ -4,7 +4,7 @@
 
 ## 访问控制
 
-Markon 不把 TCP 来源地址当作身份。浏览器默认是协作者，能力由工作区功能开关决定；管理与结构性写操作要求显式 Admin session。协作者访问码对所有非 Admin 浏览器生效，loopback 与同机反向代理都不会绕过。
+Markon 不把 TCP 来源地址当作身份。浏览器默认是协作者，能力受数据权限和工作区高级开关约束；管理与结构性写操作要求显式 Admin session。协作者访问码对所有非 Admin 浏览器生效，loopback 与同机反向代理都不会绕过。
 
 每个请求还必须命中 Host allowlist。`--public-base-url https://docs.example.com` 会自动登记该 HTTPS origin；也可重复传 `--trusted-host https://docs.example.com`，或在 `settings.json` 的 `trusted_hosts` 数组中登记。未登记域名返回 421，以阻断 DNS rebinding。`X-Forwarded-For` / `X-Forwarded-Proto` 不参与身份授权。
 
@@ -25,7 +25,7 @@ Markon 不把 TCP 来源地址当作身份。浏览器默认是协作者，能�
 - **零信任隧道** — Cloudflare Access、Tailscale Funnel；流量在到达服务器之前已完成身份核验。
 - **网络层隔离** — Tailscale、WireGuard，或绑定 `--host 127.0.0.1` 仅本机访问，适合单人私有部署。
 
-如需对外提供只读访问，保持该 Workspace 的 `Edit`、`Chat`、`Shared` 关闭即可：协作者仍能浏览，并在 `Search` 开启时搜索，但没有正文、AI 或审阅状态写权限。管理与结构性操作继续要求显式 Admin session。网关层仍可按需要额外限制方法，但不要一刀切阻断 WebSocket upgrade 或门禁解锁所需请求。
+如需限制协作者修改原文件和共同审阅记录，保持该 Workspace 的 `Edit`、`Chat`、`Share` 关闭：通过门禁后仍能浏览、Search 搜索并持久化自己的 Personal 批注与进度；不因此获得源码、AI 或共同审阅写入能力。管理与结构性操作继续要求显式 Admin session。网关层仍可按需要额外限制方法，但不要一刀切阻断 WebSocket upgrade 或门禁解锁所需请求。
 
 ## 为什么需要反向代理
 
@@ -65,7 +65,7 @@ server {
     proxy_pass http://127.0.0.1:6419;
     proxy_http_version 1.1;
 
-    # WebSocket 支持（Shared 与 Live 需要）
+    # WebSocket 支持（Share 与 Live 需要）
     proxy_set_header Upgrade $http_upgrade;
     proxy_set_header Connection "upgrade";
 
@@ -99,7 +99,7 @@ VirtualHost 配置：
   SSLCertificateFile    /path/to/fullchain.pem
   SSLCertificateKeyFile /path/to/privkey.pem
 
-  # WebSocket（Shared 与 Live）
+  # WebSocket（Share 与 Live）
   RewriteEngine on
   RewriteCond %{HTTP:Upgrade} websocket [NC]
   RewriteCond %{HTTP:Connection} upgrade [NC]

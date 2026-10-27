@@ -7,6 +7,8 @@
  */
 
 import { CONFIG, i18n } from './core/config';
+import { initReviewScopeLabels } from './core/review-scope';
+import { startWorkspaceConfigWatcher } from './core/workspace-config';
 import { Logger } from './core/utils';
 import { copyText, flashBeside, flashCopied } from './core/clipboard';
 import { Meta } from './services/dom';
@@ -30,7 +32,6 @@ import { TOCNavigator } from './navigators/toc-navigator';
 import { AnnotationNavigator } from './navigators/annotation-navigator';
 import { ModalManager, showConfirmDialog } from './components/modal';
 import { FloatingLayer } from './components/floating-layer';
-import { mergeAnnotationSnapshots } from './services/annotation-sync';
 import { currentPageNoteLink, noteLinkIdFromHash } from './services/note-link';
 import { ReadingProgressTracker } from './services/reading-progress';
 
@@ -42,6 +43,7 @@ const INTERACTIVE_MARKDOWN_BODY_SELECTOR = '[data-markon-interactive-body]';
 export interface MarkonAppConfig {
     filePath?: string;
     isSharedMode?: boolean;
+    /** Legacy input retained for callers; Search is an essential capability. */
     enableSearch?: boolean;
     enableEdit?: boolean;
     enableLive?: boolean;
@@ -87,7 +89,6 @@ export class MarkonApp {
     #filePath: string;
     #isSharedMode: boolean;
     #canUseDocumentState: boolean;
-    #enableSearch: boolean;
     #enableEdit: boolean;
     #enableLive: boolean;
 
@@ -104,9 +105,9 @@ export class MarkonApp {
     constructor(config: MarkonAppConfig = {}) {
         this.#filePath = config.filePath || this.#getFilePathFromMeta();
         this.#isSharedMode = config.isSharedMode || false;
-        this.#canUseDocumentState =
-            Meta.flag(CONFIG.META_TAGS.CAN_MANAGE) || this.#isSharedMode;
-        this.#enableSearch = config.enableSearch || false;
+        // Annotate is essential. Admin controls management, and Share selects
+        // a common dataset; neither is a prerequisite for personal review.
+        this.#canUseDocumentState = Meta.get(CONFIG.META_TAGS.CAN_ANNOTATE) !== 'false';
         this.#enableEdit = config.enableEdit || false;
         this.#enableLive = config.enableLive || false;
         this.enableLive = this.#enableLive;
@@ -124,6 +125,7 @@ export class MarkonApp {
 
     /** Initialize application. */
     async init(): Promise<void> {
+        initReviewScopeLabels();
         // Always initialize search and keyboard shortcuts (they work without markdown body)
         this.#initKeyboardShortcuts();
         this.#initWorkspaceSpotlight();
@@ -152,15 +154,18 @@ export class MarkonApp {
         // 3. Load data
         await this.#loadData();
 
-        // 3b. Now that managers exist and the (empty) shared load is done, wire
-        // the shared-annotation WS handlers. WebSocketManager replays the
-        // server's buffered connect-time `all_annotations` into them here.
+        // 3b. Wire shared updates after the HTTP baseline and before connecting.
+        // Snapshot notifications trigger a fresh read guarded against concurrent
+        // local commits and incoming peer changes.
         if (this.#isSharedMode) {
             this.#setupWebSocketHandlers();
             // Gate annotation author colouring on shared mode — attribution is
             // meaningless for a single local user.
             document.body.classList.add('markon-shared');
         }
+        // Install snapshot reconciliation before starting the handshake. The
+        // transport remains independent of basic review initialization.
+        this.#connectCollaboration();
 
         // 4. Apply to DOM
         await this.#applyToDOM();
@@ -219,7 +224,9 @@ export class MarkonApp {
     async #initStorage(): Promise<void> {
         // WebSocket is needed by either shared-annotation fan-out or Live
         // broadcast. SQLite persistence itself uses the HTTP state endpoint.
-        if (this.#isSharedMode || this.#enableLive) {
+        // Directory pages have no document review channel. Their surface
+        // channel is a Live feature; Share alone must not start one.
+        if ((this.#isSharedMode && this.#markdownBody) || this.#enableLive) {
             const workspaceId = Meta.get(CONFIG.META_TAGS.WORKSPACE_ID);
             if (!workspaceId) {
                 Logger.warn('MarkonApp', 'Collaboration enabled without workspace-id; skipping');
@@ -235,37 +242,9 @@ export class MarkonApp {
             this.#wsManager = new WebSocketManager(workspaceId, target);
             this.ws = this.#wsManager;
 
-            try {
-                await this.#wsManager.connect();
-                Logger.log('MarkonApp', 'WebSocket connected');
 
-                const ws = this.#wsManager.getWebSocket();
-                if (ws) window.ws = ws;
-                else delete window.ws;
-
-                if (window.viewedManager) {
-                    if (this.#isSharedMode && !window.viewedManager.isSharedMode) {
-                        window.viewedManager.isSharedMode = true;
-                        window.viewedManager.preserveExpansionForNextSharedState();
-                    }
-                    // Always thread the op_id-aware adapter so viewed.ts can
-                    // tag outgoing frames and skip its own echoes, even on
-                    // tabs where `ws` was already populated by a prior init.
-                    window.viewedManager.wsManager = this.#wsManager;
-                    if (!window.viewedManager.ws) {
-                        window.viewedManager.ws = window.ws ?? null;
-                        window.viewedManager.setupWebSocketListeners();
-                    }
-                }
-            } catch (error) {
-                Logger.error('MarkonApp', 'WebSocket connection failed:', error);
-            }
-
-            // NOTE: shared-annotation message handlers (all_annotations, …) are
-            // registered later, after #initManagers + #loadData — they need the
-            // managers to exist, and they must run *after* the (empty) shared
-            // load so the server's connect-time `all_annotations` push isn't
-            // clobbered. The frame is buffered by WebSocketManager until then.
+            // Shared-annotation handlers are registered after managers and the
+            // HTTP baseline exist. Connect only after those handlers are ready.
 
             // External-edit auto-reload: applies to any workspace whose pages
             // hold a WS connection, not just shared-annotation ones.
@@ -273,6 +252,7 @@ export class MarkonApp {
         }
 
         if (!this.#markdownBody || !this.#canUseDocumentState) {
+            this.#connectCollaboration();
             return;
         }
 
@@ -291,6 +271,30 @@ export class MarkonApp {
             this.#storage,
             this.#isSharedMode ? this.#wsManager : null,
         );
+    }
+
+    #connectCollaboration(): void {
+        const manager = this.#wsManager;
+        if (!manager) return;
+        // Transport must never block review or keyboard initialization.
+        void manager.connect().then(() => {
+            Logger.log('MarkonApp', 'WebSocket connected');
+            const ws = manager.getWebSocket();
+            if (ws) window.ws = ws;
+            else delete window.ws;
+
+            if (this.#isSharedMode && window.viewedManager) {
+                if (!window.viewedManager.isSharedMode) {
+                    window.viewedManager.isSharedMode = true;
+                    window.viewedManager.preserveExpansionForNextSharedState();
+                }
+                window.viewedManager.wsManager = manager;
+                window.viewedManager.ws = ws;
+                window.viewedManager.setupWebSocketListeners();
+            }
+        }).catch((error: unknown) => {
+            Logger.error('MarkonApp', 'WebSocket connection failed:', error);
+        });
     }
 
     /**
@@ -422,9 +426,7 @@ export class MarkonApp {
         // Heading focus on click
         this.#setupHeadingClickFocus();
 
-        if (Meta.flag(CONFIG.META_TAGS.ENABLE_VIEWED)) {
-            this.#setupHeadingDoubleClick();
-        }
+        this.#setupHeadingDoubleClick();
 
         // Global keyboard handler
         this.#setupKeyboardEventListener();
@@ -559,23 +561,25 @@ export class MarkonApp {
             });
         }
 
-        shortcuts.register('UNDO', () => {
-            void this.#handleUndo().catch((error: unknown) => {
-                window.alert(error instanceof Error ? error.message : String(error));
+        if (this.#annotationManager) {
+            shortcuts.register('UNDO', () => {
+                void this.#handleUndo().catch((error: unknown) => {
+                    window.alert(error instanceof Error ? error.message : String(error));
+                });
             });
-        });
 
-        shortcuts.register('REDO', () => {
-            void this.#handleRedo().catch((error: unknown) => {
-                window.alert(error instanceof Error ? error.message : String(error));
+            shortcuts.register('REDO', () => {
+                void this.#handleRedo().catch((error: unknown) => {
+                    window.alert(error instanceof Error ? error.message : String(error));
+                });
             });
-        });
 
-        shortcuts.register('REDO_ALT', () => {
-            void this.#handleRedo().catch((error: unknown) => {
-                window.alert(error instanceof Error ? error.message : String(error));
+            shortcuts.register('REDO_ALT', () => {
+                void this.#handleRedo().catch((error: unknown) => {
+                    window.alert(error instanceof Error ? error.message : String(error));
+                });
             });
-        });
+        }
 
         shortcuts.register('NEXT_HEADING', () => {
             Logger.log('MarkonApp', 'NEXT_HEADING triggered');
@@ -587,29 +591,33 @@ export class MarkonApp {
             this.#navigateHeading('prev');
         });
 
-        shortcuts.register('NEXT_ANNOTATION', () => {
-            this.#annotationNavigator?.next();
-        });
+        if (this.#annotationManager) {
+            shortcuts.register('NEXT_ANNOTATION', () => {
+                this.#annotationNavigator?.next();
+            });
 
-        shortcuts.register('PREV_ANNOTATION', () => {
-            this.#annotationNavigator?.previous();
-        });
+            shortcuts.register('PREV_ANNOTATION', () => {
+                this.#annotationNavigator?.previous();
+            });
+        }
 
         shortcuts.register('SCROLL_HALF_PAGE_DOWN', () => {
             this.#smoothScrollBy(window.innerHeight / 3, 500);
         });
 
-        shortcuts.register('EXPORT_NOTES', () => {
-            this.exportNotes();
+        if (this.#annotationManager) {
+            shortcuts.register('EXPORT_NOTES', () => {
+                this.exportNotes();
+            });
+        }
+
+        shortcuts.register('TOGGLE_SECTION_COLLAPSE', () => {
+            this.#toggleCurrentSectionCollapse();
         });
 
-        if (Meta.flag(CONFIG.META_TAGS.ENABLE_VIEWED)) {
+        if (this.#storage) {
             shortcuts.register('TOGGLE_VIEWED', () => {
                 this.#toggleCurrentSectionViewed();
-            });
-
-            shortcuts.register('TOGGLE_SECTION_COLLAPSE', () => {
-                this.#toggleCurrentSectionCollapse();
             });
         }
 
@@ -828,33 +836,35 @@ export class MarkonApp {
         const validId = (id: unknown): id is string =>
             typeof id === 'string' && /^anno-[A-Za-z0-9-]{1,64}$/.test(id);
 
-        ws.on('all_annotations', (message) => {
+        const renderSharedAnnotations = (): void => {
             if (!annotationManager || !noteManager) return;
-            const inbound = (message.annotations ?? []) as Annotation[];
-            const annotations: Annotation[] = [];
-            inbound.forEach((anno) => {
-                if (!validId(anno?.id)) {
-                    Logger.warn('WebSocket', `Dropped annotation with invalid id: ${String(anno?.id)}`);
-                    return;
-                }
-                if (!isValidAnnotation(anno)) {
-                    Logger.warn('WebSocket', 'Dropped annotation with invalid anchor');
-                    return;
-                }
-                annotations.push(anno);
-            });
-
-            const { merged } = mergeAnnotationSnapshots(
-                annotationManager.getAll(),
-                annotations,
-            );
-
+            const popup = document.querySelector<HTMLElement>('.note-popup');
+            const openId = popup?.dataset['annotationId'];
             annotationManager.clearDOM();
-            annotationManager.replaceAll(merged);
             annotationManager.applyToDOM();
             noteManager.render();
+            if (validId(openId)) {
+                popup?.remove();
+                const highlight = this.#markdownBody?.querySelector<HTMLElement>(
+                    `.has-note[data-annotation-id="${openId}"]`,
+                );
+                if (highlight) noteManager.showNotePopup(highlight, openId);
+            }
             this.#dispatchNotesCountChanged();
+        };
 
+        ws.on('all_annotations', () => {
+            const storage = this.#storage;
+            if (!annotationManager || !noteManager || !storage) return;
+            void annotationManager.refreshSharedSnapshot(
+                async () => (await storage.reloadAnnotations())
+                    .filter(annotation => validId(annotation?.id) && isValidAnnotation(annotation)),
+                () => !!this.#markdownBody?.isConnected,
+            ).then(updated => {
+                if (updated) renderSharedAnnotations();
+            }).catch((error: unknown) => {
+                Logger.warn('WebSocket', 'Could not refresh shared annotations:', error);
+            });
         });
 
         ws.on('new_annotation', (message) => {
@@ -873,17 +883,16 @@ export class MarkonApp {
                 Logger.warn('WebSocket', 'Dropped new_annotation with invalid anchor');
                 return;
             }
-            // Belt-and-braces: a stray dupe (legacy peer, replay) still gets filtered.
+            // SaveAnnotation is an upsert: a peer editing a Note retains its
+            // id. Skip exact replays, but rebuild wrappers for changed data.
             const existingAnnotation = annotationManager.getById(incoming.id);
-            if (existingAnnotation) {
-                Logger.log('WebSocket', `Annotation ${incoming.id} already exists locally, skipping`);
+            if (existingAnnotation && JSON.stringify(existingAnnotation) === JSON.stringify(incoming)) {
+                Logger.log('WebSocket', `Skipped unchanged annotation ${incoming.id}`);
                 return;
             }
 
             void annotationManager.add(incoming, true);
-            annotationManager.applyToDOM([incoming]);
-            noteManager.render();
-            this.#dispatchNotesCountChanged();
+            renderSharedAnnotations();
         });
 
         ws.on('delete_annotation', (message) => {
@@ -1437,7 +1446,7 @@ export class MarkonApp {
 
             // Ignore double-clicks on interactive descendants.
             if (
-                target.closest('.viewed-checkbox') ||
+                target.closest('.viewed-checkbox-label, .section-actions, .viewed-toolbar') ||
                 target.closest('button') ||
                 target.closest('a') ||
                 target.closest('.section-expand-toggle')
@@ -1462,7 +1471,7 @@ export class MarkonApp {
             event && event.target instanceof HTMLElement ? event.target : null;
         Logger.log('MarkonApp', 'clearAllAnnotations called, showing confirm dialog');
         showConfirmDialog(
-            'Clear all annotations for this page?',
+            i18n.t('web.annot.clear.confirm'),
             async () => {
                 if (!this.#annotationManager || !this.#noteManager || !this.#storage) return;
                 Logger.log('MarkonApp', 'Confirm callback started');
@@ -1474,21 +1483,10 @@ export class MarkonApp {
                 Logger.log('MarkonApp', 'Notes cleared');
                 this.#dispatchNotesCountChanged();
 
-                if (Meta.flag(CONFIG.META_TAGS.ENABLE_VIEWED)) {
-                    await this.#storage.clearViewedState();
-                    Logger.log('MarkonApp', 'Viewed state cleared from storage');
-
-                    // Shared mode: viewedManager updates via WebSocket broadcast.
-                    // Local mode: page reloads.
-                    if (this.#isSharedMode && window.viewedManager) {
-                        Logger.log('MarkonApp', 'Shared mode: viewedManager will update via WebSocket broadcast');
-                    }
-                }
-
                 if (!this.#isSharedMode) location.reload();
             },
             anchorElement,
-            'Clear',
+            i18n.t('web.annot.clear.action'),
         );
     }
 
@@ -1643,7 +1641,6 @@ export class MarkonApp {
         this.#workspaceSpotlight = new WorkspaceSpotlight({
             workspaceId,
             currentPath: this.#filePath,
-            enableContentSearch: this.#enableSearch,
         });
         this.#workspaceSpotlight.bindTriggers();
         window.workspaceSpotlight = this.#workspaceSpotlight;
@@ -1751,6 +1748,8 @@ if (__DEV__) {
 }
 
 document.addEventListener('DOMContentLoaded', () => {
+    const workspaceId = Meta.get(CONFIG.META_TAGS.WORKSPACE_ID);
+    if (workspaceId) startWorkspaceConfigWatcher(workspaceId);
     // Chat-only page: served by `/_/{ws}/chat` (template `chat.html`), opened
     // by ChatManager.#openPopout() into its own browser-level window. The
     // server-rendered HTML carries `<meta name="chat-only" content="1">`,
@@ -1793,7 +1792,6 @@ document.addEventListener('DOMContentLoaded', () => {
     // same meta tag (and then location.pathname) itself.
     const app = new MarkonApp({
         isSharedMode,
-        enableSearch: Meta.flag(CONFIG.META_TAGS.ENABLE_SEARCH),
         enableEdit: Meta.flag(CONFIG.META_TAGS.ENABLE_EDIT),
         enableLive: Meta.flag(CONFIG.META_TAGS.ENABLE_LIVE),
     });
@@ -1833,33 +1831,4 @@ document.addEventListener('DOMContentLoaded', () => {
             window.alert(error instanceof Error ? error.message : String(error));
         });
 
-    // Connect to per-workspace WebSocket — reload page when config flags change.
-    const wsId = Meta.get(CONFIG.META_TAGS.WORKSPACE_ID);
-    if (wsId) {
-        const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
-        let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
-        let attempt = 0;
-        let stopped = false;
-        const connectConfigWs = (): void => {
-            if (stopped) return;
-            const sock = new WebSocket(`${proto}//${location.host}/_/ws/${wsId}`);
-            sock.onopen = () => {
-                attempt = 0;
-            };
-            sock.onmessage = () => window.location.reload();
-            sock.onclose = () => {
-                if (stopped) return;
-                const delay = Math.min(
-                    CONFIG.WEBSOCKET.MAX_RECONNECT_DELAY,
-                    CONFIG.WEBSOCKET.INITIAL_RECONNECT_DELAY * 2 ** attempt++,
-                );
-                reconnectTimer = setTimeout(connectConfigWs, delay);
-            };
-        };
-        connectConfigWs();
-        window.addEventListener('beforeunload', () => {
-            stopped = true;
-            if (reconnectTimer) clearTimeout(reconnectTimer);
-        });
-    }
 });

@@ -14,7 +14,7 @@
 - **`settings.json` 字段**:新字段一律 `#[serde(default = "...")]`;`normalize()` 不得重置
   `salt` 或 `workspaces`;不得启用 `deny_unknown_fields`。
 
-**判据**:版本升级与进程重启后,`markon ls` 的 workspace id 必须**逐一不变**,批注 / 已读数据
+**判据**:版本升级与进程重启后,`markon ls` 的 workspace id 必须**逐一不变**,批注 / 进度数据
 必须**不丢**。涉及上述变更时,先冷态备份 `~/.markon/{settings.json, annotation.sqlite}`。
 
 ## 通用约定

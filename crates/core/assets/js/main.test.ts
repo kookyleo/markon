@@ -1,5 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { MarkonApp } from './main';
+import { FloatingLayer } from './components/floating-layer';
+import { WebSocketManager } from './managers/websocket-manager';
 import type { Annotation } from './managers/annotation-manager';
 
 /**
@@ -31,6 +33,13 @@ async function flush(): Promise<void> {
     await Promise.resolve();
     await new Promise((resolve) => setTimeout(resolve, 0));
     await Promise.resolve();
+}
+
+function serveAnnotations(annotations: Annotation[]): void {
+    vi.mocked(fetch).mockResolvedValue({
+        ok: true, status: 200, text: async () => '',
+        json: async () => ({ annotations, viewed_state: {} }),
+    } as Response);
 }
 
 function silenceLogs(): { restore: () => void } {
@@ -89,6 +98,11 @@ describe('MarkonApp', () => {
     let restore: () => void;
 
     beforeEach(() => {
+        vi.stubGlobal('ResizeObserver', class {
+            observe(): void {}
+            unobserve(): void {}
+            disconnect(): void {}
+        });
         document.body.innerHTML = '';
         document.head.innerHTML = '';
         seedMeta('workspace-id', 'ws1');
@@ -113,6 +127,8 @@ describe('MarkonApp', () => {
     });
 
     afterEach(() => {
+        window.chatManager?.destroy();
+        for (const layer of FloatingLayer.all()) layer.destroy();
         restore();
         vi.restoreAllMocks();
         vi.unstubAllGlobals();
@@ -143,6 +159,96 @@ describe('MarkonApp', () => {
 
         expect(app.getManagers().shortcutsManager?.run('THEME_PANEL')).toBe(true);
         expect(togglePanel).toHaveBeenCalledTimes(1);
+    });
+
+    it.each([
+        [false, false, false], [false, false, true],
+        [false, true, false], [false, true, true],
+        [true, false, false], [true, false, true],
+        [true, true, false], [true, true, true],
+    ])('keeps personal review available independently of legacy flags and roles (Viewed=%s, admin=%s, Share=%s)', async (viewed, admin, shared) => {
+        document.querySelector('meta[name="can-manage"]')?.setAttribute('content', String(admin));
+        seedMeta('enable-viewed', String(viewed));
+        seedMeta('shared-annotation', String(shared));
+        vi.stubGlobal('WebSocket', MockWS);
+        seedMarkdownBody();
+        const app = new MarkonApp({ filePath: 'docs/x.md', isSharedMode: shared });
+        await app.init();
+
+        app.getManagers().shortcutsManager?.showHelp();
+        const listed = (name: string): boolean =>
+            document.querySelector(`.shortcut-item[data-shortcut-name="${name}"]`) !== null;
+        expect(listed('TOGGLE_SECTION_COLLAPSE')).toBe(true);
+        expect(listed('TOGGLE_VIEWED')).toBe(true);
+        for (const name of ['UNDO', 'REDO', 'EXPORT_NOTES', 'NEXT_ANNOTATION', 'PREV_ANNOTATION', 'TOGGLE_SELECTION_TOOLBAR']) {
+            expect(listed(name), name).toBe(true);
+        }
+        expect(listed('REDO_ALT')).toBe(false); // Shown as an alias on the Redo row.
+        expect(document.querySelector('[data-shortcut-name="TOGGLE_SECTION_COLLAPSE"]')
+            ?.closest('.shortcuts-category')?.querySelector('h3')?.textContent).toBe('web.kbd.cat.reading');
+        {
+            expect(document.querySelector('[data-shortcut-name="EXPORT_NOTES"]')
+                ?.closest('.shortcuts-category')?.querySelector('h3')?.textContent).toBe('web.kbd.cat.output');
+            expect(document.querySelector('[data-shortcut-name="TOGGLE_VIEWED"]')
+                ?.closest('.shortcuts-category')?.querySelector('h3')?.textContent).toBe('web.kbd.cat.review');
+        }
+    });
+
+    it('clears annotations without deleting independent progress markers', async () => {
+        seedMarkdownBody();
+        seedMeta('enable-viewed', 'false');
+        vi.stubGlobal('WebSocket', MockWS);
+        const app = new MarkonApp({ filePath: 'docs/x.md', isSharedMode: true });
+        await app.init();
+        const managers = app.getManagers();
+        const clearAnnotations = vi.spyOn(managers.annotationManager!, 'clear').mockResolvedValue();
+        const clearProgress = vi.spyOn(managers.storage!, 'clearViewedState').mockResolvedValue();
+
+        await app.clearAllAnnotations();
+        document.querySelector<HTMLButtonElement>('.confirm-ok')?.click();
+        await vi.waitFor(() => expect(clearAnnotations).toHaveBeenCalledOnce());
+        await flush();
+        expect(clearProgress).not.toHaveBeenCalled();
+    });
+
+    it.each(Array.from({ length: 16 }, (_, flags) => [
+        Boolean(flags & 1), Boolean(flags & 2), Boolean(flags & 4), Boolean(flags & 8),
+    ]))('keeps Annotate independent while selection actions follow Edit=%s Chat=%s Live=%s Share=%s', async (edit, chat, live, share) => {
+        document.querySelector('meta[name="can-manage"]')?.setAttribute('content', 'false');
+        for (const [name, value] of [['can-annotate', true], ['enable-edit', edit], ['enable-chat', chat], ['enable-live', live], ['shared-annotation', share]]) {
+            seedMeta(String(name), String(value));
+        }
+        vi.stubGlobal('WebSocket', MockWS);
+        const body = seedMarkdownBody();
+        const app = new MarkonApp({ filePath: 'docs/x.md', enableEdit: edit, enableLive: live, isSharedMode: share });
+        await app.init();
+        const managers = app.getManagers();
+        expect(managers.storage).not.toBeNull();
+        expect(managers.annotationManager).not.toBeNull();
+        expect(managers.popoverManager?.isEnabled()).toBe(true);
+        const range = document.createRange();
+        range.selectNodeContents(body.querySelector('p')!);
+        range.getBoundingClientRect = () => new DOMRect(100, 100, 120, 20);
+        managers.popoverManager!.show(range);
+        const toolbar = document.querySelector('.selection-popover')!;
+        expect(toolbar.querySelector('[data-action="add-note"]')).not.toBeNull();
+        expect(toolbar.querySelector('[data-action="highlight-yellow"]')).not.toBeNull();
+        expect(toolbar.querySelector('[data-action="edit"]') !== null).toBe(edit);
+        expect(toolbar.querySelector('[data-action="chat"]') !== null).toBe(chat);
+        expect(managers.shortcutsManager?.run('TOGGLE_SELECTION_TOOLBAR')).toBe(true);
+        expect(managers.popoverManager?.isEnabled()).toBe(false);
+        managers.shortcutsManager?.run('TOGGLE_SELECTION_TOOLBAR');
+        expect(managers.popoverManager?.isEnabled()).toBe(true);
+    });
+
+    it('does not block personal review on a pending Live handshake', async () => {
+        vi.spyOn(WebSocketManager.prototype, 'connect').mockReturnValue(new Promise(() => {}));
+        seedMeta('enable-live', 'true');
+        seedMarkdownBody();
+        const app = new MarkonApp({ filePath: 'docs/x.md', enableLive: true });
+        await app.init();
+        expect(app.getManagers().popoverManager).not.toBeNull();
+        expect(app.getManagers().shortcutsManager?.run('TOGGLE_SELECTION_TOOLBAR')).toBe(true);
     });
 
     it('document mode produces a populated manager snapshot', async () => {
@@ -203,7 +309,13 @@ describe('MarkonApp', () => {
 
             try {
                 if (source === 'all_annotations') {
-                    ws.dispatchMessage({ type: source, annotations: [...invalid, valid] });
+                    // WS snapshots only trigger an authoritative HTTP refresh.
+                    vi.mocked(fetch).mockResolvedValue({
+                        ok: true, status: 200,
+                        json: async () => ({ annotations: [...invalid, valid], viewed_state: {} }),
+                    } as Response);
+                    ws.dispatchMessage({ type: source, annotations: [] });
+                    await flush();
                 } else if (source === 'new_annotation') {
                     invalid.forEach(annotation => ws.dispatchMessage({ type: source, annotation }));
                     expect(annotationManager?.getAll()).toEqual([]);
@@ -317,6 +429,169 @@ describe('MarkonApp', () => {
         expect(editor?.querySelector<HTMLTextAreaElement>('.note-textarea')?.value)
             .toBe('Original note');
         expect(card.classList.contains('highlight-active')).toBe(true);
+    });
+
+    it('upserts remote Note edits, refreshes open content, and skips exact replays', async () => {
+        seedMeta('shared-annotation', 'true');
+        seedMeta('file-path', '/docs/shared.md');
+        vi.stubGlobal('WebSocket', MockWS);
+        const body = seedMarkdownBody();
+        const app = new MarkonApp({ filePath: '/docs/shared.md', isSharedMode: true });
+        await app.init();
+        const { annotationManager, noteManager, wsManager } = app.getManagers();
+        if (!annotationManager || !noteManager || !wsManager) throw new Error('Missing shared managers');
+        const socket = itemAt(MockWS.instances, 0);
+        const range = document.createRange();
+        range.selectNodeContents(body.querySelector('p')!);
+        const original = annotationManager.createAnnotation(range, 'has-note', 'span', 'Original note');
+        serveAnnotations([original]);
+        socket.dispatchMessage({ type: 'all_annotations', annotations: [original] });
+        await flush();
+        const selector = `[data-annotation-id="${original.id}"]`;
+        const highlight = body.querySelector<HTMLElement>(selector)!;
+        noteManager.showNotePopup(highlight, original.id);
+        const render = vi.spyOn(noteManager, 'render');
+        const dispatch = vi.spyOn(document, 'dispatchEvent');
+        const fetchCount = vi.mocked(fetch).mock.calls.length;
+
+        const updated = { ...original, note: 'Updated by another reader' };
+        socket.dispatchMessage({ type: 'new_annotation', annotation: updated, op_id: 'remote-update' });
+
+        expect(annotationManager.getById(original.id)?.note).toBe(updated.note);
+        expect(body.querySelectorAll(selector)).toHaveLength(1);
+        expect(body.querySelector<HTMLElement>(selector)?.dataset['note']).toBe(updated.note);
+        expect(noteManager.getNoteCardsData()).toHaveLength(1);
+        expect(noteManager.getNoteCardsData()[0]?.note).toBe(updated.note);
+        expect(document.querySelector('.note-popup .note-content')?.textContent).toBe(updated.note);
+        expect(app.notesCount()).toBe(1);
+        expect(render).toHaveBeenCalledOnce();
+        const updatedWrapper = body.querySelector(selector);
+        const eventCount = dispatch.mock.calls.length;
+
+        socket.dispatchMessage({ type: 'new_annotation', annotation: { ...updated }, op_id: 'remote-replay' });
+        expect(body.querySelectorAll(selector)).toHaveLength(1);
+        expect(body.querySelector(selector)).toBe(updatedWrapper);
+        expect(render).toHaveBeenCalledOnce();
+        expect(dispatch.mock.calls).toHaveLength(eventCount);
+
+        socket.dispatchMessage({ type: 'new_annotation', annotation: { ...updated, note: '' } });
+        expect(app.notesCount()).toBe(0);
+        expect(noteManager.getNoteCardsData()).toHaveLength(0);
+        expect(document.querySelector('.note-popup')).toBeNull();
+        const event = dispatch.mock.calls.at(-1)?.[0];
+        expect(event).toBeInstanceOf(CustomEvent);
+        expect((event as CustomEvent<{ count: number }>).detail.count).toBe(0);
+        expect(vi.mocked(fetch).mock.calls).toHaveLength(fetchCount);
+        wsManager.disconnect();
+    });
+
+    it('reloads committed annotations after delayed initial and reconnect snapshots', async () => {
+        seedMeta('shared-annotation', 'true');
+        seedMeta('file-path', '/docs/shared.md');
+        vi.stubGlobal('WebSocket', MockWS);
+        const body = seedMarkdownBody();
+        const app = new MarkonApp({ filePath: '/docs/shared.md', isSharedMode: true });
+        await app.init();
+        const { annotationManager, noteManager, wsManager } = app.getManagers();
+        if (!annotationManager || !noteManager || !wsManager) throw new Error('Missing shared managers');
+        const socket = itemAt(MockWS.instances, 0);
+        const range = document.createRange();
+        range.selectNodeContents(body.querySelector('p')!);
+        const committed = annotationManager.createAnnotation(range, 'has-note', 'span', 'Committed before WS');
+        await annotationManager.add(committed);
+        annotationManager.applyToDOM();
+        noteManager.render();
+        const fetchCount = vi.mocked(fetch).mock.calls.length;
+
+        // The delayed WS payload predates our commit; the fresh GET sees it.
+        serveAnnotations([committed]);
+        socket.dispatchMessage({ type: 'all_annotations', annotations: [] });
+        await flush();
+        expect(annotationManager.getById(committed.id)).not.toBeNull();
+        expect(app.notesCount()).toBe(1);
+        const highlight = body.querySelector<HTMLElement>(`[data-annotation-id="${committed.id}"]`)!;
+        noteManager.showNotePopup(highlight, committed.id);
+
+        // A reconnect snapshot must reflect a deletion made while disconnected.
+        const dispatch = vi.spyOn(document, 'dispatchEvent');
+        serveAnnotations([]);
+        socket.dispatchMessage({ type: 'all_annotations', annotations: [] });
+        await flush();
+        expect(annotationManager.getAll()).toEqual([]);
+        expect(body.querySelector('[data-annotation-id]')).toBeNull();
+        expect(noteManager.getNoteCardsData()).toEqual([]);
+        expect(document.querySelector('.note-popup')).toBeNull();
+        expect(app.notesCount()).toBe(0);
+        const event = dispatch.mock.calls.at(-1)?.[0];
+        expect((event as CustomEvent<{ count: number }>).detail.count).toBe(0);
+        expect(vi.mocked(fetch).mock.calls).toHaveLength(fetchCount + 2);
+        wsManager.disconnect();
+    });
+
+    it('replaces stale HTTP state and retains only local commits made during a reconnect', async () => {
+        seedMeta('shared-annotation', 'true');
+        seedMeta('file-path', '/docs/shared.md');
+        vi.stubGlobal('WebSocket', MockWS);
+        const body = seedMarkdownBody();
+        const http: Annotation = {
+            id: 'anno-http', type: 'has-note', tagName: 'span',
+            anchor: { position: 0, exact: 'World', prefix: '', suffix: '' },
+            text: 'World', note: 'deleted before the socket subscribed', createdAt: 1,
+        };
+        vi.mocked(fetch).mockResolvedValue({
+            ok: true, status: 200, text: async () => '',
+            json: async () => ({ annotations: [http], viewed_state: {} }),
+        } as Response);
+        const app = new MarkonApp({ filePath: '/docs/shared.md', isSharedMode: true });
+        await app.init();
+        const { annotationManager, wsManager } = app.getManagers();
+        if (!annotationManager || !wsManager) throw new Error('Missing shared managers');
+        const socket = itemAt(MockWS.instances, 0);
+        expect(app.notesCount()).toBe(1);
+        serveAnnotations([]);
+        socket.dispatchMessage({ type: 'all_annotations', annotations: [] });
+        await flush();
+        expect(app.notesCount()).toBe(0);
+        expect(annotationManager.getAll()).toEqual([]);
+
+        socket.dispatchMessage({ type: 'new_annotation', annotation: { ...http, id: 'anno-peer' } });
+        socket.readyState = MockWS.CLOSED;
+        socket.onclose?.({ code: 1006, reason: '', wasClean: false } as CloseEvent);
+        const range = document.createRange();
+        range.selectNodeContents(body.querySelector('p')!);
+        const local = annotationManager.createAnnotation(range, 'has-note', 'span', 'committed while disconnected');
+        await annotationManager.add(local);
+        await wsManager.connect();
+        serveAnnotations([local]);
+        itemAt(MockWS.instances, 1).dispatchMessage({ type: 'all_annotations', annotations: [] });
+        await flush();
+        expect(annotationManager.getAll()).toEqual([local]);
+        expect(app.notesCount()).toBe(1);
+        expect(body.querySelector('[data-annotation-id="anno-peer"]')).toBeNull();
+        expect(body.querySelector(`[data-annotation-id="${local.id}"]`)).not.toBeNull();
+        wsManager.disconnect();
+    });
+
+    it('double-clicking Read text does not trigger the heading fold action', async () => {
+        const body = seedMarkdownBody();
+        const heading = document.createElement('h2');
+        heading.id = 'read-section';
+        heading.innerHTML = '<span class="heading-title">Section</span><span class="section-actions"><label class="viewed-checkbox-label"><input type="checkbox" class="viewed-checkbox"><span class="viewed-text">Read</span></label></span>';
+        body.appendChild(heading);
+        const app = new MarkonApp({ filePath: '/docs/read.md' });
+        await app.init();
+        const previous = window.viewedManager;
+        const toggleCollapse = vi.fn();
+        window.viewedManager = { toggleCollapse } as unknown as NonNullable<typeof window.viewedManager>;
+        try {
+            heading.querySelector('.viewed-text')?.dispatchEvent(new MouseEvent('dblclick', { bubbles: true }));
+            expect(toggleCollapse).not.toHaveBeenCalled();
+            heading.querySelector('.heading-title')?.dispatchEvent(new MouseEvent('dblclick', { bubbles: true }));
+            expect(toggleCollapse).toHaveBeenCalledWith('read-section');
+        } finally {
+            if (previous) window.viewedManager = previous;
+            else delete window.viewedManager;
+        }
     });
 
     it('plain markdown-body without the interactive marker stays in minimal mode', async () => {

@@ -1,4 +1,4 @@
-# Live collaboration
+# Live
 
 <div class="feature-illustration"><img src="/illustrations/06-live.svg" alt="Follow a live reading session" /></div>
 
@@ -7,17 +7,18 @@ Markon Live lets one browser broadcast its reading context while browsers in Fol
 ## Modes
 
 - **Off:** read independently without sending or receiving actions.
-- **Broadcast:** publish page, scroll position, section focus, text selection, and Viewed changes.
+- **Present:** publish page, scroll position, section focus, and text selection.
 - **Follow:** receive those actions and navigate, scroll, and highlight accordingly.
 
-Each browser chooses its own mode. People who do not follow remain independent.
+Each browser chooses its own mode. People who do not follow remain independent. Present is the product name; the internal `broadcast` protocol identifier remains compatible.
 
 ## What synchronizes
 
 - page navigation and relative reading position in documents and diffs;
 - section focus selected by click or `j`/`k`;
-- text selections and clearing them;
-- Viewed changes.
+- text selections and clearing them.
+
+Live synchronizes reading context only. Document section progress synchronizes through Share, independently of Present / Follow. Personal review records remain isolated; Live does not publish them, enable Share, or alter progress markers. Markdiff file progress remains browser-local.
 
 Each browser picks a representative color used for the collaboration orb, focus hint, and selection. No account or nickname is required.
 
@@ -31,7 +32,7 @@ markon set <ID|INDEX> live on
 
 | Shortcut | Action |
 |---|---|
-| <kbd>l</kbd> | Follow ⇄ Broadcast; from Off, enter Follow |
+| <kbd>l</kbd> | Follow ⇄ Present; from Off, enter Follow |
 | <kbd>Shift</kbd>+<kbd>l</kbd> | Off ⇄ last active mode |
 
 Live exchanges instructions only between browsers connected to the same Markon service. It does not call an external cloud Provider; transport encryption depends on your HTTPS or proxy configuration.

@@ -118,7 +118,6 @@ impl PendingEditStore {
 
     /// Resolve every still-pending edit with `Resolution::Abandoned`. Used by
     /// shutdown / panel-close paths so awaiting tools wake up cleanly.
-    #[allow(dead_code)] // wired up by the panel-close path in a later patch
     pub(crate) fn abandon_all(&self) {
         let mut guard = self
             .inner

@@ -1,4 +1,6 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 800" width="800" height="800">
+  <title>Annotate in Personal and Shared review</title>
+  <desc>Highlight, Strike, and Note are essential after workspace access. This Personal example needs neither Admin nor Share. Both Personal and Shared records persist in SQLite; browser-private Personal records stay isolated.</desc>
   <defs>
     <filter id="sh" x="-20%" y="-20%" width="140%" height="140%">
       <feGaussianBlur in="SourceAlpha" stdDeviation="6"/>
@@ -15,7 +17,12 @@
   </defs>
   <rect width="800" height="800" fill="#FAFAF7"/>
 
-  <!-- Avatars -->
+  <g font-family="system-ui, sans-serif" text-anchor="middle">
+    <text x="400" y="105" fill="#30383D" font-size="30" font-weight="650">Annotate</text>
+    <text x="400" y="134" fill="#69737A" font-size="14">Personal</text>
+  </g>
+
+  <!-- Attribution colors do not grant access or enable sharing. -->
   <g transform="translate(110 200)" filter="url(#sh)">
     <circle r="32" fill="#FFFFFF" stroke="#EAB308" stroke-width="3"/>
     <circle r="22" fill="#FFE066"/>
@@ -59,8 +66,12 @@
     <rect x="22" y="58" rx="2" width="180" height="7" fill="#4B5563"/>
     <rect x="22" y="72" rx="2" width="210" height="7" fill="#4B5563"/>
     <rect x="22" y="86" rx="2" width="120" height="7" fill="#4B5563"/>
-    <!-- reply line -->
+    <!-- Note action footer; this is not a reply thread. -->
     <line x1="22" y1="106" x2="218" y2="106" stroke="#FDE68A"/>
     <rect x="22" y="114" rx="2" width="50" height="7" fill="#9CA3AF"/>
+  </g>
+  <g font-family="system-ui, sans-serif" text-anchor="middle" fill="#69737A">
+    <text x="400" y="690" font-size="16">Highlight · Strike · Note</text>
+    <text x="400" y="722" font-size="14">Personal or Shared · Personal needs no Admin or Share</text>
   </g>
 </svg>

@@ -1,9 +1,9 @@
 ---
-title: 工作区与文件浏览
+title: 工作区与文件浏览（Workspace / Files）
 description: Markon 多工作区、单文件隔离、GitHub 风格目录页、文件操作与 Workspace Spotlight 入口。
 ---
 
-# 工作区与文件浏览
+# 工作区与文件浏览（Workspace / Files）
 
 Markon 的基本单位是 **Workspace**。它既可以是一个目录，也可以是一个被严格限制范围的单文件。
 
@@ -16,7 +16,7 @@ Markon 的基本单位是 **Workspace**。它既可以是一个目录，也可�
 - `All files` / `Markdown` 文件筛选；
 - 文件名、H1 文档标题与内容统一进入 Workspace Spotlight；
 - Git 仓库显示当前分支、分支/标签切换器、提交数和工作区改动；
-- 右侧显示六个功能开关与 Git 状态；
+- 右侧显示四个高级能力开关（Edit、Chat、Live、Share）与 Git 状态；
 - 别名、绝对路径、workspace id 和当前 URL 可直接复制。
 
 表格列宽可以拖动，布局偏好保存在当前浏览器。窄屏会切换成适合移动端的单列布局。
@@ -29,7 +29,7 @@ Markon 的基本单位是 **Workspace**。它既可以是一个目录，也可�
 - 新建目录；
 - 删除文件；
 - 修改 Workspace 别名；
-- 调整 `Search`、`Viewed`、`Edit`、`Live`、`Chat`、`Shared` 开关。
+- 调整 `Edit`、`Chat`、`Live`、`Share` 开关。
 
 这些接口会再次校验管理员角色、same-origin 和工作区路径，协作者不能通过直接构造请求获得结构性写权限。
 
@@ -41,7 +41,7 @@ Markon 的基本单位是 **Workspace**。它既可以是一个目录，也可�
 - Markdown 的首个顶层 H1 文档标题；
 - 全文命中及上下文片段。
 
-可以用方向键移动、Enter 打开、Esc 关闭。Search 未开启时仍可使用文件导航；内容索引结果取决于该工作区的 Search 开关。
+可以用方向键移动、Enter 打开、Esc 关闭。Search 与文件导航是基础能力，无需开启；内容索引就绪后即可提供全文结果。
 
 → 搜索实现与限制见 [Workspace Spotlight](/zh/features/search)。
 

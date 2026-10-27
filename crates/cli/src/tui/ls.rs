@@ -341,7 +341,7 @@ impl App {
                 match self.handle.block_on(self.server.cleanup_orphaned_data()) {
                     Ok(result) => {
                         self.status = Some(Status::Info(format!(
-                            "deleted {} annotations, {} viewed records, {} chat threads and {} messages",
+                            "deleted {} annotations, {} progress records, {} chat threads and {} messages",
                             result.deleted_annotations,
                             result.deleted_viewed_files,
                             result.deleted_chat_threads,
@@ -403,12 +403,13 @@ impl App {
             .take(visible_rows)
         {
             let marker = if i == self.selected { "> " } else { "  " };
-            let features = crate::format_workspace_feature_tags(ws.flags, ws.search_ready);
+            let features = crate::format_workspace_feature_tags(ws.flags);
             let row = format!(
-                "{marker}{}. {}   {}   {}",
+                "{marker}{}. {}   {} · {}   {}",
                 i + 1,
                 display_name(ws),
                 features,
+                crate::workspace_search_status(ws.search_ready),
                 ws.id
             );
             frame.selectable(row, i == self.selected);
@@ -444,10 +445,9 @@ impl App {
 
         // Rows, labels, and order all come from the single source of truth so
         // the display and the toggle can never disagree.
-        for (i, (enabled, _, _, form_label)) in
-            crate::workspace_flag_entries(self.edit_flags, false)
-                .into_iter()
-                .enumerate()
+        for (i, (enabled, _, _, form_label)) in crate::workspace_flag_entries(self.edit_flags)
+            .into_iter()
+            .enumerate()
         {
             frame.checkbox(enabled, form_label, i == self.edit_cursor);
         }
@@ -486,7 +486,7 @@ impl App {
                 crate::format_data_bytes(stats.database_bytes)
             ));
             frame.line(format!(
-                "Annotation files: {} · annotations: {} · viewed records: {}",
+                "Annotation files: {} · annotations: {} · progress records: {}",
                 stats.orphaned_annotation_files,
                 stats.orphaned_annotations,
                 stats.orphaned_viewed_files,
@@ -536,7 +536,7 @@ impl App {
 
 /// Number of editable feature flags — the row count of the Edit form and the
 /// clamp bound for its cursor. Matches [`crate::workspace_flag_entries`].
-const FLAG_COUNT: usize = 6;
+const FLAG_COUNT: usize = 4;
 
 fn viewport_start(selected: usize, total: usize, visible: usize) -> usize {
     if visible == 0 || total <= visible {

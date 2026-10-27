@@ -83,13 +83,13 @@ export const FEATURE_GALLERY_COPY = {
           {
             image: '/illustrations/03-viewed.svg',
             title: '读过的就收起，把进度交给 Markon',
-            desc: '按 Section 标记 Viewed，读完一段就折叠一段。进度会被记住，下次回来，哪些读过、哪些还没读一目了然。',
+            desc: '通过 Progress 的 Read 复选框标为已读，读完一段就折叠一段。进度会被记住，下次回来，哪些读过、哪些还没读一目了然。',
             link: '/features/viewed',
           },
           {
             image: '/illustrations/19-viewed-complete.svg',
             title: '让滚动条越来越短，Get things done',
-            desc: '同一套方法也用于 Markdiff：逐个读完文件变更并标记 Viewed。未读内容归零后，这轮审阅也就完成啦。',
+            desc: '同一套方法也用于 Markdiff：逐个读完文件变更并勾选 Read。未读内容归零后，这轮审阅也就完成啦。',
             link: '/features/git',
           },
         ],
@@ -100,7 +100,7 @@ export const FEATURE_GALLERY_COPY = {
           {
             image: '/illustrations/06-live.svg',
             title: '一起读，先让所有人看见同一处',
-            desc: '远程讲解，最怕听众不同步。开启 Live 后，跟随端会同步主控端的 Section 焦点、文字选区和 Viewed 状态，共享同一份阅读上下文。',
+            desc: '远程讲解，最怕听众不同步。开启 Live 后，跟随端会同步主控端的 页面、阅读位置、Section 焦点和文字选区，共享同一份阅读上下文。',
             link: '/features/live',
           },
           {
@@ -203,13 +203,13 @@ export const FEATURE_GALLERY_COPY = {
           {
             image: '/illustrations/03-viewed.svg',
             title: 'Put completed reading away and let Markon track progress',
-            desc: 'Mark a Section Viewed and fold it when you finish. Progress is remembered, so when you return, what is read and what remains are immediately clear.',
+            desc: 'Check Read for a Section and fold it when you finish. Progress is remembered, so when you return, what is read and what remains are immediately clear.',
             link: '/features/viewed',
           },
           {
             image: '/illustrations/19-viewed-complete.svg',
             title: 'Shorten the scroll until the review is done',
-            desc: 'The same method works in Markdiff: review changed files one by one and mark them Viewed. When unread changes reach zero, the review is complete.',
+            desc: 'The same method works in Markdiff: review changed files one by one and check Read. When unread changes reach zero, the review is complete.',
             link: '/features/git',
           },
         ],
@@ -220,7 +220,7 @@ export const FEATURE_GALLERY_COPY = {
           {
             image: '/illustrations/06-live.svg',
             title: 'For a shared reading, first put everyone on the same passage',
-            desc: 'Remote walkthroughs fail when the audience falls out of sync. Live lets followers mirror the presenter’s Section focus, text selection, and Viewed state, sharing the same reading context.',
+            desc: 'Remote walkthroughs fail when the audience falls out of sync. Live lets followers mirror the presenter’s page, reading position, Section focus, and text selection, sharing the same reading context.',
             link: '/features/live',
           },
           {
@@ -323,13 +323,13 @@ export const FEATURE_GALLERY_COPY = {
           {
             image: '/illustrations/03-viewed.svg',
             title: '読み終えた部分はしまい、進捗は Markon に任せる',
-            desc: 'Section を Viewed にして、読み終えたら折りたためます。進捗は記憶されるため、戻ったときに既読と未読がひと目で分かります。',
+            desc: 'Progress の Read チェックボックスで Section を既読にし、読み終えたら折りたためます。進捗は記憶されるため、戻ったときに既読と未読がひと目で分かります。',
             link: '/features/viewed',
           },
           {
             image: '/illustrations/19-viewed-complete.svg',
             title: 'スクロールを短くし、レビューを完了へ近づける',
-            desc: '同じ方法は Markdiff でも使えます。変更されたファイルを一つずつ読み、Viewed にします。未読がゼロになれば、そのレビューは完了です。',
+            desc: '同じ方法は Markdiff でも使えます。変更されたファイルを一つずつ読み、Read をチェックします。未読がゼロになれば、そのレビューは完了です。',
             link: '/features/git',
           },
         ],
@@ -340,7 +340,7 @@ export const FEATURE_GALLERY_COPY = {
           {
             image: '/illustrations/06-live.svg',
             title: '一緒に読むなら、まず同じ箇所を見る',
-            desc: '遠隔での説明は、聞き手とのずれが大きな障害です。Live を使うと、フォロワー側が主操作側の Section、文字選択、Viewed 状態に追従し、同じ閲覧文脈を共有できます。',
+            desc: '遠隔での説明は、聞き手とのずれが大きな障害です。Live を使うと、フォロワー側が主操作側の ページ、閲覧位置、Section、文字選択に追従し、同じ閲覧文脈を共有できます。',
             link: '/features/live',
           },
           {

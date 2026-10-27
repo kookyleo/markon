@@ -20,7 +20,7 @@ const closeButton = ref(null);
 const COPY = {
   zh: {
     homeTitle: '首页导览与快捷键',
-    docsTitle: '文档站功能与快捷键',
+    docsTitle: '文档站操作与快捷键',
     close: '关闭',
     or: '或',
     back: '后退',
@@ -67,7 +67,7 @@ const COPY = {
   },
   en: {
     homeTitle: 'Home navigation & shortcuts',
-    docsTitle: 'Documentation functions & shortcuts',
+    docsTitle: 'Documentation actions & shortcuts',
     close: 'Close',
     or: 'or',
     back: 'Back',
@@ -114,7 +114,7 @@ const COPY = {
   },
   ja: {
     homeTitle: 'ホームのナビゲーションとショートカット',
-    docsTitle: 'ドキュメントの機能とショートカット',
+    docsTitle: 'ドキュメントの操作とショートカット',
     close: '閉じる',
     or: 'または',
     back: '戻る',
