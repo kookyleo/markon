@@ -43,7 +43,7 @@ The desktop **Tips** page includes a CLI command builder for paths, addresses, a
 | `--print-collapsed-content` | Include collapsed bodies in print output |
 | `--salt <SALT>` | Advanced workspace-ID salt override; do not change it on an existing installation |
 
-Feature flags are managed with `markon set`, the desktop app, or the browser admin page.
+Advanced switches are managed with `markon set`, the desktop app, or the browser admin page.
 
 ## Subcommands
 
@@ -55,7 +55,7 @@ markon ls --format cards
 markon ls --format table
 ```
 
-With interactive stdin and stdout, the bare command opens a TUI. Otherwise it falls back to cards. Results include workspace ID and path, feature flags, search readiness, local/public addresses, and QR details.
+With interactive stdin and stdout, the bare command opens a TUI. Otherwise it falls back to cards. Results include workspace ID and path, four advanced switches, separate Search readiness, local/public addresses, and QR details.
 
 ### `markon set`
 
@@ -63,7 +63,9 @@ With interactive stdin and stdout, the bare command opens a TUI. Otherwise it fa
 markon set <ID|INDEX> <FEATURE> <on|off>
 ```
 
-Features are `search`, `viewed`, `edit`, `live`, `chat`, and `shared`.
+Advanced features are `edit`, `chat`, `live`, and `share`, in that order in the interface. `shared`, `annotation`, and `notes` remain aliases for `share`.
+
+Search and Progress are essential capabilities. Legacy `search`, `viewed`, and `progress` accept `on` as a compatibility no-op with an explanation; `off` is rejected because these capabilities cannot be disabled. Saved legacy false values do not disable them.
 
 ```bash
 markon set 1 edit on
@@ -85,7 +87,7 @@ markon cleanup
 markon cleanup --yes
 ```
 
-Reports and optionally removes annotations, Viewed state, and Chat data that no active workspace owns. Back up the database and read [Data and privacy](/advanced/data-and-privacy) first.
+Reports and optionally removes annotations, Progress state, and Chat data that no active workspace owns. Back up the database and read [Data and privacy](/advanced/data-and-privacy) first.
 
 ### `markon admin`
 
@@ -184,7 +186,7 @@ markon docs/ --host 127.0.0.1 \
 
 ## Setting precedence
 
-The CLI reads `~/.markon/settings.json`. Explicit command-line arguments override saved global settings, which override built-in defaults. Theme, language, custom CSS, shortcuts, providers, workspace registry, and default feature flags are shared with the desktop app.
+The CLI reads `~/.markon/settings.json`. Explicit command-line arguments override saved global settings, which override built-in defaults. Theme, language, custom CSS, shortcuts, providers, workspace registry, and default advanced switches are shared with the desktop app.
 
 ## Database override
 
@@ -192,4 +194,4 @@ The CLI reads `~/.markon/settings.json`. Explicit command-line arguments overrid
 MARKON_SQLITE_PATH=/srv/markon/annotation.sqlite markon docs/
 ```
 
-The database stores annotations, Viewed state, and Chat. Shared mode changes collaborator permissions and broadcasting, not the storage location.
+The database stores annotations, Progress state, and Chat. Share chooses Personal or common review scope and broadcasting, while both remain in the same SQLite. Personal records are never automatically published or merged.

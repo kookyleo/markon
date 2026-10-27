@@ -322,14 +322,14 @@ fn handle_open_path(app: &tauri::AppHandle, path: &Path) {
 
     let state = app.state::<AppState>();
 
-    // Single-file workspaces follow the user's defaults for every flag. Search
-    // is safe here: the service builds a file-scoped index (only the pinned
-    // file, no parent WalkDir), so there's no sibling leakage.
+    // Single-file workspaces include Search and Progress and follow the user's
+    // defaults for advanced capabilities. Search uses a file-scoped index
+    // (only the pinned file, no parent WalkDir), so there's no sibling leakage.
     let flags = {
         let settings = state.settings.lock().unwrap();
         markon_core::workspace::WorkspaceFlags {
-            enable_search: settings.default_search,
-            enable_viewed: settings.default_viewed,
+            enable_search: true,
+            enable_viewed: true,
             enable_edit: settings.default_edit,
             enable_live: settings.default_live,
             enable_chat: settings.default_chat,
@@ -344,7 +344,9 @@ fn handle_open_path(app: &tauri::AppHandle, path: &Path) {
         tracing::warn!("not connected to the markon service, cannot open path");
         return;
     };
-    let id = tauri::async_runtime::block_on(remote.add_or_update_open_target(&target, flags, None));
+    let id = tauri::async_runtime::block_on(commands::open_workspace_with_defaults(
+        &remote, &target, flags,
+    ));
     let id = match id {
         Ok(id) => id,
         Err(e) => {

@@ -1,5 +1,5 @@
 import { CONFIG, i18n, type ShortcutName } from '../core/config';
-import { closeShortcutsHelp, openShortcutsHelp } from '../components/shortcuts-help';
+import { closeShortcutsHelp, openShortcutsHelp, formatShortcut } from '../components/shortcuts-help';
 import { PlatformUtils } from '../core/utils';
 
 type VisualElement = HTMLElement | HTMLImageElement | SVGSVGElement;
@@ -1036,9 +1036,11 @@ export class VisualZoomManager {
         closeButton: HTMLButtonElement;
         controls: HTMLDivElement;
     } {
-        const reset = `${label('web.visual.zoom.reset', 'Reset')} (0/R)`;
-        const fit = `${label('web.visual.zoom.fit', 'Fit')} (F, Cmd/Ctrl+0)`;
-        const close = `${label('web.visual.zoom.close', 'Close')} (Esc)`;
+        const hint = (...names: ShortcutName[]): string =>
+            names.map(name => formatShortcut(CONFIG.SHORTCUTS[name]).join('+')).join(' / ');
+        const reset = `${label('web.visual.zoom.reset', 'Reset')} (${hint('VISUAL_ZOOM_RESET', 'VISUAL_ZOOM_RESET_ALT')})`;
+        const fit = `${label('web.visual.zoom.fit', 'Fit')} (${hint('VISUAL_ZOOM_FIT', 'VISUAL_ZOOM_FIT_CMD')})`;
+        const close = `${label('web.visual.zoom.close', 'Close')} (${hint('VISUAL_ZOOM_CLOSE')})`;
 
         const closeButton = document.createElement('button');
         closeButton.type = 'button';
@@ -1064,13 +1066,13 @@ export class VisualZoomManager {
                 value="${scaleToSliderValue(DEFAULT_SCALE)}"
                 aria-label="${label('web.visual.zoom.slider', 'Zoom scale')}"
             >
-            <button class="markon-visual-zoom-icon-action" type="button" data-visual-zoom-action="reset" title="${reset}" aria-label="${reset}">
+            <button class="markon-visual-zoom-icon-action" type="button" data-visual-zoom-action="reset">
                 <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
                     <path d="M4.5 4.5v5h5"></path>
                     <path d="M5.1 9.5a7 7 0 1 1 1.8 6.7"></path>
                 </svg>
             </button>
-            <button class="markon-visual-zoom-icon-action" type="button" data-visual-zoom-action="fit" title="${fit}" aria-label="${fit}">
+            <button class="markon-visual-zoom-icon-action" type="button" data-visual-zoom-action="fit">
                 <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
                     <path d="M8 3H3v5"></path>
                     <path d="M16 3h5v5"></path>
@@ -1079,6 +1081,12 @@ export class VisualZoomManager {
                 </svg>
             </button>
         `;
+
+        for (const [action, title] of [['reset', reset], ['fit', fit]] as const) {
+            const button = controls.querySelector<HTMLButtonElement>(`[data-visual-zoom-action="${action}"]`);
+            button?.setAttribute('title', title);
+            button?.setAttribute('aria-label', title);
+        }
 
         return { closeButton, controls };
     }

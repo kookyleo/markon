@@ -81,6 +81,100 @@ describe('AnnotationManager', () => {
         errorSpy.mockRestore();
     });
 
+    it.each(['add', 'edit', 'delete', 'clear', 'remote'] as const)(
+        'discards an HTTP refresh invalidated by a successful %s and reads authoritative state again',
+        async action => {
+            const article = setupArticle('<p>hello world</p>');
+            const storage = makeStorage();
+            const mgr = new AnnotationManager(storage, article);
+            const original = mgr.createAnnotation(makeRange(article.querySelector('p')!.firstChild!, 0, 5), 'has-note', 'span', 'original');
+            const changed = { ...original, id: action === 'add' ? 'anno-added' : original.id, note: 'updated' };
+            mgr.replaceAll([original]);
+            let resolveRead!: (annotations: Annotation[]) => void;
+            const first = new Promise<Annotation[]>(resolve => { resolveRead = resolve; });
+            const expected = action === 'add' ? [original, changed]
+                : action === 'edit' || action === 'remote' ? [changed] : [];
+            const load = vi.fn<() => Promise<Annotation[]>>().mockReturnValueOnce(first).mockResolvedValue(expected);
+            const refresh = mgr.refreshSharedSnapshot(load);
+            if (action === 'add' || action === 'edit' || action === 'remote') await mgr.add(changed, action === 'remote');
+            if (action === 'delete') await mgr.delete(original.id);
+            if (action === 'clear') await mgr.clear();
+            resolveRead([original]);
+            await refresh;
+            expect(mgr.getAll()).toEqual(expected);
+        },
+    );
+
+    it.each(['add', 'edit', 'delete', 'clear'] as const)('coalesces refreshes and lets newer remote state supersede an earlier local %s', async action => {
+        const article = setupArticle('<p>hello world</p>');
+        const mgr = new AnnotationManager(makeStorage(), article);
+        const original = mgr.createAnnotation(makeRange(article.querySelector('p')!.firstChild!, 0, 5), 'has-note', 'span', 'original');
+        mgr.replaceAll([original]);
+        if (action === 'add' || action === 'edit') await mgr.add({ ...original, note: 'older local edit' });
+        if (action === 'delete') await mgr.delete(original.id);
+        if (action === 'clear') await mgr.clear();
+        const peer = { ...original, note: 'newer remote edit' };
+        const authoritative = action === 'add' ? [] : [peer];
+        let resolveRead!: (annotations: Annotation[]) => void;
+        const first = new Promise<Annotation[]>(resolve => { resolveRead = resolve; });
+        const load = vi.fn<() => Promise<Annotation[]>>().mockReturnValueOnce(first).mockResolvedValue(authoritative);
+        const refresh = mgr.refreshSharedSnapshot(load);
+        expect(mgr.refreshSharedSnapshot(load)).toBe(refresh);
+        resolveRead([]);
+        await refresh;
+        expect(mgr.getAll()).toEqual(authoritative);
+    });
+
+    it.each(['add', 'edit', 'delete', 'clear'] as const)(
+        'applies a pending local %s after a snapshot arrives during its HTTP write',
+        async action => {
+            const article = setupArticle('<p>hello world</p>');
+            const storage = makeStorage();
+            const mgr = new AnnotationManager(storage, article);
+            const original = mgr.createAnnotation(makeRange(article.querySelector('p')!.firstChild!, 0, 5), 'has-note', 'span', 'original');
+            const peer = { ...original, id: 'anno-peer' };
+            const changed = { ...original, id: action === 'add' ? 'anno-added' : original.id, note: 'local' };
+            mgr.replaceAll([original, peer]);
+            let resolveWrite!: (opId: string | null) => void;
+            const pending = new Promise<string | null>(resolve => { resolveWrite = resolve; });
+            vi.mocked(storage.saveAnnotation).mockReturnValue(pending);
+            vi.mocked(storage.deleteAnnotation).mockReturnValue(pending);
+            vi.mocked(storage.clearAnnotations).mockReturnValue(pending);
+            const write = action === 'add' || action === 'edit' ? mgr.add(changed)
+                : action === 'delete' ? mgr.delete(original.id) : mgr.clear();
+            await mgr.refreshSharedSnapshot(async () => [peer, original]);
+            resolveWrite(null);
+            await write;
+            expect(mgr.getAll()).toEqual(action === 'add' ? [peer, original, changed]
+                : action === 'edit' ? [peer, changed]
+                    : action === 'delete' ? [peer] : []);
+        },
+    );
+
+    it('keeps visible state after refresh failure and permits a later refresh', async () => {
+        const article = setupArticle('<p>hello world</p>');
+        const mgr = new AnnotationManager(makeStorage(), article);
+        const original = mgr.createAnnotation(makeRange(article.querySelector('p')!.firstChild!, 0, 5), 'has-note', 'span', 'original');
+        mgr.replaceAll([original]);
+        await expect(mgr.refreshSharedSnapshot(async () => { throw new Error('offline'); })).rejects.toThrow('offline');
+        expect(mgr.getAll()).toEqual([original]);
+        await mgr.refreshSharedSnapshot(async () => []);
+        expect(mgr.getAll()).toEqual([]);
+    });
+
+    it('does not publish a refresh after its view is disposed', async () => {
+        const article = setupArticle('<p>hello world</p>');
+        const mgr = new AnnotationManager(makeStorage(), article);
+        let current = true;
+        let resolveRead!: (annotations: Annotation[]) => void;
+        const response = new Promise<Annotation[]>(resolve => { resolveRead = resolve; });
+        const refresh = mgr.refreshSharedSnapshot(() => response, () => current);
+        current = false;
+        resolveRead([mgr.createAnnotation(makeRange(article.querySelector('p')!.firstChild!, 0, 5), 'has-note', 'span', 'late')]);
+        await expect(refresh).resolves.toBe(false);
+        expect(mgr.getAll()).toEqual([]);
+    });
+
     it('createAnnotation builds the canonical schema fields', () => {
         const article = setupArticle('<p>hello world</p>');
         const storage = makeStorage();

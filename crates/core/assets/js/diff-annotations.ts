@@ -9,19 +9,21 @@
  * highlight made here lands in the same canonical store as opening the file
  * directly.
  *
- * This page persists through the document-state API but does not open one
- * WebSocket per changed file; shared real-time fan-out remains on document
- * pages. Activated on rendered diffs whose file sections carry a
+ * Persistence uses the document-state API. Shared datasets additionally open
+ * one document WebSocket per file for committed remote updates; private review
+ * never subscribes to those shared channels. Activated on file sections with a
  * canonical `data-abs-path`; only the NEW side is annotatable —
  * `NEW_SIDE_REJECT` keeps the old/deleted text out of selection, anchoring,
  * and wrapping.
  */
 
 import { CONFIG } from './core/config';
+import { Logger } from './core/utils';
 import { copyText, flashBeside, flashCopied } from './core/clipboard';
 import { Meta } from './services/dom';
 import { workspaceFileNoteLink } from './services/note-link';
 import { StorageManager } from './managers/storage-manager';
+import { WebSocketManager } from './managers/websocket-manager';
 import { AnnotationManager, type Annotation } from './managers/annotation-manager';
 import { EditorManager } from './managers/editor-manager';
 import { NoteManager } from './managers/note-manager';
@@ -32,6 +34,26 @@ import { NEW_SIDE_REJECT, newSideRootFor, sectionForNode } from './diff-new-side
 const PANE_SELECTOR = '[data-md-diff-content]';
 
 const hasNote = (annotation: Annotation): boolean => !!annotation.note && annotation.note.trim() !== '';
+
+const validAnnotationId = (id: unknown): id is string =>
+    typeof id === 'string' && /^anno-[A-Za-z0-9-]{1,64}$/.test(id);
+
+/** Peer JSON reaches selectors and anchoring; reject malformed records first. */
+const reviewAnnotation = (value: unknown): Annotation | null => {
+    if (!value || typeof value !== 'object') return null;
+    const annotation = value as Partial<Annotation>;
+    const anchor = annotation.anchor;
+    if (!validAnnotationId(annotation.id) || !anchor || typeof anchor !== 'object'
+        || typeof anchor.position !== 'number' || !Number.isFinite(anchor.position)
+        || typeof anchor.exact !== 'string' || typeof anchor.prefix !== 'string' || typeof anchor.suffix !== 'string'
+        || typeof annotation.text !== 'string' || typeof annotation.createdAt !== 'number'
+        || (annotation.note !== null && typeof annotation.note !== 'string')
+        || (annotation.tagName !== 'span' && annotation.tagName !== 's')
+        || !['highlight-orange', 'highlight-green', 'highlight-yellow', 'strikethrough', 'has-note'].includes(annotation.type ?? '')) {
+        return null;
+    }
+    return annotation as Annotation;
+};
 
 const markdownFileHeading = (path: string): string => {
     const text = path.replace(/\r?\n/g, ' ').trim() || 'Untitled file';
@@ -45,6 +67,10 @@ interface PerFileContext {
     storage: StorageManager;
     annotationManager: AnnotationManager;
     noteManager: NoteManager;
+    section: HTMLElement;
+    socket: WebSocketManager | null;
+    /** Shared document-section markers, distinct from local diff file progress. */
+    viewedState: Record<string, boolean>;
     /** Resolves once this file's annotations are loaded from storage. */
     ready: Promise<void>;
 }
@@ -54,12 +80,15 @@ class DiffAnnotationCoordinator {
     #popover: PopoverManager;
     #contexts = new Map<string, PerFileContext>();
     #editor: EditorManager | null = null;
+    #events = new AbortController();
+    #disposed = false;
 
     constructor(pane: HTMLElement) {
         this.#pane = pane;
         this.#popover = new PopoverManager(pane, {
+            // Diff text spans versions; the per-file menu owns safe source editing.
             enableEdit: false,
-            enableChat: false,
+            enableChat: Meta.flag(CONFIG.META_TAGS.ENABLE_CHAT),
             enableNote: true,
             reject: NEW_SIDE_REJECT,
             selectionScope: (node) => {
@@ -75,6 +104,9 @@ class DiffAnnotationCoordinator {
             });
         });
         this.#wireEvents();
+        const dispose = (): void => this.#dispose();
+        window.addEventListener('beforeunload', dispose, { signal: this.#events.signal });
+        window.addEventListener('pagehide', dispose, { signal: this.#events.signal });
     }
 
     // ── Render hooks (called from MarkdownDiffPage) ─────────────────────────────
@@ -88,11 +120,10 @@ class DiffAnnotationCoordinator {
         void ctx.ready.then(() => {
             // The body may have been derendered/replaced again while we awaited
             // the (already-resolved) load; bail if this exact node is gone.
-            if (!root.isConnected) return;
-            ctx.annotationManager.setRoot(root);
-            ctx.noteManager.setMarkdownBody(root);
-            ctx.annotationManager.applyToDOM();
-            ctx.noteManager.render();
+            if (!root.isConnected || this.#disposed || ctx.section !== section) return;
+            this.#renderContext(ctx);
+        }).catch((error: unknown) => {
+            Logger.warn('DiffAnnotations', 'Could not load document annotations:', error);
         });
     }
 
@@ -101,6 +132,13 @@ class DiffAnnotationCoordinator {
         // Per-body re-anchoring already ran; just drop any stale note popup left
         // over from a previous render/view.
         document.querySelector('.note-popup')?.remove();
+        const visiblePaths = new Set([...this.#pane.querySelectorAll<HTMLElement>('.md-diff-file-section[data-abs-path]')]
+            .map(section => section.dataset['absPath']));
+        for (const [path, ctx] of this.#contexts) {
+            if (visiblePaths.has(path)) continue;
+            ctx.socket?.disconnect();
+            this.#contexts.delete(path);
+        }
     }
 
     /** Export notes from every changed file, grouped under top-level file headings. */
@@ -130,24 +168,126 @@ class DiffAnnotationCoordinator {
 
     // ── Per-file context ────────────────────────────────────────────────────────
     #contextFor(absPath: string, section: HTMLElement): PerFileContext {
-        let ctx = this.#contexts.get(absPath);
-        if (ctx) return ctx;
+        const existing = this.#contexts.get(absPath);
+        if (existing) {
+            existing.section = section;
+            return existing;
+        }
         const workspaceId = Meta.get(CONFIG.META_TAGS.WORKSPACE_ID) ?? '';
         const shared = Meta.flag(CONFIG.META_TAGS.SHARED_ANNOTATION);
-        const storage = new StorageManager(absPath, shared, null, workspaceId);
+        // Construct without connecting so StorageManager can correlate HTTP
+        // writes with their own echoes as soon as the socket becomes available.
+        const socket = shared ? new WebSocketManager(workspaceId, { kind: 'document', path: absPath }) : null;
+        const storage = new StorageManager(absPath, shared, socket, workspaceId);
         const root = newSideRootFor(section);
         const annotationManager = new AnnotationManager(storage, root, NEW_SIDE_REJECT);
         const noteManager = new NoteManager(annotationManager, root, { marginCards: false });
-        ctx = {
+        const ctx: PerFileContext = {
             absPath,
             filePath: section.dataset['filePath'] || absPath,
             storage,
             annotationManager,
             noteManager,
-            ready: annotationManager.load(),
+            section,
+            socket,
+            viewedState: {},
+            ready: Promise.resolve(),
         };
         this.#contexts.set(absPath, ctx);
+        ctx.ready = annotationManager.load().then(async () => {
+            ctx.viewedState = await storage.loadViewedState();
+            if (this.#disposed || this.#contexts.get(absPath) !== ctx) return;
+            const scope = storage.getReviewScope();
+            if (socket && (scope === 'shared' || scope === undefined)) {
+                this.#wireReviewSocket(ctx, socket);
+                // A blocked or unavailable WS must never hold up HTTP state,
+                // rendered file content, selection actions, or Notes export.
+                void socket.connect().catch((error: unknown) => {
+                    Logger.warn('DiffAnnotations', 'Shared document socket unavailable:', error);
+                });
+            }
+            this.#emitNotesChanged();
+        });
         return ctx;
+    }
+
+    #renderContext(ctx: PerFileContext): void {
+        if (this.#disposed || !ctx.section.isConnected) return;
+        const root = newSideRootFor(ctx.section);
+        const popup = document.querySelector<HTMLElement>('.note-popup');
+        const openId = popup?.dataset['annotationId'];
+        const reopen = validAnnotationId(openId) && root.querySelector(`[data-annotation-id="${openId}"]`);
+        ctx.annotationManager.setRoot(root);
+        ctx.noteManager.setMarkdownBody(root);
+        ctx.annotationManager.clearDOM();
+        ctx.annotationManager.applyToDOM();
+        ctx.noteManager.render();
+        if (reopen && openId) {
+            popup?.remove();
+            const highlight = root.querySelector<HTMLElement>(`.has-note[data-annotation-id="${openId}"]`);
+            if (highlight) ctx.noteManager.showNotePopup(highlight, openId);
+        }
+    }
+
+    #wireReviewSocket(ctx: PerFileContext, socket: WebSocketManager): void {
+        const current = (): boolean => !this.#disposed && this.#contexts.get(ctx.absPath) === ctx;
+        socket.on('all_annotations', () => {
+            if (!current()) return;
+            void ctx.annotationManager.refreshSharedSnapshot(
+                async () => (await ctx.storage.reloadAnnotations())
+                    .map(reviewAnnotation).filter((annotation): annotation is Annotation => annotation !== null),
+                current,
+            ).then(updated => {
+                if (!updated) return;
+                this.#renderContext(ctx);
+                this.#emitNotesChanged();
+            }).catch((error: unknown) => {
+                Logger.warn('DiffAnnotations', 'Could not refresh shared annotations:', error);
+            });
+        });
+        socket.on('new_annotation', (message) => {
+            if (!current() || socket.isOwnEcho(message.op_id)) return;
+            const incoming = reviewAnnotation(message.annotation);
+            if (!incoming) return;
+            const existing = ctx.annotationManager.getById(incoming.id);
+            if (existing && JSON.stringify(existing) === JSON.stringify(incoming)) return;
+            // SaveAnnotation is an upsert: peer Note edits keep the same id.
+            void ctx.annotationManager.add(incoming, true);
+            this.#renderContext(ctx);
+            this.#emitNotesChanged();
+        });
+        socket.on('delete_annotation', (message) => {
+            if (!current() || socket.isOwnEcho(message.op_id) || !validAnnotationId(message.id)) return;
+            if (!ctx.annotationManager.getById(message.id)) return;
+            void ctx.annotationManager.delete(message.id, true);
+            this.#renderContext(ctx);
+            this.#emitNotesChanged();
+        });
+        socket.on('clear_annotations', (message) => {
+            if (!current() || socket.isOwnEcho(message.op_id)) return;
+            void ctx.annotationManager.clear(true);
+            this.#renderContext(ctx);
+            this.#emitNotesChanged();
+        });
+        socket.on('viewed_state', (message) => {
+            if (!current() || socket.isOwnEcho(message.op_id) || !message.state
+                || typeof message.state !== 'object' || Array.isArray(message.state)) return;
+            ctx.viewedState = Object.fromEntries(Object.entries(message.state).filter(([, value]) => typeof value === 'boolean'));
+            // The diff's file checkboxes are browser-local File Progress. Do
+            // not reinterpret shared H2–H6 state as a diff file completion flag.
+            document.dispatchEvent(new CustomEvent('markon:diff-section-progress-changed', {
+                detail: { path: ctx.absPath, state: { ...ctx.viewedState } },
+            }));
+        });
+    }
+
+    #dispose(): void {
+        if (this.#disposed) return;
+        this.#disposed = true;
+        this.#events.abort();
+        for (const ctx of this.#contexts.values()) ctx.socket?.disconnect();
+        this.#contexts.clear();
+        this.#popover.hide();
     }
 
     async #collectFileNotes(): Promise<{ path: string; markdown: string; count: number }[]> {
@@ -211,6 +351,13 @@ class DiffAnnotationCoordinator {
         const resolved = this.#contextForNode(selection.startContainer);
         if (!resolved) return;
         const { ctx, section } = resolved;
+
+        if (action === 'chat') {
+            const text = ctx.annotationManager.textForRange(selection).trim();
+            if (text) window.chatManager?.openWithSelection({ text, currentDoc: ctx.filePath, shift: data.shiftKey });
+            window.getSelection()?.removeAllRanges();
+            return;
+        }
 
         if (action.startsWith('highlight-') || action === 'strikethrough') {
             const tagName =
@@ -299,13 +446,13 @@ class DiffAnnotationCoordinator {
 
     // ── Document events ─────────────────────────────────────────────────────────
     #wireEvents(): void {
-        document.addEventListener('mouseup', (e) => this.#popover.handleSelection(e));
-        document.addEventListener('touchend', (e) => this.#popover.handleSelection(e));
+        document.addEventListener('mouseup', (e) => this.#popover.handleSelection(e), { signal: this.#events.signal });
+        document.addEventListener('touchend', (e) => this.#popover.handleSelection(e), { signal: this.#events.signal });
 
         // Click on a highlight → its action toolbar; click on a note → its popup.
         document.addEventListener('click', (e) => {
             void this.#handleClick(e);
-        });
+        }, { signal: this.#events.signal });
 
         // Outside-click hides the toolbar and any open note popup.
         const hideOnOutside = (e: Event): void => {
@@ -323,8 +470,8 @@ class DiffAnnotationCoordinator {
                 window.getSelection()?.removeAllRanges();
             }
         };
-        document.addEventListener('mousedown', hideOnOutside);
-        document.addEventListener('touchstart', hideOnOutside, { passive: true });
+        document.addEventListener('mousedown', hideOnOutside, { signal: this.#events.signal });
+        document.addEventListener('touchstart', hideOnOutside, { passive: true, signal: this.#events.signal });
     }
 
     async #handleClick(e: MouseEvent): Promise<void> {
@@ -432,9 +579,7 @@ class DiffAnnotationCoordinator {
 const init = (): void => {
     const pane = document.querySelector<HTMLElement>(PANE_SELECTOR);
     if (!pane) return;
-    const canUseDocumentState =
-        Meta.flag(CONFIG.META_TAGS.CAN_MANAGE)
-        || Meta.flag(CONFIG.META_TAGS.SHARED_ANNOTATION);
+    const canUseDocumentState = Meta.get(CONFIG.META_TAGS.CAN_ANNOTATE) !== 'false';
     if (!canUseDocumentState) {
         window.markonDiffAnnotations = {
             onBodyRendered: () => {},

@@ -23,6 +23,7 @@ interface WorkspaceFileEntry {
 export interface WorkspaceSpotlightOptions {
     workspaceId: string;
     currentPath?: string | null;
+    /** Legacy input; content search is now an essential workspace capability. */
     enableContentSearch?: boolean;
 }
 
@@ -73,7 +74,6 @@ function highlightPath(path: string, query: string): string {
 export class WorkspaceSpotlight {
     readonly #workspaceId: string;
     readonly #currentPath: string;
-    readonly #enableContentSearch: boolean;
     #panel: HTMLElement | null = null;
     #input: HTMLInputElement | null = null;
     #results: HTMLElement | null = null;
@@ -88,10 +88,9 @@ export class WorkspaceSpotlight {
     #activeIndex = 0;
     #dragManager: ReturnType<typeof makeModalDraggable> | null = null;
 
-    constructor({ workspaceId, currentPath = '', enableContentSearch = false }: WorkspaceSpotlightOptions) {
+    constructor({ workspaceId, currentPath = '' }: WorkspaceSpotlightOptions) {
         this.#workspaceId = workspaceId;
         this.#currentPath = currentRoutePath(workspaceId) || (currentPath || '').replace(/^\/+/, '');
-        this.#enableContentSearch = enableContentSearch;
     }
 
     bindTriggers(root: ParentNode = document): void {
@@ -302,7 +301,6 @@ export class WorkspaceSpotlight {
     }
 
     #scheduleContentSearch(): void {
-        if (!this.#enableContentSearch) return;
         const query = (this.#input?.value || '').trim();
         if (this.#contentTimer !== null) {
             window.clearTimeout(this.#contentTimer);

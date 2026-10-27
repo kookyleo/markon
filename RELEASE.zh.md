@@ -2,6 +2,12 @@
 
 Markon 采用双通道（RC / Stable）发布模型，全流程 CI/CD 自动化。
 
+## 能力兼容说明
+
+Search 与 Progress 已归入基础能力，旧配置中的关闭值不再禁用它们。仅 Edit、Chat、Live、Share 保留可选工作区开关。既有高级开关值、Workspace id、URL、批注与进度数据保持不变。旧 `markon set ... search/viewed/progress on` 接受为空操作，`off` 明确拒绝。新命令使用 `share`，旧 `shared` 继续作为别名。发布包含此改动的版本时，应在版本说明中明确列出这项行为变化。详见[产品命名与兼容规范](PRODUCT_NAMING.md)。
+
+通过工作区门禁的浏览器均可使用个人 Annotate、Progress 与 Export Notes，不依赖 Admin 或 Share。非管理员 Personal 数据以新增私有表保存在同一 SQLite，并用独立浏览器身份 Cookie 隔离；管理员既有／共同数据仍在原表。Share 选择共同审阅，不自动发布或合并浏览器私有 Personal 数据。清除站点数据或 Cookie 过期会失去该浏览器 Personal 数据入口；不提供账号恢复或个人跨设备同步。
+
 ## 总览
 
 ```mermaid

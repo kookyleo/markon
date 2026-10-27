@@ -6,7 +6,9 @@ use markon_core::i18n;
 use markon_core::net::{available_bind_hosts, host_in_list, BindHostOption};
 use markon_core::server;
 use markon_core::settings::{AppSettings, PortMode};
-use markon_core::workspace::{expand_and_canonicalize, WorkspaceFlags, WorkspaceInfo};
+use markon_core::workspace::{
+    expand_and_canonicalize, WorkspaceFlags, WorkspaceInfo, WorkspaceOpenTarget,
+};
 use serde::Deserialize;
 use std::path::PathBuf;
 use std::sync::atomic::Ordering;
@@ -368,17 +370,44 @@ fn is_example_workspace_path(path: &str) -> bool {
     candidate == example_path
 }
 
+/// Opening a path is not a feature-settings update. Reuse the live identity
+/// before registering it, so reopening cannot replace workspace-specific flags,
+/// aliases, or access-code hashes with global defaults / empty metadata.
+/// Explicit changes still go through their dedicated commands.
+pub(crate) async fn open_workspace_with_defaults(
+    remote: &RunningServer,
+    target: &WorkspaceOpenTarget,
+    defaults: WorkspaceFlags,
+) -> Result<String, ControlError> {
+    let root = target.root.to_string_lossy();
+    if let Some(existing) = remote
+        .list_workspaces()
+        .await?
+        .into_iter()
+        .find(|workspace| workspace.path == root && workspace.single_file == target.single_file)
+    {
+        return Ok(existing.id);
+    }
+    remote
+        .add_or_update_open_target(target, defaults, None)
+        .await
+}
+
 #[tauri::command]
 pub async fn add_workspace(
     path: String,
     state: State<'_, AppState>,
 ) -> Result<serde_json::Value, String> {
     let canonical = expand_and_canonicalize(&path).map_err(|e| format!("Invalid path: {e}"))?;
+    let target = WorkspaceOpenTarget::resolve(&canonical)
+        .map_err(|e| format!("Invalid workspace path: {e}"))?;
     let flags = {
         let settings = state.settings.lock().unwrap();
         WorkspaceFlags {
-            enable_search: settings.default_search,
-            enable_viewed: settings.default_viewed,
+            // Search and Progress are built-in capabilities. Legacy defaults
+            // are retained in settings only for older clients.
+            enable_search: true,
+            enable_viewed: true,
             enable_edit: settings.default_edit,
             enable_live: settings.default_live,
             enable_chat: settings.default_chat,
@@ -387,9 +416,7 @@ pub async fn add_workspace(
     };
     // Pure frontend: register the directory over the service's control socket.
     let remote = require_service(&state)?;
-    let path_str = canonical.to_string_lossy().to_string();
-    let id = remote
-        .add_or_update_workspace(&path_str, flags, None)
+    let id = open_workspace_with_defaults(&remote, &target, flags)
         .await
         .map_err(remote_err)?;
     let port = remote.port();
@@ -937,6 +964,135 @@ pub fn set_tray_resident(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Exercise the real local control protocol against an in-memory registry;
+    /// no service discovery, user settings, or SQLite files are involved.
+    #[cfg(unix)]
+    #[test]
+    fn reopening_paths_preserves_live_flags_aliases_and_access_codes() {
+        use markon_core::control::{bind, ControlContext, ControlSocketName};
+        use markon_core::workspace::WorkspaceRegistry;
+        use std::sync::Arc;
+        use std::time::{SystemTime, UNIX_EPOCH};
+
+        struct TemporaryDirectory(PathBuf);
+        impl Drop for TemporaryDirectory {
+            fn drop(&mut self) {
+                let _ = std::fs::remove_dir_all(&self.0);
+            }
+        }
+        let nonce = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let temporary = TemporaryDirectory(
+            std::env::temp_dir().join(format!("mk-gui-open-{}-{nonce}", std::process::id())),
+        );
+        std::fs::create_dir_all(&temporary.0).unwrap();
+        let root = temporary.0.join("docs");
+        std::fs::create_dir(&root).unwrap();
+        let note = root.join("note.md");
+        let sibling = root.join("sibling.md");
+        std::fs::write(&note, "# Note").unwrap();
+        std::fs::write(&sibling, "# Sibling").unwrap();
+
+        tauri::async_runtime::block_on(async {
+            let registry = Arc::new(WorkspaceRegistry::new("gui-open-test".into()));
+            let name = ControlSocketName::from_raw(
+                temporary
+                    .0
+                    .join("control.sock")
+                    .to_string_lossy()
+                    .into_owned(),
+            );
+            let server = bind(&name).unwrap();
+            let context = ControlContext::new(registry.clone());
+            let (stop_tx, stop_rx) = tokio::sync::oneshot::channel();
+            let server_task = tokio::spawn(async move {
+                server
+                    .run(
+                        context,
+                        Box::pin(async {
+                            let _ = stop_rx.await;
+                        }),
+                    )
+                    .await
+                    .unwrap();
+            });
+            let remote = RunningServer::new(name);
+            let existing_flags = WorkspaceFlags {
+                enable_search: false,
+                enable_viewed: false,
+                enable_edit: true,
+                enable_chat: true,
+                enable_live: true,
+                shared_annotation: true,
+            };
+            let defaults = WorkspaceFlags {
+                enable_search: true,
+                enable_viewed: true,
+                enable_edit: false,
+                enable_chat: false,
+                enable_live: false,
+                shared_annotation: false,
+            };
+            let saved_hash = "a".repeat(64);
+            for path in [&root, &note] {
+                let target = WorkspaceOpenTarget::resolve(path).unwrap();
+                let id = remote
+                    .add_or_update_open_target(&target, existing_flags, Some(&saved_hash))
+                    .await
+                    .unwrap();
+                remote.set_alias(&id, "Review workspace").await.unwrap();
+                let before = remote
+                    .list_workspaces()
+                    .await
+                    .unwrap()
+                    .into_iter()
+                    .find(|workspace| workspace.id == id)
+                    .unwrap();
+
+                assert_eq!(
+                    open_workspace_with_defaults(&remote, &target, defaults)
+                        .await
+                        .unwrap(),
+                    id
+                );
+                let after = remote
+                    .list_workspaces()
+                    .await
+                    .unwrap()
+                    .into_iter()
+                    .find(|workspace| workspace.id == id)
+                    .unwrap();
+                assert_eq!(after.flags, before.flags);
+                assert_eq!(after.alias, before.alias);
+                assert_eq!(
+                    after.collaborator_access_code_hash,
+                    before.collaborator_access_code_hash
+                );
+                assert_eq!(after.single_file, before.single_file);
+            }
+            // A sibling file must remain a separate identity and inherit the
+            // current defaults instead of adopting the directory's flags.
+            let target = WorkspaceOpenTarget::resolve(&sibling).unwrap();
+            let id = open_workspace_with_defaults(&remote, &target, defaults)
+                .await
+                .unwrap();
+            let workspaces = remote.list_workspaces().await.unwrap();
+            assert_eq!(workspaces.len(), 3);
+            let added = workspaces
+                .into_iter()
+                .find(|workspace| workspace.id == id)
+                .unwrap();
+            assert_eq!(added.flags, defaults);
+            assert!(added.alias.is_empty());
+            assert!(added.collaborator_access_code_hash.is_empty());
+
+            let _ = stop_tx.send(());
+            server_task.await.unwrap();
+        });
+    }
 
     #[test]
     fn shared_workspace_urls_exclude_loopback_and_target_workspace_root() {

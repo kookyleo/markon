@@ -70,7 +70,7 @@ API key 明文存入 `~/.markon/settings.json`，请把它当作开发凭据保�
 
 当 `Chat` 与 `Edit` 同时开启，工具注册表会增加 `edit_file(path, old_string, new_string)`。
 
-流程不是“模型直接写盘”：
+流程不是「模型直接写盘」：
 
 1. 模型提出 exact-string replace。
 2. 后端校验路径、UTF-8、1 MiB 上限，以及 `old_string` 恰好出现一次。

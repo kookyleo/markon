@@ -24,15 +24,18 @@ Design does not arrive finished. It converges through reading, challenge, revisi
 
 ## Features
 
-- [**Markdown rendering**](https://kookyleo.github.io/markon/features/rendering) — GFM, Alerts, footnotes, Emoji, KaTeX, Mermaid, PlantUML, D2, Graphviz, Vega, and more.
-- [**Workspace Spotlight**](https://kookyleo.github.io/markon/features/search) — search filenames, paths, headings, and body text across the workspace.
-- [**Annotations & Notes**](https://kookyleo.github.io/markon/features/annotations) — highlight, strike through, comment, undo, redo, and export review notes.
-- [**Viewed & folding**](https://kookyleo.github.io/markon/features/viewed) — track reading progress by Section and fold completed content.
+- [**Markdown**](https://kookyleo.github.io/markon/features/rendering) — GFM, Alerts, footnotes, Emoji, KaTeX, Mermaid, PlantUML, D2, Graphviz, Vega, and more.
+- [**Spotlight / Search**](https://kookyleo.github.io/markon/features/search) — search filenames, paths, headings, and body text across the workspace.
+- [**Annotate**](https://kookyleo.github.io/markon/features/annotations) — Highlight, Strike, Note, Navigate, and Undo / Redo.
+- [**Progress / Fold**](https://kookyleo.github.io/markon/features/viewed) — track section progress with Read / All Read checkboxes and fold completed content.
 - [**Git & Markdiff**](https://kookyleo.github.io/markon/features/git) — review working changes, commits, branches, and tags as rendered Markdown or raw source.
-- [**Editing**](https://kookyleo.github.io/markon/features/edit) — jump from rendered text to Markdown source and edit beside the preview.
-- [**Live**](https://kookyleo.github.io/markon/features/live) — synchronize Section focus, text selections, and Viewed state during a walkthrough.
-- [**Shared annotations**](https://kookyleo.github.io/markon/advanced/shared-annotations) — keep annotations and reading progress synchronized across browsers.
-- [**Workspace AI**](https://kookyleo.github.io/markon/features/chat) — investigate files, cite sources, and propose approval-gated edits.
+- [**Edit**](https://kookyleo.github.io/markon/features/edit) — jump from rendered text to Markdown source and edit beside the preview.
+- [**Live**](https://kookyleo.github.io/markon/features/live) — synchronize pages, reading positions, Section focus, and text selections during a walkthrough.
+- [**Share**](https://kookyleo.github.io/markon/advanced/shared-annotations) — synchronize annotations and section progress markers across browsers.
+- [**Workspace AI / Chat**](https://kookyleo.github.io/markon/features/chat) — investigate files, cite sources, and propose approval-gated edits.
+- **Output** — [Export Notes](https://kookyleo.github.io/markon/features/export) as Markdown, or [Print](https://kookyleo.github.io/markon/features/print) a page or section.
+
+Reading, Search, Annotate, Progress, Git review, Export Notes, and Print are essential capabilities. Only **Edit · Chat · Live · Share** have per-workspace advanced switches; Personal review is available after workspace access; Share selects common review data.
 
 ## Get started
 
@@ -54,7 +57,7 @@ Continue with the [five-minute guide](https://kookyleo.github.io/markon/guide/ge
 
 ## Data and privacy
 
-Rendering, search, Git inspection, annotations, Viewed state, and Live run on the machine hosting Markon. Workspace AI is optional; only the context it reads is sent to the provider you configure. Its tools stay inside the workspace, cannot execute commands, and require approval for every proposed write. See [Data and privacy](https://kookyleo.github.io/markon/advanced/data-and-privacy) and [Access and permissions](https://kookyleo.github.io/markon/features/access) for the complete boundaries.
+Rendering, search, Git inspection, annotations, progress markers, and Live run on the machine hosting Markon. Workspace AI is optional; only the context it reads is sent to the provider you configure. Its tools stay inside the workspace, cannot execute commands, and require approval for every proposed write. See [Data and privacy](https://kookyleo.github.io/markon/advanced/data-and-privacy) and [Access and permissions](https://kookyleo.github.io/markon/features/access) for the complete boundaries.
 
 ## Development
 
@@ -66,7 +69,7 @@ cargo build
 scripts/quality-gate.sh
 ```
 
-Browser assets are TypeScript bundles embedded by `markon-core`. The quality gate runs Rust formatting, Clippy and tests together with TypeScript checks and Vitest. Architecture and persistence invariants are documented in [ARCHITECTURE.md](ARCHITECTURE.md).
+Browser assets are TypeScript bundles embedded by `markon-core`. The quality gate runs Rust formatting, Clippy and tests together with TypeScript checks and Vitest. Architecture and persistence invariants are documented in [ARCHITECTURE.md](ARCHITECTURE.md). Product terminology is defined in [PRODUCT_NAMING.md](PRODUCT_NAMING.md).
 
 ## Project
 

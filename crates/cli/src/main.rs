@@ -1,6 +1,6 @@
 use clap::Parser;
 use dialoguer::{Confirm, Select};
-use markon_core::control::RunningServer;
+use markon_core::control::{ControlError, RunningServer};
 use markon_core::daemon::{DaemonConfig, DaemonWorkspace};
 use markon_core::net::{available_bind_hosts, BindHostKind};
 use markon_core::server::{self, ServerConfig, WorkspaceInit};
@@ -120,7 +120,7 @@ enum Commands {
     Set {
         /// Workspace ID or index (from 'markon ls').
         target: String,
-        /// Feature: search | viewed | edit | live | chat | shared
+        /// Advanced capability: edit | chat | live | share
         feature: String,
         /// on | off
         value: String,
@@ -360,58 +360,32 @@ fn display_workspace_scope(info: &WorkspaceInfo) -> String {
     }
 }
 
-/// One row per workspace flag: (enabled, card label, tag label, form label).
-/// Single source of truth for flag order and naming across the card and table
-/// renderings and the interactive TUI edit form. The form label is the short,
-/// state-independent name the TUI shows next to its checkboxes (no "(ready)"
-/// suffix, which only makes sense for a read-only view).
+/// Ordered advanced capabilities shared by cards, tables, and the TUI form.
 fn workspace_flag_entries(
     flags: WorkspaceFlags,
-    search_ready: bool,
-) -> [(bool, &'static str, &'static str, &'static str); 6] {
-    let (search_card, search_tag) = if flags.enable_search && search_ready {
-        ("Search (ready)", "Search ready")
-    } else {
-        ("Search", "Search")
-    };
+) -> [(bool, &'static str, &'static str, &'static str); 4] {
     [
-        (flags.enable_search, search_card, search_tag, "Search"),
-        (
-            flags.enable_viewed,
-            "Viewed tracking",
-            "Viewed",
-            "Viewed tracking",
-        ),
         (flags.enable_edit, "Edit", "Edit", "Edit"),
-        (flags.enable_live, "Live", "Live", "Live"),
         (flags.enable_chat, "Chat", "Chat", "Chat"),
-        (
-            flags.shared_annotation,
-            "Shared notes",
-            "Shared notes",
-            "Shared notes",
-        ),
+        (flags.enable_live, "Live", "Live", "Live"),
+        (flags.shared_annotation, "Share", "Share", "Share"),
     ]
 }
 
-/// Mutable, ordered accessor over the six workspace flags. Indexed identically
-/// to [`workspace_flag_entries`], so the TUI edit form can toggle "row N"
-/// without a second, drift-prone index→field map: display order and toggle
-/// order share one definition.
+/// Mutable accessor in the same order as [`workspace_flag_entries`]. Legacy
+/// baseline fields are deliberately excluded from interactive editing.
 fn workspace_flag_mut(flags: &mut WorkspaceFlags, idx: usize) -> &mut bool {
     match idx {
-        0 => &mut flags.enable_search,
-        1 => &mut flags.enable_viewed,
-        2 => &mut flags.enable_edit,
-        3 => &mut flags.enable_live,
-        4 => &mut flags.enable_chat,
-        5 => &mut flags.shared_annotation,
-        other => panic!("workspace flag index {other} out of range (0..6)"),
+        0 => &mut flags.enable_edit,
+        1 => &mut flags.enable_chat,
+        2 => &mut flags.enable_live,
+        3 => &mut flags.shared_annotation,
+        other => panic!("workspace flag index {other} out of range (0..4)"),
     }
 }
 
-fn format_workspace_flags(flags: WorkspaceFlags, search_ready: bool, colors: CliColors) -> String {
-    workspace_flag_entries(flags, search_ready)
+fn format_workspace_flags(flags: WorkspaceFlags, colors: CliColors) -> String {
+    workspace_flag_entries(flags)
         .into_iter()
         .map(|(enabled, card_label, _, _)| {
             let plain = format!("[{}] {card_label}", if enabled { "x" } else { " " });
@@ -425,8 +399,8 @@ fn format_workspace_flags(flags: WorkspaceFlags, search_ready: bool, colors: Cli
         .join("  ")
 }
 
-fn format_workspace_feature_tags(flags: WorkspaceFlags, search_ready: bool) -> String {
-    let features: Vec<&str> = workspace_flag_entries(flags, search_ready)
+fn format_workspace_feature_tags(flags: WorkspaceFlags) -> String {
+    let features: Vec<&str> = workspace_flag_entries(flags)
         .into_iter()
         .filter(|(enabled, _, _, _)| *enabled)
         .map(|(_, _, tag_label, _)| tag_label)
@@ -436,6 +410,41 @@ fn format_workspace_feature_tags(flags: WorkspaceFlags, search_ready: bool) -> S
     } else {
         features.join(" | ")
     }
+}
+
+fn workspace_search_status(search_ready: bool) -> &'static str {
+    if search_ready {
+        "Search ready"
+    } else {
+        "Search indexing"
+    }
+}
+
+/// Apply a CLI capability choice without changing obsolete baseline flags.
+/// The boolean indicates whether a native management update is needed.
+fn apply_workspace_feature(
+    flags: &mut WorkspaceFlags,
+    feature: &str,
+    on: bool,
+) -> Result<bool, String> {
+    match feature.to_ascii_lowercase().as_str() {
+        "search" | "viewed" | "progress" if on => return Ok(false),
+        "search" | "viewed" | "progress" => {
+            return Err(format!(
+                "{feature} is a baseline capability and cannot be disabled"
+            ));
+        }
+        "edit" => flags.enable_edit = on,
+        "chat" => flags.enable_chat = on,
+        "live" => flags.enable_live = on,
+        "share" | "shared" | "annotation" | "notes" => flags.shared_annotation = on,
+        other => {
+            return Err(format!(
+                "Unknown feature '{other}' — use edit, chat, live, or share"
+            ))
+        }
+    }
+    Ok(true)
 }
 
 fn default_workspace_flags(settings: &AppSettings) -> WorkspaceFlags {
@@ -559,7 +568,7 @@ fn print_workspace_access_summary(summary: &WorkspaceAccessSummary) {
         colors.title("Added workspace:"),
         colors.path(&summary.workspace_path)
     );
-    println!("{}", format_workspace_flags(summary.flags, false, colors));
+    println!("{}", format_workspace_flags(summary.flags, colors));
     println!();
     // One line per reachable URL. For wildcard binds this lists localhost plus
     // every LAN interface (with its name), so the user picks the right address
@@ -614,10 +623,8 @@ async fn list_workspaces(
                     colors.id(&ws.id),
                     colors.path(&path)
                 );
-                println!(
-                    "   {}",
-                    format_workspace_flags(ws.flags, ws.search_ready, colors)
-                );
+                println!("   {}", format_workspace_flags(ws.flags, colors));
+                println!("   {}", workspace_search_status(ws.search_ready));
                 let rendered_url = if use_public_url {
                     colors.public_url(&url)
                 } else {
@@ -635,50 +642,50 @@ async fn list_workspaces(
                 .enumerate()
                 .map(|(i, ws)| {
                     let path = display_workspace_scope(ws);
-                    let features = format_workspace_feature_tags(ws.flags, ws.search_ready);
+                    let features = format_workspace_feature_tags(ws.flags);
                     let url = server::build_workspace_url(
                         &url_base,
                         &server::workspace_url_path(&ws.id, None),
                     );
-                    (i + 1, ws.id.clone(), path, features, url)
+                    (i + 1, ws.id.clone(), path, features, ws.search_ready, url)
                 })
                 .collect::<Vec<_>>();
             let idx_width = rows.len().to_string().chars().count().max(1);
             let id_width = rows
                 .iter()
-                .map(|(_, id, _, _, _)| id.chars().count())
+                .map(|(_, id, _, _, _, _)| id.chars().count())
                 .max()
                 .unwrap_or(2)
                 .max(2);
             let path_width = rows
                 .iter()
-                .map(|(_, _, path, _, _)| path.chars().count())
+                .map(|(_, _, path, _, _, _)| path.chars().count())
                 .max()
                 .unwrap_or(4)
                 .max(4);
             let feature_width = rows
                 .iter()
-                .map(|(_, _, _, features, _)| features.chars().count())
+                .map(|(_, _, _, features, _, _)| features.chars().count())
                 .max()
                 .unwrap_or(8)
                 .max(8);
 
             println!(
-                "{}  {}  {}  {}  URL",
+                "{}  {}  {}  {}  SEARCH           URL",
                 pad_right("#", idx_width),
                 pad_right("ID", id_width),
                 pad_right("PATH", path_width),
                 pad_right("FEATURES", feature_width)
             );
             println!(
-                "{}  {}  {}  {}  ---",
+                "{}  {}  {}  {}  ---------------  ---",
                 "-".repeat(idx_width),
                 "-".repeat(id_width),
                 "-".repeat(path_width),
                 "-".repeat(feature_width)
             );
 
-            for (idx, id, path, features, url) in rows {
+            for (idx, id, path, features, search_ready, url) in rows {
                 let features_colored = if features == "-" {
                     colors.disabled_flag(&pad_right(&features, feature_width))
                 } else {
@@ -690,11 +697,12 @@ async fn list_workspaces(
                     colors.local_url(&url)
                 };
                 println!(
-                    "{}  {}  {}  {}  {}",
+                    "{}  {}  {}  {}  {}  {}",
                     pad_right(&idx.to_string(), idx_width),
                     colors.id(&pad_right(&id, id_width)),
                     colors.path(&pad_right(&path, path_width)),
                     features_colored,
+                    pad_right(workspace_search_status(search_ready), 15),
                     url_colored
                 );
             }
@@ -752,19 +760,9 @@ async fn set_workspace_feature(
     };
     let id = entry.id.clone();
     let mut flags = entry.flags;
-    match feature.to_ascii_lowercase().as_str() {
-        "search" => flags.enable_search = on,
-        "viewed" => flags.enable_viewed = on,
-        "edit" => flags.enable_edit = on,
-        "live" => flags.enable_live = on,
-        "chat" => flags.enable_chat = on,
-        "shared" | "annotation" | "notes" => flags.shared_annotation = on,
-        other => {
-            return Err(format!(
-                "Unknown feature '{other}' — use search, viewed, edit, live, chat, or shared"
-            )
-            .into())
-        }
+    if !apply_workspace_feature(&mut flags, feature, on)? {
+        println!("{id}: {feature} is always available (baseline capability)");
+        return Ok(());
     }
     server.update_flags(&id, flags).await?;
     println!("{id}: {feature} = {}", if on { "on" } else { "off" });
@@ -795,7 +793,7 @@ async fn cleanup_data(server: &RunningServer, yes: bool) -> Result<(), Box<dyn s
         format_data_bytes(stats.database_bytes)
     );
     println!(
-        "Obsolete: {} annotation files, {} annotations, {} viewed records, {} chat threads / {} messages ({})",
+        "Obsolete: {} annotation files, {} annotations, {} progress records, {} chat threads / {} messages ({})",
         stats.orphaned_annotation_files,
         stats.orphaned_annotations,
         stats.orphaned_viewed_files,
@@ -825,7 +823,7 @@ async fn cleanup_data(server: &RunningServer, yes: bool) -> Result<(), Box<dyn s
 
     let result = server.cleanup_orphaned_data().await?;
     println!(
-        "Deleted {} annotations, {} viewed records, {} chat threads and {} messages. Database: {} → {}.",
+        "Deleted {} annotations, {} progress records, {} chat threads and {} messages. Database: {} → {}.",
         result.deleted_annotations,
         result.deleted_viewed_files,
         result.deleted_chat_threads,
@@ -883,7 +881,36 @@ struct ForwardPlan<'a> {
     open_browser_target: Option<&'a str>,
 }
 
-/// Register (or refresh) the workspace on the running `server` over the control
+fn existing_open_workspace<'a>(
+    target: &WorkspaceOpenTarget,
+    workspaces: &'a [WorkspaceInfo],
+) -> Option<&'a WorkspaceInfo> {
+    workspaces.iter().find(|workspace| {
+        workspace_path_matches(&workspace.path, &target.root)
+            && workspace.single_file.as_deref() == target.single_file.as_deref()
+    })
+}
+
+/// Opening a known workspace is navigation, not a configuration upsert. The
+/// live registry owns its flags; defaults apply only to a new registration.
+async fn open_workspace_on_server(
+    server: &RunningServer,
+    plan: &ForwardPlan<'_>,
+) -> Result<(String, WorkspaceFlags), ControlError> {
+    let workspaces = server.list_workspaces().await?;
+    if let Some(existing) = existing_open_workspace(plan.target, &workspaces) {
+        if let Some(hash) = plan.collaborator_hash_if_set {
+            server.set_access_code(&existing.id, Some(hash)).await?;
+        }
+        return Ok((existing.id.clone(), existing.flags));
+    }
+    let id = server
+        .add_or_update_open_target(plan.target, plan.flags, plan.collaborator_hash_if_set)
+        .await?;
+    Ok((id, plan.flags))
+}
+
+/// Register (or reuse) the workspace on the running `server` over the control
 /// socket, print the access summary, and best-effort open the browser. The bind
 /// host/port come from the daemon's discovery lock so the printed URLs match what
 /// the daemon actually serves.
@@ -893,11 +920,8 @@ async fn forward_to_running_server(
     lock_port: u16,
     plan: &ForwardPlan<'_>,
 ) {
-    match server
-        .add_or_update_open_target(plan.target, plan.flags, plan.collaborator_hash_if_set)
-        .await
-    {
-        Ok(workspace_id) => {
+    match open_workspace_on_server(server, plan).await {
+        Ok((workspace_id, flags)) => {
             // Prefer the running daemon's actual bind host (recorded in the
             // lock); fall back to our own resolved host for locks written before
             // the field existed.
@@ -909,7 +933,7 @@ async fn forward_to_running_server(
             let identity_path = plan.target.identity_path();
             let summary = build_workspace_access_summary(
                 &identity_path,
-                plan.flags,
+                flags,
                 &bind_host,
                 plan.advertised_host,
                 lock_port,
@@ -1655,6 +1679,49 @@ mod tests {
     }
 
     #[test]
+    fn reopening_workspace_preserves_live_flags_and_matches_exact_scope() {
+        let root = dunce::canonicalize(env!("CARGO_MANIFEST_DIR")).unwrap();
+        let directory = workspace_info(root.to_str().unwrap(), None);
+        let mut single = workspace_info(root.to_str().unwrap(), Some("target.md"));
+        single.flags = WorkspaceFlags {
+            enable_edit: true,
+            enable_chat: true,
+            enable_live: true,
+            shared_annotation: true,
+            ..Default::default()
+        };
+        let workspaces = vec![directory, single.clone()];
+        let target = WorkspaceOpenTarget {
+            root,
+            single_file: Some("target.md".into()),
+        };
+        assert_eq!(
+            existing_open_workspace(&target, &workspaces).unwrap().flags,
+            single.flags
+        );
+        assert_eq!(
+            existing_open_workspace(
+                &WorkspaceOpenTarget {
+                    single_file: None,
+                    ..target.clone()
+                },
+                &workspaces
+            )
+            .unwrap()
+            .flags,
+            WorkspaceFlags::default()
+        );
+        assert!(existing_open_workspace(
+            &WorkspaceOpenTarget {
+                single_file: Some("other.md".into()),
+                ..target
+            },
+            &workspaces
+        )
+        .is_none());
+    }
+
+    #[test]
     fn admin_subcommands_parse_without_exposing_management_tokens() {
         let open = Cli::try_parse_from(["markon", "admin", "open"]).unwrap();
         assert!(matches!(
@@ -1715,8 +1782,8 @@ mod tests {
 
         assert_eq!(summary.workspace_path, "/tmp/Downloads");
         assert_eq!(
-            format_workspace_flags(summary.flags, false, CliColors::plain()),
-            "[x] Search  [x] Viewed tracking  [x] Edit  [x] Live  [ ] Chat  [ ] Shared notes"
+            format_workspace_flags(summary.flags, CliColors::plain()),
+            "[x] Edit  [ ] Chat  [x] Live  [ ] Share"
         );
         // Loopback bind → a single localhost URL.
         assert_eq!(summary.local_urls.len(), 1);
@@ -1754,8 +1821,8 @@ mod tests {
         );
 
         assert_eq!(
-            format_workspace_flags(summary.flags, false, CliColors::plain()),
-            "[ ] Search  [x] Viewed tracking  [ ] Edit  [ ] Live  [ ] Chat  [x] Shared notes"
+            format_workspace_flags(summary.flags, CliColors::plain()),
+            "[ ] Edit  [ ] Chat  [ ] Live  [x] Share"
         );
         assert_eq!(
             summary.local_urls[0].url,
@@ -1911,13 +1978,13 @@ mod tests {
         };
 
         assert_eq!(
-            format_workspace_flags(flags, false, CliColors::plain()),
-            "[x] Search  [ ] Viewed tracking  [x] Edit  [ ] Live  [ ] Chat  [ ] Shared notes"
+            format_workspace_flags(flags, CliColors::plain()),
+            "[x] Edit  [ ] Chat  [ ] Live  [ ] Share"
         );
     }
 
     #[test]
-    fn workspace_list_flags_show_ready_search_state() {
+    fn workspace_search_readiness_is_separate_from_advanced_flags() {
         let flags = WorkspaceFlags {
             enable_search: true,
             enable_viewed: true,
@@ -1928,9 +1995,35 @@ mod tests {
         };
 
         assert_eq!(
-            format_workspace_flags(flags, true, CliColors::plain()),
-            "[x] Search (ready)  [x] Viewed tracking  [ ] Edit  [ ] Live  [ ] Chat  [ ] Shared notes"
+            format_workspace_flags(flags, CliColors::plain()),
+            "[ ] Edit  [ ] Chat  [ ] Live  [ ] Share"
         );
+        assert_eq!(workspace_search_status(true), "Search ready");
+        assert_eq!(workspace_search_status(false), "Search indexing");
+    }
+
+    #[test]
+    fn cli_capabilities_preserve_legacy_baseline_preferences() {
+        let mut flags = WorkspaceFlags::default();
+        for name in ["search", "viewed", "progress"] {
+            assert!(!apply_workspace_feature(&mut flags, name, true).unwrap());
+            assert!(apply_workspace_feature(&mut flags, name, false)
+                .unwrap_err()
+                .contains("cannot be disabled"));
+            assert_eq!(flags, WorkspaceFlags::default());
+        }
+        for name in ["share", "shared", "annotation", "notes"] {
+            assert!(apply_workspace_feature(&mut flags, name, true).unwrap());
+            assert!(flags.shared_annotation);
+            apply_workspace_feature(&mut flags, name, false).unwrap();
+        }
+        for (index, name) in ["edit", "chat", "live", "share"].into_iter().enumerate() {
+            let mut expected = WorkspaceFlags::default();
+            *workspace_flag_mut(&mut expected, index) = true;
+            apply_workspace_feature(&mut flags, name, true).unwrap();
+            assert_eq!(flags, expected);
+            apply_workspace_feature(&mut flags, name, false).unwrap();
+        }
     }
 
     #[test]
@@ -1944,10 +2037,7 @@ mod tests {
             shared_annotation: false,
         };
 
-        assert_eq!(
-            format_workspace_feature_tags(flags, true),
-            "Search ready | Viewed | Live"
-        );
+        assert_eq!(format_workspace_feature_tags(flags), "Live");
     }
 
     #[test]

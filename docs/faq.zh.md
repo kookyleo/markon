@@ -69,7 +69,7 @@ markon README.md
 
 workspace id 同时参与 URL 与 Chat 关联。它由持久 salt + 规范化身份路径生成。不要随意更换 `--salt`、删除 settings 中的 salt，或搬动文件后期待沿用旧的路径关联。
 
-## 批注、Viewed 与数据
+## 批注、Progress 与数据
 
 ### 数据保存在哪里？
 
@@ -84,13 +84,15 @@ workspace id 同时参与 URL 与 Chat 关联。它由持久 salt + 规范化身
 
 ### 批注会降级到 LocalStorage 吗？
 
-不会。当前代码把 SQLite 作为批注与 Viewed 的唯一权威；浏览器不镜像、不迁移、不排队，也不在失败时静默回退。无权限或服务错误时页面保持只读并明确报错。
+不会。SQLite 是批注与正文章节进度的唯一权威；浏览器不镜像、不迁移、不排队，也不在失败时静默回退。普通折叠、面板位置、阅读位置记忆和 Markdiff 的逐文件进度是独立的浏览器本地状态。
 
 纯 UI 偏好仍可以存在浏览器里，例如普通折叠、主题面板位置或 diff 展开状态。
 
-### Shared 关闭后数据会搬回个人区吗？
+### Share 关闭后数据会搬回个人区吗？
 
-不会。Shared 只改变协作者能否读写同一 SQLite 数据集，以及是否广播变化。关闭不会搬移或删除数据。
+不会。Share 在同一 SQLite 的 Personal 与共同 Shared 数据间切换，不自动发布或合并浏览器私有 Personal 记录。关闭后恢复 Personal，不搬移或删除任一数据集。
+
+任何通过工作区门禁的浏览器都可批注、标记章节进度与导出文字批注，不需要 Admin 或 Share。非管理员 Personal 记录按私有身份 Cookie 隔离；清除站点数据会失去访问入口，目前没有账户恢复或个人数据跨设备同步。
 
 ### 怎么备份？
 
@@ -161,13 +163,13 @@ GFM、脚注、GitHub Alerts、emoji shortcode、语法高亮、KaTeX，以及 M
 
 ### 能导出 HTML 或 PDF 吗？
 
-没有静态 HTML 导出器。PDF 使用浏览器整页打印或 Markon 章节打印后选择“另存为 PDF”。Notes 可以导出为可编辑 Markdown。
+没有静态 HTML 导出器。PDF 使用浏览器整页打印或 Markon 章节打印后选择「另存为 PDF」。Notes 可以导出为可编辑 Markdown。
 
 ## 定位
 
 ### Markon 和 GitHub Markdown 有什么区别？
 
-阅读样式以 GitHub 为基线，但 Markon 增加本地 Workspace、全文搜索、批注/Notes、Viewed、源码编辑、Git Rendered diff、Live、Workspace AI 与自定义主题。
+阅读样式以 GitHub 为基线，但 Markon 增加本地 Workspace、全文搜索、批注 Annotate（含文字批注 Note）、Progress、源码编辑、Git Rendered diff、Live、Workspace AI 与自定义主题。
 
 ### Markon 是静态站点生成器或 Obsidian 替代品吗？
 

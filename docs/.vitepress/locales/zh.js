@@ -25,31 +25,66 @@ export const zh = {
       ],
       '/zh/features/': [
         {
-          text: '工作区',
+          text: '产品能力 / Features',
           items: [
             { text: '能力总览', link: '/zh/features/' },
-            { text: '工作区与文件浏览', link: '/zh/features/workspaces' },
-            { text: 'Markdown 渲染', link: '/zh/features/rendering' },
-            { text: 'Workspace Spotlight', link: '/zh/features/search' },
-            { text: 'Git 浏览与对比', link: '/zh/features/git' },
           ],
         },
         {
-          text: '阅读与审阅',
+          text: '工作区与查找 / Workspace',
           items: [
-            { text: '批注与 Notes', link: '/zh/features/annotations' },
-            { text: '章节进度与折叠', link: '/zh/features/viewed' },
-            { text: '导出便条', link: '/zh/features/export' },
-            { text: '章节打印', link: '/zh/features/print' },
-            { text: '源码编辑', link: '/zh/features/edit' },
+            { text: '工作区与文件（Workspace / Files）', link: '/zh/features/workspaces' },
+            { text: '统一查找与搜索（Spotlight / Search）', link: '/zh/features/search' },
           ],
         },
         {
-          text: '协作与智能',
+          text: '阅读与呈现 / Reading',
           items: [
-            { text: '实时演示 (Live)', link: '/zh/features/live' },
-            { text: 'Workspace AI', link: '/zh/features/chat' },
-            { text: '访问与权限', link: '/zh/features/access' },
+            { text: '渲染与查看器（Markdown / Viewer）', link: '/zh/features/rendering' },
+            { text: '章节阅读（Outline / Focus / Fold / Resume）', link: '/zh/features/viewed' },
+          ],
+        },
+        {
+          text: '批注与审阅 / Review',
+          items: [
+            { text: '批注（Annotate）', link: '/zh/features/annotations' },
+            { text: '进度标记（Progress）', link: '/zh/features/viewed' },
+            { text: 'Git 浏览与差异审阅（Git / Markdiff）', link: '/zh/features/git' },
+          ],
+        },
+        {
+          text: '源码编辑 / Edit',
+          items: [
+            { text: '源码编辑（Edit）', link: '/zh/features/edit' },
+          ],
+        },
+        {
+          text: '工作区 AI / Workspace AI',
+          items: [
+            { text: 'AI 对话（Chat）', link: '/zh/features/chat' },
+          ],
+        },
+        {
+          text: '协作与演示 / Team',
+          items: [
+            { text: '同步演示（Live）', link: '/zh/features/live' },
+            { text: '共享批注与阅读进度（Share）', link: '/zh/advanced/shared-annotations' },
+          ],
+        },
+        {
+          text: '导出与打印 / Output',
+          items: [
+            { text: '导出文字批注（Export Notes）', link: '/zh/features/export' },
+            { text: '打印（Print）', link: '/zh/features/print' },
+          ],
+        },
+        {
+          text: '管理与偏好 / Settings',
+          items: [
+            { text: '访问与权限（Access）', link: '/zh/features/access' },
+            { text: '隐私与数据（Privacy）', link: '/zh/advanced/data-and-privacy' },
+            { text: '主题与排版（Theme / Typography）', link: '/zh/advanced/custom-styles' },
+            { text: '操作与快捷键（Actions / Shortcuts）', link: '/zh/advanced/shortcuts' },
           ],
         },
       ],
@@ -58,7 +93,7 @@ export const zh = {
           text: '部署、数据与定制',
           items: [
             { text: '数据与隐私', link: '/zh/advanced/data-and-privacy' },
-            { text: '共享批注', link: '/zh/advanced/shared-annotations' },
+            { text: '共享批注与阅读进度（Share）', link: '/zh/advanced/shared-annotations' },
             { text: '反向代理', link: '/zh/advanced/reverse-proxy' },
             { text: '自定义样式', link: '/zh/advanced/custom-styles' },
             { text: '键盘快捷键', link: '/zh/advanced/shortcuts' },

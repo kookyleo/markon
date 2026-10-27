@@ -121,7 +121,7 @@ mindmap
       File browser
     Review
       Notes
-      Viewed tracking
+      Progress
 ```
 
 ## Mermaid Timeline

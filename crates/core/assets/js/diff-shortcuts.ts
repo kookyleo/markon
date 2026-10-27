@@ -9,12 +9,14 @@
  */
 
 import { CONFIG } from './core/config';
+import { initReviewScopeLabels } from './core/review-scope';
 import { Logger } from './core/utils';
 import { ChatManager } from './managers/chat-manager';
 import { CollaborationManager } from './managers/collaboration-manager';
 import { KeyboardShortcutsManager } from './managers/keyboard-shortcuts';
 import { WebSocketManager } from './managers/websocket-manager';
 import { Meta } from './services/dom';
+import { startWorkspaceConfigWatcher } from './core/workspace-config';
 
 const currentView = (shell: HTMLElement): 'rendered' | 'raw' =>
     shell.getAttribute('data-current-diff-view') === 'rendered' ? 'rendered' : 'raw';
@@ -36,38 +38,43 @@ const CHANGE_SELECTOR =
 const workspaceRouteKey = (): string =>
     `${window.location.pathname}${window.location.search}`;
 
-const initWorkspaceSurfaces = async (): Promise<CollaborationManager | null> => {
+interface WorkspaceSurfaces {
+    collaboration: CollaborationManager | null;
+}
+
+const initWorkspaceSurfaces = (): WorkspaceSurfaces => {
     const enableLive = Meta.flag(CONFIG.META_TAGS.ENABLE_LIVE);
-    let collaboration: CollaborationManager | null = null;
+    const surfaces: WorkspaceSurfaces = { collaboration: null };
 
-    if (enableLive) {
-        const workspaceId = Meta.get(CONFIG.META_TAGS.WORKSPACE_ID);
-        if (!workspaceId) {
-            Logger.warn('DiffShortcuts', 'Collaboration enabled without workspace-id; skipping');
-            return null;
-        }
-        const ws = new WebSocketManager(workspaceId, {
-            kind: 'surface',
-            key: workspaceRouteKey(),
-        });
-        try {
-            await ws.connect();
-            const socket = ws.getWebSocket();
-            if (socket) window.ws = socket;
-            collaboration = new CollaborationManager({ enableLive, ws });
-            collaboration.init();
-        } catch (error) {
-            Logger.warn('DiffShortcuts', 'Workspace live socket unavailable:', error);
-        }
-    }
-
+    // Chat and basic shortcuts must not wait for a presentation socket that
+    // may never open (offline, blocked proxy, or a stalled handshake).
     if (Meta.flag(CONFIG.META_TAGS.ENABLE_CHAT)) {
         const chat = new ChatManager(null);
         chat.init();
         window.chatManager = chat;
     }
 
-    return collaboration;
+    if (enableLive) {
+        const workspaceId = Meta.get(CONFIG.META_TAGS.WORKSPACE_ID);
+        if (!workspaceId) {
+            Logger.warn('DiffShortcuts', 'Live enabled without workspace-id; skipping');
+        } else {
+            const ws = new WebSocketManager(workspaceId, {
+                kind: 'surface',
+                key: workspaceRouteKey(),
+            });
+            void ws.connect().then(() => {
+                const socket = ws.getWebSocket();
+                if (socket) window.ws = socket;
+                const collaboration = new CollaborationManager({ enableLive, ws });
+                collaboration.init();
+                surfaces.collaboration = collaboration;
+            }).catch((error: unknown) => {
+                Logger.warn('DiffShortcuts', 'Workspace live socket unavailable:', error);
+            });
+        }
+    }
+    return surfaces;
 };
 
 /** The active view panel and the element that actually scrolls inside it. */
@@ -122,10 +129,13 @@ const stepBlock = (shell: HTMLElement, dir: 1 | -1): void => {
     scroller.scrollTo({ top: Math.max(0, y), behavior: 'smooth' });
 };
 
-const init = async (): Promise<void> => {
+const init = (): void => {
     const shell = document.querySelector<HTMLElement>('[data-diff-shell]');
     if (!shell) return;
-    const collaboration = await initWorkspaceSurfaces();
+    initReviewScopeLabels();
+    const workspaceId = Meta.get(CONFIG.META_TAGS.WORKSPACE_ID);
+    if (workspaceId) startWorkspaceConfigWatcher(workspaceId);
+    const surfaces = initWorkspaceSurfaces();
 
     const km = new KeyboardShortcutsManager();
 
@@ -159,9 +169,14 @@ const init = async (): Promise<void> => {
             window.markonDiffAnnotations?.toggleSelectionToolbar?.();
         });
     }
-    if (Meta.flag(CONFIG.META_TAGS.ENABLE_LIVE) && collaboration) {
-        km.register('TOGGLE_LIVE_ACTIVE', () => collaboration.toggleActiveMode());
-        km.register('TOGGLE_LIVE_OFF', () => collaboration.toggleOff());
+    if (Meta.get(CONFIG.META_TAGS.CAN_ANNOTATE) !== 'false') {
+        km.register('EXPORT_NOTES', () => {
+            void window.markonDiffAnnotations?.exportNotes();
+        });
+    }
+    if (Meta.flag(CONFIG.META_TAGS.ENABLE_LIVE)) {
+        km.register('TOGGLE_LIVE_ACTIVE', () => surfaces.collaboration?.toggleActiveMode());
+        km.register('TOGGLE_LIVE_OFF', () => surfaces.collaboration?.toggleOff());
     }
     if (Meta.flag(CONFIG.META_TAGS.ENABLE_CHAT)) {
         km.register('TOGGLE_CHAT', () => window.chatManager?.openInDefault());
@@ -186,7 +201,7 @@ const init = async (): Promise<void> => {
 };
 
 if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', () => { void init(); }, { once: true });
+    document.addEventListener('DOMContentLoaded', init, { once: true });
 } else {
-    void init();
+    init();
 }

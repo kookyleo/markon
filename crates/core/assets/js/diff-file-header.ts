@@ -4,6 +4,7 @@
 
 import { workspaceFileDeleteUrl, workspaceFileUrl } from './core/routes';
 import { requireActiveAdminSession, showAdminActionError } from './core/admin-actions';
+import { i18n } from './core/config';
 
 export interface DiffFileHeaderOpts {
     path: string;
@@ -19,8 +20,8 @@ export interface DiffFileHeaderOpts {
     viewed: boolean;
     /** Toggle the fold (chevron). The caller owns the actual collapse. */
     onToggleCollapse: () => void;
-    /** Toggle the "Viewed" mark (checkbox). The caller owns the side effects. */
-    onToggleViewed: () => void;
+    /** Apply the checkbox's explicit intent. The caller owns the side effects. */
+    onToggleViewed: (viewed: boolean) => void;
     /** Called after the file is successfully deleted on disk. */
     onDeleted?: () => void;
 }
@@ -122,9 +123,9 @@ export const collapseStorageKey = (dataUrl?: string | null): string | null => {
     }
 };
 
-export const loadCollapsedSet = (dataUrl?: string | null): Set<string> => {
+export const loadCollapsedSet = (dataUrl?: string | null, fallback: ReadonlySet<string> = new Set()): Set<string> => {
     const key = collapseStorageKey(dataUrl);
-    if (!key) return new Set();
+    if (!key) return new Set(fallback);
     try {
         const raw = window.localStorage.getItem(key);
         if (!raw) return new Set();
@@ -133,7 +134,7 @@ export const loadCollapsedSet = (dataUrl?: string | null): Set<string> => {
             ? new Set(parsed.filter((x): x is string => typeof x === 'string'))
             : new Set();
     } catch {
-        return new Set();
+        return new Set(fallback);
     }
 };
 
@@ -159,9 +160,9 @@ export const viewedStorageKey = (dataUrl?: string | null): string | null => {
     }
 };
 
-export const loadViewedSet = (dataUrl?: string | null): Set<string> => {
+export const loadViewedSet = (dataUrl?: string | null, fallback: ReadonlySet<string> = new Set()): Set<string> => {
     const key = viewedStorageKey(dataUrl);
-    if (!key) return new Set();
+    if (!key) return new Set(fallback);
     try {
         const raw = window.localStorage.getItem(key);
         if (!raw) return new Set();
@@ -170,7 +171,7 @@ export const loadViewedSet = (dataUrl?: string | null): Set<string> => {
             ? new Set(parsed.filter((x): x is string => typeof x === 'string'))
             : new Set();
     } catch {
-        return new Set();
+        return new Set(fallback);
     }
 };
 
@@ -477,9 +478,13 @@ export function createDiffFileHeader(opts: DiffFileHeaderOpts): HTMLElement {
     const input = document.createElement('input');
     input.type = 'checkbox';
     input.checked = opts.viewed;
-    input.addEventListener('change', () => opts.onToggleViewed());
+    input.addEventListener('change', () => {
+        check.title = i18n.t(input.checked ? 'web.diff.progress.unmark.tip' : 'web.diff.progress.tip');
+        opts.onToggleViewed(input.checked);
+    });
     const checkText = document.createElement('span');
-    checkText.textContent = 'Viewed';
+    checkText.textContent = i18n.t('web.viewed');
+    check.title = i18n.t(opts.viewed ? 'web.diff.progress.unmark.tip' : 'web.diff.progress.tip');
     check.append(input, checkText);
 
     // A pure rename (path moved, byte-identical content → 0/0) shows nothing in

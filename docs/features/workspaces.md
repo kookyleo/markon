@@ -16,18 +16,18 @@ A directory workspace provides:
 - All files and Markdown filters;
 - file-name, H1-title, and content results in Workspace Spotlight;
 - branch, tag, commit, and working-tree information for Git repositories;
-- six workspace feature flags and Git status;
+- four advanced switches (Edit, Chat, Live, Share) and Git status;
 - copyable aliases, absolute paths, workspace IDs, and URLs.
 
 Column widths are resizable and saved in the browser. Narrow screens use a single-column layout.
 
 ## File and directory operations
 
-With an admin session, you can create Markdown files and directories, delete files, rename the workspace alias, and change `Search`, `Viewed`, `Edit`, `Live`, `Chat`, and `Shared`. Every endpoint rechecks the admin role, same origin, and workspace path; collaborators cannot gain structural write access by constructing requests manually.
+With an admin session, you can create Markdown files and directories, delete files, rename the workspace alias, and change `Edit`, `Chat`, `Live`, and `Share`. Every endpoint rechecks the admin role, same origin, and workspace path; collaborators cannot gain structural write access by constructing requests manually.
 
 ## Workspace Spotlight
 
-Press <kbd>/</kbd> or <kbd>g</kbd> to search file names, paths, top-level H1 titles, and indexed content. Arrow keys move, Enter opens, and Esc closes. File navigation remains available when Search is disabled. See [Workspace Spotlight](/features/search).
+Press <kbd>/</kbd> or <kbd>g</kbd> to search file names, paths, top-level H1 titles, and indexed content. Arrow keys move, Enter opens, and Esc closes. Search and file navigation are essential capabilities and need no switch; indexed content results become available once the index is ready. See [Workspace Spotlight](/features/search).
 
 ## Directory persistence
 
