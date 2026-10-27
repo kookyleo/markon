@@ -69,6 +69,8 @@ pub(crate) enum ProviderError {
 
 #[async_trait]
 pub(crate) trait Provider: Send + Sync {
+    // async_trait adds #[must_use] to an already must-use Future.
+    #[allow(clippy::double_must_use)]
     async fn stream(
         &self,
         request: ChatRequest,

@@ -148,6 +148,8 @@ pub(crate) trait Tool: Send + Sync {
     fn name(&self) -> &'static str;
     fn description(&self) -> &'static str;
     fn input_schema(&self) -> serde_json::Value;
+    // async_trait adds #[must_use] to an already must-use Future.
+    #[allow(clippy::double_must_use)]
     async fn run(&self, ctx: &ToolContext, input: serde_json::Value) -> Result<String, ToolError>;
 
     fn schema(&self) -> ToolSchema {

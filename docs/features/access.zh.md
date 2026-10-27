@@ -90,7 +90,7 @@ fragment nonce 有 256 bit 随机性，页面读取后会立即清除地址栏 f
 Markon 对所有请求执行精确 Host allowlist，默认包含 localhost、实际绑定地址、当前网卡地址和 `advertised_host`。自定义 DNS、mDNS 或反向代理域名必须显式登记：
 
 ```bash
-markon --entry https://docs.example.com
+markon --public-base-url https://docs.example.com
 # 或
 markon --trusted-host https://docs.example.com
 ```

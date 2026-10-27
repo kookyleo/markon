@@ -71,6 +71,7 @@ describe('SectionViewedManager', () => {
     let warnSpy: ReturnType<typeof vi.spyOn>;
 
     beforeEach(() => {
+        vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
         document.body.innerHTML = '';
         document.head.innerHTML = '';
         seedMeta('can-manage', 'true');
@@ -84,6 +85,9 @@ describe('SectionViewedManager', () => {
     });
 
     afterEach(() => {
+        // Finish transition fallbacks even for elements detached during a test,
+        // before jsdom disposes their window.
+        vi.runOnlyPendingTimers();
         vi.useRealTimers();
         logSpy.mockRestore();
         warnSpy.mockRestore();

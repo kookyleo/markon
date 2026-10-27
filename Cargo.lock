@@ -3566,7 +3566,7 @@ dependencies = [
 
 [[package]]
 name = "markon"
-version = "0.15.24"
+version = "0.15.29"
 dependencies = [
  "clap",
  "crossterm",
@@ -3579,11 +3579,12 @@ dependencies = [
  "tracing",
  "tracing-subscriber",
  "unicode-width 0.2.2",
+ "windows-sys 0.60.2",
 ]
 
 [[package]]
 name = "markon-core"
-version = "0.15.24"
+version = "0.15.29"
 dependencies = [
  "arc-swap",
  "async-trait",
@@ -3641,7 +3642,7 @@ dependencies = [
 
 [[package]]
 name = "markon-gui"
-version = "0.15.24"
+version = "0.15.29"
 dependencies = [
  "dirs",
  "dunce",
@@ -3667,7 +3668,7 @@ dependencies = [
 
 [[package]]
 name = "markond"
-version = "0.15.24"
+version = "0.15.29"
 dependencies = [
  "dirs",
  "markon-core",
@@ -7031,13 +7032,14 @@ dependencies = [
 
 [[package]]
 name = "tokio-util"
-version = "0.7.18"
+version = "0.7.20"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "9ae9cec805b01e8fc3fd2fe289f89149a9b66dd16786abd8b19cfa7b48cb0098"
+checksum = "e464cf451ba96ebfc6f9b6542f17ee8b8956e33f1e40d9690624e59d7a7f8a4b"
 dependencies = [
  "bytes",
  "futures-core",
  "futures-sink",
+ "libc",
  "pin-project-lite",
  "tokio",
 ]

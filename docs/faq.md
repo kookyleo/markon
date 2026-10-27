@@ -71,7 +71,7 @@ Run `markon docs/ --collaborator-access-code guest-secret`. Only a salted hash p
 
 ### Can I expose Markon directly to the internet?
 
-Put it behind an HTTPS reverse proxy, register exact `--entry`/`--trusted-host` origins, and consider gateway authentication. See [Reverse proxy](/advanced/reverse-proxy).
+Put it behind an HTTPS reverse proxy, register exact `--public-base-url`/`--trusted-host` origins, and consider gateway authentication. See [Reverse proxy](/advanced/reverse-proxy).
 
 ## Editing, Git, and AI
 

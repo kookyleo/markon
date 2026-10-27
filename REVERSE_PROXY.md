@@ -6,7 +6,7 @@ When using `--shared-annotation` mode, ensure your reverse proxy correctly suppo
 
 Markon has built-in collaborator access codes and explicit administrator sessions. Browser management privileges are capability-based: loopback peers and same-machine reverse proxies are not administrators. Use `markon admin open` or `markon admin code` to create an administrator browser session.
 
-Every request must also match the Host allowlist. Start Markon with `--entry https://md.example.com` or `--trusted-host https://md.example.com` (repeatable) for each proxy origin. An HTTPS origin also causes access cookies to carry `Secure`. Unknown Host values receive 421, preventing DNS rebinding. Forwarded IP/protocol headers are never used as authorization.
+Every request must also match the Host allowlist. Start Markon with `--public-base-url https://md.example.com` or `--trusted-host https://md.example.com` (repeatable) for each proxy origin. An HTTPS origin also causes access cookies to carry `Secure`. Unknown Host values receive 421, preventing DNS rebinding. Forwarded IP/protocol headers are never used as authorization.
 
 Before exposing Markon through a reverse proxy, configure authentication at the gateway level as an additional perimeter. Recommended approaches:
 
@@ -336,7 +336,7 @@ location /_/ {
 If you see "Mixed Content" errors:
 - HTTPS pages must use `wss://` protocol
 - Markon handles this automatically
-- Declare the HTTPS origin with `--entry` or `--trusted-host`; forwarded headers are not trusted for authorization
+- Declare the HTTPS origin with `--public-base-url` or `--trusted-host`; forwarded headers are not trusted for authorization
 
 ---
 

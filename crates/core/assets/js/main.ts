@@ -1759,7 +1759,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const isSharedMode = Meta.flag(CONFIG.META_TAGS.SHARED_ANNOTATION);
     window.isSharedAnnotationMode = isSharedMode;
 
-    // Intercept TOC anchor clicks to apply smooth scroll + history.pushState.
+    // Intercept anchor clicks to jump immediately + history.pushState.
     document.addEventListener('click', (e) => {
         const target = e.target as Element | null;
         const link = target?.closest<HTMLAnchorElement>('a[href^="#"]');
@@ -1773,7 +1773,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
         if (targetElement) {
             e.preventDefault();
-            targetElement.scrollIntoView({ behavior: 'smooth', block: 'start' });
+            targetElement.scrollIntoView({ behavior: 'instant', block: 'start' });
             history.pushState(null, '', href);
             if (window.__markonTocSetSelected) {
                 window.__markonTocSetSelected(targetId);

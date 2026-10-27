@@ -184,7 +184,7 @@
     max-width: 100%;
     box-sizing: border-box;
     padding: 12px;
-    overflow: hidden;
+    overflow-x: auto;
     border: 1px solid var(--markon-border-default);
     border-radius: var(--markon-radius-sm);
     background: var(--markon-bg-default);
@@ -193,7 +193,8 @@
 .markdown-body .markon-diagram svg {
     display: block;
     width: auto;
-    max-width: 100%;
+    /* Keep labels readable; wide diagrams scroll inside the canvas. */
+    max-width: none;
     height: auto;
     margin-inline: auto;
     overflow: visible;

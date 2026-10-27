@@ -123,7 +123,7 @@ markon docs/ --collaborator-access-code guest-secret
 
 ### 可以直接暴露到公网吗？
 
-应放在 HTTPS 反向代理后，登记精确 `--entry` / `--trusted-host`，并按需增加网关层认证。不要用 `X-Forwarded-For` 作为身份依据。
+应放在 HTTPS 反向代理后，登记精确 `--public-base-url` / `--trusted-host`，并按需增加网关层认证。不要用 `X-Forwarded-For` 作为身份依据。
 
 → [反向代理](/zh/advanced/reverse-proxy)
 
