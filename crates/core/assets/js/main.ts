@@ -16,7 +16,7 @@ import { Position } from './services/position';
 import { Text } from './services/text';
 import { StorageManager } from './managers/storage-manager';
 import { WebSocketManager } from './managers/websocket-manager';
-import { AnnotationManager, type Annotation } from './managers/annotation-manager';
+import { AnnotationManager, isValidAnnotation, type Annotation } from './managers/annotation-manager';
 import { NoteManager } from './managers/note-manager';
 import { PopoverManager, type PopoverActionPayload } from './managers/popover-manager';
 import { UndoManager, type UndoOperation } from './managers/undo-manager';
@@ -857,7 +857,8 @@ export class MarkonApp {
             const storage = this.#storage;
             if (!annotationManager || !noteManager || !storage) return;
             void annotationManager.refreshSharedSnapshot(
-                async () => (await storage.reloadAnnotations()).filter(annotation => validId(annotation?.id)),
+                async () => (await storage.reloadAnnotations())
+                    .filter(annotation => validId(annotation?.id) && isValidAnnotation(annotation)),
                 () => !!this.#markdownBody?.isConnected,
             ).then(updated => {
                 if (updated) renderSharedAnnotations();
@@ -876,6 +877,10 @@ export class MarkonApp {
             const incoming = message.annotation as Annotation;
             if (!validId(incoming?.id)) {
                 Logger.warn('WebSocket', `Dropped new_annotation with invalid id: ${String(incoming?.id)}`);
+                return;
+            }
+            if (!isValidAnnotation(incoming)) {
+                Logger.warn('WebSocket', 'Dropped new_annotation with invalid anchor');
                 return;
             }
             // SaveAnnotation is an upsert: a peer editing a Note retains its

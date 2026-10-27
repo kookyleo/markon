@@ -96,6 +96,29 @@ export interface Annotation {
     author?: Author;
 }
 
+function isValidQuote(quote: unknown): quote is TextAnchor {
+    return quote !== null
+        && typeof quote === 'object'
+        && !Array.isArray(quote)
+        && 'position' in quote
+        && typeof quote.position === 'number'
+        && Number.isFinite(quote.position)
+        && 'exact' in quote && typeof quote.exact === 'string'
+        && 'prefix' in quote && typeof quote.prefix === 'string'
+        && 'suffix' in quote && typeof quote.suffix === 'string';
+}
+
+/** Anchor fields consumed by rendering and export, including legacy flat quotes. */
+export function isValidAnnotation(annotation: unknown): annotation is Annotation {
+    if (!annotation || typeof annotation !== 'object' || !('anchor' in annotation)) return false;
+    const anchor = annotation.anchor;
+    if (!isValidQuote(anchor)) return false;
+    // Export also consumes fragments without checking the version. Validate any
+    // present list, while retaining the flat fallback for omitted/empty lists.
+    return anchor.fragments === undefined
+        || (Array.isArray(anchor.fragments) && anchor.fragments.every(isValidQuote));
+}
+
 /** Storage strategy contract used by AnnotationManager.
  *
  * Mutating methods return the op_id used for the outgoing WebSocket frame
@@ -158,7 +181,7 @@ export class AnnotationManager {
     }
 
     async load(): Promise<void> {
-        this.#annotations = await this.#storage.loadAnnotations();
+        this.#annotations = (await this.#storage.loadAnnotations()).filter(isValidAnnotation);
         Logger.log('AnnotationManager', `Loaded ${this.#annotations.length} annotations`);
     }
 
@@ -201,7 +224,7 @@ export class AnnotationManager {
                     await new Promise(resolve => setTimeout(resolve, 0));
                     continue;
                 }
-                this.replaceAll(annotations);
+                this.replaceAll(annotations.filter(isValidAnnotation));
                 return true;
             }
             return false;
@@ -230,8 +253,8 @@ export class AnnotationManager {
             const ai = positions.get(a.id) ?? Number.POSITIVE_INFINITY;
             const bi = positions.get(b.id) ?? Number.POSITIVE_INFINITY;
             if (ai !== bi) return ai - bi;
-            const ap = typeof a.anchor.position === 'number' ? a.anchor.position : Number.POSITIVE_INFINITY;
-            const bp = typeof b.anchor.position === 'number' ? b.anchor.position : Number.POSITIVE_INFINITY;
+            const ap = typeof a.anchor?.position === 'number' ? a.anchor.position : Number.POSITIVE_INFINITY;
+            const bp = typeof b.anchor?.position === 'number' ? b.anchor.position : Number.POSITIVE_INFINITY;
             if (ap !== bp) return ap - bp;
             return a.createdAt - b.createdAt;
         });
@@ -567,8 +590,9 @@ export class AnnotationManager {
         // Each annotation re-anchors independently against the live DOM, and
         // wrapping preserves text content, so application order doesn't affect
         // correctness. Sort by anchor position for deterministic ordering.
-        const sorted = [...annotations].sort(
-            (a, b) => a.anchor.position - b.anchor.position,
+        const sorted = annotations.filter(isValidAnnotation).sort(
+            (a, b) => (a.anchor?.position ?? Number.POSITIVE_INFINITY)
+                - (b.anchor?.position ?? Number.POSITIVE_INFINITY),
         );
 
         sorted.forEach(anno => this.#applyAnnotation(anno));

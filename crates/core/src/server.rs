@@ -2566,6 +2566,23 @@ async fn handle_document_state(
     response
 }
 
+fn valid_annotation_anchor(anchor: &serde_json::Value) -> bool {
+    fn valid_quote(quote: &serde_json::Value) -> bool {
+        quote.is_object()
+            && quote["position"].as_f64().is_some_and(f64::is_finite)
+            && ["exact", "prefix", "suffix"]
+                .iter()
+                .all(|field| quote[*field].is_string())
+    }
+
+    valid_quote(anchor)
+        && anchor.get("fragments").is_none_or(|fragments| {
+            fragments
+                .as_array()
+                .is_some_and(|fragments| fragments.iter().all(valid_quote))
+        })
+}
+
 fn valid_annotation_id(id: &str) -> bool {
     id.len() >= 6
         && id.len() <= 69
@@ -2683,6 +2700,9 @@ async fn handle_document_state_command(
                 };
                 if !valid_annotation_id(id) {
                     return Err("invalid annotation id".to_string());
+                }
+                if !valid_annotation_anchor(&annotation["anchor"]) {
+                    return Err("annotation anchor must contain valid quote fields and fragments".to_string());
                 }
                 let data = serde_json::to_string(&annotation).map_err(|e| e.to_string())?;
                 let saved = if let Some(subject) = subject.as_deref() {
@@ -8894,6 +8914,139 @@ mod tests {
         .unwrap());
     }
 
+    #[test]
+    fn annotation_anchor_validation_preserves_legacy_and_fragment_fallbacks() {
+        let quote = json!({ "position": 0, "exact": "note", "prefix": "", "suffix": "" });
+        for anchor in [
+            quote.clone(),
+            json!({ "position": 0, "exact": "", "prefix": "", "suffix": "" }),
+            json!({ "version": 2, "fragments": [], "position": 0, "exact": "note", "prefix": "", "suffix": "" }),
+            json!({ "version": 2, "fragments": [quote], "position": 0, "exact": "note", "prefix": "", "suffix": "" }),
+        ] {
+            assert!(valid_annotation_anchor(&anchor), "{anchor}");
+        }
+    }
+
+    #[tokio::test]
+    async fn document_state_rejects_invalid_annotation_anchors_without_changing_existing_rows() {
+        let root = tempfile::tempdir().unwrap();
+        let file = root.path().join("note.md");
+        fs::write(&file, "# note").unwrap();
+        let registry = Arc::new(WorkspaceRegistry::new("annotation-anchor".into()));
+        let id = add_test_workspace(&registry, root.path().to_path_buf(), all_flags());
+        let mut events = registry.get(&id).unwrap().events_tx.subscribe();
+        let conn = Connection::open_in_memory().unwrap();
+        conn.execute(
+            "CREATE TABLE annotations (id TEXT PRIMARY KEY, file_path TEXT NOT NULL, data TEXT NOT NULL)",
+            [],
+        )
+        .unwrap();
+        let path = dunce::canonicalize(&file)
+            .unwrap()
+            .to_string_lossy()
+            .into_owned();
+        let legacy = r#"{"id":"anno-legacy","text":"legacy"}"#;
+        assert!(upsert_annotation_for_file(&conn, "anno-legacy", &path, legacy).unwrap());
+        let db = Arc::new(Mutex::new(conn));
+        let mut state = test_state(registry);
+        state.db = Some(db.clone());
+        let quote = json!({ "position": 0, "exact": "note", "prefix": "", "suffix": "" });
+        let with_fragments = |fragments| {
+            let mut anchor = quote.clone();
+            anchor["version"] = json!(2);
+            anchor["fragments"] = fragments;
+            anchor
+        };
+
+        for (index, anchor) in [
+            None,
+            Some(json!(null)),
+            Some(json!([])),
+            Some(json!("bad")),
+            Some(json!(1)),
+            Some(json!(true)),
+            Some(json!({ "position": 0, "exact": "note" })),
+            Some(json!({ "position": 0, "exact": "note", "prefix": "" })),
+            Some(json!({ "position": 0, "exact": "note", "suffix": "" })),
+            Some(json!({ "position": "0", "exact": "note", "prefix": "", "suffix": "" })),
+            Some(json!({ "position": 0, "exact": 1, "prefix": "", "suffix": "" })),
+            Some(json!({ "position": 0, "exact": "note", "prefix": null, "suffix": "" })),
+            Some(json!({ "position": 0, "exact": "note", "prefix": "", "suffix": false })),
+            Some(with_fragments(json!("note"))),
+            Some(with_fragments(json!({}))),
+            Some(with_fragments(json!(null))),
+            Some(with_fragments(json!([null]))),
+            Some(with_fragments(json!([{ "position": 0, "exact": "note" }]))),
+            Some({
+                let mut anchor = with_fragments(
+                    json!([{ "position": 0, "exact": null, "prefix": "", "suffix": "" }]),
+                );
+                anchor.as_object_mut().unwrap().remove("version");
+                anchor
+            }),
+        ]
+        .into_iter()
+        .enumerate()
+        {
+            let mut annotation = json!({ "id": format!("anno-{index}") });
+            if let Some(anchor) = anchor {
+                annotation["anchor"] = anchor;
+            } else {
+                annotation["id"] = json!("anno-legacy");
+            }
+            let response = handle_document_state_command(
+                State(state.clone()),
+                AxumPath(id.clone()),
+                Some(Extension(AccessRole::Collaborator)),
+                axum::http::HeaderMap::new(),
+                Json(DocumentStateCommand::SaveAnnotation {
+                    path: path.clone(),
+                    annotation,
+                    op_id: None,
+                }),
+            )
+            .await;
+            assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+            assert_eq!(
+                response_text(response).await,
+                "annotation anchor must contain valid quote fields and fragments"
+            );
+        }
+
+        let rows: Vec<String> = db
+            .lock()
+            .unwrap()
+            .prepare("SELECT data FROM annotations")
+            .unwrap()
+            .query_map([], |row| row.get(0))
+            .unwrap()
+            .collect::<rusqlite::Result<_>>()
+            .unwrap();
+        assert_eq!(rows, vec![legacy.to_string()]);
+        assert!(matches!(
+            events.try_recv(),
+            Err(tokio::sync::broadcast::error::TryRecvError::Empty)
+        ));
+
+        let response = handle_document_state_command(
+            State(state),
+            AxumPath(id),
+            Some(Extension(AccessRole::Collaborator)),
+            axum::http::HeaderMap::new(),
+            Json(DocumentStateCommand::SaveAnnotation {
+                path,
+                annotation: json!({
+                    "id": "anno-valid",
+                    "anchor": { "position": 0, "exact": "note", "prefix": "", "suffix": "" }
+                }),
+                op_id: None,
+            }),
+        )
+        .await;
+        assert_eq!(response.status(), StatusCode::NO_CONTENT);
+        assert!(events.try_recv().is_ok());
+    }
+
     #[tokio::test]
     async fn document_state_preserves_legacy_owner_and_shared_storage() {
         let root = tempfile::tempdir().unwrap();
@@ -9158,7 +9311,10 @@ mod tests {
     }
 
     fn review_note(note: &str) -> serde_json::Value {
-        serde_json::json!({"action":"save_annotation","annotation":{"id":"anno-same-id","note":note}})
+        serde_json::json!({"action":"save_annotation","annotation":{
+            "id":"anno-same-id", "note":note,
+            "anchor":{"position":0,"exact":"note","prefix":"","suffix":""}
+        }})
     }
 
     #[tokio::test]
@@ -9451,6 +9607,81 @@ mod tests {
                 0
             ))
             .unwrap(),
+            0
+        );
+    }
+
+    #[tokio::test]
+    async fn personal_document_state_rejects_malformed_anchors_without_overwriting_notes() {
+        let root = tempfile::tempdir().unwrap();
+        let (state, id, path) = review_test_state(root.path());
+        let mut events = state
+            .workspace_registry
+            .get(&id)
+            .unwrap()
+            .events_tx
+            .subscribe();
+        let app = review_test_router(state.clone());
+        let browser = review_cookie(&review_get(&app, &id, &path, None).await);
+        assert_eq!(
+            review_post(
+                &app,
+                &id,
+                &path,
+                Some(&browser),
+                Some("personal"),
+                review_note("preserved")
+            )
+            .await
+            .status(),
+            StatusCode::NO_CONTENT
+        );
+        let before = review_snapshot(review_get(&app, &id, &path, Some(&browser)).await).await;
+        for anchor in [
+            None,
+            Some(json!({ "position": 0, "exact": "note" })),
+            Some(
+                json!({ "position": 0, "exact": "note", "prefix": "", "suffix": "", "version": 2, "fragments": [null] }),
+            ),
+            Some(
+                json!({ "position": 0, "exact": "note", "prefix": "", "suffix": "", "fragments": "note" }),
+            ),
+        ] {
+            let mut command = review_note("must not overwrite");
+            if let Some(anchor) = anchor {
+                command["annotation"]["anchor"] = anchor;
+            } else {
+                command["annotation"]
+                    .as_object_mut()
+                    .unwrap()
+                    .remove("anchor");
+            }
+            let rejected =
+                review_post(&app, &id, &path, Some(&browser), Some("personal"), command).await;
+            assert_eq!(rejected.status(), StatusCode::BAD_REQUEST);
+            assert!(response_text(rejected).await.contains("anchor"));
+            assert_eq!(
+                review_snapshot(review_get(&app, &id, &path, Some(&browser)).await).await,
+                before
+            );
+        }
+        assert!(matches!(
+            events.try_recv(),
+            Err(tokio::sync::broadcast::error::TryRecvError::Empty)
+        ));
+        let conn = state.db.as_ref().unwrap().lock().unwrap();
+        assert_eq!(
+            conn.query_row("SELECT COUNT(*) FROM personal_annotations", [], |row| row
+                .get::<_, i64>(
+                0
+            ))
+            .unwrap(),
+            1
+        );
+        assert_eq!(
+            conn.query_row("SELECT COUNT(*) FROM annotations", [], |row| row
+                .get::<_, i64>(0))
+                .unwrap(),
             0
         );
     }

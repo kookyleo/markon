@@ -442,6 +442,46 @@ describe('shared diff document synchronization', () => {
         expect(alpha.onmessage).toBeNull();
     });
 
+    it.each(['load', 'all_annotations', 'new_annotation'] as const)(
+        '%s skips malformed fragments while rendering and exporting valid notes',
+        async source => {
+            const valid = annotation('anno-valid', 'brown fox', 'The quick ', ' jumps.', 'valid note');
+            const invalid = [
+                { ...valid.anchor, version: 2, fragments: 'brown fox' },
+                { ...valid.anchor, version: 2, fragments: [null] },
+                { ...valid.anchor, version: 2, fragments: [{ position: 10, exact: 'brown fox' }] },
+                { ...valid.anchor, fragments: [{ ...valid.anchor, exact: null }] },
+            ].map((anchor, index) => ({
+                ...valid, id: `anno-invalid-${index}`, note: 'invalid note', anchor,
+            })) as unknown as Annotation[];
+            const { writes, snapshots } = await initSharedDiff({ snapshots: new Map([
+                ['/abs/alpha.md', source === 'load' ? [...invalid, valid] : [valid]],
+            ]) });
+            const alpha = socketFor('/abs/alpha.md');
+            if (source === 'all_annotations') {
+                snapshots.set('/abs/alpha.md', [...invalid, valid]);
+                alpha.receive({ type: source, annotations: [] });
+                await flushReview();
+            } else if (source === 'new_annotation') {
+                for (const note of invalid) alpha.receive({ type: source, annotation: note });
+            }
+            await expect(window.markonDiffAnnotations?.notesCount()).resolves.toBe(1);
+            expect(bodyFor('/abs/alpha.md').querySelectorAll('.new-side [data-annotation-id]')).toHaveLength(1);
+            expect(document.querySelector('[data-annotation-id^="anno-invalid-"]')).toBeNull();
+            try {
+                await expect(window.markonDiffAnnotations?.exportNotes()).resolves.toBe(true);
+                const editor = document.querySelector<HTMLElement>('.cm-editor');
+                const markdown = editor ? EditorView.findFromDOM(editor)?.state.doc.toString() : undefined;
+                expect(markdown).toContain('valid note');
+                expect(markdown).not.toContain('invalid note');
+                expect(writes).toEqual([]);
+            } finally {
+                document.querySelector<HTMLButtonElement>('.editor-close-btn')?.click();
+                document.querySelectorAll<HTMLElement>('.cm-editor').forEach(dom => EditorView.findFromDOM(dom)?.destroy());
+            }
+        },
+    );
+
     it('rejects malformed peer records and never opens annotation actions on old-side text', async () => {
         await initSharedDiff();
         const alpha = socketFor('/abs/alpha.md');

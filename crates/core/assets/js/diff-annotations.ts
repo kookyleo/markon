@@ -24,7 +24,7 @@ import { Meta } from './services/dom';
 import { workspaceFileNoteLink } from './services/note-link';
 import { StorageManager } from './managers/storage-manager';
 import { WebSocketManager } from './managers/websocket-manager';
-import { AnnotationManager, type Annotation } from './managers/annotation-manager';
+import { AnnotationManager, isValidAnnotation, type Annotation } from './managers/annotation-manager';
 import { EditorManager } from './managers/editor-manager';
 import { NoteManager } from './managers/note-manager';
 import { PopoverManager, type PopoverActionPayload } from './managers/popover-manager';
@@ -42,17 +42,14 @@ const validAnnotationId = (id: unknown): id is string =>
 const reviewAnnotation = (value: unknown): Annotation | null => {
     if (!value || typeof value !== 'object') return null;
     const annotation = value as Partial<Annotation>;
-    const anchor = annotation.anchor;
-    if (!validAnnotationId(annotation.id) || !anchor || typeof anchor !== 'object'
-        || typeof anchor.position !== 'number' || !Number.isFinite(anchor.position)
-        || typeof anchor.exact !== 'string' || typeof anchor.prefix !== 'string' || typeof anchor.suffix !== 'string'
+    if (!validAnnotationId(annotation.id) || !isValidAnnotation(annotation)
         || typeof annotation.text !== 'string' || typeof annotation.createdAt !== 'number'
         || (annotation.note !== null && typeof annotation.note !== 'string')
         || (annotation.tagName !== 'span' && annotation.tagName !== 's')
         || !['highlight-orange', 'highlight-green', 'highlight-yellow', 'strikethrough', 'has-note'].includes(annotation.type ?? '')) {
         return null;
     }
-    return annotation as Annotation;
+    return annotation;
 };
 
 const markdownFileHeading = (path: string): string => {
