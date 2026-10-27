@@ -4,7 +4,7 @@ Use Nginx, Apache, or Caddy to expose Markon through a public domain.
 
 ## Access control
 
-Markon never treats source IP as identity. Browsers are collaborators unless they hold an explicit admin session, collaborator codes apply to every non-admin browser, and each request must match an exact Host allowlist. Register the public origin with `--entry https://docs.example.com` or `--trusted-host https://docs.example.com`; unknown Hosts return 421.
+Markon never treats source IP as identity. Browsers are collaborators unless they hold an explicit admin session, collaborator codes apply to every non-admin browser, and each request must match an exact Host allowlist. Register the public origin with `--public-base-url https://docs.example.com` or `--trusted-host https://docs.example.com`; unknown Hosts return 421.
 
 A collaborator code is application-level access control, not transport encryption. Public deployments should terminate TLS and preferably add gateway authentication such as Basic Auth, oauth2-proxy, Cloudflare Access, Tailscale, or WireGuard.
 
@@ -13,10 +13,10 @@ A collaborator code is application-level access control, not transport encryptio
 ```bash
 markon --host 127.0.0.1 -p 6419 \
   -b https://docs.example.com \
-  --entry https://docs.example.com
+  --public-base-url https://docs.example.com
 ```
 
-`--host` keeps the service local, `-b` opens the public URL, and `--entry` controls advertised/QR URLs, the Host allowlist, and Secure cookies for HTTPS origins. The proxy supplies TLS.
+`--host` keeps the service local, `-b` opens the public URL, and `--public-base-url` controls advertised/QR URLs, the Host allowlist, and Secure cookies for HTTPS origins. The proxy supplies TLS.
 
 ## Nginx
 
@@ -84,11 +84,11 @@ Type=oneshot
 RemainAfterExit=yes
 User=markon
 WorkingDirectory=/srv/docs
-ExecStart=/usr/local/bin/markon /srv/docs --host 127.0.0.1 -p 6419 --entry https://docs.example.com
+ExecStart=/usr/local/bin/markon /srv/docs --host 127.0.0.1 -p 6419 --public-base-url https://docs.example.com
 ExecStop=/usr/local/bin/markon shutdown
 Environment="MARKON_SQLITE_PATH=/var/lib/markon/annotation.sqlite"
 ```
 
 ## Reserved path and troubleshooting
 
-`/_/` is reserved for internal CSS, JavaScript, and WebSockets; do not create a workspace-root directory named `_`. If WebSockets fail, verify Upgrade/Connection headers and proxy timeouts. If QR uses a private IP, correct `--entry`. For a blank page, check `curl http://127.0.0.1:6419` and the proxy error log.
+`/_/` is reserved for internal CSS, JavaScript, and WebSockets; do not create a workspace-root directory named `_`. If WebSockets fail, verify Upgrade/Connection headers and proxy timeouts. If QR uses a private IP, correct `--public-base-url`. For a blank page, check `curl http://127.0.0.1:6419` and the proxy error log.

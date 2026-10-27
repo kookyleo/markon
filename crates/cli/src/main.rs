@@ -71,16 +71,16 @@ struct Cli {
     #[arg(long, value_name = "IP", action = clap::ArgAction::Set, num_args = 0..=1, default_missing_value = "select")]
     host: Option<String>,
 
-    /// Public entry URL prefix (proxy/domain). Used for QR code and "accessible at" logs.
-    #[arg(long, alias = "qr", value_name = "URL_PREFIX", action = clap::ArgAction::Set, num_args = 0..=1, default_missing_value = "missing")]
-    entry: Option<String>,
+    /// Public HTTP(S) base URL; workspace paths are appended. Saved as the default; empty clears it.
+    #[arg(long, aliases = ["public-url", "entry", "qr"], value_name = "URL", action = clap::ArgAction::Set, num_args = 0..=1, default_missing_value = "missing")]
+    public_base_url: Option<String>,
 
     /// Additional exact Host/origin accepted by the server (repeatable).
     #[arg(long = "trusted-host", value_name = "HOST_OR_ORIGIN", action = clap::ArgAction::Append)]
     trusted_hosts: Vec<String>,
 
-    /// Automatically open browser (best-effort). Default is true if a path is provided.
-    #[arg(short = 'b', long, value_name = "BASE_URL", action = clap::ArgAction::Set, num_args = 0..=1, default_missing_value = "local")]
+    /// Open a browser for this invocation; an omitted URL uses the local address.
+    #[arg(short = 'b', long, value_name = "URL", action = clap::ArgAction::Set, num_args = 0..=1, default_missing_value = "local")]
     open_browser: Option<String>,
 
     /// Salt for workspace ID generation.
@@ -196,11 +196,12 @@ struct CliColors {
 
 impl CliColors {
     fn detect() -> Self {
+        let term = std::env::var_os("TERM");
         let enabled = std::io::stdout().is_terminal()
             && std::env::var_os("NO_COLOR").is_none()
-            && std::env::var("TERM")
-                .map(|term| term != "dumb")
-                .unwrap_or(true);
+            && std::env::var_os("CLICOLOR").as_deref() != Some(std::ffi::OsStr::new("0"))
+            && known_color_terminal(term.as_deref())
+            && enable_ansi_output();
         Self { enabled }
     }
 
@@ -246,12 +247,76 @@ impl CliColors {
     }
 }
 
+/// Prefer plain text to guessing from COLORTERM, TERM_PROGRAM, or FORCE_COLOR.
+/// Windows consoles often omit TERM; their capability is checked with Win32.
+fn known_color_terminal(term: Option<&std::ffi::OsStr>) -> bool {
+    let Some(term) = term else {
+        return cfg!(windows);
+    };
+    matches!(
+        term.to_str(),
+        Some(
+            "ansi"
+                | "linux"
+                | "xterm"
+                | "xterm-color"
+                | "xterm-256color"
+                | "xterm-direct"
+                | "xterm-kitty"
+                | "screen"
+                | "screen-256color"
+                | "screen-256color-bce"
+                | "screen.xterm-256color"
+                | "tmux"
+                | "tmux-256color"
+                | "rxvt"
+                | "rxvt-unicode"
+                | "rxvt-unicode-256color"
+                | "alacritty"
+                | "foot"
+                | "foot-extra"
+                | "foot-direct"
+                | "kitty"
+                | "wezterm"
+                | "st"
+                | "st-256color"
+                | "putty"
+                | "putty-256color"
+                | "cygwin"
+        )
+    )
+}
+
+#[cfg(not(windows))]
+fn enable_ansi_output() -> bool {
+    true
+}
+
+#[cfg(windows)]
+fn enable_ansi_output() -> bool {
+    use std::os::windows::io::AsRawHandle;
+    use windows_sys::Win32::System::Console::{
+        GetConsoleMode, SetConsoleMode, ENABLE_PROCESSED_OUTPUT, ENABLE_VIRTUAL_TERMINAL_PROCESSING,
+    };
+
+    // Check the actual console rather than accepting an environment hint.
+    // SAFETY: stdout owns the borrowed handle; mode is a valid writable DWORD.
+    unsafe {
+        let handle = std::io::stdout().as_raw_handle();
+        let mut mode = 0;
+        if GetConsoleMode(handle, &mut mode) == 0 {
+            return false;
+        }
+        let ansi_mode = mode | ENABLE_PROCESSED_OUTPUT | ENABLE_VIRTUAL_TERMINAL_PROCESSING;
+        mode == ansi_mode || SetConsoleMode(handle, ansi_mode) != 0
+    }
+}
+
 /// Whether an interactive full-screen TUI should launch for a bare `markon ls`.
 ///
 /// Requires both stdin and stdout to be real terminals AND a usable `TERM`
-/// (set and not `dumb`), mirroring [`CliColors::detect`]'s capability gate — a
-/// whole-screen alternate-screen app is far more invasive than color, so a
-/// dumb/limited terminal (or `TERM` unset) falls back to static cards instead
+/// (set and not `dumb`). A dumb/limited terminal (or `TERM` unset) falls back
+/// to static cards instead
 /// of emitting alternate-screen / cursor-hide escapes as literal garbage.
 /// `MARKON_NO_TUI` is an explicit escape hatch for PTY environments that
 /// report a terminal but should stay non-interactive.
@@ -431,7 +496,7 @@ fn build_workspace_access_summary(
     port: u16,
     workspace_id: &str,
     initial_path: Option<&str>,
-    entry: Option<&str>,
+    public_base: Option<&str>,
 ) -> WorkspaceAccessSummary {
     let workspace_path = server::workspace_url_path(workspace_id, initial_path);
     let reach = server::reachable_urls(bind_host, advertised_host, port);
@@ -444,12 +509,12 @@ fn build_workspace_access_summary(
         })
         .collect();
     let featured_url = server::build_workspace_url(&reach.featured, &workspace_path);
-    let public_url = entry
+    let public_url = public_base
         .filter(|base| *base != "missing")
         .map(|base| server::build_workspace_url(base, &workspace_path));
-    // QR target: the public URL when a real --entry prefix was given,
-    // otherwise (bare --entry / "missing") fall back to the featured URL.
-    let qr_url = entry.map(|_| public_url.clone().unwrap_or_else(|| featured_url.clone()));
+    // QR target: the public workspace URL when a --public-base-url prefix was given,
+    // otherwise (bare --public-base-url / "missing") fall back to the featured URL.
+    let qr_url = public_base.map(|_| public_url.clone().unwrap_or_else(|| featured_url.clone()));
 
     WorkspaceAccessSummary {
         workspace_path: display_workspace_path(workspace_root),
@@ -465,9 +530,9 @@ fn resolve_workspace_list_base(
     bind_host: &str,
     _advertised_host: &str,
     port: u16,
-    entry: Option<&str>,
+    public_base: Option<&str>,
 ) -> (String, bool) {
-    match entry.filter(|base| *base != "missing") {
+    match public_base.filter(|base| *base != "missing") {
         Some(base) => (base.to_string(), true),
         None => (server::local_browser_base_url(bind_host, port), false),
     }
@@ -522,7 +587,7 @@ async fn list_workspaces(
     advertised_host: &str,
     server: &RunningServer,
     format: WorkspaceListFormat,
-    entry: Option<&str>,
+    public_base: Option<&str>,
 ) -> Result<(), Box<dyn std::error::Error>> {
     let port = server.port();
     let workspaces = server.list_workspaces().await?;
@@ -533,8 +598,8 @@ async fn list_workspaces(
     }
 
     let colors = CliColors::detect();
-    let (url_base, use_entry_url) =
-        resolve_workspace_list_base(bind_host, advertised_host, port, entry);
+    let (url_base, use_public_url) =
+        resolve_workspace_list_base(bind_host, advertised_host, port, public_base);
     match format {
         WorkspaceListFormat::Cards => {
             for (i, ws) in workspaces.iter().enumerate() {
@@ -553,7 +618,7 @@ async fn list_workspaces(
                     "   {}",
                     format_workspace_flags(ws.flags, ws.search_ready, colors)
                 );
-                let rendered_url = if use_entry_url {
+                let rendered_url = if use_public_url {
                     colors.public_url(&url)
                 } else {
                     colors.local_url(&url)
@@ -619,7 +684,7 @@ async fn list_workspaces(
                 } else {
                     colors.enabled_flag(&pad_right(&features, feature_width))
                 };
-                let url_colored = if use_entry_url {
+                let url_colored = if use_public_url {
                     colors.public_url(&url)
                 } else {
                     colors.local_url(&url)
@@ -776,12 +841,7 @@ async fn admin_browser_command(
     command: AdminCommands,
 ) -> Result<(), Box<dyn std::error::Error>> {
     let workspaces = server.list_workspaces().await?;
-    // The session has to land somewhere and there is no workspace index to land
-    // on, so the first entry wins. That is an arbitrary pick once more than one
-    // workspace is open — and a stable one, since the registry sorts by root and
-    // then by `single_file`, where `None` orders first: a directory workspace
-    // always outranks a file-scoped workspace over the same folder. Name the
-    // destination rather than letting the browser arrive somewhere unexplained.
+    // Use the registry's stable order to choose a landing workspace.
     let landing = workspaces.first();
     let redirect = landing
         .map(|workspace| server::workspace_url_path(&workspace.id, None))
@@ -797,21 +857,11 @@ async fn admin_browser_command(
         AdminCommands::Code => {
             let (url, code) = server.admin_bootstrap_code(&redirect).await?;
             println!("Open: {url}");
-            println!("One-time administrator code: {code}");
-            println!("Expires in 5 minutes and is invalidated after 5 failed attempts.");
-        }
-    }
-    if let Some(workspace) = landing {
-        println!(
-            "Opens workspace {}: {}",
-            workspace.id,
-            display_workspace_scope(workspace)
-        );
-        if workspaces.len() > 1 {
             println!(
-                "({} workspaces are open — `markon ls` lists the rest.)",
-                workspaces.len()
+                "One-time administrator code: {}",
+                CliColors::detect().title(&code)
             );
+            println!("Expires in 5 minutes and is invalidated after 5 failed attempts.");
         }
     }
     Ok(())
@@ -829,7 +879,7 @@ struct ForwardPlan<'a> {
     collaborator_hash_if_set: Option<&'a str>,
     configured_host: &'a str,
     advertised_host: &'a str,
-    entry: Option<&'a str>,
+    public_base: Option<&'a str>,
     open_browser_target: Option<&'a str>,
 }
 
@@ -865,7 +915,7 @@ async fn forward_to_running_server(
                 lock_port,
                 &workspace_id,
                 plan.target.initial_path(),
-                plan.entry,
+                plan.public_base,
             );
             print_workspace_access_summary(&summary);
             if let Some(base_option) = plan.open_browser_target {
@@ -882,7 +932,7 @@ async fn forward_to_running_server(
                             rehome_admin_bootstrap_url(base_option, &redirect, &boot_url)
                         };
                         if let Err(e) = open::that(&browser_url) {
-                            tracing::warn!("{}", server::browser_open_failure_message(e));
+                            server::report_browser_open_failure(e);
                         }
                     }
                     Err(e) => tracing::warn!("failed to create browser admin session: {e}"),
@@ -936,11 +986,86 @@ fn init_tracing() {
         .init();
 }
 
+fn settings_with_public_base_url(value: Option<&str>) -> Result<AppSettings, String> {
+    let mut settings = AppSettings::load();
+    if let Some(value) = value.filter(|value| *value != "missing") {
+        settings.save_public_base_url(value)?;
+    }
+    Ok(settings)
+}
+
+fn selected_public_base_url(settings: &AppSettings, value: Option<&str>) -> Option<String> {
+    if value == Some("missing") {
+        // A bare flag requests a local QR code without changing the saved URL.
+        Some("missing".to_string())
+    } else {
+        settings.public_base_url().map(str::to_owned)
+    }
+}
+
+/// Apply a changed default to the owning server as well as its printed links.
+/// Recreate the live registry directly, without startup pruning of single files.
+async fn refresh_public_base_url_server(
+    settings: &AppSettings,
+    explicit_clear: bool,
+) -> Result<(), String> {
+    let Some(lock) = ServerLock::read().filter(ServerLock::is_alive) else {
+        return Ok(());
+    };
+    let desired = settings.public_base_url();
+    if desired.is_none() && !explicit_clear {
+        return Ok(());
+    }
+    let current = lock.entry.as_deref().filter(|url| *url != "missing");
+    if current == desired {
+        return Ok(());
+    }
+    let server = RunningServer::from_lock(&lock);
+    let workspaces = server
+        .list_workspaces()
+        .await
+        .map_err(|error| error.to_string())?;
+    let mut config = DaemonConfig::from_settings(settings, lock.port);
+    if !lock.host.is_empty() {
+        config.host = lock.host;
+    }
+    if let Some(host) = lock.advertised_host {
+        config.advertised_host = host;
+    }
+    config.workspaces = workspaces
+        .into_iter()
+        .map(|workspace| DaemonWorkspace {
+            path: PathBuf::from(workspace.path),
+            flags: workspace.flags,
+            initial_path: workspace.single_file.clone(),
+            single_file: workspace.single_file,
+            collaborator_access_code_hash: workspace.collaborator_access_code_hash,
+            alias: workspace.alias,
+        })
+        .collect();
+    server.shutdown().await.map_err(|error| error.to_string())?;
+    let deadline = tokio::time::Instant::now() + std::time::Duration::from_secs(10);
+    while server.is_reachable() {
+        if tokio::time::Instant::now() >= deadline {
+            return Err(
+                "the previous server did not stop after changing the public base URL".to_string(),
+            );
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(20)).await;
+    }
+    markon_core::daemon::spawn_and_connect(config)
+        .await
+        .map_err(|error| {
+            format!("public base URL saved, but the server could not be refreshed: {error}")
+        })?;
+    Ok(())
+}
+
 #[tokio::main]
 async fn main() {
     init_tracing();
     let cli = Cli::parse();
-    let cli_entry = cli.entry.clone();
+    let cli_public_base_url = cli.public_base_url.clone();
     // Suppress the version banner when we're about to enter the full-screen
     // browser: it would flash on the primary screen just before EnterAlternateScreen
     // and remain as the only on-screen residue after LeaveAlternateScreen on quit.
@@ -967,10 +1092,29 @@ async fn main() {
             return;
         }
 
+        let settings = settings_with_public_base_url(cli_public_base_url.as_deref())
+            .unwrap_or_else(|error| {
+                eprintln!("Error: {error}");
+                std::process::exit(1);
+            });
+        if !matches!(&cmd, Commands::Shutdown) {
+            if let Err(error) = refresh_public_base_url_server(
+                &settings,
+                cli_public_base_url.as_deref() == Some(""),
+            )
+            .await
+            {
+                eprintln!("Error: {error}");
+                std::process::exit(1);
+            }
+        }
+        let cli_public_base_url =
+            selected_public_base_url(&settings, cli_public_base_url.as_deref());
+
         // Workspace-management commands talk to the running server over its
         // privileged control socket (recorded in the lock).
         let lock = ServerLock::read();
-        let (lock_host, lock_advertised, lock_entry, server) = match lock {
+        let (lock_host, lock_advertised, lock_public_base_url, server) = match lock {
             Some(ref l) if l.is_alive() => (
                 l.host.clone(),
                 l.advertised_host.clone(),
@@ -997,11 +1141,12 @@ async fn main() {
                 } else {
                     lock_host.clone()
                 };
-                // Public entry prefix for the printed/QR URLs: this invocation's
-                // own `--entry`/`--qr` wins; otherwise inherit the one the running
-                // daemon was started with (recorded in the lock), so a bare
-                // `markon ls` shows the daemon's public URLs instead of loopback.
-                let effective_entry = cli_entry.clone().or_else(|| lock_entry.clone());
+                // Prefer the saved default (or a bare flag's local QR override).
+                // Legacy installations without a saved URL can still inherit
+                // the owning daemon's public base URL from discovery metadata.
+                let effective_public_base_url = cli_public_base_url
+                    .clone()
+                    .or_else(|| lock_public_base_url.clone());
                 match format {
                     // Explicit --format cards|table: static render, byte-for-byte
                     // as before.
@@ -1011,7 +1156,7 @@ async fn main() {
                             &advertised_host,
                             &server,
                             fmt,
-                            effective_entry.as_deref(),
+                            effective_public_base_url.as_deref(),
                         )
                         .await
                     }
@@ -1028,7 +1173,7 @@ async fn main() {
                         // driving the IO reactor the async transport needs.
                         let handle = tokio::runtime::Handle::current();
                         let tui_server = server.clone();
-                        let tui_entry = effective_entry.clone();
+                        let tui_public_base_url = effective_public_base_url.clone();
                         let join = tokio::task::spawn_blocking(move || {
                             tui::ls::run(
                                 tui_server,
@@ -1036,7 +1181,7 @@ async fn main() {
                                 bind_host,
                                 advertised_host,
                                 port,
-                                tui_entry,
+                                tui_public_base_url,
                             )
                         })
                         .await;
@@ -1055,7 +1200,7 @@ async fn main() {
                             &advertised_host,
                             &server,
                             WorkspaceListFormat::Cards,
-                            effective_entry.as_deref(),
+                            effective_public_base_url.as_deref(),
                         )
                         .await
                     }
@@ -1112,7 +1257,18 @@ async fn main() {
     // so a path always hashes to the same id regardless of which surface
     // (CLI / GUI) opens it. The port-derived fallback only kicks in when no
     // settings file exists yet.
-    let mut settings = AppSettings::load();
+    let mut settings = settings_with_public_base_url(cli.public_base_url.as_deref())
+        .unwrap_or_else(|error| {
+            eprintln!("Error: {error}");
+            std::process::exit(1);
+        });
+    if let Err(error) =
+        refresh_public_base_url_server(&settings, cli.public_base_url.as_deref() == Some("")).await
+    {
+        eprintln!("Error: {error}");
+        std::process::exit(1);
+    }
+    let public_base_url = selected_public_base_url(&settings, cli.public_base_url.as_deref());
     let saved_workspace = settings.workspaces.iter().find(|w| {
         w.single_file.as_deref() == open_target.single_file.as_deref()
             && workspace_path_matches(&w.path, &ws_root)
@@ -1167,19 +1323,15 @@ async fn main() {
     if let Some(lock) = ServerLock::read() {
         if lock.is_alive() {
             let server = RunningServer::from_lock(&lock);
-            // The daemon we're attaching to may have been started (by a prior CLI
-            // or the GUI) with a different `--entry`, so the featured/QR host it
-            // actually serves under is the one recorded in the lock — prefer it
-            // over this invocation's own preference. `None` (a pre-field lock)
-            // falls back to our configured advertised host.
+            // Use the advertised host of the owning daemon. Legacy discovery
+            // locks without that metadata fall back to the saved preference.
             let effective_advertised = lock
                 .advertised_host
                 .clone()
                 .unwrap_or_else(|| advertised_host.clone());
-            // Same reasoning for the public entry prefix: this invocation's own
-            // `--entry`/`--qr` wins, else inherit the running daemon's (from the
-            // lock) so the printed/QR URLs match what it actually serves under.
-            let effective_entry = cli.entry.clone().or_else(|| lock.entry.clone());
+            // The saved URL was already applied above. Retain discovery fallback
+            // for legacy daemons whose public base URL has not been persisted.
+            let effective_public_base_url = public_base_url.clone().or_else(|| lock.entry.clone());
             forward_to_running_server(
                 &server,
                 &lock.host,
@@ -1193,7 +1345,7 @@ async fn main() {
                         .map(|_| workspace_collaborator_access_code_hash.as_str()),
                     configured_host: &configured_host,
                     advertised_host: &effective_advertised,
-                    entry: effective_entry.as_deref(),
+                    public_base: effective_public_base_url.as_deref(),
                     open_browser_target: open_browser_target.as_deref(),
                 },
             )
@@ -1278,7 +1430,10 @@ async fn main() {
             trusted_hosts: trusted_hosts.clone(),
             port: cli.port,
             theme: theme.clone(),
-            qr: cli.entry.clone(),
+            qr: settings
+                .public_base_url()
+                .map(str::to_owned)
+                .or_else(|| public_base_url.clone()),
             // The daemon never opens the browser itself — the CLI does, over the
             // control socket, after forwarding the workspace.
             open_browser: None,
@@ -1317,7 +1472,7 @@ async fn main() {
                             .map(|_| workspace_collaborator_access_code_hash.as_str()),
                         configured_host: &configured_host,
                         advertised_host: &advertised_host,
-                        entry: cli.entry.as_deref(),
+                        public_base: public_base_url.as_deref(),
                         open_browser_target: open_browser_target.as_deref(),
                     },
                 )
@@ -1346,6 +1501,10 @@ async fn main() {
         initial_workspaces.push(ws_init);
     }
 
+    let server_public_base_url = settings
+        .public_base_url()
+        .map(str::to_owned)
+        .or(public_base_url);
     let settings = Arc::new(Mutex::new(settings));
 
     // Share one registry with a persist hook so control-socket mutations land in
@@ -1370,7 +1529,7 @@ async fn main() {
         trusted_hosts,
         port: cli.port,
         theme,
-        qr: cli.entry,
+        qr: server_public_base_url,
         open_browser: open_browser_target,
         shared_annotation: initial_workspaces.iter().any(|w| w.flags.shared_annotation),
         db_path,
@@ -1397,6 +1556,70 @@ async fn main() {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn public_base_url_aliases_parse_without_changing_browser_selection() {
+        for flag in ["--public-base-url", "--public-url", "--entry", "--qr"] {
+            let cli =
+                Cli::try_parse_from(["markon", flag, "https://md.example.com", "--open-browser"])
+                    .unwrap();
+            assert_eq!(
+                cli.public_base_url.as_deref(),
+                Some("https://md.example.com")
+            );
+            assert_eq!(cli.open_browser.as_deref(), Some("local"));
+        }
+        let cli = Cli::try_parse_from([
+            "markon",
+            "--public-base-url",
+            "",
+            "-b",
+            "https://other.example.com",
+        ])
+        .unwrap();
+        assert_eq!(cli.public_base_url.as_deref(), Some(""));
+        assert_eq!(
+            cli.open_browser.as_deref(),
+            Some("https://other.example.com")
+        );
+    }
+
+    #[test]
+    fn unknown_or_monochrome_terminals_use_plain_text() {
+        for term in [
+            "",
+            "dumb",
+            "unknown",
+            "vt100",
+            "xterm-mono",
+            "screen-m",
+            "custom-terminal",
+        ] {
+            assert!(
+                !known_color_terminal(Some(std::ffi::OsStr::new(term))),
+                "{term}"
+            );
+        }
+        assert_eq!(known_color_terminal(None), cfg!(windows));
+    }
+
+    #[test]
+    fn common_color_terminals_allow_basic_ansi_styles() {
+        for term in [
+            "xterm",
+            "xterm-256color",
+            "screen",
+            "tmux-256color",
+            "linux",
+            "xterm-kitty",
+            "foot",
+        ] {
+            assert!(
+                known_color_terminal(Some(std::ffi::OsStr::new(term))),
+                "{term}"
+            );
+        }
+    }
 
     fn workspace_info(path: &str, single_file: Option<&str>) -> WorkspaceInfo {
         WorkspaceInfo {
@@ -1540,7 +1763,7 @@ mod tests {
             "http://127.0.0.1:5050/30c52d3e/notes/demo.md"
         );
         assert_eq!(summary.public_url, None);
-        // No --entry → QR falls back to the featured (loopback) workspace URL.
+        // No --public-base-url → QR falls back to the featured (loopback) workspace URL.
         assert_eq!(
             summary.qr_url.as_deref(),
             Some("http://127.0.0.1:5050/30c52d3e/notes/demo.md")
@@ -1621,7 +1844,7 @@ mod tests {
         );
         assert_eq!(summary.featured_url, "http://198.51.100.7:6419/abc123/");
         assert_eq!(summary.public_url, None);
-        // No --entry/--qr flag → no QR is emitted at all.
+        // No --public-base-url flag → no QR is emitted at all.
         assert_eq!(summary.qr_url, None);
     }
 
@@ -1644,18 +1867,18 @@ mod tests {
     }
 
     #[test]
-    fn resolve_workspace_list_base_prefers_entry_then_stable_local_origin() {
-        // --entry / public prefix takes precedence and marks use_entry_url.
+    fn resolve_workspace_list_base_prefers_public_url_then_stable_local_origin() {
+        // --public-base-url / public prefix takes precedence and marks use_public_url.
         assert_eq!(
             resolve_workspace_list_base("0.0.0.0", "", 6419, Some("https://md.example.com")),
             ("https://md.example.com".to_string(), true)
         );
-        // "missing" sentinel is treated as no entry.
+        // "missing" sentinel is treated as no public base URL.
         assert_eq!(
             resolve_workspace_list_base("127.0.0.1", "", 6419, Some("missing")),
             ("http://127.0.0.1:6419".to_string(), false)
         );
-        // No entry, loopback bind → loopback base.
+        // No public base URL, loopback bind → loopback base.
         assert_eq!(
             resolve_workspace_list_base("127.0.0.1", "", 5050, None),
             ("http://127.0.0.1:5050".to_string(), false)
@@ -1666,7 +1889,7 @@ mod tests {
             resolve_workspace_list_base("0.0.0.0", "192.168.1.9", 5050, None),
             ("http://127.0.0.1:5050".to_string(), false)
         );
-        // No entry, specific bind → that address (deterministic; not on host).
+        // No public base URL, specific bind → that address (deterministic; not on host).
         assert_eq!(
             resolve_workspace_list_base("198.51.100.7", "", 5050, None),
             ("http://198.51.100.7:5050".to_string(), false)

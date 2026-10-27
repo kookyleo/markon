@@ -1025,14 +1025,15 @@ pub struct ServerLock {
     /// versions.
     #[serde(default)]
     pub service_version: String,
-    /// Public entry URL prefix (`--entry` / `--qr`) the owning server was
+    /// Public base URL (`--public-base-url`) the owning server was
     /// started with — a full `scheme://host[/path]` prefix used to build the
     /// featured / QR URLs when a reverse proxy or domain fronts the server.
     /// `None` on a legacy lock predating the field; `Some` records the running
-    /// daemon's entry so a controller that got no `--entry` of its own (a bare
+    /// daemon's public base URL so a controller that got no `--public-base-url` of its own (a bare
     /// `markon ls`) still shows the same public URLs the daemon advertises,
     /// instead of falling back to the loopback address. `#[serde(default)]`
-    /// keeps old lock files readable.
+    /// keeps old lock files readable. The legacy `entry` key is retained for
+    /// discovery compatibility; new CLI commands call this `--public-base-url`.
     #[serde(default)]
     pub entry: Option<String>,
     /// Per-instance ownership nonce. NOT a secret (management no longer rides the

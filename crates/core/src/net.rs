@@ -1,4 +1,3 @@
-use local_ip_address::list_afinet_netifas;
 use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
 #[cfg(unix)]
@@ -132,8 +131,14 @@ where
 }
 
 pub fn available_bind_hosts() -> Vec<BindHostOption> {
-    match list_afinet_netifas() {
-        Ok(ifaces) => collect_bind_hosts_from_iter(ifaces),
+    // `if_addrs` releases the getifaddrs(3) list via `freeifaddrs`. The GUI
+    // polls this every few seconds, so an enumerator that leaks the list (as
+    // `local-ip-address` did on macOS) grows the process without bound.
+    match if_addrs::get_if_addrs() {
+        Ok(ifaces) => collect_bind_hosts_from_iter(ifaces.into_iter().map(|iface| {
+            let ip = iface.ip();
+            (iface.name, ip)
+        })),
         Err(_) => collect_bind_hosts_from_iter(std::iter::empty()),
     }
 }

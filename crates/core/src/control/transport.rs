@@ -449,7 +449,6 @@ async fn handle_connection(stream: Stream, ctx: &ControlContext) -> io::Result<(
     let bytes =
         serde_json::to_vec(&response).map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))?;
     framed.send(Bytes::from(bytes)).await?;
-    framed.flush().await?;
     Ok(())
 }
 
@@ -473,7 +472,6 @@ async fn request_inner(
     let bytes =
         serde_json::to_vec(req).map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))?;
     framed.send(Bytes::from(bytes)).await?;
-    framed.flush().await?;
     let Some(frame) = framed.next().await else {
         return Err(io::Error::new(
             io::ErrorKind::UnexpectedEof,

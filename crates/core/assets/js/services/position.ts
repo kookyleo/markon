@@ -76,10 +76,10 @@ export const Position = {
                 ? CONFIG.DIMENSIONS.HEADING_TOP_MARGIN
                 : availableSpace / 2;
             const targetY = section.getBoundingClientRect().top + window.scrollY - margin;
-            window.scrollTo({ top: targetY, behavior: 'smooth' });
+            window.scrollTo({ top: targetY, behavior: 'instant' });
         } else {
             const targetY = section.getBoundingClientRect().top + window.scrollY - CONFIG.DIMENSIONS.HEADING_TOP_MARGIN_TIGHT;
-            window.scrollTo({ top: targetY, behavior: 'smooth' });
+            window.scrollTo({ top: targetY, behavior: 'instant' });
         }
     }
 };

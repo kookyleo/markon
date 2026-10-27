@@ -330,6 +330,10 @@
                 width: var(--markon-toc-width);
                 max-height: 100vh;
                 overflow-y: auto;
+                /* Wheel past the TOC's end must not chain to the page: the
+                   page scroll would then settle and re-sync the TOC away
+                   from where the reader scrolled it. */
+                overscroll-behavior: contain;
                 border: 1px solid transparent; /* Always have border for consistent width */
             }
         }

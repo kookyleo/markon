@@ -53,7 +53,7 @@ WebSocket 不接受批注/Viewed 写库请求，只承担广播输出。这样�
 ```bash
 markon docs/ \
   --host 0.0.0.0 \
-  --entry http://192.168.1.20:6419 \
+  --public-base-url http://192.168.1.20:6419 \
   --collaborator-access-code guest-secret
 ```
 
