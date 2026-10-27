@@ -839,9 +839,37 @@ describe('isValidAnnotation', () => {
         expect(isValidAnnotation(annotation)).toBe(false);
     });
 
-    it('accepts legacy flat anchors without version or fragments', () => {
-        expect(isValidAnnotation({
-            anchor: { position: 0, exact: 'hello', prefix: '', suffix: '' },
-        })).toBe(true);
+    const quote = { position: 0, exact: 'hello', prefix: '', suffix: '' };
+
+    it.each([
+        { position: 0, exact: 'hello' },
+        { position: 0, exact: 'hello', prefix: '' },
+        { position: 0, exact: 'hello', suffix: '' },
+        { ...quote, exact: undefined },
+        { ...quote, exact: 1 },
+        { ...quote, prefix: null },
+        { ...quote, prefix: 1 },
+        { ...quote, suffix: null },
+        { ...quote, suffix: false },
+        { ...quote, version: 2, fragments: 'hello' },
+        { ...quote, version: 2, fragments: {} },
+        { ...quote, version: 2, fragments: null },
+        { ...quote, version: 2, fragments: [null] },
+        { ...quote, version: 2, fragments: [{ position: 0, exact: 'hello' }] },
+        { ...quote, version: 2, fragments: [{ ...quote, position: Infinity }] },
+        { ...quote, fragments: [{ ...quote, exact: null }] },
+    ])('rejects incomplete quotes or malformed fragments: %j', (anchor) => {
+        expect(isValidAnnotation({ anchor })).toBe(false);
+    });
+
+    it.each([
+        quote,
+        { position: 0, exact: '', prefix: '', suffix: '' },
+        { ...quote, version: 2 },
+        { ...quote, version: 2, fragments: [] },
+        { ...quote, version: 2, fragments: [{ ...quote, blockTag: 'P' }] },
+        { ...quote, version: 2, fragments: [quote] },
+    ])('accepts legacy flat anchors and valid structural fragments: %j', (anchor) => {
+        expect(isValidAnnotation({ anchor })).toBe(true);
     });
 });

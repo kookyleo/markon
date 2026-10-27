@@ -2370,6 +2370,23 @@ async fn handle_document_state(
     .into_response()
 }
 
+fn valid_annotation_anchor(anchor: &serde_json::Value) -> bool {
+    fn valid_quote(quote: &serde_json::Value) -> bool {
+        quote.is_object()
+            && quote["position"].as_f64().is_some_and(f64::is_finite)
+            && ["exact", "prefix", "suffix"]
+                .iter()
+                .all(|field| quote[*field].is_string())
+    }
+
+    valid_quote(anchor)
+        && anchor.get("fragments").is_none_or(|fragments| {
+            fragments
+                .as_array()
+                .is_some_and(|fragments| fragments.iter().all(valid_quote))
+        })
+}
+
 fn valid_annotation_id(id: &str) -> bool {
     id.len() >= 6
         && id.len() <= 69
@@ -2420,8 +2437,8 @@ async fn handle_document_state_command(
                 if !valid_annotation_id(id) {
                     return Err("invalid annotation id".to_string());
                 }
-                if !annotation["anchor"].is_object() {
-                    return Err("annotation anchor must be an object".to_string());
+                if !valid_annotation_anchor(&annotation["anchor"]) {
+                    return Err("annotation anchor must contain valid quote fields and fragments".to_string());
                 }
                 let data = serde_json::to_string(&annotation).map_err(|e| e.to_string())?;
                 if !upsert_annotation_for_file(&conn, id, &file_path, &data)
@@ -8575,6 +8592,19 @@ mod tests {
         .unwrap());
     }
 
+    #[test]
+    fn annotation_anchor_validation_preserves_legacy_and_fragment_fallbacks() {
+        let quote = json!({ "position": 0, "exact": "note", "prefix": "", "suffix": "" });
+        for anchor in [
+            quote.clone(),
+            json!({ "position": 0, "exact": "", "prefix": "", "suffix": "" }),
+            json!({ "version": 2, "fragments": [], "position": 0, "exact": "note", "prefix": "", "suffix": "" }),
+            json!({ "version": 2, "fragments": [quote], "position": 0, "exact": "note", "prefix": "", "suffix": "" }),
+        ] {
+            assert!(valid_annotation_anchor(&anchor), "{anchor}");
+        }
+    }
+
     #[tokio::test]
     async fn document_state_rejects_invalid_annotation_anchors_without_changing_existing_rows() {
         let root = tempfile::tempdir().unwrap();
@@ -8598,6 +8628,13 @@ mod tests {
         let db = Arc::new(Mutex::new(conn));
         let mut state = test_state(registry);
         state.db = Some(db.clone());
+        let quote = json!({ "position": 0, "exact": "note", "prefix": "", "suffix": "" });
+        let with_fragments = |fragments| {
+            let mut anchor = quote.clone();
+            anchor["version"] = json!(2);
+            anchor["fragments"] = fragments;
+            anchor
+        };
 
         for (index, anchor) in [
             None,
@@ -8606,6 +8643,25 @@ mod tests {
             Some(json!("bad")),
             Some(json!(1)),
             Some(json!(true)),
+            Some(json!({ "position": 0, "exact": "note" })),
+            Some(json!({ "position": 0, "exact": "note", "prefix": "" })),
+            Some(json!({ "position": 0, "exact": "note", "suffix": "" })),
+            Some(json!({ "position": "0", "exact": "note", "prefix": "", "suffix": "" })),
+            Some(json!({ "position": 0, "exact": 1, "prefix": "", "suffix": "" })),
+            Some(json!({ "position": 0, "exact": "note", "prefix": null, "suffix": "" })),
+            Some(json!({ "position": 0, "exact": "note", "prefix": "", "suffix": false })),
+            Some(with_fragments(json!("note"))),
+            Some(with_fragments(json!({}))),
+            Some(with_fragments(json!(null))),
+            Some(with_fragments(json!([null]))),
+            Some(with_fragments(json!([{ "position": 0, "exact": "note" }]))),
+            Some({
+                let mut anchor = with_fragments(
+                    json!([{ "position": 0, "exact": null, "prefix": "", "suffix": "" }]),
+                );
+                anchor.as_object_mut().unwrap().remove("version");
+                anchor
+            }),
         ]
         .into_iter()
         .enumerate()
@@ -8630,7 +8686,7 @@ mod tests {
             assert_eq!(response.status(), StatusCode::BAD_REQUEST);
             assert_eq!(
                 response_text(response).await,
-                "annotation anchor must be an object"
+                "annotation anchor must contain valid quote fields and fragments"
             );
         }
 

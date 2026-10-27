@@ -178,8 +178,16 @@ describe('MarkonApp', () => {
                 createdAt: 1,
                 author: { color: '#123456', name: 'Alice' },
             };
-            const invalid = [undefined, null, false, 5, 'anchor', [], {}, { position: '5' }]
-                .map((anchor, index) => ({ ...valid, id: `anno-invalid-${index}`, anchor }));
+            const invalid = [
+                undefined, null, false, 5, 'anchor', [], {}, { position: '5' },
+                { position: 5, exact: 'World' },
+                { ...valid.anchor, prefix: null },
+                { ...valid.anchor, suffix: 1 },
+                { ...valid.anchor, version: 2, fragments: 'World' },
+                { ...valid.anchor, version: 2, fragments: [null] },
+                { ...valid.anchor, version: 2, fragments: [{ position: 5, exact: 'World' }] },
+                { ...valid.anchor, fragments: [{ ...valid.anchor, exact: null }] },
+            ].map((anchor, index) => ({ ...valid, id: `anno-invalid-${index}`, anchor }));
             vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
                 ok: true,
                 status: 200,
